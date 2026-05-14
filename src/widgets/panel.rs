@@ -1,5 +1,6 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::clip_mode::ClipMode;
+use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -19,7 +20,7 @@ use crate::widgets::Response;
 /// set its own.
 pub struct Panel {
     element: Element,
-    chrome: Option<crate::primitives::background::Background>,
+    chrome: Option<Background>,
 }
 
 impl Panel {
@@ -44,7 +45,7 @@ impl Panel {
     /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
     /// the default; theme fallback in [`Self::show`] fills it in from
     /// `ui.theme.panel_background` when unset.
-    pub fn background(mut self, bg: crate::primitives::background::Background) -> Self {
+    pub fn background(mut self, bg: Background) -> Self {
         self.chrome = Some(bg);
         self
     }

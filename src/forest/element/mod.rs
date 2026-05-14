@@ -1,5 +1,5 @@
-//! Per-node element data: `Element` (the wide builder form) and the
-//! columns `Tree` stores it in:
+//! Per-node element data: `Element` (the per-widget builder form) and
+//! the columns `Tree` stores it in:
 //!
 //! - `widget_id` — identity. Hit-test, state map, damage diff.
 //! - `LayoutCore` — mode, size, padding, margin, align, visibility.
@@ -11,13 +11,20 @@
 //!   from `BoundsExtras::DEFAULT`.
 //! - `PanelExtras` — sparse side table for gap / line_gap / justify /
 //!   child_align. Allocated only when one differs from `DEFAULT`.
-//! - `chrome` — sparse `Background` paint. Routed straight from
-//!   `Element.chrome` (with `is_noop` filtered out in `Tree::open_node`).
 //!
-//! Fan-out happens once in `Element::into_columns`. Adding a field
-//! is two local edits: append to the column type and route it in
-//! `into_columns`. `Configure` (trait below) provides one chained
-//! setter per field on `Element`.
+//! Paint chrome (`Background`, ~232 B) lives **outside** `Element`:
+//! widgets that paint a background carry their own
+//! `chrome: Option<Background>` field and pass it as a side-channel
+//! argument through `Ui::node_with_chrome` →
+//! `Forest::open_node_with_chrome` → `Tree::open_node_with_chrome`,
+//! where it lands in the per-tree `chrome_table` (with `is_noop`
+//! filtered out at push). Keeps the hot per-widget `Element` copy at
+//! ~128 B instead of 360 B.
+//!
+//! Fan-out from `Element` to the dense columns happens once in
+//! `Element::into_columns`. Adding a field is two local edits: append
+//! to the column type and route it in `into_columns`. `Configure`
+//! (trait below) provides one chained setter per field on `Element`.
 
 use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
@@ -331,13 +338,6 @@ pub struct Element {
     /// (radius derived from `chrome.radius` in `Tree::open_node`).
     /// `None` = no clip. No effect on layout.
     pub(crate) clip: ClipMode,
-    // Paint chrome (`Option<Background>`, ~232 B) used to live here.
-    // Hoisted out to a side-channel passed to
-    // `Ui::node(element, chrome, ...)` so the hot `Element` copy in
-    // widget `show()` shrinks from ~360 B to ~128 B. Widgets that
-    // support a paintable chrome carry their own
-    // `chrome: Option<Background>` field and impl
-    // `Configure::chrome_mut` so `Configure::background` writes there.
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `None` = identity = no transform. The transform composes with any
     /// ancestor transform; descendants render and hit-test in the world
