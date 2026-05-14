@@ -212,7 +212,7 @@ impl QuadPipeline {
                 0 => Float32x2,   // pos
                 1 => Float32x2,   // size
                 2 => Float32x4,   // fill
-                3 => Float32x4,   // radius
+                3 => Uint32x2,    // radius (packed 4x f16: tl|tr|br|bl)
                 4 => Float32x4,   // stroke.color
                 5 => Float32,     // stroke.width
                 6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
@@ -341,7 +341,7 @@ impl QuadPipeline {
                 0 => Float32x2,
                 1 => Float32x2,
                 2 => Float32x4,
-                3 => Float32x4,
+                3 => Uint32x2,
                 4 => Float32x4,
                 5 => Float32,
                 6 => Uint32,
