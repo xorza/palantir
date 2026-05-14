@@ -36,7 +36,6 @@ use crate::layout::types::{
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
-use soa_rs::Soars;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
@@ -123,25 +122,24 @@ impl ScrollAxes {
     }
 }
 
-/// Per-node bounds + transform + parent-relative placement. Set on any
+/// Per-node bounds + parent-relative placement. Set on any
 /// `Element` (leaf or panel) whose builder customizes one of these fields.
 /// Lifted into a sparse side-table so leaves that touch none of these stay
 /// at zero per-node bytes here.
 ///
-/// Stored as `Soa<BoundsExtras>` on `Tree.bounds_table` — five columns,
-/// each cascade/driver pass reads only the columns it needs. The single
-/// `Slot` in `ExtrasIdx::bounds` indexes all five columns together (one
-/// row per "node with any customized bounds field").
-#[derive(Soars, Clone, Copy, Debug, PartialEq)]
-#[soa_derive(Debug)]
+/// Stored as `Vec<BoundsExtras>` — 32 B per row, 2 entries per cache line.
+/// `transform` is split into its own `Tree.transform_table` with a
+/// dedicated `ExtrasIdx::transform` slot, because cascade reads it for
+/// every node every frame and the ~99% "no transform" case becomes a
+/// `Slot::ABSENT` short-circuit instead of an `Option::None` load.
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BoundsExtras {
-    pub transform: Option<TranslateScale>,
-    pub position: Vec2,
-    pub grid: GridCell,
+    pub(crate) position: Vec2,
+    pub(crate) grid: GridCell,
     /// Lower clamp on the resolved outer size. Default `Size::ZERO`.
-    pub min_size: Size,
+    pub(crate) min_size: Size,
     /// Upper clamp on the resolved outer size. Default `Size::INF`.
-    pub max_size: Size,
+    pub(crate) max_size: Size,
 }
 
 /// Paired `(min, max)` clamp on the resolved outer size — always read
@@ -157,11 +155,12 @@ pub(crate) struct SizeClamp {
 /// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
 /// node — leaves never touch them. Sparse so leaves don't allocate.
 ///
-/// Stored as `Vec<PanelExtras>` (not `Soa<PanelExtras>`): only 16 B per
-/// row, already 4 entries per cache line, and most readers want the
-/// whole struct in one place — column-wise storage regressed the
-/// frame bench by ~2.5% (the extra column writes on `push` outweighed
-/// the per-driver read selectivity).
+/// `transform` lives here (not on `BoundsExtras`) because **only `Panel`
+/// and `Grid` expose `.transform()` in the public API** — every
+/// transformed node is already a panel that typically customizes
+/// `gap`/`justify`/`child_align`, so the field amortizes against an
+/// already-allocated row. Keeps `ExtrasIdx` at 8 B (one fewer slot) and
+/// avoids a separate `transform_table` sparse column.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PanelExtras {
     /// Logical-px space between siblings within a line. Read by
@@ -175,6 +174,10 @@ pub(crate) struct PanelExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
+    /// Pan/zoom transform applied to descendants (post-layout). Layout
+    /// runs in untransformed space; cascade composes this with the
+    /// ancestor transform for paint/hit-test. `None` = identity.
+    pub(crate) transform: Option<TranslateScale>,
 }
 
 /// `transform` is intentionally omitted: it doesn't affect this node's own
@@ -194,6 +197,10 @@ impl std::hash::Hash for BoundsExtras {
     }
 }
 
+/// `transform` is intentionally omitted here — same rationale as
+/// `BoundsExtras::hash`: a parent moving its descendants shouldn't
+/// dirty-flag its own node hash. Transform is folded into the
+/// subtree hash separately in `Tree::compute_hashes`.
 impl std::hash::Hash for PanelExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
@@ -206,7 +213,6 @@ impl std::hash::Hash for PanelExtras {
 
 impl BoundsExtras {
     pub(crate) const DEFAULT: Self = Self {
-        transform: None,
         position: Vec2::ZERO,
         grid: GridCell {
             row: 0,
@@ -233,6 +239,7 @@ impl PanelExtras {
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
+        transform: None,
     };
 
     pub(crate) fn is_default(&self) -> bool {
@@ -447,7 +454,6 @@ impl Element {
             },
             attrs: NodeFlags::pack(self.sense, self.disabled, self.clip, self.focusable),
             bounds: BoundsExtras {
-                transform: self.transform,
                 position: self.position,
                 grid: self.grid,
                 min_size: self.min_size,
@@ -458,6 +464,7 @@ impl Element {
                 line_gap: self.line_gap,
                 justify: self.justify,
                 child_align: self.child_align,
+                transform: self.transform,
             },
         }
     }
