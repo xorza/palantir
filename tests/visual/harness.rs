@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, DebugOverlayConfig, Display, Host, TextShaper, Ui};
+use palantir::{Color, DebugOverlayConfig, Host, TextShaper, Ui};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -100,12 +100,7 @@ impl Harness {
         });
 
         self.host.ui.theme.window_clear = clear;
-        self.host.frame_offscreen(
-            &target,
-            Display::from_physical(physical, scale),
-            &mut (),
-            scene,
-        );
+        self.host.frame_offscreen(&target, scale, &mut (), scene);
 
         readback(&self.device, &self.queue, &target, physical)
     }

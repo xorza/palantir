@@ -95,16 +95,19 @@ impl Host {
     }
 
     /// Offscreen one-shot: run CPU + GPU against a caller-supplied
-    /// texture (no swapchain acquire). For the visual harness and
-    /// offscreen benches. `display` must match `target.size()` —
-    /// callers are responsible for keeping them in lockstep.
+    /// texture (no swapchain acquire). `Display`'s physical size is
+    /// derived from `target.size()`. For the visual harness and
+    /// offscreen benches.
     pub fn frame_offscreen<T: 'static>(
         &mut self,
         target: &wgpu::Texture,
-        display: Display,
+        scale_factor: f32,
         state: &mut T,
         record: impl FnMut(&mut Ui),
     ) {
+        let size = target.size();
+        let display =
+            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
         let report = self.cpu_frame(display, state, record);
         self.render_to_texture(target, &report);
     }
