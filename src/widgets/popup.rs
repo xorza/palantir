@@ -92,7 +92,7 @@ impl Popup {
     #[track_caller]
     pub fn anchored_to(anchor: Vec2) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
-        element.sense = Sense::CLICK;
+        element.flags.set_sense(Sense::CLICK);
         Self {
             anchor,
             click_outside: ClickOutside::Dismiss,
@@ -128,8 +128,8 @@ impl Popup {
         });
         let mut element = self.element;
         let chrome = self.chrome.or(ui.theme.panel_background);
-        if matches!(element.clip, ClipMode::None) {
-            element.clip = ui.theme.panel_clip;
+        if matches!(element.flags.clip_mode(), ClipMode::None) {
+            element.flags.set_clip(ui.theme.panel_clip);
         }
         let handle = PopupHandle::new();
         ui.layer(Layer::Popup, self.anchor, None, |ui| match chrome {

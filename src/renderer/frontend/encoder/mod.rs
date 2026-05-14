@@ -8,7 +8,7 @@ use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use crate::primitives::{corners::Corners, rect::Rect, size::Size, transform::TranslateScale};
+use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
