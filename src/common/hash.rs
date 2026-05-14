@@ -7,6 +7,11 @@
 //! Per-domain hashers (e.g. `tree::rollups::compute_node_hash`) build on
 //! top of this — they own the field-walk and tagged-union policy;
 //! this module owns just the streaming primitive.
+//!
+//! FxHasher won the per-frame hashing micro-shootout against foldhash
+//! (which sponges into a u128 — slower than FxHasher's
+//! rotate-mul-xor per `write_u8` / `write_u32` for our many-small-writes
+//! pattern). Re-evaluate if hash impls switch to bulk byte writes.
 
 use rustc_hash::FxHasher;
 use std::hash::Hasher as _;
