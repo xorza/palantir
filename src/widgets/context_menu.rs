@@ -244,7 +244,7 @@ impl MenuItem {
         element.flags.set_sense(Sense::NONE);
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
-        element.align = Align::h(HAlign::Stretch);
+        element.slots.set_align(Align::h(HAlign::Stretch));
         element.margin = Spacing::xy(0.0, 4.0);
         let chrome = Background {
             fill: ui.theme.context_menu.separator.into(),
@@ -277,8 +277,8 @@ impl MenuItem {
         let mut element = self.element;
         // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF — see `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Hug).into();
-        element.align = Align::h(HAlign::Stretch);
-        element.justify = Justify::SpaceBetween;
+        element.slots.set_align(Align::h(HAlign::Stretch));
+        element.slots.set_justify(Justify::SpaceBetween);
         element.padding = padding;
         element.gaps.set_gap(16.0);
 

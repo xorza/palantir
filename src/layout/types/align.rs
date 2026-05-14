@@ -48,6 +48,15 @@ impl Align {
     pub(crate) const fn raw(self) -> u8 {
         self.0
     }
+    /// Rebuild from the raw packed byte (lower 3 bits HAlign, next 3
+    /// VAlign). Used when `Align` is stored inside a larger packed
+    /// `u16`/`u32` field (e.g. `ElementSlots`) — the caller masks the
+    /// slot and hands the 6 valid bits straight back here, no
+    /// `HAlign`/`VAlign` round-trip required.
+    #[inline]
+    pub(crate) const fn from_raw(b: u8) -> Self {
+        Self(b)
+    }
     /// Single horizontal axis; vertical defaults to `Auto`.
     pub const fn h(h: HAlign) -> Self {
         Self::new(h, VAlign::Auto)
