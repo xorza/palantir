@@ -635,7 +635,7 @@ impl Scroll {
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;
         outer.margin = self.element.margin;
-        outer.align = self.element.align;
+        outer.slots.set_align(self.element.slots.align());
         outer.position = self.element.position;
         outer.grid = self.element.grid;
         // Outer carries sense/disabled/focusable/visibility from the
@@ -658,8 +658,10 @@ impl Scroll {
         inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
         inner.gaps = self.element.gaps;
-        inner.justify = self.element.justify;
-        inner.child_align = self.element.child_align;
+        inner.slots.set_justify(self.element.slots.justify());
+        inner
+            .slots
+            .set_child_align(self.element.slots.child_align());
         let inner_chrome = self.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via

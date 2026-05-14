@@ -65,6 +65,81 @@ impl std::hash::Hash for Gaps {
     }
 }
 
+/// Packed `(justify, align, child_align, id_source)` in `u16`.
+///
+/// Lives on `Element` only — fan-out unpacks back into the dense
+/// `LayoutCore.align` + sparse `PanelExtras.{justify, child_align}`
+/// columns. Bit layout: 0-2 justify, 3-8 align (h:3, v:3), 9-14
+/// child_align (h:3, v:3), 15 id_source.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub(crate) struct ElementSlots {
+    pub(crate) bits: u16,
+}
+
+impl ElementSlots {
+    const JUSTIFY_MASK: u16 = 0b111;
+    const ALIGN_SHIFT: u16 = 3;
+    const ALIGN_MASK: u16 = 0b111_111 << Self::ALIGN_SHIFT;
+    const CHILD_ALIGN_SHIFT: u16 = 9;
+    const CHILD_ALIGN_MASK: u16 = 0b111_111 << Self::CHILD_ALIGN_SHIFT;
+    const ID_SOURCE: u16 = 1 << 15;
+
+    #[inline]
+    pub(crate) fn justify(self) -> Justify {
+        match self.bits & Self::JUSTIFY_MASK {
+            0 => Justify::Start,
+            1 => Justify::Center,
+            2 => Justify::End,
+            3 => Justify::SpaceBetween,
+            4 => Justify::SpaceAround,
+            _ => unreachable!(),
+        }
+    }
+    #[inline]
+    pub(crate) fn align(self) -> Align {
+        Align::from_raw(((self.bits & Self::ALIGN_MASK) >> Self::ALIGN_SHIFT) as u8)
+    }
+    #[inline]
+    pub(crate) fn child_align(self) -> Align {
+        Align::from_raw(((self.bits & Self::CHILD_ALIGN_MASK) >> Self::CHILD_ALIGN_SHIFT) as u8)
+    }
+    #[inline]
+    pub(crate) fn id_source(self) -> IdSource {
+        if self.bits & Self::ID_SOURCE != 0 {
+            IdSource::Explicit
+        } else {
+            IdSource::Auto
+        }
+    }
+
+    #[inline]
+    pub(crate) fn set_justify(&mut self, j: Justify) {
+        self.bits = (self.bits & !Self::JUSTIFY_MASK) | (j as u16);
+    }
+    #[inline]
+    pub(crate) fn set_align(&mut self, a: Align) {
+        self.bits = (self.bits & !Self::ALIGN_MASK) | ((a.raw() as u16) << Self::ALIGN_SHIFT);
+    }
+    #[inline]
+    pub(crate) fn set_child_align(&mut self, a: Align) {
+        self.bits =
+            (self.bits & !Self::CHILD_ALIGN_MASK) | ((a.raw() as u16) << Self::CHILD_ALIGN_SHIFT);
+    }
+    #[inline]
+    pub(crate) fn set_id_source(&mut self, s: IdSource) {
+        let bit = match s {
+            IdSource::Auto => 0,
+            IdSource::Explicit => Self::ID_SOURCE,
+        };
+        self.bits = (self.bits & !Self::ID_SOURCE) | bit;
+    }
+}
+
+const _: () = assert!(
+    (Justify::SpaceAround as u8) < 8,
+    "Justify exceeds 3 bits in ElementSlots",
+);
+
 impl Gaps {
     pub(crate) const ZERO: Self = Self([0; 2]);
 
@@ -347,14 +422,6 @@ impl std::hash::Hash for LayoutCore {
 pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub(crate) id: WidgetId,
-    /// How `id` was produced: [`IdSource::Auto`] when synthesized by
-    /// [`WidgetId::auto_stable`] (caller used `Foo::new()` + `.auto_id()`),
-    /// [`IdSource::Explicit`] when set via [`Configure::id_salt`] /
-    /// [`Configure::id`]. Both sources are disambiguated by mixing in
-    /// a per-id occurrence counter on collision; explicit collisions
-    /// additionally get a magenta debug outline so caller bugs surface
-    /// at runtime instead of corrupting per-id stores.
-    pub(crate) id_source: IdSource,
     pub(crate) mode: LayoutMode,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
@@ -372,20 +439,14 @@ pub struct Element {
     /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
     /// Grid (Grid uses its own row_gap/col_gap).
     pub(crate) gaps: Gaps,
-    /// Main-axis distribution of leftover space in `HStack`/`VStack` (this
-    /// node's children). No effect when any child is `Sizing::Fill` on the
-    /// main axis. Ignored by `Leaf` / `ZStack` / `Canvas` / `Grid`.
-    pub(crate) justify: Justify,
-    /// Alignment of this node inside its parent's inner rect. Each axis is
-    /// honored only by parent layout modes that own that axis as a cross or
-    /// placement axis: HStack reads `align.v` (cross), VStack reads `align.h`
-    /// (cross), ZStack and Grid read both, HStack/VStack ignore their main
-    /// axis, Canvas ignores both (absolute placement).
-    pub(crate) align: Align,
-    /// Default `align` applied to children when the child's own axis is
-    /// `Auto`. Mirrors CSS `align-items` (parent) + `align-self` (child).
-    /// Read only by parents that honor `align` (HStack/VStack/ZStack/Grid).
-    pub(crate) child_align: Align,
+
+    // ---- Packed small enums: justify (HStack/VStack), align (every parent),
+    //      child_align (panel parents), id_source (SeenIds). One u16
+    //      instead of four 1-byte fields. Fan-out unpacks into the
+    //      downstream columns where the per-frame readers live —
+    //      `LayoutCore.align`, `PanelExtras.{justify, child_align}` —
+    //      and feeds `id_source` to `SeenIds::record`.
+    pub(crate) slots: ElementSlots,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
     /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
     pub(crate) position: Vec2,
@@ -436,16 +497,13 @@ impl Element {
         Self {
             id: WidgetId::auto_stable(),
             mode,
-            id_source: IdSource::Auto,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
-            align: Align::default(),
             gaps: Gaps::ZERO,
-            justify: Justify::default(),
-            child_align: Align::default(),
+            slots: ElementSlots::default(),
             position: Vec2::ZERO,
             grid: GridCell::default(),
             flags: NodeFlags::default(),
@@ -458,7 +516,7 @@ impl Element {
     /// [`IdSource::Explicit`] so `Ui::node` hard-asserts on collision.
     pub(crate) fn set_id(&mut self, id: WidgetId) {
         self.id = id;
-        self.id_source = IdSource::Explicit;
+        self.slots.set_id_source(IdSource::Explicit);
     }
 
     /// Overwrite the id while inheriting `id_source` from another element.
@@ -467,7 +525,7 @@ impl Element {
     /// split) — the caller's choice of auto vs. explicit propagates.
     pub(crate) fn set_id_from(&mut self, other: &Element) {
         self.id = other.id;
-        self.id_source = other.id_source;
+        self.slots.set_id_source(other.slots.id_source());
     }
 
     /// Fan this `Element` out into the per-NodeId columns `Tree` stores.
@@ -481,7 +539,7 @@ impl Element {
                 size: self.size,
                 padding: self.padding,
                 margin: self.margin,
-                align: self.align,
+                align: self.slots.align(),
                 visibility: self.visibility,
             },
             attrs: self.flags,
@@ -493,8 +551,8 @@ impl Element {
             },
             panel: PanelExtras {
                 gaps: self.gaps,
-                justify: self.justify,
-                child_align: self.child_align,
+                justify: self.slots.justify(),
+                child_align: self.slots.child_align(),
                 transform: self.transform,
             },
         }
@@ -516,7 +574,7 @@ pub trait Configure: Sized {
     fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::from_hash(key);
-        e.id_source = IdSource::Explicit;
+        e.slots.set_id_source(IdSource::Explicit);
         self
     }
 
@@ -527,7 +585,7 @@ pub trait Configure: Sized {
     fn id(mut self, id: WidgetId) -> Self {
         let e = self.element_mut();
         e.id = id;
-        e.id_source = IdSource::Explicit;
+        e.slots.set_id_source(IdSource::Explicit);
         self
     }
 
@@ -539,7 +597,7 @@ pub trait Configure: Sized {
     fn auto_id(mut self) -> Self {
         let e = self.element_mut();
         e.id = WidgetId::auto_stable();
-        e.id_source = IdSource::Auto;
+        e.slots.set_id_source(IdSource::Auto);
         self
     }
 
@@ -617,21 +675,20 @@ pub trait Configure: Sized {
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
     /// Ignored when any child has `Sizing::Fill` on the main axis.
     fn justify(mut self, j: Justify) -> Self {
-        self.element_mut().justify = j;
+        self.element_mut().slots.set_justify(j);
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
-    /// [`Align::h`] / [`Align::v`] constructors. See [`Element::align`] for
-    /// which parent layout modes honor each axis.
+    /// [`Align::h`] / [`Align::v`] constructors.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().align = a;
+        self.element_mut().slots.set_align(a);
         self
     }
     /// Default alignment applied to children when their own axis is `Auto`.
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn child_align(mut self, a: Align) -> Self {
-        self.element_mut().child_align = a;
+        self.element_mut().slots.set_child_align(a);
         self
     }
     fn sense(mut self, s: Sense) -> Self {
