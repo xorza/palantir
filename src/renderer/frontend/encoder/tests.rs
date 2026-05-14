@@ -248,9 +248,10 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
         "paint bbox height = source.h + 2*dy = 40 + 58 = 98, got {}",
         p.rect.size.h
     );
-    assert_eq!(p.fill_axis.dir_x, 2.0);
-    assert_eq!(p.fill_axis.dir_y, 4.0);
-    assert_eq!(p.fill_axis.t0, 8.0);
+    let [dx, dy, t0, _t1] = p.fill_axis.lanes();
+    assert_eq!(dx, 2.0);
+    assert_eq!(dy, 4.0);
+    assert_eq!(t0, 8.0);
     assert_eq!(p.fill, Color::rgba(0.0, 0.0, 0.0, 0.5));
 }
 

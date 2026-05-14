@@ -65,12 +65,17 @@ fn vs(
     @location(5) stroke_width: f32,
     @location(6) fill_kind:    u32,
     @location(7) fill_lut_row: u32,
-    @location(8) fill_axis:    vec4<f32>,
+    @location(8) fill_axis_packed: vec2<u32>,
 ) -> VertexOut {
     // Unpack 4x f16 (tl, tr, br, bl) — matches `Corners` lane order.
     let r_lo = unpack2x16float(radius_packed.x);
     let r_hi = unpack2x16float(radius_packed.y);
     let radius = vec4<f32>(r_lo.x, r_lo.y, r_hi.x, r_hi.y);
+    // Same pattern for fill_axis — variant-dependent lane layout
+    // documented at the top of this file.
+    let fa_lo = unpack2x16float(fill_axis_packed.x);
+    let fa_hi = unpack2x16float(fill_axis_packed.y);
+    let fill_axis = vec4<f32>(fa_lo.x, fa_lo.y, fa_hi.x, fa_hi.y);
     var corners = array<vec2<f32>, 4>(
         vec2<f32>(0.0, 0.0),
         vec2<f32>(1.0, 0.0),

@@ -217,7 +217,7 @@ impl QuadPipeline {
                 5 => Float32,     // stroke.width
                 6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
                 7 => Uint32,      // fill_lut_row
-                8 => Float32x4,   // fill_axis (dir_x, dir_y, t0, t1)
+                8 => Uint32x2,    // fill_axis (packed 4x f16: lane0|lane1|lane2|lane3)
             ],
         };
 
@@ -346,7 +346,7 @@ impl QuadPipeline {
                 5 => Float32,
                 6 => Uint32,
                 7 => Uint32,
-                8 => Float32x4,
+                8 => Uint32x2,
             ],
         };
 

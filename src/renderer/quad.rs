@@ -160,16 +160,16 @@ mod tests {
         assert!(!FillKind::linear(Spread::Pad).is_shadow());
     }
 
-    /// Pin: `Quad` is exactly 84 bytes — pos(8) + size(8) + fill(16) +
+    /// Pin: `Quad` is exactly 76 bytes — pos(8) + size(8) + fill(16) +
     /// radius(8, packed 4xf16) + stroke_color(16) + stroke_width(4) +
-    /// fill_kind(4) + fill_lut_row(4) + fill_axis(16). The
+    /// fill_kind(4) + fill_lut_row(4) + fill_axis(8, packed 4xf16). The
     /// `vertex_attr_array` in the backend's `QuadPipeline::new` assumes
     /// this exact layout via Rust's `repr(C)` field-order rules. A
     /// reorder or an added field that shifts an attribute's offset would
     /// break the shader binding silently — this test catches it.
     #[test]
-    fn quad_struct_is_84_bytes_no_padding() {
-        assert_eq!(std::mem::size_of::<Quad>(), 84);
+    fn quad_struct_is_76_bytes_no_padding() {
+        assert_eq!(std::mem::size_of::<Quad>(), 76);
     }
 
     /// Pin every field offset against the `vertex_attr_array!` in
