@@ -115,3 +115,137 @@ impl URect {
         }
     }
 }
+
+/// 8-byte half-precision variant of [`URect`]. Same physical-px
+/// semantics, but components saturate at `u16::MAX` (65 535 px) —
+/// enough for 8K surfaces and 4×-DPI 16K. Used where many rects
+/// are stored in a hot Pod struct (e.g. `TextRun.bounds`); halving
+/// the footprint shrinks the per-frame `Vec<TextRun>` and the
+/// bytemuck hash input.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct URect16 {
+    pub x: u16,
+    pub y: u16,
+    pub w: u16,
+    pub h: u16,
+}
+
+impl std::hash::Hash for URect16 {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
+    }
+}
+
+impl URect16 {
+    /// Saturating constructor from `u32` components.
+    pub const fn new(x: u32, y: u32, w: u32, h: u32) -> Self {
+        Self {
+            x: sat_u16(x),
+            y: sat_u16(y),
+            w: sat_u16(w),
+            h: sat_u16(h),
+        }
+    }
+
+    /// Widen to [`URect`] for boundary code (wgpu `set_scissor_rect`,
+    /// glyphon `TextBounds`).
+    pub const fn to_urect(self) -> URect {
+        URect {
+            x: self.x as u32,
+            y: self.y as u32,
+            w: self.w as u32,
+            h: self.h as u32,
+        }
+    }
+
+    pub const fn intersect(self, other: Self) -> Option<Self> {
+        let ax = self.x as u32;
+        let ay = self.y as u32;
+        let bx = other.x as u32;
+        let by = other.y as u32;
+        let x0 = if ax > bx { ax } else { bx };
+        let y0 = if ay > by { ay } else { by };
+        let a_max_x = ax + self.w as u32;
+        let b_max_x = bx + other.w as u32;
+        let x1 = if a_max_x < b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = ay + self.h as u32;
+        let b_max_y = by + other.h as u32;
+        let y1 = if a_max_y < b_max_y { a_max_y } else { b_max_y };
+        if x1 > x0 && y1 > y0 {
+            Some(Self::new(x0, y0, x1 - x0, y1 - y0))
+        } else {
+            None
+        }
+    }
+
+    pub const fn union(self, other: Self) -> Self {
+        if self.w == 0 || self.h == 0 {
+            return other;
+        }
+        if other.w == 0 || other.h == 0 {
+            return self;
+        }
+        let ax = self.x as u32;
+        let ay = self.y as u32;
+        let bx = other.x as u32;
+        let by = other.y as u32;
+        let x0 = if ax < bx { ax } else { bx };
+        let y0 = if ay < by { ay } else { by };
+        let a_max_x = ax + self.w as u32;
+        let b_max_x = bx + other.w as u32;
+        let x1 = if a_max_x > b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = ay + self.h as u32;
+        let b_max_y = by + other.h as u32;
+        let y1 = if a_max_y > b_max_y { a_max_y } else { b_max_y };
+        Self::new(x0, y0, x1 - x0, y1 - y0)
+    }
+
+    pub const fn clamp_to(self, parent: Self) -> Self {
+        let ax = self.x as u32;
+        let ay = self.y as u32;
+        let bx = parent.x as u32;
+        let by = parent.y as u32;
+        let x0 = if ax > bx { ax } else { bx };
+        let y0 = if ay > by { ay } else { by };
+        let a_max_x = ax + self.w as u32;
+        let b_max_x = bx + parent.w as u32;
+        let x1 = if a_max_x < b_max_x { a_max_x } else { b_max_x };
+        let a_max_y = ay + self.h as u32;
+        let b_max_y = by + parent.h as u32;
+        let y1 = if a_max_y < b_max_y { a_max_y } else { b_max_y };
+        Self::new(x0, y0, x1.saturating_sub(x0), y1.saturating_sub(y0))
+    }
+
+    pub const fn deflated(self, inset: u32) -> Self {
+        let new_x = (self.x as u32) + inset;
+        let new_y = (self.y as u32) + inset;
+        let two_inset = inset.saturating_mul(2);
+        let new_w = (self.w as u32).saturating_sub(two_inset);
+        let new_h = (self.h as u32).saturating_sub(two_inset);
+        Self::new(new_x, new_y, new_w, new_h)
+    }
+}
+
+impl From<URect> for URect16 {
+    #[inline]
+    fn from(r: URect) -> Self {
+        Self::new(r.x, r.y, r.w, r.h)
+    }
+}
+
+impl From<URect16> for URect {
+    #[inline]
+    fn from(r: URect16) -> Self {
+        r.to_urect()
+    }
+}
+
+const fn sat_u16(v: u32) -> u16 {
+    if v > u16::MAX as u32 {
+        u16::MAX
+    } else {
+        v as u16
+    }
+}
