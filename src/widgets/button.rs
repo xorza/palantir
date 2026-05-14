@@ -20,7 +20,7 @@ impl Button {
     #[track_caller]
     pub fn new() -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::CLICK;
+        element.flags.set_sense(Sense::CLICK);
         Self {
             element,
             style: None,
@@ -59,7 +59,7 @@ impl Button {
         let mut picked_state = raw_state;
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // toggled `.disabled(true)` lands disabled visuals immediately.
-        picked_state.disabled |= element.disabled;
+        picked_state.disabled |= element.flags.is_disabled();
         let fallback_text = ui.theme.text;
         // Borrow either the user override or the default theme without
         // cloning the ~540-byte `ButtonTheme`. Copy out the four

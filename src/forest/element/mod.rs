@@ -349,28 +349,17 @@ pub struct Element {
     /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
     pub(crate) grid: GridCell,
 
-    // ---- Interaction ---------------------------------------------------------
-    pub(crate) sense: Sense,
-    pub(crate) disabled: bool,
-    /// Eligible to capture keyboard focus on press. Disabled / invisible
-    /// nodes don't take focus regardless of this flag — the cascade pass
-    /// applies the same exclusion `Sense` gets. Default `false`; only
-    /// editable widgets (TextEdit) flip it on. Distinct from `Sense::CLICK`
-    /// because clicking a Button shouldn't steal focus from a TextEdit.
-    pub(crate) focusable: bool,
+    // ---- Packed paint/input flags (sense, disabled, focusable, clip,
+    //      justify). One u16, mirrors the `NodeFlags` column
+    //      `into_columns` writes to — no per-field decode at fan-out.
+    pub(crate) flags: NodeFlags,
 
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
     /// layout but suppresses paint + input; `Collapsed` zeros the slot and
-    /// skips the subtree everywhere. CascadesEngine implicitly (paint and input
-    /// early-return at non-`Visible` nodes).
+    /// skips the subtree everywhere. Lives on `LayoutCore` (not `NodeFlags`)
+    /// because measure's fast-path reads it next to size/margin.
     pub(crate) visibility: Visibility,
-    /// Storage for the clip flag — written by `Configure::clip*`
-    /// methods or set directly by framework-internal widgets like
-    /// `Scroll`. `Rect` = scissor; `Rounded` = scissor + stencil mask
-    /// (radius derived from `chrome.radius` in `Tree::open_node`).
-    /// `None` = no clip. No effect on layout.
-    pub(crate) clip: ClipMode,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
     /// `TranslateScale::IDENTITY` = no transform. The transform composes
     /// with any ancestor transform; descendants render and hit-test in
@@ -416,11 +405,8 @@ impl Element {
             child_align: Align::default(),
             position: Vec2::ZERO,
             grid: GridCell::default(),
-            sense: Sense::NONE,
-            disabled: false,
-            focusable: false,
+            flags: NodeFlags::default(),
             visibility: Visibility::Visible,
-            clip: ClipMode::None,
             transform: TranslateScale::IDENTITY,
         }
     }
@@ -455,7 +441,7 @@ impl Element {
                 align: self.align,
                 visibility: self.visibility,
             },
-            attrs: NodeFlags::pack(self.sense, self.disabled, self.clip, self.focusable),
+            attrs: self.flags,
             bounds: BoundsExtras {
                 position: self.position,
                 grid: self.grid,
@@ -607,12 +593,12 @@ pub trait Configure: Sized {
         self
     }
     fn sense(mut self, s: Sense) -> Self {
-        self.element_mut().sense = s;
+        self.element_mut().flags.set_sense(s);
         self
     }
     /// Suppress this node's interactions and cascade to all descendants.
     fn disabled(mut self, d: bool) -> Self {
-        self.element_mut().disabled = d;
+        self.element_mut().flags.set_disabled(d);
         self
     }
     /// Mark this node as eligible to take keyboard focus on press.
@@ -620,7 +606,7 @@ pub trait Configure: Sized {
     /// or invisible nodes are excluded from focus regardless of this
     /// flag — same cascade rule as `Sense`.
     fn focusable(mut self, f: bool) -> Self {
-        self.element_mut().focusable = f;
+        self.element_mut().flags.set_focusable(f);
         self
     }
     /// Three-state visibility. See [`Visibility`].
@@ -640,7 +626,7 @@ pub trait Configure: Sized {
     /// Generic clip setter. Most callers use the [`Self::clip_rect`]
     /// / [`Self::clip_rounded`] sugars instead.
     fn clip(mut self, mode: ClipMode) -> Self {
-        self.element_mut().clip = mode;
+        self.element_mut().flags.set_clip(mode);
         self
     }
 
@@ -661,7 +647,8 @@ pub trait Configure: Sized {
 /// Packed paint/input flags. One byte.
 ///
 /// `bits`: 0-3=sense bitflags (HOVER|CLICK|DRAG|SCROLL), 4=disabled,
-/// 5-6=clip mode, 7=focusable.
+/// 5-6=clip mode, 7=focusable. `Element` uses the same packed form
+/// during recording; fan-out is a single byte copy.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {
     pub(crate) bits: u8,
@@ -674,27 +661,15 @@ impl NodeFlags {
     const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
     const FOCUSABLE: u8 = 1 << 7;
 
-    /// Pack the paint/input bits. Reads `clip` post-downgrade (rounded
-    /// → rect when the chrome lacks a radius — that fix-up happens in
-    /// `Tree::open_node` before this is called).
-    pub(crate) fn pack(sense: Sense, disabled: bool, clip: ClipMode, focusable: bool) -> Self {
-        let mut bits = sense.bits() & Self::SENSE_MASK;
-        if disabled {
-            bits |= Self::DISABLED;
-        }
-        bits |= (clip as u8) << Self::CLIP_SHIFT;
-        if focusable {
-            bits |= Self::FOCUSABLE;
-        }
-        Self { bits }
-    }
-
+    #[inline]
     pub(crate) fn sense(self) -> Sense {
         Sense::from_bits_truncate(self.bits & Self::SENSE_MASK)
     }
+    #[inline]
     pub(crate) fn is_disabled(self) -> bool {
         self.bits & Self::DISABLED != 0
     }
+    #[inline]
     pub(crate) fn clip_mode(self) -> ClipMode {
         match (self.bits & Self::CLIP_MASK) >> Self::CLIP_SHIFT {
             0 => ClipMode::None,
@@ -703,22 +678,36 @@ impl NodeFlags {
             _ => unreachable!(),
         }
     }
+    #[inline]
     pub(crate) fn is_focusable(self) -> bool {
         self.bits & Self::FOCUSABLE != 0
     }
+
+    #[inline]
+    pub(crate) fn set_sense(&mut self, s: Sense) {
+        self.bits = (self.bits & !Self::SENSE_MASK) | (s.bits() & Self::SENSE_MASK);
+    }
+    #[inline]
+    pub(crate) fn set_disabled(&mut self, v: bool) {
+        self.bits = (self.bits & !Self::DISABLED) | (if v { Self::DISABLED } else { 0 });
+    }
+    #[inline]
+    pub(crate) fn set_clip(&mut self, c: ClipMode) {
+        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u8) << Self::CLIP_SHIFT);
+    }
+    #[inline]
+    pub(crate) fn set_focusable(&mut self, v: bool) {
+        self.bits = (self.bits & !Self::FOCUSABLE) | (if v { Self::FOCUSABLE } else { 0 });
+    }
 }
 
-// Compile-time width checks for the fields packed into `NodeFlags.bits`.
-// Adding a `ClipMode` variant past 3 or a `Sense` flag past bit 3 would
-// silently bleed into adjacent fields; these asserts fail the build
-// instead.
 const _: () = assert!(
     (ClipMode::Rounded as u8) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
-    "ClipMode discriminant exceeds 2 bits — would bleed into FOCUSABLE",
+    "ClipMode discriminant exceeds 2 bits",
 );
 const _: () = assert!(
     Sense::all().bits() <= NodeFlags::SENSE_MASK,
-    "Sense uses more than 4 bits — would bleed into DISABLED",
+    "Sense uses more than 4 bits",
 );
 
 #[cfg(test)]

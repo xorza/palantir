@@ -63,7 +63,7 @@ pub struct ContextMenu {
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
-        element.sense = Sense::CLICK;
+        element.flags.set_sense(Sense::CLICK);
         Self {
             for_id,
             element,
@@ -213,7 +213,7 @@ impl MenuItem {
     #[track_caller]
     pub fn new(label: impl Into<Cow<'static, str>>) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
-        element.sense = Sense::CLICK;
+        element.flags.set_sense(Sense::CLICK);
         Self {
             element,
             label: label.into(),
@@ -232,7 +232,7 @@ impl MenuItem {
     }
 
     pub fn enabled(mut self, e: bool) -> Self {
-        self.element.disabled = !e;
+        self.element.flags.set_disabled(!e);
         self
     }
 
@@ -241,7 +241,7 @@ impl MenuItem {
     #[track_caller]
     pub fn separator(ui: &mut Ui) -> Response {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::NONE;
+        element.flags.set_sense(Sense::NONE);
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
         element.align = Align::h(HAlign::Stretch);
@@ -260,7 +260,7 @@ impl MenuItem {
 
     pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
         let id = self.element.id;
-        let disabled = self.element.disabled;
+        let disabled = self.element.flags.is_disabled();
         let mut raw_state = ui.response_for(id);
         raw_state.disabled = disabled;
 

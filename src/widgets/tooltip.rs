@@ -103,7 +103,7 @@ impl<'r> Tooltip<'r> {
     pub fn for_(response: &'r Response) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         // Bubble must never claim hover — would shadow its own trigger.
-        element.sense = Sense::empty();
+        element.flags.set_sense(Sense::empty());
         Self {
             response,
             text: Cow::Borrowed(""),

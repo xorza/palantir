@@ -376,13 +376,13 @@ impl<'a> TextEdit<'a> {
     #[track_caller]
     pub fn new(text: &'a mut String) -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.sense = Sense::CLICK;
-        element.focusable = true;
+        element.flags.set_sense(Sense::CLICK);
+        element.flags.set_focusable(true);
         // Clip glyphs, caret, and selection wash to the editor's own
         // rect so a `Fixed`-sized editor with long content doesn't
         // bleed over its neighbours. Chrome (background) draws before
         // the clip, so the editor's surround still paints normally.
-        element.clip = ClipMode::Rect;
+        element.flags.set_clip(ClipMode::Rect);
         // `Element::padding` left at zero — `show()` substitutes
         // `theme.text_edit.padding` when the user didn't call
         // `.padding(...)`. Same renderer semantics as before; the
@@ -456,7 +456,7 @@ impl<'a> TextEdit<'a> {
         // (one-frame stale); OR self-disabled in for lag-free
         // response to a freshly toggled `.disabled(true)`.
         let mut response = ui.response_for(id);
-        response.disabled |= self.element.disabled;
+        response.disabled |= self.element.flags.is_disabled();
         let fallback_text = ui.theme.text;
         let look = theme
             .pick(response)

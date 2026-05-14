@@ -218,7 +218,7 @@ fn push_bar_nodes(
     )
         .into();
     track.position = plan.track_rect.min;
-    track.sense = Sense::CLICK;
+    track.flags.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
         ui.node_with_chrome(
             track,
@@ -249,7 +249,7 @@ fn push_bar_nodes(
     )
         .into();
     thumb.position = plan.thumb_rect.min;
-    thumb.sense = Sense::DRAG;
+    thumb.flags.set_sense(Sense::DRAG);
     ui.node_with_chrome(
         thumb,
         Background {
@@ -313,11 +313,11 @@ impl Scroll {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new(LayoutMode::Scroll(axes));
-        element.sense = Sense::SCROLL;
+        element.flags.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        element.clip = ClipMode::Rect;
+        element.flags.set_clip(ClipMode::Rect);
         Self {
             element,
             zoom: None,
@@ -638,9 +638,11 @@ impl Scroll {
         outer.align = self.element.align;
         outer.position = self.element.position;
         outer.grid = self.element.grid;
-        outer.sense = self.element.sense;
-        outer.disabled = self.element.disabled;
-        outer.focusable = self.element.focusable;
+        // Outer carries sense/disabled/focusable/visibility from the
+        // user's element. Inner owns clip + justify (set below).
+        outer.flags.set_sense(self.element.flags.sense());
+        outer.flags.set_disabled(self.element.flags.is_disabled());
+        outer.flags.set_focusable(self.element.flags.is_focusable());
         outer.visibility = self.element.visibility;
 
         // Inner viewport: owns the clip, the pan transform, the
@@ -663,11 +665,14 @@ impl Scroll {
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
         // `Configure::clip_rounded`, that wins.
-        inner.clip = if matches!(self.element.clip, ClipMode::None) {
-            ClipMode::Rect
-        } else {
-            self.element.clip
-        };
+        let user_clip = self.element.flags.clip_mode();
+        inner
+            .flags
+            .set_clip(if matches!(user_clip, ClipMode::None) {
+                ClipMode::Rect
+            } else {
+                user_clip
+            });
         // Children's layout rects are in *absolute* screen coords
         // (e.g. a cell at inner-local (x,y) has `child.rect.min =
         // inner.rect.min + (x,y)`). A bare `TranslateScale(-offset,
