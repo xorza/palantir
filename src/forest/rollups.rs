@@ -128,7 +128,7 @@ mod tests {
         ShapeRecord::Text {
             local_origin,
             text: Cow::Borrowed("hi"),
-            color: Color::WHITE,
+            color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,
             wrap: TextWrap::Single,

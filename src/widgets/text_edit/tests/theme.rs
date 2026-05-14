@@ -82,7 +82,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(color, Color::rgb(1.0, 0.0, 0.0));
+    assert_eq!(Color::from(color), Color::rgb(1.0, 0.0, 0.0));
 }
 
 #[test]
@@ -113,7 +113,7 @@ fn text_widget_color_override_wins_over_theme() {
             _ => None,
         })
         .unwrap();
-    assert_eq!(color, Color::rgb(0.0, 1.0, 0.0));
+    assert_eq!(Color::from(color), Color::rgb(0.0, 1.0, 0.0));
 }
 
 #[test]
