@@ -657,8 +657,7 @@ impl Scroll {
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
-        inner.gap = self.element.gap;
-        inner.line_gap = self.element.line_gap;
+        inner.gaps = self.element.gaps;
         inner.justify = self.element.justify;
         inner.child_align = self.element.child_align;
         let inner_chrome = self.chrome;

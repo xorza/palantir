@@ -36,6 +36,58 @@ use crate::layout::types::{
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
+use half::f16;
+
+/// `(gap, line_gap)` packed as two `f16` lanes in `[u16; 2]` (4 bytes).
+/// Lane order: `gap | line_gap`. Same f16 contract as
+/// `primitives::corners::Corners` and `primitives::spacing::Spacing`:
+/// lossless for integer values up to 2048, ~0.25 px error at 4096. UI
+/// gaps never approach that ceiling.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct Gaps([u16; 2]);
+
+impl std::fmt::Debug for Gaps {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Gaps")
+            .field("gap", &self.gap())
+            .field("line_gap", &self.line_gap())
+            .finish()
+    }
+}
+
+impl std::hash::Hash for Gaps {
+    /// Hash both lanes as one `u32` — one hasher call instead of two
+    /// `write_u32(...to_bits())`s the previous f32 pair used.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u32(u32::from_ne_bytes(bytemuck::cast(self.0)));
+    }
+}
+
+impl Gaps {
+    pub(crate) const ZERO: Self = Self([0; 2]);
+
+    #[inline]
+    pub(crate) fn gap(self) -> f32 {
+        f16::from_bits(self.0[0]).to_f32()
+    }
+
+    #[inline]
+    pub(crate) fn line_gap(self) -> f32 {
+        f16::from_bits(self.0[1]).to_f32()
+    }
+
+    #[inline]
+    pub(crate) fn set_gap(&mut self, v: f32) {
+        self.0[0] = f16::from_f32(v).to_bits();
+    }
+
+    #[inline]
+    pub(crate) fn set_line_gap(&mut self, v: f32) {
+        self.0[1] = f16::from_f32(v).to_bits();
+    }
+}
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
@@ -163,13 +215,9 @@ pub(crate) struct SizeClamp {
 /// avoids a separate `transform_table` sparse column.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PanelExtras {
-    /// Logical-px space between siblings within a line. Read by
-    /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
-    /// each wrap row/column).
-    pub(crate) gap: f32,
-    /// Logical-px space between lines for WrapHStack/WrapVStack only.
-    /// Inert in HStack/VStack/ZStack/Canvas/Grid.
-    pub(crate) line_gap: f32,
+    /// Within-line gap (HStack/VStack/WrapHStack/WrapVStack) + between-line
+    /// gap (WrapHStack/WrapVStack only) packed as two f16 lanes.
+    pub(crate) gaps: Gaps,
     /// Main-axis distribution of leftover space (HStack/VStack only).
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
@@ -207,8 +255,7 @@ impl std::hash::Hash for BoundsExtras {
 impl std::hash::Hash for PanelExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u32(self.gap.to_bits());
-        h.write_u32(self.line_gap.to_bits());
+        self.gaps.hash(h);
         self.child_align.hash(h);
         self.justify.hash(h);
     }
@@ -238,8 +285,7 @@ impl BoundsExtras {
 
 impl PanelExtras {
     pub(crate) const DEFAULT: Self = Self {
-        gap: 0.0,
-        line_gap: 0.0,
+        gaps: Gaps::ZERO,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
         transform: TranslateScale::IDENTITY,
@@ -320,14 +366,12 @@ pub struct Element {
 
     // ---- Mode-specific: only read when the parent or self has the right mode.
     // Inert otherwise.
-    /// Logical-px space between siblings within a line. Read by
-    /// HStack/VStack (single line) and WrapHStack/WrapVStack (within
-    /// each wrap row/column). Ignored by `Leaf` / `ZStack` / `Canvas` /
-    /// `Grid` (Grid uses its own row_gap/col_gap).
-    pub(crate) gap: f32,
-    /// Logical-px space between lines for WrapHStack/WrapVStack only.
-    /// Inert otherwise.
-    pub(crate) line_gap: f32,
+    /// Within-line gap + between-line gap packed as two f16 lanes.
+    /// `gaps.gap()` (HStack/VStack/WrapHStack/WrapVStack) is the
+    /// sibling spacing; `gaps.line_gap()` (WrapHStack/WrapVStack only)
+    /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
+    /// Grid (Grid uses its own row_gap/col_gap).
+    pub(crate) gaps: Gaps,
     /// Main-axis distribution of leftover space in `HStack`/`VStack` (this
     /// node's children). No effect when any child is `Sizing::Fill` on the
     /// main axis. Ignored by `Leaf` / `ZStack` / `Canvas` / `Grid`.
@@ -399,8 +443,7 @@ impl Element {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             align: Align::default(),
-            gap: 0.0,
-            line_gap: 0.0,
+            gaps: Gaps::ZERO,
             justify: Justify::default(),
             child_align: Align::default(),
             position: Vec2::ZERO,
@@ -449,8 +492,7 @@ impl Element {
                 max_size: self.max_size,
             },
             panel: PanelExtras {
-                gap: self.gap,
-                line_gap: self.line_gap,
+                gaps: self.gaps,
                 justify: self.justify,
                 child_align: self.child_align,
                 transform: self.transform,
@@ -561,7 +603,7 @@ pub trait Configure: Sized {
     /// HStack/VStack and the within-line direction of WrapHStack/
     /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
-        self.element_mut().gap = g;
+        self.element_mut().gaps.set_gap(g);
         self
     }
     /// Logical-px space between *lines* for WrapHStack/WrapVStack —
@@ -569,7 +611,7 @@ pub trait Configure: Sized {
     /// every other layout mode. Pair with `.gap(...)` for the within-
     /// line spacing.
     fn line_gap(mut self, g: f32) -> Self {
-        self.element_mut().line_gap = g;
+        self.element_mut().gaps.set_line_gap(g);
         self
     }
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.

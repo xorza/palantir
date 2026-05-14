@@ -113,8 +113,8 @@ pub(crate) fn measure(
     out: &mut Layout,
 ) -> Size {
     let panel = tree.panel(node);
-    let gap = panel.gap;
-    let line_gap = panel.line_gap;
+    let gap = panel.gaps.gap();
+    let line_gap = panel.gaps.line_gap();
     let main_avail = axis.main(inner);
     let cross_avail = axis.cross(inner);
 
@@ -174,8 +174,8 @@ pub(crate) fn arrange(
     out: &mut Layout,
 ) {
     let panel = tree.panel(node);
-    let gap = panel.gap;
-    let line_gap = panel.line_gap;
+    let gap = panel.gaps.gap();
+    let line_gap = panel.gaps.line_gap();
     let justify = panel.justify;
     let parent_child_align = panel.child_align;
     let main_avail = axis.main(inner.size);
@@ -321,7 +321,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     text: &TextShaper,
 ) -> f32 {
-    let gap = tree.panel(node).gap;
+    let gap = tree.panel(node).gaps.gap();
     if main_axis == query_axis {
         match req {
             LenReq::MinContent => {
