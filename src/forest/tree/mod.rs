@@ -447,8 +447,8 @@ impl Tree {
     /// `Rect` here — without a chrome radius there's nothing to mask.
     /// See [`Self::open_node_with_chrome`] for the chrome path.
     pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
-        if matches!(element.flags.clip_mode(), ClipMode::Rounded) {
-            element.flags.set_clip(ClipMode::Rect);
+        if matches!(element.clip_mode(), ClipMode::Rounded) {
+            element.set_clip(ClipMode::Rect);
         }
         let ctx = self.open_node_prologue(element.mode);
         let cols = element.into_columns();
@@ -482,8 +482,8 @@ impl Tree {
         // kept past `Background::is_noop` so the encoder can read
         // `bg.radius` for the stencil-mask path — that's the only
         // time a noop chrome ever survives storage.
-        if matches!(element.flags.clip_mode(), ClipMode::Rounded) && bg.radius.approx_zero() {
-            element.flags.set_clip(ClipMode::Rect);
+        if matches!(element.clip_mode(), ClipMode::Rounded) && bg.radius.approx_zero() {
+            element.set_clip(ClipMode::Rect);
         }
         let ctx = self.open_node_prologue(element.mode);
         let cols = element.into_columns();

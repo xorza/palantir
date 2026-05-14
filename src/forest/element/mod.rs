@@ -438,15 +438,14 @@ pub struct Element {
     /// sibling spacing; `gaps.line_gap()` (WrapHStack/WrapVStack only)
     /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
     /// Grid (Grid uses its own row_gap/col_gap).
-    pub(crate) gaps: Gaps,
+    /// Within-line + between-line gaps packed as two f16 lanes.
+    /// Private — read/written via inline accessors that hide the
+    /// bit-layout (`element.gap()` / `element.set_gap(g)`).
+    gaps: Gaps,
 
-    // ---- Packed small enums: justify (HStack/VStack), align (every parent),
-    //      child_align (panel parents), id_source (SeenIds). One u16
-    //      instead of four 1-byte fields. Fan-out unpacks into the
-    //      downstream columns where the per-frame readers live —
-    //      `LayoutCore.align`, `PanelExtras.{justify, child_align}` —
-    //      and feeds `id_source` to `SeenIds::record`.
-    pub(crate) slots: ElementSlots,
+    /// Packed `(justify, align, child_align, id_source)` in `u16`.
+    /// Private — read/written via inline accessors.
+    slots: ElementSlots,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
     /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
     pub(crate) position: Vec2,
@@ -454,10 +453,11 @@ pub struct Element {
     /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
     pub(crate) grid: GridCell,
 
-    // ---- Packed paint/input flags (sense, disabled, focusable, clip,
-    //      justify). One u16, mirrors the `NodeFlags` column
-    //      `into_columns` writes to — no per-field decode at fan-out.
-    pub(crate) flags: NodeFlags,
+    /// Packed paint/input flags (sense, disabled, focusable, clip). One
+    /// `u8`, mirrors the `NodeFlags` column `into_columns` writes to —
+    /// no per-field decode at fan-out. Private — read/written via inline
+    /// accessors (`element.sense()` / `element.set_sense(s)`, etc.).
+    flags: NodeFlags,
 
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
@@ -517,6 +517,86 @@ impl Element {
     pub(crate) fn set_id(&mut self, id: WidgetId) {
         self.id = id;
         self.slots.set_id_source(IdSource::Explicit);
+    }
+
+    // ---- Inline accessors over the packed `flags` / `slots` / `gaps` ----
+    // Hide the bit-layout from widget call sites — they write
+    // `element.set_sense(s)` instead of `element.flags.set_sense(s)`.
+    // Each method is a one-hop delegate to a `#[inline]` packed-storage
+    // method, so it inlines straight through at the call site with no
+    // extra call frame.
+
+    #[inline]
+    pub(crate) fn sense(&self) -> Sense {
+        self.flags.sense()
+    }
+    #[inline]
+    pub(crate) fn is_disabled(&self) -> bool {
+        self.flags.is_disabled()
+    }
+    #[inline]
+    pub(crate) fn is_focusable(&self) -> bool {
+        self.flags.is_focusable()
+    }
+    #[inline]
+    pub(crate) fn clip_mode(&self) -> ClipMode {
+        self.flags.clip_mode()
+    }
+    #[inline]
+    pub(crate) fn set_sense(&mut self, s: Sense) {
+        self.flags.set_sense(s);
+    }
+    #[inline]
+    pub(crate) fn set_disabled(&mut self, v: bool) {
+        self.flags.set_disabled(v);
+    }
+    #[inline]
+    pub(crate) fn set_focusable(&mut self, v: bool) {
+        self.flags.set_focusable(v);
+    }
+    #[inline]
+    pub(crate) fn set_clip(&mut self, c: ClipMode) {
+        self.flags.set_clip(c);
+    }
+
+    #[inline]
+    pub(crate) fn justify(&self) -> Justify {
+        self.slots.justify()
+    }
+    #[inline]
+    pub(crate) fn align(&self) -> Align {
+        self.slots.align()
+    }
+    #[inline]
+    pub(crate) fn child_align(&self) -> Align {
+        self.slots.child_align()
+    }
+    #[inline]
+    pub(crate) fn id_source(&self) -> IdSource {
+        self.slots.id_source()
+    }
+    #[inline]
+    pub(crate) fn set_justify(&mut self, j: Justify) {
+        self.slots.set_justify(j);
+    }
+    #[inline]
+    pub(crate) fn set_align(&mut self, a: Align) {
+        self.slots.set_align(a);
+    }
+    #[inline]
+    pub(crate) fn set_child_align(&mut self, a: Align) {
+        self.slots.set_child_align(a);
+    }
+
+    #[inline]
+    pub(crate) fn set_gap(&mut self, v: f32) {
+        self.gaps.set_gap(v);
+    }
+    /// Copy the gap pair from `other` (used by widgets like `Scroll`
+    /// that split themselves into outer/inner nodes).
+    #[inline]
+    pub(crate) fn set_gaps_from(&mut self, other: &Element) {
+        self.gaps = other.gaps;
     }
 
     /// Overwrite the id while inheriting `id_source` from another element.

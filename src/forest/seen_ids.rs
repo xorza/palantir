@@ -120,7 +120,7 @@ impl SeenIds {
             }
             Entry::Occupied(o) => {
                 let first = *o.get();
-                let explicit = matches!(element.slots.id_source(), IdSource::Explicit);
+                let explicit = matches!(element.id_source(), IdSource::Explicit);
                 let counter = self.dup.entry(id).or_insert(0);
                 let disambiguated = loop {
                     *counter += 1;

@@ -218,7 +218,7 @@ fn push_bar_nodes(
     )
         .into();
     track.position = plan.track_rect.min;
-    track.flags.set_sense(Sense::CLICK);
+    track.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
         ui.node_with_chrome(
             track,
@@ -249,7 +249,7 @@ fn push_bar_nodes(
     )
         .into();
     thumb.position = plan.thumb_rect.min;
-    thumb.flags.set_sense(Sense::DRAG);
+    thumb.set_sense(Sense::DRAG);
     ui.node_with_chrome(
         thumb,
         Background {
@@ -313,11 +313,11 @@ impl Scroll {
     #[track_caller]
     fn with_axes(axes: ScrollAxes) -> Self {
         let mut element = Element::new(LayoutMode::Scroll(axes));
-        element.flags.set_sense(Sense::SCROLL);
+        element.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        element.flags.set_clip(ClipMode::Rect);
+        element.set_clip(ClipMode::Rect);
         Self {
             element,
             zoom: None,
@@ -635,14 +635,14 @@ impl Scroll {
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;
         outer.margin = self.element.margin;
-        outer.slots.set_align(self.element.slots.align());
+        outer.set_align(self.element.align());
         outer.position = self.element.position;
         outer.grid = self.element.grid;
         // Outer carries sense/disabled/focusable/visibility from the
         // user's element. Inner owns clip + justify (set below).
-        outer.flags.set_sense(self.element.flags.sense());
-        outer.flags.set_disabled(self.element.flags.is_disabled());
-        outer.flags.set_focusable(self.element.flags.is_focusable());
+        outer.set_sense(self.element.sense());
+        outer.set_disabled(self.element.is_disabled());
+        outer.set_focusable(self.element.is_focusable());
         outer.visibility = self.element.visibility;
 
         // Inner viewport: owns the clip, the pan transform, the
@@ -657,23 +657,19 @@ impl Scroll {
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
-        inner.gaps = self.element.gaps;
-        inner.slots.set_justify(self.element.slots.justify());
-        inner
-            .slots
-            .set_child_align(self.element.slots.child_align());
+        inner.set_gaps_from(&self.element);
+        inner.set_justify(self.element.justify());
+        inner.set_child_align(self.element.child_align());
         let inner_chrome = self.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
         // `Configure::clip_rounded`, that wins.
-        let user_clip = self.element.flags.clip_mode();
-        inner
-            .flags
-            .set_clip(if matches!(user_clip, ClipMode::None) {
-                ClipMode::Rect
-            } else {
-                user_clip
-            });
+        let user_clip = self.element.clip_mode();
+        inner.set_clip(if matches!(user_clip, ClipMode::None) {
+            ClipMode::Rect
+        } else {
+            user_clip
+        });
         // Children's layout rects are in *absolute* screen coords
         // (e.g. a cell at inner-local (x,y) has `child.rect.min =
         // inner.rect.min + (x,y)`). A bare `TranslateScale(-offset,

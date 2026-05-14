@@ -103,7 +103,7 @@ impl<'r> Tooltip<'r> {
     pub fn for_(response: &'r Response) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         // Bubble must never claim hover — would shadow its own trigger.
-        element.flags.set_sense(Sense::empty());
+        element.set_sense(Sense::empty());
         Self {
             response,
             text: Cow::Borrowed(""),
@@ -159,7 +159,7 @@ impl<'r> Tooltip<'r> {
         // `.id_salt(...)` would silently be overwritten — hard-assert
         // instead of swallowing the bug.
         assert!(
-            matches!(self.element.slots.id_source(), IdSource::Auto),
+            matches!(self.element.id_source(), IdSource::Auto),
             "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
              derived from the trigger's response so per-trigger state stays \
              paired. Drop the override.",

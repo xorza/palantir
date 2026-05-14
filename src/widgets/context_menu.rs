@@ -63,7 +63,7 @@ pub struct ContextMenu {
 impl ContextMenu {
     pub fn for_id(for_id: WidgetId) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
-        element.flags.set_sense(Sense::CLICK);
+        element.set_sense(Sense::CLICK);
         Self {
             for_id,
             element,
@@ -213,7 +213,7 @@ impl MenuItem {
     #[track_caller]
     pub fn new(label: impl Into<Cow<'static, str>>) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
-        element.flags.set_sense(Sense::CLICK);
+        element.set_sense(Sense::CLICK);
         Self {
             element,
             label: label.into(),
@@ -232,7 +232,7 @@ impl MenuItem {
     }
 
     pub fn enabled(mut self, e: bool) -> Self {
-        self.element.flags.set_disabled(!e);
+        self.element.set_disabled(!e);
         self
     }
 
@@ -241,10 +241,10 @@ impl MenuItem {
     #[track_caller]
     pub fn separator(ui: &mut Ui) -> Response {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.flags.set_sense(Sense::NONE);
+        element.set_sense(Sense::NONE);
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
-        element.slots.set_align(Align::h(HAlign::Stretch));
+        element.set_align(Align::h(HAlign::Stretch));
         element.margin = Spacing::xy(0.0, 4.0);
         let chrome = Background {
             fill: ui.theme.context_menu.separator.into(),
@@ -260,7 +260,7 @@ impl MenuItem {
 
     pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
         let id = self.element.id;
-        let disabled = self.element.flags.is_disabled();
+        let disabled = self.element.is_disabled();
         let mut raw_state = ui.response_for(id);
         raw_state.disabled = disabled;
 
@@ -277,10 +277,10 @@ impl MenuItem {
         let mut element = self.element;
         // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF — see `docs/popups.md`.
         element.size = (Sizing::Hug, Sizing::Hug).into();
-        element.slots.set_align(Align::h(HAlign::Stretch));
-        element.slots.set_justify(Justify::SpaceBetween);
+        element.set_align(Align::h(HAlign::Stretch));
+        element.set_justify(Justify::SpaceBetween);
         element.padding = padding;
-        element.gaps.set_gap(16.0);
+        element.set_gap(16.0);
 
         let label = self.label;
         let shortcut = self.shortcut;
