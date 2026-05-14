@@ -12,8 +12,18 @@ use half::f16;
 /// Precision: lossless for integer radii up to 2048, ~0.25 px error at
 /// 4096, +Inf above ~65504. Plenty of headroom for UI workloads.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Corners([u16; 4]);
+
+impl std::hash::Hash for Corners {
+    /// Hash the 8 storage bytes as one `u64` — single hasher call
+    /// instead of four `write_u16`s. Feeds every frame into
+    /// `LayoutCore::hash` → `SubtreeRollups`.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
+    }
+}
 
 impl std::fmt::Debug for Corners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -215,10 +225,23 @@ impl Corners {
         out
     }
 
+    /// Inverse of [`Self::as_array`] — pack 4 runtime f32s into the
+    /// lane array via the batched f32→f16 path (`fcvtn` on aarch64-fp16,
+    /// `vcvtps2ph` on x86-f16c, scalar fallback). Use at hot sites that
+    /// compute all 4 lanes at runtime; `Self::new` is fine for const /
+    /// compile-time-known values.
+    #[inline]
+    pub fn from_array(v: [f32; 4]) -> Self {
+        use half::slice::HalfFloatSliceExt;
+        let mut out = [half::f16::ZERO; 4];
+        out.as_mut_slice().convert_from_f32_slice(&v);
+        Self(bytemuck::cast(out))
+    }
+
     #[inline]
     pub fn scaled_by(&self, scale: f32) -> Self {
         let [tl, tr, br, bl] = self.as_array();
-        Self::new(tl * scale, tr * scale, br * scale, bl * scale)
+        Self::from_array([tl * scale, tr * scale, br * scale, bl * scale])
     }
 
     /// True when every corner is within UI epsilon of zero. Compares
@@ -292,6 +315,78 @@ mod tests {
         assert_eq!(c.tr(), 2.0);
         assert_eq!(c.br(), 3.0);
         assert_eq!(c.bl(), 4.0);
+    }
+
+    /// Documents the f16 precision contract: lossless for integer
+    /// radii ≤ 2048, ~0.25 px quantization at 4096. A refactor that
+    /// quietly switched storage (e.g. to Q8.8 fixed-point) would
+    /// trip these.
+    #[test]
+    fn f16_precision_contract() {
+        assert_eq!(Corners::all(2048.0).tl(), 2048.0);
+        let big = Corners::all(4096.0).tl();
+        assert!(
+            (big - 4096.0).abs() <= 0.25,
+            "expected ≤0.25 px error at 4096, got {} -> {big}",
+            (big - 4096.0).abs(),
+        );
+    }
+
+    #[test]
+    fn as_array_and_from_array_round_trip() {
+        let original = Corners::new(1.0, 2.0, 3.0, 4.0);
+        let arr = original.as_array();
+        assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
+        let rebuilt = Corners::from_array(arr);
+        assert_eq!(rebuilt, original);
+    }
+
+    #[test]
+    fn scaled_by_multiplies_each_corner() {
+        let c = Corners::new(2.0, 4.0, 6.0, 8.0).scaled_by(1.5);
+        assert_eq!(c.as_array(), [3.0, 6.0, 9.0, 12.0]);
+    }
+
+    /// Pins the bit-trick path in `approx_zero`. ±0 lanes, sub-EPS,
+    /// at-EPS, above-EPS, and NaN must all classify correctly.
+    #[test]
+    fn approx_zero_handles_edge_lane_patterns() {
+        assert!(Corners::ZERO.approx_zero(), "all-zero bytes");
+        assert!(Corners::all(0.0).approx_zero(), "+0.0 lanes");
+        assert!(Corners::all(-0.0).approx_zero(), "-0.0 lanes (sign bit set)");
+        assert!(
+            Corners::all(super::super::approx::EPS * 0.5).approx_zero(),
+            "sub-EPS positive",
+        );
+        assert!(
+            !Corners::all(super::super::approx::EPS * 10.0).approx_zero(),
+            "10×EPS must NOT register as zero",
+        );
+        // One asymmetric lane above EPS — short-circuit must not
+        // accept it just because the other three lanes are zero.
+        assert!(
+            !Corners::new(0.0, 0.0, 1.0, 0.0).approx_zero(),
+            "single non-zero lane breaks zero contract",
+        );
+        // NaN bits land in the exponent region (≥ 0x7C00 absolute),
+        // far above the EPS threshold — must classify as non-zero.
+        assert!(!Corners::all(f32::NAN).approx_zero(), "NaN lanes are not zero");
+    }
+
+    #[test]
+    fn from_vec2_and_size_map_to_pairs() {
+        use crate::primitives::size::Size;
+        use glam::Vec2;
+        assert_eq!(
+            Corners::from(Vec2::new(3.0, 7.0)).as_array(),
+            [3.0, 3.0, 7.0, 7.0],
+            "Vec2 → (x,x,y,y)",
+        );
+        assert_eq!(
+            Corners::from(Size::new(3.0, 7.0)).as_array(),
+            [3.0, 3.0, 7.0, 7.0],
+            "Size → (w,w,h,h)",
+        );
     }
 
     #[test]

@@ -7,8 +7,19 @@ use half::f16;
 /// Precision: lossless for integer values up to 2048, ~0.25 px error
 /// at 4096. UI spacing never approaches the f16 ceiling.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing([u16; 4]);
+
+impl std::hash::Hash for Spacing {
+    /// Hash the 8 storage bytes as one `u64` — single hasher call
+    /// instead of four `write_u16`s. `LayoutCore::hash` calls this
+    /// twice per node every frame (padding + margin) when building
+    /// `SubtreeRollups`, so the write count adds up.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
+    }
+}
 
 impl std::fmt::Debug for Spacing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -181,6 +192,16 @@ impl Spacing {
         out
     }
 
+    /// Inverse of [`Self::as_array`] — batched runtime f32→f16 pack.
+    /// See `Corners::from_array` for the SIMD rationale.
+    #[inline]
+    pub fn from_array(v: [f32; 4]) -> Self {
+        use half::slice::HalfFloatSliceExt;
+        let mut out = [half::f16::ZERO; 4];
+        out.as_mut_slice().convert_from_f32_slice(&v);
+        Self(bytemuck::cast(out))
+    }
+
     #[inline]
     pub fn horiz(&self) -> f32 {
         let [l, _t, r, _b] = self.as_array();
@@ -195,13 +216,11 @@ impl Spacing {
 
 impl std::ops::Add for Spacing {
     type Output = Self;
+    #[inline]
     fn add(self, rhs: Self) -> Self {
-        Self::new(
-            self.left() + rhs.left(),
-            self.top() + rhs.top(),
-            self.right() + rhs.right(),
-            self.bottom() + rhs.bottom(),
-        )
+        let [al, at, ar, ab] = self.as_array();
+        let [bl, bt, br, bb] = rhs.as_array();
+        Self::from_array([al + bl, at + bt, ar + br, ab + bb])
     }
 }
 
@@ -259,6 +278,45 @@ mod tests {
         assert_eq!(s.bottom(), 4.0);
         assert_eq!(s.horiz(), 4.0);
         assert_eq!(s.vert(), 6.0);
+    }
+
+    /// Documents the f16 precision contract: lossless for integer
+    /// values ≤ 2048, ~0.25 px quantization at 4096.
+    #[test]
+    fn f16_precision_contract() {
+        assert_eq!(Spacing::all(2048.0).left(), 2048.0);
+        let big = Spacing::all(4096.0).left();
+        assert!(
+            (big - 4096.0).abs() <= 0.25,
+            "expected ≤0.25 px error at 4096, got {big}",
+        );
+    }
+
+    #[test]
+    fn as_array_and_from_array_round_trip() {
+        let original = Spacing::new(1.0, 2.0, 3.0, 4.0);
+        let arr = original.as_array();
+        assert_eq!(arr, [1.0, 2.0, 3.0, 4.0]);
+        let rebuilt = Spacing::from_array(arr);
+        assert_eq!(rebuilt, original);
+    }
+
+    #[test]
+    fn xy_ctor_repeats_axes() {
+        let s = Spacing::xy(3.0, 7.0);
+        assert_eq!(s.as_array(), [3.0, 7.0, 3.0, 7.0]);
+        assert_eq!(s.horiz(), 6.0);
+        assert_eq!(s.vert(), 14.0);
+    }
+
+    /// Tuple `From` impls — easy place to swap component order during
+    /// a refactor. Pin both forms.
+    #[test]
+    fn from_tuple_preserves_component_order() {
+        let xy: Spacing = (3, 7).into();
+        assert_eq!(xy.as_array(), [3.0, 7.0, 3.0, 7.0]);
+        let ltrb: Spacing = (1, 2, 3, 4).into();
+        assert_eq!(ltrb.as_array(), [1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
