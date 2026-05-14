@@ -130,6 +130,12 @@ impl Sizes {
             h_packed: encode_sizing(h),
         }
     }
+    /// Packed 8-byte form: `w_packed` low, `h_packed` high. Used by
+    /// `LayoutCore::hash` to fold size into a single hasher write.
+    #[inline]
+    pub(crate) const fn as_u64(self) -> u64 {
+        ((self.h_packed as u64) << 32) | self.w_packed as u64
+    }
     #[inline]
     pub const fn w(self) -> Sizing {
         decode_sizing(self.w_packed)
@@ -165,7 +171,7 @@ impl From<Sizing> for Sizes {
 impl std::hash::Hash for Sizes {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u64(((self.w_packed as u64) << 32) | self.h_packed as u64);
+        h.write_u64(self.as_u64());
     }
 }
 

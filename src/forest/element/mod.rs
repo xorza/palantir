@@ -212,14 +212,15 @@ pub enum ScrollAxes {
     Both,
 }
 
-/// `Grid(idx)` collapses to a single tag — `idx` is a frame-local arena
-/// slot that shifts with sibling order, while the def's actual content
-/// is hashed at `NodeExit` via `GridDef::hash`. Hashing the idx would
-/// invalidate the cache for cosmetic reorderings.
-impl std::hash::Hash for LayoutMode {
+impl LayoutMode {
+    /// Stable per-variant tag for hashing. `Grid(_)` collapses to a single
+    /// tag — `idx` is a frame-local arena slot that shifts with sibling
+    /// order, while the def's actual content is hashed at `NodeExit` via
+    /// `GridDef::hash`. Hashing the idx would invalidate the cache for
+    /// cosmetic reorderings.
     #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let tag: u8 = match self {
+    pub(crate) fn hash_tag(&self) -> u8 {
+        match self {
             LayoutMode::Leaf => 0,
             LayoutMode::HStack => 1,
             LayoutMode::VStack => 2,
@@ -231,8 +232,14 @@ impl std::hash::Hash for LayoutMode {
             LayoutMode::Scroll(ScrollAxes::Vertical) => 8,
             LayoutMode::Scroll(ScrollAxes::Horizontal) => 9,
             LayoutMode::Scroll(ScrollAxes::Both) => 10,
-        };
-        h.write_u8(tag);
+        }
+    }
+}
+
+impl std::hash::Hash for LayoutMode {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        h.write_u8(self.hash_tag());
     }
 }
 
@@ -401,14 +408,20 @@ pub(crate) struct LayoutCore {
 }
 
 impl std::hash::Hash for LayoutCore {
+    /// Fold the whole record into one 32-byte hasher write. Six per-field
+    /// calls (three of them sub-`u64` — mode tag, align byte, visibility
+    /// byte) became a single `write` whose FxHash inner loop folds four
+    /// `u64` chunks. Saves ~5 small-write fold ops per node per frame.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.mode.hash(h);
-        self.size.hash(h);
-        self.padding.hash(h);
-        self.margin.hash(h);
-        self.align.hash(h);
-        self.visibility.hash(h);
+        let mut buf = [0u8; 32];
+        buf[0] = self.mode.hash_tag();
+        buf[1] = self.align.raw();
+        buf[2] = self.visibility as u8;
+        buf[8..16].copy_from_slice(&self.size.as_u64().to_ne_bytes());
+        buf[16..24].copy_from_slice(&self.padding.as_u64().to_ne_bytes());
+        buf[24..32].copy_from_slice(&self.margin.as_u64().to_ne_bytes());
+        h.write(&buf);
     }
 }
 

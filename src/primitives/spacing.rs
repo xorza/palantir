@@ -10,6 +10,15 @@ use half::f16;
 #[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct Spacing([u16; 4]);
 
+impl Spacing {
+    /// Packed 8-byte form. Used by `LayoutCore::hash` to fold the
+    /// padding + margin lanes into the parent hasher write.
+    #[inline]
+    pub(crate) fn as_u64(self) -> u64 {
+        u64::from_ne_bytes(bytemuck::cast(self.0))
+    }
+}
+
 impl std::hash::Hash for Spacing {
     /// Hash the 8 storage bytes as one `u64` — single hasher call
     /// instead of four `write_u16`s. `LayoutCore::hash` calls this
@@ -17,7 +26,7 @@ impl std::hash::Hash for Spacing {
     /// `SubtreeRollups`, so the write count adds up.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
+        state.write_u64(self.as_u64());
     }
 }
 
