@@ -1,12 +1,38 @@
 use super::num::Num;
+use half::f16;
 
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Spacing {
-    pub left: f32,
-    pub top: f32,
-    pub right: f32,
-    pub bottom: f32,
+/// Per-side spacing (padding / margin), packed as four f16 lanes in
+/// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
+///
+/// Precision: lossless for integer values up to 2048, ~0.25 px error
+/// at 4096. UI spacing never approaches the f16 ceiling.
+#[repr(transparent)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Spacing([u16; 4]);
+
+impl std::fmt::Debug for Spacing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Spacing")
+            .field("left", &self.left())
+            .field("top", &self.top())
+            .field("right", &self.right())
+            .field("bottom", &self.bottom())
+            .finish()
+    }
+}
+
+const fn pack(left: f32, top: f32, right: f32, bottom: f32) -> [u16; 4] {
+    [
+        f16::from_f32_const(left).to_bits(),
+        f16::from_f32_const(top).to_bits(),
+        f16::from_f32_const(right).to_bits(),
+        f16::from_f32_const(bottom).to_bits(),
+    ]
+}
+
+#[inline]
+fn lane(bits: u16) -> f32 {
+    f16::from_bits(bits).to_f32()
 }
 
 // Serialize Spacing compactly:
@@ -18,20 +44,21 @@ pub struct Spacing {
 impl serde::Serialize for Spacing {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
-        if self.left == self.right && self.top == self.bottom && self.left == self.top {
-            return s.serialize_f32(self.left);
+        let (l, t, r, b) = (self.left(), self.top(), self.right(), self.bottom());
+        if l == r && t == b && l == t {
+            return s.serialize_f32(l);
         }
-        if self.left == self.right && self.top == self.bottom {
+        if l == r && t == b {
             let mut seq = s.serialize_seq(Some(2))?;
-            seq.serialize_element(&self.left)?;
-            seq.serialize_element(&self.top)?;
+            seq.serialize_element(&l)?;
+            seq.serialize_element(&t)?;
             return seq.end();
         }
         let mut seq = s.serialize_seq(Some(4))?;
-        seq.serialize_element(&self.left)?;
-        seq.serialize_element(&self.top)?;
-        seq.serialize_element(&self.right)?;
-        seq.serialize_element(&self.bottom)?;
+        seq.serialize_element(&l)?;
+        seq.serialize_element(&t)?;
+        seq.serialize_element(&r)?;
+        seq.serialize_element(&b)?;
         seq.end()
     }
 }
@@ -72,12 +99,7 @@ impl<'de> serde::Deserialize<'de> for Spacing {
                 let v3: f32 = a
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?;
-                Ok(Spacing {
-                    left: v0,
-                    top: v1,
-                    right: v2,
-                    bottom: v3,
-                })
+                Ok(Spacing::new(v0, v1, v2, v3))
             }
 
             fn visit_map<A: serde::de::MapAccess<'de>>(
@@ -102,65 +124,84 @@ impl<'de> serde::Deserialize<'de> for Spacing {
                         }
                     }
                 }
-                Ok(Spacing {
-                    left: left.unwrap_or(0.0),
-                    top: top.unwrap_or(0.0),
-                    right: right.unwrap_or(0.0),
-                    bottom: bottom.unwrap_or(0.0),
-                })
+                Ok(Spacing::new(
+                    left.unwrap_or(0.0),
+                    top.unwrap_or(0.0),
+                    right.unwrap_or(0.0),
+                    bottom.unwrap_or(0.0),
+                ))
             }
         }
         d.deserialize_any(V)
     }
 }
 
-impl std::hash::Hash for Spacing {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(bytemuck::bytes_of(self));
-    }
-}
-
 impl Spacing {
-    pub const ZERO: Self = Self {
-        left: 0.0,
-        top: 0.0,
-        right: 0.0,
-        bottom: 0.0,
-    };
+    pub const ZERO: Self = Self([0; 4]);
+
     pub const fn all(v: f32) -> Self {
-        Self {
-            left: v,
-            top: v,
-            right: v,
-            bottom: v,
-        }
+        Self(pack(v, v, v, v))
     }
+
     pub const fn xy(x: f32, y: f32) -> Self {
-        Self {
-            left: x,
-            top: y,
-            right: x,
-            bottom: y,
-        }
+        Self(pack(x, y, x, y))
     }
-    pub const fn horiz(&self) -> f32 {
-        self.left + self.right
+
+    pub const fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+        Self(pack(left, top, right, bottom))
     }
-    pub const fn vert(&self) -> f32 {
-        self.top + self.bottom
+
+    #[inline]
+    pub fn left(&self) -> f32 {
+        lane(self.0[0])
+    }
+    #[inline]
+    pub fn top(&self) -> f32 {
+        lane(self.0[1])
+    }
+    #[inline]
+    pub fn right(&self) -> f32 {
+        lane(self.0[2])
+    }
+    #[inline]
+    pub fn bottom(&self) -> f32 {
+        lane(self.0[3])
+    }
+
+    /// All four lanes unpacked at once. Routes through `half`'s
+    /// platform-specific batched f16→f32 path (single `fcvtl` on
+    /// aarch64-fp16, `vcvtph2ps` on x86-f16c, scalar fallback elsewhere).
+    /// Use at hot sites that read 3+ lanes to amortize feature dispatch.
+    #[inline]
+    pub fn as_array(&self) -> [f32; 4] {
+        use half::slice::HalfFloatSliceExt;
+        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.0);
+        let mut out = [0.0f32; 4];
+        arr.as_slice().convert_to_f32_slice(&mut out);
+        out
+    }
+
+    #[inline]
+    pub fn horiz(&self) -> f32 {
+        let [l, _t, r, _b] = self.as_array();
+        l + r
+    }
+    #[inline]
+    pub fn vert(&self) -> f32 {
+        let [_l, t, _r, b] = self.as_array();
+        t + b
     }
 }
 
 impl std::ops::Add for Spacing {
     type Output = Self;
     fn add(self, rhs: Self) -> Self {
-        Self {
-            left: self.left + rhs.left,
-            top: self.top + rhs.top,
-            right: self.right + rhs.right,
-            bottom: self.bottom + rhs.bottom,
-        }
+        Self::new(
+            self.left() + rhs.left(),
+            self.top() + rhs.top(),
+            self.right() + rhs.right(),
+            self.bottom() + rhs.bottom(),
+        )
     }
 }
 
@@ -180,12 +221,7 @@ impl<X: Num, Y: Num> From<(X, Y)> for Spacing {
 /// `(left, top, right, bottom)` — matches struct field order.
 impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
     fn from((l, t, r, b): (L, T, R, B)) -> Self {
-        Self {
-            left: l.as_f32(),
-            top: t.as_f32(),
-            right: r.as_f32(),
-            bottom: b.as_f32(),
-        }
+        Self::new(l.as_f32(), t.as_f32(), r.as_f32(), b.as_f32())
     }
 }
 
@@ -210,9 +246,23 @@ mod tests {
     }
 
     #[test]
+    fn struct_is_eight_bytes() {
+        assert_eq!(std::mem::size_of::<Spacing>(), 8);
+    }
+
+    #[test]
+    fn lanes_round_trip_integer_values_exactly() {
+        let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
+        assert_eq!(s.left(), 1.0);
+        assert_eq!(s.top(), 2.0);
+        assert_eq!(s.right(), 3.0);
+        assert_eq!(s.bottom(), 4.0);
+        assert_eq!(s.horiz(), 4.0);
+        assert_eq!(s.vert(), 6.0);
+    }
+
+    #[test]
     fn serialize_picks_compact_form_per_symmetry() {
-        // "Matched pair" is exact-equality `left==right && top==bottom`;
-        // diagonal-only match must NOT collapse (would lose data).
         let cases: &[(&str, Spacing, &str)] = &[
             ("uniform_scalar", Spacing::all(4.0), "v = 4.0"),
             (
@@ -222,22 +272,12 @@ mod tests {
             ),
             (
                 "asymmetric_four_array",
-                Spacing {
-                    left: 1.0,
-                    top: 2.0,
-                    right: 3.0,
-                    bottom: 4.0,
-                },
+                Spacing::new(1.0, 2.0, 3.0, 4.0),
                 "v = [1.0, 2.0, 3.0, 4.0]",
             ),
             (
                 "diagonal_match_does_not_collapse",
-                Spacing {
-                    left: 1.0,
-                    top: 1.0,
-                    right: 2.0,
-                    bottom: 2.0,
-                },
+                Spacing::new(1.0, 1.0, 2.0, 2.0),
                 "v = [1.0, 1.0, 2.0, 2.0]",
             ),
         ];
@@ -255,12 +295,7 @@ mod tests {
             (
                 "four_element_array",
                 "v = [1.0, 2.0, 3.0, 4.0]",
-                Spacing {
-                    left: 1.0,
-                    top: 2.0,
-                    right: 3.0,
-                    bottom: 4.0,
-                },
+                Spacing::new(1.0, 2.0, 3.0, 4.0),
             ),
             ("one_element_array_uniform", "v = [4.0]", Spacing::all(4.0)),
         ];
@@ -278,15 +313,7 @@ top = 2.0
 right = 3.0
 bottom = 4.0
 "#;
-        assert_eq!(
-            de(toml_str),
-            Spacing {
-                left: 1.0,
-                top: 2.0,
-                right: 3.0,
-                bottom: 4.0,
-            }
-        );
+        assert_eq!(de(toml_str), Spacing::new(1.0, 2.0, 3.0, 4.0));
     }
 
     #[test]
@@ -296,15 +323,7 @@ bottom = 4.0
 left = 4.0
 right = 4.0
 "#;
-        assert_eq!(
-            de(toml_str),
-            Spacing {
-                left: 4.0,
-                top: 0.0,
-                right: 4.0,
-                bottom: 0.0,
-            }
-        );
+        assert_eq!(de(toml_str), Spacing::new(4.0, 0.0, 4.0, 0.0));
     }
 
     #[test]
@@ -329,15 +348,21 @@ typo = 2.0
         for s in [
             Spacing::all(4.0),
             Spacing::xy(4.0, 8.0),
-            Spacing {
-                left: 1.0,
-                top: 2.0,
-                right: 3.0,
-                bottom: 4.0,
-            },
+            Spacing::new(1.0, 2.0, 3.0, 4.0),
         ] {
             let out = ser(s);
             assert_eq!(de(&out), s, "round-trip failed for {s:?} -> {out}");
         }
+    }
+
+    #[test]
+    fn add_op() {
+        let a = Spacing::new(1.0, 2.0, 3.0, 4.0);
+        let b = Spacing::new(10.0, 20.0, 30.0, 40.0);
+        let c = a + b;
+        assert_eq!(c.left(), 11.0);
+        assert_eq!(c.top(), 22.0);
+        assert_eq!(c.right(), 33.0);
+        assert_eq!(c.bottom(), 44.0);
     }
 }

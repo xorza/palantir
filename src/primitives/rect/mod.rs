@@ -75,11 +75,13 @@ impl Rect {
 
     /// Inset by `s` on each side, clamping the resulting size at zero. Used for
     /// margin / padding insets in the layout pass.
-    pub const fn deflated_by(&self, s: Spacing) -> Self {
-        let w = self.size.w - s.horiz();
-        let h = self.size.h - s.vert();
+    #[inline]
+    pub fn deflated_by(&self, s: Spacing) -> Self {
+        let [l, t, r, b] = s.as_array();
+        let w = self.size.w - (l + r);
+        let h = self.size.h - (t + b);
         Self {
-            min: Vec2::new(self.min.x + s.left, self.min.y + s.top),
+            min: Vec2::new(self.min.x + l, self.min.y + t),
             size: Size::new(if w < 0.0 { 0.0 } else { w }, if h < 0.0 { 0.0 } else { h }),
         }
     }
