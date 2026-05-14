@@ -99,16 +99,14 @@ pub(crate) struct SubtreeRollups {
 }
 
 impl SubtreeRollups {
-    /// Reset and size every column for `n` records. `node` is cleared
-    /// with reserved capacity (filled by appending during
-    /// `compute_node_hashes`); `subtree` is cleared and resized with
-    /// default values (written by indexed assignment in
-    /// `compute_subtree_hashes`'s reverse pre-order walk). `paints` is
-    /// resized to `n` and cleared (filled by indexed `set` during
-    /// `compute_node_hashes`).
+    /// Reset and size every column for `n` records. Both `node` and
+    /// `subtree` are resized with default values — filled by indexed
+    /// assignment during the fused reverse-pre-order pass in
+    /// `Tree::compute_hashes`. `paints` is resized to `n` and cleared
+    /// (filled by indexed `set` during the same pass).
     pub(crate) fn reset_for(&mut self, n: usize) {
         self.node.clear();
-        self.node.reserve(n);
+        self.node.resize_with(n, NodeHash::default);
         self.subtree.clear();
         self.subtree.resize_with(n, NodeHash::default);
         self.paints.clear();

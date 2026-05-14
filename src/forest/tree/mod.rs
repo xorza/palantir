@@ -244,11 +244,16 @@ impl Tree {
             self.open_frames.len(),
         );
         self.rollups.reset_for(self.records.len());
-        self.compute_node_hashes();
-        self.compute_subtree_hashes();
+        self.compute_hashes();
     }
 
-    fn compute_node_hashes(&mut self) {
+    /// Fused reverse-pre-order pass: computes both `rollups.node[i]`
+    /// and `rollups.subtree[i]` in a single sweep. `subtree[i]` reads
+    /// `node[i]` (just written this iteration) and the already-finalized
+    /// `subtree[children]` (visited earlier in the reverse pass). One
+    /// loop body, one Hasher pair per node, one set of column accessors
+    /// hoisted out — vs. the prior two-pass version.
+    fn compute_hashes(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
@@ -264,9 +269,12 @@ impl Tree {
         let clip_idx = self.clip_radius.idx.as_slice();
         let clip_tab = self.clip_radius.table.as_slice();
         let grid_defs = &self.grid.defs;
+        let node_out = self.rollups.node.as_mut_slice();
+        let subtree_out = self.rollups.subtree.as_mut_slice();
+        let paints = &mut self.rollups.paints;
         const ABSENT: u16 = SparseColumn::<()>::ABSENT;
 
-        for i in 0..n {
+        for i in (0..n).rev() {
             let mut h = Hasher::new();
             layouts[i].hash(&mut h);
             attrs[i].hash(&mut h);
@@ -286,7 +294,7 @@ impl Tree {
             clip.hash(&mut h);
 
             // Walk this node's direct shapes + immediate-child position
-            // markers without rebuilding TreeItems per iteration.
+            // markers in record order.
             let mut has_direct_shape = false;
             let parent_span = shape_spans[i];
             let parent_end = (parent_span.start + parent_span.len) as usize;
@@ -311,49 +319,35 @@ impl Tree {
                 cursor += 1;
             }
             if c_slot != ABSENT || has_direct_shape {
-                self.rollups.paints.set(i, true);
+                paints.set(i, true);
             }
-
             if let LayoutMode::Grid(idx) = layouts[i].mode {
                 grid_defs[idx as usize].hash(&mut h);
             }
-            self.rollups.node.push(NodeHash(h.finish()));
-        }
-    }
+            let node_hash = h.finish();
+            node_out[i] = NodeHash(node_hash);
 
-    fn compute_subtree_hashes(&mut self) {
-        let n = self.records.len();
-        let ends = self.records.subtree_end();
-        let bounds_idx = self.bounds.idx.as_slice();
-        let bounds_tab = self.bounds.table.as_slice();
-        let nodes = self.rollups.node.as_slice();
-        let subtree = self.rollups.subtree.as_mut_slice();
-        const ABSENT: u16 = SparseColumn::<()>::ABSENT;
-        for i in (0..n).rev() {
-            let end = ends[i];
-            let mut h = Hasher::new();
-            h.write_u64(nodes[i].0);
-            // Transform is deliberately omitted from `BoundsExtras::hash`
-            // (so a parent moving doesn't dirty-flag its children's
-            // node hash) — fold it into the subtree rollup here so the
-            // damage subtree-skip + encode caches still invalidate
-            // on transform-only changes.
-            let b_slot = bounds_idx[i];
+            // Subtree hash: seeded from `node_hash`, then folds the
+            // transform (kept out of `BoundsExtras::hash` so a parent
+            // moving doesn't dirty-flag children's node hashes) and
+            // each direct child's already-computed `subtree[child]`.
+            let mut sh = Hasher::new();
+            sh.write_u64(node_hash);
             let xf = (b_slot != ABSENT)
                 .then(|| bounds_tab[b_slot as usize].transform)
                 .flatten();
             if let Some(t) = xf {
-                h.write_u8(1);
-                h.pod(&t);
+                sh.write_u8(1);
+                sh.pod(&t);
             } else {
-                h.write_u8(0);
+                sh.write_u8(0);
             }
             let mut next = (i as u32) + 1;
-            while next < end {
-                h.write_u64(subtree[next as usize].0);
+            while next < subtree_end {
+                sh.write_u64(subtree_out[next as usize].0);
                 next = ends[next as usize];
             }
-            subtree[i] = NodeHash(h.finish());
+            subtree_out[i] = NodeHash(sh.finish());
         }
     }
 
