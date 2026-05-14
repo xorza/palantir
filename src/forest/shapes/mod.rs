@@ -2,8 +2,11 @@ pub(crate) mod payloads;
 pub(crate) mod record;
 
 use crate::forest::shapes::payloads::{BezierInputs, ShapePayloads};
-use crate::forest::shapes::record::{GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke};
+use crate::forest::shapes::record::{
+    ChromeRow, GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke,
+};
 use crate::layout::types::span::Span;
+use crate::primitives::background::Background;
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
 use crate::primitives::brush::Brush;
 use crate::primitives::stroke::Stroke;
@@ -76,6 +79,22 @@ impl Shapes {
         ShapeStroke {
             color: stroke.brush.expect_solid(),
             width: stroke.width,
+        }
+    }
+
+    /// Lower a user-facing `Background` to a `ChromeRow`. Same
+    /// gradient-arena lowering as `Shapes::add` uses for
+    /// `RoundedRect.fill`, so chrome and shape paints share one
+    /// gradients vec per tree.
+    pub(crate) fn lower_background(&mut self, bg: Background) -> ChromeRow {
+        let (fill, fill_grad_hash) = self.lower_brush(bg.fill);
+        let stroke = self.lower_stroke(bg.stroke);
+        ChromeRow {
+            fill,
+            stroke,
+            radius: bg.radius,
+            shadow: bg.shadow,
+            fill_grad_hash,
         }
     }
 

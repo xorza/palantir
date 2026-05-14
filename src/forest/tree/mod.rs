@@ -30,7 +30,7 @@ use crate::forest::element::{
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
-use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
 use crate::forest::visibility::Visibility;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::span::Span;
@@ -244,7 +244,7 @@ pub(crate) struct Tree {
     /// read `bg.radius` for the stencil-mask path without a separate
     /// clip-radius column. Per-emit gates in `cmd_buffer::draw_*`
     /// drop the visual no-op slices; the radius survives.
-    pub(crate) chrome_table: Vec<Background>,
+    pub(crate) chrome_table: Vec<ChromeRow>,
 
     /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
     /// at `open_node` from `open_frames.last()`; lets any post-recording
@@ -500,8 +500,13 @@ impl Tree {
         }
         let needs_chrome_row = !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
         if needs_chrome_row {
+            // Lower to `ChromeRow` here — gradients land in the
+            // shared `Shapes.gradients` arena alongside any from
+            // `Shapes::add`, so chrome and shape paints share one
+            // per-tree gradient pool.
+            let row = self.shapes.lower_background(bg);
             ex.chrome = Slot::from_len(self.chrome_table.len());
-            self.chrome_table.push(bg);
+            self.chrome_table.push(row);
         }
         self.extras_idx.push(ex);
         self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
@@ -737,7 +742,7 @@ impl Tree {
     /// the stencil-mask path). Per-emit `is_noop` gates in
     /// `cmd_buffer::draw_*` drop the no-paint slices; the radius
     /// always survives.
-    pub(crate) fn chrome(&self, id: NodeId) -> Option<&Background> {
+    pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
         self.extras_idx[id.index()]
             .chrome
             .get()

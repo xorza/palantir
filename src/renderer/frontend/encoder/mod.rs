@@ -346,7 +346,8 @@ fn encode_node(
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.radius, &bg.shadow);
-        out.draw_rect(rect, bg.radius, (&bg.fill).into(), bg.stroke);
+        let src = shape_brush_source(&tree.shapes.gradients, bg.fill);
+        out.draw_rect(rect, bg.radius, src, bg.stroke.into());
     }
 
     if clip {
