@@ -4,7 +4,6 @@ use super::cmd_buffer::{
 };
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::brush::FillAxis;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
@@ -329,7 +328,8 @@ impl Composer {
                     // Keeps adjacent text in the same batch when a
                     // soft drop shadow sits 1–2σ away from text.
                     let overlap_urect = if p.fill_kind.is_shadow() {
-                        let sigma_phys = p.fill_axis.t0.max(0.0) * current_transform.scale * scale;
+                        let sigma_phys =
+                            p.fill_axis.t0().max(0.0) * current_transform.scale * scale;
                         quad_urect.deflated((2.0 * sigma_phys) as u32)
                     } else {
                         quad_urect
@@ -359,13 +359,7 @@ impl Composer {
                     // shader's `local` (physical px from vs) lines up.
                     // Gradient axis is 0..1 local — never scaled.
                     let fill_axis = if p.fill_kind.is_shadow() {
-                        let s = current_transform.scale * scale;
-                        FillAxis {
-                            dir_x: p.fill_axis.dir_x * s,
-                            dir_y: p.fill_axis.dir_y * s,
-                            t0: p.fill_axis.t0 * s,
-                            t1: p.fill_axis.t1 * s,
-                        }
+                        p.fill_axis.scaled(current_transform.scale * scale)
                     } else {
                         p.fill_axis
                     };

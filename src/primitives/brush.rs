@@ -10,33 +10,63 @@ use tinyvec::ArrayVec;
 /// silent truncation.
 pub const MAX_STOPS: usize = 8;
 
-/// GPU-wire form of a gradient's axis: direction vector + parametric
-/// range. Mirrors WGSL's `@location(...) fill_axis: vec4<f32>`. The
-/// shader does `t = (dot(local01, dir) - t0) / (t1 - t0)`, applies
-/// `Spread`, then samples the LUT at `t`.
+/// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`,
+/// 8 B). Variant-dependent layout — `[dir_x, dir_y, t0, t1]` for
+/// linear, `[cx, cy, rx, ry]` for radial, `[cx, cy, start_angle, _]`
+/// for conic, `[offset.x, offset.y, σ, axis_w]` for shadow. Mirrors
+/// `Corners`'s u64 lane scheme — the WGSL vertex attribute is
+/// `vec2<u32>` and the shader unpacks via two `unpack2x16float`
+/// calls into the same `vec4<f32>` the fragment shader sees.
 ///
-/// `repr(C)` so the field order maps to the four `f32` lanes the
-/// vertex attribute reads. `Pod` for the cmd-buffer / `Quad` payload.
-#[repr(C)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct FillAxis {
-    pub dir_x: f32,
-    pub dir_y: f32,
-    pub t0: f32,
-    pub t1: f32,
-}
+/// f16 precision (~3 decimal digits) is plenty for unit direction
+/// vectors and the 0..1 parametric range; sub-pixel error envelope
+/// up to ~2048 px, then degrading like `Corners`.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct FillAxis(pub [u16; 4]);
 
 impl FillAxis {
     /// All-zero axis used for solid quads. The shader ignores it when
     /// `FillKind::is_solid()`, so the value doesn't matter — keep it
     /// zeroed so Pod-byte cache keys are deterministic for solid
     /// quads.
-    pub const ZERO: Self = Self {
-        dir_x: 0.0,
-        dir_y: 0.0,
-        t0: 0.0,
-        t1: 0.0,
-    };
+    pub const ZERO: Self = Self([0; 4]);
+
+    /// Build from four runtime f32 lanes via the batched f16 slice
+    /// path. Single SIMD instruction on F16C/fp16 targets.
+    #[inline]
+    pub fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
+        use half::slice::HalfFloatSliceExt;
+        let src = [a, b, c, d];
+        let mut out = [half::f16::ZERO; 4];
+        out.as_mut_slice().convert_from_f32_slice(&src);
+        Self(bytemuck::cast(out))
+    }
+
+    /// All four lanes unpacked at once via the batched slice path —
+    /// matches `Corners::as_array`.
+    #[inline]
+    pub fn lanes(self) -> [f32; 4] {
+        use half::slice::HalfFloatSliceExt;
+        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.0);
+        let mut out = [0.0f32; 4];
+        arr.as_slice().convert_to_f32_slice(&mut out);
+        out
+    }
+
+    #[inline]
+    pub fn t0(self) -> f32 {
+        half::f16::from_bits(self.0[2]).to_f32()
+    }
+
+    /// Per-lane f32 setter helper for the composer's
+    /// `current_transform.scale` multiply path. Re-quantizes via the
+    /// scalar f16 round-trip.
+    #[inline]
+    pub fn scaled(self, s: f32) -> Self {
+        let [a, b, c, d] = self.lanes();
+        Self::from_lanes(a * s, b * s, c * s, d * s)
+    }
 }
 
 /// One colour stop in a gradient. `offset_u8` is the 0..1 parametric
@@ -204,12 +234,7 @@ impl LinearGradient {
     /// corner-to-corner scaling is a slice 2.5 polish task.
     pub fn axis(&self) -> FillAxis {
         let (sin, cos) = self.angle.sin_cos();
-        FillAxis {
-            dir_x: cos,
-            dir_y: sin,
-            t0: 0.0,
-            t1: 1.0,
-        }
+        FillAxis::from_lanes(cos, sin, 0.0, 1.0)
     }
 }
 
@@ -289,12 +314,7 @@ impl RadialGradient {
     /// Pack `(center, radius)` into a `FillAxis` wire slot. The shader
     /// reads it as `(cx, cy, rx, ry)` for the radial branch.
     pub fn axis(&self) -> FillAxis {
-        FillAxis {
-            dir_x: self.center.x,
-            dir_y: self.center.y,
-            t0: self.radius.x,
-            t1: self.radius.y,
-        }
+        FillAxis::from_lanes(self.center.x, self.center.y, self.radius.x, self.radius.y)
     }
 }
 
@@ -380,12 +400,7 @@ impl ConicGradient {
     /// shader reads it as `(cx, cy, start_angle, _)` for the conic
     /// branch; `t1` is unused.
     pub fn axis(&self) -> FillAxis {
-        FillAxis {
-            dir_x: self.center.x,
-            dir_y: self.center.y,
-            t0: self.start_angle,
-            t1: 0.0,
-        }
+        FillAxis::from_lanes(self.center.x, self.center.y, self.start_angle, 0.0)
     }
 }
 
@@ -704,7 +719,7 @@ mod tests {
         assert_eq!(g.spread, Spread::Pad);
         // axis packs (cx, cy, rx, ry).
         let a = g.axis();
-        assert_eq!((a.dir_x, a.dir_y, a.t0, a.t1), (0.5, 0.5, 0.5, 0.5));
+        assert_eq!(a.lanes(), [0.5, 0.5, 0.5, 0.5]);
     }
 
     #[test]
@@ -731,10 +746,12 @@ mod tests {
                 Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
             ],
         );
-        let a = g.axis();
-        assert_eq!(a.dir_x, 0.4);
-        assert_eq!(a.dir_y, 0.6);
-        assert_eq!(a.t0, std::f32::consts::FRAC_PI_4);
+        let [dx, dy, t0, _] = g.axis().lanes();
+        // f16 quantization: 0.4/0.6 don't round-trip exactly; the
+        // assertion is at f16 tolerance (~1/2048).
+        assert!((dx - 0.4).abs() < 1e-3);
+        assert!((dy - 0.6).abs() < 1e-3);
+        assert!((t0 - std::f32::consts::FRAC_PI_4).abs() < 1e-3);
     }
 
     #[test]

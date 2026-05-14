@@ -492,12 +492,7 @@ fn emit_shadow(
         radius,
         shadow.color(),
         kind,
-        FillAxis {
-            dir_x: offset.x,
-            dir_y: offset.y,
-            t0: blur,
-            t1: axis_w,
-        },
+        FillAxis::from_lanes(offset.x, offset.y, blur, axis_w),
     );
 }
 
