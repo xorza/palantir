@@ -28,7 +28,7 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Option<Damage> {
-    let damage = ui.frame(DISPLAY, Duration::ZERO, f).damage;
+    let damage = ui.frame(DISPLAY, Duration::ZERO, &mut (), f).damage;
     ui.frame_state.mark_submitted();
     damage
 }
@@ -218,7 +218,7 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 2: popup gone. Body + eater both removed. Without the
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
-    let out = ui.frame(DISPLAY, Duration::ZERO, |ui| {
+    let out = ui.frame(DISPLAY, Duration::ZERO, &mut (), |ui| {
         Frame::new().id_salt("placeholder").size(10.0).show(ui);
     });
     let Some(Damage::Partial(region)) = out.damage else {
@@ -262,10 +262,10 @@ fn click_on_empty_bg_does_not_force_full() {
         });
     };
     // Frame 0 (cold): expect Full. Submit.
-    ui.frame(DISPLAY, Duration::ZERO, build);
+    ui.frame(DISPLAY, Duration::ZERO, &mut (), build);
     ui.frame_state.mark_submitted();
     // Frame 1 (warm): nothing changed → Skip (damage = None).
-    let warm = ui.frame(DISPLAY, Duration::ZERO, build).damage;
+    let warm = ui.frame(DISPLAY, Duration::ZERO, &mut (), build).damage;
     assert!(warm.is_none(), "warm frame must Skip");
     ui.frame_state.mark_submitted();
 
@@ -273,7 +273,7 @@ fn click_on_empty_bg_does_not_force_full() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    let click_damage = ui.frame(DISPLAY, Duration::ZERO, build).damage;
+    let click_damage = ui.frame(DISPLAY, Duration::ZERO, &mut (), build).damage;
     assert!(
         !matches!(click_damage, Some(Damage::Full)),
         "click on empty bg escalated to Full repaint: {click_damage:?}",
@@ -288,7 +288,7 @@ fn click_on_empty_bg_does_not_force_full() {
 fn skip_frame_does_not_force_next_to_full() {
     let mut ui = Ui::new();
     let first = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, BLUE))
         .damage;
     assert_eq!(first, Some(Damage::Full));
     ui.frame_state.mark_submitted();
@@ -297,7 +297,7 @@ fn skip_frame_does_not_force_next_to_full() {
     // submitted on the skip path too (copies the backbuffer onto the
     // swapchain); the test mirrors that ack.
     let skip = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, BLUE))
         .damage;
     assert!(skip.is_none(), "identical content must Skip");
     ui.frame_state.mark_submitted();
@@ -305,7 +305,7 @@ fn skip_frame_does_not_force_next_to_full() {
     // Next frame: still no diff. Pre-fix this could regress to Full if
     // the skip wasn't acked — Host::render owns that ack now.
     let next = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, BLUE))
         .damage;
     assert!(
         next.is_none(),
@@ -324,7 +324,7 @@ fn skip_frame_does_not_force_next_to_full() {
 fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
     let mut ui = Ui::new();
     let first = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, BLUE))
         .damage;
     assert_eq!(first, Some(Damage::Full));
     ui.frame_state.mark_submitted();
@@ -332,14 +332,14 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
     // Identical content → Skip. Host bypasses `render()` entirely and
     // never acks; `Ui::frame` must self-ack the skip.
     let skip = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, BLUE))
         .damage;
     assert!(skip.is_none(), "identical content must Skip");
     // NOTE: deliberately no `mark_submitted` here.
 
     // Authoring change → expect `Partial`, not `Full`.
     let next = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| one_frame(ui, RED))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| one_frame(ui, RED))
         .damage;
     assert!(
         matches!(next, Some(Damage::Partial(_))),
@@ -803,16 +803,22 @@ fn display_change_forces_full_repaint() {
         };
 
         // Steady-state: Full first frame, then Skip on identical re-record.
-        let f1 = ui.frame(DISPLAY, Duration::ZERO, &mut build).damage;
+        let f1 = ui
+            .frame(DISPLAY, Duration::ZERO, &mut (), &mut build)
+            .damage;
         assert_eq!(f1, Some(Damage::Full), "case: {label} f1");
         ui.frame_state.mark_submitted();
-        let f2 = ui.frame(DISPLAY, Duration::ZERO, &mut build).damage;
+        let f2 = ui
+            .frame(DISPLAY, Duration::ZERO, &mut (), &mut build)
+            .damage;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
         ui.frame_state.mark_submitted();
 
         // Mutate Display; identical authoring; must short-circuit to Full.
-        let mutated_damage = ui.frame(*mutated, Duration::ZERO, &mut build).damage;
+        let mutated_damage = ui
+            .frame(*mutated, Duration::ZERO, &mut (), &mut build)
+            .damage;
         assert_eq!(
             mutated_damage,
             Some(Damage::Full),
@@ -825,7 +831,9 @@ fn display_change_forces_full_repaint() {
         );
 
         // Stable surface at the new size, identical authoring → back to Skip.
-        let stable = ui.frame(*mutated, Duration::ZERO, &mut build).damage;
+        let stable = ui
+            .frame(*mutated, Duration::ZERO, &mut (), &mut build)
+            .damage;
         assert!(
             stable.is_none(),
             "case: {label} post-mutation steady must Skip",
@@ -888,9 +896,9 @@ fn small_damage_with_surface_change_forces_full_repaint() {
             });
     };
 
-    ui.frame(big, Duration::ZERO, &mut scene);
+    ui.frame(big, Duration::ZERO, &mut (), &mut scene);
     ui.frame_state.mark_submitted();
-    ui.frame(big, Duration::ZERO, &mut scene);
+    ui.frame(big, Duration::ZERO, &mut (), &mut scene);
     ui.frame_state.mark_submitted();
     assert!(ui.damage_engine.dirty.is_empty());
 
@@ -910,7 +918,9 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         physical: UVec2::new(1999, 2000),
         ..big
     };
-    let resize_damage = ui.frame(smaller, Duration::ZERO, &mut scene).damage;
+    let resize_damage = ui
+        .frame(smaller, Duration::ZERO, &mut (), &mut scene)
+        .damage;
 
     assert_eq!(
         resize_damage,
@@ -936,10 +946,10 @@ fn stable_surface_does_not_short_circuit() {
     };
 
     // Warm up: two identical frames bring damage to steady state.
-    ui.frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE));
+    ui.frame(DISPLAY, Duration::ZERO, &mut (), |ui| build(ui, BLUE));
     ui.frame_state.mark_submitted();
     let warm = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| build(ui, BLUE))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| build(ui, BLUE))
         .damage;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
@@ -949,7 +959,7 @@ fn stable_surface_does_not_short_circuit() {
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that
     // proves the surface-change short-circuit didn't fire.
     let changed = ui
-        .frame(DISPLAY, Duration::ZERO, |ui| build(ui, RED))
+        .frame(DISPLAY, Duration::ZERO, &mut (), |ui| build(ui, RED))
         .damage;
     let Some(Damage::Partial(region)) = changed else {
         panic!(

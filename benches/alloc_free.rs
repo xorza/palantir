@@ -127,11 +127,11 @@ fn main() {
     let mut ui = Ui::new();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(ui.frame(display, std::time::Duration::ZERO, build_ui));
+        black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(ui.frame(display, std::time::Duration::ZERO, build_ui));
+        black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
     }
     let after = dhat::HeapStats::get();
 

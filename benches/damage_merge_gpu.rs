@@ -144,11 +144,12 @@ fn render_frame(
     color: Color,
     forced_damage: Option<&[Rect]>,
 ) {
-    let mut report = host.run_frame(display, |ui| build_grid(ui, cells, color));
+    let mut report =
+        internals::host_cpu_frame(host, display, &mut (), |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
         internals::force_report_damage_to_rects(&mut report, rects);
     }
-    host.render_to_texture(&gpu.surface_tex, &report);
+    internals::host_render_to_texture(host, &gpu.surface_tex, &report);
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("device poll wait");

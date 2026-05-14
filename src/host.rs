@@ -2,16 +2,17 @@
 //! ([`Ui`]), the CPU paint stage ([`Frontend`]), and the GPU backend
 //! ([`WgpuBackend`]).
 //!
-//! Two flow shapes:
+//! Single public entry: [`Host::frame`]. Runs CPU passes, acquires the
+//! next swapchain texture, submits, presents — folding
+//! Suboptimal / Outdated / Lost / Timeout / Validation / Occluded into a
+//! single "needs repaint" bool. Always takes ambient app state (`&mut ()`
+//! when there is none) so deep widgets can reach it via
+//! [`Ui::app::<T>()`] without explicit threading.
 //!
-//! - **Offscreen** — [`Host::run_frame`] (CPU) then
-//!   [`Host::render_to_texture`] (GPU submit against a caller-supplied
-//!   `wgpu::Texture`). Used by the visual harness and offscreen
-//!   benches.
-//! - **Swapchain** — [`Host::frame_and_render`] is the one-shot:
-//!   `run_frame` → acquire `Surface` → submit → `present()`, folding
-//!   Suboptimal / Outdated / Lost / Timeout / Validation / Occluded
-//!   into a single "needs repaint" bool.
+//! Internal split — [`Host::cpu_frame`] + [`Host::render_to_texture`] —
+//! is `pub(crate)` and exposed to out-of-crate benches / the visual test
+//! harness via `support::internals`. Callers that need to inspect the
+//! [`FrameReport`] between CPU and GPU stay on that split.
 
 use std::time::Instant;
 
@@ -61,41 +62,81 @@ impl Host {
         }
     }
 
-    /// Drive one CPU frame: `Ui::frame` → record → measure / arrange /
-    /// cascade / damage. Returns the host-facing [`FrameReport`];
-    /// thread it back into [`Self::render_to_texture`].
-    pub fn run_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
-        self.ui.frame(display, self.start.elapsed(), record)
+    /// Swapchain one-shot: run CPU + GPU + present. Installs `state` as
+    /// ambient app state for the frame; callers without app state pass
+    /// `&mut ()`. Folds the acquire dance
+    /// (Suboptimal / Outdated / Lost / Timeout / Validation / Occluded)
+    /// into the returned `repaint_requested` bool — `true` if the host
+    /// should request another redraw. Reconfigure-required variants
+    /// call `surface.configure(_, config)` before returning. Skip
+    /// frames bypass surface acquisition entirely.
+    ///
+    /// Derives `Display`'s physical size from `config.width`/`config.height`.
+    pub fn frame<T: 'static>(
+        &mut self,
+        surface: &wgpu::Surface<'_>,
+        config: &wgpu::SurfaceConfiguration,
+        scale_factor: f32,
+        state: &mut T,
+        record: impl FnMut(&mut Ui),
+    ) -> FramePresent {
+        // Bracket the body with a Tracy *discontinuous* frame so the
+        // frame strip shows actual work duration, not the gap between
+        // back-to-back `finish_frame!()` ticks (which counts idle time
+        // between user input as one giant "lagging" frame).
+        #[cfg(feature = "profile-with-tracy")]
+        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
+        profiling::scope!("Host::frame");
+
+        let display =
+            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
+        let report = self.cpu_frame(display, state, record);
+        self.present(surface, config, report)
     }
 
-    /// Like [`Self::run_frame`] but installs `state` as the ambient
-    /// app state visible to deep widgets via [`Ui::app::<T>()`] —
-    /// removes the need to thread `&mut T` through every closure.
-    pub fn run_frame_with<T: 'static>(
+    /// Offscreen one-shot: run CPU + GPU against a caller-supplied
+    /// texture (no swapchain acquire). For the visual harness and
+    /// offscreen benches. `display` must match `target.size()` —
+    /// callers are responsible for keeping them in lockstep.
+    pub fn frame_offscreen<T: 'static>(
+        &mut self,
+        target: &wgpu::Texture,
+        display: Display,
+        state: &mut T,
+        record: impl FnMut(&mut Ui),
+    ) {
+        let report = self.cpu_frame(display, state, record);
+        self.render_to_texture(target, &report);
+    }
+
+    /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
+    /// damage. Returns the host-facing [`FrameReport`]; thread it back
+    /// into [`Self::render_to_texture`]. Internal split for benches and
+    /// the visual harness; production callers use [`Self::frame`].
+    pub(crate) fn cpu_frame<T: 'static>(
         &mut self,
         display: Display,
         state: &mut T,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        self.ui
-            .frame_with(display, self.start.elapsed(), state, record)
+        self.ui.frame(display, self.start.elapsed(), state, record)
     }
 
-    /// GPU submit against a caller-supplied texture. For visual
-    /// harness / offscreen benches that paint into a texture they own
-    /// (no swapchain). On the skip path (`report.damage.is_none()`),
-    /// copies the persistent backbuffer onto `target` so callers that
-    /// always present still see valid pixels.
-    pub fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
+    /// GPU submit against a caller-supplied texture. On the skip path
+    /// (`report.damage.is_none()`), copies the persistent backbuffer
+    /// onto `target` so callers that always present still see valid
+    /// pixels. Internal split for benches and the visual harness;
+    /// production callers use [`Self::frame`].
+    pub(crate) fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
         profiling::scope!("Host::render_to_texture");
         let size = target.size();
         let display_phys = self.ui.display.physical;
         assert!(
             size.width == display_phys.x && size.height == display_phys.y,
             "render_to_texture: target size {}x{} doesn't match the display physical \
-             size ({}x{}) that `run_frame` ran against — scissor / viewport math \
+             size ({}x{}) that `cpu_frame` ran against — scissor / viewport math \
              would be off. Update `Display.physical` on resize before the next \
-             `run_frame`.",
+             `cpu_frame`.",
             size.width,
             size.height,
             display_phys.x,
@@ -115,67 +156,6 @@ impl Host {
             self.ui.debug_overlay,
         );
         self.ui.frame_state.mark_submitted();
-    }
-
-    /// Swapchain one-shot: run the CPU frame, acquire the next
-    /// `surface` texture, submit, present. Folds the acquire dance
-    /// (Suboptimal / Outdated / Lost / Timeout / Validation / Occluded)
-    /// into the returned `repaint_requested` bool — `true` if the host
-    /// should request another redraw (animation in flight, surface
-    /// reconfigured, transient acquire failure). Reconfigure-required
-    /// variants call `surface.configure(_, config)` before returning.
-    /// Skip frames bypass surface acquisition entirely.
-    ///
-    /// Derives `Display`'s physical size from
-    /// `config.width`/`config.height`; `pixel_snap` defaults to `true`.
-    /// Callers that need to customize `Display` or inspect the
-    /// `FrameReport` between CPU and GPU stay on the split API
-    /// (`run_frame` + `render_to_texture` against
-    /// `surface.get_current_texture()`).
-    pub fn frame_and_render(
-        &mut self,
-        surface: &wgpu::Surface<'_>,
-        config: &wgpu::SurfaceConfiguration,
-        scale_factor: f32,
-        record: impl FnMut(&mut Ui),
-    ) -> FramePresent {
-        // Bracket the body with a Tracy *discontinuous* frame so the
-        // frame strip shows actual work duration, not the gap between
-        // back-to-back `finish_frame!()` ticks (which counts idle time
-        // between user input as one giant "lagging" frame).
-        #[cfg(feature = "profile-with-tracy")]
-        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
-        profiling::scope!("Host::frame_and_render");
-
-        let display =
-            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
-        let report = self.run_frame(display, record);
-        self.present(surface, config, report)
-    }
-
-    /// Like [`Self::frame_and_render`] but installs `state` as the
-    /// ambient app state visible to deep widgets via
-    /// [`Ui::app::<T>()`].
-    pub fn frame_and_render_with<T: 'static>(
-        &mut self,
-        surface: &wgpu::Surface<'_>,
-        config: &wgpu::SurfaceConfiguration,
-        scale_factor: f32,
-        state: &mut T,
-        record: impl FnMut(&mut Ui),
-    ) -> FramePresent {
-        // Bracket the body with a Tracy *discontinuous* frame so the
-        // frame strip shows actual work duration, not the gap between
-        // back-to-back `finish_frame!()` ticks (which counts idle time
-        // between user input as one giant "lagging" frame).
-        #[cfg(feature = "profile-with-tracy")]
-        let _tracy_frame = tracy_client::non_continuous_frame!("frame");
-        profiling::scope!("Host::frame_and_render");
-
-        let display =
-            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
-        let report = self.run_frame_with(display, state, record);
-        self.present(surface, config, report)
     }
 
     fn present(
@@ -219,8 +199,8 @@ impl Host {
     }
 }
 
-/// Host scheduling hint returned by [`Host::frame_and_render`].
-/// Three mutually-exclusive states the event loop must service:
+/// Host scheduling hint returned by [`Host::frame`]. Three
+/// mutually-exclusive states the event loop must service:
 ///
 /// - [`Self::Immediate`] — call `request_redraw` right away
 ///   (animation in flight, surface lost, occlusion change).

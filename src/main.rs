@@ -89,7 +89,7 @@ struct State {
     /// input, resize, surface loss, occlusion, and animation tickers.
     next: FramePresent,
     /// Caller-owned app state, installed ambient on the `Ui` for the
-    /// duration of every frame via `Host::frame_and_render_with`.
+    /// duration of every frame via `Host::frame`.
     /// The "app state" showcase tab reads/mutates it via `ui.app::<AppState>()`.
     app: AppState,
 }
@@ -251,10 +251,9 @@ impl State {
         let host = &mut self.host;
         let app = &mut self.app;
         let active = &mut self.active;
-        self.next =
-            host.frame_and_render_with(&self.surface, &self.config, self.scale_factor, app, |ui| {
-                build_ui(ui, active)
-            });
+        self.next = host.frame(&self.surface, &self.config, self.scale_factor, app, |ui| {
+            build_ui(ui, active)
+        });
     }
 }
 

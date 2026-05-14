@@ -83,7 +83,7 @@ fn delay_gates_visibility() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.frame(display, Duration::from_secs_f32(secs), |ui| {
+        ui.frame(display, Duration::from_secs_f32(secs), &mut (), |ui| {
             Panel::vstack()
                 .id_salt("root")
                 .size((Sizing::FILL, Sizing::FILL))

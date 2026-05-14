@@ -150,7 +150,7 @@ fn instant_duration_is_noop_and_drops_row() {
 
     // Instant on a fresh slot: snaps, no row, no repaint.
     let repaint = ui
-        .frame(display, Duration::from_millis(0), |ui| {
+        .frame(display, Duration::from_millis(0), &mut (), |ui| {
             let v = ui.animate(id, SLOT, 1.0_f32, instant);
             assert_eq!(v, 1.0);
             Frame::new().id_salt("anim-instant").show(ui);
@@ -160,18 +160,18 @@ fn instant_duration_is_noop_and_drops_row() {
     assert_eq!(crate::support::internals::anim_row_count::<f32>(&mut ui), 0);
 
     // Mid-flight on FAST: row gets allocated.
-    let _ = ui.frame(display, Duration::from_millis(0), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(0), &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-instant").show(ui);
     });
-    let _ = ui.frame(display, Duration::from_millis(50), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(50), &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-instant").show(ui);
     });
     assert!(crate::support::internals::anim_row_count::<f32>(&mut ui) > 0);
 
     // Switching to instant mid-flight: snap and drop.
-    let _ = ui.frame(display, Duration::from_millis(60), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(60), &mut (), |ui| {
         let v = ui.animate(id, SLOT, 1.0_f32, instant);
         assert_eq!(v, 1.0);
         Frame::new().id_salt("anim-instant").show(ui);
@@ -183,7 +183,7 @@ fn instant_duration_is_noop_and_drops_row() {
     );
 
     // Switching back to FAST with a new target: first-touch snaps.
-    let _ = ui.frame(display, Duration::from_millis(70), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(70), &mut (), |ui| {
         let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
         assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
         Frame::new().id_salt("anim-instant").show(ui);
@@ -479,7 +479,7 @@ fn animate_drives_repaint_until_settle() {
     } = setup_anim_ui("anim-test");
 
     let repaint = ui
-        .frame(display, Duration::ZERO, |ui| {
+        .frame(display, Duration::ZERO, &mut (), |ui| {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
             Frame::new().id_salt("anim-test").show(ui);
         })
@@ -490,7 +490,7 @@ fn animate_drives_repaint_until_settle() {
     );
 
     let repaint = ui
-        .frame(display, Duration::from_millis(16), |ui| {
+        .frame(display, Duration::from_millis(16), &mut (), |ui| {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
             Frame::new().id_salt("anim-test").show(ui);
         })
@@ -502,7 +502,7 @@ fn animate_drives_repaint_until_settle() {
     for i in 0..100 {
         now += Duration::from_millis(16);
         let repaint = ui
-            .frame(display, now, |ui| {
+            .frame(display, now, &mut (), |ui| {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
                 Frame::new().id_salt("anim-test").show(ui);
             })
@@ -533,7 +533,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
 
     // First touch at target=80 → snap, no repaint.
     let mut now = Duration::ZERO;
-    let _ = ui.frame(display, now, |ui| {
+    let _ = ui.frame(display, now, &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
         Frame::new().id_salt("anim-novsync").show(ui);
     });
@@ -543,7 +543,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
     for i in 0..200_000 {
         now += Duration::from_micros(10);
         let repaint = ui
-            .frame(display, now, |ui| {
+            .frame(display, now, &mut (), |ui| {
                 let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
                 Frame::new().id_salt("anim-novsync").show(ui);
             })
@@ -673,7 +673,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
         display,
     } = setup_anim_ui("anim-none");
     let repaint = ui
-        .frame(display, Duration::from_millis(16), |ui| {
+        .frame(display, Duration::from_millis(16), &mut (), |ui| {
             let v1 = ui.animate(id, SLOT, 7.0_f32, None);
             let v2 = ui.animate(id, SLOT, 9.0_f32, None);
             assert_eq!(v1, 7.0);
@@ -699,11 +699,11 @@ fn animate_some_then_none_drops_stale_row() {
         display,
     } = setup_anim_ui("anim-toggle");
     // Frame A: animate to 1.0 with FAST (in flight).
-    let _ = ui.frame(display, Duration::from_millis(0), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(0), &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-toggle").show(ui);
     });
-    let _ = ui.frame(display, Duration::from_millis(50), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(50), &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
         Frame::new().id_salt("anim-toggle").show(ui);
     });
@@ -713,7 +713,7 @@ fn animate_some_then_none_drops_stale_row() {
     );
 
     // Frame B: switch to None — the stale row should drop.
-    let _ = ui.frame(display, Duration::from_millis(60), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(60), &mut (), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
         Frame::new().id_salt("anim-toggle").show(ui);
     });
@@ -757,7 +757,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // None spec: snaps to target, no rows allocated. Use Cell to
     // capture out of the FnMut closure.
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
-    let _ = ui.frame(display, Duration::from_millis(16), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(16), &mut (), |ui| {
         captured.set(Some(look.animate(ui, id, fallback, None)));
         Frame::new().id_salt("look-test").show(ui);
     });
@@ -792,7 +792,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         }),
         text: None,
     };
-    let _ = ui.frame(display, Duration::from_millis(32), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(32), &mut (), |ui| {
         let _ = look2.animate(ui, id, fallback, Some(AnimSpec::FAST));
         Frame::new().id_salt("look-test").show(ui);
     });

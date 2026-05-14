@@ -112,7 +112,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
 fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = ui.frame(display, Duration::ZERO, &mut record);
+    let _ = ui.frame(display, Duration::ZERO, &mut (), &mut record);
     internals::mark_frame_submitted(ui);
 }
 

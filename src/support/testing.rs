@@ -35,7 +35,7 @@ pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shap
 /// `now` themselves via `frame` directly.
 pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    ui.frame(display, Duration::ZERO, record);
+    ui.frame(display, Duration::ZERO, &mut (), record);
 }
 
 /// Same as [`run_at`] but additionally marks the frame as submitted.
@@ -44,7 +44,7 @@ pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
 /// frame's damage escalates to `Full`.
 pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    ui.frame(display, Duration::ZERO, record);
+    ui.frame(display, Duration::ZERO, &mut (), record);
     ui.frame_state.mark_submitted();
 }
 

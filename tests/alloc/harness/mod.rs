@@ -99,7 +99,7 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, scene: &mut S) {
-    let _ = ui.frame(DISPLAY, std::time::Duration::ZERO, scene);
+    let _ = ui.frame(DISPLAY, std::time::Duration::ZERO, &mut (), scene);
 }
 
 fn fail_audit(
