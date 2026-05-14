@@ -52,9 +52,12 @@ pub(crate) struct Cascade {
     pub(crate) cascade_input: CascadeInputHash,
 }
 
+/// 20 B per row, align 4. `WidgetId` is split into the parallel
+/// `Cascades::entry_ids` so the hot reverse-scan loop in `hit_test*`
+/// only touches `rect` + the small flags — the `u64` id is loaded
+/// once on match, not on every reject.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct HitEntry {
-    pub(crate) id: WidgetId,
     pub(crate) rect: Rect,
     pub(crate) sense: Sense,
     pub(crate) focusable: bool,
@@ -83,6 +86,10 @@ pub(crate) struct Cascades {
     /// Layers append in paint order so reverse iteration yields
     /// topmost-first.
     pub(crate) entries: Vec<HitEntry>,
+    /// Parallel to `entries`: the `WidgetId` for each row, split out
+    /// to keep the hot reverse-scan struct at 20 B (instead of 32 B
+    /// with the `u64` id inline).
+    pub(crate) entry_ids: Vec<WidgetId>,
     pub(crate) by_id: FxHashMap<WidgetId, u32>,
 }
 
@@ -91,6 +98,7 @@ impl Default for Cascades {
         Self {
             rows: array::from_fn(|_| Vec::new()),
             entries: Vec::new(),
+            entry_ids: Vec::new(),
             by_id: FxHashMap::default(),
         }
     }
@@ -101,9 +109,9 @@ impl Cascades {
     /// `filter` decides which `Sense` values participate (hoverable for
     /// hover, clickable for press/release).
     pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
-        for e in self.entries.iter().rev() {
+        for (i, e) in self.entries.iter().enumerate().rev() {
             if filter(e.sense) && e.rect.contains(pos) {
-                return Some(e.id);
+                return Some(self.entry_ids[i]);
             }
         }
         None
@@ -120,15 +128,15 @@ impl Cascades {
     ) -> HitPair {
         let mut a = None;
         let mut b = None;
-        for e in self.entries.iter().rev() {
+        for (i, e) in self.entries.iter().enumerate().rev() {
             if !e.rect.contains(pos) {
                 continue;
             }
             if a.is_none() && a_filter(e.sense) {
-                a = Some(e.id);
+                a = Some(self.entry_ids[i]);
             }
             if b.is_none() && b_filter(e.sense) {
-                b = Some(e.id);
+                b = Some(self.entry_ids[i]);
             }
             if a.is_some() && b.is_some() {
                 break;
@@ -141,9 +149,9 @@ impl Cascades {
     }
 
     pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
-        for e in self.entries.iter().rev() {
+        for (i, e) in self.entries.iter().enumerate().rev() {
             if e.focusable && e.rect.contains(pos) {
-                return Some(e.id);
+                return Some(self.entry_ids[i]);
             }
         }
         None
@@ -181,6 +189,8 @@ impl CascadesEngine {
             let r = &mut layout.cascades;
             r.entries.clear();
             r.entries.reserve(total);
+            r.entry_ids.clear();
+            r.entry_ids.reserve(total);
             r.by_id.clear();
             r.by_id.reserve(total);
         }
@@ -198,6 +208,7 @@ impl CascadesEngine {
                 layer_layout,
                 rows,
                 &mut r.entries,
+                &mut r.entry_ids,
                 &mut r.by_id,
                 &mut self.stack,
             );
@@ -210,6 +221,7 @@ fn run_tree(
     layout: &LayerLayout,
     rows: &mut Vec<Cascade>,
     entries: &mut Vec<HitEntry>,
+    entry_ids: &mut Vec<WidgetId>,
     by_id: &mut FxHashMap<WidgetId, u32>,
     stack: &mut Vec<Frame>,
 ) {
@@ -272,8 +284,8 @@ fn run_tree(
         let focusable = !cascaded_off && attrs.is_focusable();
         let widget_id = widget_ids[i];
         by_id.insert(widget_id, entries.len() as u32);
+        entry_ids.push(widget_id);
         entries.push(HitEntry {
-            id: widget_id,
             rect: visible_rect,
             sense,
             focusable,
