@@ -488,14 +488,14 @@ pub trait Configure: Sized {
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
-        s.w.assert_non_negative();
-        s.h.assert_non_negative();
+        s.w.debug_assert_non_negative();
+        s.h.debug_assert_non_negative();
         self.element_mut().size = s;
         self
     }
     fn min_size(mut self, s: impl Into<Size>) -> Self {
         let s = s.into();
-        assert!(
+        debug_assert!(
             s.w >= 0.0 && s.h >= 0.0,
             "min_size must be non-negative on both axes, got {s:?}",
         );
