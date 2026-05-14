@@ -25,17 +25,19 @@
 use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
-    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
+    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras, SizeClamp,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::visibility::Visibility;
+use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::grid::GridDef;
 use glam::Vec2;
@@ -236,7 +238,7 @@ pub(crate) struct Tree {
     /// `*_table` `Vec` (or holds `ExtrasIdx::ABSENT`). See
     /// [`ExtrasIdx`] for the packing rationale.
     pub(crate) extras_idx: Vec<ExtrasIdx>,
-    pub(crate) bounds_table: Vec<BoundsExtras>,
+    pub(crate) bounds_table: Soa<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
     pub(crate) chrome_table: Vec<Background>,
     /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`.
@@ -346,7 +348,11 @@ impl Tree {
         let ends = self.records.subtree_end();
         let shape_buf = self.shapes.records.as_slice();
         let extras = self.extras_idx.as_slice();
-        let bounds_tab = self.bounds_table.as_slice();
+        let bounds_transform = self.bounds_table.transform();
+        let bounds_position = self.bounds_table.position();
+        let bounds_grid = self.bounds_table.grid();
+        let bounds_min = self.bounds_table.min_size();
+        let bounds_max = self.bounds_table.max_size();
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
         let clip_tab = self.clip_radius_table.as_slice();
@@ -361,7 +367,12 @@ impl Tree {
             attrs[i].hash(&mut h);
             let ex = extras[i];
             if let Some(s) = ex.bounds.get() {
-                bounds_tab[s].hash(&mut h);
+                // Inlined `BoundsExtras::hash` — transform is intentionally
+                // omitted (it's folded into the subtree hash below).
+                h.write(bytemuck::bytes_of(&bounds_position[s]));
+                bounds_grid[s].hash(&mut h);
+                bounds_min[s].hash(&mut h);
+                bounds_max[s].hash(&mut h);
             }
             if let Some(s) = ex.panel.get() {
                 panel_tab[s].hash(&mut h);
@@ -411,7 +422,7 @@ impl Tree {
             // each direct child's already-computed `subtree[child]`.
             let mut sh = Hasher::new();
             sh.write_u64(node_hash);
-            let xf = ex.bounds.get().and_then(|s| bounds_tab[s].transform);
+            let xf = ex.bounds.get().and_then(|s| bounds_transform[s]);
             if let Some(t) = xf {
                 sh.write_u8(1);
                 sh.pod(&t);
@@ -676,11 +687,46 @@ impl Tree {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
-    pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
+    /// Read the transform column. Returns `None` either when the node
+    /// has no bounds row at all or when the row's `transform` is `None`.
+    #[inline]
+    pub(crate) fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
         self.extras_idx[id.index()]
             .bounds
             .get()
-            .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s])
+            .and_then(|s| self.bounds_table.transform()[s])
+    }
+
+    #[inline]
+    pub(crate) fn position_of(&self, id: NodeId) -> Vec2 {
+        self.extras_idx[id.index()]
+            .bounds
+            .get()
+            .map_or(Vec2::ZERO, |s| self.bounds_table.position()[s])
+    }
+
+    #[inline]
+    pub(crate) fn grid_of(&self, id: NodeId) -> GridCell {
+        self.extras_idx[id.index()]
+            .bounds
+            .get()
+            .map_or(BoundsExtras::DEFAULT.grid, |s| self.bounds_table.grid()[s])
+    }
+
+    /// Paired read of `(min_size, max_size)` — they're always read
+    /// together by `layoutengine` / `intrinsic` / `stack`.
+    #[inline]
+    pub(crate) fn size_clamps_of(&self, id: NodeId) -> SizeClamp {
+        match self.extras_idx[id.index()].bounds.get() {
+            Some(s) => SizeClamp {
+                min: self.bounds_table.min_size()[s],
+                max: self.bounds_table.max_size()[s],
+            },
+            None => SizeClamp {
+                min: BoundsExtras::DEFAULT.min_size,
+                max: BoundsExtras::DEFAULT.max_size,
+            },
+        }
     }
 
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {

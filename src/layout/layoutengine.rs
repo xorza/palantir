@@ -313,8 +313,8 @@ impl LayoutEngine {
         // when snapshotting below.
         let text_shapes_lo = out[self.active_layer].text_shapes.len() as u32;
 
-        let bounds = tree.bounds(node);
-        let (min_size, max_size) = (bounds.min_size, bounds.max_size);
+        let bounds = tree.size_clamps_of(node);
+        let (min_size, max_size) = (bounds.min, bounds.max);
 
         // Min-content intrinsic — the smallest this node can shrink
         // to without breaking a rigid descendant (Fixed widget,
@@ -467,17 +467,17 @@ impl LayoutEngine {
         // consistent with the parent's eventual arranged width — Fill
         // children inside a `max_size`-capped parent see the capped
         // budget instead of bleeding past the parent's edge.
-        let bounds = tree.bounds(node);
+        let bounds = tree.size_clamps_of(node);
         let outer_w = match style.size.w() {
             Sizing::Fixed(v) => v,
             _ => (available.w - style.margin.horiz()).max(0.0),
         }
-        .clamp(bounds.min_size.w, bounds.max_size.w);
+        .clamp(bounds.min.w, bounds.max.w);
         let outer_h = match style.size.h() {
             Sizing::Fixed(v) => v,
             _ => (available.h - style.margin.vert()).max(0.0),
         }
-        .clamp(bounds.min_size.h, bounds.max_size.h);
+        .clamp(bounds.min.h, bounds.max.h);
         let inner_avail = Size::new(
             (outer_w - style.padding.horiz()).max(0.0),
             (outer_h - style.padding.vert()).max(0.0),

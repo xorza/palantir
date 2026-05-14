@@ -81,12 +81,12 @@ pub(crate) fn compute(
     if style.visibility.is_collapsed() {
         return 0.0;
     }
-    let bounds = tree.bounds(node);
+    let bounds = tree.size_clamps_of(node);
 
     let sizing = axis.main_sizing(style.size);
     let margin = axis.spacing(style.margin);
-    let min_clamp = axis.main(bounds.min_size);
-    let max_clamp = axis.main(bounds.max_size);
+    let min_clamp = axis.main(bounds.min);
+    let max_clamp = axis.main(bounds.max);
 
     // Hug + Fill both report content-driven intrinsic. Per `intrinsic.md`
     // (next to this file): Fill in intrinsic context returns its content's

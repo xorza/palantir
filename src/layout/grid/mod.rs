@@ -380,7 +380,7 @@ fn measure_inner(
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
     for c in tree.active_children(node) {
-        let cell = tree.bounds(c).grid;
+        let cell = tree.grid_of(c);
         if cell.col_span != 1 {
             continue;
         }
@@ -441,7 +441,7 @@ fn measure_inner(
             layout.measure(tree, c, Size::ZERO, text, out);
             continue;
         }
-        let cell = tree.bounds(c).grid;
+        let cell = tree.grid_of(c);
 
         let avail = {
             let s = layout.scratch.grid.depth_stack.at(depth);
@@ -613,7 +613,7 @@ fn arrange_inner(
             continue;
         }
         let s_node = tree.records.layout()[c.index()];
-        let cell = tree.bounds(c).grid;
+        let cell = tree.grid_of(c);
         let d = layout.scratch.desired[c.index()];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
@@ -895,7 +895,7 @@ pub(crate) fn intrinsic(
     }
 
     for c in tree.active_children(node) {
-        let cell = tree.bounds(c).grid;
+        let cell = tree.grid_of(c);
         let span = match axis {
             Axis::X => cell.col_span,
             Axis::Y => cell.row_span,

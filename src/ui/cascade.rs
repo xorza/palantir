@@ -265,7 +265,7 @@ fn run_tree(
             ),
         };
 
-        let node_transform = tree.bounds(id).transform;
+        let node_transform = tree.transform_of(id);
         let desc_transform = match node_transform {
             Some(t) => parent_transform.compose(t),
             None => parent_transform,
