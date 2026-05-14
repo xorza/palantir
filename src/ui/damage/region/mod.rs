@@ -116,26 +116,42 @@ impl DamageRegion {
         if r.area() <= 0.0 {
             return;
         }
-        if self.rects.iter().any(|e| e.contains_rect(r)) {
-            return;
-        }
         let budget = self.budget_px;
         let mut candidate = r;
+        // Fused scan: in one pass over `self.rects` we (a) early-out if
+        // an existing rect already contains the candidate, (b) note
+        // the first intersecting rect for unconditional merge, and
+        // (c) track the cheapest non-intersecting merge candidate for
+        // the budget-driven cluster grow. Intersection short-circuits
+        // — we restart the loop with the grown candidate.
         loop {
-            if let Some(i) = self.rects.iter().position(|e| candidate.intersects(*e)) {
+            let mut intersect_idx: Option<usize> = None;
+            let mut best_idx: Option<usize> = None;
+            let mut best_cost = f32::INFINITY;
+            let cand_area = candidate.area();
+            for (i, e) in self.rects.iter().enumerate() {
+                let e = *e;
+                if e.contains_rect(candidate) {
+                    return;
+                }
+                if candidate.intersects(e) {
+                    intersect_idx = Some(i);
+                    break;
+                }
+                let cost = candidate.union(e).area() - cand_area - e.area();
+                if cost < best_cost {
+                    best_cost = cost;
+                    best_idx = Some(i);
+                }
+            }
+            if let Some(i) = intersect_idx {
                 let e = self.rects.swap_remove(i);
                 candidate = candidate.union(e);
                 continue;
             }
-            let best = self
-                .rects
-                .iter()
-                .enumerate()
-                .map(|(i, e)| (i, *e, merge_cost(candidate, *e)))
-                .min_by(|a, b| a.2.total_cmp(&b.2));
-            match best {
-                Some((i, e, cost)) if cost < budget => {
-                    self.rects.swap_remove(i);
+            match best_idx {
+                Some(i) if best_cost < budget => {
+                    let e = self.rects.swap_remove(i);
                     candidate = candidate.union(e);
                 }
                 _ => break,
@@ -145,28 +161,17 @@ impl DamageRegion {
             self.rects.push(candidate);
             return;
         }
-        let i = self
-            .rects
-            .iter()
-            .enumerate()
-            .min_by(|(_, a), (_, b)| {
-                let growth_a = a.union(candidate).area() - a.area();
-                let growth_b = b.union(candidate).area() - b.area();
-                growth_a.total_cmp(&growth_b)
-            })
-            .map(|(i, _)| i)
-            .expect("DAMAGE_RECT_CAP > 0");
-        self.rects[i] = self.rects[i].union(candidate);
+        let mut best_idx = 0usize;
+        let mut best_growth = f32::INFINITY;
+        for (i, e) in self.rects.iter().enumerate() {
+            let growth = e.union(candidate).area() - e.area();
+            if growth < best_growth {
+                best_growth = growth;
+                best_idx = i;
+            }
+        }
+        self.rects[best_idx] = self.rects[best_idx].union(candidate);
     }
-}
-
-/// SAH-style merge cost: extra pixels overdrawn if A and B were
-/// collapsed into their bbox. Negative when one rect contains the
-/// other (union = larger rect → cost = −smaller.area()), zero on
-/// edge-touch, positive on disjoint pairs.
-#[inline]
-fn merge_cost(a: Rect, b: Rect) -> f32 {
-    a.union(b).area() - a.area() - b.area()
 }
 
 /// Wrap a single rect with the default pass-budget.
