@@ -115,6 +115,13 @@ impl Forest {
         let opened = self.trees[layer as usize].open_node(element);
         assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
+            tracing::error!(
+                first_layer = ?first.0,
+                first_node = ?first.1,
+                second_layer = ?layer,
+                second_node = ?node,
+                "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
+            );
             self.collisions.push(CollisionRecord {
                 first,
                 second: (layer, node),
