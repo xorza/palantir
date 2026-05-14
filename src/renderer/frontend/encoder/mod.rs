@@ -306,7 +306,7 @@ fn encode_node(
     // interior.
     let mode = tree.records.attrs()[id.index()].clip_mode();
     let clip = mode.is_clip();
-    let chrome = tree.chrome.get(id.index()).copied();
+    let chrome = tree.chrome(id).copied();
 
     // Chrome paints BEFORE the clip is pushed. The clip rect is
     // deflated by the chrome's stroke width (so children don't paint
@@ -346,10 +346,10 @@ fn encode_node(
                 // both adjacent edges; radius can't honor concentricity
                 // with the painted stroke on both axes when padding is
                 // asymmetric.
-                let painted =
-                    tree.clip_radius.get(id.index()).copied().expect(
-                        "ClipMode::Rounded without clip_radius — open_node invariant violated",
-                    );
+                let painted = tree
+                    .clip_radius(id)
+                    .copied()
+                    .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
                 let mask_radius = Corners {
                     tl: (painted.tl - padding.top.max(padding.left)).max(0.0),
                     tr: (painted.tr - padding.top.max(padding.right)).max(0.0),

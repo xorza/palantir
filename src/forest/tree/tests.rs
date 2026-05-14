@@ -36,8 +36,7 @@ fn shapes_attached_to_button_node() {
     assert!(
         ui.forest
             .tree(Layer::Main)
-            .chrome
-            .get(button_node.unwrap().index())
+            .chrome(button_node.unwrap())
             .is_some(),
     );
 }
@@ -977,8 +976,8 @@ fn extras_columns_split_by_field_kind() {
                 Frame::new().id_salt("plain-leaf").size(10.0).show(ui);
             });
     });
-    assert_eq!(ui.forest.tree(Layer::Main).panel.table.len(), 1);
-    assert_eq!(ui.forest.tree(Layer::Main).bounds.table.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).panel_table.len(), 1);
+    assert_eq!(ui.forest.tree(Layer::Main).bounds_table.len(), 1);
 }
 
 #[test]

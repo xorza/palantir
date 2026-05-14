@@ -12,9 +12,9 @@
 //!   lowering — bezier flattening, polyline tessellation, mesh
 //!   hashing — that runs inside `Shapes::add` itself.
 //! - `Tree::open_node` drops a node's chrome entry from
-//!   `SparseColumn<Background>` when `Background::is_noop` (all of
-//!   fill, stroke, shadow are no-op). Saves a slot write and keeps
-//!   chrome iteration tight.
+//!   `chrome_table` when `Background::is_noop` (all of fill, stroke,
+//!   shadow are no-op). Saves a slot write and keeps chrome iteration
+//!   tight.
 //!
 //! Partial-noop chrome (e.g. shadow-only) survives storage and is
 //! dropped per-emit by `cmd_buffer::draw_*`'s gates. Together with
@@ -24,7 +24,6 @@
 
 use crate::ClipMode;
 use crate::common::hash::Hasher;
-use crate::common::sparse_column::SparseColumn;
 use crate::forest::element::{
     BoundsExtras, Element, ElementColumns, LayoutCore, LayoutMode, PanelExtras,
 };
@@ -144,21 +143,82 @@ pub(crate) struct PendingAnchor {
 /// [`forest::Forest`] and share no record/shape storage — mid-recording
 /// `Ui::layer` calls dispatch into the destination tree without
 /// interleaving, eliminating the prior reorder pass.
+/// Niche-encoded dense-table slot. `u16::MAX` means "absent"; any
+/// other value is an index into a `*_table` `Vec`. Constructed by
+/// [`Slot::push`] off a `Vec::len()`; resolved at read time via
+/// [`Slot::get`] which folds the sentinel check into an `Option<usize>`.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct Slot(u16);
+
+impl Slot {
+    pub(crate) const ABSENT: Self = Self(u16::MAX);
+
+    /// `len`-derived constructor. Pair with `Vec::push(v)` so the
+    /// resulting `Slot` indexes the entry that push wrote.
+    #[inline]
+    pub(crate) fn from_len(len: usize) -> Self {
+        debug_assert!(len < u16::MAX as usize, "Slot exhausted: len = {len}");
+        Self(len as u16)
+    }
+
+    /// `Some(idx)` if this slot points at a real entry, `None` if
+    /// absent. Single sentinel-compare folded into the `Option`.
+    #[inline]
+    pub(crate) fn get(self) -> Option<usize> {
+        (self.0 != Self::ABSENT.0).then_some(self.0 as usize)
+    }
+
+    #[inline]
+    pub(crate) fn is_present(self) -> bool {
+        self.0 != Self::ABSENT.0
+    }
+}
+
+impl Default for Slot {
+    #[inline]
+    fn default() -> Self {
+        Self::ABSENT
+    }
+}
+
+/// Packed per-node "extras" slot index for the four side tables. One
+/// 8-byte row per node lives in `Tree::extras_idx`; that single
+/// contiguous push replaces what was previously four `Vec<u16>::push`
+/// calls. Each field is a [`Slot`] — niche-encoded `u16::MAX` for
+/// absent, otherwise a dense index into the matching `*_table` `Vec`.
+///
+/// Packing wins on both ends: `Tree::open_node` does one 8-byte store
+/// instead of four 2-byte stores into separate `Vec<u16>`, and the
+/// hash / damage walks read all four slots from the same cache line.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ExtrasIdx {
+    pub(crate) bounds: Slot,
+    pub(crate) panel: Slot,
+    pub(crate) chrome: Slot,
+    pub(crate) clip_radius: Slot,
+}
+
 #[derive(Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
     pub(crate) records: Soa<NodeRecord>,
 
-    // -- Per-NodeId sparse side tables -----------------------------------
-    pub(crate) bounds: SparseColumn<BoundsExtras>,
-    pub(crate) panel: SparseColumn<PanelExtras>,
-    pub(crate) chrome: SparseColumn<Background>,
+    // -- Per-NodeId packed extras idx + dense tables ---------------------
+    /// One row per node; each `u16` field indexes the matching dense
+    /// `*_table` `Vec` (or holds `ExtrasIdx::ABSENT`). See
+    /// [`ExtrasIdx`] for the packing rationale.
+    pub(crate) extras_idx: Vec<ExtrasIdx>,
+    pub(crate) bounds_table: Vec<BoundsExtras>,
+    pub(crate) panel_table: Vec<PanelExtras>,
+    pub(crate) chrome_table: Vec<Background>,
     /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`.
     /// Decoupled from `chrome` so that a node with rounded clip but
     /// invisible paint (or no paint at all) still has a radius for the
     /// encoder's stencil-mask path. Set in `open_node` from the
     /// element's clip mode; absent for `ClipMode::None` / `Rect`.
-    pub(crate) clip_radius: SparseColumn<Corners>,
+    pub(crate) clip_radius_table: Vec<Corners>,
 
     /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
     /// at `open_node` from `open_frames.last()`; lets any post-recording
@@ -222,10 +282,11 @@ pub(crate) struct Tree {
 impl Tree {
     pub(crate) fn pre_record(&mut self) {
         self.records.clear();
-        self.bounds.clear();
-        self.panel.clear();
-        self.chrome.clear();
-        self.clip_radius.clear();
+        self.extras_idx.clear();
+        self.bounds_table.clear();
+        self.panel_table.clear();
+        self.chrome_table.clear();
+        self.clip_radius_table.clear();
         self.parents.clear();
         self.shapes.clear();
         self.grid.clear();
@@ -260,37 +321,30 @@ impl Tree {
         let shape_spans = self.records.shape_span();
         let ends = self.records.subtree_end();
         let shape_buf = self.shapes.records.as_slice();
-        let bounds_idx = self.bounds.idx.as_slice();
-        let bounds_tab = self.bounds.table.as_slice();
-        let panel_idx = self.panel.idx.as_slice();
-        let panel_tab = self.panel.table.as_slice();
-        let chrome_idx = self.chrome.idx.as_slice();
-        let chrome_tab = self.chrome.table.as_slice();
-        let clip_idx = self.clip_radius.idx.as_slice();
-        let clip_tab = self.clip_radius.table.as_slice();
+        let extras = self.extras_idx.as_slice();
+        let bounds_tab = self.bounds_table.as_slice();
+        let panel_tab = self.panel_table.as_slice();
+        let chrome_tab = self.chrome_table.as_slice();
+        let clip_tab = self.clip_radius_table.as_slice();
         let grid_defs = &self.grid.defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
         let paints = &mut self.rollups.paints;
-        const ABSENT: u16 = SparseColumn::<()>::ABSENT;
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
             layouts[i].hash(&mut h);
             attrs[i].hash(&mut h);
-            let b_slot = bounds_idx[i];
-            if b_slot != ABSENT {
-                bounds_tab[b_slot as usize].hash(&mut h);
+            let ex = extras[i];
+            if let Some(s) = ex.bounds.get() {
+                bounds_tab[s].hash(&mut h);
             }
-            let p_slot = panel_idx[i];
-            if p_slot != ABSENT {
-                panel_tab[p_slot as usize].hash(&mut h);
+            if let Some(s) = ex.panel.get() {
+                panel_tab[s].hash(&mut h);
             }
-            let c_slot = chrome_idx[i];
-            let chrome = (c_slot != ABSENT).then(|| &chrome_tab[c_slot as usize]);
+            let chrome = ex.chrome.get().map(|s| &chrome_tab[s]);
             chrome.hash(&mut h);
-            let cr_slot = clip_idx[i];
-            let clip = (cr_slot != ABSENT).then(|| &clip_tab[cr_slot as usize]);
+            let clip = ex.clip_radius.get().map(|s| &clip_tab[s]);
             clip.hash(&mut h);
 
             // Walk this node's direct shapes + immediate-child position
@@ -318,7 +372,7 @@ impl Tree {
                 shape_buf[cursor].hash(&mut h);
                 cursor += 1;
             }
-            if c_slot != ABSENT || has_direct_shape {
+            if ex.chrome.is_present() || has_direct_shape {
                 paints.set(i, true);
             }
             if let LayoutMode::Grid(idx) = layouts[i].mode {
@@ -333,9 +387,7 @@ impl Tree {
             // each direct child's already-computed `subtree[child]`.
             let mut sh = Hasher::new();
             sh.write_u64(node_hash);
-            let xf = (b_slot != ABSENT)
-                .then(|| bounds_tab[b_slot as usize].transform)
-                .flatten();
+            let xf = ex.bounds.get().and_then(|s| bounds_tab[s].transform);
             if let Some(t) = xf {
                 sh.write_u8(1);
                 sh.pod(&t);
@@ -426,24 +478,39 @@ impl Tree {
             }
         }
 
-        self.bounds.push((!bounds.is_default()).then_some(bounds));
-        self.panel.push((!panel.is_default()).then_some(panel));
+        // Build one packed `ExtrasIdx` row and append it. Per-table
+        // dense pushes only happen when the corresponding field is
+        // non-default; the absent fast path (most leaves) is one
+        // 8-byte store of `ALL_ABSENT` with no further work.
         // Tree-storage noop gate for chrome — mirrors `Shapes::add`
         // for the shape buffer and `cmd_buffer::draw_*` for emits.
-        // Whole-`Background::is_noop` drops the entry from the
-        // SparseColumn so chrome iteration / hashing skips the slot
-        // entirely. Partial-noop chrome (e.g. shadow-only) survives
-        // here and is dropped per-emit by the cmd buffer's gates.
-        // `clip_radius` extracts `chrome.radius` whenever this node
-        // has `ClipMode::Rounded`, regardless of whether the paint
-        // is invisible — the encoder needs the radius for the
-        // stencil mask even when nothing paints.
-        let clip_radius = matches!(attrs.clip_mode(), ClipMode::Rounded)
-            .then(|| chrome.as_ref().map(|bg| bg.radius))
-            .flatten();
-        let chrome_for_paint = chrome.filter(|bg| !bg.is_noop());
-        self.chrome.push(chrome_for_paint);
-        self.clip_radius.push(clip_radius);
+        // Whole-`Background::is_noop` drops the entry so chrome
+        // iteration / hashing skips it. Partial-noop chrome (e.g.
+        // shadow-only) survives here and is dropped per-emit by the
+        // cmd buffer's gates. `clip_radius` extracts `chrome.radius`
+        // whenever this node has `ClipMode::Rounded`, regardless of
+        // whether the paint is invisible — the encoder needs the
+        // radius for the stencil mask even when nothing paints.
+        let mut ex = ExtrasIdx::default();
+        if !bounds.is_default() {
+            ex.bounds = Slot::from_len(self.bounds_table.len());
+            self.bounds_table.push(bounds);
+        }
+        if !panel.is_default() {
+            ex.panel = Slot::from_len(self.panel_table.len());
+            self.panel_table.push(panel);
+        }
+        if let Some(bg) = chrome {
+            if matches!(attrs.clip_mode(), ClipMode::Rounded) {
+                ex.clip_radius = Slot::from_len(self.clip_radius_table.len());
+                self.clip_radius_table.push(bg.radius);
+            }
+            if !bg.is_noop() {
+                ex.chrome = Slot::from_len(self.chrome_table.len());
+                self.chrome_table.push(bg);
+            }
+        }
+        self.extras_idx.push(ex);
 
         self.records.push(NodeRecord {
             widget_id,
@@ -454,17 +521,14 @@ impl Tree {
         });
         self.parents.push(parent.unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
-        // Column length-equality. `records` + four sparse + `parents`
+        // Column length-equality. `records` + `extras_idx` + `parents`
         // must agree on `len`; a missed push silently shifts every
         // later node's index. Invariant is structurally guarded by the
         // unconditional pushes above — debug-only check.
         #[cfg(debug_assertions)]
         {
             let n = self.records.len();
-            assert_eq!(self.bounds.idx.len(), n);
-            assert_eq!(self.panel.idx.len(), n);
-            assert_eq!(self.chrome.idx.len(), n);
-            assert_eq!(self.clip_radius.idx.len(), n);
+            assert_eq!(self.extras_idx.len(), n);
             assert_eq!(self.parents.len(), n);
         }
         let ancestor_or_self_disabled =
@@ -545,14 +609,44 @@ impl Tree {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
+    #[inline]
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
-        self.bounds
-            .get(id.index())
-            .unwrap_or(&BoundsExtras::DEFAULT)
+        self.extras_idx[id.index()]
+            .bounds
+            .get()
+            .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s])
     }
 
+    #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
-        self.panel.get(id.index()).unwrap_or(&PanelExtras::DEFAULT)
+        self.extras_idx[id.index()]
+            .panel
+            .get()
+            .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s])
+    }
+
+    /// Chrome paint for `id`, or `None` if absent or fully no-op
+    /// (`Background::is_noop`). The encoder reads this; rounded-clip
+    /// stencil masks read [`Self::clip_radius`] separately because
+    /// they survive `Background::is_noop` filtering.
+    #[inline]
+    pub(crate) fn chrome(&self, id: NodeId) -> Option<&Background> {
+        self.extras_idx[id.index()]
+            .chrome
+            .get()
+            .map(|s| &self.chrome_table[s])
+    }
+
+    /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`. Set
+    /// independently of the chrome filter so the encoder gets a radius
+    /// for the stencil-mask path even when the node's paint is fully
+    /// no-op.
+    #[inline]
+    pub(crate) fn clip_radius(&self, id: NodeId) -> Option<&Corners> {
+        self.extras_idx[id.index()]
+            .clip_radius
+            .get()
+            .map(|s| &self.clip_radius_table[s])
     }
 }
 
