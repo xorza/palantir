@@ -393,7 +393,9 @@ impl Composer {
                     let i_start = p.i_start as usize;
                     let i_end = i_start + p.i_len as usize;
                     let phys_v_start = out.meshes.arena.vertices.len() as u32;
-                    let tint = p.tint;
+                    // Unpack the packed `ColorF16` tint to linear `Color`
+                    // for the per-vertex multiply below.
+                    let tint: Color = p.tint.into();
                     let mut min = Vec2::splat(f32::INFINITY);
                     let mut max = Vec2::splat(f32::NEG_INFINITY);
                     for v in &cmds.shape_payloads.meshes.vertices[v_start..v_end] {
@@ -561,7 +563,10 @@ impl Composer {
                         // in its shader, so encode once here rather than per
                         // frame in the backend. Also makes `TextRun` Pod for
                         // byte-slice hashing in the hash-skip fast path.
-                        color: t.color.to_srgb8(),
+                        // Cmd buffer stores `ColorF16` (linear); glyphon
+                        // expects `Srgb8`. Decode f16→linear then encode
+                        // linear→sRGB once at the boundary.
+                        color: Color::from(t.color).to_srgb8(),
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 2.5% steps. Continuous

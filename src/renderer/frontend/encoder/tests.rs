@@ -252,7 +252,13 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
     assert_eq!(dx, 2.0);
     assert_eq!(dy, 4.0);
     assert_eq!(t0, 8.0);
-    assert_eq!(p.fill, Color::rgba(0.0, 0.0, 0.0, 0.5));
+    // Fill is now stored as ColorF16 (8 B linear) in cmd buffer.
+    // f16 quantization is below display precision; compare via the
+    // same pack.
+    assert_eq!(
+        p.fill,
+        crate::primitives::color::ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5))
+    );
 }
 
 #[test]
@@ -439,7 +445,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
 
 /// Walk an encoder command stream and return the effective screen-space rect
 /// for each `DrawRect`, keyed by its fill colour.
-fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(Color, Rect)> {
+fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(crate::primitives::color::ColorF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;
@@ -549,10 +555,17 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let cmds = encode_cmds(&ui);
     let drawn = screen_rects_by_fill(&cmds);
 
+    // Encoder stores fills as `ColorF16` now; encode the expected
+    // colours the same way for bit-exact comparison.
+    use crate::primitives::color::ColorF16;
+    let v_color_f16: ColorF16 = v_color.into();
+    let d_color_f16: ColorF16 = d_color.into();
+    let h_color_f16: ColorF16 = h_color.into();
+
     let v_id = WidgetId::from_hash("V");
     let v_screen = drawn
         .iter()
-        .find(|(c, _)| *c == v_color)
+        .find(|(c, _)| *c == v_color_f16)
         .map(|(_, r)| *r)
         .expect("visible node should emit a DrawRect");
     let v_hit = ui.response_for(v_id).rect.expect("visible has hit rect");
@@ -561,7 +574,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let d_id = WidgetId::from_hash("D");
     let d_screen = drawn
         .iter()
-        .find(|(c, _)| *c == d_color)
+        .find(|(c, _)| *c == d_color_f16)
         .map(|(_, r)| *r)
         .expect("disabled node should still paint");
     let d_hit = ui.response_for(d_id).rect.expect("disabled has rect");
@@ -569,7 +582,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
     let h_id = WidgetId::from_hash("H");
     assert!(
-        !drawn.iter().any(|(c, _)| *c == h_color),
+        !drawn.iter().any(|(c, _)| *c == h_color_f16),
         "hidden node must not emit a DrawRect"
     );
     assert!(ui.response_for(h_id).rect.is_some());

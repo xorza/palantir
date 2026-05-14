@@ -5,7 +5,7 @@
 
 use super::schedule::{RenderStep, for_each_step};
 use crate::layout::types::span::Span;
-use crate::primitives::color::{Color, Srgb8};
+use crate::primitives::color::{Color, ColorF16, Srgb8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -73,9 +73,9 @@ fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
 fn dummy_quad() -> Quad {
     Quad {
         rect: Rect::new(0.0, 0.0, 10.0, 10.0),
-        fill: Color::WHITE,
+        fill: Color::WHITE.into(),
         radius: Corners::ZERO,
-        stroke_color: Color::TRANSPARENT,
+        stroke_color: ColorF16::TRANSPARENT,
         stroke_width: 0.0,
         ..Default::default()
     }

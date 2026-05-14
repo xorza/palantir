@@ -11,7 +11,12 @@
 //! never enable debug overlays still allocate these buffers (cheap
 //! at ~92 B each) but never upload to them.
 
-use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
+use crate::primitives::{
+    color::{Color, ColorF16},
+    corners::Corners,
+    rect::Rect,
+    size::Size,
+};
 use crate::renderer::quad::Quad;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
@@ -88,9 +93,9 @@ impl DebugOverlay {
                     h: viewport.y,
                 },
             },
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha),
+            fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha).into(),
             radius: Corners::default(),
-            stroke_color: Color::TRANSPARENT,
+            stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()
         };
@@ -138,13 +143,14 @@ impl DebugOverlay {
                 mapped_at_creation: false,
             });
         }
+        let stroke_color_f16: ColorF16 = stroke_color.into();
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
         for r in rects {
             quads.push(Quad {
                 rect: *r,
-                fill: Color::TRANSPARENT,
+                fill: ColorF16::TRANSPARENT,
                 radius: Corners::default(),
-                stroke_color,
+                stroke_color: stroke_color_f16,
                 stroke_width,
                 ..Default::default()
             });

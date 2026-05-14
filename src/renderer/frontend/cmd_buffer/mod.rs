@@ -41,11 +41,12 @@
 //! boundary, which is the only practical gate.
 
 use crate::forest::shapes::payloads::ShapePayloads;
+use crate::forest::shapes::record::ShapeStroke;
 use crate::primitives::brush::{
     Brush, ConicGradient, FillAxis, Interp, LinearGradient, MAX_STOPS, RadialGradient, Stop,
 };
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
+    color::ColorF16, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
@@ -59,7 +60,7 @@ use tinyvec::ArrayVec;
 /// inline is 16 B, gradient is an 8-byte pointer, total ~24 B.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum BrushSource<'a> {
-    Solid(Color),
+    Solid(ColorF16),
     Linear(&'a LinearGradient),
     Radial(&'a RadialGradient),
     Conic(&'a ConicGradient),
@@ -81,7 +82,7 @@ impl<'a> From<&'a Brush> for BrushSource<'a> {
     #[inline]
     fn from(b: &'a Brush) -> Self {
         match b {
-            Brush::Solid(c) => Self::Solid(*c),
+            Brush::Solid(c) => Self::Solid((*c).into()),
             Brush::Linear(g) => Self::Linear(g),
             Brush::Radial(g) => Self::Radial(g),
             Brush::Conic(g) => Self::Conic(g),
@@ -130,16 +131,22 @@ pub(crate) struct PushClipPayload {
 /// `fill_grad_idx` indexes into [`RenderCmdBuffer::gradient_lut_keys`]
 /// when `fill_kind.is_gradient()`; unused (and unread) for solid.
 /// `fill_axis` carries gradient geometry computed at encode time from
-/// the brush's `axis()`. `fill: Color` is the solid colour when
-/// `kind == SOLID`; for gradients it's zeroed and the composer's atlas
-/// lookup supplies the LUT row.
+/// the brush's `axis()`. `fill: ColorF16` is the solid colour when
+/// `kind == SOLID`; for gradients it's zeroed and the composer's
+/// atlas lookup supplies the LUT row. Storing as `ColorF16` (4 B per
+/// colour vs. 16 B `Color`) saves 24 B per rect payload — the
+/// composer decodes via `Color::from(srgb)` at `Quad` write time.
+/// `Pod` invariant: `repr(C)` + no padding; the proc macro at the
+/// end of the field list backfills if alignment shifts.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
-    pub(crate) fill: Color,
-    pub(crate) stroke_color: Color,
+    /// sRGB-encoded fill. Zeroed for gradients; composer's atlas
+    /// lookup supplies the LUT row in that case.
+    pub(crate) fill: ColorF16,
+    pub(crate) stroke_color: ColorF16,
     pub(crate) stroke_width: f32,
     pub(crate) fill_kind: FillKind,
     pub(crate) fill_grad_idx: u32,
@@ -173,7 +180,7 @@ impl DrawRectPayload {
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawTextPayload {
     pub(crate) rect: Rect,
-    pub(crate) color: Color,
+    pub(crate) color: ColorF16,
     pub(crate) key: TextCacheKey,
 }
 
@@ -243,7 +250,7 @@ impl DrawPolylinePayload {
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawMeshPayload {
-    pub(crate) tint: Color,
+    pub(crate) tint: ColorF16,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,
     pub(crate) i_start: u32,
@@ -296,7 +303,7 @@ pub(crate) struct GradientLutKey {
 
 /// Result of lowering a `Brush` into draw-rect payload fields.
 struct BrushPack {
-    fill_color: Color,
+    fill_color: ColorF16,
     fill_kind: FillKind,
     fill_grad_idx: u32,
     fill_axis: FillAxis,
@@ -351,7 +358,7 @@ impl RenderCmdBuffer {
         rect: Rect,
         radius: Corners,
         fill: BrushSource<'_>,
-        stroke: Stroke,
+        stroke: ShapeStroke,
     ) {
         // Pre-pack gate: `Brush::is_noop` peeks inside gradient stops
         // (which the packed payload's inline `fill` no longer carries
@@ -372,9 +379,9 @@ impl RenderCmdBuffer {
         } = self.pack_brush(fill);
 
         let (stroke_color, stroke_width) = if stroke.is_noop() {
-            (Color::TRANSPARENT, 0.0)
+            (ColorF16::TRANSPARENT, 0.0)
         } else {
-            (stroke.brush.expect_solid(), stroke.width)
+            (ColorF16::from(stroke.brush.expect_solid()), stroke.width)
         };
         let payload = DrawRectPayload {
             rect,
@@ -408,7 +415,7 @@ impl RenderCmdBuffer {
         &mut self,
         rect: Rect,
         radius: Corners,
-        color: Color,
+        color: ColorF16,
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
@@ -416,7 +423,7 @@ impl RenderCmdBuffer {
             rect,
             radius,
             fill: color,
-            stroke_color: Color::TRANSPARENT,
+            stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             fill_kind,
             fill_grad_idx: 0,
@@ -434,7 +441,7 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn draw_text(&mut self, rect: Rect, color: Color, key: TextCacheKey) {
+    pub(crate) fn draw_text(&mut self, rect: Rect, color: ColorF16, key: TextCacheKey) {
         let payload = DrawTextPayload { rect, color, key };
         if payload.is_noop() {
             return;
@@ -486,19 +493,19 @@ impl RenderCmdBuffer {
                 fill_axis: FillAxis::ZERO,
             },
             BrushSource::Linear(g) => BrushPack {
-                fill_color: Color::TRANSPARENT,
+                fill_color: ColorF16::TRANSPARENT,
                 fill_kind: FillKind::linear(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
                 fill_axis: g.axis(),
             },
             BrushSource::Radial(g) => BrushPack {
-                fill_color: Color::TRANSPARENT,
+                fill_color: ColorF16::TRANSPARENT,
                 fill_kind: FillKind::radial(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
                 fill_axis: g.axis(),
             },
             BrushSource::Conic(g) => BrushPack {
-                fill_color: Color::TRANSPARENT,
+                fill_color: ColorF16::TRANSPARENT,
                 fill_kind: FillKind::conic(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
                 fill_axis: g.axis(),
