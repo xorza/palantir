@@ -253,9 +253,9 @@ impl MenuItem {
             shadow: Shadow::NONE,
         };
         let id = element.id;
-        let node = ui.node_with_chrome(element, chrome, |_| {});
+        ui.node_with_chrome(element, chrome, |_| {});
         let state = ui.response_for(id);
-        Response { node, id, state }
+        Response { id, state }
     }
 
     pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
@@ -326,7 +326,7 @@ impl MenuItem {
                 });
             }
         };
-        let node = match look_bg {
+        match look_bg {
             Some(c) => ui.node_with_chrome(element, c, body),
             None => ui.node(element, body),
         };
@@ -335,7 +335,7 @@ impl MenuItem {
         if shortcut_fired {
             state.clicked = true;
         }
-        let resp = Response { node, id, state };
+        let resp = Response { id, state };
         if resp.clicked() {
             popup.close();
         }

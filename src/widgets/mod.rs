@@ -10,7 +10,6 @@ pub(crate) mod text_edit;
 pub(crate) mod theme;
 pub(crate) mod tooltip;
 
-use crate::forest::tree::NodeId;
 use crate::input::ResponseState;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -20,8 +19,6 @@ use glam::Vec2;
 mod tests;
 
 pub struct Response {
-    #[allow(dead_code)] // Read only from `#[cfg(test)]` modules.
-    pub(crate) node: NodeId,
     pub(crate) id: WidgetId,
     pub(crate) state: ResponseState,
 }

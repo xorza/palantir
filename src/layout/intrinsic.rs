@@ -199,6 +199,7 @@ mod tests {
     use crate::forest::element::Configure;
     use crate::forest::tree::Layer;
     use crate::layout::types::sizing::Sizing;
+    use crate::support::internals::ResponseNodeExt;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 
@@ -224,7 +225,7 @@ mod tests {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node;
+                .node(ui);
         });
 
         let child = ui
@@ -260,7 +261,7 @@ mod tests {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node;
+                .node(ui);
         });
 
         let child = ui
@@ -308,7 +309,7 @@ mod tests {
                     Text::new("abc").id_salt("a").show(ui);
                     Text::new("defgh").id_salt("b").show(ui);
                 })
-                .node;
+                .node(ui);
         });
         let slot = LenReq::MaxContent.slot(Axis::X);
         for entry in ui.layout_engine.scratch.intrinsics.iter_mut() {

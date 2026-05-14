@@ -5,6 +5,7 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::under_outer;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -18,7 +19,7 @@ fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
             ..Default::default()
         })
         .show(ui)
-        .node
+        .node(ui)
 }
 
 /// Pin: 60×20 cells in a 200-wide WrapHStack with gap=10, line_gap=8.
@@ -53,7 +54,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
                         kids.push(cell(ui, ["a", "b", "c", "d"][i], 60.0, 20.0));
                     }
                 })
-                .node
+                .node(ui)
         });
         for (i, (want_x, want_y)) in expected.iter().enumerate() {
             let r = ui.layout[Layer::Main].rect[kids[i].index()];
@@ -83,7 +84,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
                 kids.push(cell(ui, "wide", 200.0, 20.0));
                 kids.push(cell(ui, "tail", 50.0, 20.0));
             })
-            .node
+            .node(ui)
     });
     let small = ui.layout[Layer::Main].rect[kids[0].index()];
     let wide = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -114,7 +115,7 @@ fn wrap_hstack_line_height_is_max_child_cross() {
                 // overflow → new line
                 kids.push(cell(ui, "next-line", 100.0, 30.0));
             })
-            .node
+            .node(ui)
     });
     let tall = ui.layout[Layer::Main].rect[kids[0].index()];
     let short = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -152,7 +153,7 @@ fn wrap_hstack_justify_per_line() {
                     kids.push(cell(ui, "a", 60.0, 20.0));
                     kids.push(cell(ui, "b", 60.0, 20.0));
                 })
-                .node
+                .node(ui)
         });
         let a = ui.layout[Layer::Main].rect[kids[0].index()];
         let b = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -187,7 +188,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
                 // 40+10+40+10+40 = 140 > 100 → c wraps
                 kids.push(cell(ui, "c", 20.0, 40.0));
             })
-            .node
+            .node(ui)
     });
     let a = ui.layout[Layer::Main].rect[kids[0].index()];
     let b = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -224,7 +225,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
                     cell(ui, "c", 60.0, 20.0);
                     cell(ui, "d", 60.0, 20.0);
                 })
-                .node,
+                .node(ui),
         );
         wrap_node.unwrap()
     });
@@ -259,10 +260,10 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
                             ..Default::default()
                         })
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             })
-            .node
+            .node(ui)
     });
     let tall = ui.layout[Layer::Main].rect[kids[0].index()];
     let filler = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -295,11 +296,11 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
                         .size((Sizing::Fixed(60.0), Sizing::Fixed(20.0)))
                         .collapsed()
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
                 kids.push(cell(ui, "b", 60.0, 20.0));
             })
-            .node
+            .node(ui)
     });
     let a = ui.layout[Layer::Main].rect[kids[0].index()];
     let hidden = ui.layout[Layer::Main].rect[kids[1].index()];
@@ -335,10 +336,10 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
                         // number even with no row-leftover distribution.
                         .min_size((40.0, 0.0))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[filler_node.unwrap().index()];
     // Fill child got its min_size width (40), NOT the row leftover
@@ -379,7 +380,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
                     });
                 outer_b = Some(cell(ui, "ob", 100.0, 20.0));
             })
-            .node
+            .node(ui)
     });
     let ia = ui.layout[Layer::Main].rect[inner_a.unwrap().index()];
     let ib = ui.layout[Layer::Main].rect[inner_b.unwrap().index()];
@@ -436,10 +437,12 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
                                 "gap",
                                 "buttons",
                             ] {
-                                kids.push(Button::new().id_salt(label).label(label).show(ui).node);
+                                kids.push(
+                                    Button::new().id_salt(label).label(label).show(ui).node(ui),
+                                );
                             }
                         })
-                        .node,
+                        .node(ui),
                 );
             });
         (wrap_node.unwrap(), kids)

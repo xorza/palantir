@@ -32,12 +32,12 @@ impl Frame {
 
     pub fn show(&self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let node = match self.chrome {
+        match self.chrome {
             Some(c) => ui.node_with_chrome(self.element, c, |_| {}),
             None => ui.node(self.element, |_| {}),
         };
         let state = ui.response_for(id);
-        Response { node, id, state }
+        Response { id, state }
     }
 }
 

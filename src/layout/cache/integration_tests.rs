@@ -15,6 +15,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{encode_cmds, new_ui_text, run_at_acked, ui_with_text};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -76,7 +77,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             capture.push(
                                 Text::new("value column")
@@ -85,7 +86,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         });
                 });
@@ -107,7 +108,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             Panel::vstack()
                                 .id_salt("inner-host")
@@ -129,7 +130,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                                         )
                                                         .grid_cell((0, col))
                                                         .show(ui)
-                                                        .node,
+                                                        .node(ui),
                                                 );
                                             }
                                         });
@@ -154,7 +155,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             capture.push(
                                 Text::new("v1")
@@ -162,7 +163,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         });
                     Grid::new()
@@ -177,7 +178,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             capture.push(
                                 Text::new("end")
@@ -185,7 +186,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 2))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         });
                 });
@@ -314,7 +315,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                         .style(TextStyle::default().with_font_size(14.0))
                                         .grid_cell((0, 0))
                                         .show(ui)
-                                        .node,
+                                        .node(ui),
                                 );
                                 capture.push(
                                     Text::new(
@@ -326,7 +327,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                                 );
                             });
                     });

@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::under_outer;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -21,7 +22,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.index()];
     let kids: Vec<_> = ui
@@ -56,7 +57,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     // bbox = max(pos + desired) per axis: 50+20=70, 60+20=80
@@ -81,7 +82,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
                     .size((20.0, 20.0))
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     // pos + desired = (15, 15) per axis.
@@ -130,7 +131,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui);
                 })
-                .node
+                .node(ui)
         });
         let kids: Vec<_> = ui
             .forest
@@ -164,7 +165,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
                     .collapsed()
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     assert_eq!(r.size.w, 10.0);
@@ -196,10 +197,10 @@ fn canvas_ignores_child_align() {
                         // Canvas must ignore it.
                         .align(Align::new(HAlign::Right, VAlign::Bottom))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[child.unwrap().index()];
     assert_eq!((r.min.x, r.min.y), (30.0, 40.0));

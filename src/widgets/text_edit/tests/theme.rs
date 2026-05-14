@@ -1,4 +1,5 @@
 use super::*;
+use crate::support::internals::ResponseNodeExt;
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -23,15 +24,15 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                     .label("hi")
                     .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node);
+            txt_node = Some(Text::new("hi").auto_id().show(ui).node(ui));
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id_salt("ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -72,7 +73,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     let mut node = None;
     run_at_acked(&mut ui, NARROW, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(Text::new("hi").auto_id().show(ui).node);
+            node = Some(Text::new("hi").auto_id().show(ui).node(ui));
         });
     });
     let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
@@ -102,7 +103,7 @@ fn text_widget_color_override_wins_over_theme() {
                     .auto_id()
                     .style(TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -138,15 +139,15 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                     .label("hi")
                     .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node);
+            txt_node = Some(Text::new("hi").auto_id().show(ui).node(ui));
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id_salt("ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -204,7 +205,7 @@ fn textedit_style_override_replaces_default_theme() {
                         .style(style.clone())
                         .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
         });
@@ -231,7 +232,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
                     .id_salt("ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -270,7 +271,7 @@ fn no_selection_paints_no_highlight_rect() {
                     .id_salt("ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     };
@@ -300,7 +301,7 @@ fn shift_end_paints_selection_highlight() {
                     .id_salt("ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     };
@@ -432,7 +433,7 @@ fn line_height_override_changes_caret_rect_height() {
                 if let Some(s) = style.clone() {
                     e = e.style(s);
                 }
-                *leaf = Some(e.show(ui).node);
+                *leaf = Some(e.show(ui).node(ui));
             });
         };
         run_at_acked(&mut ui, NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));

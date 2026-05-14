@@ -8,6 +8,7 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::run_at_acked;
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -527,7 +528,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });
@@ -582,7 +583,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });
@@ -647,7 +648,7 @@ fn transform_animation_keeps_far_positions_split() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });
@@ -991,8 +992,20 @@ fn button_hover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         run_at_acked(ui, UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
-                *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
-                *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+                *hot = Some(
+                    Button::new()
+                        .id_salt("hot")
+                        .label("Hover me")
+                        .show(ui)
+                        .node(ui),
+                );
+                *cold = Some(
+                    Button::new()
+                        .id_salt("cold")
+                        .label("Quiet")
+                        .show(ui)
+                        .node(ui),
+                );
             });
         });
     };
@@ -1054,8 +1067,20 @@ fn button_unhover_damage_covers_only_the_button() {
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         run_at_acked(ui, UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
-                *hot = Some(Button::new().id_salt("hot").label("Hover me").show(ui).node);
-                *cold = Some(Button::new().id_salt("cold").label("Quiet").show(ui).node);
+                *hot = Some(
+                    Button::new()
+                        .id_salt("hot")
+                        .label("Hover me")
+                        .show(ui)
+                        .node(ui),
+                );
+                *cold = Some(
+                    Button::new()
+                        .id_salt("cold")
+                        .label("Quiet")
+                        .show(ui)
+                        .node(ui),
+                );
             });
         });
     };
@@ -1117,7 +1142,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                     });
             });

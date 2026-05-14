@@ -60,12 +60,12 @@ impl Panel {
         if matches!(element.clip, ClipMode::None) {
             element.clip = ui.theme.panel_clip;
         }
-        let node = match chrome {
+        match chrome {
             Some(c) => ui.node_with_chrome(element, c, body),
             None => ui.node(element, body),
         };
         let state = ui.response_for(id);
-        Response { node, id, state }
+        Response { id, state }
     }
 
     #[track_caller]

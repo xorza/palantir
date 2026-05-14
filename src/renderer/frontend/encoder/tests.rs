@@ -14,6 +14,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{
     encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, run_at_acked,
 };
@@ -368,7 +369,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                     .show(ui, |ui| {
                         Frame::new().id_salt("c").size(40.0).show(ui);
                     })
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -637,7 +638,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });

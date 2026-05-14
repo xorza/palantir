@@ -9,6 +9,7 @@ use super::*;
 use crate::Align;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
+use crate::support::internals::ResponseNodeExt;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -48,7 +49,7 @@ fn frame(
             if let Some(p) = placeholder {
                 e = e.placeholder(p);
             }
-            node = Some(e.show(ui).node);
+            node = Some(e.show(ui).node(ui));
         });
     };
     run_at_acked(ui, NARROW, &mut record);
@@ -330,6 +331,7 @@ fn selection_rects_offset_matches_text() {
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
     use super::super::*;
+    use crate::support::internals::ResponseNodeExt;
     use crate::text::FontFamily;
     use crate::{Align, HAlign};
     use glam::UVec2;
@@ -471,7 +473,7 @@ mod per_line {
                         .text_align(Align::TOP_RIGHT)
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
         };
@@ -584,7 +586,7 @@ mod per_line {
                         .placeholder("type a paragraph here — long enough to actually wrap")
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
         };
@@ -759,7 +761,7 @@ fn multiline_default_is_top_left() {
                     .multiline(true)
                     .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(80.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     };

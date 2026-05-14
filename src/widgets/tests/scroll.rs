@@ -6,6 +6,7 @@ use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::internals::scroll_state;
 use crate::support::testing::{run_at_acked, under_outer};
 use crate::widgets::frame::Frame;
@@ -169,59 +170,51 @@ fn scroll_records_content_extent() {
             Axis::XY => UVec2::new(400, 400),
         };
         let scroll_node = under_outer(&mut ui, surface, |ui| match axis {
-            Axis::V => {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .gap(4.0)
-                    .show(ui, |ui| {
-                        for i in 0..3u32 {
-                            Frame::new()
-                                .id_salt(("row", i))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
-                                .show(ui);
-                        }
-                    })
-                    .node
-            }
-            Axis::H => {
-                Scroll::horizontal()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
-                    .gap(8.0)
-                    .show(ui, |ui| {
-                        for i in 0..2u32 {
-                            Frame::new()
-                                .id_salt(("col", i))
-                                .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
-                                .show(ui);
-                        }
-                    })
-                    .node
-            }
-            Axis::XY => {
-                Scroll::both()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                    .show(ui, |ui| {
+            Axis::V => Scroll::vertical()
+                .id_salt("scroll")
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                .gap(4.0)
+                .show(ui, |ui| {
+                    for i in 0..3u32 {
                         Frame::new()
-                            .id_salt("wide")
-                            .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                            .id_salt(("row", i))
+                            .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
                             .show(ui);
+                    }
+                })
+                .node(ui),
+            Axis::H => Scroll::horizontal()
+                .id_salt("scroll")
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
+                .gap(8.0)
+                .show(ui, |ui| {
+                    for i in 0..2u32 {
                         Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
+                            .id_salt(("col", i))
+                            .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .show(ui);
-                    })
-                    .node
-            }
-            Axis::Empty => {
-                Scroll::vertical()
-                    .id_salt("empty")
-                    .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
-                    .show(ui, |_| {})
-                    .node
-            }
+                    }
+                })
+                .node(ui),
+            Axis::XY => Scroll::both()
+                .id_salt("scroll")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("wide")
+                        .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                        .show(ui);
+                    Frame::new()
+                        .id_salt("tall")
+                        .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
+                        .show(ui);
+                })
+                .node(ui),
+            Axis::Empty => Scroll::vertical()
+                .id_salt("empty")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+                .show(ui, |_| {})
+                .node(ui),
         });
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
         let state = *scroll_state(&mut ui, scroll_id);

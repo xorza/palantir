@@ -13,6 +13,7 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{run_at_acked, ui_with_text};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -96,7 +97,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .show(ui);
                     })
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -134,7 +135,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
                             .wrapping()
                             .grid_cell((0, 1))
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });
@@ -188,7 +189,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
                             .wrapping()
                             .grid_cell((0, 1))
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });
@@ -252,7 +253,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                                 .grid_cell((1, 1))
                                 .show(ui);
                         })
-                        .node,
+                        .node(ui),
                 );
             });
     });
@@ -303,7 +304,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                                     .grid_cell((0, 1))
                                     .show(ui);
                                 })
-                                .node,
+                                .node(ui),
                         );
                     });
             });

@@ -75,7 +75,7 @@ impl Text {
         let id = self.element.id;
         let style = self.style.unwrap_or(ui.theme.text);
         let line_height_px = style.line_height_for(style.font_size_px);
-        let node = ui.node(self.element, |ui| {
+        ui.node(self.element, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text: self.text,
@@ -88,7 +88,7 @@ impl Text {
             });
         });
         let state = ui.response_for(id);
-        Response { node, id, state }
+        Response { id, state }
     }
 }
 

@@ -11,6 +11,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -23,7 +24,7 @@ fn shapes_attached_to_button_node() {
     let mut button_node = None;
     run_at_acked(&mut ui, SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            button_node = Some(Button::new().auto_id().label("X").show(ui).node);
+            button_node = Some(Button::new().auto_id().label("X").show(ui).node(ui));
         });
     });
 
@@ -84,7 +85,7 @@ fn interleaved_shapes_record_correct_order() {
                         .show(ui);
                     ui.add_shape(pos_rect(2));
                 })
-                .node,
+                .node(ui),
         );
     });
     let p = p.unwrap();
@@ -162,12 +163,12 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                             })
                             .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                     ui.add_shape(pos_rect());
                     ui.add_shape(pos_rect());
                 })
-                .node,
+                .node(ui),
         );
     });
     let parent = parent_id.unwrap().index();
@@ -229,7 +230,7 @@ fn same_authoring_produces_same_hash() {
                     })
                     .show(ui);
             })
-            .node
+            .node(ui)
     };
     assert_eq!(record_hash(build), record_hash(build));
 }
@@ -248,7 +249,7 @@ fn changing_fill_color_changes_hash() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
         child.unwrap()
@@ -260,8 +261,8 @@ fn changing_fill_color_changes_hash() {
 
 #[test]
 fn widget_id_does_not_affect_hash() {
-    let h1 = record_hash(|ui| Panel::hstack().id_salt("a").show(ui, |_| {}).node);
-    let h2 = record_hash(|ui| Panel::hstack().id_salt("b").show(ui, |_| {}).node);
+    let h1 = record_hash(|ui| Panel::hstack().id_salt("a").show(ui, |_| {}).node(ui));
+    let h2 = record_hash(|ui| Panel::hstack().id_salt("b").show(ui, |_| {}).node(ui));
     assert_eq!(h1, h2);
 }
 
@@ -277,14 +278,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .size((Sizing::Fixed(101.0), Sizing::Fixed(50.0)))
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
         (
@@ -294,14 +295,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .padding(8.0)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .padding(12.0)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
         (
@@ -311,14 +312,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .visibility(Visibility::Visible)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .visibility(Visibility::Hidden)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
         (
@@ -328,14 +329,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .justify(Justify::Start)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .justify(Justify::Center)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
         (
@@ -345,14 +346,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .focusable(false)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .focusable(true)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
         (
@@ -362,14 +363,14 @@ fn changing_layout_property_changes_hash() {
                     .id_salt("root")
                     .disabled(false)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
             |ui| {
                 Panel::hstack()
                     .id_salt("root")
                     .disabled(true)
                     .show(ui, |_| {})
-                    .node
+                    .node(ui)
             },
         ),
     ];
@@ -386,7 +387,7 @@ fn changing_text_content_changes_hash() {
     fn build(ui: &mut Ui, label: &'static str) -> NodeId {
         let mut n = None;
         Panel::hstack().auto_id().show(ui, |ui| {
-            n = Some(Text::new(label).id_salt("t").show(ui).node);
+            n = Some(Text::new(label).id_salt("t").show(ui).node(ui));
         });
         n.unwrap()
     }
@@ -410,7 +411,7 @@ fn child_hash_does_not_affect_parent_hash() {
                     })
                     .show(ui);
             })
-            .node
+            .node(ui)
     }
     let h1 = record_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
     let h2 = record_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
@@ -452,7 +453,7 @@ fn subtree_hash_stable_across_frames() {
                     })
                     .show(ui);
             })
-            .node
+            .node(ui)
     };
     assert_eq!(record_subtree_hash(build), record_subtree_hash(build));
 }
@@ -472,7 +473,7 @@ fn subtree_hash_changes_when_descendant_changes() {
                     })
                     .show(ui);
             })
-            .node
+            .node(ui)
     }
     let h1 = record_subtree_hash(|ui| build(ui, Color::rgb(0.2, 0.4, 0.8)));
     let h2 = record_subtree_hash(|ui| build(ui, Color::rgb(0.9, 0.4, 0.8)));
@@ -513,7 +514,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                     b(ui);
                 }
             })
-            .node
+            .node(ui)
     }
     let h_ab = record_subtree_hash(|ui| build(ui, false));
     let h_ba = record_subtree_hash(|ui| build(ui, true));
@@ -532,7 +533,7 @@ fn transform_change_affects_subtree_but_not_node_hash() {
             .id_salt("root")
             .transform(t)
             .show(ui, |_| {})
-            .node
+            .node(ui)
     }
     let h_node_a = record_hash(|ui| build(ui, TranslateScale::IDENTITY));
     let h_node_b =
@@ -570,7 +571,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                     .cols(cols.clone())
                     .rows(rows.clone())
                     .show(ui, |_| {})
-                    .node,
+                    .node(ui),
             );
             Grid::new()
                 .id_salt("other")
@@ -594,7 +595,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                     .cols(cols.clone())
                     .rows(rows.clone())
                     .show(ui, |_| {})
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -622,7 +623,7 @@ fn subtree_end_rolls_up_during_recording() {
                     });
                     Frame::new().id_salt("d").size(10.0).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
@@ -916,7 +917,7 @@ fn mid_recording_popup_keeps_trees_independent() {
                     Frame::new().id_salt("mc4").size(20.0).show(ui);
                     ui.add_shape(marker(4));
                 })
-                .node,
+                .node(ui),
         );
     });
     let parent = parent.unwrap();
@@ -995,7 +996,7 @@ fn child_iter_traverses_correctly_after_finalize() {
                     });
                     Frame::new().id_salt("c").size(10.0).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids: Vec<u32> = ui

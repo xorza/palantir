@@ -6,6 +6,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{new_ui_text, run_at, run_at_acked, ui_at};
 use crate::ui::damage::Damage;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -27,7 +28,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
             ..Default::default()
         })
         .show(ui)
-        .node
+        .node(ui)
 }
 
 /// Two `.id_salt("dup")` calls in one frame would silently corrupt
@@ -44,7 +45,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         Panel::hstack().auto_id().show(ui, |ui| {
             let a = Button::new().id_salt("dup").show(ui);
             Button::new().id_salt("dup").show(ui);
-            button_node.set(a.node);
+            button_node.set(a.node(ui));
         });
     });
     // One collision pair should be recorded, survives until the next

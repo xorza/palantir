@@ -4,6 +4,7 @@ use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{click_at, encode_cmds, run_at};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -21,7 +22,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
                 Frame::new().id_salt("gone").size(40.0).collapsed().show(ui);
                 Frame::new().id_salt("b").size(40.0).show(ui);
             })
-            .node;
+            .node(ui);
     });
 
     let kids: Vec<_> = ui
@@ -65,7 +66,7 @@ fn collapsed_does_not_consume_fill_weight() {
                     .size((Sizing::Fill(1.0), Sizing::Hug))
                     .show(ui);
             })
-            .node;
+            .node(ui);
     });
 
     let kids: Vec<_> = ui
@@ -119,7 +120,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     })
                     .show(ui);
             })
-            .node;
+            .node(ui);
     });
 
     let kids: Vec<_> = ui
@@ -213,7 +214,7 @@ fn hstack_child_align_per_axis_with_overrides() {
                     }
                     b.show(ui);
                 })
-                .node;
+                .node(ui);
         });
 
         let kids: Vec<_> = ui
