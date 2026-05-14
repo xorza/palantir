@@ -6,16 +6,16 @@
 
 use glam::Vec2;
 use palantir::{
-    Background, Brush, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient, Panel,
-    RadialGradient, Sizing, Spread, Srgb8, Ui,
+    Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
+    Panel, RadialGradient, Sizing, Spread, Ui,
 };
 
-const NAVY: Srgb8 = Srgb8::hex(0x1a1a2e);
-const BLUE: Srgb8 = Srgb8::hex(0x4c5cdb);
-const ORANGE: Srgb8 = Srgb8::hex(0xff7e44);
-const YELLOW: Srgb8 = Srgb8::hex(0xfacc15);
-const RED: Srgb8 = Srgb8::hex(0xff5e44);
-const GREEN: Srgb8 = Srgb8::hex(0x46c46c);
+const NAVY: ColorU8 = ColorU8::hex(0x1a1a2e);
+const BLUE: ColorU8 = ColorU8::hex(0x4c5cdb);
+const ORANGE: ColorU8 = ColorU8::hex(0xff7e44);
+const YELLOW: ColorU8 = ColorU8::hex(0xfacc15);
+const RED: ColorU8 = ColorU8::hex(0xff5e44);
+const GREEN: ColorU8 = ColorU8::hex(0x46c46c);
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -174,9 +174,9 @@ fn conic_wheel(ui: &mut Ui) {
             palantir::Stop::new(0.0, RED),
             palantir::Stop::new(0.166, YELLOW),
             palantir::Stop::new(0.333, GREEN),
-            palantir::Stop::new(0.5, Srgb8::hex(0x22ccdd)),
+            palantir::Stop::new(0.5, ColorU8::hex(0x22ccdd)),
             palantir::Stop::new(0.666, BLUE),
-            palantir::Stop::new(0.833, Srgb8::hex(0xd14fdf)),
+            palantir::Stop::new(0.833, ColorU8::hex(0xd14fdf)),
             palantir::Stop::new(1.0, RED),
         ],
     );

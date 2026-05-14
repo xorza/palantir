@@ -1,11 +1,11 @@
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorU8};
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use rustc_hash::FxHasher;
 use std::cell::Cell;
 use std::hash::Hasher;
 
-/// One vertex of a user-supplied mesh. 24 B (pos 8 + color 16), no
+/// One vertex of a user-supplied mesh. 12 B (pos 8 + color 4), no
 /// padding — directly castable into a wgpu vertex buffer.
 ///
 /// `pos` is in **owner-local logical px** (origin = the shape's
@@ -13,18 +13,28 @@ use std::hash::Hasher;
 /// composer bakes the accumulated transform + DPI scale into a
 /// physical-px copy at compose time.
 ///
-/// `color` is **linear RGBA, premultiplied** — matches `Quad.fill`
-/// and the wgpu blend state. No sRGB surprises.
+/// `color` is **linear RGBA, premultiplied**, stored as `ColorU8`
+/// (8 bits per channel, linear-space — the default `From<Color> for
+/// ColorU8` is a linear quantize, no sRGB encoding). The GPU vertex
+/// attribute is `Unorm8x4`, so `u8/255` lands in the rasterizer as
+/// `0..1` linear floats with no shader decode. Banding in dark
+/// gradients across a mesh face is the trade-off for the 12 B vertex
+/// footprint vs. 24 B.
 #[repr(C)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Pod, Zeroable)]
 pub struct MeshVertex {
     pub pos: Vec2,
-    pub color: Color,
+    pub color: ColorU8,
 }
 
 impl MeshVertex {
-    pub const fn new(pos: Vec2, color: Color) -> Self {
-        Self { pos, color }
+    /// Construct from a linear `Color`; quantizes to `ColorU8`
+    /// (linear u8, no sRGB encoding) at the boundary.
+    pub fn new(pos: Vec2, color: Color) -> Self {
+        Self {
+            pos,
+            color: color.into(),
+        }
     }
 }
 
@@ -97,7 +107,7 @@ impl Mesh {
     pub fn vertex(&mut self, pos: Vec2, color: Color) -> u16 {
         let idx = self.vertices.len();
         assert!(idx < u16::MAX as usize, "Mesh exceeds u16 vertex limit");
-        self.vertices.push(MeshVertex { pos, color });
+        self.vertices.push(MeshVertex::new(pos, color));
         self.cached_hash.set(None);
         idx as u16
     }
@@ -162,8 +172,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn mesh_vertex_is_24_bytes_no_padding() {
-        assert_eq!(std::mem::size_of::<MeshVertex>(), 24);
+    fn mesh_vertex_is_12_bytes_no_padding() {
+        assert_eq!(std::mem::size_of::<MeshVertex>(), 12);
     }
 
     #[test]

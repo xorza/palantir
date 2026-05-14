@@ -157,11 +157,12 @@ impl QuadPipeline {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            // sRGB format: sampler decodes to linear-RGB on read, matching
-            // the rest of the pipeline. The LUT bake produces straight
-            // sRGB bytes (`Srgb8`), so the format encodes the bytes back
-            // to linear automatically.
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            // Linear format: sampler returns the stored bytes as
+            // `u8/255` floats with no decode. The LUT bake quantizes
+            // linear-RGB values directly to `ColorU8` via the linear
+            // `From<Color>` impl, so the GPU sees ready-to-blend
+            // linear values.
+            format: wgpu::TextureFormat::Rgba8Unorm,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });

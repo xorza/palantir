@@ -3,8 +3,8 @@
 
 use glam::{UVec2, Vec2};
 use palantir::{
-    Background, Brush, Button, Color, Configure, ConicGradient, Corners, Frame, LineCap, LineJoin,
-    LinearGradient, Panel, RadialGradient, Rect, Shadow, Shape, Sizing, Srgb8, Stroke,
+    Background, Brush, Button, Color, ColorU8, Configure, ConicGradient, Corners, Frame, LineCap,
+    LineJoin, LinearGradient, Panel, RadialGradient, Rect, Shadow, Shape, Sizing, Stroke,
 };
 
 use crate::diff::Tolerance;
@@ -64,8 +64,8 @@ fn frame_linear_gradient_matches_golden() {
                 .background(Background {
                     fill: Brush::Linear(LinearGradient::two_stop(
                         std::f32::consts::FRAC_PI_2,
-                        Srgb8::hex(0x1a1a2e),
-                        Srgb8::hex(0x4c5cdb),
+                        ColorU8::hex(0x1a1a2e),
+                        ColorU8::hex(0x4c5cdb),
                     )),
                     radius: Corners::all(16.0),
                     ..Default::default()
@@ -91,8 +91,8 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
                 radius: Corners::all(12.0),
                 fill: Brush::Linear(LinearGradient::two_stop(
                     0.0,
-                    Srgb8::hex(0xff5e44),
-                    Srgb8::hex(0xfacc15),
+                    ColorU8::hex(0xff5e44),
+                    ColorU8::hex(0xfacc15),
                 )),
                 stroke: Stroke::ZERO,
             });
@@ -116,12 +116,12 @@ fn showcase_gradients_tab_matches_golden() {
     use palantir::{Interp, Spread, Stop};
     let mut h = Harness::new();
     let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
-        let navy = Srgb8::hex(0x1a1a2e);
-        let blue = Srgb8::hex(0x4c5cdb);
-        let orange = Srgb8::hex(0xff7e44);
-        let yellow = Srgb8::hex(0xfacc15);
-        let red = Srgb8::hex(0xff5e44);
-        let green = Srgb8::hex(0x46c46c);
+        let navy = ColorU8::hex(0x1a1a2e);
+        let blue = ColorU8::hex(0x4c5cdb);
+        let orange = ColorU8::hex(0xff7e44);
+        let yellow = ColorU8::hex(0xfacc15);
+        let red = ColorU8::hex(0xff5e44);
+        let green = ColorU8::hex(0x46c46c);
         let cell = |g: LinearGradient| Background {
             fill: Brush::Linear(g),
             radius: Corners::all(8.0),
@@ -232,8 +232,10 @@ fn radial_and_conic_gradient_matches_golden() {
             .padding(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                let r =
-                    RadialGradient::two_stop_centered(Srgb8::hex(0xfacc15), Srgb8::hex(0x1a1a2e));
+                let r = RadialGradient::two_stop_centered(
+                    ColorU8::hex(0xfacc15),
+                    ColorU8::hex(0x1a1a2e),
+                );
                 Frame::new()
                     .id_salt("radial")
                     .size((Sizing::FILL, Sizing::FILL))
@@ -247,11 +249,11 @@ fn radial_and_conic_gradient_matches_golden() {
                     glam::Vec2::splat(0.5),
                     0.0,
                     [
-                        palantir::Stop::new(0.0, Srgb8::hex(0xff5e44)),
-                        palantir::Stop::new(0.25, Srgb8::hex(0xfacc15)),
-                        palantir::Stop::new(0.5, Srgb8::hex(0x46c46c)),
-                        palantir::Stop::new(0.75, Srgb8::hex(0x4c5cdb)),
-                        palantir::Stop::new(1.0, Srgb8::hex(0xff5e44)),
+                        palantir::Stop::new(0.0, ColorU8::hex(0xff5e44)),
+                        palantir::Stop::new(0.25, ColorU8::hex(0xfacc15)),
+                        palantir::Stop::new(0.5, ColorU8::hex(0x46c46c)),
+                        palantir::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
+                        palantir::Stop::new(1.0, ColorU8::hex(0xff5e44)),
                     ],
                 );
                 Frame::new()

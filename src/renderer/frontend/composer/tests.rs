@@ -385,7 +385,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
     use crate::primitives::brush::LinearGradient;
-    use crate::primitives::color::Srgb8;
+    use crate::primitives::color::ColorU8;
     let mut buffer = RenderCmdBuffer::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
@@ -410,7 +410,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     );
     // Suppress unused-import warning for the gradient helper used in
     // the linear test below.
-    let _ = LinearGradient::two_stop(0.0, Srgb8::WHITE, Srgb8::BLACK);
+    let _ = LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK);
 }
 
 /// `Brush::Linear` panel: composer registers the gradient with the
@@ -420,8 +420,9 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::{LinearGradient, Spread};
-    use crate::primitives::color::Srgb8;
-    let g = LinearGradient::two_stop(0.0, Srgb8::WHITE, Srgb8::BLACK).with_spread(Spread::Reflect);
+    use crate::primitives::color::ColorU8;
+    let g =
+        LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
     let mut buffer = RenderCmdBuffer::default();
     buffer.draw_rect(
@@ -453,8 +454,8 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::LinearGradient;
-    use crate::primitives::color::Srgb8;
-    let g = LinearGradient::two_stop(0.5, Srgb8::hex(0x336699), Srgb8::hex(0xddaa44));
+    use crate::primitives::color::ColorU8;
+    let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let mut buffer = RenderCmdBuffer::default();
     for _ in 0..3 {
         buffer.draw_rect(

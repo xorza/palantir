@@ -359,7 +359,7 @@ impl<'a> Emitter<'a> {
 
     #[inline]
     fn push_vert(&mut self, pos: Vec2, color: Color) {
-        self.verts.push(MeshVertex { pos, color });
+        self.verts.push(MeshVertex::new(pos, color));
     }
 
     #[inline]
@@ -367,22 +367,10 @@ impl<'a> Emitter<'a> {
         let outer = normal * (self.geo.outer_offset * ext);
         let inner = normal * (self.geo.inner_offset * ext);
         self.verts.extend_from_slice(&[
-            MeshVertex {
-                pos: p + outer,
-                color: Color::TRANSPARENT,
-            },
-            MeshVertex {
-                pos: p + inner,
-                color: inner_color,
-            },
-            MeshVertex {
-                pos: p - inner,
-                color: inner_color,
-            },
-            MeshVertex {
-                pos: p - outer,
-                color: Color::TRANSPARENT,
-            },
+            MeshVertex::new(p + outer, Color::TRANSPARENT),
+            MeshVertex::new(p + inner, inner_color),
+            MeshVertex::new(p - inner, inner_color),
+            MeshVertex::new(p - outer, Color::TRANSPARENT),
         ]);
     }
 
@@ -563,14 +551,8 @@ impl<'a> Emitter<'a> {
         for _ in 0..=n {
             let dir = c * center_dir + s * perp;
             self.verts.extend_from_slice(&[
-                MeshVertex {
-                    pos: center + dir * inner_off,
-                    color: inner_color,
-                },
-                MeshVertex {
-                    pos: center + dir * outer_off,
-                    color: Color::TRANSPARENT,
-                },
+                MeshVertex::new(center + dir * inner_off, inner_color),
+                MeshVertex::new(center + dir * outer_off, Color::TRANSPARENT),
             ]);
             let c_next = c * cos_step - s * sin_step;
             let s_next = s * cos_step + c * sin_step;

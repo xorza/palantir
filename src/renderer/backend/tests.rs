@@ -5,7 +5,7 @@
 
 use super::schedule::{RenderStep, for_each_step};
 use crate::layout::types::span::Span;
-use crate::primitives::color::{Color, ColorF16, Srgb8};
+use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -90,7 +90,7 @@ fn dummy_text() -> TextRun {
             w: 0,
             h: 0,
         },
-        color: Srgb8::WHITE,
+        color: ColorU8::WHITE,
         key: TextCacheKey::INVALID,
         scale: 1.0,
     }

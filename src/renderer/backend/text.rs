@@ -12,7 +12,7 @@
 //! [`CosmicMeasure`]: crate::text::cosmic::CosmicMeasure
 //! [`TextRun`]: crate::renderer::render_buffer::TextRun
 
-use crate::primitives::color::Srgb8;
+use crate::primitives::color::ColorU8;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
@@ -466,7 +466,7 @@ fn text_bounds(b: URect) -> TextBounds {
     }
 }
 
-fn glyphon_color(c: Srgb8) -> glyphon::Color {
+fn glyphon_color(c: ColorU8) -> glyphon::Color {
     // Glyphon's default `ColorMode::Accurate` decodes the byte channels
     // sRGB→linear inside its shader before writing to the sRGB target —
     // `TextRun.color` is already sRGB-encoded at compose time.

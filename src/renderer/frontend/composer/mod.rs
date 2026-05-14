@@ -406,17 +406,19 @@ impl Composer {
                         // Premultiplied-alpha tinting: component-wise
                         // multiply works for both rgb and alpha. The
                         // backend pipeline doesn't take a tint uniform
-                        // — it's baked in here.
-                        let c = v.color;
-                        out.meshes.arena.vertices.push(MeshVertex {
+                        // — it's baked in here. Unpack the linear-u8
+                        // vertex colour to linear `Color`, multiply,
+                        // repack to linear `ColorU8`.
+                        let c: Color = v.color.into();
+                        out.meshes.arena.vertices.push(MeshVertex::new(
                             pos,
-                            color: Color {
+                            Color {
                                 r: c.r * tint.r,
                                 g: c.g * tint.g,
                                 b: c.b * tint.b,
                                 a: c.a * tint.a,
                             },
-                        });
+                        ));
                     }
                     let phys_i_start = out.meshes.arena.indices.len() as u32;
                     out.meshes
@@ -564,9 +566,13 @@ impl Composer {
                         // frame in the backend. Also makes `TextRun` Pod for
                         // byte-slice hashing in the hash-skip fast path.
                         // Cmd buffer stores `ColorF16` (linear); glyphon
-                        // expects `Srgb8`. Decode f16→linear then encode
+                        // expects `ColorU8`. Decode f16→linear then encode
                         // linear→sRGB once at the boundary.
-                        color: Color::from(t.color).to_srgb8(),
+                        // Glyphon is the one sRGB special case: its API
+                        // expects sRGB-encoded u8. Everything else
+                        // downstream (Quad fill/stroke, vertex colours,
+                        // gradient LUT) stays linear.
+                        color: Color::from(t.color).to_srgb_u8(),
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 2.5% steps. Continuous
