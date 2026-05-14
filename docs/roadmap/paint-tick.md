@@ -25,11 +25,23 @@ spend the full CPU pipeline 60 times per second to flip an opacity
 bit or rotate a quad — work that has no structural effect on the
 tree, layout, or hit index.
 
-Paint-only frame mode is the optimization: detect "nothing structural
-changed since last frame, the only reason we're awake is a
-time-driven paint", skip record + measure + arrange + cascade
-entirely, and run only the work that actually produces different
-pixels.
+Paint-only frame mode is the optimization, in two parts:
+
+1. **Centralize the animation contract** (slice 1). `PaintAnim` is a
+   registration: "this shape's alpha/transform is a known function of
+   `now`". Widget code stops doing phase math and wake scheduling —
+   it just calls `add_shape_animated(shape, anim)` once per record.
+   The encoder samples the function at paint time. This alone deletes
+   meaningful boilerplate and makes the user closure cheap.
+
+2. **Short-circuit downstream when the tree is hash-stable** (slice 2).
+   After `post_record` computes subtree hashes, if every layer root's
+   hash matches last full frame's snapshot, skip `cascades.run` and
+   the finalize damage-diff. Compute damage from the paint-anim quantum
+   diff instead. The user closure and `post_record` still run — that's
+   the price of getting correctness from the hash instead of from
+   manually-tracked dirty flags — but everything downstream that scales
+   with tree size is skipped.
 
 ## Scope
 
@@ -77,54 +89,50 @@ Ui::frame(now)
  └─ FrameReport { damage, repaint_after, … }
 ```
 
-### Frame lifecycle proposed (paint-tick path)
+### Frame lifecycle proposed (post-record short-circuit)
 
 ```
 Ui::frame(now)
  ├─ bump frame_id, fps_ema, drain wakes, mark frame_state Pending
- ├─ if can_paint_tick():        ← NEW eligibility check
- │   ├─ paint_tick:
- │   │   ├─ tree retained as-is (no pre_record, no record, no post_record)
- │   │   ├─ layout retained as-is (no layout_engine.run)
- │   │   ├─ cascades retained as-is (no cascades_engine.run)
- │   │   ├─ paint_anim_damage(forest, paint_anims, prev_now, now)
- │   │   │     → DamageRegion of nodes whose quantized sample flipped
- │   └─ return FrameReport { damage, … } (skip if region empty)
- ├─ else: existing record_pass(A) [+ B] + finalize_frame path
+ ├─ record_pass(A):
+ │   ├─ pre_record  → forest.pre_record() clears every tree
+ │   ├─ user closure runs (cheap on stable widgets; spinner/caret
+ │   │  re-register their PaintAnim shape, no per-frame phase math)
+ │   ├─ post_record → hashes, MeasureCache, arrange
+ │
+ ├─ if tree_unchanged_since_last_record():   ← NEW post-record check
+ │   ├─ skip cascades.run        (reuse last frame's cascades)
+ │   ├─ skip finalize_frame diff (no structural changes possible)
+ │   ├─ damage_engine.compute_paint_anim_only(forest, now, surface)
+ │   │     → DamageRegion of nodes whose quantized sample flipped
+ │   └─ return FrameReport { damage, … }
+ ├─ else: existing cascades.run + finalize_frame path
 ```
 
-Eligibility (all must hold; any failure → fall through to record path):
+The check is post-record, not pre-record. After `post_record` computes
+subtree hashes, comparing root subtree hashes against last record's
+snapshot proves the tree is bit-identical — no enumeration of
+"dirty sources" required. State mutation, input changes, and AnimMap
+ticks all naturally surface as a different hash and fall through to
+the full path. The user closure still runs (~µs at 200 widgets) but
+that buys correctness derived from the existing hash plumbing instead
+of manually-tracked dirty flags.
 
-1. **No structural request from caller**: `repaint_requested` and
-   `relayout_requested` both false coming into the frame.
-2. **No input-driven repaint pending**: every `on_input` call since
-   the last `frame` returned `InputDelta::requests_repaint == false`.
-   This is the existing flag — we OR them into a new
-   `input_dirty_since_last_frame` bit on `InputState`, cleared at the
-   top of each `frame`.
-3. **No state mutation that affects paint**: `StateMap` mutations go
-   through `Ui::state_mut`, which today doesn't flag a redraw — we
-   add a `state_dirty` bit set on any `state_mut` borrow, cleared at
-   `frame` top. (Cheap and conservative: a `state_mut` borrow
-   doesn't always mutate, but the common case is mutation, and a
-   spurious record-path frame is correctness-safe.)
-4. **Display unchanged**: same `Display` as last frame's
+Short-circuit predicate (all must hold; any failure → full path):
+
+1. **Tree hash-stable**: every layer's root `subtree_hash` matches
+   last record's snapshot. This is the load-bearing condition; the
+   others below are guards on state outside the tree.
+2. **Display unchanged**: same `Display` as last frame's
    `damage_engine.prev_surface`. Resize or scale change forces full.
-5. **Last frame submitted**: `frame_state.was_last_submitted()`.
-   The host failed-present invalidation already lives here.
-6. **First frame**: no — `damage_engine.prev_surface` is `None`,
-   forces full anyway.
-7. **`AnimMap` quiescent**: every typed map's rows are `settled ==
-   true`. An in-flight tween changes value-tweened paint, which
-   today requires record (the widget reads `ui.animate(...)` in
-   its record closure). Paint-tick can't observe `AnimMap` reads
-   because the user closure doesn't run.
-8. **At least one `PaintAnim` exists and its `next_wake ≤ now`**.
-   Otherwise there's nothing for paint-tick to *do* — the wake came
-   from somewhere else and the safe response is a record pass.
+3. **Last frame submitted**: `frame_state.was_last_submitted()`.
+4. **Not the first frame**: `damage_engine.prev_surface` is `Some`.
+5. **At least one `PaintAnim` exists and its `next_wake ≤ now`**.
+   Otherwise there's nothing for paint-tick to *do* — fall through
+   so damage produces its usual "no changes" `None`.
 
-If all conditions hold, we take the paint-tick branch. Otherwise the
-record path, exactly as today.
+No `state_dirty` flag, no `input_dirty_since_last_frame` flag, no
+wake-kind tagging. The hash *is* the dirty bit.
 
 ### `PaintAnim` registry
 
@@ -221,24 +229,24 @@ always applies whatever mod is registered, time-stamped at
 `ui.time`. Paint-tick is just the record path with the record and
 layout phases short-circuited.
 
-### Damage on paint-tick
+### Damage on the short-circuit path
 
 `DamageEngine` today diffs `(WidgetId → NodeSnapshot{rect, hash})`
 against the current tree, evicts `removed`, and folds rects into a
-budgeted `DamageRegion`. On paint-tick this whole walk is wrong —
-the tree and hashes are unchanged from last frame.
+budgeted `DamageRegion`. On the short-circuit path the structural
+diff is redundant — hashes are unchanged by definition.
 
 New entry point:
 
 ```rust
 impl DamageEngine {
-    /// Paint-tick damage. Does not touch `self.prev` (the tree's
-    /// per-widget snapshots remain valid for the next record frame).
+    /// Paint-anim-only damage. Does not touch `self.prev` (the
+    /// per-widget snapshots remain valid for the next full frame).
     /// Walks `tree.paint_anims`, compares each entry's quantum
     /// against `now`, accumulates the node's `paint_rect` for each
     /// changed entry, and returns the standard
     /// `Some(Partial(region)) | Some(Full) | None` envelope.
-    pub(crate) fn compute_paint_tick(
+    pub(crate) fn compute_paint_anim_only(
         &mut self,
         forest: &Forest,
         cascades: &Cascades,
@@ -248,11 +256,15 @@ impl DamageEngine {
 }
 ```
 
-`self.prev` deliberately stays put: when the next record frame runs,
-its per-widget hash diff still has last record's snapshot to
-compare against — the paint-tick frames are *visible* changes but
-not *structural* changes, and the record-path damage logic is keyed
-on structural state.
+`self.prev` deliberately stays put: when the next *structurally*
+different frame runs, its per-widget hash diff still has last full
+frame's snapshot to compare against — paint-anim-only frames are
+*visible* changes but not *structural* changes.
+
+Cascades are also reused as-is — the short-circuit predicate proves
+they would be recomputed identically. The encoder reads the same
+`Cascades` it consumed last frame; lifetime is fine because cascades
+live on `Ui` across frames already.
 
 ### Wake scheduling
 
@@ -260,51 +272,12 @@ Today `request_repaint_after(after)` inserts a `Duration` deadline
 into a sorted vec, drained at the top of each `frame`. Widgets call
 this in their record closure when they want the next blink phase.
 
-New: `post_record` (the record path) folds `next_wake` for every
-live `PaintAnim` into `repaint_wakes` automatically. Widgets calling
-`add_shape_animated` no longer call `request_repaint_after`.
-
-The paint-tick path also folds `next_wake` from its post-paint
-state — so a frame whose only purpose is animating a spinner schedules
-the next spinner step itself, without ever re-entering record.
-
-To distinguish "paint-tick eligible" wakes from regular wakes, tag
-the queue: replace `Vec<Duration>` with
-`Vec<(Duration, RepaintKind)>` where `RepaintKind ∈ { Anim, User }`.
-Eligibility check #6 ("only paint-anim wakes are due") reads the
-tag of the wakes that fired at the top of `frame`. A user wake (from
-explicit `request_repaint_after`) always forces the record path.
-
-### Input between frames
-
-`Ui::on_input` is called by the host between `frame` calls. It runs
-hit-test against last frame's cascades and updates hover/focus state
-synchronously. `InputDelta::requests_repaint` already signals
-whether the visible output is affected (e.g. a pointer move that
-changes hover target sets it; a move over inert pixels does not).
-
-Eligibility condition #2 OR-folds every `InputDelta::requests_repaint`
-since the last frame; if any was true, paint-tick is disqualified.
-
-Edge case: pointer entered a `:hover`-styled widget between paint-tick
-frames. `InputDelta::requests_repaint` will be true → eligibility
-fails → record path runs → hover wash paints. ✓
-
-### State / animation / text caches
-
-All cross-frame caches survive a paint-tick frame untouched, because
-`finalize_frame`'s `removed` sweep is the only thing that touches
-them and removed is empty when no record ran:
-
-- `StateMap` — keyed by `WidgetId`, swept by `removed`. No record →
-  no `SeenIds` rollover → `removed` empty → nothing swept. ✓
-- `AnimMap` — same. Plus eligibility #7 forbids in-flight tweens, so
-  there's no `tick` to run mid-paint-tick anyway. ✓
-- `TextShaper` — same. Glyph runs already cached per `(WidgetId,
-  ordinal)`; encode reads them via `Layout::text_shapes` for the
-  retained nodes. ✓
-- `MeasureCache` — not consulted on paint-tick. Stays warm for the
-  next record frame. ✓
+New: `post_record` folds `next_wake` for every live `PaintAnim` into
+`repaint_wakes` automatically. Widgets calling `add_shape_animated`
+no longer call `request_repaint_after`. No wake-kind tagging
+needed — every wake routes through the same record-then-check path.
+`post_record` will be required to take `Duration now` (it currently
+takes no args).
 
 ### What we actually skip — per-frame CPU comparison
 
@@ -312,24 +285,32 @@ Record-path frame, idle UI with one spinner:
 
 | Pass             | Work                                              |
 |------------------|---------------------------------------------------|
-| `pre_record`     | clear ~12 tree columns × 1 root tree              |
-| user closure     | full widget walk; spinner widget pushes its shape |
+| `pre_record`     | clear ~8 tree columns × 1 root tree               |
+| user closure     | full widget walk; spinner widget re-registers its `PaintAnim` shape (no phase math, no manual wake) |
 | `post_record`    | `compute_node_hashes` + `compute_subtree_hashes`  |
-| `layout.run`     | `MeasureCache` hits but walks tree                |
+| `layout.run`     | `MeasureCache` root-hit blits cached subtree      |
 | `cascades.run`   | walk tree, fold transform / clip / disabled       |
 | `finalize_frame` | rollover, sweep, input.post_record, damage diff   |
 | encode + paint   | one rect quad goes to the GPU                     |
 
-Paint-tick frame, same scene:
+Post-record short-circuit, same scene:
 
-| Pass                | Work                                          |
-|---------------------|-----------------------------------------------|
-| (skip pre/record/post/layout/cascades/finalize)            |
-| `paint_anim_damage` | one `SparseColumn` walk (1 entry here)        |
-| encode + paint      | one rect quad goes to the GPU                 |
+| Pass                       | Work                                   |
+|----------------------------|----------------------------------------|
+| `pre_record`               | clear ~8 tree columns                  |
+| user closure               | full widget walk, no phase math        |
+| `post_record`              | hashes (paid; this is what we check)   |
+| `layout.run`               | `MeasureCache` root-hit, O(1)          |
+| (skip cascades + finalize damage-diff)                              |
+| `compute_paint_anim_only`  | one `SparseColumn` walk (1 entry here) |
+| encode + paint             | one rect quad goes to the GPU          |
 
-For a real scene (say 200 widgets, one spinner), the skipped passes
-are all O(200) walks. Paint-tick is O(1) in animated-shape count.
+The win is more modest than a pre-record gate would deliver — we pay
+the user closure + hashing — but the closure is already cheap when
+PaintAnim absorbs the phase math, and hashing is what makes the
+short-circuit *correct* without flag bookkeeping. Bench (item #10
+below) decides whether the remaining cascades + finalize savings
+justify slice 2 at all.
 
 ## Restructuring required
 
@@ -349,20 +330,21 @@ Most of the existing code stays untouched. The changes:
    active tree's `paint_anims`.
 
 4. **`src/ui/mod.rs`**.
-   - Add `state_dirty: bool` flag, set by `state_mut`, cleared at
-     `frame` top.
-   - Add `input_dirty_since_last_frame: bool`, OR'd from each
-     `on_input` delta, cleared at `frame` top.
-   - Tag `repaint_wakes` entries with `RepaintKind`.
-   - New private `can_paint_tick(&self) -> bool` implementing the
-     eligibility list.
-   - New private `paint_tick(&mut self) -> FrameReport`.
-   - `frame` branches on `can_paint_tick()` before
-     `record_pass`.
+   - New private `tree_unchanged_since_last_record(&self) -> bool`:
+     compares every layer root's `subtree_hash` against last full
+     frame's snapshot. Caches the snapshot on `Ui` after each full
+     frame.
+   - New private `paint_anim_only_pass(&mut self) -> FrameReport`:
+     skips `cascades.run` + finalize damage-diff, calls
+     `compute_paint_anim_only`, sweeps nothing (no `removed`).
+   - `frame` branches *after* `record_pass`, before `cascades.run`,
+     on the predicate + the four guards (display, last submitted,
+     prev_surface present, at least one anim wake due).
    - `add_shape_animated(&mut self, shape, anim)` public method.
+   - No new dirty flags. No wake-kind tagging.
 
-5. **`src/ui/damage/mod.rs`**. Add `compute_paint_tick` (parallel to
-   `compute`). Does not touch `self.prev`. Returns the same
+5. **`src/ui/damage/mod.rs`**. Add `compute_paint_anim_only` (parallel
+   to `compute`). Does not touch `self.prev`. Returns the same
    `Option<Damage>` envelope.
 
 6. **`src/renderer/frontend/encoder/mod.rs`**. At each shape emit
@@ -392,22 +374,29 @@ Each phase pinned by a test before moving on. All in `lib.rs` /
 2. `paint_anim_next_wake_aligns_with_next_quantum` — wake math.
 3. `add_shape_animated_registers_in_tree_column` — record-path
    plumbing.
-4. `paint_tick_runs_when_eligible_and_only_paints_animated_rect` —
-   end-to-end via a headless `Host`: full frame then paint-tick;
-   assert no record closure invocation, assert damage region equals
-   exactly the animated rect.
-5. `paint_tick_skips_when_input_changed_hover` — eligibility gate.
-6. `paint_tick_skips_when_anim_in_flight` — `AnimMap` quiescence.
-7. `paint_tick_skips_when_user_request_repaint_pending` — wake-kind
-   tag.
-8. `paint_tick_falls_through_on_first_frame` — `prev_surface`
+4. `paint_anim_only_runs_when_tree_hash_stable` — end-to-end via a
+   headless `Host`: full frame then second frame with only `now`
+   advancing; assert cascades.run + finalize damage-diff did not
+   run (sentinel counter or trace hook), assert damage region
+   equals exactly the animated rect.
+5. `paint_anim_only_falls_through_on_hover_change` — pointer move
+   that changes hover bumps the chrome subtree hash → full path.
+6. `paint_anim_only_falls_through_when_anim_in_flight` — an
+   `AnimMap` tween changes a colour read in the record closure →
+   bumps node hash → full path.
+7. `paint_anim_only_falls_through_on_first_frame` — `prev_surface`
    `None`.
-9. `paint_tick_caret_blink_matches_record_path_pixels` — two scenes,
-   one running record every frame, one with paint-tick, assert the
-   composer output is byte-identical at each `now`.
-10. Bench: `benches/paint_tick.rs` — 200-widget steady scene with one
-    spinner at 60 Hz. Compare frame time record-path-only vs
-    record-once-then-paint-tick.
+8. `paint_anim_only_caret_blink_matches_record_path_pixels` — two
+   scenes, one running cascades + damage every frame, one with the
+   short-circuit; assert the composer output is byte-identical at
+   each `now`.
+9. Bench: `benches/paint_tick.rs` — 200-widget steady scene with one
+   spinner at 60 Hz. Compare frame time:
+   (a) full record path every frame,
+   (b) short-circuit path,
+   (c) hypothetical pre-record gate (manual flags, for reference).
+   This bench is the slice-2 gating decision: if (b) vs (a) is
+   <0.5ms savings, defer or drop slice 2.
 
 ## Risks and open questions
 
@@ -427,11 +416,9 @@ Each phase pinned by a test before moving on. All in `lib.rs` /
   a frame marker, just a thinner one. No special handling.
 
 - **Debug overlay frame_stats counter.** The "rendered N nodes" stat
-  is recorded inside the user closure today. On paint-tick the
-  closure doesn't run → the overlay would stop updating. Either
-  paint the last-recorded readout (acceptable, the underlying
-  numbers haven't changed) or fall out of paint-tick when frame_stats
-  is enabled (acceptable, it's a debug mode). Take option 1.
+  is recorded inside the user closure. On the short-circuit path the
+  closure *does* run, so the readout stays live for free. (This is
+  one of the small wins of post-record vs. pre-record gating.)
 
 - **Multi-layer popups containing animations.** `Forest` has one
   `Tree` per `Layer`. A `PaintAnim` registered in the `Popup` layer
@@ -439,12 +426,10 @@ Each phase pinned by a test before moving on. All in `lib.rs` /
   iterates layers in `Layer::PAINT_ORDER` same as the record path.
   No special handling. Tested via `paint_tick_in_popup_layer`.
 
-- **Removing a paint-anim shape.** A paint-anim disappears when the
-  caller stops calling `add_shape_animated` — i.e. on the *next*
-  record frame. Until then paint-tick keeps animating it. This is
-  the same semantics as any other shape on the tree, so no
-  surprise. The disappearance happens during a record frame, which
-  will produce its own damage diff.
+- **Removing a paint-anim shape.** With the post-record approach,
+  this is a non-issue: removing a shape changes the owner node's
+  subtree hash, bumping the tree out of hash-stable state and forcing
+  the full path on that frame. No stale animation possible.
 
 - **Snap-after-quiescence.** When the only paint-anim settles (e.g.
   caret blink stops after `BLINK_STOP_AFTER_IDLE`), `next_wake`
@@ -454,26 +439,39 @@ Each phase pinned by a test before moving on. All in `lib.rs` /
 
 ## Slicing
 
-Land in two slices to keep PRs reviewable.
+Land in two slices. Slice 1 stands on its own; slice 2 is gated on
+the bench result from slice 1.
 
-**Slice 1: `PaintAnim` on record path only.**
-Phases 1–6 from "Restructuring required" land. `Ui::frame` still
-always takes the record path; eligibility check and paint-tick
-method are stubs (return false / unreachable). Encoder applies
-paint-mods. `text_edit` caret + a `Spinner` widget migrate.
+**Slice 1: `PaintAnim` registry on the existing record path.**
+Phases 1–3, 6 from "Restructuring required" land plus widget
+migration. `Ui::frame` always takes the full path. Encoder applies
+paint-mods at each emit site. `post_record` folds `next_wake` into
+`repaint_wakes`. `text_edit` caret and a new `Spinner` widget
+migrate to `add_shape_animated`, dropping their manual phase math
+and wake scheduling.
 
 User-visible: identical to today. Internal: paint-anim registry
 exists, encoder sees it, sampling produces correct quantums, wake
-folding works, all on the record path. Tests 1–3, 9 from above
-pass.
+folding works, all on the record path. Tests 1–3 and 8 (caret-blink
+pixel parity) pass. Item 9 (bench) lands too — both axes (a) and (b)
+just measure the full record path against itself initially; the
+slice 2 axis (c) is wired but inactive.
 
-**Slice 2: paint-tick fast path.**
-Eligibility check goes live, `paint_tick` method runs, damage's
-`compute_paint_tick` lands. Tests 4–8, 10 added.
+Slice 1 delivers most of the value the doc cares about: declarative
+animation API, centralized wake folding, deletion of widget-side
+phase boilerplate.
 
-Backout: revert slice 2 alone if profiling shows the eligibility
-check itself eats more than it saves on record-path frames (it
-won't — a half-dozen bool reads — but the cleanup is trivial).
+**Slice 2: post-record short-circuit.**
+Phase 4 (the `tree_unchanged_since_last_record` predicate +
+`paint_anim_only_pass` branch in `Ui::frame`) and phase 5
+(`compute_paint_anim_only`) land. Tests 4–7 added.
+
+**Slice 2 is gated.** Run the bench from slice 1 first. If the
+short-circuit path doesn't save >0.5 ms on the 200-widget + spinner
+scene, defer or drop slice 2 — `MeasureCache` already amortizes
+measure, and the remaining cascades + finalize cost may not justify
+the added branch and snapshot bookkeeping. If the bench says ship,
+land slice 2 as a clean follow-up; backout is one revert.
 
 ## Why this fits Palantir's posture
 
