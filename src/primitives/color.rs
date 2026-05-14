@@ -266,6 +266,15 @@ impl Srgb8 {
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 0xff }
     }
+
+    /// Pack the four channels into a single `u32` as `0xRRGGBBAA`
+    /// (big-endian byte order — R in the most-significant byte). Used
+    /// by hash sites that want to write one `u32`/`u64` instead of
+    /// four `u8`s, cutting hasher dispatch and per-byte mixing.
+    #[inline]
+    pub const fn to_u32(self) -> u32 {
+        u32::from_be_bytes([self.r, self.g, self.b, self.a])
+    }
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }

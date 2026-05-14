@@ -1,6 +1,6 @@
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
-use crate::primitives::brush::Brush;
+use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
@@ -12,6 +12,78 @@ use crate::text::FontFamily;
 use glam::Vec2;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
+
+/// Frame-local handle into [`crate::forest::shapes::Shapes::gradients`].
+/// Stable only within one frame — cleared alongside the rest of the
+/// shape buffer in `Shapes::clear`.
+pub(crate) type GradientId = u32;
+
+/// Lowered fill: keeps the hot `Solid` arm inline (16 B) and pushes
+/// gradient geometry off to the per-frame `gradients` arena via an
+/// index. Replaces inline `Brush` in `ShapeRecord` so the enum stops
+/// carrying ~88 B of gradient storage on every rounded-rect.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ShapeBrush {
+    Solid(Color),
+    Gradient(GradientId),
+}
+
+/// Lowered stroke. Gradient strokes are a non-goal in slice 1 — every
+/// downstream consumer already calls `Brush::expect_solid()` — so the
+/// lowered form stores the resolved `Color` directly. Saves ~88 B on
+/// `ShapeRecord::RoundedRect` vs. carrying the user-side `Stroke {
+/// brush: Brush, width: f32 }`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ShapeStroke {
+    pub(crate) color: Color,
+    pub(crate) width: f32,
+}
+
+impl From<ShapeStroke> for Stroke {
+    #[inline]
+    fn from(s: ShapeStroke) -> Self {
+        Stroke::solid(s.color, s.width)
+    }
+}
+
+/// Gradient variant stored in the per-frame arena. Same three shapes
+/// as `Brush::{Linear,Radial,Conic}` — kept as an enum (rather than
+/// three separate arenas) so a single `GradientId` indexes any kind
+/// and downstream consumers (`pack_brush`, atlas registration) branch
+/// on the variant.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum GradientPayload {
+    Linear(LinearGradient),
+    Radial(RadialGradient),
+    Conic(ConicGradient),
+}
+
+impl GradientPayload {
+    /// Stable content hash for cache identity. Calls each gradient's
+    /// own `Hash` impl (`canon_bits` on the f32 fields), so two frames
+    /// with identical gradient authoring inputs produce the same hash
+    /// even though their `GradientId`s differ across frames.
+    pub(crate) fn content_hash(&self) -> u64 {
+        use crate::common::hash::Hasher as FxHasher;
+        let mut h = FxHasher::new();
+        match self {
+            GradientPayload::Linear(g) => {
+                h.write_u8(0);
+                g.hash(&mut h);
+            }
+            GradientPayload::Radial(g) => {
+                h.write_u8(1);
+                g.hash(&mut h);
+            }
+            GradientPayload::Conic(g) => {
+                h.write_u8(2);
+                g.hash(&mut h);
+            }
+        }
+        h.finish()
+    }
+}
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache
 /// keys (which write the discriminant into the hash) stay stable
@@ -34,8 +106,15 @@ pub(crate) enum ShapeRecord {
     RoundedRect {
         local_rect: Option<Rect>,
         radius: Corners,
-        fill: Brush,
-        stroke: Stroke,
+        fill: ShapeBrush,
+        stroke: ShapeStroke,
+        /// Pre-computed content hash of `fill` when it's a gradient,
+        /// 0 for solid. Lets `ShapeRecord::Hash` stay context-free —
+        /// otherwise we'd need to thread the `gradients` arena into
+        /// every hash call (subtree rollups, measure cache). The hash
+        /// is computed once at lowering time via
+        /// `GradientPayload::content_hash`.
+        fill_grad_hash: u64,
     } = 0,
     /// Stroked polyline. `points`/`colors` index into the active
     /// tree's `polyline_points` / `polyline_colors` arenas. `colors`
@@ -229,6 +308,7 @@ impl Hash for ShapeRecord {
                 radius,
                 fill,
                 stroke,
+                fill_grad_hash,
             } => {
                 match local_rect {
                     None => h.write_u8(0),
@@ -238,8 +318,19 @@ impl Hash for ShapeRecord {
                     }
                 }
                 radius.hash(h);
-                fill.hash(h);
-                stroke.hash(h);
+                match fill {
+                    ShapeBrush::Solid(c) => {
+                        h.write_u8(0);
+                        c.hash(h);
+                    }
+                    ShapeBrush::Gradient(_) => {
+                        h.write_u8(1);
+                        h.write_u64(*fill_grad_hash);
+                    }
+                }
+                // Pod-byte hash: one `write()` call for `(color, width)` —
+                // 20 bytes in, single hasher dispatch.
+                h.write(bytemuck::bytes_of(stroke));
             }
             ShapeRecord::Polyline { content_hash, .. } => {
                 // `content_hash` already covers width + color_mode +

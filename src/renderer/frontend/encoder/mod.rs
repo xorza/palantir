@@ -1,8 +1,11 @@
 use super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
-use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
+use crate::forest::shapes::record::{
+    GradientPayload, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
+};
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::primitives::brush::Brush;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
@@ -21,6 +24,25 @@ use crate::ui::damage::region::DamageRegion;
 /// damage-rect overlay. Painted unclipped at the end of `encode`,
 /// after every layer's regular paint.
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
+
+/// Materialize a `ShapeBrush` back into a `Brush` value for the
+/// cmd-buffer side, which keeps the user-side enum on its
+/// `draw_rect` API. `Solid` is a direct copy; `Gradient` reads the
+/// per-frame arena and copies the inline gradient struct out (cheap —
+/// `LinearGradient` etc. are `Copy`). Only invoked from the encoder
+/// per emitted rounded-rect, so the round-trip happens once per
+/// painted shape, not per-frame-per-node.
+fn resolve_brush(gradients: &[GradientPayload], brush: ShapeBrush) -> Brush {
+    //todo optimize memory bandwidth
+    match brush {
+        ShapeBrush::Solid(c) => Brush::Solid(c),
+        ShapeBrush::Gradient(id) => match gradients[id as usize] {
+            GradientPayload::Linear(g) => Brush::Linear(g),
+            GradientPayload::Radial(g) => Brush::Radial(g),
+            GradientPayload::Conic(g) => Brush::Conic(g),
+        },
+    }
+}
 
 /// Walk the tree pre-order and emit logical-px paint commands. No GPU
 /// work, no scale/snap math — that lives in the backend's process
@@ -119,6 +141,7 @@ fn emit_one_shape(
             radius,
             fill,
             stroke,
+            ..
         } => {
             let r = match local_rect {
                 None => owner_rect,
@@ -127,7 +150,8 @@ fn emit_one_shape(
                     size: lr.size,
                 },
             };
-            out.draw_rect(r, *radius, fill, *stroke);
+            let fill_brush = resolve_brush(&tree.shapes.gradients, *fill);
+            out.draw_rect(r, *radius, &fill_brush, (*stroke).into());
         }
         ShapeRecord::Text {
             local_origin,

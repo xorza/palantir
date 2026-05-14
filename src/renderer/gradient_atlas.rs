@@ -26,7 +26,6 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, Srgb8, linear_to_oklab, oklab_to_linear};
-use crate::primitives::num::canon_bits;
 use std::cell::Cell;
 use std::hash::Hasher;
 
@@ -67,8 +66,8 @@ pub(crate) const LUT_ROW_BYTES: usize = LUT_ROW_TEXELS * 4;
 /// `out` is a `&mut [u8; LUT_ROW_BYTES]`, written in place; the buffer
 /// is fully overwritten, no read-before-write.
 ///
-/// Edge clamp: `t < first_stop.offset` paints `first_stop.color`;
-/// `t > last_stop.offset` paints `last_stop.color`. Spread modes
+/// Edge clamp: `t < first_stop.offset()` paints `first_stop.color`;
+/// `t > last_stop.offset()` paints `last_stop.color`. Spread modes
 /// (`Pad`/`Repeat`/`Reflect`) are applied **shader-side** on the
 /// sampling `t` coordinate, not at bake time — one row serves all
 /// spread modes for the same gradient.
@@ -90,7 +89,7 @@ pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_
     sorted[..n].copy_from_slice(stops);
     for i in 1..n {
         let mut j = i;
-        while j > 0 && sorted[j - 1].offset > sorted[j].offset {
+        while j > 0 && sorted[j - 1].offset() > sorted[j].offset() {
             sorted.swap(j - 1, j);
             j -= 1;
         }
@@ -118,28 +117,28 @@ fn lerp_at(stops: &[Stop], first: Srgb8, last: Srgb8, t: f32, interp: Interp) ->
     // colour. Spread mode handles "outside the geometry"; this only
     // handles "outside the stop offsets", i.e. when the leftmost stop
     // is at 0.2 and the rightmost at 0.8.
-    if t <= stops[0].offset {
+    if t <= stops[0].offset() {
         return first;
     }
-    if t >= stops[stops.len() - 1].offset {
+    if t >= stops[stops.len() - 1].offset() {
         return last;
     }
-    // Find the bracketing pair (a, b) where a.offset <= t <= b.offset.
+    // Find the bracketing pair (a, b) where a.offset() <= t <= b.offset().
     // Linear scan — N ≤ 8, dominant cost is the actual lerp math.
     let mut i = 1;
-    while i < stops.len() && stops[i].offset < t {
+    while i < stops.len() && stops[i].offset() < t {
         i += 1;
     }
     let a = stops[i - 1];
     let b = stops[i];
-    let denom = b.offset - a.offset;
+    let denom = b.offset() - a.offset();
     // Equal-offset hard transition: pick the right-hand stop (we're
-    // past the boundary because the early `t <= stops[0].offset`
-    // guard already handled `t == a.offset` for the leftmost stop).
+    // past the boundary because the early `t <= stops[0].offset()`
+    // guard already handled `t == a.offset()` for the leftmost stop).
     let u = if denom.abs() <= f32::EPSILON {
         return b.color;
     } else {
-        (t - a.offset) / denom
+        (t - a.offset()) / denom
     };
 
     match interp {
@@ -370,14 +369,13 @@ impl GradientCpuAtlas {
 #[inline]
 fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
     let mut h = FxHasher::new();
-    h.write_u8(interp as u8);
-    h.write_u8(stops.len() as u8);
+    h.write_u16(((interp as u16) << 8) | (stops.len() as u16));
     for s in stops {
-        h.write_u32(canon_bits(s.offset));
-        h.write_u8(s.color.r);
-        h.write_u8(s.color.g);
-        h.write_u8(s.color.b);
-        h.write_u8(s.color.a);
+        // Pack `(color_u32, offset_u8)` into one u64 — one hasher
+        // write per stop instead of five. `offset` is already u8
+        // quantized; no `canon_bits` needed (no NaN / -0 to canonicalise).
+        let packed = ((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64);
+        h.write_u64(packed);
     }
     h.finish()
 }

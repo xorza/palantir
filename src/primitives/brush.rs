@@ -39,28 +39,38 @@ impl FillAxis {
     };
 }
 
-/// One colour stop in a gradient. `offset` is in 0..1 along the
-/// gradient's parametric axis; out-of-range stops clamp at LUT bake.
-/// `color` is stored as 8-bit sRGB (`Srgb8`) — gradient stops are
-/// storage-only, never animated (snap on morph), and feed into a
-/// u8 LUT bake, so 8-bit precision is sufficient and the 4× footprint
-/// win matters when 8 stops × N gradients live in `Background.fill`.
+/// One colour stop in a gradient. `offset_u8` is the 0..1 parametric
+/// position quantized to 8 bits (256 levels — finer than the LUT it
+/// bakes into). `color` is 8-bit sRGB. Total 5 B / stop, align 1, so
+/// `ArrayVec<[Stop; 8]>` is 40 B inline vs. 64 B with f32 offsets.
+/// Stops are storage-only (never animated; snap on morph), feed a u8
+/// LUT, and out-of-range positions clamp at construction — 8-bit
+/// precision is sufficient and saves ~24 B per gradient.
 #[derive(Copy, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stop {
-    pub offset: f32,
+    pub offset_u8: u8,
     pub color: Srgb8,
 }
 
 impl Stop {
-    /// Construct a stop. `offset` is clamped to 0..=1; out-of-range
-    /// values clamp at construction rather than at bake time so the
-    /// stored value matches what authors expect to round-trip.
+    /// Construct a stop. `offset` is clamped to 0..=1 and quantized to
+    /// u8 (round-to-nearest); out-of-range values clamp at construction
+    /// rather than at bake time so the stored value matches what
+    /// authors expect to round-trip.
     #[inline]
     pub fn new(offset: f32, color: impl Into<Srgb8>) -> Self {
+        let q = (offset.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         Self {
-            offset: offset.clamp(0.0, 1.0),
+            offset_u8: q,
             color: color.into(),
         }
+    }
+
+    /// Decode the stored quantized position back to a 0..1 f32 for
+    /// consumers (atlas bake, axis calc) that interpolate in float.
+    #[inline]
+    pub fn offset(self) -> f32 {
+        self.offset_u8 as f32 / 255.0
     }
 }
 
@@ -122,13 +132,17 @@ impl std::hash::Hash for LinearGradient {
     /// buffer dedup; the atlas hashes `(stops, interp)` separately
     /// (variant-agnostic) in `gradient_atlas::hash_stops`.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u32(canon_bits(self.angle));
-        state.write_u8(self.spread as u8);
-        state.write_u8(self.interp as u8);
-        state.write_u8(self.stops.len() as u8);
+        // Pack `(angle, spread, interp, len)` into one u64 — angle's
+        // canonical bits go in the high lane, the three u8 tags
+        // (spread/interp/len, total 24 bits) ride in the low lane.
+        state.write_u64(
+            ((canon_bits(self.angle) as u64) << 32)
+                | ((self.spread as u64) << 16)
+                | ((self.interp as u64) << 8)
+                | (self.stops.len() as u64),
+        );
         for s in self.stops.iter() {
-            state.write_u32(canon_bits(s.offset));
-            s.color.hash(state);
+            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
         }
     }
 }
@@ -219,16 +233,17 @@ pub struct RadialGradient {
 
 impl std::hash::Hash for RadialGradient {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u32(canon_bits(self.center.x));
-        state.write_u32(canon_bits(self.center.y));
-        state.write_u32(canon_bits(self.radius.x));
-        state.write_u32(canon_bits(self.radius.y));
-        state.write_u8(self.spread as u8);
-        state.write_u8(self.interp as u8);
-        state.write_u8(self.stops.len() as u8);
+        state.write_u64(
+            ((canon_bits(self.center.x) as u64) << 32) | (canon_bits(self.center.y) as u64),
+        );
+        state.write_u64(
+            ((canon_bits(self.radius.x) as u64) << 32) | (canon_bits(self.radius.y) as u64),
+        );
+        state.write_u64(
+            ((self.spread as u64) << 16) | ((self.interp as u64) << 8) | (self.stops.len() as u64),
+        );
         for s in self.stops.iter() {
-            state.write_u32(canon_bits(s.offset));
-            s.color.hash(state);
+            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
         }
     }
 }
@@ -307,15 +322,20 @@ pub struct ConicGradient {
 
 impl std::hash::Hash for ConicGradient {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u32(canon_bits(self.center.x));
-        state.write_u32(canon_bits(self.center.y));
-        state.write_u32(canon_bits(self.start_angle));
-        state.write_u8(self.spread as u8);
-        state.write_u8(self.interp as u8);
-        state.write_u8(self.stops.len() as u8);
+        state.write_u64(
+            ((canon_bits(self.center.x) as u64) << 32) | (canon_bits(self.center.y) as u64),
+        );
+        // Pack `(start_angle, spread, interp, len)` into one u64 like
+        // `LinearGradient` — the f32 sits in the high lane, three u8
+        // tags in the low lane.
+        state.write_u64(
+            ((canon_bits(self.start_angle) as u64) << 32)
+                | ((self.spread as u64) << 16)
+                | ((self.interp as u64) << 8)
+                | (self.stops.len() as u64),
+        );
         for s in self.stops.iter() {
-            state.write_u32(canon_bits(s.offset));
-            s.color.hash(state);
+            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
         }
     }
 }
@@ -611,20 +631,19 @@ mod tests {
     /// codebase. The exact number below is a function of `MAX_STOPS = 8`
     /// + `repr(C)` field layout; recompute when those change.
     #[test]
-    fn linear_gradient_size_is_76_bytes() {
-        // 4 (angle) + 68 (ArrayVec<[Stop; 8]>: 8 × Stop + len) +
-        // 1 (spread) + 1 (interp) + 2 (tail-pad to 4-byte alignment).
-        // Each Stop is 8 B (4 offset + 4 Srgb8). Recompute if MAX_STOPS
-        // or Stop layout changes.
-        assert_eq!(std::mem::size_of::<LinearGradient>(), 76);
+    fn linear_gradient_size_is_compact() {
+        // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 Srgb8)
+        // + 1 (spread) + 1 (interp) + tail-pad. Recompute if MAX_STOPS or
+        // Stop layout changes. Pinned to catch unintended layout drift.
+        assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
     }
 
     #[test]
     fn linear_two_stop_authoring() {
         let g = LinearGradient::two_stop(0.0, Color::hex(0x1a1a2e), Color::hex(0x16213e));
         assert_eq!(g.stops.len(), 2);
-        assert_eq!(g.stops[0].offset, 0.0);
-        assert_eq!(g.stops[1].offset, 1.0);
+        assert_eq!(g.stops[0].offset(), 0.0);
+        assert_eq!(g.stops[1].offset(), 1.0);
         assert_eq!(g.spread, Spread::Pad);
         assert_eq!(g.interp, Interp::Oklab);
         assert!(!g.is_noop());
@@ -639,7 +658,8 @@ mod tests {
             Color::hex(0xffffff),
         );
         assert_eq!(g.stops.len(), 3);
-        assert_eq!(g.stops[1].offset, 0.5);
+        // 0.5 round-trips through u8 quantization (0.5 * 255 + 0.5 → 128 → 128/255 ≈ 0.5019).
+        assert!((g.stops[1].offset() - 0.5).abs() < 1.0 / 255.0);
     }
 
     #[test]
