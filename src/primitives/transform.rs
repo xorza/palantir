@@ -21,6 +21,27 @@ impl TranslateScale {
         scale: 1.0,
     };
 
+    /// True when this transform won't visibly move/scale descendants.
+    /// Two-stage check:
+    /// - Fast path: 12-byte equality with `IDENTITY` — a single
+    ///   `memcmp` on the `#[repr(C)] Pod` layout, faster than three
+    ///   f32 `feq` instructions.
+    /// - Approx fallback (only when the fast path misses): treats
+    ///   sub-`EPS` numerical drift as identity. Catches transforms
+    ///   that animation/lerping produced bit-different from
+    ///   `IDENTITY` but visually indistinguishable.
+    #[inline]
+    pub fn is_noop(&self) -> bool {
+        let s: [u32; 3] = bytemuck::cast(*self);
+        let id: [u32; 3] = bytemuck::cast(Self::IDENTITY);
+        if s == id {
+            return true;
+        }
+        crate::primitives::approx::approx_zero(self.translation.x)
+            && crate::primitives::approx::approx_zero(self.translation.y)
+            && crate::primitives::approx::approx_zero(self.scale - 1.0)
+    }
+
     pub const fn new(translation: Vec2, scale: f32) -> Self {
         Self { translation, scale }
     }
