@@ -486,10 +486,7 @@ impl LayoutEngine {
             _ => (available.h - m_vert).max(0.0),
         }
         .clamp(bounds.min.h, bounds.max.h);
-        let inner_avail = Size::new(
-            (outer_w - p_horiz).max(0.0),
-            (outer_h - p_vert).max(0.0),
-        );
+        let inner_avail = Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0));
 
         match style.mode {
             LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text, out),

@@ -1,5 +1,5 @@
 //! Per-layer arena tree: SoA `records` column, sparse side tables
-//! (`bounds`/`panel`/`chrome`/`clip_radius`), flat shape buffer,
+//! (`bounds`/`panel`/`chrome`), flat shape buffer,
 //! and the subtree-rollup hashes used by cross-frame caches.
 //!
 //! ## Noop policy
@@ -35,7 +35,6 @@ use crate::forest::visibility::Visibility;
 use crate::layout::types::grid_cell::GridCell;
 use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
 use crate::primitives::size::Size;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
@@ -225,7 +224,6 @@ pub(crate) struct ExtrasIdx {
     pub(crate) bounds: Slot,
     pub(crate) panel: Slot,
     pub(crate) chrome: Slot,
-    pub(crate) clip_radius: Slot,
 }
 
 #[derive(Default)]
@@ -240,13 +238,13 @@ pub(crate) struct Tree {
     pub(crate) extras_idx: Vec<ExtrasIdx>,
     pub(crate) bounds_table: Vec<BoundsExtras>,
     pub(crate) panel_table: Vec<PanelExtras>,
+    /// One row per node with chrome OR with `ClipMode::Rounded` —
+    /// the rounded-clip case keeps a row even when the paint itself
+    /// is fully no-op (`Background::is_noop`), so the encoder can
+    /// read `bg.radius` for the stencil-mask path without a separate
+    /// clip-radius column. Per-emit gates in `cmd_buffer::draw_*`
+    /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<Background>,
-    /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`.
-    /// Decoupled from `chrome` so that a node with rounded clip but
-    /// invisible paint (or no paint at all) still has a radius for the
-    /// encoder's stencil-mask path. Set in `open_node` from the
-    /// element's clip mode; absent for `ClipMode::None` / `Rect`.
-    pub(crate) clip_radius_table: Vec<Corners>,
 
     /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
     /// at `open_node` from `open_frames.last()`; lets any post-recording
@@ -314,7 +312,6 @@ impl Tree {
         self.bounds_table.clear();
         self.panel_table.clear();
         self.chrome_table.clear();
-        self.clip_radius_table.clear();
         self.parents.clear();
         self.shapes.clear();
         self.grid.clear();
@@ -351,7 +348,6 @@ impl Tree {
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
         let chrome_tab = self.chrome_table.as_slice();
-        let clip_tab = self.clip_radius_table.as_slice();
         let grid_defs = &self.grid.defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
@@ -372,8 +368,6 @@ impl Tree {
             }
             let chrome = ex.chrome.get().map(|s| &chrome_tab[s]);
             chrome.hash(&mut h);
-            let clip = ex.clip_radius.get().map(|s| &clip_tab[s]);
-            clip.hash(&mut h);
 
             // Walk this node's direct shapes + immediate-child position
             // markers in record order.
@@ -469,22 +463,21 @@ impl Tree {
         self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
     }
 
-    /// Chrome variant of [`Self::open_node`]. Pushes `chrome` (and the
-    /// rounded-clip mask radius, if applicable) into the dense
-    /// `chrome_table` / `clip_radius_table`. Split from the no-chrome
-    /// path so neither call site carries the 232-byte
-    /// `Option<Background>` parameter, and so the `ClipMode::Rounded`
-    /// downgrade can be skipped statically when no radius is present.
+    /// Chrome variant of [`Self::open_node`]. Pushes the `Background`
+    /// row into `chrome_table`. Split from the no-chrome path so neither
+    /// call site carries the 232-byte `Option<Background>` parameter,
+    /// and so the `ClipMode::Rounded` zero-radius downgrade can be
+    /// skipped statically when no radius is present.
     pub(crate) fn open_node_with_chrome(&mut self, mut element: Element, bg: Background) -> NodeId {
         // Tree-storage noop gate for chrome — mirrors `Shapes::add` for
         // the shape buffer and `cmd_buffer::draw_*` for emits. Whole-
         // `Background::is_noop` drops the entry so chrome iteration /
         // hashing skips it. Partial-noop chrome (e.g. shadow-only)
         // survives here and is dropped per-emit by the cmd buffer's
-        // gates. `clip_radius` extracts `bg.radius` whenever this node
-        // has `ClipMode::Rounded`, regardless of whether the paint is
-        // invisible — the encoder needs the radius for the stencil
-        // mask even when nothing paints.
+        // gates. When `ClipMode::Rounded`, the chrome row is also
+        // kept past `Background::is_noop` so the encoder can read
+        // `bg.radius` for the stencil-mask path — that's the only
+        // time a noop chrome ever survives storage.
         if matches!(element.clip, ClipMode::Rounded) && bg.radius.approx_zero() {
             element.clip = ClipMode::Rect;
         }
@@ -501,11 +494,8 @@ impl Tree {
             ex.panel = Slot::from_len(self.panel_table.len());
             self.panel_table.push(cols.panel);
         }
-        if matches!(cols.attrs.clip_mode(), ClipMode::Rounded) {
-            ex.clip_radius = Slot::from_len(self.clip_radius_table.len());
-            self.clip_radius_table.push(bg.radius);
-        }
-        if !bg.is_noop() {
+        let needs_chrome_row = !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
+        if needs_chrome_row {
             ex.chrome = Slot::from_len(self.chrome_table.len());
             self.chrome_table.push(bg);
         }
@@ -735,26 +725,17 @@ impl Tree {
             .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s])
     }
 
-    /// Chrome paint for `id`, or `None` if absent or fully no-op
-    /// (`Background::is_noop`). The encoder reads this; rounded-clip
-    /// stencil masks read [`Self::clip_radius`] separately because
-    /// they survive `Background::is_noop` filtering.
+    /// Chrome paint for `id`. Present whenever the node has visible
+    /// paint OR `ClipMode::Rounded` (the latter keeps a row even on
+    /// `Background::is_noop` so the encoder can read `bg.radius` for
+    /// the stencil-mask path). Per-emit `is_noop` gates in
+    /// `cmd_buffer::draw_*` drop the no-paint slices; the radius
+    /// always survives.
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&Background> {
         self.extras_idx[id.index()]
             .chrome
             .get()
             .map(|s| &self.chrome_table[s])
-    }
-
-    /// Mask radius for nodes whose `clip` is `ClipMode::Rounded`. Set
-    /// independently of the chrome filter so the encoder gets a radius
-    /// for the stencil-mask path even when the node's paint is fully
-    /// no-op.
-    pub(crate) fn clip_radius(&self, id: NodeId) -> Option<&Corners> {
-        self.extras_idx[id.index()]
-            .clip_radius
-            .get()
-            .map(|s| &self.clip_radius_table[s])
     }
 }
 
