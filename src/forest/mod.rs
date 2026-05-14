@@ -113,7 +113,7 @@ impl Forest {
         let node = self.trees[layer as usize].peek_next_id();
         let outcome = self.ids.record(&mut element, layer, node);
         let opened = self.trees[layer as usize].open_node(element);
-        assert_eq!(opened, node, "Tree::peek_next_id contract violated");
+        debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
             tracing::error!(
                 first_layer = ?first.0,
