@@ -263,7 +263,7 @@ fn encode_node(
     id: NodeId,
     out: &mut RenderCmdBuffer,
 ) {
-    if rows[id.index()].invisible {
+    if rows[id.index()].cascade_input.invisible() {
         return;
     }
 

@@ -7,7 +7,9 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&Cascades` as their single frozen-state handle.
 
+use crate::common::hash::Hasher;
 use crate::forest::Forest;
+use crate::forest::rollups::CascadeInputHash;
 use crate::forest::shapes::record::shadow_paint_rect_local;
 use crate::forest::tree::{Layer, NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
@@ -17,15 +19,20 @@ use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use std::array;
+use std::hash::Hasher as _;
 use strum::EnumCount as _;
 
-/// Resolved cascade row for one node: the transform/clip/invisible state
-/// the node consumes for its own paint and hit-test, with ancestor state
-/// already folded in.
+/// Per-node cascade row: what the encoder and damage diff need to
+/// know about node `i` after ancestor state has been folded in.
+/// Ancestor `transform` and `clip` themselves never leave `run_tree`
+/// — they live on its stack `Frame` and are baked into `paint_rect`
+/// before publishing.
+///
+/// Packed to 24 bytes (16 for `paint_rect`, 8 for the
+/// fingerprint-and-`invisible` u64). The encoder reads `invisible`
+/// via `cascade_input.invisible()`; damage compares the full u64.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Cascade {
-    pub(crate) transform: TranslateScale,
-    pub(crate) clip: Option<Rect>,
     /// Layout rect transformed into screen space, inflated by every
     /// shape's owner-local
     /// [`Overhang`](crate::forest::shapes::record::Overhang) (drop
@@ -37,7 +44,12 @@ pub(crate) struct Cascade {
     /// its own `HitEntry.rect` (the un-inflated visible rect) —
     /// shadows aren't clickable.
     pub(crate) paint_rect: Rect,
-    pub(crate) invisible: bool,
+    /// Fingerprint of the ancestor state + own arranged rect that
+    /// flowed into this row, packed with the cascade-resolved
+    /// `invisible` bit in the high position. Paired with
+    /// `Tree.rollups.subtree[i]` to drive damage's subtree-skip fast
+    /// path; read by the encoder via `cascade_input.invisible()`.
+    pub(crate) cascade_input: CascadeInputHash,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -230,21 +242,26 @@ fn run_tree(
         let visible_rect = clip_to(screen_rect, parent_clip);
         let paint_rect = compute_paint_rect(tree, id, layout_rect, parent_transform, parent_clip);
         let row = Cascade {
-            transform: parent_transform,
-            clip: parent_clip,
             paint_rect,
-            invisible,
+            cascade_input: hash_cascade_input(
+                parent_transform,
+                parent_clip,
+                parent_dis,
+                parent_inv,
+                layout_rect,
+                invisible,
+            ),
         };
 
         let node_transform = tree.bounds(id).transform;
         let desc_transform = match node_transform {
-            Some(t) => row.transform.compose(t),
-            None => row.transform,
+            Some(t) => parent_transform.compose(t),
+            None => parent_transform,
         };
         let desc_clip = if attrs.clip_mode().is_clip() {
-            Some(clip_to(screen_rect, row.clip))
+            Some(clip_to(screen_rect, parent_clip))
         } else {
-            row.clip
+            parent_clip
         };
         let cascaded_off = disabled || invisible;
         let sense = if cascaded_off {
@@ -272,6 +289,35 @@ fn run_tree(
             subtree_end: ends[i],
         });
     }
+}
+
+/// Hash everything that flows top-down into node `i`'s cascade row and
+/// its arranged rect. If this matches prev *and* `subtree_hash[i]`
+/// matches prev, every descendant's `(paint_rect, node_hash)` is
+/// bit-identical to last frame by induction — damage can jump to
+/// `subtree_end[i]` without diffing per node.
+#[inline]
+fn hash_cascade_input(
+    parent_transform: TranslateScale,
+    parent_clip: Option<Rect>,
+    parent_dis: bool,
+    parent_inv: bool,
+    layout_rect: Rect,
+    invisible: bool,
+) -> CascadeInputHash {
+    let mut h = Hasher::new();
+    h.pod(&parent_transform);
+    match parent_clip {
+        Some(c) => {
+            h.write_u8(1);
+            h.pod(&c);
+        }
+        None => h.write_u8(0),
+    }
+    h.write_u8(u8::from(parent_dis));
+    h.write_u8(u8::from(parent_inv));
+    h.pod(&layout_rect);
+    CascadeInputHash::pack(h.finish(), invisible)
 }
 
 #[inline]
