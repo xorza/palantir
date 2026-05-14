@@ -135,17 +135,11 @@ pub(crate) struct ShadowGeom {
 
 impl LoweredShadow {
     /// True when no pixels would paint — same gate as `Shadow::is_noop`,
-    /// keyed on the alpha lane's f16 bit pattern: mask the sign bit,
-    /// compare against `EPS` as f16 bits. Same trick as
-    /// `Corners::approx_zero` — no f16→f32 conversion, branch-free.
-    /// Correct for ±0, subnormals, and the sub-EPS range. NaN's
-    /// exponent bits sit far above the threshold so it classifies as
-    /// "paints" (consistent with `Corners::approx_zero`'s NaN handling).
+    /// keyed on the alpha lane via `approx::noop_f16_bits` (shared
+    /// bit-trick — see that fn for the IEEE 754 rationale).
     #[inline]
     pub(crate) fn is_noop(self) -> bool {
-        const EPS_BITS: u16 = half::f16::from_f32_const(crate::primitives::approx::EPS).to_bits();
-        const ABS_MASK: u16 = 0x7FFF;
-        (self.color.0[3] & ABS_MASK) <= EPS_BITS
+        crate::primitives::approx::noop_f16_bits(self.color.0[3])
     }
 
     /// Unpack the four f16 geom lanes at once via the batched slice

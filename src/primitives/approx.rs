@@ -29,6 +29,21 @@ pub const fn noop_f32(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 
+/// True if an f16 stored as `u16` bits is `≤ EPS` in absolute value.
+/// Branch-free bit-pattern check — masks the sign bit and compares
+/// directly against `EPS` as f16 bits, with no f16→f32 conversion.
+/// Works because positive f16 values are monotonic in their bit
+/// representation (IEEE 754 design). NaN's exponent bits land at
+/// `0x7C00`+, well above the threshold, so NaN classifies as
+/// non-zero — matches `Corners::approx_zero` semantics and treats
+/// NaN as a loud programming bug rather than a silent skip.
+#[inline]
+pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
+    const EPS_BITS: u16 = half::f16::from_f32_const(EPS).to_bits();
+    const ABS_MASK: u16 = 0x7FFF;
+    (bits & ABS_MASK) <= EPS_BITS
+}
+
 /// True if two 2D points are within `EPS` of each other (Euclidean
 /// distance). Compares squared distance against `EPS²` to avoid a
 /// `sqrt`. Use when two points should be treated as coincident
