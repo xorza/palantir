@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Color, Configure, Display, Frame, Host, Justify, Panel, Sizing, Text, TextStyle,
+    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle,
     Ui,
 };
 use pollster::FutureExt;
@@ -188,11 +188,9 @@ fn main() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let display = Display::from_physical(PHYSICAL, SCALE);
-
     let run = |host: &mut Host| {
         host.ui.theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, display, &mut (), build_ui);
+        host.frame_offscreen(&target, SCALE, &mut (), build_ui);
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
