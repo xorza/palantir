@@ -280,7 +280,7 @@ impl MenuItem {
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
         element.padding = padding;
-        element.gap = 16.0;
+        element.gaps.set_gap(16.0);
 
         let label = self.label;
         let shortcut = self.shortcut;

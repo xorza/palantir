@@ -42,7 +42,7 @@ pub(crate) fn measure(
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
-    let gap = tree.panel(node).gap;
+    let gap = tree.panel(node).gaps.gap();
     let cross_avail = axis.cross(inner);
 
     // Pass 1: measure non-Fill children at `INF` main with the stack's
@@ -211,7 +211,7 @@ pub(crate) fn arrange(
     out: &mut Layout,
 ) {
     let panel = tree.panel(node);
-    let (gap, justify, parent_child_align) = (panel.gap, panel.justify, panel.child_align);
+    let (gap, justify, parent_child_align) = (panel.gaps.gap(), panel.justify, panel.child_align);
 
     // Sum desired along main axis for ALL children. Measure has
     // already done the floor-aware Fill distribution; each child's
@@ -289,7 +289,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     text: &TextShaper,
 ) -> f32 {
-    let gap = tree.panel(node).gap;
+    let gap = tree.panel(node).gaps.gap();
     if main_axis == query_axis {
         let mut total = 0.0_f32;
         let mut count = 0_usize;
