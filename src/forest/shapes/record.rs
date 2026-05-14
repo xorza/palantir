@@ -22,7 +22,7 @@ pub(crate) type GradientId = u32;
 /// gradient geometry off to the per-frame `gradients` arena via an
 /// index. Replaces inline `Brush` in `ShapeRecord` so the enum stops
 /// carrying ~88 B of gradient storage on every rounded-rect.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Hash)]
 pub(crate) enum ShapeBrush {
     Solid(Color),
     Gradient(GradientId),
@@ -44,6 +44,45 @@ impl From<ShapeStroke> for Stroke {
     #[inline]
     fn from(s: ShapeStroke) -> Self {
         Stroke::solid(s.color, s.width)
+    }
+}
+
+/// Lowered chrome row stored in `Tree.chrome_table`. The user-facing
+/// `Background` is ~232 B (inline `Brush` + `Stroke` with inline
+/// `Brush`); this row keeps the same fields in their lowered forms,
+/// shrinking the per-chrome footprint to ~96 B. Same lifecycle as
+/// shape records — written at `open_node_with_chrome`, cleared per
+/// frame. Gradient handle indexes into the same `Shapes.gradients`
+/// arena `ShapeBrush::Gradient` uses, so chrome and shape paints
+/// share storage.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ChromeRow {
+    pub(crate) fill: ShapeBrush,
+    pub(crate) stroke: ShapeStroke,
+    pub(crate) radius: Corners,
+    pub(crate) shadow: Shadow,
+    /// Pre-computed content hash for `fill` when it's a gradient, 0
+    /// for solid — same context-free-Hash trick as
+    /// `ShapeRecord::RoundedRect.fill_grad_hash`. Lets
+    /// `ChromeRow::Hash` work without threading the gradient arena.
+    pub(crate) fill_grad_hash: u64,
+}
+
+impl Hash for ChromeRow {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        match self.fill {
+            ShapeBrush::Solid(c) => {
+                h.write_u8(0);
+                c.hash(h);
+            }
+            ShapeBrush::Gradient(_) => {
+                h.write_u8(1);
+                h.write_u64(self.fill_grad_hash);
+            }
+        }
+        h.write(bytemuck::bytes_of(&self.stroke));
+        self.radius.hash(h);
+        self.shadow.hash(h);
     }
 }
 

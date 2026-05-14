@@ -23,4 +23,10 @@ pub spread: Spread,
 pub interp: Interp,
 }
 
-lower chrome bg brush
+pub struct Shadow {
+pub color: Color,
+pub offset: Vec2,
+pub blur: f32,
+pub spread: f32, #[animate(snap)]
+pub inset: bool,
+}

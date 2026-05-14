@@ -85,7 +85,7 @@ mod hot_struct_sizes {
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::forest::node::NodeRecord;
     use crate::forest::rollups::{CascadeInputHash, NodeHash};
-    use crate::forest::shapes::record::ShapeRecord;
+    use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
     use crate::forest::tree::ExtrasIdx;
     use crate::layout::ShapedText;
     use crate::layout::types::span::Span;
@@ -112,6 +112,7 @@ mod hot_struct_sizes {
             row::<BoundsExtras>("forest::BoundsExtras"),
             row::<PanelExtras>("forest::PanelExtras"),
             row::<ShapeRecord>("forest::ShapeRecord"),
+            row::<ChromeRow>("forest::ChromeRow"),
             row::<Span>("layout::Span"),
             row::<ShapedText>("layout::ShapedText"),
             row::<NodeHash>("rollups::NodeHash"),
