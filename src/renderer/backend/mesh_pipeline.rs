@@ -1,10 +1,11 @@
 //! GPU side of user-supplied colored triangle meshes. Mirrors
 //! [`super::quad_pipeline::QuadPipeline`] but draws indexed
-//! triangle lists with per-vertex pos+color instead of per-instance
-//! quads. Tint is folded into vertex colors at compose time, so this
-//! pipeline carries no per-draw uniform beyond the shared viewport.
+//! triangle lists with per-vertex pos+color and per-instance
+//! transform+tint. The vertex stream is content-stable across frames;
+//! per-draw state lives in a parallel instance buffer.
 
 use crate::primitives::mesh::MeshVertex;
+use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
     pipeline: wgpu::RenderPipeline,
@@ -13,6 +14,8 @@ pub(crate) struct MeshPipeline {
     vertex_capacity: usize,
     index_buffer: wgpu::Buffer,
     index_capacity: usize,
+    instance_buffer: wgpu::Buffer,
+    instance_capacity: usize,
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -59,8 +62,6 @@ impl MeshPipeline {
             immediate_size: 0,
         });
 
-        let vertex_layout = mesh_vertex_layout();
-
         let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("palantir.mesh.pipeline"),
             layout: Some(&pipeline_layout),
@@ -68,7 +69,7 @@ impl MeshPipeline {
                 module: &shader,
                 entry_point: Some("vs"),
                 compilation_options: Default::default(),
-                buffers: &[vertex_layout],
+                buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -104,6 +105,13 @@ impl MeshPipeline {
             usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
+        let instance_capacity = 64;
+        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("palantir.mesh.instances"),
+            size: (instance_capacity * std::mem::size_of::<MeshInstance>()) as u64,
+            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
 
         Self {
             pipeline,
@@ -112,6 +120,8 @@ impl MeshPipeline {
             vertex_capacity,
             index_buffer,
             index_capacity,
+            instance_buffer,
+            instance_capacity,
             stencil_test: None,
             shader,
             color_format: format,
@@ -137,7 +147,7 @@ impl MeshPipeline {
                 module: &self.shader,
                 entry_point: Some("vs"),
                 compilation_options: Default::default(),
-                buffers: &[mesh_vertex_layout()],
+                buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
             },
             fragment: Some(wgpu::FragmentState {
                 module: &self.shader,
@@ -168,10 +178,22 @@ impl MeshPipeline {
         queue: &wgpu::Queue,
         vertices: &[MeshVertex],
         indices: &[u16],
+        instances: &[MeshInstance],
     ) {
-        if vertices.is_empty() || indices.is_empty() {
+        if vertices.is_empty() || indices.is_empty() || instances.is_empty() {
             return;
         }
+
+        if instances.len() > self.instance_capacity {
+            self.instance_capacity = instances.len().next_power_of_two().max(16);
+            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("palantir.mesh.instances"),
+                size: (self.instance_capacity * std::mem::size_of::<MeshInstance>()) as u64,
+                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            });
+        }
+        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
 
         if vertices.len() > self.vertex_capacity {
             self.vertex_capacity = vertices.len().next_power_of_two().max(64);
@@ -228,20 +250,24 @@ impl MeshPipeline {
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
         pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
     }
 
     /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::MeshDraw).
+    /// `instance` indexes into the per-frame instance buffer for the
+    /// matching transform + tint.
     pub(crate) fn draw(
         &self,
         pass: &mut wgpu::RenderPass<'_>,
         index_range: std::ops::Range<u32>,
         base_vertex: i32,
+        instance: u32,
     ) {
         if index_range.start == index_range.end {
             return;
         }
-        pass.draw_indexed(index_range, base_vertex, 0..1);
+        pass.draw_indexed(index_range, base_vertex, instance..instance + 1);
     }
 }
 
@@ -259,5 +285,22 @@ fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<MeshVertex>() as u64,
         step_mode: wgpu::VertexStepMode::Vertex,
         attributes: &MESH_VERTEX_ATTRS,
+    }
+}
+
+// `translate.xy : Float32x2`, `scale : Float32`, `tint : Unorm8x4`.
+// Tint storage matches `MeshVertex.color` (linear-u8 premultiplied);
+// shader multiplies per-fragment, no decode either side.
+const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
+    2 => Float32x2,
+    3 => Float32,
+    4 => Unorm8x4,
+];
+
+fn mesh_instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<MeshInstance>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &MESH_INSTANCE_ATTRS,
     }
 }

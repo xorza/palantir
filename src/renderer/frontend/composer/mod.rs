@@ -5,13 +5,12 @@ use super::cmd_buffer::{
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
-use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshDraw, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, MeshDraw, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use glam::{UVec2, Vec2};
 
@@ -383,55 +382,38 @@ impl Composer {
                     // mesh-over-text is preserved.
                     self.close_batch(out);
                     let p: DrawMeshPayload = cmds.read(start);
-                    // Per-vertex transform: apply the active transform,
-                    // then DPI-scale. Verts are already in logical-px
-                    // world coords (encoder pre-translated). No
-                    // pixel-snap: the mesh is user geometry; snapping
-                    // arbitrary vertices changes shape.
                     let v_start = p.v_start as usize;
                     let v_end = v_start + p.v_len as usize;
                     let i_start = p.i_start as usize;
                     let i_end = i_start + p.i_len as usize;
                     let phys_v_start = out.meshes.arena.vertices.len() as u32;
-                    // Unpack the packed `ColorF16` tint to linear `Color`
-                    // for the per-vertex multiply below.
-                    let tint: Color = p.tint.into();
-                    let mut min = Vec2::splat(f32::INFINITY);
-                    let mut max = Vec2::splat(f32::NEG_INFINITY);
-                    for v in &cmds.shape_payloads.meshes.vertices[v_start..v_end] {
-                        let world = current_transform.apply_point(v.pos);
-                        let pos = world * scale;
-                        min = min.min(pos);
-                        max = max.max(pos);
-                        // Premultiplied-alpha tinting: component-wise
-                        // multiply works for both rgb and alpha. The
-                        // backend pipeline doesn't take a tint uniform
-                        // — it's baked in here. Unpack the linear-u8
-                        // vertex colour to linear `Color`, multiply,
-                        // repack to linear `ColorU8`.
-                        let c: Color = v.color.into();
-                        out.meshes.arena.vertices.push(MeshVertex::new(
-                            pos,
-                            Color {
-                                r: c.r * tint.r,
-                                g: c.g * tint.g,
-                                b: c.b * tint.b,
-                                a: c.a * tint.a,
-                            },
-                        ));
-                    }
+                    // Verts copy verbatim — transform + tint are applied
+                    // by the mesh shader from the per-instance attrs
+                    // pushed below. Steady-state CPU cost is a pure
+                    // memcpy; vertex stream is content-stable across
+                    // frames (opens the door for a future retained-mesh
+                    // cache).
+                    out.meshes
+                        .arena
+                        .vertices
+                        .extend_from_slice(&cmds.shape_payloads.meshes.vertices[v_start..v_end]);
                     let phys_i_start = out.meshes.arena.indices.len() as u32;
                     out.meshes
                         .arena
                         .indices
                         .extend_from_slice(&cmds.shape_payloads.meshes.indices[i_start..i_end]);
-                    // Mesh is the highest kind: never flushes for
-                    // overlap. Just append to the open group and
-                    // record the AABB for any later quad / text that
-                    // might need to flush against it.
+                    let phys_scale = current_transform.scale * scale;
+                    let phys_translate = current_transform.translation * scale;
                     out.meshes.draws.push(MeshDraw {
                         vertices: (phys_v_start..phys_v_start + p.v_len).into(),
                         indices: (phys_i_start..phys_i_start + p.i_len).into(),
+                    });
+                    let tint_color: Color = p.tint.into();
+                    out.meshes.instances.push(MeshInstance {
+                        translate: phys_translate,
+                        scale: phys_scale,
+                        tint: tint_color.into(),
+                        ..bytemuck::Zeroable::zeroed()
                     });
                     if p.v_len > 0 {
                         // Inflate by 0.5 phys-px to match polyline's
@@ -440,6 +422,9 @@ impl Composer {
                         // displacement shader would silently produce
                         // false negatives — and false negatives in
                         // the overlap test reorder paint.
+                        let world = current_transform.apply_rect(p.bbox);
+                        let min = world.min * scale;
+                        let max = world.max() * scale;
                         let fringe = Vec2::splat(0.5);
                         self.mesh_rects.push(urect_from_phys(
                             min - fringe,
@@ -527,6 +512,16 @@ impl Composer {
                     out.meshes.draws.push(MeshDraw {
                         vertices: (phys_v_start..phys_v_start + v_len).into(),
                         indices: (phys_i_start..phys_i_start + i_len).into(),
+                    });
+                    // Polyline points are pre-transformed to physical-px
+                    // on CPU (the tessellator needs phys-px width to pick
+                    // its AA fringe), so the shader's per-instance state
+                    // is identity. Tint is white — colors live per-vertex.
+                    out.meshes.instances.push(MeshInstance {
+                        translate: Vec2::ZERO,
+                        scale: 1.0,
+                        tint: crate::primitives::color::ColorU8::WHITE,
+                        ..bytemuck::Zeroable::zeroed()
                     });
                     self.mesh_rects.push(bbox_scissor);
                 }
