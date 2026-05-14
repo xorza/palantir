@@ -353,7 +353,10 @@ mod tests {
     fn approx_zero_handles_edge_lane_patterns() {
         assert!(Corners::ZERO.approx_zero(), "all-zero bytes");
         assert!(Corners::all(0.0).approx_zero(), "+0.0 lanes");
-        assert!(Corners::all(-0.0).approx_zero(), "-0.0 lanes (sign bit set)");
+        assert!(
+            Corners::all(-0.0).approx_zero(),
+            "-0.0 lanes (sign bit set)"
+        );
         assert!(
             Corners::all(super::super::approx::EPS * 0.5).approx_zero(),
             "sub-EPS positive",
@@ -370,7 +373,10 @@ mod tests {
         );
         // NaN bits land in the exponent region (≥ 0x7C00 absolute),
         // far above the EPS threshold — must classify as non-zero.
-        assert!(!Corners::all(f32::NAN).approx_zero(), "NaN lanes are not zero");
+        assert!(
+            !Corners::all(f32::NAN).approx_zero(),
+            "NaN lanes are not zero"
+        );
     }
 
     #[test]

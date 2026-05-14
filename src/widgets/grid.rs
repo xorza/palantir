@@ -118,7 +118,7 @@ impl Grid {
     }
 
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.transform = Some(t);
+        self.element.transform = t;
         self
     }
 

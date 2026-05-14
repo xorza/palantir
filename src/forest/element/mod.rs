@@ -176,8 +176,11 @@ pub(crate) struct PanelExtras {
     pub(crate) child_align: Align,
     /// Pan/zoom transform applied to descendants (post-layout). Layout
     /// runs in untransformed space; cascade composes this with the
-    /// ancestor transform for paint/hit-test. `None` = identity.
-    pub(crate) transform: Option<TranslateScale>,
+    /// ancestor transform for paint/hit-test. `TranslateScale::IDENTITY`
+    /// is the no-op sentinel — same convention as `Stroke::ZERO` /
+    /// `Shadow::NONE` / `Background::is_noop`; cascade filters identity
+    /// at read time rather than carrying an `Option` discriminant.
+    pub(crate) transform: TranslateScale,
 }
 
 /// `transform` is intentionally omitted: it doesn't affect this node's own
@@ -239,7 +242,7 @@ impl PanelExtras {
         line_gap: 0.0,
         justify: Justify::Start,
         child_align: Align::new(HAlign::Auto, VAlign::Auto),
-        transform: None,
+        transform: TranslateScale::IDENTITY,
     };
 
     pub(crate) fn is_default(&self) -> bool {
@@ -369,12 +372,12 @@ pub struct Element {
     /// `None` = no clip. No effect on layout.
     pub(crate) clip: ClipMode,
     /// Pan/zoom applied to descendants (post-layout, like WPF's `RenderTransform`).
-    /// `None` = identity = no transform. The transform composes with any
-    /// ancestor transform; descendants render and hit-test in the world
-    /// coordinates the cumulative transform produces. Origin is the top-left
-    /// of the panel's logical-rect — the caller composes its own pivot by
-    /// pre/post-translation.
-    pub(crate) transform: Option<TranslateScale>,
+    /// `TranslateScale::IDENTITY` = no transform. The transform composes
+    /// with any ancestor transform; descendants render and hit-test in
+    /// the world coordinates the cumulative transform produces. Origin
+    /// is the top-left of the panel's logical-rect — the caller
+    /// composes its own pivot by pre/post-translation.
+    pub(crate) transform: TranslateScale,
 }
 
 /// Per-node columns derived from one `Element`. Single fan-out point —
@@ -418,7 +421,7 @@ impl Element {
             focusable: false,
             visibility: Visibility::Visible,
             clip: ClipMode::None,
-            transform: None,
+            transform: TranslateScale::IDENTITY,
         }
     }
 
