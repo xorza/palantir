@@ -414,13 +414,13 @@ impl std::hash::Hash for LayoutCore {
     /// `u64` chunks. Saves ~5 small-write fold ops per node per frame.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; 4];
         buf[0] = self.mode.hash_tag();
         buf[1] = self.align.raw();
         buf[2] = self.visibility as u8;
-        buf[8..16].copy_from_slice(&self.size.as_u64().to_ne_bytes());
-        buf[16..24].copy_from_slice(&self.padding.as_u64().to_ne_bytes());
-        buf[24..32].copy_from_slice(&self.margin.as_u64().to_ne_bytes());
+        self.size.as_u64().hash(h);
+        self.padding.as_u64().hash(h);
+        self.margin.as_u64().hash(h);
         h.write(&buf);
     }
 }
