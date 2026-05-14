@@ -38,11 +38,7 @@ fn frame_paints_a_single_rounded_rect() {
             .is_none()
     );
     assert!(
-        ui.forest
-            .tree(Layer::Main)
-            .chrome
-            .get(frame_node.index())
-            .is_some(),
+        ui.forest.tree(Layer::Main).chrome(frame_node).is_some(),
         "frame chrome recorded in chrome table",
     );
 

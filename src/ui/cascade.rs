@@ -356,7 +356,7 @@ fn compute_paint_rect(
     // `ShapeRecord::Shadow` would; encoder mirrors this via
     // `shadow_paint_rect_local` so paint extent and damage extent
     // stay in lockstep.
-    if let Some(bg) = tree.chrome.get(node.index())
+    if let Some(bg) = tree.chrome(node)
         && !bg.shadow.is_noop()
     {
         let s = &bg.shadow;

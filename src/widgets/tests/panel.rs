@@ -94,7 +94,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     for (name, id, expected_clip, expects_chrome) in &cases {
         let clip = ui.forest.tree(Layer::Main).records.attrs()[id.index()].clip_mode();
         assert_eq!(clip, *expected_clip, "[{name}] clip mode");
-        let chrome = ui.forest.tree(Layer::Main).chrome.get(id.index());
+        let chrome = ui.forest.tree(Layer::Main).chrome(*id);
         assert_eq!(
             chrome.is_some(),
             *expects_chrome,
@@ -161,8 +161,7 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert!(
         ui.forest
             .tree(Layer::Main)
-            .chrome
-            .get(panel_node.unwrap().index())
+            .chrome(panel_node.unwrap())
             .is_some(),
         "panel chrome recorded in chrome table",
     );
