@@ -194,13 +194,16 @@ impl Color {
         )
     }
 
-    /// Quantize this linear-RGB colour to 8-bit sRGB packed bytes via
-    /// the cubic-Newton inverse (`linear_to_srgb`). Lossy roundtrip is
-    /// bounded by 1 LSB per channel, matching the byte serializer's
-    /// roundtrip pin.
-    pub fn to_srgb8(self) -> Srgb8 {
+    /// Quantize this linear-RGB colour to **sRGB-encoded** 8-bit
+    /// packed bytes via the cubic-Newton inverse (`linear_to_srgb`).
+    /// Used at the two boundaries that need sRGB-perceptual storage —
+    /// glyphon (its API expects sRGB) and any non-default consumer.
+    /// The default `From<Color> for ColorU8` is a **linear** quantize
+    /// (no cubic); call this explicitly when you need the sRGB-encoded
+    /// form. Lossy roundtrip ≤ 1 LSB per channel.
+    pub fn to_srgb_u8(self) -> ColorU8 {
         let q = |x: f32| -> u8 { (linear_to_srgb(x).clamp(0.0, 1.0) * 255.0).round() as u8 };
-        Srgb8 {
+        ColorU8 {
             r: q(self.r),
             g: q(self.g),
             b: q(self.b),
@@ -231,21 +234,21 @@ impl Color {
     serde::Serialize,
     serde::Deserialize,
 )]
-pub struct Srgb8 {
+pub struct ColorU8 {
     pub r: u8,
     pub g: u8,
     pub b: u8,
     pub a: u8,
 }
 
-impl std::hash::Hash for Srgb8 {
+impl std::hash::Hash for ColorU8 {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
     }
 }
 
-impl Srgb8 {
+impl ColorU8 {
     pub const TRANSPARENT: Self = Self {
         r: 0,
         g: 0,
@@ -304,17 +307,37 @@ impl Srgb8 {
     }
 }
 
-impl From<Color> for Srgb8 {
+impl From<Color> for ColorU8 {
+    /// **Linear** quantize — straight `(channel * 255) as u8`, no
+    /// sRGB encoding. Used by every linear-storage consumer (vertex
+    /// colours, gradient stops baked into the linear LUT, etc.). Call
+    /// `Color::to_srgb_u8()` explicitly for the sRGB-encoded path
+    /// (glyphon).
     #[inline]
     fn from(c: Color) -> Self {
-        c.to_srgb8()
+        let q = |x: f32| -> u8 { (x.clamp(0.0, 1.0) * 255.0).round() as u8 };
+        ColorU8 {
+            r: q(c.r),
+            g: q(c.g),
+            b: q(c.b),
+            a: q(c.a),
+        }
     }
 }
 
-impl From<Srgb8> for Color {
+impl From<ColorU8> for Color {
+    /// **Linear** un-quantize — straight `u8 / 255.0`, mirrors the
+    /// `From<Color>` linear pack. No sRGB decoding; if the bytes
+    /// were sRGB-encoded use `Color::rgba_u8` (which goes through
+    /// the cubic `srgb_to_linear`).
     #[inline]
-    fn from(s: Srgb8) -> Self {
-        Color::rgba_u8(s.r, s.g, s.b, s.a)
+    fn from(s: ColorU8) -> Self {
+        Color {
+            r: s.r as f32 / 255.0,
+            g: s.g as f32 / 255.0,
+            b: s.b as f32 / 255.0,
+            a: s.a as f32 / 255.0,
+        }
     }
 }
 
@@ -328,7 +351,7 @@ impl From<Srgb8> for Color {
 /// f32 range — well below display quantization.
 ///
 /// Use this for storage sites that want half the footprint of
-/// `Color` (16 B) without `Srgb8`'s cubic-Newton sRGB roundtrip.
+/// `Color` (16 B) without `ColorU8`'s cubic-Newton sRGB roundtrip.
 /// Pod-compatible; the hash impl writes the whole struct as one u64.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]

@@ -49,7 +49,7 @@ pub use primitives::brush::{
     Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread, Stop,
 };
 pub use primitives::color::Color;
-pub use primitives::color::Srgb8;
+pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;

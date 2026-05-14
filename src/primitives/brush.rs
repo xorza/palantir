@@ -1,5 +1,5 @@
 use crate::animation::animatable::Animatable;
-use crate::primitives::color::{Color, Srgb8};
+use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -79,7 +79,7 @@ impl FillAxis {
 #[derive(Copy, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Stop {
     pub offset_u8: u8,
-    pub color: Srgb8,
+    pub color: ColorU8,
 }
 
 impl Stop {
@@ -88,7 +88,7 @@ impl Stop {
     /// rather than at bake time so the stored value matches what
     /// authors expect to round-trip.
     #[inline]
-    pub fn new(offset: f32, color: impl Into<Srgb8>) -> Self {
+    pub fn new(offset: f32, color: impl Into<ColorU8>) -> Self {
         let q = (offset.clamp(0.0, 1.0) * 255.0 + 0.5) as u8;
         Self {
             offset_u8: q,
@@ -191,16 +191,16 @@ impl LinearGradient {
     /// 2-stop shorthand — `c0` at offset 0, `c1` at offset 1. Covers
     /// the dominant UI-gradient pattern (panel chrome, button
     /// surfaces, headers).
-    pub fn two_stop(angle: f32, c0: impl Into<Srgb8>, c1: impl Into<Srgb8>) -> Self {
+    pub fn two_stop(angle: f32, c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
         Self::new(angle, [Stop::new(0.0, c0), Stop::new(1.0, c1)])
     }
 
     /// 3-stop shorthand — `c0` at 0, `c1` at 0.5, `c2` at 1.
     pub fn three_stop(
         angle: f32,
-        c0: impl Into<Srgb8>,
-        c1: impl Into<Srgb8>,
-        c2: impl Into<Srgb8>,
+        c0: impl Into<ColorU8>,
+        c1: impl Into<ColorU8>,
+        c2: impl Into<ColorU8>,
     ) -> Self {
         Self::new(
             angle,
@@ -289,7 +289,7 @@ impl RadialGradient {
     /// `radius = (0.5, 0.5)` (covers the bounding circle inscribed in
     /// the unit square). `c0` at offset 0 (centre), `c1` at offset 1
     /// (edge).
-    pub fn two_stop_centered(c0: impl Into<Srgb8>, c1: impl Into<Srgb8>) -> Self {
+    pub fn two_stop_centered(c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
         Self::new(
             Vec2::splat(0.5),
             Vec2::splat(0.5),
@@ -374,7 +374,7 @@ impl ConicGradient {
 
     /// Centred shorthand — `center = (0.5, 0.5)`, starts at angle 0
     /// (positive x-axis, sweeping CCW). 2 stops at offsets 0/1.
-    pub fn two_stop_centered(c0: impl Into<Srgb8>, c1: impl Into<Srgb8>) -> Self {
+    pub fn two_stop_centered(c0: impl Into<ColorU8>, c1: impl Into<ColorU8>) -> Self {
         Self::new(
             Vec2::splat(0.5),
             0.0,
@@ -647,7 +647,7 @@ mod tests {
     /// + `repr(C)` field layout; recompute when those change.
     #[test]
     fn linear_gradient_size_is_compact() {
-        // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 Srgb8)
+        // 4 (angle) + ArrayVec<[Stop; 8]> with Stop = 5 B (1 offset_u8 + 4 ColorU8)
         // + 1 (spread) + 1 (interp) + tail-pad. Recompute if MAX_STOPS or
         // Stop layout changes. Pinned to catch unintended layout drift.
         assert_eq!(std::mem::size_of::<LinearGradient>(), 48);
@@ -679,7 +679,8 @@ mod tests {
 
     #[test]
     fn linear_all_transparent_is_noop() {
-        let g = LinearGradient::two_stop(0.0, Srgb8::TRANSPARENT, Srgb8::rgba(255, 255, 255, 0));
+        let g =
+            LinearGradient::two_stop(0.0, ColorU8::TRANSPARENT, ColorU8::rgba(255, 255, 255, 0));
         assert!(g.is_noop());
         assert!(Brush::Linear(g).is_noop());
     }
@@ -756,8 +757,8 @@ mod tests {
 
     #[test]
     fn brush_radial_conic_noop_when_all_transparent() {
-        let r = RadialGradient::two_stop_centered(Srgb8::TRANSPARENT, Srgb8::TRANSPARENT);
-        let c = ConicGradient::two_stop_centered(Srgb8::TRANSPARENT, Srgb8::TRANSPARENT);
+        let r = RadialGradient::two_stop_centered(ColorU8::TRANSPARENT, ColorU8::TRANSPARENT);
+        let c = ConicGradient::two_stop_centered(ColorU8::TRANSPARENT, ColorU8::TRANSPARENT);
         assert!(Brush::Radial(r).is_noop());
         assert!(Brush::Conic(c).is_noop());
     }

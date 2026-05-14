@@ -1,7 +1,7 @@
 use super::quad::Quad;
 use crate::layout::types::span::Span;
 use crate::primitives::mesh::Mesh;
-use crate::primitives::{color::Srgb8, corners::Corners, rect::Rect, urect::URect};
+use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
@@ -158,7 +158,7 @@ pub(crate) struct TextRun {
     /// snap. Glyphs outside are clipped by the backend even if the scissor
     /// rect is wider.
     pub(crate) bounds: URect,
-    pub(crate) color: Srgb8,
+    pub(crate) color: ColorU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
     /// the cumulative ancestor `TranslateScale.scale` at compose time.
     /// `1.0` outside any transformed subtree. Multiplied into glyphon's
