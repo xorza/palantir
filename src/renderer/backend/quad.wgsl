@@ -59,9 +59,9 @@ fn vs(
     @builtin(vertex_index) vi: u32,
     @location(0) pos:          vec2<f32>,
     @location(1) size:         vec2<f32>,
-    @location(2) fill:         vec4<f32>,
+    @location(2) fill_packed:  vec2<u32>,
     @location(3) radius_packed: vec2<u32>,
-    @location(4) stroke_color: vec4<f32>,
+    @location(4) stroke_color_packed: vec2<u32>,
     @location(5) stroke_width: f32,
     @location(6) fill_kind:    u32,
     @location(7) fill_lut_row: u32,
@@ -76,6 +76,13 @@ fn vs(
     let fa_lo = unpack2x16float(fill_axis_packed.x);
     let fa_hi = unpack2x16float(fill_axis_packed.y);
     let fill_axis = vec4<f32>(fa_lo.x, fa_lo.y, fa_hi.x, fa_hi.y);
+    // Same pattern again for the two fill colours (linear-RGB).
+    let f_lo = unpack2x16float(fill_packed.x);
+    let f_hi = unpack2x16float(fill_packed.y);
+    let fill = vec4<f32>(f_lo.x, f_lo.y, f_hi.x, f_hi.y);
+    let s_lo = unpack2x16float(stroke_color_packed.x);
+    let s_hi = unpack2x16float(stroke_color_packed.y);
+    let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
     var corners = array<vec2<f32>, 4>(
         vec2<f32>(0.0, 0.0),
         vec2<f32>(1.0, 0.0),

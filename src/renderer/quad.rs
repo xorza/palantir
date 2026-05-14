@@ -4,7 +4,7 @@
 //! frontend↔backend contract, so neither side owns them.
 
 use crate::primitives::brush::{FillAxis, Spread};
-use crate::primitives::{color::Color, corners::Corners, rect::Rect};
+use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use crate::renderer::gradient_atlas::LutRow;
 use bytemuck::{Pod, Zeroable};
 
@@ -115,9 +115,14 @@ impl FillKind {
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
     pub(crate) rect: Rect,
-    pub(crate) fill: Color,
+    /// sRGB-encoded fill (4 B). GPU vertex attribute is
+    /// `Unorm8x4` — the shader normalizes u8/255 → 0..1 and decodes
+    /// sRGB→linear via the same cubic fit used CPU-side
+    /// (`Color::srgb_to_linear`). Saves 12 B per Quad instance on
+    /// every GPU upload vs. `Color` (16 B).
+    pub(crate) fill: ColorF16,
     pub(crate) radius: Corners,
-    pub(crate) stroke_color: Color,
+    pub(crate) stroke_color: ColorF16,
     pub(crate) stroke_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
@@ -160,16 +165,17 @@ mod tests {
         assert!(!FillKind::linear(Spread::Pad).is_shadow());
     }
 
-    /// Pin: `Quad` is exactly 76 bytes — pos(8) + size(8) + fill(16) +
-    /// radius(8, packed 4xf16) + stroke_color(16) + stroke_width(4) +
-    /// fill_kind(4) + fill_lut_row(4) + fill_axis(8, packed 4xf16). The
+    /// Pin: `Quad` is exactly 60 bytes — pos(8) + size(8) +
+    /// fill(8, packed 4xf16) + radius(8, packed 4xf16) +
+    /// stroke_color(8, packed 4xf16) + stroke_width(4) + fill_kind(4) +
+    /// fill_lut_row(4) + fill_axis(8, packed 4xf16). The
     /// `vertex_attr_array` in the backend's `QuadPipeline::new` assumes
     /// this exact layout via Rust's `repr(C)` field-order rules. A
     /// reorder or an added field that shifts an attribute's offset would
     /// break the shader binding silently — this test catches it.
     #[test]
-    fn quad_struct_is_76_bytes_no_padding() {
-        assert_eq!(std::mem::size_of::<Quad>(), 76);
+    fn quad_struct_is_60_bytes_no_padding() {
+        assert_eq!(std::mem::size_of::<Quad>(), 60);
     }
 
     /// Pin every field offset against the `vertex_attr_array!` in
@@ -179,12 +185,16 @@ mod tests {
     #[test]
     fn quad_field_offsets_match_vertex_attr_array() {
         assert_eq!(offset_of!(Quad, rect), 0, "loc 0 (pos) + loc 1 (size)");
-        assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill)");
-        assert_eq!(offset_of!(Quad, radius), 32, "loc 3 (radius, packed)");
-        assert_eq!(offset_of!(Quad, stroke_color), 40, "loc 4 (stroke.color)");
-        assert_eq!(offset_of!(Quad, stroke_width), 56, "loc 5 (stroke.width)");
-        assert_eq!(offset_of!(Quad, fill_kind), 60, "loc 6 (fill_kind)");
-        assert_eq!(offset_of!(Quad, fill_lut_row), 64, "loc 7 (fill_lut_row)");
-        assert_eq!(offset_of!(Quad, fill_axis), 68, "loc 8 (fill_axis)");
+        assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill, packed)");
+        assert_eq!(offset_of!(Quad, radius), 24, "loc 3 (radius, packed)");
+        assert_eq!(
+            offset_of!(Quad, stroke_color),
+            32,
+            "loc 4 (stroke.color, packed)"
+        );
+        assert_eq!(offset_of!(Quad, stroke_width), 40, "loc 5 (stroke.width)");
+        assert_eq!(offset_of!(Quad, fill_kind), 44, "loc 6 (fill_kind)");
+        assert_eq!(offset_of!(Quad, fill_lut_row), 48, "loc 7 (fill_lut_row)");
+        assert_eq!(offset_of!(Quad, fill_axis), 52, "loc 8 (fill_axis)");
     }
 }

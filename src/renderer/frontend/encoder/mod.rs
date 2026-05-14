@@ -6,7 +6,7 @@ use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::brush::FillAxis;
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
@@ -32,7 +32,7 @@ const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0)
 #[inline]
 fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> BrushSource<'_> {
     match brush {
-        ShapeBrush::Solid(c) => BrushSource::Solid(c.into()),
+        ShapeBrush::Solid(c) => BrushSource::Solid(c),
         ShapeBrush::Gradient(id) => match &gradients[id as usize] {
             GradientPayload::Linear(g) => BrushSource::Linear(g),
             GradientPayload::Radial(g) => BrushSource::Radial(g),
@@ -110,7 +110,7 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
             out.draw_rect(
                 rects[node.index()],
                 Corners::ZERO,
-                BrushSource::Solid(Color::TRANSPARENT),
+                BrushSource::Solid(ColorF16::TRANSPARENT),
                 COLLISION_OVERLAY_STROKE,
             );
         }
@@ -147,7 +147,7 @@ fn emit_one_shape(
                 },
             };
             let src = shape_brush_source(&tree.shapes.gradients, *fill);
-            out.draw_rect(r, *radius, src, (*stroke).into());
+            out.draw_rect(r, *radius, src, *stroke);
         }
         ShapeRecord::Text {
             local_origin,
@@ -186,7 +186,7 @@ fn emit_one_shape(
                     size: shaped.measured,
                 },
             };
-            out.draw_text(rect, (*color).into(), shaped.key);
+            out.draw_text(rect, *color, shaped.key);
         }
         ShapeRecord::Polyline {
             width,
@@ -263,7 +263,7 @@ fn emit_one_shape(
             let i_start = out_meshes.indices.len() as u32;
             out_meshes.indices.extend_from_slice(src_idx);
             out.draw_mesh(DrawMeshPayload {
-                tint: (*tint).into(),
+                tint: *tint,
                 v_start,
                 v_len: src_verts.len() as u32,
                 i_start,
@@ -346,7 +346,7 @@ fn encode_node(
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.radius, &bg.shadow);
         let src = shape_brush_source(&tree.shapes.gradients, bg.fill);
-        out.draw_rect(rect, bg.radius, src, bg.stroke.into());
+        out.draw_rect(rect, bg.radius, src, bg.stroke);
     }
 
     if clip {
@@ -490,7 +490,10 @@ fn emit_shadow(
     out.draw_shadow(
         paint_rect,
         radius,
-        shadow.color(),
+        // LoweredShadow.color is `ColorF16` (the field); cmd-buffer
+        // takes the packed form directly so the encoder doesn't
+        // unpack-and-repack.
+        shadow.color,
         kind,
         FillAxis::from_lanes(offset.x, offset.y, blur, axis_w),
     );

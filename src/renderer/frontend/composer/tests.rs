@@ -1,5 +1,6 @@
 use super::super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
+use crate::forest::shapes::record::ShapeStroke;
 use crate::layout::types::{display::Display, span::Span};
 use crate::primitives::{
     brush::Brush, color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
@@ -24,7 +25,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
 }
 
 fn text(buf: &mut RenderCmdBuffer, r: Rect) {
-    buf.draw_text(r, Color::WHITE, TextCacheKey::INVALID);
+    buf.draw_text(r, Color::WHITE.into(), TextCacheKey::INVALID);
 }
 
 fn params(scale: f32, physical: UVec2) -> Display {
@@ -366,7 +367,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
                 (&Brush::Solid(Color::rgb(1.0, 1.0, 1.0))).into(),
-                Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5),
+                ShapeStroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5),
             );
             b.pop_transform();
         },
@@ -391,7 +392,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
         (&Brush::Solid(Color::rgb(0.5, 0.5, 0.5))).into(),
-        Stroke::ZERO,
+        ShapeStroke::ZERO,
     );
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
@@ -428,7 +429,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
         (&Brush::Linear(g)).into(),
-        Stroke::ZERO,
+        ShapeStroke::ZERO,
     );
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
@@ -461,7 +462,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
             rect(0.0, 0.0, 10.0, 10.0),
             Corners::default(),
             (&Brush::Linear(g)).into(),
-            Stroke::ZERO,
+            ShapeStroke::ZERO,
         );
     }
     let mut composer = Composer::default();

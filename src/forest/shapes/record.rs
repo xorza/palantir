@@ -19,10 +19,11 @@ use std::hash::{Hash, Hasher};
 /// shape buffer in `Shapes::clear`.
 pub(crate) type GradientId = u32;
 
-/// Lowered fill: keeps the hot `Solid` arm inline (16 B) and pushes
-/// gradient geometry off to the per-frame `gradients` arena via an
-/// index. Replaces inline `Brush` in `ShapeRecord` so the enum stops
-/// carrying ~88 B of gradient storage on every rounded-rect.
+/// Lowered fill. Solid carries 8-byte `ColorF16` (down from 16 B
+/// `Color`); gradient geometry lives in the per-frame `gradients`
+/// arena via an index. The encoder/composer pipe `ColorF16` straight
+/// to the GPU vertex attribute (`Uint32x2` + `unpack2x16float`) —
+/// stays linear end-to-end, no sRGB cubic anywhere.
 #[derive(Clone, Copy, Debug, Hash)]
 pub(crate) enum ShapeBrush {
     Solid(ColorF16),
@@ -160,10 +161,6 @@ impl LoweredShadow {
     #[inline]
     pub(crate) fn inset(self) -> bool {
         self.inset_flag != 0
-    }
-    #[inline]
-    pub(crate) fn color(self) -> Color {
-        self.color.into()
     }
 }
 

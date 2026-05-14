@@ -337,6 +337,15 @@ pub struct ColorF16(pub [u16; 4]);
 impl ColorF16 {
     pub const TRANSPARENT: Self = Self([0, 0, 0, 0]);
 
+    /// True when alpha is below `EPS` — paints nothing visible. Reuses
+    /// the shared `noop_f16_bits` bit-trick (mask sign, compare against
+    /// `EPS` bits) so no f16→f32 conversion is needed.
+    #[inline]
+    pub fn is_noop(self) -> bool {
+        use crate::primitives::approx::noop_f16_bits;
+        noop_f16_bits(self.0[3])
+    }
+
     /// All four lanes unpacked to f32 at once via the batched f16→f32
     /// slice path. Single instruction on F16C/fp16 targets.
     #[inline]

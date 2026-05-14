@@ -3,6 +3,7 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::layout::types::span::Span;
+use crate::primitives::color::ColorF16;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::renderer::quad::Quad;
@@ -211,9 +212,9 @@ impl QuadPipeline {
             attributes: &wgpu::vertex_attr_array![
                 0 => Float32x2,   // pos
                 1 => Float32x2,   // size
-                2 => Float32x4,   // fill
+                2 => Uint32x2,    // fill (packed 4x f16: r|g|b|a)
                 3 => Uint32x2,    // radius (packed 4x f16: tl|tr|br|bl)
-                4 => Float32x4,   // stroke.color
+                4 => Uint32x2,    // stroke.color (packed 4x f16)
                 5 => Float32,     // stroke.width
                 6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
                 7 => Uint32,      // fill_lut_row
@@ -340,9 +341,9 @@ impl QuadPipeline {
             attributes: &wgpu::vertex_attr_array![
                 0 => Float32x2,
                 1 => Float32x2,
-                2 => Float32x4,
+                2 => Uint32x2,
                 3 => Uint32x2,
-                4 => Float32x4,
+                4 => Uint32x2,
                 5 => Float32,
                 6 => Uint32,
                 7 => Uint32,
@@ -484,9 +485,9 @@ impl QuadPipeline {
                     h: viewport.y,
                 },
             },
-            fill: Color { a: 1.0, ..color },
+            fill: Color { a: 1.0, ..color }.into(),
             radius: Corners::default(),
-            stroke_color: Color::TRANSPARENT,
+            stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()
         };
@@ -604,9 +605,9 @@ impl QuadPipeline {
     fn mask_instance(rect: Rect, radius: Corners) -> Quad {
         Quad {
             rect,
-            fill: Color::default(),
+            fill: Color::default().into(),
             radius,
-            stroke_color: Color::TRANSPARENT,
+            stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()
         }
