@@ -347,9 +347,9 @@ fn encode_node(
                 // with the painted stroke on both axes when padding is
                 // asymmetric.
                 let painted = tree
-                    .clip_radius(id)
-                    .copied()
-                    .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
+                    .chrome(id)
+                    .map(|bg| bg.radius)
+                    .expect("ClipMode::Rounded without chrome row — open_node invariant violated");
                 let [ptl, ptr_, pbr, pbl] = painted.as_array();
                 let [pl, pt, pr, pb] = padding.as_array();
                 let mask_radius = Corners::new(
