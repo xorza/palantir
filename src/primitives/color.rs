@@ -1,3 +1,5 @@
+use half::f16;
+
 #[repr(C)]
 #[derive(
     Clone,
@@ -313,6 +315,71 @@ impl From<Srgb8> for Color {
     #[inline]
     fn from(s: Srgb8) -> Self {
         Color::rgba_u8(s.r, s.g, s.b, s.a)
+    }
+}
+
+/// Linear-RGB colour packed as four f16 lanes in 8 B (align 2).
+/// Same lane scheme as `Corners` — pack/unpack go through
+/// `half::slice::HalfFloatSliceExt::{convert_from_f32_slice,
+/// convert_to_f32_slice}`, which map to one SIMD instruction on
+/// targets with hardware f16 support (`fcvtn`/`fcvtl` on
+/// aarch64-fp16, `vcvtps2ph`/`vcvtph2ps` on x86-f16c) and fall back
+/// to scalar otherwise. f16 carries ~3 decimal digits and the full
+/// f32 range — well below display quantization.
+///
+/// Use this for storage sites that want half the footprint of
+/// `Color` (16 B) without `Srgb8`'s cubic-Newton sRGB roundtrip.
+/// Pod-compatible; the hash impl writes the whole struct as one u64.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ColorF16(pub [u16; 4]);
+
+impl ColorF16 {
+    pub const TRANSPARENT: Self = Self([0, 0, 0, 0]);
+
+    /// All four lanes unpacked to f32 at once via the batched f16→f32
+    /// slice path. Single instruction on F16C/fp16 targets.
+    #[inline]
+    pub fn unpack(self) -> Color {
+        use half::slice::HalfFloatSliceExt;
+        let arr: &[f16; 4] = bytemuck::cast_ref(&self.0);
+        let mut out = [0.0f32; 4];
+        arr.as_slice().convert_to_f32_slice(&mut out);
+        Color {
+            r: out[0],
+            g: out[1],
+            b: out[2],
+            a: out[3],
+        }
+    }
+}
+
+impl From<Color> for ColorF16 {
+    /// Batched f32→f16 pack via the slice path — single instruction
+    /// on F16C/fp16 targets, scalar fallback elsewhere.
+    #[inline]
+    fn from(c: Color) -> Self {
+        use half::slice::HalfFloatSliceExt;
+        let src = [c.r, c.g, c.b, c.a];
+        let mut out = [f16::ZERO; 4];
+        out.as_mut_slice().convert_from_f32_slice(&src);
+        Self(bytemuck::cast(out))
+    }
+}
+
+impl From<ColorF16> for Color {
+    #[inline]
+    fn from(c: ColorF16) -> Self {
+        c.unpack()
+    }
+}
+
+impl std::hash::Hash for ColorF16 {
+    /// Hash the 8 storage bytes as one `u64` — single hasher call
+    /// instead of four `write_u16`s. Mirrors `Corners::hash`.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
     }
 }
 
