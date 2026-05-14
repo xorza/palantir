@@ -409,8 +409,8 @@ fn measure_inner(
     // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
     // `inner.w`, so Fill cols at measure time give cells the same
     // width they'll get at arrange — wrap text shapes correctly.
-    let grid_sizing_w = tree.records.layout()[node.index()].size.w;
-    let grid_sizing_h = tree.records.layout()[node.index()].size.h;
+    let grid_sizing_w = tree.records.layout()[node.index()].size.w();
+    let grid_sizing_h = tree.records.layout()[node.index()].size.h();
     {
         let GridContext {
             depth_stack, hugs, ..
@@ -591,7 +591,7 @@ fn arrange_inner(
             hugs.slice(idx, Axis::X, HugKind::Max),
             inner.size.w,
             col_gap,
-            grid_size.w,
+            grid_size.w(),
         );
         resolve_axis(
             &mut s.row,
@@ -599,7 +599,7 @@ fn arrange_inner(
             hugs.slice(idx, Axis::Y, HugKind::Max),
             inner.size.h,
             row_gap,
-            grid_size.h,
+            grid_size.h(),
         );
         track_offsets(&s.col.sizes, col_gap, &mut s.col.offsets);
         track_offsets(&s.row.sizes, row_gap, &mut s.row.offsets);
@@ -640,8 +640,8 @@ fn arrange_inner(
         } else {
             v
         };
-        let x = place_axis(h, s_node.size.w, d.w, slot_w);
-        let y = place_axis(v, s_node.size.h, d.h, slot_h);
+        let x = place_axis(h, s_node.size.w(), d.w, slot_w);
+        let y = place_axis(v, s_node.size.h(), d.h, slot_h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),

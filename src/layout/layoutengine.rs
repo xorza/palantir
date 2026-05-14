@@ -119,7 +119,7 @@ fn resolve_desired(
 ) -> Size {
     Size::new(
         resolve_axis_size(AxisCtx {
-            sizing: style.size.w,
+            sizing: style.size.w(),
             hug_with_margin: content.w + style.padding.horiz() + style.margin.horiz(),
             available: available.w,
             intrinsic_min: intrinsic_min.w,
@@ -128,7 +128,7 @@ fn resolve_desired(
             max: max_size.w,
         }),
         resolve_axis_size(AxisCtx {
-            sizing: style.size.h,
+            sizing: style.size.h(),
             hug_with_margin: content.h + style.padding.vert() + style.margin.vert(),
             available: available.h,
             intrinsic_min: intrinsic_min.h,
@@ -468,12 +468,12 @@ impl LayoutEngine {
         // children inside a `max_size`-capped parent see the capped
         // budget instead of bleeding past the parent's edge.
         let bounds = tree.bounds(node);
-        let outer_w = match style.size.w {
+        let outer_w = match style.size.w() {
             Sizing::Fixed(v) => v,
             _ => (available.w - style.margin.horiz()).max(0.0),
         }
         .clamp(bounds.min_size.w, bounds.max_size.w);
-        let outer_h = match style.size.h {
+        let outer_h = match style.size.h() {
             Sizing::Fixed(v) => v,
             _ => (available.h - style.margin.vert()).max(0.0),
         }
