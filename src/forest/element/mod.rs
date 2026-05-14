@@ -156,6 +156,12 @@ pub(crate) struct SizeClamp {
 
 /// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
 /// node — leaves never touch them. Sparse so leaves don't allocate.
+///
+/// Stored as `Vec<PanelExtras>` (not `Soa<PanelExtras>`): only 16 B per
+/// row, already 4 entries per cache line, and most readers want the
+/// whole struct in one place — column-wise storage regressed the
+/// frame bench by ~2.5% (the extra column writes on `push` outweighed
+/// the per-driver read selectivity).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PanelExtras {
     /// Logical-px space between siblings within a line. Read by
