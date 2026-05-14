@@ -413,7 +413,7 @@ impl Tree {
                 .panel
                 .get()
                 .map(|s| panel_tab[s].transform)
-                .filter(|t| *t != TranslateScale::IDENTITY);
+                .filter(|t| !t.is_noop());
             if let Some(t) = xf {
                 sh.write_u8(1);
                 sh.pod(&t);
@@ -684,7 +684,7 @@ impl Tree {
             .panel
             .get()
             .map(|s| self.panel_table[s].transform)
-            .filter(|t| *t != TranslateScale::IDENTITY)
+            .filter(|t| !t.is_noop())
     }
 
     #[inline]

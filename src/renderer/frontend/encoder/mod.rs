@@ -376,9 +376,7 @@ fn encode_node(
     // composing identity is a no-op, so emitting the pair just
     // wastes two cmd slots and a `transform_stack` push/pop in the
     // composer.
-    let transform = tree
-        .transform_of(id)
-        .filter(|t| *t != TranslateScale::IDENTITY);
+    let transform = tree.transform_of(id).filter(|t| !t.is_noop());
 
     // Interleave direct shapes with child recursion in record order.
     // Shapes paint *outside* the owner's pan transform so they stay
