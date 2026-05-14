@@ -449,11 +449,11 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 /// Returns the leaf NodeId so callers can read `text_spans` /
 /// emitted commands. Used by the multi-text-per-leaf pinning tests.
 fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
-    let mut leaf = None;
+    let leaf_id = crate::WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {
         let mut element = Element::new(LayoutMode::Leaf);
-        element.set_id(crate::WidgetId::from_hash("multi-text-leaf"));
-        leaf = Some(ui.node(element, |ui| {
+        element.set_id(leaf_id);
+        ui.node(element, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),
                 text: Cow::Borrowed("first"),
@@ -474,9 +474,9 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 align: Default::default(),
                 family: crate::text::FontFamily::Sans,
             });
-        }));
+        });
     });
-    leaf.unwrap()
+    crate::support::internals::node_for_widget_id(ui, leaf_id)
 }
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same

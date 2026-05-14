@@ -104,7 +104,7 @@ impl Forest {
         }
     }
 
-    pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
+    pub(crate) fn open_node(&mut self, mut element: Element) {
         // `record` runs before `open_node` so a disambiguated
         // `element.id` is what the tree stores — siblings sharing a
         // `widget_id` would corrupt every per-id store. `peek_next_id`
@@ -116,21 +116,15 @@ impl Forest {
         let opened = self.trees[layer as usize].open_node(element);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
-        node
     }
 
-    pub(crate) fn open_node_with_chrome(
-        &mut self,
-        mut element: Element,
-        chrome: Background,
-    ) -> NodeId {
+    pub(crate) fn open_node_with_chrome(&mut self, mut element: Element, chrome: Background) {
         let layer = self.current_layer;
         let node = self.trees[layer as usize].peek_next_id();
         let outcome = self.ids.record(&mut element, layer, node);
         let opened = self.trees[layer as usize].open_node_with_chrome(element, chrome);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
-        node
     }
 
     /// Shared between [`Self::open_node`] / [`Self::open_node_with_chrome`].

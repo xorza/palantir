@@ -9,7 +9,7 @@ use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::tree::Layer;
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
@@ -550,16 +550,10 @@ impl Ui {
     /// Open a node with no paint chrome — the common path for layout-only
     /// containers, text leaves, and chrome-less Frames. Avoids passing
     /// a 232-byte `Option<Background>` through the call chain.
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) -> NodeId {
-        // Id collision detection + auto-id disambiguation happen
-        // inside `Forest::open_node`, so any path that opens a node
-        // (including direct `self.forest.open_node` callers) gets the
-        // same check. Explicit-id collisions hard-assert, auto-id
-        // collisions get silently disambiguated.
-        let node = self.forest.open_node(element);
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) {
+        self.forest.open_node(element);
         f(self);
         self.forest.close_node();
-        node
     }
 
     /// Open a node with a paint chrome. Widgets that always set chrome
@@ -571,11 +565,10 @@ impl Ui {
         element: Element,
         chrome: Background,
         f: impl FnOnce(&mut Ui),
-    ) -> NodeId {
-        let node = self.forest.open_node_with_chrome(element, chrome);
+    ) {
+        self.forest.open_node_with_chrome(element, chrome);
         f(self);
         self.forest.close_node();
-        node
     }
 
     pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
