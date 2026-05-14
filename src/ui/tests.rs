@@ -284,6 +284,7 @@ fn frame_rejects_zero_scale_factor() {
     let _ = ui.frame(
         Display::from_physical(UVec2::new(800, 600), 0.0),
         Duration::ZERO,
+        &mut (),
         |_| {},
     );
 }
@@ -629,7 +630,7 @@ fn frame_pass_count_matches_action_trigger() {
 
         let count = Cell::new(0u32);
         let frame_id_before = ui.frame_id;
-        let _ = ui.frame(display, Duration::ZERO, |ui| {
+        let _ = ui.frame(display, Duration::ZERO, &mut (), |ui| {
             count.set(count.get() + 1);
             Panel::vstack().id_salt("root").show(ui, |_| {});
         });
@@ -666,7 +667,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame A: idle, no repaint request, now = 16ms.
     let repaint = ui
-        .frame(display, Duration::from_millis(16), |ui| {
+        .frame(display, Duration::from_millis(16), &mut (), |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
         })
         .repaint_requested();
@@ -684,7 +685,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // Frame B: simulate an unsettled animation tick by setting the
     // internal flag during recording. The flag must reach `FrameOutput`.
     let repaint = ui
-        .frame(display, Duration::from_millis(32), |ui| {
+        .frame(display, Duration::from_millis(32), &mut (), |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
             ui.repaint_requested = true;
         })
@@ -702,7 +703,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame C: oversized gap (5s) clamps dt to MAX_DT; `time` still
     // tracks true clock so animation math doesn't teleport.
-    let _ = ui.frame(display, Duration::from_millis(5_032), |ui| {
+    let _ = ui.frame(display, Duration::from_millis(5_032), &mut (), |ui| {
         Panel::vstack().id_salt("root").show(ui, |_| {});
     });
     assert_eq!(ui.time, Duration::from_millis(5_032));
@@ -715,7 +716,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // Frame D: prior frame's repaint_requested must NOT leak — resets
     // at the top of every `frame` regardless of pass count.
     let repaint = ui
-        .frame(display, Duration::from_millis(5_048), |ui| {
+        .frame(display, Duration::from_millis(5_048), &mut (), |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
         })
         .repaint_requested();
@@ -737,7 +738,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    ui.frame(display, Duration::ZERO, |ui| {
+    ui.frame(display, Duration::ZERO, &mut (), |ui| {
         Frame::new().id_salt("body").size(50.0).show(ui);
     });
     ui.frame_state.mark_submitted();
@@ -751,7 +752,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = ui.frame(display, Duration::from_millis(16), |ui| {
+    let report = ui.frame(display, Duration::from_millis(16), &mut (), |ui| {
         Frame::new().id_salt("body").size(50.0).show(ui);
     });
     ui.frame_state.mark_submitted();
@@ -769,7 +770,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
     ui.debug_overlay.frame_stats = false;
-    ui.frame(display, Duration::from_millis(32), |ui| {
+    ui.frame(display, Duration::from_millis(32), &mut (), |ui| {
         Frame::new().id_salt("body").size(50.0).show(ui);
     });
     assert!(
@@ -785,7 +786,7 @@ fn frame_stats_overlay_records_partial_damage() {
 fn request_repaint_after_queues_distinct_deadlines() {
     let mut ui = Ui::new();
     let display = Display::from_physical(SURFACE, 1.0);
-    let report = ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+    let report = ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.5));
     });
@@ -804,7 +805,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 
     // Run a frame at the first deadline. The earliest entry drains;
     // the second survives.
-    let report = ui.frame(display, Duration::from_secs_f32(0.5), |_| {});
+    let report = ui.frame(display, Duration::from_secs_f32(0.5), &mut (), |_| {});
     assert_eq!(
         report.repaint_after(),
         Some(Duration::from_secs_f32(1.5)),
@@ -813,7 +814,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
     assert_eq!(ui.repaint_wakes.len(), 1);
 
     // Run a frame at the second deadline. Queue empties.
-    let report = ui.frame(display, Duration::from_secs_f32(1.5), |_| {});
+    let report = ui.frame(display, Duration::from_secs_f32(1.5), &mut (), |_| {});
     assert_eq!(report.repaint_after(), None);
     assert!(ui.repaint_wakes.is_empty());
 }
@@ -824,7 +825,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 fn request_repaint_after_dedups_within_frame() {
     let mut ui = Ui::new();
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         for _ in 0..10 {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
         }
@@ -843,7 +844,7 @@ fn request_repaint_after_dedups_within_frame() {
 fn request_repaint_after_drains_fired_entries() {
     let mut ui = Ui::new();
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.frame(display, Duration::from_secs_f32(0.0), |ui| {
+    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
         ui.request_repaint_after(Duration::from_secs_f32(1.0));
         ui.request_repaint_after(Duration::from_secs_f32(2.0));
@@ -851,7 +852,7 @@ fn request_repaint_after_drains_fired_entries() {
     assert_eq!(ui.repaint_wakes.len(), 3);
 
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
-    let report = ui.frame(display, Duration::from_secs_f32(1.0), |_| {});
+    let report = ui.frame(display, Duration::from_secs_f32(1.0), &mut (), |_| {});
     assert_eq!(ui.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
 }
@@ -863,29 +864,11 @@ fn app_state_round_trip_across_frame() {
     }
     let mut ui = Ui::new();
     let mut app = App { count: 0 };
-    ui.frame_with(Display::default(), Duration::ZERO, &mut app, |ui| {
+    ui.frame(Display::default(), Duration::ZERO, &mut app, |ui| {
         ui.app::<App>().count += 1;
         ui.app::<App>().count += 1;
     });
     assert_eq!(app.count, 2);
-}
-
-#[test]
-fn app_state_nests_and_restores_outer() {
-    let mut ui = Ui::new();
-    let mut outer: u32 = 1;
-    let mut inner: i64 = -5;
-    ui.with_app_state(&mut outer, |ui| {
-        assert_eq!(*ui.app::<u32>(), 1);
-        ui.with_app_state(&mut inner, |ui| {
-            assert_eq!(*ui.app::<i64>(), -5);
-            *ui.app::<i64>() = 42;
-        });
-        assert_eq!(*ui.app::<u32>(), 1);
-        *ui.app::<u32>() = 9;
-    });
-    assert_eq!(outer, 9);
-    assert_eq!(inner, 42);
 }
 
 #[test]
@@ -899,7 +882,7 @@ fn app_without_install_panics() {
 fn app_type_mismatch_panics() {
     let mut ui = Ui::new();
     let mut a: u32 = 7;
-    ui.with_app_state(&mut a, |ui| {
+    ui.frame(Display::default(), Duration::ZERO, &mut a, |ui| {
         let _ = ui.app::<i64>();
     });
 }

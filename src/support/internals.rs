@@ -9,11 +9,35 @@
 //! cache benches and to assert cache population in tests. Production
 //! code should never need them.
 
+use crate::Host;
 use crate::Ui;
 use crate::animation::animatable::Animatable;
 use crate::layout::scroll::ScrollLayoutState;
+use crate::layout::types::display::Display;
 use crate::primitives::widget_id::WidgetId;
 use crate::text::TextShaper;
+use crate::ui::frame_report::FrameReport;
+
+/// CPU half of `Host::frame` — runs `Ui::frame` and returns the
+/// `FrameReport` without acquiring a swapchain texture. Production
+/// callers use `Host::frame`; this exists so the visual harness and
+/// `*_gpu` benches can inspect / mutate the report between CPU and
+/// GPU stages, then call [`host_render_to_texture`] against a
+/// caller-owned target.
+pub fn host_cpu_frame<T: 'static>(
+    host: &mut Host,
+    display: Display,
+    state: &mut T,
+    record: impl FnMut(&mut Ui),
+) -> FrameReport {
+    host.cpu_frame(display, state, record)
+}
+
+/// GPU half of `Host::frame` — submits against a caller-supplied
+/// texture. See [`host_cpu_frame`].
+pub fn host_render_to_texture(host: &mut Host, target: &wgpu::Texture, report: &FrameReport) {
+    host.render_to_texture(target, report);
+}
 
 /// Drop every cross-frame measure-cache entry, forcing the next frame
 /// to re-measure every leaf from scratch. See `benches/measure_cache.rs`.

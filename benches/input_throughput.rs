@@ -122,9 +122,9 @@ fn warmed_ui() -> (Ui, Display) {
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
-    ui.frame(display, Duration::ZERO, build_ui);
+    ui.frame(display, Duration::ZERO, &mut (), build_ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
-    ui.frame(display, Duration::ZERO, build_ui);
+    ui.frame(display, Duration::ZERO, &mut (), build_ui);
     (ui, display)
 }
 

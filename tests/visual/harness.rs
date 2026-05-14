@@ -100,10 +100,12 @@ impl Harness {
         });
 
         self.host.ui.theme.window_clear = clear;
-        let report = self
-            .host
-            .run_frame(Display::from_physical(physical, scale), scene);
-        self.host.render_to_texture(&target, &report);
+        self.host.frame_offscreen(
+            &target,
+            Display::from_physical(physical, scale),
+            &mut (),
+            scene,
+        );
 
         readback(&self.device, &self.queue, &target, physical)
     }

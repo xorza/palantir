@@ -215,7 +215,7 @@ fn bench_frame(c: &mut Criterion) {
 
     c.bench_function("frame/post_record", |b| {
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, build_ui));
+            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
         });
     });
 
@@ -230,7 +230,7 @@ fn bench_frame(c: &mut Criterion) {
             let h = 640 + ((frame / 7) % 320);
             frame = frame.wrapping_add(1);
             let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
-            black_box(ui.frame(display, std::time::Duration::ZERO, build_ui));
+            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
         });
     });
 }

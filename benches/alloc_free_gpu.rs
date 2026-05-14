@@ -192,8 +192,7 @@ fn main() {
 
     let run = |host: &mut Host| {
         host.ui.theme.window_clear = Color::TRANSPARENT;
-        let report = host.run_frame(display, build_ui);
-        host.render_to_texture(&target, &report);
+        host.frame_offscreen(&target, display, &mut (), build_ui);
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

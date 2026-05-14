@@ -37,8 +37,7 @@ use std::ptr::NonNull;
 use std::time::Duration;
 
 /// Type-erased pointer to caller-owned app state, installed for the
-/// duration of [`Ui::with_app_state`] / [`Ui::frame_with`]. Retrieved
-/// via [`Ui::app`].
+/// duration of [`Ui::frame`]. Retrieved via [`Ui::app`].
 #[derive(Clone, Copy)]
 struct AppSlot {
     ptr: NonNull<()>,
@@ -113,9 +112,8 @@ pub struct Ui {
     /// `run_frame`.
     relayout_requested: bool,
     /// Ambient caller-owned app state for the current frame. Installed
-    /// by [`Self::with_app_state`] / [`Self::frame_with`], cleared by
-    /// the RAII guard on scope exit (incl. panic). Retrieved via
-    /// [`Self::app`].
+    /// by [`Self::frame`], cleared by the RAII guard on scope exit
+    /// (incl. panic). Retrieved via [`Self::app`].
     app_slot: Option<AppSlot>,
 }
 
@@ -179,17 +177,45 @@ impl Ui {
         }
     }
 
-    /// Install `state` as the ambient app state for `f`'s duration so
-    /// widgets nested arbitrarily deep can reach it via
-    /// [`Self::app::<T>()`] without threading `&mut T` through every
-    /// closure. Nests cleanly — a `with_app_state` inside another
-    /// stacks the inner slot and restores the outer on scope exit
-    /// (incl. panic).
-    pub fn with_app_state<T: 'static, R>(
+    /// Borrow the app state installed by the enclosing [`Self::frame`].
+    /// Panics if no slot is installed or `T` doesn't match the installed
+    /// type — both are caller bugs, not runtime conditions.
+    pub fn app<T: 'static>(&mut self) -> &mut T {
+        let slot = self
+            .app_slot
+            .expect("Ui::app called with no app state installed");
+        assert!(
+            slot.type_id == TypeId::of::<T>(),
+            "Ui::app::<T>() type mismatch — installed type differs from requested",
+        );
+        // SAFETY: `frame` borrows `state: &mut T` for its full duration;
+        // `Ui::app` reborrows through `&mut self` so the returned
+        // `&mut T` can't alias another `Ui` access. The Guard restores
+        // `prev` on drop (incl. panic), so the pointer is live whenever
+        // the slot is `Some`.
+        unsafe { slot.ptr.cast::<T>().as_mut() }
+    }
+
+    // ── Frame lifecycle ───────────────────────────────────────────────
+
+    /// The only public entry point for driving a frame. Installs
+    /// `state` as ambient app state visible to deep widgets via
+    /// [`Self::app::<T>()`] for the duration of the call (RAII-restored
+    /// on scope exit, incl. panic). Runs `record` once, re-records on
+    /// action input or `request_relayout`, paints the last pass.
+    /// Callers without app state pass `&mut ()`. `now` is monotonic
+    /// host time; `Ui::{dt,time,frame_id}` derive from it. See
+    /// `docs/repaint.md`.
+    pub fn frame<T: 'static>(
         &mut self,
+        display: Display,
+        now: Duration,
         state: &mut T,
-        f: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
+        mut record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        // Install `state` as the ambient app slot for this frame; RAII
+        // guard restores the prior slot on scope exit (incl. panic) so
+        // nested frames stack cleanly.
         struct Guard<'a> {
             ui: &'a mut Ui,
             prev: Option<AppSlot>,
@@ -204,36 +230,10 @@ impl Ui {
             type_id: TypeId::of::<T>(),
         });
         let g = Guard { ui: self, prev };
-        f(&mut *g.ui)
+        g.ui.frame_inner(display, now, &mut record)
     }
 
-    /// Borrow the app state installed by the enclosing
-    /// [`Self::with_app_state`] / [`Self::frame_with`]. Panics if no
-    /// slot is installed or `T` doesn't match the installed type —
-    /// both are caller bugs, not runtime conditions.
-    pub fn app<T: 'static>(&mut self) -> &mut T {
-        let slot = self
-            .app_slot
-            .expect("Ui::app called with no app state installed");
-        assert!(
-            slot.type_id == TypeId::of::<T>(),
-            "Ui::app::<T>() type mismatch — installed type differs from requested",
-        );
-        // SAFETY: `with_app_state` borrows `state: &mut T` for the
-        // duration of `f`; `Ui::app` reborrows through `&mut self` so
-        // the returned `&mut T` can't alias another `Ui` access. The
-        // Guard restores `prev` on drop (incl. panic), so the pointer
-        // is live whenever the slot is `Some`.
-        unsafe { slot.ptr.cast::<T>().as_mut() }
-    }
-
-    // ── Frame lifecycle ───────────────────────────────────────────────
-
-    /// The only public entry point for driving a frame. Runs `record`
-    /// once, re-records on action input or `request_relayout`, paints
-    /// the last pass. `now` is monotonic host time;
-    /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
-    pub fn frame(
+    fn frame_inner(
         &mut self,
         display: Display,
         now: Duration,
@@ -329,20 +329,6 @@ impl Ui {
             damage,
             clear_color: self.theme.window_clear,
         }
-    }
-
-    /// Like [`Self::frame`] but installs `state` as the ambient app
-    /// state for the duration of the record passes, so deep widgets
-    /// can reach it via [`Self::app::<T>()`] without explicit
-    /// threading.
-    pub fn frame_with<T: 'static>(
-        &mut self,
-        display: Display,
-        now: Duration,
-        state: &mut T,
-        mut record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        self.with_app_state(state, |ui| ui.frame(display, now, &mut record))
     }
 
     /// Should we discard the last painted frame's damage snapshot? True

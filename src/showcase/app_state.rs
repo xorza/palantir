@@ -1,5 +1,5 @@
 //! Demonstrates `Ui::app::<T>()` — ambient caller-owned state
-//! installed once at the frame boundary via `Host::frame_and_render_with`
+//! installed once at the frame boundary via `Host::frame`
 //! and reached by deep widgets without threading `&mut T` through
 //! every closure. Buttons mutate the counter; a deeply-nested helper
 //! also reads it to prove the install crosses arbitrary nesting and
@@ -8,7 +8,7 @@
 use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
 
 /// State threaded through the entire showcase frame. Lives on `State`
-/// in `main.rs` and is installed via `Host::frame_and_render_with`.
+/// in `main.rs` and is installed via `Host::frame`.
 pub struct AppState {
     pub counter: i32,
 }
