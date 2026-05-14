@@ -412,6 +412,27 @@ pub(crate) struct LayoutCore {
     pub(crate) visibility: Visibility,
 }
 
+impl LayoutCore {
+    /// Fused write of `LayoutCore` + `NodeFlags` into one tail buffer.
+    /// `compute_hashes` calls this so the per-node flags byte rides at
+    /// byte 3 of the tag slot instead of producing a separate
+    /// `NodeFlags::hash` → `write_u8` fold. Saves one hasher call per
+    /// node per frame.
+    #[inline]
+    pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
+        let buf = [
+            self.mode.hash_tag(),
+            self.align.raw(),
+            self.visibility as u8,
+            flags.bits,
+        ];
+        h.write_u64(self.size.as_u64());
+        h.write_u64(self.padding.as_u64());
+        h.write_u64(self.margin.as_u64());
+        h.write(&buf);
+    }
+}
+
 impl std::hash::Hash for LayoutCore {
     /// Fold the whole record into one 32-byte hasher write. Six per-field
     /// calls (three of them sub-`u64` — mode tag, align byte, visibility
