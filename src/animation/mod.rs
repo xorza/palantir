@@ -343,7 +343,7 @@ impl<T: Animatable> AnimMapTyped<T> {
 
 /// Type-erased operations every typed map exposes — end-of-frame
 /// sweep, plus `as_any_mut` for downcast back to the concrete map.
-trait AnyTyped: 'static {
+pub(crate) trait AnyTyped: 'static {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
@@ -363,7 +363,7 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
 /// `AnimMapTyped<T>`.
 #[derive(Default)]
 pub(crate) struct AnimMap {
-    by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
+    pub(crate) by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
 }
 
 impl AnimMap {
