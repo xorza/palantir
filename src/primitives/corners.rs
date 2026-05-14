@@ -221,17 +221,20 @@ impl Corners {
         Self::new(tl * scale, tr * scale, br * scale, bl * scale)
     }
 
-    /// True when every corner is within UI epsilon of zero.
+    /// True when every corner is within UI epsilon of zero. Compares
+    /// the f16 lanes' absolute-value bit patterns against a precomputed
+    /// `EPS` threshold — no f16→f32 conversion, no SIMD. Correct for
+    /// ±0, subnormals, NaN (NaN's masked exponent is `0x7C00`, far
+    /// above the threshold so it returns false, matching the f32
+    /// semantics of `approx_zero`).
     #[inline]
     pub fn approx_zero(&self) -> bool {
-        use super::approx::approx_zero;
-        if self.0 == [0; 4] {
-            return true;
-        }
-        approx_zero(self.tl())
-            && approx_zero(self.tr())
-            && approx_zero(self.br())
-            && approx_zero(self.bl())
+        const EPS_BITS: u16 = half::f16::from_f32_const(super::approx::EPS).to_bits();
+        const ABS_MASK: u16 = 0x7FFF;
+        (self.0[0] & ABS_MASK) <= EPS_BITS
+            && (self.0[1] & ABS_MASK) <= EPS_BITS
+            && (self.0[2] & ABS_MASK) <= EPS_BITS
+            && (self.0[3] & ABS_MASK) <= EPS_BITS
     }
 }
 
