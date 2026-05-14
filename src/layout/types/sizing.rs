@@ -53,7 +53,8 @@ impl<T: Num> From<T> for Sizing {
 }
 
 /// Tagged-union with niche-uninit padding in the inactive variant — raw
-/// `bytes_of` would hash junk. Encode `tag:u8 + value:f32` instead.
+/// `bytes_of` would hash junk. Encode `tag:u8 + value:f32` into one
+/// `u64` write (tag low, value bits high 32) instead of two small calls.
 impl std::hash::Hash for Sizing {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
@@ -62,8 +63,7 @@ impl std::hash::Hash for Sizing {
             Sizing::Hug => (1, 0.0),
             Sizing::Fill(w) => (2, w),
         };
-        h.write_u8(tag);
-        h.write_u32(v.to_bits());
+        h.write_u64((tag as u64) | ((v.to_bits() as u64) << 8));
     }
 }
 

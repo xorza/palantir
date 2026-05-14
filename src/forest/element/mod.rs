@@ -335,11 +335,16 @@ impl std::hash::Hash for BoundsExtras {
 /// dirty-flag its own node hash. Transform is folded into the
 /// subtree hash separately in `Tree::compute_hashes`.
 impl std::hash::Hash for PanelExtras {
+    /// Pack `(gaps, child_align, justify)` into one `u64` write —
+    /// gaps occupies the low 32 bits (already a packed `[u16; 2]`),
+    /// child_align byte at bit 32, justify byte at bit 40.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.gaps.hash(h);
-        self.child_align.hash(h);
-        self.justify.hash(h);
+        let gaps_u32 = u32::from_ne_bytes(bytemuck::cast(self.gaps.0));
+        let packed = (gaps_u32 as u64)
+            | ((self.child_align.raw() as u64) << 32)
+            | ((self.justify as u64) << 40);
+        h.write_u64(packed);
     }
 }
 
