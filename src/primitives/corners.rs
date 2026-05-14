@@ -204,21 +204,25 @@ impl Corners {
         lane(self.0[3])
     }
 
+    /// All four lanes unpacked at once. See `Spacing::as_array` for the
+    /// SIMD rationale — same `half` slice path.
     #[inline]
     pub fn as_array(&self) -> [f32; 4] {
-        [self.tl(), self.tr(), self.br(), self.bl()]
+        use half::slice::HalfFloatSliceExt;
+        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.0);
+        let mut out = [0.0f32; 4];
+        arr.as_slice().convert_to_f32_slice(&mut out);
+        out
     }
 
+    #[inline]
     pub fn scaled_by(&self, scale: f32) -> Self {
-        Self::new(
-            self.tl() * scale,
-            self.tr() * scale,
-            self.br() * scale,
-            self.bl() * scale,
-        )
+        let [tl, tr, br, bl] = self.as_array();
+        Self::new(tl * scale, tr * scale, br * scale, bl * scale)
     }
 
     /// True when every corner is within UI epsilon of zero.
+    #[inline]
     pub fn approx_zero(&self) -> bool {
         use super::approx::approx_zero;
         if self.0 == [0; 4] {

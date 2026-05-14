@@ -641,8 +641,8 @@ impl<'a> TextEdit<'a> {
                     |x, y, w, h| {
                         ui.forest.add_shape(Shape::RoundedRect {
                             local_rect: Some(Rect::new(
-                                ctx.padding.left + offset.x + x - scroll.x,
-                                ctx.padding.top + offset.y + y - scroll.y,
+                                ctx.padding.left() + offset.x + x - scroll.x,
+                                ctx.padding.top() + offset.y + y - scroll.y,
                                 w,
                                 h,
                             )),
@@ -669,8 +669,8 @@ impl<'a> TextEdit<'a> {
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: Some(Vec2::new(
-                        ctx.padding.left + offset.x - scroll.x,
-                        ctx.padding.top + offset.y - scroll.y,
+                        ctx.padding.left() + offset.x - scroll.x,
+                        ctx.padding.top() + offset.y - scroll.y,
                     )),
                     text: display,
                     brush: color.into(),
@@ -700,8 +700,8 @@ impl<'a> TextEdit<'a> {
             // visible half of the blink cycle.
             if is_focused && caret_visible {
                 let caret_rect = Rect::new(
-                    ctx.padding.left + offset.x + caret_pos.x - scroll.x,
-                    ctx.padding.top + offset.y + caret_pos.y_top - scroll.y,
+                    ctx.padding.left() + offset.x + caret_pos.x - scroll.x,
+                    ctx.padding.top() + offset.y + caret_pos.y_top - scroll.y,
                     theme.caret_width,
                     caret_pos.line_height,
                 );
@@ -850,8 +850,8 @@ fn handle_input(
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
-        let local_x = ptr.x - rect.min.x - ctx.padding.left - align_offset.x + state.scroll.x;
-        let local_y = ptr.y - rect.min.y - ctx.padding.top - align_offset.y + state.scroll.y;
+        let local_x = ptr.x - rect.min.x - ctx.padding.left() - align_offset.x + state.scroll.x;
+        let local_y = ptr.y - rect.min.y - ctx.padding.top() - align_offset.y + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.

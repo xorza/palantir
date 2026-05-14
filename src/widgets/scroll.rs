@@ -654,11 +654,7 @@ impl Scroll {
         inner.set_id(scroll_id);
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
-        inner.margin = Spacing {
-            right: reserve_y,
-            bottom: reserve_x,
-            ..Spacing::ZERO
-        };
+        inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
         inner.gap = self.element.gap;
         inner.line_gap = self.element.line_gap;
         inner.justify = self.element.justify;

@@ -117,22 +117,26 @@ fn resolve_desired(
     min_size: Size,
     max_size: Size,
 ) -> Size {
+    let [pl, pt, pr, pb] = style.padding.as_array();
+    let [ml, mt, mr, mb] = style.margin.as_array();
+    let (p_horiz, p_vert) = (pl + pr, pt + pb);
+    let (m_horiz, m_vert) = (ml + mr, mt + mb);
     Size::new(
         resolve_axis_size(AxisCtx {
             sizing: style.size.w(),
-            hug_with_margin: content.w + style.padding.horiz() + style.margin.horiz(),
+            hug_with_margin: content.w + p_horiz + m_horiz,
             available: available.w,
             intrinsic_min: intrinsic_min.w,
-            margin: style.margin.horiz(),
+            margin: m_horiz,
             min: min_size.w,
             max: max_size.w,
         }),
         resolve_axis_size(AxisCtx {
             sizing: style.size.h(),
-            hug_with_margin: content.h + style.padding.vert() + style.margin.vert(),
+            hug_with_margin: content.h + p_vert + m_vert,
             available: available.h,
             intrinsic_min: intrinsic_min.h,
-            margin: style.margin.vert(),
+            margin: m_vert,
             min: min_size.h,
             max: max_size.h,
         }),
@@ -468,19 +472,23 @@ impl LayoutEngine {
         // children inside a `max_size`-capped parent see the capped
         // budget instead of bleeding past the parent's edge.
         let bounds = tree.size_clamps_of(node);
+        let [pl, pt, pr, pb] = style.padding.as_array();
+        let [ml, mt, mr, mb] = style.margin.as_array();
+        let (p_horiz, p_vert) = (pl + pr, pt + pb);
+        let (m_horiz, m_vert) = (ml + mr, mt + mb);
         let outer_w = match style.size.w() {
             Sizing::Fixed(v) => v,
-            _ => (available.w - style.margin.horiz()).max(0.0),
+            _ => (available.w - m_horiz).max(0.0),
         }
         .clamp(bounds.min.w, bounds.max.w);
         let outer_h = match style.size.h() {
             Sizing::Fixed(v) => v,
-            _ => (available.h - style.margin.vert()).max(0.0),
+            _ => (available.h - m_vert).max(0.0),
         }
         .clamp(bounds.min.h, bounds.max.h);
         let inner_avail = Size::new(
-            (outer_w - style.padding.horiz()).max(0.0),
-            (outer_h - style.padding.vert()).max(0.0),
+            (outer_w - p_horiz).max(0.0),
+            (outer_h - p_vert).max(0.0),
         );
 
         match style.mode {

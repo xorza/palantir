@@ -350,11 +350,13 @@ fn encode_node(
                     .clip_radius(id)
                     .copied()
                     .expect("ClipMode::Rounded without clip_radius — open_node invariant violated");
+                let [ptl, ptr_, pbr, pbl] = painted.as_array();
+                let [pl, pt, pr, pb] = padding.as_array();
                 let mask_radius = Corners::new(
-                    (painted.tl() - padding.top.max(padding.left)).max(0.0),
-                    (painted.tr() - padding.top.max(padding.right)).max(0.0),
-                    (painted.br() - padding.bottom.max(padding.right)).max(0.0),
-                    (painted.bl() - padding.bottom.max(padding.left)).max(0.0),
+                    (ptl - pt.max(pl)).max(0.0),
+                    (ptr_ - pt.max(pr)).max(0.0),
+                    (pbr - pb.max(pr)).max(0.0),
+                    (pbl - pb.max(pl)).max(0.0),
                 );
                 out.push_clip_rounded(mask_rect, mask_radius);
             }
