@@ -710,7 +710,7 @@ impl Scroll {
             &theme,
         );
 
-        let outer_node = ui.node(outer, |ui| {
+        ui.node(outer, |ui| {
             match inner_chrome {
                 Some(c) => {
                     ui.node_with_chrome(inner, c, |ui| body(ui));
@@ -741,7 +741,6 @@ impl Scroll {
 
         let resp_state = ui.response_for(id);
         Response {
-            node: outer_node,
             id,
             state: resp_state,
         }

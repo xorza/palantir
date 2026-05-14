@@ -3,6 +3,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{run_at, under_outer};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -32,7 +33,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
                         .size((100.0, Sizing::Hug))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let root = root.unwrap();
@@ -72,7 +73,7 @@ fn vstack_with_fill_distributes_remainder() {
                         .size((Sizing::Hug, Sizing::FILL))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -99,7 +100,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                         .size((Sizing::Fill(3.0), Sizing::Hug))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -129,7 +130,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -165,7 +166,7 @@ fn hstack_justify_distributes_leftover() {
                             Frame::new().id_salt(("c", i)).size(40.0).show(ui);
                         }
                     })
-                    .node,
+                    .node(ui),
             );
         });
         let kids = child_rects(&ui, root.unwrap());
@@ -193,7 +194,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
                         .show(ui);
                     Frame::new().id_salt("c").size(40.0).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -217,7 +218,7 @@ fn hstack_gap_inserts_space_between_children() {
                     Frame::new().id_salt("b").size(40.0).show(ui);
                     Frame::new().id_salt("c").size(40.0).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -242,7 +243,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
                         .align(Align::CENTER)
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let r = child_rects(&ui, root.unwrap())[0];
@@ -264,7 +265,7 @@ fn negative_left_margin_spills_outside_slot() {
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(30.0)))
                     .margin((-10.0, 0.0, 0.0, 0.0))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -296,7 +297,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     assert_eq!(
@@ -325,7 +326,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
                         .show(ui);
                     Frame::new().id_salt("b").size((30.0, 20.0)).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -358,7 +359,7 @@ fn hstack_fill_max_size_caps_measured_share() {
                         .size((Sizing::FILL, 20.0))
                         .max_size(Size::new(50.0, f32::INFINITY))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
     });
@@ -389,10 +390,10 @@ fn parent_max_size_clamps_children_available() {
                         .id_salt("inner")
                         .size((Sizing::FILL, Sizing::Fixed(20.0)))
                         .show(ui, |_| {})
-                        .node,
+                        .node(ui),
                 );
             })
-            .node
+            .node(ui)
     });
     let parent_rect = ui.layout[Layer::Main].rect[parent_node.index()];
     assert_eq!(

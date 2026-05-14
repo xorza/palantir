@@ -617,7 +617,7 @@ impl<'a> TextEdit<'a> {
         let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        let resp_node = ui.node_with_chrome(element, chrome, |ui| {
+        ui.node_with_chrome(element, chrome, |ui| {
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
             // actually live (anchor != caret — collapsed selections are
@@ -722,11 +722,7 @@ impl<'a> TextEdit<'a> {
         }
 
         let state = ui.response_for(id);
-        let response = Response {
-            node: resp_node,
-            id,
-            state,
-        };
+        let response = Response { id, state };
 
         // Phase 5: default Cut / Copy / Paste / Clear context menu.
         // Triggered by secondary click on the editor; items mutate

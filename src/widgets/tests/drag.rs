@@ -13,6 +13,7 @@ use crate::input::InputEvent;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{press_at, release_left, run_at_acked};
 use crate::widgets::{Response, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -227,7 +228,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                         .position(a.pos)
                         .sense(Sense::DRAG)
                         .show(ui);
-                    card_node = Some(r.node);
+                    card_node = Some(r.node(ui));
                     a.fold(&r);
                 });
         });

@@ -1,4 +1,5 @@
 use super::*;
+use crate::support::internals::ResponseNodeExt;
 
 /// Caret blink: visible for the first half-period, hidden for the
 /// second, repeats. Reset to "visible" by any caret / selection /
@@ -16,7 +17,7 @@ fn caret_blinks_on_and_off_while_focused() {
                     .id_salt("blink-ed")
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     }

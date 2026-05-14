@@ -10,6 +10,7 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -33,7 +34,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                         .style(TextStyle::default().with_font_size(16.0))
                         .wrapping()
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
     });
@@ -265,9 +266,9 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })
-                                                .node,
+                                                .node(ui),
                                         );
-                                    }).node);
+                                    }).node(ui));
                             });
                     });
             });
@@ -344,7 +345,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
                 .auto_id()
                 .style(TextStyle::default().with_font_size(14.0))
                 .show(ui)
-                .node,
+                .node(ui),
         );
     });
     let label_node = label_node.unwrap();
@@ -393,7 +394,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                         .wrapping()
                         .grid_cell((0, 0))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
                 label_node = Some(
                     Text::new("right column")
@@ -401,7 +402,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                         .style(TextStyle::default().with_font_size(14.0))
                         .grid_cell((0, 1))
                         .show(ui)
-                        .node,
+                        .node(ui),
                 );
             });
         (paragraph_node.unwrap(), label_node.unwrap())

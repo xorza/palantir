@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::under_outer;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -17,7 +18,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
                 Frame::new().id_salt("a").size((40.0, 20.0)).show(ui);
                 Frame::new().id_salt("b").size((10.0, 80.0)).show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     assert_eq!(r.size.w, 40.0);
@@ -36,7 +37,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
                 Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
                 Frame::new().id_salt("b").size((30.0, 30.0)).show(ui);
             })
-            .node
+            .node(ui)
     });
     let kids: Vec<_> = ui
         .forest
@@ -101,7 +102,7 @@ fn zstack_per_axis_alignment() {
                         .show(ui);
                 }
             })
-            .node
+            .node(ui)
         });
         let panel_rect = ui.layout[Layer::Main].rect[panel.index()];
         let kids: Vec<_> = ui
@@ -135,7 +136,7 @@ fn zstack_fill_child_stretches_to_inner() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.index()];
     let kids: Vec<_> = ui
@@ -166,7 +167,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     assert_eq!(r.size.w, 0.0);
@@ -188,7 +189,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
                     .collapsed()
                     .show(ui);
             })
-            .node
+            .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.index()];
     assert_eq!(r.size.w, 20.0);

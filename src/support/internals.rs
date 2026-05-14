@@ -77,6 +77,38 @@ pub(crate) fn scroll_state(ui: &mut Ui, id: WidgetId) -> &mut ScrollLayoutState 
     ui.layout_engine.scroll_states.entry(id).or_default()
 }
 
+/// Scan `Layer::Main`'s record column for the node whose `widget_id`
+/// matches `id`. Panics if no such node exists in the just-recorded
+/// tree. Tests use this in place of the removed `Response.node`
+/// field to feed `NodeId`s into `LayoutResult` / paint-rect lookups.
+#[allow(dead_code)]
+pub(crate) fn node_for_widget_id(ui: &Ui, id: WidgetId) -> crate::forest::tree::NodeId {
+    use crate::forest::tree::{Layer, NodeId};
+    let tree = ui.forest.tree(Layer::Main);
+    let wids = tree.records.widget_id();
+    let idx = wids
+        .iter()
+        .position(|w| *w == id)
+        .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
+    NodeId(idx as u32)
+}
+
+/// Test/bench extension giving `Response` the old `.node` field as a
+/// method. Resolves the response's `WidgetId` against the recorded
+/// `Layer::Main` tree (see [`node_for_widget_id`]). Call sites
+/// `use crate::support::internals::ResponseNodeExt;` then read
+/// `r.node(ui)` or `expr.show(ui, …).node(ui)`.
+#[allow(dead_code)]
+pub(crate) trait ResponseNodeExt {
+    fn node(&self, ui: &Ui) -> crate::forest::tree::NodeId;
+}
+
+impl ResponseNodeExt for crate::widgets::Response {
+    fn node(&self, ui: &Ui) -> crate::forest::tree::NodeId {
+        node_for_widget_id(ui, self.id)
+    }
+}
+
 /// Total `measure` calls dispatched through `shaper` (cache misses
 /// only). Cache hits don't increment. Read by tests pinning
 /// reshape-skip behaviour and bench A/B fixtures.

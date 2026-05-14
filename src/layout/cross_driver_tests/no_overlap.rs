@@ -12,6 +12,7 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{encode_cmds, new_ui_text, run_at};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -89,7 +90,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                                     .wrapping()
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             right = Some(
                                 Text::new("right column")
@@ -97,7 +98,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         });
                 });
@@ -143,7 +144,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .wrapping()
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             hug_right = Some(
                                 Text::new("right column")
@@ -151,7 +152,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         });
                 });
@@ -170,7 +171,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             prop_value = Some(
                                 Text::new(
@@ -181,7 +182,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui)
-                                .node,
+                                .node(ui),
                             );
                         });
                 });

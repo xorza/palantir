@@ -6,6 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{click_at, run_at, run_at_acked, shapes_of};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -26,7 +27,7 @@ fn frame_paints_a_single_rounded_rect() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node,
+                    .node(ui),
             );
         });
     });

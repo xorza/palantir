@@ -5,6 +5,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{click_at, run_at, run_at_acked, shapes_of};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -27,7 +28,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id_salt("none")
                 .size(50.0)
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("none", n, ClipMode::None, false));
 
             let n = Panel::zstack()
@@ -38,7 +39,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                     ..Default::default()
                 })
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("paint-only", n, ClipMode::None, true));
 
             // Surface::scissor — clip + transparent paint. Chrome is
@@ -49,7 +50,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("scissor", n, ClipMode::Rect, false));
 
             let n = Panel::zstack()
@@ -61,7 +62,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rect()
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("clipped", n, ClipMode::Rect, true));
 
             let n = Panel::zstack()
@@ -74,7 +75,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
             // Background + clip_rounded with zero radius — Ui::node downgrades.
@@ -87,7 +88,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
-                .node;
+                .node(ui);
             cases.push(("rounded-zero", n, ClipMode::Rect, true));
         });
     });
@@ -126,17 +127,17 @@ fn panel_hugs_largest_child_and_layers_them() {
                                 .id_salt("a")
                                 .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                         b_node = Some(
                             Button::new()
                                 .id_salt("b")
                                 .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                     })
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -187,7 +188,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node,
+                            .node(ui),
                     );
                 });
         });

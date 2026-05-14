@@ -4,6 +4,7 @@ use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{run_at, shapes_of};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -31,17 +32,17 @@ fn zstack_layers_children_without_painting_background() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                         fg_node = Some(
                             Button::new()
                                 .id_salt("fg")
                                 .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                     })
-                    .node,
+                    .node(ui),
             );
         });
     });
@@ -92,7 +93,7 @@ fn zstack_aligns_child_per_axis() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node,
+                                .node(ui),
                         );
                     });
             });

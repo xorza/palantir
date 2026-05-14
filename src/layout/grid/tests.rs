@@ -4,6 +4,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
+use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::run_at;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
 use glam::UVec2;
@@ -32,7 +33,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
                     Frame::new().id_salt("left").grid_cell((0, 0)).show(ui);
                     Frame::new().id_salt("right").grid_cell((0, 1)).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -74,7 +75,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                         .grid_span((2, 1))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -133,7 +134,7 @@ fn grid_fill_weights_and_clamps() {
                         Frame::new().id_salt("a").grid_cell((0, 0)).show(ui);
                         Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
                     })
-                    .node,
+                    .node(ui),
             );
         });
         let kids = child_rects(&ui, root.unwrap());
@@ -179,7 +180,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                             .show(ui);
                         Frame::new().id_salt("body").grid_cell((1, 1)).show(ui);
                     })
-                    .node,
+                    .node(ui),
             );
         });
         let kids = child_rects(&ui, root.unwrap());
@@ -224,7 +225,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
                             Frame::new().id_salt("a").grid_cell((0, 0)).show(ui);
                             Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
                         })
-                        .node,
+                        .node(ui),
                 );
             });
     });
@@ -253,7 +254,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                         .align(Align::new(HAlign::Right, VAlign::Bottom))
                         .show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let r = child_rects(&ui, root.unwrap())[0];
@@ -302,7 +303,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
                         .show(ui);
                     Frame::new().id_salt("corner").grid_cell((2, 2)).show(ui);
                 })
-                .node,
+                .node(ui),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -340,10 +341,10 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                                     .id_salt("ghost")
                                     .size((20.0, 20.0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         })
-                        .node,
+                        .node(ui),
                 );
             });
     });
@@ -381,7 +382,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .size((50.0, 10.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             kids.push(
                                 Frame::new()
@@ -389,7 +390,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .size((50.0, 80.0))
                                     .grid_cell((1, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                             kids.push(
                                 Frame::new()
@@ -397,10 +398,10 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                                     .size((50.0, 30.0))
                                     .grid_cell((2, 0))
                                     .show(ui)
-                                    .node,
+                                    .node(ui),
                             );
                         })
-                        .node,
+                        .node(ui),
                 );
             });
     });
