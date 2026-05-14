@@ -258,7 +258,7 @@ impl LayoutEngine {
         out: &mut Layout,
     ) -> Size {
         let style = tree.records.layout()[node.index()];
-        if style.visibility.is_collapsed() {
+        if style.visibility().is_collapsed() {
             self.scratch.desired[node.index()] = Size::ZERO;
             return Size::ZERO;
         }
@@ -500,13 +500,17 @@ impl LayoutEngine {
             }
             LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text, out),
             LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text, out),
-            LayoutMode::Grid(idx) => grid::measure(self, tree, node, idx, inner_avail, text, out),
+            LayoutMode::Grid => {
+                grid::measure(self, tree, node, style.mode_payload, inner_avail, text, out)
+            }
             // Scroll viewport. INF-axis measure of children; the
             // driver also writes the panned-axis content extent into
             // the persistent `ScrollLayoutState` row (see
             // `scroll::measure`).
-            LayoutMode::Scroll(axes) => {
-                scroll::measure(self, tree, node, inner_avail, axes, text, out)
+            mode @ (LayoutMode::ScrollVertical
+            | LayoutMode::ScrollHorizontal
+            | LayoutMode::ScrollBoth) => {
+                scroll::measure(self, tree, node, inner_avail, mode, text, out)
             }
         }
     }
@@ -516,7 +520,7 @@ impl LayoutEngine {
     /// active layer's `Layout`.
     pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut Layout) {
         let style = tree.records.layout()[node.index()];
-        if style.visibility.is_collapsed() {
+        if style.visibility().is_collapsed() {
             zero_subtree(self, tree, node, slot.min, out);
             return;
         }
@@ -534,8 +538,10 @@ impl LayoutEngine {
             LayoutMode::WrapVStack => wrapstack::arrange(self, tree, node, inner, Axis::Y, out),
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner, out),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner, out),
-            LayoutMode::Grid(idx) => grid::arrange(self, tree, node, inner, idx, out),
-            LayoutMode::Scroll(axes) => scroll::arrange(self, tree, node, inner, axes, out),
+            LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.mode_payload, out),
+            mode @ (LayoutMode::ScrollVertical
+            | LayoutMode::ScrollHorizontal
+            | LayoutMode::ScrollBoth) => scroll::arrange(self, tree, node, inner, mode, out),
         }
     }
 

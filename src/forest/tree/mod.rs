@@ -396,7 +396,8 @@ impl Tree {
             if ex.chrome.is_present() || has_direct_shape {
                 paints.set(i, true);
             }
-            if let LayoutMode::Grid(idx) = layouts[i].mode {
+            if layouts[i].mode == LayoutMode::Grid {
+                let idx = layouts[i].mode_payload;
                 grid_defs[idx as usize].hash(&mut h);
             }
             let node_hash = h.finish();
@@ -449,7 +450,7 @@ impl Tree {
         if matches!(element.clip_mode(), ClipMode::Rounded) {
             element.set_clip(ClipMode::Rect);
         }
-        let ctx = self.open_node_prologue(element.mode);
+        let ctx = self.open_node_prologue(element.mode, element.mode_payload);
         let cols = element.into_columns();
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
@@ -484,7 +485,7 @@ impl Tree {
         if matches!(element.clip_mode(), ClipMode::Rounded) && bg.radius.approx_zero() {
             element.set_clip(ClipMode::Rect);
         }
-        let ctx = self.open_node_prologue(element.mode);
+        let ctx = self.open_node_prologue(element.mode, element.mode_payload);
         let cols = element.into_columns();
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
@@ -511,7 +512,7 @@ impl Tree {
     /// chrome-specific table writes, then returns to
     /// [`Self::open_node_finalize`].
     #[inline(always)]
-    fn open_node_prologue(&mut self, mode: LayoutMode) -> OpenNodeCtx {
+    fn open_node_prologue(&mut self, mode: LayoutMode, mode_payload: u16) -> OpenNodeCtx {
         let parent_frame = self.open_frames.last().copied();
         let new_id = self.peek_next_id();
         if parent_frame.is_none() {
@@ -522,10 +523,10 @@ impl Tree {
                 size: pending.size,
             });
         }
-        if let LayoutMode::Grid(idx) = mode {
+        if matches!(mode, LayoutMode::Grid) {
             assert!(
-                (idx as usize) < self.grid.defs.len(),
-                "LayoutMode::Grid({idx}) references no grid_def — only Grid::show should push grid nodes",
+                (mode_payload as usize) < self.grid.defs.len(),
+                "LayoutMode::Grid idx {mode_payload} references no grid_def — only Grid::show should push grid nodes",
             );
         }
         OpenNodeCtx {
@@ -540,8 +541,9 @@ impl Tree {
     #[inline(always)]
     fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
         if let Some(parent_id) = parent
-            && let LayoutMode::Grid(grid_idx) = self.records.layout()[parent_id.0 as usize].mode
+            && self.records.layout()[parent_id.0 as usize].mode == LayoutMode::Grid
         {
+            let grid_idx = self.records.layout()[parent_id.0 as usize].mode_payload;
             let def = &self.grid.defs[grid_idx as usize];
             let n_rows = def.rows.len();
             let n_cols = def.cols.len();
@@ -631,7 +633,7 @@ impl Tree {
         shapes.len = shapes_len - shapes.start;
         let end = self.records.subtree_end()[i];
 
-        if matches!(self.records.layout()[i].mode, LayoutMode::Grid(_)) {
+        if self.records.layout()[i].mode == LayoutMode::Grid {
             self.has_grid.insert(i);
         }
         let i_has_grid = self.has_grid.contains(i);
@@ -776,7 +778,7 @@ impl<'a> Iterator for ChildIter<'a> {
             return None;
         }
         let i = self.next as usize;
-        let visibility = self.layouts[i].visibility;
+        let visibility = self.layouts[i].visibility();
         self.next = self.ends[i];
         Some(Child {
             id: NodeId(i as u32),
@@ -828,7 +830,7 @@ impl<'a> Iterator for TreeItems<'a> {
                 self.cursor += 1;
                 return Some(TreeItem::ShapeRecord(s));
             }
-            let visibility = self.layouts[self.next_child_id as usize].visibility;
+            let visibility = self.layouts[self.next_child_id as usize].visibility();
             let child = Child {
                 id: NodeId(self.next_child_id),
                 visibility,

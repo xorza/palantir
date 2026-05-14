@@ -1,4 +1,4 @@
-use crate::forest::element::{Configure, Element, LayoutMode, ScrollAxes};
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
@@ -297,22 +297,22 @@ pub struct Scroll {
 impl Scroll {
     #[track_caller]
     pub fn vertical() -> Self {
-        Self::with_axes(ScrollAxes::Vertical)
+        Self::with_axes(LayoutMode::ScrollVertical)
     }
 
     #[track_caller]
     pub fn horizontal() -> Self {
-        Self::with_axes(ScrollAxes::Horizontal)
+        Self::with_axes(LayoutMode::ScrollHorizontal)
     }
 
     #[track_caller]
     pub fn both() -> Self {
-        Self::with_axes(ScrollAxes::Both)
+        Self::with_axes(LayoutMode::ScrollBoth)
     }
 
     #[track_caller]
-    fn with_axes(axes: ScrollAxes) -> Self {
-        let mut element = Element::new(LayoutMode::Scroll(axes));
+    fn with_axes(mode: LayoutMode) -> Self {
+        let mut element = Element::new(mode);
         element.set_sense(Sense::SCROLL);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
@@ -343,14 +343,18 @@ impl Scroll {
 
     pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
-        let axes = match self.element.mode {
-            LayoutMode::Scroll(a) => a,
-            _ => unreachable!("Scroll widget must carry LayoutMode::Scroll"),
-        };
-        let pan = axes.pan_mask();
+        let mode = self.element.mode;
+        assert!(
+            matches!(
+                mode,
+                LayoutMode::ScrollVertical | LayoutMode::ScrollHorizontal | LayoutMode::ScrollBoth
+            ),
+            "Scroll widget must carry a LayoutMode::Scroll* variant",
+        );
+        let pan = mode.pan_mask();
         if self.zoom.is_some() {
             assert!(
-                matches!(axes, ScrollAxes::Both),
+                matches!(mode, LayoutMode::ScrollBoth),
                 "Scroll::with_zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );
         }

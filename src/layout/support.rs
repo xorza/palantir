@@ -298,7 +298,7 @@ pub(crate) struct AxisPlacement {
 /// they can't drift. Stack discards the unused axis; the cost is two enum
 /// matches per child per frame.
 pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align) -> AxisAlignPair {
-    let a = child.align;
+    let a = child.align();
     AxisAlignPair {
         h: a.halign().or(parent_child_align.halign()).to_axis(),
         v: a.valign().or(parent_child_align.valign()).to_axis(),

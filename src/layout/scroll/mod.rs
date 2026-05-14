@@ -17,7 +17,7 @@
 //! unaware of scrollbars and of the outer ZStack the widget wraps it
 //! in.
 
-use crate::forest::element::ScrollAxes;
+use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::axis::Axis;
@@ -134,12 +134,12 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    axes: ScrollAxes,
+    mode: LayoutMode,
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
-    let raw = match axes {
-        ScrollAxes::Vertical => stack::measure(
+    let raw = match mode {
+        LayoutMode::ScrollVertical => stack::measure(
             layout,
             tree,
             node,
@@ -148,7 +148,7 @@ pub(crate) fn measure(
             text,
             out,
         ),
-        ScrollAxes::Horizontal => stack::measure(
+        LayoutMode::ScrollHorizontal => stack::measure(
             layout,
             tree,
             node,
@@ -157,16 +157,18 @@ pub(crate) fn measure(
             text,
             out,
         ),
-        ScrollAxes::Both => zstack::measure(layout, tree, node, Size::INF, text, out),
+        LayoutMode::ScrollBoth => zstack::measure(layout, tree, node, Size::INF, text, out),
+        _ => unreachable!("scroll::measure called with non-Scroll mode {mode:?}"),
     };
 
     let wid = tree.records.widget_id()[node.index()];
     layout.scroll_states.entry(wid).or_default().content = raw;
 
-    match axes {
-        ScrollAxes::Vertical => Size::new(raw.w, 0.0),
-        ScrollAxes::Horizontal => Size::new(0.0, raw.h),
-        ScrollAxes::Both => Size::ZERO,
+    match mode {
+        LayoutMode::ScrollVertical => Size::new(raw.w, 0.0),
+        LayoutMode::ScrollHorizontal => Size::new(0.0, raw.h),
+        LayoutMode::ScrollBoth => Size::ZERO,
+        _ => unreachable!(),
     }
 }
 
@@ -181,13 +183,14 @@ pub(crate) fn arrange(
     tree: &Tree,
     node: NodeId,
     inner: Rect,
-    axes: ScrollAxes,
+    mode: LayoutMode,
     out: &mut Layout,
 ) {
-    match axes {
-        ScrollAxes::Vertical => stack::arrange(layout, tree, node, inner, Axis::Y, out),
-        ScrollAxes::Horizontal => stack::arrange(layout, tree, node, inner, Axis::X, out),
-        ScrollAxes::Both => zstack::arrange(layout, tree, node, inner, out),
+    match mode {
+        LayoutMode::ScrollVertical => stack::arrange(layout, tree, node, inner, Axis::Y, out),
+        LayoutMode::ScrollHorizontal => stack::arrange(layout, tree, node, inner, Axis::X, out),
+        LayoutMode::ScrollBoth => zstack::arrange(layout, tree, node, inner, out),
+        _ => unreachable!("scroll::arrange called with non-Scroll mode {mode:?}"),
     }
 
     let wid = tree.records.widget_id()[node.index()];

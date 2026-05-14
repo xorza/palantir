@@ -65,12 +65,15 @@ impl Grid {
     #[allow(clippy::new_without_default)]
     #[track_caller]
     pub fn new() -> Self {
-        // Mode is patched at `show()` time once `grid.push_def` returns the
-        // real index. Initialize with a placeholder that `Tree::push_node`'s
-        // bounds-check rejects, so any code path that reaches the tree
-        // without going through `show()` panics loudly.
+        // Mode_payload is patched at `show()` time once `grid.push_def`
+        // returns the real index. Initialize with a sentinel that
+        // `Tree::open_node_prologue`'s bounds-check rejects, so any code
+        // path that reaches the tree without going through `show()` panics
+        // loudly.
+        let mut element = Element::new(LayoutMode::Grid);
+        element.mode_payload = PENDING_GRID_IDX;
         Self {
-            element: Element::new(LayoutMode::Grid(PENDING_GRID_IDX)),
+            element,
             def: GridDef {
                 rows: empty_tracks(),
                 cols: empty_tracks(),
@@ -127,7 +130,7 @@ impl Grid {
         let active_layer = ui.forest.current_layer;
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
         let mut element = self.element;
-        element.mode = LayoutMode::Grid(idx);
+        element.mode_payload = idx;
 
         // Theme fallback for chrome / clip — see `Panel::show`.
         let chrome = self.chrome.or(ui.theme.panel_background);
