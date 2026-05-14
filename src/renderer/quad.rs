@@ -90,7 +90,7 @@ impl FillKind {
     }
 }
 
-/// Per-instance quad data (92 B). Field types are the matching
+/// Per-instance quad data (84 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
 /// `vertex_attr_array` in `QuadPipeline::new` (in the backend) for the
 /// explicit attribute offsets, which is the only thing constraining
@@ -160,16 +160,16 @@ mod tests {
         assert!(!FillKind::linear(Spread::Pad).is_shadow());
     }
 
-    /// Pin: `Quad` is exactly 92 bytes — pos(8) + size(8) + fill(16) +
-    /// radius(16) + stroke_color(16) + stroke_width(4) + fill_kind(4) +
-    /// fill_lut_row(4) + fill_axis(16). The `vertex_attr_array` in the
-    /// backend's `QuadPipeline::new` assumes this exact layout via
-    /// Rust's `repr(C)` field-order rules. A reorder or an added field
-    /// that shifts an attribute's offset would break the shader binding
-    /// silently — this test catches it.
+    /// Pin: `Quad` is exactly 84 bytes — pos(8) + size(8) + fill(16) +
+    /// radius(8, packed 4xf16) + stroke_color(16) + stroke_width(4) +
+    /// fill_kind(4) + fill_lut_row(4) + fill_axis(16). The
+    /// `vertex_attr_array` in the backend's `QuadPipeline::new` assumes
+    /// this exact layout via Rust's `repr(C)` field-order rules. A
+    /// reorder or an added field that shifts an attribute's offset would
+    /// break the shader binding silently — this test catches it.
     #[test]
-    fn quad_struct_is_92_bytes_no_padding() {
-        assert_eq!(std::mem::size_of::<Quad>(), 92);
+    fn quad_struct_is_84_bytes_no_padding() {
+        assert_eq!(std::mem::size_of::<Quad>(), 84);
     }
 
     /// Pin every field offset against the `vertex_attr_array!` in
@@ -180,11 +180,11 @@ mod tests {
     fn quad_field_offsets_match_vertex_attr_array() {
         assert_eq!(offset_of!(Quad, rect), 0, "loc 0 (pos) + loc 1 (size)");
         assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill)");
-        assert_eq!(offset_of!(Quad, radius), 32, "loc 3 (radius)");
-        assert_eq!(offset_of!(Quad, stroke_color), 48, "loc 4 (stroke.color)");
-        assert_eq!(offset_of!(Quad, stroke_width), 64, "loc 5 (stroke.width)");
-        assert_eq!(offset_of!(Quad, fill_kind), 68, "loc 6 (fill_kind)");
-        assert_eq!(offset_of!(Quad, fill_lut_row), 72, "loc 7 (fill_lut_row)");
-        assert_eq!(offset_of!(Quad, fill_axis), 76, "loc 8 (fill_axis)");
+        assert_eq!(offset_of!(Quad, radius), 32, "loc 3 (radius, packed)");
+        assert_eq!(offset_of!(Quad, stroke_color), 40, "loc 4 (stroke.color)");
+        assert_eq!(offset_of!(Quad, stroke_width), 56, "loc 5 (stroke.width)");
+        assert_eq!(offset_of!(Quad, fill_kind), 60, "loc 6 (fill_kind)");
+        assert_eq!(offset_of!(Quad, fill_lut_row), 64, "loc 7 (fill_lut_row)");
+        assert_eq!(offset_of!(Quad, fill_axis), 68, "loc 8 (fill_axis)");
     }
 }

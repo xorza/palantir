@@ -249,7 +249,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         .rounded_clip
         .expect("outer rounded data must ride on group");
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
-    assert_eq!(outer_r.radius.tl, 16.0);
+    assert_eq!(outer_r.radius.tl(), 16.0);
     assert_eq!(outer_r.mask_rect.min, glam::Vec2::new(20.0, 40.0));
     assert_eq!(
         outer_r.mask_rect.size,
@@ -374,7 +374,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
     );
     let q = &buf.quads[0];
     assert_eq!(q.rect.size, Size::new(100.0, 100.0));
-    assert_eq!(q.radius.tl, 16.0);
+    assert_eq!(q.radius.tl(), 16.0);
     assert_eq!(q.stroke_width, 3.0);
 }
 
