@@ -48,6 +48,20 @@ impl ShapeStroke {
     pub(crate) fn width(self) -> f32 {
         f16::from_bits(self.width_f16).to_f32()
     }
+
+    /// True when no pixels would paint: zero/negative width or
+    /// fully-transparent colour. Mirrors `Stroke::is_noop` but stays
+    /// in the packed form — no f16 → f32 conversion for the colour
+    /// arm (alpha is checked via the shared `noop_f16_bits` bit-trick
+    /// inside `ColorF16::is_noop`).
+    #[inline]
+    pub(crate) fn is_noop(self) -> bool {
+        // f16 bits with sign masked, compared against the EPS bit
+        // pattern. Width `≤ EPS` (or NaN, which masks above EPS) reads
+        // as "noop"; matches `noop_f32`'s semantics modulo NaN.
+        use crate::primitives::approx::noop_f16_bits;
+        noop_f16_bits(self.width_f16) || self.color.is_noop()
+    }
 }
 
 impl From<Stroke> for ShapeStroke {

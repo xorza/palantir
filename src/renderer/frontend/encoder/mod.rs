@@ -111,7 +111,7 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
                 rects[node.index()],
                 Corners::ZERO,
                 BrushSource::Solid(ColorF16::TRANSPARENT),
-                COLLISION_OVERLAY_STROKE,
+                COLLISION_OVERLAY_STROKE.into(),
             );
         }
     }
