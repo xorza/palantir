@@ -609,7 +609,6 @@ impl Tree {
         TreeItems::new(&self.records, &self.shapes.records, node)
     }
 
-    #[inline]
     pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
         self.extras_idx[id.index()]
             .bounds
@@ -617,7 +616,6 @@ impl Tree {
             .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s])
     }
 
-    #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
         self.extras_idx[id.index()]
             .panel
@@ -629,7 +627,6 @@ impl Tree {
     /// (`Background::is_noop`). The encoder reads this; rounded-clip
     /// stencil masks read [`Self::clip_radius`] separately because
     /// they survive `Background::is_noop` filtering.
-    #[inline]
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&Background> {
         self.extras_idx[id.index()]
             .chrome
@@ -641,7 +638,6 @@ impl Tree {
     /// independently of the chrome filter so the encoder gets a radius
     /// for the stencil-mask path even when the node's paint is fully
     /// no-op.
-    #[inline]
     pub(crate) fn clip_radius(&self, id: NodeId) -> Option<&Corners> {
         self.extras_idx[id.index()]
             .clip_radius
