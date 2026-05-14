@@ -33,7 +33,7 @@ pub(crate) fn measure(
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
     measure_per_axis_hug(layout, tree, node, inner_avail, text, out, |tree, c, d| {
-        let pos = tree.bounds(c).position;
+        let pos = tree.position_of(c);
         Size::new(pos.x + d.w, pos.y + d.h)
     })
 }
@@ -55,7 +55,7 @@ pub(crate) fn arrange(
             continue;
         }
         let d = layout.scratch.desired[c.index()];
-        let pos = tree.bounds(c).position;
+        let pos = tree.position_of(c);
         let child_rect = Rect {
             min: inner.min + pos,
             size: d,
@@ -77,7 +77,7 @@ pub(crate) fn intrinsic(
 ) -> f32 {
     let mut max = 0.0_f32;
     for c in tree.active_children(node) {
-        let pos = tree.bounds(c).position;
+        let pos = tree.position_of(c);
         max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text));
     }
     max

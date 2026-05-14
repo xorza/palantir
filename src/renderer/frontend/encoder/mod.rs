@@ -375,8 +375,7 @@ fn encode_node(
     // wastes two cmd slots and a `transform_stack` push/pop in the
     // composer.
     let transform = tree
-        .bounds(id)
-        .transform
+        .transform_of(id)
         .filter(|t| *t != TranslateScale::IDENTITY);
 
     // Interleave direct shapes with child recursion in record order.

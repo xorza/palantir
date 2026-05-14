@@ -36,6 +36,7 @@ use crate::layout::types::{
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
+use soa_rs::Soars;
 
 /// How a node arranges its children. Stored on `Element::mode` and read by
 /// the layout pass; the tree itself treats it as an opaque tag.
@@ -126,15 +127,31 @@ impl ScrollAxes {
 /// `Element` (leaf or panel) whose builder customizes one of these fields.
 /// Lifted into a sparse side-table so leaves that touch none of these stay
 /// at zero per-node bytes here.
-#[derive(Clone, Copy, Debug, PartialEq)]
+///
+/// Stored as `Soa<BoundsExtras>` on `Tree.bounds_table` — five columns,
+/// each cascade/driver pass reads only the columns it needs. The single
+/// `Slot` in `ExtrasIdx::bounds` indexes all five columns together (one
+/// row per "node with any customized bounds field").
+#[derive(Soars, Clone, Copy, Debug, PartialEq)]
+#[soa_derive(Debug)]
 pub(crate) struct BoundsExtras {
-    pub(crate) transform: Option<TranslateScale>,
-    pub(crate) position: Vec2,
-    pub(crate) grid: GridCell,
+    pub transform: Option<TranslateScale>,
+    pub position: Vec2,
+    pub grid: GridCell,
     /// Lower clamp on the resolved outer size. Default `Size::ZERO`.
-    pub(crate) min_size: Size,
+    pub min_size: Size,
     /// Upper clamp on the resolved outer size. Default `Size::INF`.
-    pub(crate) max_size: Size,
+    pub max_size: Size,
+}
+
+/// Paired `(min, max)` clamp on the resolved outer size — always read
+/// together by `layoutengine` / `intrinsic` / `stack`. Returned by
+/// `Tree::size_clamps_of` to avoid 2 separate column lookups at each
+/// caller.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct SizeClamp {
+    pub(crate) min: Size,
+    pub(crate) max: Size,
 }
 
 /// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
