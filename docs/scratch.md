@@ -4,9 +4,6 @@ local animation that dont need relayout
 
 checkbox
 
-stroke
-pub(crate) width: f32, - pack to u16
-
 #[repr(C)] #[derive(Copy, Clone, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub struct FillAxis {
 pub dir_x: f32,

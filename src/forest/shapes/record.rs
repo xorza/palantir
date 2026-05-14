@@ -1,7 +1,7 @@
 use crate::layout::types::align::Align;
 use crate::layout::types::span::Span;
 use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
@@ -10,6 +10,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
+use half::f16;
 use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
@@ -28,22 +29,40 @@ pub(crate) enum ShapeBrush {
     Gradient(GradientId),
 }
 
-/// Lowered stroke. Gradient strokes are a non-goal in slice 1 — every
-/// downstream consumer already calls `Brush::expect_solid()` — so the
-/// lowered form stores the resolved `Color` directly. Saves ~88 B on
-/// `ShapeRecord::RoundedRect` vs. carrying the user-side `Stroke {
-/// brush: Brush, width: f32 }`.
+/// Lowered stroke. Gradient strokes are a non-goal — every downstream
+/// consumer already calls `Brush::expect_solid()`. Storage is packed:
+/// `ColorF16` (8 B linear-RGB) + f16 width (2 B) = **10 B**, align 2.
+/// Lossy storage is fine: strokes don't animate inside the row
+/// (frame-local snapshot of the user-space animation output) and
+/// f16 precision is well below display quantization.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ShapeStroke {
-    pub(crate) color: Color,
-    pub(crate) width: f32,
+    pub(crate) color: ColorF16,
+    pub(crate) width_f16: u16,
+}
+
+impl ShapeStroke {
+    #[inline]
+    pub(crate) fn width(self) -> f32 {
+        f16::from_bits(self.width_f16).to_f32()
+    }
+}
+
+impl From<Stroke> for ShapeStroke {
+    #[inline]
+    fn from(s: Stroke) -> Self {
+        Self {
+            color: ColorF16::from(s.brush.expect_solid()),
+            width_f16: f16::from_f32(s.width).to_bits(),
+        }
+    }
 }
 
 impl From<ShapeStroke> for Stroke {
     #[inline]
     fn from(s: ShapeStroke) -> Self {
-        Stroke::solid(s.color, s.width)
+        Stroke::solid(Color::from(s.color), s.width())
     }
 }
 
