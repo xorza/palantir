@@ -729,6 +729,7 @@ impl Tree {
         }
     }
 
+    #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
         self.extras_idx[id.index()]
             .panel
