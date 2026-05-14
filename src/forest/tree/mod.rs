@@ -271,6 +271,7 @@ pub(crate) struct Tree {
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 
+
     /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
     /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
     /// grid-hug snapshot/restore walk. Recording-time lifecycle —
@@ -311,9 +312,7 @@ impl Tree {
     /// Fused reverse-pre-order pass: computes both `rollups.node[i]`
     /// and `rollups.subtree[i]` in a single sweep. `subtree[i]` reads
     /// `node[i]` (just written this iteration) and the already-finalized
-    /// `subtree[children]` (visited earlier in the reverse pass). One
-    /// loop body, one Hasher pair per node, one set of column accessors
-    /// hoisted out — vs. the prior two-pass version.
+    /// `subtree[children]` (visited earlier in the reverse pass).
     fn compute_hashes(&mut self) {
         let n = self.records.len();
         let layouts = self.records.layout();
