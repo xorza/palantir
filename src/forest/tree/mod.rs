@@ -409,7 +409,11 @@ impl Tree {
             // each direct child's already-computed `subtree[child]`.
             let mut sh = Hasher::new();
             sh.write_u64(node_hash);
-            let xf = ex.panel.get().and_then(|s| panel_tab[s].transform);
+            let xf = ex
+                .panel
+                .get()
+                .map(|s| panel_tab[s].transform)
+                .filter(|t| *t != TranslateScale::IDENTITY);
             if let Some(t) = xf {
                 sh.write_u8(1);
                 sh.pod(&t);
@@ -671,7 +675,7 @@ impl Tree {
     }
 
     /// Read this node's transform. Returns `None` for non-panel nodes
-    /// (no panel row) and for panels without a transform set. `Panel`
+    /// (no panel row) and for panels with an identity transform. `Panel`
     /// / `Grid` are the only widgets that expose `.transform()` in the
     /// API, so transforms always live alongside panel knobs.
     #[inline]
@@ -679,7 +683,8 @@ impl Tree {
         self.extras_idx[id.index()]
             .panel
             .get()
-            .and_then(|s| self.panel_table[s].transform)
+            .map(|s| self.panel_table[s].transform)
+            .filter(|t| *t != TranslateScale::IDENTITY)
     }
 
     #[inline]

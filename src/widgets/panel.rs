@@ -38,7 +38,7 @@ impl Panel {
     /// paints in the parent's space (untransformed) — only children are
     /// transformed.
     pub fn transform(mut self, t: TranslateScale) -> Self {
-        self.element.transform = Some(t);
+        self.element.transform = t;
         self
     }
 

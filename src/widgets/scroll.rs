@@ -684,7 +684,7 @@ impl Scroll {
         // compensation is 0 either way).
         if offset != Vec2::ZERO || (zoom - 1.0).abs() > f32::EPSILON {
             let origin = widget_origin.unwrap_or(Vec2::ZERO);
-            inner.transform = Some(TranslateScale::new(origin * (1.0 - zoom) - offset, zoom));
+            inner.transform = TranslateScale::new(origin * (1.0 - zoom) - offset, zoom);
         }
 
         let plan_v = bar_plan(

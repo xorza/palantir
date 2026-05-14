@@ -535,16 +535,20 @@ fn transform_change_affects_subtree_but_not_node_hash() {
             .show(ui, |_| {})
             .node(ui)
     }
-    let h_node_a = record_hash(|ui| build(ui, TranslateScale::IDENTITY));
-    let h_node_b =
-        record_hash(|ui| build(ui, TranslateScale::from_translation(Vec2::new(10.0, 0.0))));
+    // Both transforms are non-identity — identity is the noop sentinel
+    // (`PanelExtras::DEFAULT.transform`) so a panel with only an
+    // identity transform set carries no row at all and the test would
+    // be measuring the wrong distinction.
+    let t_a = TranslateScale::from_translation(Vec2::new(1.0, 0.0));
+    let t_b = TranslateScale::from_translation(Vec2::new(10.0, 0.0));
+    let h_node_a = record_hash(|ui| build(ui, t_a));
+    let h_node_b = record_hash(|ui| build(ui, t_b));
     assert_eq!(
         h_node_a, h_node_b,
         "transform must NOT change per-node hash"
     );
-    let h_sub_a = record_subtree_hash(|ui| build(ui, TranslateScale::IDENTITY));
-    let h_sub_b =
-        record_subtree_hash(|ui| build(ui, TranslateScale::from_translation(Vec2::new(10.0, 0.0))));
+    let h_sub_a = record_subtree_hash(|ui| build(ui, t_a));
+    let h_sub_b = record_subtree_hash(|ui| build(ui, t_b));
     assert_ne!(h_sub_a, h_sub_b, "transform MUST change subtree hash");
 }
 
