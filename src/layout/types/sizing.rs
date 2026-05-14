@@ -21,12 +21,16 @@ impl Sizing {
     /// such a child to zero width when sharing leftover with positive-weight
     /// siblings, and Grid filters it out of the Fill pool — so reject it
     /// here. `Hug` carries no value.
-    pub const fn assert_non_negative(self) {
-        match self {
-            Sizing::Fixed(v) => assert!(v >= 0.0, "Sizing::Fixed must be non-negative"),
-            Sizing::Fill(w) => assert!(w > 0.0, "Sizing::Fill weight must be positive"),
-            Sizing::Hug => {}
-        }
+    #[inline]
+    pub fn assert_non_negative(self) {
+        debug_assert!(
+            match self {
+                Sizing::Fixed(v) => v >= 0.0,
+                Sizing::Fill(w) => w > 0.0,
+                Sizing::Hug => true,
+            },
+            "Sizing out of range: {self:?}",
+        );
     }
 }
 
