@@ -165,11 +165,7 @@ impl From<Sizing> for Sizes {
 impl std::hash::Hash for Sizes {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        // Hash the canonical decoded form, not the packed bits, so
-        // representations that round-trip to the same `Sizing` (the
-        // 2-bit truncation can normalise denormals etc.) hash equal.
-        self.w().hash(h);
-        self.h().hash(h);
+        h.write_u64(((self.w_packed as u64) << 32) | self.h_packed as u64);
     }
 }
 
