@@ -2,9 +2,11 @@ pub(crate) mod payloads;
 pub(crate) mod record;
 
 use crate::forest::shapes::payloads::{BezierInputs, ShapePayloads};
-use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::shapes::record::{GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke};
 use crate::layout::types::span::Span;
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
+use crate::primitives::brush::Brush;
+use crate::primitives::stroke::Stroke;
 use crate::shape::{PolylineColors, Shape};
 
 /// Per-frame shape store for one [`crate::forest::tree::Tree`].
@@ -23,12 +25,58 @@ use crate::shape::{PolylineColors, Shape};
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
     pub(crate) payloads: ShapePayloads,
+    /// Per-frame gradient arena. `ShapeBrush::Gradient(id)` indexes
+    /// into this vec; the lowering site (`Self::lower_brush`) pushes
+    /// the gradient's `Brush::{Linear,Radial,Conic}` payload here so
+    /// `ShapeRecord` only carries a 4-byte handle instead of the
+    /// 88-byte `Brush` enum. Cleared per frame, capacity retained.
+    pub(crate) gradients: Vec<GradientPayload>,
 }
 
 impl Shapes {
     pub(crate) fn clear(&mut self) {
         self.records.clear();
         self.payloads.clear();
+        self.gradients.clear();
+    }
+
+    /// Lower a user-side `Brush` to the storage form: `Solid` stays
+    /// inline, gradients push to `self.gradients` and return an
+    /// indexing `ShapeBrush::Gradient`. The pre-computed content hash
+    /// is returned alongside so the caller can stamp it into the
+    /// `ShapeRecord` and keep `ShapeRecord::Hash` context-free.
+    fn lower_brush(&mut self, brush: Brush) -> (ShapeBrush, u64) {
+        match brush {
+            Brush::Solid(c) => (ShapeBrush::Solid(c), 0),
+            Brush::Linear(g) => {
+                let payload = GradientPayload::Linear(g);
+                let hash = payload.content_hash();
+                let id = self.gradients.len() as u32;
+                self.gradients.push(payload);
+                (ShapeBrush::Gradient(id), hash)
+            }
+            Brush::Radial(g) => {
+                let payload = GradientPayload::Radial(g);
+                let hash = payload.content_hash();
+                let id = self.gradients.len() as u32;
+                self.gradients.push(payload);
+                (ShapeBrush::Gradient(id), hash)
+            }
+            Brush::Conic(g) => {
+                let payload = GradientPayload::Conic(g);
+                let hash = payload.content_hash();
+                let id = self.gradients.len() as u32;
+                self.gradients.push(payload);
+                (ShapeBrush::Gradient(id), hash)
+            }
+        }
+    }
+
+    fn lower_stroke(&self, stroke: Stroke) -> ShapeStroke {
+        ShapeStroke {
+            color: stroke.brush.expect_solid(),
+            width: stroke.width,
+        }
     }
 
     /// Lower a user-facing [`Shape`] and append it to `records`:
@@ -56,12 +104,17 @@ impl Shapes {
                 radius,
                 fill,
                 stroke,
-            } => ShapeRecord::RoundedRect {
-                local_rect,
-                radius,
-                fill,
-                stroke,
-            },
+            } => {
+                let (fill, fill_grad_hash) = self.lower_brush(fill);
+                let stroke = self.lower_stroke(stroke);
+                ShapeRecord::RoundedRect {
+                    local_rect,
+                    radius,
+                    fill,
+                    stroke,
+                    fill_grad_hash,
+                }
+            }
             Shape::Line {
                 a,
                 b,

@@ -235,7 +235,7 @@ fn spread_and_interp(ui: &mut Ui) {
             // Repeat linear stripes.
             let l = LinearGradient::two_stop(0.0, NAVY, BLUE).with_spread(Spread::Repeat);
             let mut l = l;
-            l.stops[1].offset = 0.25;
+            l.stops[1].offset_u8 = (0.25 * 255.0 + 0.5) as u8;
             Frame::new()
                 .id_salt("repeat-linear")
                 .size((Sizing::FILL, Sizing::FILL))
