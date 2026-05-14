@@ -199,12 +199,12 @@ pub(crate) fn children_max_intrinsic(
 /// committed cross.
 pub(crate) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
     Size::new(
-        if matches!(size.w, Sizing::Hug) {
+        if matches!(size.w(), Sizing::Hug) {
             f32::INFINITY
         } else {
             inner_avail.w
         },
-        if matches!(size.h, Sizing::Hug) {
+        if matches!(size.h(), Sizing::Hug) {
             f32::INFINITY
         } else {
             inner_avail.h

@@ -74,8 +74,8 @@ pub(crate) fn arrange(
         let s = tree.records.layout()[c.index()];
 
         let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
-        let x = place_axis(h, s.size.w, d.w, inner.size.w);
-        let y = place_axis(v, s.size.h, d.h, inner.size.h);
+        let x = place_axis(h, s.size.w(), d.w, inner.size.w);
+        let y = place_axis(v, s.size.h(), d.h, inner.size.h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),

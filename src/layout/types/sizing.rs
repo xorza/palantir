@@ -67,52 +67,127 @@ impl std::hash::Hash for Sizing {
     }
 }
 
-/// Per-axis `Sizing`. Construct via `Default` (Hug × Hug), `Sizes::from(s)`
-/// (uniform), `Sizes::from(n)` (uniform Fixed via `Num`), or
-/// `Sizes::from((w, h))` for asymmetric. The `From` impls are the public
-/// surface — `Configure::size` takes `impl Into<Sizes>` so call sites stay
-/// terse: `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
-#[derive(Clone, Copy, Debug, PartialEq, Default)]
+/// Per-axis `Sizing`, packed into 8 B (two `u32` slots). Each slot
+/// encodes one `Sizing`: top 2 bits = tag (0=Fixed, 1=Hug, 2=Fill),
+/// low 30 bits = the high 30 bits of the payload `f32`. Drops 2
+/// mantissa bits — ULP at 1 px ≈ 1e-7, at 1280 px ≈ 1e-3 — well below
+/// physical-pixel snapping resolution. Saves 8 B per `LayoutCore`
+/// (56 → 48) across the per-node SoA column.
+///
+/// Construct via `Default` (Hug × Hug), `Sizes::from(s)` (uniform),
+/// `Sizes::from(n)` (uniform Fixed via `Num`), or `Sizes::from((w, h))`
+/// for asymmetric. The `From` impls are the public surface —
+/// `Configure::size` takes `impl Into<Sizes>` so call sites stay terse:
+/// `.size(100.0)`, `.size(Sizing::FILL)`, `.size((Sizing::FILL, 40.0))`.
+/// Read components via `Sizes::w()` / `Sizes::h()` — they return a
+/// fresh `Sizing` enum so pattern matching at use sites is unchanged.
+#[derive(Clone, Copy)]
 pub struct Sizes {
-    pub w: Sizing,
-    pub h: Sizing,
+    w_packed: u32,
+    h_packed: u32,
+}
+
+impl Default for Sizes {
+    #[inline]
+    fn default() -> Self {
+        Self::new(Sizing::Hug, Sizing::Hug)
+    }
+}
+
+const SIZING_TAG_FIXED: u32 = 0;
+const SIZING_TAG_HUG: u32 = 1;
+const SIZING_TAG_FILL: u32 = 2;
+const SIZING_TAG_SHIFT: u32 = 30;
+const SIZING_VAL_MASK: u32 = (1 << 30) - 1;
+
+#[inline]
+const fn encode_sizing(s: Sizing) -> u32 {
+    let (tag, v) = match s {
+        Sizing::Fixed(v) => (SIZING_TAG_FIXED, v),
+        Sizing::Hug => (SIZING_TAG_HUG, 0.0),
+        Sizing::Fill(w) => (SIZING_TAG_FILL, w),
+    };
+    (tag << SIZING_TAG_SHIFT) | (v.to_bits() >> 2)
+}
+
+#[inline]
+const fn decode_sizing(packed: u32) -> Sizing {
+    let tag = packed >> SIZING_TAG_SHIFT;
+    let val = f32::from_bits((packed & SIZING_VAL_MASK) << 2);
+    match tag {
+        SIZING_TAG_FIXED => Sizing::Fixed(val),
+        SIZING_TAG_HUG => Sizing::Hug,
+        SIZING_TAG_FILL => Sizing::Fill(val),
+        _ => Sizing::Hug,
+    }
+}
+
+impl Sizes {
+    #[inline]
+    pub const fn new(w: Sizing, h: Sizing) -> Self {
+        Self {
+            w_packed: encode_sizing(w),
+            h_packed: encode_sizing(h),
+        }
+    }
+    #[inline]
+    pub const fn w(self) -> Sizing {
+        decode_sizing(self.w_packed)
+    }
+    #[inline]
+    pub const fn h(self) -> Sizing {
+        decode_sizing(self.h_packed)
+    }
+}
+
+impl PartialEq for Sizes {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.w_packed == other.w_packed && self.h_packed == other.h_packed
+    }
+}
+
+impl std::fmt::Debug for Sizes {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sizes")
+            .field("w", &self.w())
+            .field("h", &self.h())
+            .finish()
+    }
 }
 
 impl From<Sizing> for Sizes {
     fn from(s: Sizing) -> Self {
-        Self { w: s, h: s }
+        Self::new(s, s)
     }
 }
 
 impl std::hash::Hash for Sizes {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        self.w.hash(h);
-        self.h.hash(h);
+        // Hash the canonical decoded form, not the packed bits, so
+        // representations that round-trip to the same `Sizing` (the
+        // 2-bit truncation can normalise denormals etc.) hash equal.
+        self.w().hash(h);
+        self.h().hash(h);
     }
 }
 
 impl<T: Num> From<T> for Sizes {
     fn from(v: T) -> Self {
         let s = Sizing::Fixed(v.as_f32());
-        Self { w: s, h: s }
+        Self::new(s, s)
     }
 }
 
 impl<W: Into<Sizing>, H: Into<Sizing>> From<(W, H)> for Sizes {
     fn from((w, h): (W, H)) -> Self {
-        Self {
-            w: w.into(),
-            h: h.into(),
-        }
+        Self::new(w.into(), h.into())
     }
 }
 
 impl From<Size> for Sizes {
     fn from(s: Size) -> Self {
-        Self {
-            w: Sizing::Fixed(s.w),
-            h: Sizing::Fixed(s.h),
-        }
+        Self::new(Sizing::Fixed(s.w), Sizing::Fixed(s.h))
     }
 }

@@ -484,8 +484,8 @@ pub trait Configure: Sized {
 
     fn size(mut self, s: impl Into<Sizes>) -> Self {
         let s = s.into();
-        s.w.debug_assert_non_negative();
-        s.h.debug_assert_non_negative();
+        s.w().debug_assert_non_negative();
+        s.h().debug_assert_non_negative();
         self.element_mut().size = s;
         self
     }
