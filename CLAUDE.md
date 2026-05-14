@@ -124,6 +124,22 @@ FAST=1 scripts/test-all.sh # skip fmt + clippy, just run tests per combo
 
 Fix anything that fails. Don't tell the user a change is complete unless these all pass.
 
+## Hot-path struct sizes
+
+`src/lib.rs` has an `#[ignore]`-d test, `hot_struct_sizes::print_hot_struct_sizes`,
+that prints `size_of` / `align_of` for every per-frame struct touched
+by layout / cascade / encode / compose / damage. Run it with:
+
+```sh
+cargo test --lib print_hot_struct_sizes -- --nocapture --ignored
+```
+
+Read alongside `docs/hot-struct-audit.md`, which carries the full audit
+notes + ranked compression punch-list. When changing any hot row
+(`NodeRecord`, `LayoutCore`, `ShapeRecord`, `Brush`, `DrawRectPayload`,
+`Cascade`, `DamageRegion`, `Quad`, etc.) re-run the test and update the
+size snapshot in the audit doc.
+
 ## Finding duplicated code
 
 Before refactoring or hunting for similar code by reading files, run jscpd — it's fast (~500ms) and avoids burning tokens:
