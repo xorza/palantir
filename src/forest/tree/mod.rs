@@ -250,35 +250,72 @@ impl Tree {
 
     fn compute_node_hashes(&mut self) {
         let n = self.records.len();
+        let layouts = self.records.layout();
+        let attrs = self.records.attrs();
+        let shape_spans = self.records.shape_span();
+        let ends = self.records.subtree_end();
+        let shape_buf = self.shapes.records.as_slice();
+        let bounds_idx = self.bounds.idx.as_slice();
+        let bounds_tab = self.bounds.table.as_slice();
+        let panel_idx = self.panel.idx.as_slice();
+        let panel_tab = self.panel.table.as_slice();
+        let chrome_idx = self.chrome.idx.as_slice();
+        let chrome_tab = self.chrome.table.as_slice();
+        let clip_idx = self.clip_radius.idx.as_slice();
+        let clip_tab = self.clip_radius.table.as_slice();
+        let grid_defs = &self.grid.defs;
+        const ABSENT: u16 = SparseColumn::<()>::ABSENT;
+
         for i in 0..n {
             let mut h = Hasher::new();
-            self.records.layout()[i].hash(&mut h);
-            self.records.attrs()[i].hash(&mut h);
-            if let Some(b) = self.bounds.get(i) {
-                b.hash(&mut h);
+            layouts[i].hash(&mut h);
+            attrs[i].hash(&mut h);
+            let b_slot = bounds_idx[i];
+            if b_slot != ABSENT {
+                bounds_tab[b_slot as usize].hash(&mut h);
             }
-            if let Some(p) = self.panel.get(i) {
-                p.hash(&mut h);
+            let p_slot = panel_idx[i];
+            if p_slot != ABSENT {
+                panel_tab[p_slot as usize].hash(&mut h);
             }
-            let chrome = self.chrome.get(i);
+            let c_slot = chrome_idx[i];
+            let chrome = (c_slot != ABSENT).then(|| &chrome_tab[c_slot as usize]);
             chrome.hash(&mut h);
-            self.clip_radius.get(i).hash(&mut h);
+            let cr_slot = clip_idx[i];
+            let clip = (cr_slot != ABSENT).then(|| &clip_tab[cr_slot as usize]);
+            clip.hash(&mut h);
+
+            // Walk this node's direct shapes + immediate-child position
+            // markers without rebuilding TreeItems per iteration.
             let mut has_direct_shape = false;
-            for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
-                match item {
-                    TreeItem::ShapeRecord(s) => {
-                        has_direct_shape = true;
-                        s.hash(&mut h);
-                    }
-                    TreeItem::Child(_) => h.write_u8(0xFF),
+            let parent_span = shape_spans[i];
+            let parent_end = (parent_span.start + parent_span.len) as usize;
+            let mut cursor = parent_span.start as usize;
+            let mut next_child = (i as u32) + 1;
+            let subtree_end = ends[i];
+            while next_child < subtree_end {
+                let cs = shape_spans[next_child as usize];
+                let cs_start = cs.start as usize;
+                while cursor < cs_start {
+                    has_direct_shape = true;
+                    shape_buf[cursor].hash(&mut h);
+                    cursor += 1;
                 }
+                h.write_u8(0xFF);
+                cursor = cs_start + cs.len as usize;
+                next_child = ends[next_child as usize];
             }
-            if chrome.is_some() || has_direct_shape {
+            while cursor < parent_end {
+                has_direct_shape = true;
+                shape_buf[cursor].hash(&mut h);
+                cursor += 1;
+            }
+            if c_slot != ABSENT || has_direct_shape {
                 self.rollups.paints.set(i, true);
             }
 
-            if let LayoutMode::Grid(idx) = self.records.layout()[i].mode {
-                self.grid.defs[idx as usize].hash(&mut h);
+            if let LayoutMode::Grid(idx) = layouts[i].mode {
+                grid_defs[idx as usize].hash(&mut h);
             }
             self.rollups.node.push(NodeHash(h.finish()));
         }
@@ -286,16 +323,24 @@ impl Tree {
 
     fn compute_subtree_hashes(&mut self) {
         let n = self.records.len();
+        let ends = self.records.subtree_end();
+        let bounds_idx = self.bounds.idx.as_slice();
+        let bounds_tab = self.bounds.table.as_slice();
+        let nodes = self.rollups.node.as_slice();
+        let subtree = self.rollups.subtree.as_mut_slice();
+        const ABSENT: u16 = SparseColumn::<()>::ABSENT;
         for i in (0..n).rev() {
-            let end = self.records.subtree_end()[i];
+            let end = ends[i];
             let mut h = Hasher::new();
-            h.write_u64(self.rollups.node[i].0);
+            h.write_u64(nodes[i].0);
             // Transform is deliberately omitted from `BoundsExtras::hash`
             // (so a parent moving doesn't dirty-flag its children's
             // node hash) — fold it into the subtree rollup here so the
             // damage subtree-skip + encode caches still invalidate
             // on transform-only changes.
-            if let Some(t) = self.bounds.get(i).and_then(|b| b.transform) {
+            let b_slot = bounds_idx[i];
+            let xf = (b_slot != ABSENT).then(|| bounds_tab[b_slot as usize].transform).flatten();
+            if let Some(t) = xf {
                 h.write_u8(1);
                 h.pod(&t);
             } else {
@@ -303,10 +348,10 @@ impl Tree {
             }
             let mut next = (i as u32) + 1;
             while next < end {
-                h.write_u64(self.rollups.subtree[next as usize].0);
-                next = self.records.subtree_end()[next as usize];
+                h.write_u64(subtree[next as usize].0);
+                next = ends[next as usize];
             }
-            self.rollups.subtree[i] = NodeHash(h.finish());
+            subtree[i] = NodeHash(h.finish());
         }
     }
 

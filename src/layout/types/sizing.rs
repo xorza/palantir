@@ -21,8 +21,20 @@ impl Sizing {
     /// such a child to zero width when sharing leftover with positive-weight
     /// siblings, and Grid filters it out of the Fill pool — so reject it
     /// here. `Hug` carries no value.
+    pub const fn assert_non_negative(self) {
+        match self {
+            Sizing::Fixed(v) => assert!(v >= 0.0, "Sizing::Fixed must be non-negative"),
+            Sizing::Fill(w) => assert!(w > 0.0, "Sizing::Fill weight must be positive"),
+            Sizing::Hug => {}
+        }
+    }
+
+    /// Debug-only variant for the builder hot path — `Configure::size`
+    /// runs per widget per frame and the const `assert_non_negative`
+    /// shows up at ~0.8% self time in release. `Track::new` (a const
+    /// fn) still uses the asserting variant for compile-time checks.
     #[inline]
-    pub fn assert_non_negative(self) {
+    pub(crate) fn debug_assert_non_negative(self) {
         debug_assert!(
             match self {
                 Sizing::Fixed(v) => v >= 0.0,
