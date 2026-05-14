@@ -19,6 +19,7 @@ encase = "*"
 fixedbitset = "*"
 glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
 glyphon = "*"
+half = { version = "*", features = ["bytemuck"] }
 rustc-hash = "*"
 tracing = "*"
 pollster = "*"
