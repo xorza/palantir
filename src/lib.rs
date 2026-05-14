@@ -79,3 +79,66 @@ pub use widgets::theme::{
     TextStyle, Theme, TooltipTheme, WidgetLook,
 };
 pub use widgets::tooltip::Tooltip;
+
+#[cfg(test)]
+mod hot_struct_sizes {
+    use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
+    use crate::forest::node::NodeRecord;
+    use crate::forest::rollups::{CascadeInputHash, NodeHash};
+    use crate::forest::shapes::record::ShapeRecord;
+    use crate::forest::tree::ExtrasIdx;
+    use crate::layout::ShapedText;
+    use crate::layout::types::span::Span;
+    use crate::renderer::frontend::cmd_buffer::{
+        DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
+    };
+    use crate::renderer::quad::Quad;
+    use crate::ui::cascade::{Cascade, HitEntry};
+    use crate::ui::damage::region::DamageRegion;
+
+    fn row<T>(name: &str) -> (String, usize, usize) {
+        (name.to_string(), size_of::<T>(), align_of::<T>())
+    }
+
+    /// `cargo test --lib print_hot_struct_sizes -- --nocapture --ignored`
+    #[test]
+    #[ignore = "print-only; companion to docs/hot-struct-audit.md"]
+    fn print_hot_struct_sizes() {
+        let rows = [
+            row::<NodeRecord>("forest::NodeRecord"),
+            row::<LayoutCore>("forest::LayoutCore"),
+            row::<NodeFlags>("forest::NodeFlags"),
+            row::<ExtrasIdx>("forest::ExtrasIdx"),
+            row::<BoundsExtras>("forest::BoundsExtras"),
+            row::<PanelExtras>("forest::PanelExtras"),
+            row::<ShapeRecord>("forest::ShapeRecord"),
+            row::<Span>("layout::Span"),
+            row::<ShapedText>("layout::ShapedText"),
+            row::<NodeHash>("rollups::NodeHash"),
+            row::<CascadeInputHash>("rollups::CascadeInputHash"),
+            row::<Cascade>("cascade::Cascade"),
+            row::<HitEntry>("cascade::HitEntry"),
+            row::<DamageRegion>("damage::DamageRegion"),
+            row::<DrawRectPayload>("cmd::DrawRectPayload"),
+            row::<DrawTextPayload>("cmd::DrawTextPayload"),
+            row::<DrawPolylinePayload>("cmd::DrawPolylinePayload"),
+            row::<DrawMeshPayload>("cmd::DrawMeshPayload"),
+            row::<Quad>("renderer::Quad"),
+        ];
+
+        let name_w = rows.iter().map(|(n, ..)| n.len()).max().unwrap_or(0);
+        println!();
+        println!(
+            "{:<w$}  {:>5}  {:>5}",
+            "struct",
+            "size",
+            "align",
+            w = name_w
+        );
+        println!("{:-<w$}  {:->5}  {:->5}", "", "", "", w = name_w);
+        for (n, s, a) in &rows {
+            println!("{:<w$}  {:>5}  {:>5}", n, s, a, w = name_w);
+        }
+        println!();
+    }
+}
