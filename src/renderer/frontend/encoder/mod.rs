@@ -1,11 +1,10 @@
-use super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
+use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::shapes::record::{
     GradientPayload, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
-use crate::primitives::brush::Brush;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
@@ -25,21 +24,20 @@ use crate::ui::damage::region::DamageRegion;
 /// after every layer's regular paint.
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
-/// Materialize a `ShapeBrush` back into a `Brush` value for the
-/// cmd-buffer side, which keeps the user-side enum on its
-/// `draw_rect` API. `Solid` is a direct copy; `Gradient` reads the
-/// per-frame arena and copies the inline gradient struct out (cheap —
-/// `LinearGradient` etc. are `Copy`). Only invoked from the encoder
-/// per emitted rounded-rect, so the round-trip happens once per
-/// painted shape, not per-frame-per-node.
-fn resolve_brush(gradients: &[GradientPayload], brush: ShapeBrush) -> Brush {
-    //todo optimize memory bandwidth
+/// Build a `BrushSource` from a lowered `ShapeBrush` + the per-frame
+/// gradient arena. `Solid` stays inline (no arena read at all);
+/// `Gradient(id)` borrows the corresponding `GradientPayload` and
+/// projects it to the matching `BrushSource::{Linear,Radial,Conic}`
+/// variant. No `Brush` value is ever materialized — the solid hot
+/// path writes 16 B of Color + 1 B tag instead of 88 B of enum.
+#[inline]
+fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> BrushSource<'_> {
     match brush {
-        ShapeBrush::Solid(c) => Brush::Solid(c),
-        ShapeBrush::Gradient(id) => match gradients[id as usize] {
-            GradientPayload::Linear(g) => Brush::Linear(g),
-            GradientPayload::Radial(g) => Brush::Radial(g),
-            GradientPayload::Conic(g) => Brush::Conic(g),
+        ShapeBrush::Solid(c) => BrushSource::Solid(c),
+        ShapeBrush::Gradient(id) => match &gradients[id as usize] {
+            GradientPayload::Linear(g) => BrushSource::Linear(g),
+            GradientPayload::Radial(g) => BrushSource::Radial(g),
+            GradientPayload::Conic(g) => BrushSource::Conic(g),
         },
     }
 }
@@ -104,7 +102,6 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
     if ui.forest.collisions.is_empty() {
         return;
     }
-    let fill = Color::TRANSPARENT.into();
     for record in &ui.forest.collisions {
         for (layer, node) in [record.first, record.second] {
             let rects = &ui.layout[layer].rect;
@@ -114,7 +111,7 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
             out.draw_rect(
                 rects[node.index()],
                 Corners::ZERO,
-                &fill,
+                BrushSource::Solid(Color::TRANSPARENT),
                 COLLISION_OVERLAY_STROKE,
             );
         }
@@ -150,8 +147,8 @@ fn emit_one_shape(
                     size: lr.size,
                 },
             };
-            let fill_brush = resolve_brush(&tree.shapes.gradients, *fill);
-            out.draw_rect(r, *radius, &fill_brush, (*stroke).into());
+            let src = shape_brush_source(&tree.shapes.gradients, *fill);
+            out.draw_rect(r, *radius, src, (*stroke).into());
         }
         ShapeRecord::Text {
             local_origin,
@@ -349,7 +346,7 @@ fn encode_node(
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.radius, &bg.shadow);
-        out.draw_rect(rect, bg.radius, &bg.fill, bg.stroke);
+        out.draw_rect(rect, bg.radius, (&bg.fill).into(), bg.stroke);
     }
 
     if clip {
