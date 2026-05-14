@@ -16,7 +16,7 @@ use super::axis::Axis;
 use super::layoutengine::LayoutEngine;
 use super::support::{AxisCtx, leaf_text_shapes, resolve_axis_size};
 use super::{canvas, grid, stack, wrapstack, zstack};
-use crate::forest::element::{LayoutMode, ScrollAxes};
+use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::types::sizing::Sizing;
 use crate::shape::TextWrap;
@@ -78,7 +78,7 @@ pub(crate) fn compute(
     text: &TextShaper,
 ) -> f32 {
     let style = tree.records.layout()[node.index()];
-    if style.visibility.is_collapsed() {
+    if style.visibility().is_collapsed() {
         return 0.0;
     }
     let bounds = tree.size_clamps_of(node);
@@ -99,7 +99,17 @@ pub(crate) fn compute(
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
             let pad = axis.spacing(style.padding);
-            content_intrinsic(engine, tree, node, axis, req, text, style.mode) + pad + margin
+            content_intrinsic(
+                engine,
+                tree,
+                node,
+                axis,
+                req,
+                text,
+                style.mode,
+                style.mode_payload,
+            ) + pad
+                + margin
         }
     };
 
@@ -117,6 +127,7 @@ pub(crate) fn compute(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn content_intrinsic(
     engine: &mut LayoutEngine,
     tree: &Tree,
@@ -125,6 +136,7 @@ fn content_intrinsic(
     req: LenReq,
     text: &TextShaper,
     mode: LayoutMode,
+    mode_payload: u16,
 ) -> f32 {
     match mode {
         LayoutMode::Leaf => leaf(tree, node, axis, req, text),
@@ -138,20 +150,20 @@ fn content_intrinsic(
         }
         LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, text),
         LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, text),
-        LayoutMode::Grid(idx) => grid::intrinsic(engine, tree, node, idx, axis, req, text),
+        LayoutMode::Grid => grid::intrinsic(engine, tree, node, mode_payload, axis, req, text),
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
         // The non-panned axis falls back to the corresponding stack /
         // zstack intrinsic.
-        LayoutMode::Scroll(ScrollAxes::Vertical) => match axis {
+        LayoutMode::ScrollVertical => match axis {
             Axis::Y => 0.0,
             Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
         },
-        LayoutMode::Scroll(ScrollAxes::Horizontal) => match axis {
+        LayoutMode::ScrollHorizontal => match axis {
             Axis::X => 0.0,
             Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
         },
-        LayoutMode::Scroll(ScrollAxes::Both) => 0.0,
+        LayoutMode::ScrollBoth => 0.0,
     }
 }
 

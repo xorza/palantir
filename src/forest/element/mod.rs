@@ -164,94 +164,63 @@ impl Gaps {
     }
 }
 
-/// How a node arranges its children. Stored on `Element::mode` and read by
-/// the layout pass; the tree itself treats it as an opaque tag.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// How a node arranges its children. Stored as a direct byte field
+/// on `Element::mode` and `LayoutCore::mode`; the tree itself treats
+/// it as an opaque tag. `#[repr(u8)]` keeps the discriminants stable
+/// for hashing and bytewise reads.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum LayoutMode {
-    Leaf,
-    HStack,
-    VStack,
+    Leaf = 0,
+    HStack = 1,
+    VStack = 2,
     /// HStack with overflow wrap: children flow left-to-right; when the
     /// next child wouldn't fit in the remaining main-axis space, wrap to
     /// a new row below. Each row's cross-axis size = max child cross
     /// in that row. `gap` spaces siblings within a row; `line_gap`
     /// spaces rows. Justify applies per row. `Sizing::Fill` on main is
     /// treated as `Hug` (no row-leftover distribution today).
-    WrapHStack,
+    WrapHStack = 3,
     /// VStack with overflow wrap: same model as `WrapHStack`, axes
     /// swapped (children flow top-to-bottom; wrap to a new column on
     /// the right).
-    WrapVStack,
+    WrapVStack = 4,
     /// Children all laid out at the same position (top-left of inner rect),
     /// each sized per its own `Sizing`. Used by `Panel`.
-    ZStack,
+    ZStack = 5,
     /// Children placed at their declared `position` (parent-inner coords).
     /// Each child sized per its desired (intrinsic) size. Canvas hugs to the
     /// bounding box of placed children.
-    Canvas,
-    /// WPF-style grid. Carries an index into `Tree::grid_defs` holding the row
-    /// and column track definitions and per-axis gaps. Children declare cell +
-    /// span via `grid`. Cap is 65 535 grids per frame (`grid_defs` is cleared
-    /// each frame).
-    Grid(u16),
-    /// Scroll viewport. Pan + child layout determined by [`ScrollAxes`]:
-    /// `Vertical`/`Horizontal` use a stack on that axis with the panned
-    /// axis measured as `INF`; `Both` uses a `ZStack` with both axes
-    /// unbounded. The widget builder sets a `transform` to pan and
-    /// enables `clip` so children render within the viewport rect.
-    Scroll(ScrollAxes),
-}
-
-/// Which axes a [`LayoutMode::Scroll`] viewport pans (and lays its
-/// children out along). Single-axis variants stack children on the
-/// panned axis; `Both` overlays them like a `ZStack`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum ScrollAxes {
-    Vertical,
-    Horizontal,
-    Both,
+    Canvas = 6,
+    /// WPF-style grid. The grid def's arena idx lives in
+    /// `LayoutCore.mode_payload` (frame-local, only meaningful when the
+    /// mode tag is `Grid`). Cap is 65 535 grids per frame (`grid_defs`
+    /// is cleared each frame).
+    Grid = 7,
+    /// Vertical-scroll viewport. Children laid out as VStack with the
+    /// Y axis measured as `INF`. The widget builder sets a `transform`
+    /// to pan and enables `clip` so children render within the rect.
+    ScrollVertical = 8,
+    /// Horizontal-scroll viewport. Children laid out as HStack with
+    /// the X axis measured as `INF`. Same record-time pan/clip setup
+    /// as `ScrollVertical`.
+    ScrollHorizontal = 9,
+    /// Two-axis scroll viewport. Children laid out as `ZStack` with
+    /// both axes unbounded. Same record-time pan/clip setup as the
+    /// single-axis variants.
+    ScrollBoth = 10,
 }
 
 impl LayoutMode {
-    /// Stable per-variant tag for hashing. `Grid(_)` collapses to a single
-    /// tag — `idx` is a frame-local arena slot that shifts with sibling
-    /// order, while the def's actual content is hashed at `NodeExit` via
-    /// `GridDef::hash`. Hashing the idx would invalidate the cache for
-    /// cosmetic reorderings.
-    #[inline]
-    pub(crate) fn hash_tag(&self) -> u8 {
-        match self {
-            LayoutMode::Leaf => 0,
-            LayoutMode::HStack => 1,
-            LayoutMode::VStack => 2,
-            LayoutMode::WrapHStack => 3,
-            LayoutMode::WrapVStack => 4,
-            LayoutMode::ZStack => 5,
-            LayoutMode::Canvas => 6,
-            LayoutMode::Grid(_) => 7,
-            LayoutMode::Scroll(ScrollAxes::Vertical) => 8,
-            LayoutMode::Scroll(ScrollAxes::Horizontal) => 9,
-            LayoutMode::Scroll(ScrollAxes::Both) => 10,
-        }
-    }
-}
-
-impl std::hash::Hash for LayoutMode {
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u8(self.hash_tag());
-    }
-}
-
-impl ScrollAxes {
-    /// Mask of axes that consume scroll deltas. `Both` ⇒ `(true, true)`,
-    /// `Vertical` ⇒ `(false, true)`, `Horizontal` ⇒ `(true, false)`.
+    /// Mask of axes that consume scroll deltas. Returns `(false, false)`
+    /// for non-scroll modes — callers gate on `is_scroll()` first.
     #[inline]
     pub(crate) fn pan_mask(self) -> glam::BVec2 {
         match self {
-            Self::Vertical => glam::BVec2::new(false, true),
-            Self::Horizontal => glam::BVec2::new(true, false),
-            Self::Both => glam::BVec2::TRUE,
+            Self::ScrollVertical => glam::BVec2::new(false, true),
+            Self::ScrollHorizontal => glam::BVec2::new(true, false),
+            Self::ScrollBoth => glam::BVec2::TRUE,
+            _ => glam::BVec2::FALSE,
         }
     }
 }
@@ -397,59 +366,86 @@ impl Default for PanelExtras {
 
 /// Per-node layout column, stored in `Tree::layout`. Read by every
 /// pass that runs measure/arrange/alignment math. Held tight so the
-/// layout pass pulls only what it reads. Visibility lives here so
-/// `is_collapsed` short-circuits in the layout fast-path. Packed
-/// paint/input flags (sense / disabled / clip / focusable) live in
-/// `Tree::attrs` — a separate 1-byte/node column read by cascade /
-/// encoder / hit-test.
+/// layout pass pulls only what it reads. `mode` is a direct byte
+/// (`#[repr(u8)] LayoutMode`); `bits` packs align(6b) + visibility(2b);
+/// the Grid arena idx rides in `mode_payload` (zero for non-Grid).
+/// Total 28 B, 2 entries per cache line. Packed paint/input flags
+/// (sense / disabled / clip / focusable) live in `Tree::attrs` — a
+/// separate 1-byte/node column read by cascade / encoder / hit-test.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct LayoutCore {
-    pub(crate) mode: LayoutMode,
     pub(crate) size: Sizes,
     pub(crate) padding: Spacing,
     pub(crate) margin: Spacing,
-    pub(crate) align: Align,
-    pub(crate) visibility: Visibility,
+    /// `LayoutMode::Grid` arena index. Zero (and ignored) otherwise.
+    pub(crate) mode_payload: u16,
+    /// Packed `align(6) | vis(2)`. Direct decode via `align()` /
+    /// `visibility()`.
+    pub(crate) bits: u8,
+    pub(crate) mode: LayoutMode,
 }
 
 impl LayoutCore {
+    const ALIGN_MASK: u8 = 0b11_1111;
+    const VIS_SHIFT: u8 = 6;
+    const VIS_MASK: u8 = 0b11 << Self::VIS_SHIFT;
+
+    #[inline]
+    pub(crate) const fn pack_bits(align: Align, vis: Visibility) -> u8 {
+        (align.raw() & Self::ALIGN_MASK) | (((vis as u8) << Self::VIS_SHIFT) & Self::VIS_MASK)
+    }
+
+    #[inline(always)]
+    pub(crate) fn align(&self) -> Align {
+        Align::from_raw(self.bits & Self::ALIGN_MASK)
+    }
+
+    #[inline(always)]
+    pub(crate) fn visibility(&self) -> Visibility {
+        let raw = (self.bits & Self::VIS_MASK) >> Self::VIS_SHIFT;
+        // SAFETY: `pack_bits` is the only constructor and writes only
+        // `Visibility as u8` (0/1/2) into `VIS_MASK`. Branchless decode
+        // — `visibility()` is read on every node every measure/arrange.
+        unsafe { std::mem::transmute::<u8, Visibility>(raw) }
+    }
+
     /// Fused write of `LayoutCore` + `NodeFlags` into one tail buffer.
-    /// `compute_hashes` calls this so the per-node flags byte rides at
-    /// byte 3 of the tag slot instead of producing a separate
+    /// `compute_hashes` calls this so the per-node flags byte rides
+    /// alongside the packed bits instead of producing a separate
     /// `NodeFlags::hash` → `write_u8` fold. Saves one hasher call per
     /// node per frame.
+    ///
+    /// `mode_payload` is intentionally **not** hashed: it's the Grid
+    /// arena idx, a frame-local slot that shifts with sibling order.
+    /// The Grid def's content is hashed separately at `NodeExit` via
+    /// `GridDef::hash`.
     #[inline]
     pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
-        let buf = [
-            self.mode.hash_tag(),
-            self.align.raw(),
-            self.visibility as u8,
-            flags.bits,
-        ];
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
-        h.write(&buf);
+        let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags.bits, 0]);
+        h.write_u32(tail);
     }
 }
 
 impl std::hash::Hash for LayoutCore {
-    /// Fold the whole record into one 32-byte hasher write. Six per-field
-    /// calls (three of them sub-`u64` — mode tag, align byte, visibility
-    /// byte) became a single `write` whose FxHash inner loop folds four
-    /// `u64` chunks. Saves ~5 small-write fold ops per node per frame.
-    #[inline]
+    /// Three `u64` writes (size/padding/margin) + one `u16` packing
+    /// `bits` and the mode tag. `mode_payload` excluded — see
+    /// `hash_with_flags`.
+    #[inline(always)]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        let mut buf = [0u8; 4];
-        buf[0] = self.mode.hash_tag();
-        buf[1] = self.align.raw();
-        buf[2] = self.visibility as u8;
-        self.size.as_u64().hash(h);
-        self.padding.as_u64().hash(h);
-        self.margin.as_u64().hash(h);
-        h.write(&buf);
+        h.write_u64(self.size.as_u64());
+        h.write_u64(self.padding.as_u64());
+        h.write_u64(self.margin.as_u64());
+        h.write_u16(u16::from_ne_bytes([self.bits, self.mode as u8]));
     }
 }
+
+const _: () = assert!(
+    (Visibility::Collapsed as u8) <= (LayoutCore::VIS_MASK >> LayoutCore::VIS_SHIFT),
+    "Visibility discriminant exceeds 2 bits",
+);
 
 /// Per-node config: identity + spatial layout + interaction + paint flags.
 /// Every widget builder owns one and forwards it to `Ui::node`. `Configure` (the
@@ -462,6 +458,9 @@ pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     pub(crate) id: WidgetId,
     pub(crate) mode: LayoutMode,
+    /// `LayoutMode::Grid` arena idx. Set by `Grid::show` once the def is
+    /// pushed; ignored for every other `mode`.
+    pub(crate) mode_payload: u16,
 
     // ---- Own size + alignment (read by every parent layout) ------------------
     pub(crate) size: Sizes,
@@ -536,6 +535,7 @@ impl Element {
         Self {
             id: WidgetId::auto_stable(),
             mode,
+            mode_payload: 0,
             size: Sizes::default(),
             min_size: Size::ZERO,
             max_size: Size::INF,
@@ -649,17 +649,17 @@ impl Element {
 
     /// Fan this `Element` out into the per-NodeId columns `Tree` stores.
     /// Single routing point — adding a field is one edit in the column
-    /// type plus one line here.
+    #[inline(always)]
     pub(crate) fn into_columns(self) -> ElementColumns {
         ElementColumns {
             widget_id: self.id,
             layout: LayoutCore {
-                mode: self.mode,
                 size: self.size,
                 padding: self.padding,
                 margin: self.margin,
-                align: self.slots.align(),
-                visibility: self.visibility,
+                mode_payload: self.mode_payload,
+                bits: LayoutCore::pack_bits(self.slots.align(), self.visibility),
+                mode: self.mode,
             },
             attrs: self.flags,
             bounds: BoundsExtras {

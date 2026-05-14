@@ -247,7 +247,7 @@ fn run_tree(
         let attrs = attrs_col[i];
 
         let disabled = parent_dis || attrs.is_disabled();
-        let invisible = parent_inv || !layout_col[i].visibility.is_visible();
+        let invisible = parent_inv || !layout_col[i].visibility().is_visible();
 
         let layout_rect = layout.rect[id.index()];
         let screen_rect = parent_transform.apply_rect(layout_rect);

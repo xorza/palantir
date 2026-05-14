@@ -281,7 +281,9 @@ impl GridHugStore {
     /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
     pub(crate) fn snapshot_subtree(&self, tree: &Tree, subtree: Range<usize>, out: &mut Vec<f32>) {
         for i in subtree {
-            if let LayoutMode::Grid(idx) = tree.records.layout()[i].mode {
+            let core = tree.records.layout()[i];
+            if core.mode == LayoutMode::Grid {
+                let idx = core.mode_payload;
                 for (axis, kind) in HUG_ORDER {
                     out.extend_from_slice(self.slice(idx, axis, kind));
                 }
@@ -297,7 +299,9 @@ impl GridHugStore {
     pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, hugs: &[f32]) {
         let mut pos = 0usize;
         for i in subtree {
-            if let LayoutMode::Grid(idx) = tree.records.layout()[i].mode {
+            let core = tree.records.layout()[i];
+            if core.mode == LayoutMode::Grid {
+                let idx = core.mode_payload;
                 for (axis, kind) in HUG_ORDER {
                     let dst = self.slice_mut(idx, axis, kind);
                     let n = dst.len();
