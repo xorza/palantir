@@ -355,8 +355,7 @@ impl Tree {
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
-            layouts[i].hash(&mut h);
-            attrs[i].hash(&mut h);
+            layouts[i].hash_with_flags(attrs[i], &mut h);
             let ex = extras[i];
             if let Some(s) = ex.bounds.get() {
                 // `BoundsExtras::hash` excludes transform — transform
