@@ -280,25 +280,49 @@ impl ColorU8 {
     pub const fn to_u32(self) -> u32 {
         u32::from_be_bytes([self.r, self.g, self.b, self.a])
     }
+    /// Raw-byte constructor — bytes go straight into the struct, no
+    /// colour-space conversion. Interpret the result as **linear u8**
+    /// (the convention `ColorU8` carries everywhere downstream). Use
+    /// [`Self::hex`] / [`Self::hexa`] when your bytes come from
+    /// CSS-style sRGB hex codes; use this when you already have
+    /// linear bytes (e.g. test fixtures, atlas-bake math).
     pub const fn rgba(r: u8, g: u8, b: u8, a: u8) -> Self {
         Self { r, g, b, a }
     }
-    /// `0xRRGGBB` opaque.
+    /// CSS-style `0xRRGGBB` opaque hex — interpreted as **sRGB-
+    /// perceptual** and **decoded to linear** during construction, so
+    /// the stored bytes match the linear-u8 atlas convention. A
+    /// previous mid-tone like `0x22ccdd` (sRGB-perceptual) lands as
+    /// the matching linear-u8 triplet, not as the verbatim bytes —
+    /// otherwise a linear-format LUT would display it wildly too
+    /// bright.
     pub const fn hex(rgb: u32) -> Self {
-        Self::rgb(
-            ((rgb >> 16) & 0xff) as u8,
-            ((rgb >> 8) & 0xff) as u8,
-            (rgb & 0xff) as u8,
-        )
+        let r = ((rgb >> 16) & 0xff) as u8;
+        let g = ((rgb >> 8) & 0xff) as u8;
+        let b = (rgb & 0xff) as u8;
+        let c = Color::rgb_u8(r, g, b);
+        Self {
+            r: (c.r * 255.0 + 0.5) as u8,
+            g: (c.g * 255.0 + 0.5) as u8,
+            b: (c.b * 255.0 + 0.5) as u8,
+            a: 0xff,
+        }
     }
-    /// `0xRRGGBBAA` with alpha.
+    /// CSS-style `0xRRGGBBAA` hex with alpha — RGB sRGB-decoded to
+    /// linear like [`Self::hex`]; alpha is linear by convention
+    /// (matches CSS), passed through as `a/255`.
     pub const fn hexa(rgba: u32) -> Self {
-        Self::rgba(
-            ((rgba >> 24) & 0xff) as u8,
-            ((rgba >> 16) & 0xff) as u8,
-            ((rgba >> 8) & 0xff) as u8,
-            (rgba & 0xff) as u8,
-        )
+        let r = ((rgba >> 24) & 0xff) as u8;
+        let g = ((rgba >> 16) & 0xff) as u8;
+        let b = ((rgba >> 8) & 0xff) as u8;
+        let a = (rgba & 0xff) as u8;
+        let c = Color::rgb_u8(r, g, b);
+        Self {
+            r: (c.r * 255.0 + 0.5) as u8,
+            g: (c.g * 255.0 + 0.5) as u8,
+            b: (c.b * 255.0 + 0.5) as u8,
+            a,
+        }
     }
 
     /// True when alpha is zero — paints nothing visible.
