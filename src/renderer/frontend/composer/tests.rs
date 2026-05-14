@@ -18,7 +18,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_rect(
         r,
         Corners::default(),
-        &Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
+        (&Brush::Solid(Color::rgb(1.0, 1.0, 1.0))).into(),
         Stroke::ZERO,
     );
 }
@@ -365,7 +365,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.draw_rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
-                &Brush::Solid(Color::rgb(1.0, 1.0, 1.0)),
+                (&Brush::Solid(Color::rgb(1.0, 1.0, 1.0))).into(),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5),
             );
             b.pop_transform();
@@ -390,7 +390,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
-        &Brush::Solid(Color::rgb(0.5, 0.5, 0.5)),
+        (&Brush::Solid(Color::rgb(0.5, 0.5, 0.5))).into(),
         Stroke::ZERO,
     );
     let mut composer = Composer::default();
@@ -427,7 +427,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
-        &Brush::Linear(g),
+        (&Brush::Linear(g)).into(),
         Stroke::ZERO,
     );
     let mut composer = Composer::default();
@@ -460,7 +460,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
         buffer.draw_rect(
             rect(0.0, 0.0, 10.0, 10.0),
             Corners::default(),
-            &Brush::Linear(g),
+            (&Brush::Linear(g)).into(),
             Stroke::ZERO,
         );
     }

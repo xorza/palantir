@@ -41,7 +41,9 @@
 //! boundary, which is the only practical gate.
 
 use crate::forest::shapes::payloads::ShapePayloads;
-use crate::primitives::brush::{Brush, FillAxis, Interp, MAX_STOPS, Stop};
+use crate::primitives::brush::{
+    Brush, ConicGradient, FillAxis, Interp, LinearGradient, MAX_STOPS, RadialGradient, Stop,
+};
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, stroke::Stroke, transform::TranslateScale,
 };
@@ -49,6 +51,43 @@ use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 use tinyvec::ArrayVec;
+
+/// Borrow-form brush for the cmd-buffer side: `Solid` inline,
+/// gradient variants borrowed from the per-frame `Shapes.gradients`
+/// arena (or directly from a user-side `Brush`). Avoids spilling the
+/// 88-byte `Brush` enum to the stack on the hot solid path — `Color`
+/// inline is 16 B, gradient is an 8-byte pointer, total ~24 B.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum BrushSource<'a> {
+    Solid(Color),
+    Linear(&'a LinearGradient),
+    Radial(&'a RadialGradient),
+    Conic(&'a ConicGradient),
+}
+
+impl BrushSource<'_> {
+    #[inline]
+    pub(crate) fn is_noop(self) -> bool {
+        match self {
+            Self::Solid(c) => c.is_noop(),
+            Self::Linear(g) => g.is_noop(),
+            Self::Radial(g) => g.is_noop(),
+            Self::Conic(g) => g.is_noop(),
+        }
+    }
+}
+
+impl<'a> From<&'a Brush> for BrushSource<'a> {
+    #[inline]
+    fn from(b: &'a Brush) -> Self {
+        match b {
+            Brush::Solid(c) => Self::Solid(*c),
+            Brush::Linear(g) => Self::Linear(g),
+            Brush::Radial(g) => Self::Radial(g),
+            Brush::Conic(g) => Self::Conic(g),
+        }
+    }
+}
 
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -307,7 +346,13 @@ impl RenderCmdBuffer {
     }
 
     #[inline]
-    pub(crate) fn draw_rect(&mut self, rect: Rect, radius: Corners, fill: &Brush, stroke: Stroke) {
+    pub(crate) fn draw_rect(
+        &mut self,
+        rect: Rect,
+        radius: Corners,
+        fill: BrushSource<'_>,
+        stroke: Stroke,
+    ) {
         // Pre-pack gate: `Brush::is_noop` peeks inside gradient stops
         // (which the packed payload's inline `fill` no longer carries
         // — gradient color lives in the atlas LUT row indexed by
@@ -426,31 +471,33 @@ impl RenderCmdBuffer {
         write_pod(&mut self.data, payload);
     }
 
-    /// Lower a `Brush` into payload fields. Solid: pass colour through,
-    /// zero gradient slots. Gradient: zero `fill_color`, push the LUT
-    /// key into the per-frame arena, encode kind + spread + per-variant
-    /// geometry into `fill_axis`.
-    fn pack_brush(&mut self, brush: &Brush) -> BrushPack {
+    /// Lower a `BrushSource` into payload fields. Solid: pass colour
+    /// through, zero gradient slots. Gradient: zero `fill_color`, push
+    /// the LUT key into the per-frame arena, encode kind + spread +
+    /// per-variant geometry into `fill_axis`. Takes the borrow-form
+    /// enum so the hot solid path never spills the 88-byte user-side
+    /// `Brush` to the stack.
+    fn pack_brush(&mut self, brush: BrushSource<'_>) -> BrushPack {
         match brush {
-            Brush::Solid(c) => BrushPack {
-                fill_color: *c,
+            BrushSource::Solid(c) => BrushPack {
+                fill_color: c,
                 fill_kind: FillKind::SOLID,
                 fill_grad_idx: 0,
                 fill_axis: FillAxis::ZERO,
             },
-            Brush::Linear(g) => BrushPack {
+            BrushSource::Linear(g) => BrushPack {
                 fill_color: Color::TRANSPARENT,
                 fill_kind: FillKind::linear(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
                 fill_axis: g.axis(),
             },
-            Brush::Radial(g) => BrushPack {
+            BrushSource::Radial(g) => BrushPack {
                 fill_color: Color::TRANSPARENT,
                 fill_kind: FillKind::radial(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
                 fill_axis: g.axis(),
             },
-            Brush::Conic(g) => BrushPack {
+            BrushSource::Conic(g) => BrushPack {
                 fill_color: Color::TRANSPARENT,
                 fill_kind: FillKind::conic(g.spread),
                 fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
