@@ -4,28 +4,8 @@ local animation that dont need relayout
 
 checkbox
 
-#[repr(C)] #[derive(Copy, Clone, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct FillAxis {
-pub dir_x: f32,
-pub dir_y: f32,
-pub t0: f32,
-pub t1: f32,
-}
+3.  Tackle DrawRectPayload Color → ColorF16 (mechanical, easy win — saves 16 B per cmd)?
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct LinearGradient {
-pub angle: f32,
-pub stops: ArrayVec<[Stop; MAX_STOPS]>,
-pub spread: Spread,
-pub interp: Interp,
-}
-
-pub struct Shadow {
+pub struct MeshVertex {
+pub pos: Vec2,
 pub color: Color,
-pub offset: Vec2,
-pub blur: f32,
-pub spread: f32,
-
-#[animate(snap)]
-pub inset: bool,
-}
