@@ -28,8 +28,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle,
-    Ui,
+    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle, Ui,
 };
 use pollster::FutureExt;
 

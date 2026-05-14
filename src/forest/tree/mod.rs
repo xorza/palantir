@@ -339,7 +339,9 @@ impl Tree {
             // damage subtree-skip + encode caches still invalidate
             // on transform-only changes.
             let b_slot = bounds_idx[i];
-            let xf = (b_slot != ABSENT).then(|| bounds_tab[b_slot as usize].transform).flatten();
+            let xf = (b_slot != ABSENT)
+                .then(|| bounds_tab[b_slot as usize].transform)
+                .flatten();
             if let Some(t) = xf {
                 h.write_u8(1);
                 h.pod(&t);
