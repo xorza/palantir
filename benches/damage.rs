@@ -61,6 +61,51 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
         });
 }
 
+/// Same shape and per-frame work as `build_grid`, but every row Panel
+/// gets a chrome fill — so rows are *painting* parents wrapping
+/// painting cells. On a stable frame the damage diff's subtree-skip
+/// predicate (rect + node_hash + subtree_hash + cascade_input all
+/// match prev at the row root) fires at each row, jumping past 32
+/// per-cell entry lookups. Cells listed in `hot` get `hot_color`.
+fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+    let row_bg = Color::rgb(0.1, 0.1, 0.12);
+    Panel::vstack()
+        .id_salt("root")
+        .gap(2.0)
+        .padding(4.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            for r in 0..ROWS {
+                Panel::hstack()
+                    .id_salt(("row", r))
+                    .gap(2.0)
+                    .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                    .background(Background {
+                        fill: row_bg.into(),
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| {
+                        for c in 0..COLS {
+                            let i = r * COLS + c;
+                            let fill = if hot.contains(&i) {
+                                hot_color
+                            } else {
+                                Color::rgb(0.2, 0.2, 0.25)
+                            };
+                            Frame::new()
+                                .id_salt(("cell", r, c))
+                                .size((Sizing::Fixed(30.0), Sizing::FILL))
+                                .background(Background {
+                                    fill: fill.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                        }
+                    });
+            }
+        });
+}
+
 /// Drive the ack-the-frame contract during benches. `Ui::pre_record`
 /// auto-rewinds damage if the previous `FrameOutput` wasn't marked
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
@@ -88,13 +133,45 @@ fn bench_workloads(c: &mut Criterion) {
     let hot = Color::rgb(0.9, 0.4, 0.2);
     let mut group = c.benchmark_group("damage/workload");
 
-    // Skip path — identical scene every frame; nothing dirty.
+    // Skip path — identical scene every frame; nothing dirty. Rows
+    // are non-painting Panels so the damage diff walks every painting
+    // leaf individually (no subtree-skip available).
     {
         let mut ui = Ui::new();
         warm_and_assert(&mut ui, display, |ui| build_grid(ui, &[], cold), "skip");
         group.bench_function("skip", |b| {
             b.iter(|| {
                 run_and_ack(&mut ui, display, |ui| build_grid(ui, &[], cold));
+                black_box(&ui);
+            });
+        });
+    }
+
+    // Skip path with painting row Panels — same node count as `skip`,
+    // but each row is a painting parent of painting cells. On a stable
+    // frame the damage diff's subtree-skip predicate fires at every
+    // row, jumping past the 32 per-cell entry lookups underneath.
+    // Compare against `skip` to isolate the subtree-skip win.
+    {
+        let mut ui = Ui::new();
+        warm_and_assert(
+            &mut ui,
+            display,
+            |ui| build_painted_rows(ui, &[], cold),
+            "skip",
+        );
+        // Sanity: the second warm-up frame must have fired ≥ROWS
+        // jumps (one per stable row subtree). Without this, the bench
+        // silently degrades to the same shape as `skip`.
+        assert!(
+            internals::damage_subtree_skips(&ui) >= ROWS as u32,
+            "expected >= {} subtree skips, got {}",
+            ROWS,
+            internals::damage_subtree_skips(&ui),
+        );
+        group.bench_function("skip_painted_rows", |b| {
+            b.iter(|| {
+                run_and_ack(&mut ui, display, |ui| build_painted_rows(ui, &[], cold));
                 black_box(&ui);
             });
         });
