@@ -1,6 +1,6 @@
 use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
 use crate::forest::shapes::record::{
-    GradientPayload, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
+    GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
@@ -8,7 +8,6 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::Color;
 use crate::primitives::mesh::MeshVertex;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::quad::FillKind;
@@ -33,7 +32,7 @@ const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0)
 #[inline]
 fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> BrushSource<'_> {
     match brush {
-        ShapeBrush::Solid(c) => BrushSource::Solid(c),
+        ShapeBrush::Solid(c) => BrushSource::Solid(c.into()),
         ShapeBrush::Gradient(id) => match &gradients[id as usize] {
             GradientPayload::Linear(g) => BrushSource::Linear(g),
             GradientPayload::Radial(g) => BrushSource::Radial(g),
@@ -187,7 +186,7 @@ fn emit_one_shape(
                     size: shaped.measured,
                 },
             };
-            out.draw_text(rect, *color, shaped.key);
+            out.draw_text(rect, (*color).into(), shaped.key);
         }
         ShapeRecord::Polyline {
             width,
@@ -264,7 +263,7 @@ fn emit_one_shape(
             let i_start = out_meshes.indices.len() as u32;
             out_meshes.indices.extend_from_slice(src_idx);
             out.draw_mesh(DrawMeshPayload {
-                tint: *tint,
+                tint: (*tint).into(),
                 v_start,
                 v_len: src_verts.len() as u32,
                 i_start,
@@ -465,37 +464,38 @@ fn emit_shadow(
     owner_rect: Rect,
     local_rect: Option<Rect>,
     radius: Corners,
-    shadow: &Shadow,
+    shadow: &LoweredShadow,
 ) {
     if shadow.is_noop() {
         return;
     }
-    let paint_local = shadow_paint_rect_local(
-        local_rect,
-        owner_rect.size,
-        shadow.offset,
-        shadow.blur,
-        shadow.spread,
-        shadow.inset,
-    );
+    // Unpack all four f16 geom lanes in one batched SIMD call.
+    let ShadowGeom {
+        offset,
+        blur,
+        spread,
+    } = shadow.geom();
+    let inset = shadow.inset();
+    let paint_local =
+        shadow_paint_rect_local(local_rect, owner_rect.size, offset, blur, spread, inset);
     let paint_rect = Rect {
         min: owner_rect.min + paint_local.min,
         size: paint_local.size,
     };
-    let (kind, axis_w) = if shadow.inset {
-        (FillKind::SHADOW_INSET, shadow.spread.max(0.0))
+    let (kind, axis_w) = if inset {
+        (FillKind::SHADOW_INSET, spread.max(0.0))
     } else {
         (FillKind::SHADOW_DROP, 0.0)
     };
     out.draw_shadow(
         paint_rect,
         radius,
-        shadow.color,
+        shadow.color(),
         kind,
         FillAxis {
-            dir_x: shadow.offset.x,
-            dir_y: shadow.offset.y,
-            t0: shadow.blur,
+            dir_x: offset.x,
+            dir_y: offset.y,
+            t0: blur,
             t1: axis_w,
         },
     );

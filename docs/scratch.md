@@ -27,3 +27,10 @@ pub blur: f32,
 pub spread: f32, #[animate(snap)]
 pub inset: bool,
 }
+
+    #[inline]
+    pub(crate) fn is_noop(self) -> bool {
+        // ColorF16 lanes are RGBA. Alpha == 0 (any sign) ⇒ noop.
+        const ABS_MASK: u16 = 0x7FFF;
+        (self.color.0[3] & ABS_MASK) == 0
+    } approx?

@@ -25,7 +25,7 @@ pub(crate) type GradientId = u32;
 /// carrying ~88 B of gradient storage on every rounded-rect.
 #[derive(Clone, Copy, Debug, Hash)]
 pub(crate) enum ShapeBrush {
-    Solid(Color),
+    Solid(ColorF16),
     Gradient(GradientId),
 }
 
@@ -79,7 +79,7 @@ pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
     pub(crate) stroke: ShapeStroke,
     pub(crate) radius: Corners,
-    pub(crate) shadow: Shadow,
+    pub(crate) shadow: LoweredShadow,
     /// Pre-computed content hash for `fill` when it's a gradient, 0
     /// for solid — same context-free-Hash trick as
     /// `ShapeRecord::RoundedRect.fill_grad_hash`. Lets
@@ -102,6 +102,95 @@ impl Hash for ChromeRow {
         h.write(bytemuck::bytes_of(&self.stroke));
         self.radius.hash(h);
         self.shadow.hash(h);
+    }
+}
+
+/// Lowered shadow. The user-facing `Shadow` is 36 B (linear `Color` +
+/// 2 `Vec2`s + 2 `f32`s + bool); this stores the same authoring data
+/// in 18 B via `ColorF16` and a 4-lane f16 geom block. Used in
+/// `ChromeRow.shadow` and `ShapeRecord::Shadow`. Same lifecycle as
+/// the rest of the row.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LoweredShadow {
+    pub(crate) color: ColorF16,
+    /// `[offset.x, offset.y, blur, spread]` as f16 lanes. Unpacked
+    /// at read time via the batched slice path — single SIMD on
+    /// targets with hardware f16 support.
+    pub(crate) geom_f16: [u16; 4],
+    /// Inset flag stored as u16 (not bool) so the struct has no
+    /// padding bytes — required for `Pod`.
+    pub(crate) inset_flag: u16,
+}
+
+/// Unpacked f16 geom lanes from `LoweredShadow`. Single batched-SIMD
+/// unpack feeds all three named fields; consumers destructure rather
+/// than juggle a `[f32; 4]`.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ShadowGeom {
+    pub(crate) offset: Vec2,
+    pub(crate) blur: f32,
+    pub(crate) spread: f32,
+}
+
+impl LoweredShadow {
+    /// True when no pixels would paint — same gate as `Shadow::is_noop`,
+    /// keyed on `ColorF16`'s alpha lane bits (a == 0).
+    #[inline]
+    pub(crate) fn is_noop(self) -> bool {
+        // ColorF16 lanes are RGBA. Alpha == 0 (any sign) ⇒ noop.
+        const ABS_MASK: u16 = 0x7FFF;
+        (self.color.0[3] & ABS_MASK) == 0
+    }
+
+    /// Unpack the four f16 geom lanes at once via the batched slice
+    /// path and return them as named fields.
+    #[inline]
+    pub(crate) fn geom(self) -> ShadowGeom {
+        use half::slice::HalfFloatSliceExt;
+        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.geom_f16);
+        let mut out = [0.0f32; 4];
+        arr.as_slice().convert_to_f32_slice(&mut out);
+        ShadowGeom {
+            offset: Vec2::new(out[0], out[1]),
+            blur: out[2],
+            spread: out[3],
+        }
+    }
+
+    #[inline]
+    pub(crate) fn inset(self) -> bool {
+        self.inset_flag != 0
+    }
+    #[inline]
+    pub(crate) fn color(self) -> Color {
+        self.color.into()
+    }
+}
+
+impl From<Shadow> for LoweredShadow {
+    /// Quantize a user-facing `Shadow` into the packed form. f16 pack
+    /// is one batched SIMD on F16C/fp16 targets.
+    #[inline]
+    fn from(s: Shadow) -> Self {
+        use half::slice::HalfFloatSliceExt;
+        let src = [s.offset.x, s.offset.y, s.blur, s.spread];
+        let mut out = [half::f16::ZERO; 4];
+        out.as_mut_slice().convert_from_f32_slice(&src);
+        Self {
+            color: s.color.into(),
+            geom_f16: bytemuck::cast(out),
+            inset_flag: s.inset as u16,
+        }
+    }
+}
+
+impl std::hash::Hash for LoweredShadow {
+    /// One `write()` over the 18 storage bytes. Pod-friendly, single
+    /// hasher dispatch.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(bytemuck::bytes_of(self));
     }
 }
 
@@ -218,7 +307,7 @@ pub(crate) enum ShapeRecord {
         /// `Clone`s — no per-frame heap alloc. Dynamic strings still allocate
         /// once into `Cow::Owned` at the authoring boundary.
         text: Cow<'static, str>,
-        color: Color,
+        color: ColorF16,
         font_size_px: f32,
         /// Line-height in logical px, fed straight to the shaper's
         /// `Metrics::new`. Authoring-side widgets typically set this to
@@ -242,7 +331,7 @@ pub(crate) enum ShapeRecord {
     /// offsets differ.
     Mesh {
         local_rect: Option<Rect>,
-        tint: Color,
+        tint: ColorF16,
         vertices: Span,
         indices: Span,
         content_hash: u64,
@@ -257,7 +346,7 @@ pub(crate) enum ShapeRecord {
     Shadow {
         local_rect: Option<Rect>,
         radius: Corners,
-        shadow: Shadow,
+        shadow: LoweredShadow,
     } = 4,
 }
 
@@ -306,14 +395,21 @@ impl ShapeRecord {
         match self {
             ShapeRecord::Shadow {
                 local_rect, shadow, ..
-            } => shadow_paint_rect_local(
-                *local_rect,
-                owner_size,
-                shadow.offset,
-                shadow.blur,
-                shadow.spread,
-                shadow.inset,
-            ),
+            } => {
+                let ShadowGeom {
+                    offset,
+                    blur,
+                    spread,
+                } = shadow.geom();
+                shadow_paint_rect_local(
+                    *local_rect,
+                    owner_size,
+                    offset,
+                    blur,
+                    spread,
+                    shadow.inset(),
+                )
+            }
             ShapeRecord::Polyline { bbox, .. } => *bbox,
             ShapeRecord::RoundedRect { local_rect, .. } | ShapeRecord::Mesh { local_rect, .. } => {
                 local_rect.unwrap_or(Rect {
@@ -468,24 +564,24 @@ mod tests {
     fn shape_mesh_hash_excludes_span_offsets() {
         let a = ShapeRecord::Mesh {
             local_rect: None,
-            tint: Color {
+            tint: ColorF16::from(Color {
                 r: 0.0,
                 g: 1.0,
                 b: 0.0,
                 a: 1.0,
-            },
+            }),
             vertices: Span::new(0, 3),
             indices: Span::new(0, 3),
             content_hash: 0xdead_beef,
         };
         let b = ShapeRecord::Mesh {
             local_rect: None,
-            tint: Color {
+            tint: ColorF16::from(Color {
                 r: 0.0,
                 g: 1.0,
                 b: 0.0,
                 a: 1.0,
-            },
+            }),
             vertices: Span::new(1234, 3),
             indices: Span::new(5678, 3),
             content_hash: 0xdead_beef,

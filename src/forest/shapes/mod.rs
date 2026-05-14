@@ -49,7 +49,7 @@ impl Shapes {
     /// `ShapeRecord` and keep `ShapeRecord::Hash` context-free.
     fn lower_brush(&mut self, brush: Brush) -> (ShapeBrush, u64) {
         match brush {
-            Brush::Solid(c) => (ShapeBrush::Solid(c), 0),
+            Brush::Solid(c) => (ShapeBrush::Solid(c.into()), 0),
             Brush::Linear(g) => {
                 let payload = GradientPayload::Linear(g);
                 let hash = payload.content_hash();
@@ -84,7 +84,7 @@ impl Shapes {
             fill,
             stroke: ShapeStroke::from(bg.stroke),
             radius: bg.radius,
-            shadow: bg.shadow,
+            shadow: bg.shadow.into(),
             fill_grad_hash,
         }
     }
@@ -203,7 +203,7 @@ impl Shapes {
             } => ShapeRecord::Text {
                 local_origin,
                 text,
-                color: brush.expect_solid(),
+                color: brush.expect_solid().into(),
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -217,7 +217,7 @@ impl Shapes {
             } => ShapeRecord::Shadow {
                 local_rect,
                 radius,
-                shadow,
+                shadow: shadow.into(),
             },
             Shape::Mesh {
                 mesh,
@@ -232,7 +232,7 @@ impl Shapes {
                 let content_hash = mesh.content_hash();
                 ShapeRecord::Mesh {
                     local_rect,
-                    tint: tint.expect_solid(),
+                    tint: tint.expect_solid().into(),
                     vertices: Span::new(v_start, mesh.vertices.len() as u32),
                     indices: Span::new(i_start, mesh.indices.len() as u32),
                     content_hash,
