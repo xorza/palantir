@@ -216,6 +216,8 @@ fn bench_frame(c: &mut Criterion) {
     c.bench_function("frame/post_record", |b| {
         b.iter(|| {
             black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+            // #[cfg(feature = "internals")]
+            // palantir::support::internals::mark_frame_submitted(&ui);
         });
     });
 
@@ -231,6 +233,8 @@ fn bench_frame(c: &mut Criterion) {
             frame = frame.wrapping_add(1);
             let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
             black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+            // #[cfg(feature = "internals")]
+            // palantir::support::internals::mark_frame_submitted(&ui);
         });
     });
 }
