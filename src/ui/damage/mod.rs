@@ -20,13 +20,14 @@
 //! curr rect doesn't.
 //!
 //! `DamageEngine.dirty` is the per-node dirty list (added /
-//! hash-changed / rect-changed) in pre-order paint order. Always
-//! populated; tests assert on it directly, and the "flash dirty
-//! nodes" debug overlay (see `docs/roadmap/damage.md`) is the
-//! production consumer.
+//! hash-changed / rect-changed) in pre-order paint order. It's
+//! gated behind `cfg(any(test, feature = "internals"))` — production
+//! builds skip the per-node `Vec::push` entirely; tests and benches
+//! assert on it through this gate.
 
 use crate::forest::Forest;
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::{CascadeInputHash, NodeHash};
+#[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -53,8 +54,18 @@ pub(crate) struct NodeSnapshot {
     /// going away (e.g. on tab switch) contributes the full halo
     /// it painted last frame, so the encoder clears the shadow bleed.
     pub(crate) rect: Rect,
-    /// Authoring hash from last frame's `Tree.hashes`.
+    /// Authoring hash from last frame's `Tree.rollups.node`.
     pub(crate) hash: NodeHash,
+    /// Rollup hash of this node + its entire subtree from last frame's
+    /// `Tree.rollups.subtree`. Pair with `cascade_input` to drive the
+    /// subtree-skip fast path: if both match the current frame, every
+    /// descendant is bit-identical and the per-node diff can jump to
+    /// `subtree_end[i]`.
+    pub(crate) subtree_hash: NodeHash,
+    /// Fingerprint of last frame's cascade inputs at this node (parent
+    /// transform/clip/disabled/invisible + own arranged rect). See
+    /// [`crate::forest::rollups::CascadeInputHash`].
+    pub(crate) cascade_input: CascadeInputHash,
 }
 
 /// Output of one frame's damage pass plus the cross-frame state it
@@ -81,6 +92,7 @@ pub(crate) struct NodeSnapshot {
 /// Capacities on `dirty` and `prev` are retained across frames;
 /// `region` is inline (`DamageRegion` is `Copy`).
 pub(crate) struct DamageEngine {
+    #[cfg(any(test, feature = "internals"))]
     pub(crate) dirty: Vec<NodeId>,
     pub(crate) region: DamageRegion,
     /// Per-pass merge budget (extra-overdraw px) used when
@@ -98,16 +110,27 @@ pub(crate) struct DamageEngine {
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
     /// Last frame's surface rect. `None` on first frame.
     pub(crate) prev_surface: Option<Rect>,
+    /// Count of subtree-skip jumps the last `compute` performed —
+    /// every match of the Occupied-equal arm jumped `subtree_end - i`
+    /// instead of advancing by 1. Read by tests and benches via
+    /// `support::internals::damage_subtree_skips`; zero on first
+    /// frame and on full-repaint fall-through. Gated alongside
+    /// `dirty` — production builds don't pay the increment.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) subtree_skips: u32,
 }
 
 impl Default for DamageEngine {
     fn default() -> Self {
         Self {
+            #[cfg(any(test, feature = "internals"))]
             dirty: Vec::new(),
             region: DamageRegion::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
             prev_surface: None,
+            #[cfg(any(test, feature = "internals"))]
+            subtree_skips: 0,
         }
     }
 }
@@ -195,38 +218,96 @@ impl DamageEngine {
         // frame's pre_record comparison.
         let force_full = self.prev_surface.is_none();
         self.prev_surface = Some(surface);
-        self.dirty.clear();
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.dirty.clear();
+            self.subtree_skips = 0;
+        }
         let mut acc = DamageRegion::with_budget(self.budget_px);
 
         for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();
-            for i in 0..n {
+            let subtree_end = tree.records.subtree_end();
+            let mut i = 0;
+            while i < n {
                 let wid = widget_ids[i];
-                let curr_rect = rows[i].paint_rect;
+                let row = rows[i];
+                let curr_rect = row.paint_rect;
                 let curr_paints = tree.rollups.paints.contains(i);
+                let curr_node_hash = tree.rollups.node[i];
+                let curr_subtree_hash = tree.rollups.subtree[i];
+                let curr_cascade_input = row.cascade_input;
                 let curr = NodeSnapshot {
                     rect: curr_rect,
-                    hash: tree.rollups.node[i],
+                    hash: curr_node_hash,
+                    subtree_hash: curr_subtree_hash,
+                    cascade_input: curr_cascade_input,
                 };
 
                 // Invariant: `self.prev` only holds entries for widgets
                 // that painted last frame. Non-painting nodes contribute
                 // zero rect, so a never-painted widget needs no snapshot
                 // and a painting→non-painting transition evicts the
-                // entry. Hash equality across an Occupied match implies
-                // the same paint contribution (chrome + shapes are
-                // hashed), so the unchanged arm needs no explicit
-                // `curr_paints` check.
-                let dirty = match self.prev.entry(wid) {
-                    Entry::Vacant(_) if !curr_paints => false,
+                // entry.
+                //
+                // Two unchanged predicates, *not* the same:
+                //
+                // - **No-work** (`rect` + `node_hash` match): this node's
+                //   own paint contribution is identical. Falls through to
+                //   the next node — descendants may still have changed.
+                // - **Subtree-skip** (additionally `subtree_hash` +
+                //   `cascade_input` match): the whole subtree is
+                //   bit-identical. `subtree_hash` covers every
+                //   descendant's `node_hash`; `cascade_input` covers the
+                //   ancestor state flowing into this node, so descendant
+                //   cascade rows are identical by induction; combined,
+                //   every descendant's `(paint_rect, node_hash)` matches
+                //   prev. Their prev entries already hold the right
+                //   state — no update, no rect contribution, jump to
+                //   `subtree_end[i]`.
+                //
+                // The split matters: if we merged them, an internal node
+                // with a stable `(rect, node_hash)` but a child that
+                // changed colour would fail the merged predicate (its
+                // `subtree_hash` rolled the child's new hash), fall into
+                // the "changed" arm, and contribute its own (unchanged)
+                // rect to damage — bloating the damage region from the
+                // child's leaf rect to the whole parent's rect.
+                let (dirty, advance) = match self.prev.entry(wid) {
+                    Entry::Vacant(_) if !curr_paints => (false, 1),
                     Entry::Vacant(e) => {
                         e.insert(curr);
                         acc.add(curr_rect);
-                        true
+                        (true, 1)
                     }
-                    Entry::Occupied(e) if *e.get() == curr => false,
+                    Entry::Occupied(mut e)
+                        if e.get().rect == curr_rect && e.get().hash == curr_node_hash =>
+                    {
+                        let prev = *e.get();
+                        if prev.subtree_hash == curr_subtree_hash
+                            && prev.cascade_input == curr_cascade_input
+                        {
+                            let span = (subtree_end[i] as usize) - i;
+                            #[cfg(any(test, feature = "internals"))]
+                            if span > 1 {
+                                self.subtree_skips += 1;
+                            }
+                            (false, span)
+                        } else {
+                            // Own paint unchanged (rect + node_hash
+                            // matched), but a descendant or the
+                            // cascade input shifted. Refresh those
+                            // fields so a later truly-stable frame
+                            // can skip; no rect contribution since
+                            // this node's own pixels are identical.
+                            let snap = e.get_mut();
+                            snap.subtree_hash = curr_subtree_hash;
+                            snap.cascade_input = curr_cascade_input;
+                            (false, 1)
+                        }
+                    }
                     Entry::Occupied(mut e) => {
                         acc.add(e.get().rect);
                         if curr_paints {
@@ -235,12 +316,16 @@ impl DamageEngine {
                         } else {
                             e.remove();
                         }
-                        true
+                        (true, 1)
                     }
                 };
+                #[cfg(any(test, feature = "internals"))]
                 if dirty {
                     self.dirty.push(NodeId(i as u32));
                 }
+                #[cfg(not(any(test, feature = "internals")))]
+                let _ = dirty;
+                i += advance;
             }
         }
 

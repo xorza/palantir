@@ -76,6 +76,15 @@ pub fn damage_rect_count(ui: &Ui) -> usize {
     ui.damage_engine.region.iter_rects().count()
 }
 
+/// Count of subtree-skip jumps the last damage diff performed. Each
+/// jump short-circuits the per-node walk for a multi-node subtree
+/// whose `(paint_rect, node_hash, subtree_hash, cascade_input)`
+/// matched the prev-frame snapshot exactly. Zero on first frame, full
+/// repaints, and frames where every subtree root genuinely changed.
+pub fn damage_subtree_skips(ui: &Ui) -> u32 {
+    ui.damage_engine.subtree_skips
+}
+
 /// Variant of `damage_rect_count` that classifies the frame's
 /// final paint decision. Lets benches partition timings by Skip /
 /// Partial(N) / Full path without the caller reaching into private

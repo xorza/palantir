@@ -290,6 +290,11 @@ impl Tree {
             let end = self.records.subtree_end()[i];
             let mut h = Hasher::new();
             h.write_u64(self.rollups.node[i].0);
+            // Transform is deliberately omitted from `BoundsExtras::hash`
+            // (so a parent moving doesn't dirty-flag its children's
+            // node hash) — fold it into the subtree rollup here so the
+            // damage subtree-skip + encode caches still invalidate
+            // on transform-only changes.
             if let Some(t) = self.bounds.get(i).and_then(|b| b.transform) {
                 h.write_u8(1);
                 h.pod(&t);

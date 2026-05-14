@@ -84,6 +84,66 @@ fn unchanged_authoring_produces_no_damage() {
     assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
 }
 
+/// Pin: when a subtree's `(paint_rect, node_hash, subtree_hash,
+/// cascade_input)` all match the prev-frame snapshot at its painting
+/// root, the damage diff jumps to `subtree_end` instead of walking every
+/// descendant. The fast path's correctness is already covered by every
+/// "unchanged → no damage" test in this file; this pin specifically
+/// guards that the jump *fires* — without it the path silently degrades
+/// to a per-node walk that still produces correct damage.
+#[test]
+fn stable_painting_subtree_triggers_skip_jump() {
+    use crate::support::internals;
+    let mut ui = Ui::new();
+    // Frame with a painting parent (background) wrapping painting
+    // children — both root and children land in `prev` with matching
+    // snapshots on the second frame, so the root's Occupied-equal arm
+    // is reached with a span > 1 and the skip counter increments.
+    let build = |ui: &mut Ui| {
+        Panel::hstack().id_salt("root").show(ui, |ui| {
+            Panel::hstack()
+                .id_salt("painting_parent")
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(60.0)))
+                .background(Background {
+                    fill: BLUE.into(),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("child_a")
+                        .size(20.0)
+                        .background(Background {
+                            fill: RED.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                    Frame::new()
+                        .id_salt("child_b")
+                        .size(20.0)
+                        .background(Background {
+                            fill: RED.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        });
+    };
+    frame(&mut ui, build);
+    assert_eq!(
+        internals::damage_subtree_skips(&ui),
+        0,
+        "first frame populates prev — no prior snapshots to skip against"
+    );
+
+    frame(&mut ui, build);
+    assert!(
+        internals::damage_subtree_skips(&ui) >= 1,
+        "identical second frame must skip at least the painting_parent subtree, got {}",
+        internals::damage_subtree_skips(&ui),
+    );
+    assert!(ui.damage_engine.dirty.is_empty());
+}
+
 /// Pin: a widget that loses its background between frames flips from
 /// painting to non-painting. The diff must (a) contribute its prev
 /// rect to damage so the prior pixels get cleared, (b) drop the entry
