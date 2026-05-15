@@ -1,6 +1,15 @@
 # Paint-only frame mode (a.k.a. "paint tick")
 
-**Status:** proposal. No code yet.
+**Status:** proposal. No code yet. Audited against codebase
+2026-05-15 — frame lifecycle, `pre_record` / `post_record` shape,
+`tree.shapes` indexing, `SubtreeRollups`, `DamageEngine`,
+`repaint_wakes`, `AnimMap`, and `text_edit` caret all match
+current source. Storage choice for the paint-anim column was
+revised (see §`PaintAnim` registry below) — `SparseColumn<T>`
+doesn't exist; the tree's sparse-extras pattern is
+`ExtrasIdx`-packed `Slot`s indexing dense `*_table: Vec<T>`,
+and a paint-anim entry needs to be shape-keyed (not node-keyed)
+anyway.
 **Goal:** drive time-based visuals (caret blink, spinner, focus pulse,
 marquee, indeterminate progress) without re-running record / measure /
 arrange / cascade on every wake. Spend only the encode + paint passes
@@ -180,17 +189,31 @@ Storage on `Tree`:
 
 ```rust
 // src/forest/tree/mod.rs
-pub(crate) paint_anims: SparseColumn<PaintAnimEntry>,
-//   keyed by shape-index (offset into tree.shapes.records),
-//   so one node can have an animated caret rect and a static
-//   chrome on the same node.
+//
+// Shape-indexed (not node-indexed) because one node can have an
+// animated caret rect AND a static chrome on the same node. The
+// existing sparse-extras pattern (`ExtrasIdx` + `bounds_table` /
+// `panel_table` / `chrome_table`) is node-keyed and doesn't fit;
+// this lives next to `tree.shapes` instead.
+pub(crate) paint_anims: Vec<PaintAnimEntry>,
+//   pushed by `add_shape_animated` in parallel with the matching
+//   `tree.shapes.records.push(...)`; cleared in `pre_record` like
+//   every other per-frame column. Each entry carries the shape's
+//   index so post-record / paint-tick can look up `paint_rect`.
 
 struct PaintAnimEntry {
     anim: PaintAnim,
+    shape_idx: u32,        // into `tree.shapes.records`
     node: NodeId,          // for damage rect lookup
     last_quantum: i32,     // updated in paint-tick / record post_record
 }
 ```
+
+For O(1) lookup at encoder-emit time (item 6 below), add a parallel
+`paint_anim_by_shape: Vec<u16>` (one slot per shape, `u16::MAX` for
+"no anim", same niche convention as `ExtrasIdx::Slot`). Cleared and
+grown alongside `shapes.records`. Reads at the per-shape emit site
+are one indexed load + a branch on the sentinel.
 
 Lifecycle:
 
@@ -215,10 +238,12 @@ stroke)` and analogues for text / polyline / mesh. Wrap the emit
 sites so the per-shape paint-mod is applied:
 
 ```rust
-let mod_ = tree.paint_anims
-    .get_for_shape(shape_idx)
-    .map(|e| e.anim.sample(ui.time))
-    .unwrap_or(PaintMod::identity());
+let slot = tree.paint_anim_by_shape[shape_idx];
+let mod_ = if slot != u16::MAX {
+    tree.paint_anims[slot as usize].anim.sample(now)
+} else {
+    PaintMod::identity()
+};
 let fill = brush.with_alpha_mul(mod_.alpha);
 let xf = cascade.transform.then(mod_.transform);
 out.draw_rect(xf.apply(rect), radius, &fill, stroke);
@@ -319,11 +344,15 @@ Most of the existing code stays untouched. The changes:
 1. **`src/animation/paint.rs`** (new). `PaintAnim` + sampling +
    quantization + wake math. ~150 LOC.
 
-2. **`src/forest/tree/mod.rs`**. Add `paint_anims: SparseColumn<…>`
-   to `Tree`. Clear in `pre_record` alongside the other columns.
-   Initialize `last_quantum` and fold `next_wake` in `post_record`
-   (needs `now` threaded in — currently `post_record` takes no
-   args, would take `Duration`).
+2. **`src/forest/tree/mod.rs`**. Add `paint_anims: Vec<PaintAnimEntry>`
+   + parallel `paint_anim_by_shape: Vec<u16>` (sentinel `u16::MAX` =
+   "no anim", same convention as `ExtrasIdx::Slot::ABSENT`) to
+   `Tree`. Clear in `pre_record` alongside the other per-frame
+   columns. Initialize `last_quantum` and fold `next_wake` in
+   `post_record` (needs `now` threaded in — currently
+   `Tree::post_record` / `Forest::post_record` take `&mut self` only,
+   would take `Duration`; `Ui::frame_inner` already has `self.time`
+   handy at the call site).
 
 3. **`src/forest/mod.rs`**. `Forest::add_shape_animated(shape,
    anim)` mirrors `add_shape`, pushes the shape, registers in the
@@ -348,10 +377,14 @@ Most of the existing code stays untouched. The changes:
    `Option<Damage>` envelope.
 
 6. **`src/renderer/frontend/encoder/mod.rs`**. At each shape emit
-   site (rect / text / polyline / mesh / shadow), look up
-   `tree.paint_anims.get_for_shape(shape_idx)`, sample, apply
-   `alpha` to the brush, compose `transform` with the cascade.
-   `now` already reachable as `ui.time`.
+   site (rect / text / polyline / mesh / shadow), index
+   `tree.paint_anim_by_shape[shape_idx]`, branch on the sentinel,
+   on a hit fetch `tree.paint_anims[slot]`, sample, apply `alpha`
+   to the brush, compose `transform` with the cascade. `encode`
+   takes `&Ui` so `ui.time` is reachable, but `encode_node` (the
+   per-node callee at line 252) currently takes
+   `(&Tree, &LayerLayout, &Cascades, …)` — thread `Duration now`
+   in alongside.
 
 7. **`src/host.rs`**. No changes — `Host::run_frame` already only
    knows about `FrameReport`, and `report.skip_render()` already
