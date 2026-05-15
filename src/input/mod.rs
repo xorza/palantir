@@ -346,6 +346,16 @@ pub struct InputState {
     /// it — they fire too often and don't typically mutate user state.
     /// Reset by `Ui::run_frame` after the decision is made.
     pub(crate) frame_had_action: bool,
+    /// Sticky bit: set by every `on_input` call (any event, including
+    /// pointer moves and mod changes), cleared by `Ui::frame_inner`
+    /// at the top of each frame after the paint-anim-only
+    /// short-circuit gate has read it. Distinct from `frame_had_action`
+    /// — that flag answers "did this *frame's* recording see a
+    /// state-mutating event"; this one answers "did the host push
+    /// *anything* between the previous `frame()` return and this
+    /// one." The short-circuit fails on any input arrival, since the
+    /// closure might react to even a pointer move.
+    pub(crate) input_arrived_since_last_frame: bool,
 }
 
 impl Default for InputState {
@@ -370,6 +380,7 @@ impl InputState {
             focused: None,
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
+            input_arrived_since_last_frame: false,
         }
     }
 
@@ -390,6 +401,12 @@ impl InputState {
     /// capture, no hover/scroll target change) leaves
     /// `requests_repaint` false so the frame can be skipped entirely.
     pub(crate) fn on_input(&mut self, event: InputEvent, cascades: &Cascades) -> InputDelta {
+        // Any host-pushed event disqualifies the next frame from the
+        // paint-anim-only short-circuit — the recording closure might
+        // observe even a pointer move (hover styling) or modifier
+        // change (shortcut hint). Cleared at the top of `frame_inner`
+        // after the gate has read it.
+        self.input_arrived_since_last_frame = true;
         if matches!(
             event,
             InputEvent::PointerPressed(_)

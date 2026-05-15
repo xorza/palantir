@@ -6,8 +6,8 @@
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::damage::Damage;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
+use crate::ui::frame_report::RenderPlan;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 use wgpu::util::DeviceExt;
@@ -47,11 +47,11 @@ pub(super) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Op
 #[profiling::function]
 pub(super) fn build_damage_scissors(
     out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
-    damage: Damage,
+    plan: RenderPlan,
     buffer: &RenderBuffer,
 ) {
     out.clear();
-    if let Damage::Partial(region) = damage {
+    if let RenderPlan::Partial { region, .. } = plan {
         for r in region.iter_rects() {
             if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
                 out.push(s);

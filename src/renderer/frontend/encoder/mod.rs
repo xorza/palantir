@@ -14,8 +14,8 @@ use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
-use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use crate::ui::frame_report::RenderPlan;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -64,12 +64,12 @@ fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> Brush
 /// damage ⇒ never call `encode`). `out` is cleared at entry and
 /// keeps its capacity for the next frame.
 #[profiling::function]
-pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
+pub(crate) fn encode(ui: &Ui, plan: RenderPlan, out: &mut RenderCmdBuffer) {
     out.clear();
 
-    let damage_filter = match &damage {
-        Damage::Partial(region) => Some(region),
-        Damage::Full => None,
+    let damage_filter = match &plan {
+        RenderPlan::Partial { region, .. } => Some(region),
+        RenderPlan::Full { .. } => None,
     };
 
     let viewport = ui.display.logical_rect();

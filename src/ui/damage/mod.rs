@@ -158,16 +158,28 @@ impl Default for DamageEngine {
 /// below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
-/// What the GPU should do with this frame when there *is* work:
-/// `Full` (clear + paint everything) or `Partial(region)` (load +
-/// scissor; one render pass per rect in the region). The "nothing
-/// changed, just present the backbuffer" case is encoded as the
-/// absence of a `Damage` — `compute` / `filter` return
-/// `Option<Damage>` and `None` is the skip signal.
+/// What the GPU should do with this frame:
+/// - `None` — nothing changed; the backbuffer is correct as-is.
+/// - `Full` — clear + paint everything.
+/// - `Partial(region)` — load + scissor; one render pass per rect.
+///
+/// Knows nothing about clear colour — that's a presentation concern
+/// stamped in by [`crate::ui::frame_report::RenderPlan`] when the
+/// damage outcome is lifted into a host-facing report.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {
+    None,
     Full,
     Partial(DamageRegion),
+}
+
+impl Damage {
+    /// True iff this is the skip signal — caller can short-circuit
+    /// the renderer entirely.
+    #[inline]
+    pub(crate) fn is_none(self) -> bool {
+        matches!(self, Damage::None)
+    }
 }
 
 impl DamageEngine {
@@ -182,6 +194,45 @@ impl DamageEngine {
         self.prev.clear();
         self.prev_surface = None;
         self.prev_now = None;
+    }
+
+    /// Paint-anim-only damage compute. Walks every tree's
+    /// `paint_anims.entries`, unions each fired entry's owner
+    /// `paint_rect` into a fresh region, and returns the standard
+    /// `Some(Partial)` / `Some(Full)` envelope. Does NOT touch
+    /// `self.prev` (the per-widget snapshots stay valid for the
+    /// next structural frame) and does NOT walk the tree
+    /// structurally — caller has already proven via the gate that
+    /// the tree, cascades, and layout are bit-identical to last
+    /// frame.
+    ///
+    /// `prev_now` is read and updated to `Some(now)` so the next
+    /// frame's gate has the right baseline. The "fired" predicate
+    /// is the same as the one in `compute`: an entry fires when
+    /// `entry.anim.next_wake(prev_now) <= now`.
+    pub(crate) fn compute_anim_only(
+        &mut self,
+        forest: &Forest,
+        cascades: &Cascades,
+        now: Duration,
+    ) -> Damage {
+        let mut acc = DamageRegion::with_budget(self.budget_px);
+        for (layer, tree) in forest.iter_paint_order() {
+            let rows = cascades.rows_for(layer);
+            for entry in &tree.paint_anims.entries {
+                let fired = match self.prev_now {
+                    None => true,
+                    Some(prev) => entry.anim.next_wake(prev) <= now,
+                };
+                if fired {
+                    acc.add(rows[entry.node.index()].paint_rect);
+                }
+            }
+        }
+        self.prev_now = Some(now);
+        self.region = acc;
+        let surface = self.prev_surface.unwrap_or_default();
+        self.filter(surface)
     }
 
     /// Diff against the just-finished frame and return a
@@ -221,7 +272,7 @@ impl DamageEngine {
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
         now: Duration,
-    ) -> Option<Damage> {
+    ) -> Damage {
         // `prev_surface == None` is the "treat as a fresh frame"
         // signal. `Ui::pre_record` clears it (and `prev`) when the
         // surface changed, the previous `FrameOutput` wasn't acked,
@@ -382,25 +433,25 @@ impl DamageEngine {
         self.prev_now = Some(now);
         self.region = acc;
         if force_full {
-            return Some(Damage::Full);
+            return Damage::Full;
         }
         self.filter(surface)
     }
 
     /// Resolve `self.region` against the area threshold. Empty
-    /// region ⇒ `None` (no widget changed and the surface is
-    /// stable; the GPU has nothing to do). Coverage above
+    /// region ⇒ `Damage::None` (no widget changed and the surface
+    /// is stable; the GPU has nothing to do). Coverage above
     /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒
-    /// `Some(Full)`. Otherwise `Some(Partial(region))`.
-    pub(crate) fn filter(&self, surface: Rect) -> Option<Damage> {
+    /// `Damage::Full`. Otherwise `Damage::Partial(region)`.
+    pub(crate) fn filter(&self, surface: Rect) -> Damage {
         if self.region.is_empty() {
-            return None;
+            return Damage::None;
         }
         let surface_area = surface.area();
         if surface_area <= 0.0 || self.region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return Some(Damage::Full);
+            return Damage::Full;
         }
-        Some(Damage::Partial(self.region))
+        Damage::Partial(self.region)
     }
 }
 

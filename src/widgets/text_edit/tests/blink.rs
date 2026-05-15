@@ -176,9 +176,9 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // source of damage either → report damage is `None`.
     let report = frame(&mut ui, &mut buf, 0.2);
     assert!(
-        report.damage.is_none(),
+        report.plan.is_none(),
         "mid-phase frame should not damage the caret rect (got {:?})",
-        report.damage,
+        report.plan,
     );
 
     // Frame 4 across the half-period boundary (t=0.6). prev_now=0.2;
@@ -186,8 +186,80 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // → caret rect joins damage.
     let report = frame(&mut ui, &mut buf, 0.6);
     assert!(
-        report.damage.is_some(),
+        report.plan.is_some(),
         "crossing a phase boundary must damage the caret rect",
+    );
+}
+
+/// The paint-anim-only short-circuit must fire on a cross-boundary
+/// wake when nothing else changed. Asserts the dedicated path
+/// (skipped pre_record + closure + post_record + layout + cascades
+/// + finalize) ran AND the damage region still contained the caret.
+#[test]
+fn caret_blink_fires_paint_anim_only_short_circuit() {
+    use crate::layout::types::display::Display;
+    use crate::support::internals::paint_anim_only_frames;
+    use crate::ui::frame_report::FrameReport;
+    use std::time::Duration;
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::new();
+    let display = Display::from_physical(NARROW, 1.0);
+
+    fn record(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("short-circuit")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+    let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
+        let r = ui.frame(display, Duration::from_secs_f32(t_secs), &mut (), |ui| {
+            record(ui, buf);
+        });
+        ui.frame_state.mark_submitted();
+        r
+    };
+
+    // Warmup + focus on the editor.
+    frame(&mut ui, &mut buf, 0.0);
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    frame(&mut ui, &mut buf, 0.0);
+
+    // Mid-phase frame — neither full damage nor short-circuit fires
+    // (wake hasn't fired). Sanity-check the counter doesn't move.
+    let before = paint_anim_only_frames(&ui);
+    let _ = frame(&mut ui, &mut buf, 0.2);
+    assert_eq!(
+        paint_anim_only_frames(&ui),
+        before,
+        "mid-phase frame must not take the short-circuit path",
+    );
+
+    // Cross-boundary wake fires. Nothing else changed → short-circuit.
+    let before = paint_anim_only_frames(&ui);
+    let report = frame(&mut ui, &mut buf, 0.6);
+    assert_eq!(
+        paint_anim_only_frames(&ui),
+        before + 1,
+        "cross-boundary wake must take the short-circuit path",
+    );
+    assert!(
+        report.plan.is_some(),
+        "short-circuit must still surface anim damage",
+    );
+
+    // Input arrival (pointer move) on a follow-up frame disqualifies
+    // the next short-circuit even if a wake is firing — the closure
+    // must run so widgets can react.
+    let before = paint_anim_only_frames(&ui);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    let _ = frame(&mut ui, &mut buf, 1.1);
+    assert_eq!(
+        paint_anim_only_frames(&ui),
+        before,
+        "input arrival must force the full record path",
     );
 }
 

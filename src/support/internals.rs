@@ -8,7 +8,7 @@ use crate::animation::animatable::Animatable;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::display::Display;
-use crate::primitives::color::ColorU8;
+use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
@@ -17,6 +17,7 @@ use crate::shape::{ColorMode, LineCap, LineJoin};
 use crate::text::TextShaper;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use crate::ui::frame_report::RenderPlan;
 use crate::widgets::Response;
 
 /// CPU half of `Host::frame` — runs `Ui::frame` without acquiring a swapchain.
@@ -46,6 +47,15 @@ pub fn clear_measure_cache(ui: &mut Ui) {
 /// Run only the cascade pass against the just-finished frame.
 pub fn run_cascades(ui: &mut Ui) {
     ui.cascades_engine.run(&ui.forest, &mut ui.layout);
+}
+
+/// Count of frames so far that took the paint-anim-only
+/// short-circuit (skipped `pre_record` + user closure +
+/// `post_record` + layout + cascades + finalize). Bumped inside
+/// `Ui::paint_anim_only_pass`. Read by tests to assert the
+/// short-circuit fired (or didn't).
+pub fn paint_anim_only_frames(ui: &Ui) -> u64 {
+    ui.paint_anim_only_frame_count
 }
 
 /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
@@ -107,9 +117,9 @@ pub fn damage_subtree_skips(ui: &Ui) -> u32 {
 /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
 pub fn damage_paint_kind(ui: &Ui) -> &'static str {
     match ui.damage_engine.filter(ui.display.logical_rect()) {
-        None => "skip",
-        Some(Damage::Full) => "full",
-        Some(Damage::Partial(_)) => "partial",
+        Damage::None => "skip",
+        Damage::Full => "full",
+        Damage::Partial(_) => "partial",
     }
 }
 
@@ -127,17 +137,18 @@ pub fn mark_frame_submitted(ui: &Ui) {
     ui.frame_state.mark_submitted();
 }
 
-/// Overwrite `report.damage`: empty ⇒ `Full`, otherwise `Partial` built by adding each rect.
-pub fn force_report_damage_to_rects(report: &mut FrameReport, rects: &[Rect]) {
+/// Overwrite `report.plan`: empty ⇒ `Full { clear }`, otherwise `Partial`
+/// built by adding each rect. Clear colour read from the UI theme.
+pub fn force_report_damage_to_rects(report: &mut FrameReport, rects: &[Rect], clear: Color) {
     if rects.is_empty() {
-        report.damage = Some(Damage::Full);
+        report.plan = Some(RenderPlan::Full { clear });
         return;
     }
     let mut region = DamageRegion::default();
     for r in rects {
         region.add(*r);
     }
-    report.damage = Some(Damage::Partial(region));
+    report.plan = Some(RenderPlan::Partial { clear, region });
 }
 
 /// Bench-public mirror of internal `ColorMode`.

@@ -13,11 +13,11 @@ use self::schedule::{RenderStep, for_each_step};
 use self::viewport::{ViewportUniform, build_damage_scissors};
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::primitives::{color::Color, rect::Rect, size::Size, spacing::Spacing, urect::URect};
+use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
-use crate::ui::damage::Damage;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
+use crate::ui::frame_report::RenderPlan;
 
 mod text;
 use text::TextRenderer;
@@ -260,16 +260,17 @@ impl WgpuBackend {
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
-    #[allow(clippy::too_many_arguments)]
     #[profiling::function]
     pub(crate) fn submit(
         &mut self,
         surface_tex: &wgpu::Texture,
-        clear: Color,
         buffer: &RenderBuffer,
-        damage: Damage,
+        plan: RenderPlan,
         debug_overlay: DebugOverlayConfig,
     ) {
+        let clear = match plan {
+            RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
+        };
         let arena = self.frame_arena.clone();
         let arena = arena.borrow();
         // Sync gradient LUT atlas to GPU. Idle frames (no new
@@ -286,7 +287,7 @@ impl WgpuBackend {
             texts = buffer.texts.len(),
             groups = buffer.groups.len(),
             viewport = ?buffer.viewport_phys,
-            requested_damage = ?damage,
+            requested_plan = ?plan,
             rounded_clip = use_stencil,
             "wgpu_backend.submit"
         );
@@ -300,17 +301,22 @@ impl WgpuBackend {
         // outline shows what we *rendered*, not what was requested, so
         // threading the renamed value through is the right semantic.
         let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
-        let effective_damage = if backbuffer_recreated {
-            Damage::Full
+        // `effective_plan` is what we'll actually render; `plan` is
+        // what the host asked for. The two diverge only on backbuffer
+        // recreate, but the debug overlay's damage-rect outline shows
+        // what we *rendered*, not what was requested, so threading
+        // the renamed value through is the right semantic.
+        let effective_plan = if backbuffer_recreated {
+            RenderPlan::Full { clear }
         } else {
-            damage
+            plan
         };
 
         // Build the per-frame scissor list. `Full` → empty list →
         // single Clear+full-viewport pass. `Partial` → one entry per
         // rect in the region (see `build_damage_scissors`).
         let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
-        build_damage_scissors(&mut damage_scissors, effective_damage, buffer);
+        build_damage_scissors(&mut damage_scissors, effective_plan, buffer);
         // `dim_undamaged` debug mode: every Partial frame, before any
         // damage passes, draw one full-viewport 40%-translucent black
         // quad onto the backbuffer with `LoadOp::Load`. Each frame
@@ -438,7 +444,7 @@ impl WgpuBackend {
             surface_tex,
             &mut encoder,
             buffer,
-            effective_damage,
+            effective_plan,
             debug_overlay,
         );
 
@@ -695,11 +701,11 @@ impl WgpuBackend {
         surface_tex: &wgpu::Texture,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
-        damage: Damage,
+        plan: RenderPlan,
         config: DebugOverlayConfig,
     ) {
         if config.damage_rect {
-            // One stroked outline per damage rect — `Partial(region)`
+            // One stroked outline per damage rect — `Partial`
             // contributes the whole region; `Full` contributes a
             // single full-viewport outline. All quads ride one
             // instanced draw inside one pass so a single
@@ -709,8 +715,8 @@ impl WgpuBackend {
             let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
             let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
-            match damage {
-                Damage::Partial(region) => {
+            match plan {
+                RenderPlan::Partial { region, .. } => {
                     for r in region.iter_rects() {
                         overlay_rects.push(
                             r.scaled_by(buffer.scale, true)
@@ -718,7 +724,7 @@ impl WgpuBackend {
                         );
                     }
                 }
-                Damage::Full => overlay_rects.push(
+                RenderPlan::Full { .. } => overlay_rects.push(
                     Rect {
                         min: glam::Vec2::ZERO,
                         size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),

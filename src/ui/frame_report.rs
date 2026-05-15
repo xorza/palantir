@@ -1,15 +1,46 @@
 //! One frame's plain-data report from [`Ui::frame`]: the post-record
 //! signals the host needs to act on. All frame-shaped state (forest,
 //! layout, cascades, display) stays on [`Ui`] itself — `Frontend::build`
-//! reads it directly via a `&Ui` borrow, plus the per-frame [`Damage`]
-//! and clear color this report carries.
+//! reads it directly via a `&Ui` borrow; the per-frame paint plan
+//! ([`RenderPlan`], wrapped in `Option` for the skip case) is the only
+//! render-shaped state this report carries.
 //!
 //! [`Ui`]: crate::ui::Ui
 //! [`Ui::frame`]: crate::ui::Ui::frame
 
 use crate::primitives::color::Color;
 use crate::ui::damage::Damage;
+use crate::ui::damage::region::DamageRegion;
 use std::time::Duration;
+
+/// Host-facing render plan, present only when there's actual render
+/// work this frame — `FrameReport.plan = None` is the skip signal,
+/// so neither the encoder nor the backend ever sees a no-op plan.
+/// Pairs the engine's damage outcome with the surface clear colour
+/// (needed by both variants: Full clears the colour attachment,
+/// Partial pre-fills each scissor with the same colour before
+/// painting).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RenderPlan {
+    /// Clear + repaint the whole surface.
+    Full { clear: Color },
+    /// Load the backbuffer, then paint inside `region` after a
+    /// `clear`-coloured pre-fill quad per scissor.
+    Partial { clear: Color, region: DamageRegion },
+}
+
+impl RenderPlan {
+    /// Build a render plan from `DamageEngine`'s output plus the
+    /// surface clear colour. `Damage::None` ⇒ `None` (skip frame);
+    /// `Full` / `Partial` ⇒ `Some(plan)`.
+    pub(crate) fn from_damage(damage: Damage, clear: Color) -> Option<Self> {
+        match damage {
+            Damage::None => None,
+            Damage::Full => Some(RenderPlan::Full { clear }),
+            Damage::Partial(region) => Some(RenderPlan::Partial { clear, region }),
+        }
+    }
+}
 
 pub struct FrameReport {
     pub(crate) repaint_requested: bool,
@@ -19,15 +50,9 @@ pub struct FrameReport {
     /// pair with `start + deadline → Instant` for
     /// `winit::ControlFlow::WaitUntil`.
     pub(crate) repaint_after: Option<Duration>,
-    pub(crate) skip_render: bool,
-    /// Per-frame paint plan produced by `Ui::finalize_frame`. `None`
-    /// ⇒ skip path (nothing changed; backbuffer is correct).
-    /// `Some(Full | Partial)` ⇒ work for the renderer.
-    pub(crate) damage: Option<Damage>,
-    /// Snapshot of `Ui.theme.window_clear` at frame time. Threaded
-    /// through so `Host::render` doesn't need a separate `clear` arg
-    /// and so a theme change mid-frame doesn't desync the paint.
-    pub(crate) clear_color: Color,
+    /// Per-frame render decision. `None` ⇒ skip path (backbuffer is
+    /// correct); `Some(plan)` ⇒ work for the renderer.
+    pub(crate) plan: Option<RenderPlan>,
 }
 
 impl FrameReport {
@@ -46,7 +71,10 @@ impl FrameReport {
         self.repaint_after
     }
 
+    /// `true` when the renderer has nothing to do this frame — the
+    /// previous backbuffer is correct. Hosts use this to skip the
+    /// surface acquire / present cycle entirely.
     pub fn skip_render(&self) -> bool {
-        self.skip_render
+        self.plan.is_none()
     }
 }

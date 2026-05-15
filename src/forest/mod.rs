@@ -164,6 +164,17 @@ impl Forest {
         self.trees[self.current_layer as usize].close_node();
     }
 
+    /// True if at least one paint anim across all trees has crossed a
+    /// quantum boundary between `prev_now` and `now`. Drives the
+    /// paint-anim-only short-circuit gate in `Ui::frame_inner` — when
+    /// false, the host fired this frame for some other reason (input,
+    /// state tween) and we must take the full record path.
+    pub(crate) fn any_paint_anim_fired(&self, prev_now: Duration, now: Duration) -> bool {
+        self.trees
+            .iter()
+            .any(|t| t.paint_anims.any_fired(prev_now, now))
+    }
+
     /// Lower a user-facing [`Shape`] (curve flattening, span
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
