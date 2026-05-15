@@ -88,7 +88,6 @@ pub(crate) struct NodeSnapshot {
 pub(crate) struct DamageEngine {
     #[cfg(any(test, feature = "internals"))]
     pub(crate) dirty: Vec<NodeId>,
-    pub(crate) region: DamageRegion,
     /// Per-pass merge budget (extra-overdraw px) used when
     /// `compute` builds the next frame's region. Defaults to
     /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
@@ -124,7 +123,6 @@ impl Default for DamageEngine {
         Self {
             #[cfg(any(test, feature = "internals"))]
             dirty: Vec::new(),
-            region: DamageRegion::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
             raw_rects: Vec::new(),
@@ -169,6 +167,19 @@ impl Damage {
     pub(crate) fn is_none(self) -> bool {
         matches!(self, Damage::None)
     }
+
+    pub(crate) fn new(surface: Rect, region: DamageRegion) -> Damage {
+        if region.is_empty() {
+            return Damage::None;
+        }
+        let surface_area = surface.area();
+        assert!(surface_area > 0.0);
+
+        if region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
+            return Damage::Full;
+        }
+        Damage::Partial(region)
+    }
 }
 
 impl DamageEngine {
@@ -180,6 +191,17 @@ impl DamageEngine {
     /// it's the first frame.
     pub(crate) fn invalidate_prev(&mut self) {
         self.prev.clear();
+    }
+
+    /// Test/bench inspection: rebuild the post-collapse region from
+    /// the last `compute`'s pass-1 buffer. Doesn't mutate any state.
+    /// On `force_full` frames the buffer holds only the structural
+    /// rects (the anim / evict tail is skipped by the short-circuit),
+    /// so the reconstructed region reflects "what would have been
+    /// shown if we hadn't escalated to Full".
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) fn current_region(&self) -> DamageRegion {
+        DamageRegion::collapse_from(&self.raw_rects, self.budget_px)
     }
 
     /// Diff against the just-finished frame and return a
@@ -380,26 +402,8 @@ impl DamageEngine {
         }
 
         // ── Pass 2: collapse to the bounded region ────────────────
-        self.region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
-
-        self.filter(surface)
-    }
-
-    /// Resolve `self.region` against the area threshold. Empty
-    /// region ⇒ `Damage::None` (no widget changed and the surface
-    /// is stable; the GPU has nothing to do). Coverage above
-    /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒
-    /// `Damage::Full`. Otherwise `Damage::Partial(region)`.
-    // todo make private expose via internals if needed
-    pub(crate) fn filter(&self, surface: Rect) -> Damage {
-        if self.region.is_empty() {
-            return Damage::None;
-        }
-        let surface_area = surface.area();
-        if surface_area <= 0.0 || self.region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
-            return Damage::Full;
-        }
-        Damage::Partial(self.region)
+        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+        Damage::new(surface, region)
     }
 }
 
