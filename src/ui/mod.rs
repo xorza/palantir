@@ -39,6 +39,19 @@ use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
 
+/// Fixed substep used by the spring integrator and the `Ui::dt`
+/// accumulator. Stability requires `dt·√k < ~1`; 1/240 s keeps the
+/// product < 0.3 for `k ≤ 5000`. The `Ui` accumulator spends one
+/// step per crossed threshold so each spent step is a single, stable
+/// substep.
+pub(crate) const FIXED_STEP_DT: f32 = 1.0 / 240.0;
+
+/// Minimum gap between two scheduled repaint wakes. Wakes whose
+/// deadline lands within this window of an existing entry collapse
+/// to the earlier one — caps host wake-up rate at ~120 Hz under
+/// bursts of `request_repaint_after`.
+pub(crate) const REPAINT_COALESCE_DT: Duration = Duration::from_nanos(1_000_000_000 / 120);
+
 /// Rects damaged "before the main pass runs" — owner paint-rects of
 /// every paint anim whose quantum boundary fell in the
 /// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
@@ -103,7 +116,7 @@ pub struct Ui {
     /// Effective per-frame dt fed into the animation integrators
     /// (`AnimMapTyped::tick` / `spring::step`). Real wall-clock dt is
     /// accumulated into [`Self::dt_accum`] and only spent here once
-    /// it crosses `Self::ANIM_FIXED_STEP` — frames that don't spend
+    /// it crosses [`FIXED_STEP_DT`] — frames that don't spend
     /// see `dt = 0.0` and `tick` short-circuits the advance. Without
     /// this, NoVsync + `repaint_requested` spin the loop at 10s of
     /// kHz, `dt` drops to ~10 µs, and `cur += vel·dt` falls below the
@@ -175,15 +188,6 @@ impl Ui {
     /// animation tickers instead of teleporting; [`Self::time`]
     /// still tracks the host's true clock.
     pub(crate) const MAX_DT: f32 = 0.1;
-
-    /// Minimum dt the animation integrators ever see. Frames whose
-    /// real `dt` falls below this threshold accumulate into
-    /// [`Self::dt_accum`] and don't advance the spring/duration
-    /// integrators — eliminates the f32-ULP precision stall at high
-    /// frame rates (NoVsync + `repaint_requested` loop). 1/240 s
-    /// matches `spring::MAX_SUBSTEP_DT` so each spent step is a
-    /// single, stable substep.
-    pub(crate) const ANIM_FIXED_STEP: f32 = 1.0 / 240.0;
 
     /// Construct with an explicit shaper *and* a shared frame-arena
     /// handle. The same `TextShaper` handle must reach the wgpu
@@ -318,11 +322,11 @@ impl Ui {
         }
         self.dt_accum += raw_dt;
         // Fixed-step accumulator. Spend the whole bucket once we
-        // cross the threshold (spring's MAX_SUBSTEP_DT substeps it
-        // internally); leave `dt = 0.0` on frames that don't cross
-        // so `tick` short-circuits without churning the integrator
-        // below f32 precision.
-        self.dt = if self.dt_accum >= Self::ANIM_FIXED_STEP {
+        // cross the threshold (spring substeps it internally); leave
+        // `dt = 0.0` on frames that don't cross so `tick`
+        // short-circuits without churning the integrator below f32
+        // precision.
+        self.dt = if self.dt_accum >= FIXED_STEP_DT {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
             spent
@@ -548,9 +552,23 @@ impl Ui {
             self.frame_id,
         );
         let deadline = self.time.saturating_add(after);
-        if let Err(pos) = self.repaint_wakes.binary_search(&deadline) {
-            self.repaint_wakes.insert(pos, deadline);
+        let pos = match self.repaint_wakes.binary_search(&deadline) {
+            Ok(_) => return,
+            Err(pos) => pos,
+        };
+        let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
+        // Coalesce to the later of (existing, requested) — collapse
+        // bursts into a single wake at the back of the window to avoid
+        // unnecessary host wakes. pos-1 is earlier than deadline
+        // (overwrite with ours); pos is later (skip insert).
+        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos]) {
+            return;
         }
+        if pos > 0 && near(self.repaint_wakes[pos - 1]) {
+            self.repaint_wakes[pos - 1] = deadline;
+            return;
+        }
+        self.repaint_wakes.insert(pos, deadline);
     }
 
     fn pre_record(&mut self) {

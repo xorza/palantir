@@ -5,6 +5,7 @@
 //! reach the threshold in <1s for typical stiffness.
 
 use crate::animation::animatable::Animatable;
+use crate::ui::FIXED_STEP_DT;
 
 // Settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to give
 // the integrator a more forgiving floor in pixel-scale animations
@@ -17,17 +18,6 @@ const POS_EPS: f32 = 0.01;
 const VEL_EPS: f32 = 0.1;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
 const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
-
-/// Max per-substep `dt` for semi-implicit Euler. Stability requires
-/// `dt·√k < ~1`; with realistic stiffness up to a few thousand,
-/// 1/240 s keeps the product < 0.3 for `k ≤ 5000` and < 0.13 for the
-/// `(170, 26)` default — well below the instability boundary. Callers
-/// pass wall-clock `dt` (up to `Ui::MAX_DT = 0.1` after a stall);
-/// `step` divides that into substeps of at most `MAX_SUBSTEP_DT`.
-/// Without this, a stalled frame followed by a mid-flight spring tick
-/// blows the integrator up and produces a `current` far past the
-/// target (negative `Sizing::Fixed`, etc.).
-const MAX_SUBSTEP_DT: f32 = 1.0 / 240.0;
 
 /// `(displacement, velocity)` is at the spring's settle floor — the
 /// caller can snap to target and clear residual motion. Single source
@@ -53,11 +43,11 @@ pub(crate) fn step<T: Animatable>(
     dt: f32,
 ) -> SpringStep<T> {
     // Sub-step so the inner Euler dt is always safely below the
-    // stability boundary. `ceil(dt / MAX_SUBSTEP_DT)` substeps of
+    // stability boundary. `ceil(dt / FIXED_STEP_DT)` substeps of
     // equal width; for the typical 60Hz frame (dt = 0.016) this is 4
     // substeps, for the worst-case stalled frame (dt = MAX_DT = 0.1)
     // it's 24. Cheap relative to a single layout pass.
-    let n = (dt / MAX_SUBSTEP_DT).ceil().max(1.0);
+    let n = (dt / FIXED_STEP_DT).ceil().max(1.0);
     let sub_dt = dt / n;
     let mut cur = current;
     let mut vel = velocity;

@@ -844,7 +844,10 @@ fn request_repaint_after_queues_distinct_deadlines() {
 }
 
 /// Re-requesting an already-queued deadline within the same frame
-/// is a no-op — the queue is sorted + dedup'd.
+/// is a no-op — the queue is sorted + dedup'd. Near-duplicates within
+/// `REPAINT_COALESCE_DT` (1/120 s) collapse onto the later wake to
+/// minimize host wake-ups; entries spaced beyond the window stay
+/// distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
     let mut ui = new_ui();
@@ -858,7 +861,34 @@ fn request_repaint_after_dedups_within_frame() {
     assert_eq!(
         ui.repaint_wakes.len(),
         1,
-        "duplicate deadlines collapse to one entry",
+        "exact duplicate deadlines collapse to one entry",
+    );
+
+    // Near-duplicates within the 1/120 s window collapse onto the
+    // later deadline (prefer the longer wait); deadlines spaced
+    // beyond the window stay distinct.
+    let mut ui = new_ui();
+    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
+        // Earlier request first; second request lands ~4 ms later
+        // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
+        // to win.
+        ui.request_repaint_after(Duration::from_secs_f32(0.500));
+        ui.request_repaint_after(Duration::from_secs_f32(0.504));
+        // Reversed order — later first, then a near-earlier
+        // request. Existing later wake should suppress the earlier
+        // one (same outcome: only the later survives).
+        ui.request_repaint_after(Duration::from_secs_f32(0.512));
+        ui.request_repaint_after(Duration::from_secs_f32(0.508));
+        // Beyond the window — must stay distinct.
+        ui.request_repaint_after(Duration::from_secs_f32(0.600));
+    });
+    assert_eq!(
+        ui.repaint_wakes,
+        vec![
+            Duration::from_secs_f32(0.512),
+            Duration::from_secs_f32(0.600),
+        ],
+        "near-duplicate wakes collapse onto the later deadline",
     );
 }
 
