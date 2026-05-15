@@ -402,13 +402,7 @@ impl Shape<'_> {
                 mesh,
                 local_rect,
                 tint,
-            } => {
-                local_rect_paint_empty(local_rect)
-                    || tint.is_noop()
-                    || mesh.is_empty()
-                    || mesh.indices.len() < 3
-                    || mesh.indices.len() % 3 != 0
-            }
+            } => local_rect_paint_empty(local_rect) || tint.is_noop() || mesh.is_noop(),
             Shape::Shadow {
                 local_rect, shadow, ..
             } => local_rect_paint_empty(local_rect) || shadow.is_noop(),
