@@ -1,4 +1,4 @@
-use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::color::ColorU8;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use bytemuck::{Pod, Zeroable};
@@ -30,9 +30,11 @@ pub struct MeshVertex {
 }
 
 impl MeshVertex {
-    /// Construct from a linear `Color`; quantizes to `ColorU8`
-    /// (linear u8, no sRGB encoding) at the boundary.
-    pub fn new(pos: Vec2, color: Color) -> Self {
+    /// Construct at `pos` with any `Into<ColorU8>` colour — accepts a
+    /// linear `Color` (quantized at the boundary) or a `ColorU8`
+    /// (passthrough), so call sites that already hold quantized colour
+    /// don't round-trip through f32.
+    pub fn new(pos: Vec2, color: impl Into<ColorU8>) -> Self {
         Self {
             pos,
             color: color.into(),
@@ -113,9 +115,10 @@ impl Mesh {
     }
 
     /// Push a vertex; returns its `u16` index for use in [`Self::triangle`].
-    /// Panics if the mesh already holds 65 535 vertices.
+    /// Panics if the mesh already holds 65 535 vertices. `color` accepts
+    /// `Color` or `ColorU8`.
     #[inline]
-    pub fn vertex(&mut self, pos: Vec2, color: Color) -> u16 {
+    pub fn vertex(&mut self, pos: Vec2, color: impl Into<ColorU8>) -> u16 {
         let idx = self.vertices.len();
         assert!(idx < u16::MAX as usize, "Mesh exceeds u16 vertex limit");
         self.vertices.push(MeshVertex::new(pos, color));
@@ -172,10 +175,11 @@ impl Mesh {
         self
     }
 
-    /// Convenience: filled triangle in a single color. Bbox falls out
-    /// of the three known vertices — pre-cached so the first `bbox()`
-    /// call is free.
-    pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: Color) -> Self {
+    /// Convenience: filled triangle in a single color (`Color` or
+    /// `ColorU8`). Bbox falls out of the three known vertices —
+    /// pre-cached so the first `bbox()` call is free.
+    pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: impl Into<ColorU8>) -> Self {
+        let color = color.into();
         let mut m = Self::with_capacity(3, 3);
         let i0 = m.vertex(a, color);
         let i1 = m.vertex(b, color);
@@ -189,12 +193,14 @@ impl Mesh {
 
     /// Convenience: filled convex polygon (fan triangulation around the
     /// first vertex). For non-convex polygons the result is visually
-    /// wrong — caller's responsibility. Bbox tracked during the fan
-    /// loop and pre-cached, so the first `bbox()` call is free.
-    pub fn filled_polygon(points: &[Vec2], color: Color) -> Self {
+    /// wrong — caller's responsibility. `color` accepts `Color` or
+    /// `ColorU8`. Bbox tracked during the fan loop and pre-cached, so
+    /// the first `bbox()` call is free.
+    pub fn filled_polygon(points: &[Vec2], color: impl Into<ColorU8>) -> Self {
         if points.len() < 3 {
             return Self::new();
         }
+        let color = color.into();
         let mut m = Self::with_capacity(points.len(), (points.len() - 2) * 3);
         let mut lo = points[0];
         let mut hi = points[0];
@@ -244,6 +250,7 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::primitives::color::Color;
 
     #[test]
     fn mesh_vertex_is_12_bytes_no_padding() {
