@@ -530,10 +530,11 @@ impl Hash for ShapeRecord {
                 }
                 text.hash(h);
                 color.hash(h);
-                h.write_u32(font_size_px.to_bits());
-                h.write_u32(line_height_px.to_bits());
-                h.write_u16(((align.raw() as u16) << 8) | *wrap as u8 as u16);
-                h.write_u8(*family as u8);
+                let dims =
+                    ((font_size_px.to_bits() as u64) << 32) | line_height_px.to_bits() as u64;
+                h.write_u64(dims);
+                let style = ((align.raw() as u32) << 16) | ((*wrap as u32) << 8) | (*family as u32);
+                h.write_u32(style);
             }
             ShapeRecord::Mesh {
                 local_rect,
