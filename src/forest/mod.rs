@@ -95,22 +95,30 @@ impl Forest {
     /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
     /// is just a placement; the surface needed to derive each root's
     /// "available" room is passed straight to `LayoutEngine::run`.
-    ///
-    /// Returns the minimum paint-anim `next_wake` across all trees
-    /// (or `Duration::MAX` when nothing wants a wake). Caller folds
-    /// this into `Ui::repaint_wakes` so widgets don't have to call
-    /// `request_repaint_after` for animated shapes.
+    /// The paint-anim wake fold is centralised in
+    /// [`Self::min_paint_anim_wake`] and run at the tail of
+    /// `Ui::frame_inner` for both record + paint-only paths.
     #[profiling::function]
-    pub(crate) fn post_record(&mut self, now: Duration) -> Duration {
+    pub(crate) fn post_record(&mut self) {
         assert_eq!(
             self.current_layer,
             Layer::Main,
             "post_record called with active layer {:?} — Ui::layer body forgot to return",
             self.current_layer,
         );
+        for layer in Layer::PAINT_ORDER {
+            self.trees[layer as usize].post_record();
+        }
+    }
+
+    /// Minimum `next_wake` across every layer's paint anims, or
+    /// `Duration::MAX` when nothing wants a wake. Called from
+    /// `Ui::frame_inner` after both record and paint-only paths so the
+    /// next anim boundary is queued regardless of which path ran.
+    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Duration {
         let mut min_wake = Duration::MAX;
         for layer in Layer::PAINT_ORDER {
-            let w = self.trees[layer as usize].post_record(now);
+            let w = self.trees[layer as usize].min_paint_anim_wake(now);
             if w < min_wake {
                 min_wake = w;
             }

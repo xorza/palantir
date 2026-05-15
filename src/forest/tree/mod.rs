@@ -334,11 +334,12 @@ impl Tree {
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
-    /// initialise `paint_anims` entries' `last_quantum`, and return the
-    /// minimum `next_wake` across all registered paint anims (or
-    /// `Duration::MAX` when none are registered / none want to fire).
-    /// Capacity retained across frames.
-    pub(crate) fn post_record(&mut self, now: Duration) -> Duration {
+    /// initialise `paint_anims` entries' `last_quantum`. Capacity
+    /// retained across frames. The paint-anim wake fold lives on
+    /// [`Self::min_paint_anim_wake`] — `Ui::frame_inner` calls it at
+    /// the tail of every frame (both record + paint-only paths) so
+    /// the scheduling is centralised.
+    pub(crate) fn post_record(&mut self) {
         assert!(
             self.open_frames.is_empty(),
             "post_record called with {} node(s) still open — a widget builder forgot close_node",
@@ -346,7 +347,11 @@ impl Tree {
         );
         self.rollups.reset_for(self.records.len());
         self.compute_hashes();
+    }
 
+    /// Minimum `next_wake` across this tree's registered paint anims,
+    /// or `Duration::MAX` when none are registered / none want to fire.
+    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Duration {
         let mut min_wake = Duration::MAX;
         for entry in &self.paint_anims.entries {
             let w = entry.anim.next_wake(now);
