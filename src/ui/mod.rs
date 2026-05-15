@@ -529,6 +529,7 @@ impl Ui {
             &self.layout.cascades,
             &self.forest.ids.removed,
             self.display.logical_rect(),
+            self.time,
         )
     }
 
