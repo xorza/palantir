@@ -25,22 +25,17 @@ const PAINT_ANIM_NONE: u16 = u16::MAX;
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
     /// Index into `Tree::shapes.records` of the shape this anim drives.
-    /// Used by the future damage-region computation (slice 2) to look
-    /// up the owning node via the per-node shape spans; encoder reads
-    /// the entry through the parallel `by_shape` array instead and
-    /// doesn't need this back-reference.
-    #[allow(dead_code)] // consumed by slice-2 damage walk
+    /// Encoder reads the entry through the parallel `by_shape` array
+    /// instead and doesn't need this back-reference; future
+    /// damage-region work may want it for owner-rect lookup via the
+    /// per-node shape spans.
+    #[allow(dead_code)]
     pub(crate) shape_idx: u32,
     /// Node that owns the animated shape — set in
     /// `Forest::add_shape_animated` from the currently-open frame.
-    /// Read by `DamageEngine::compute` to look up `paint_rect` for
-    /// the anim-damage union.
+    /// Read by `DamageEngine::compute_anim_only` to look up
+    /// `paint_rect` for the anim-damage union.
     pub(crate) node: NodeId,
-    /// `anim.quantum(now)` captured in `Tree::post_record`. Drives
-    /// slice-2's short-circuit damage walk: compares against
-    /// `quantum(now_next)` on the next frame to detect a flip without
-    /// rehashing.
-    pub(crate) last_quantum: i32,
 }
 
 /// Per-tree paint-animation registry. Pushed in lockstep with the

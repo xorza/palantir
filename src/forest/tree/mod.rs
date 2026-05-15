@@ -347,8 +347,7 @@ impl Tree {
         self.compute_hashes();
 
         let mut min_wake = Duration::MAX;
-        for entry in &mut self.paint_anims.entries {
-            entry.last_quantum = entry.anim.quantum(now);
+        for entry in &self.paint_anims.entries {
             let w = entry.anim.next_wake(now);
             if w < min_wake {
                 min_wake = w;
