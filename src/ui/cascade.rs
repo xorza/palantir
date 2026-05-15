@@ -82,6 +82,18 @@ pub(crate) struct Cascades {
     /// Per-layer per-node cascade rows. Same indexing as
     /// `Tree::records`: `rows[layer as usize][node.index()]`.
     pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
+    /// One [`Rect`] per shape in `tree.shapes.records`, per layer —
+    /// `shape_rects[L][shape_idx]` is the screen-space damage bound
+    /// for that shape. Written during the cascade walk in
+    /// [`compute_paint_rect`] (same `TreeItems` pass that unions for
+    /// `paint_rect`), so cascade stays a pure `&Forest → Cascades`
+    /// producer. Indexed by `shape_idx` directly — same key as
+    /// `tree.paint_anims.by_shape`, so callers (paint-anim damage
+    /// today; future per-shape culling / debug) reach a shape's
+    /// rect with one indexed load. `Rect::ZERO` for shapes never
+    /// visited by the cascade walk (collapsed / invisible subtrees),
+    /// keeping the column dense without a sentinel.
+    pub(crate) shape_rects: [Vec<Rect>; Layer::COUNT],
     /// Pre-order rect/sense snapshot in the form hit-testing needs.
     /// Layers append in paint order so reverse iteration yields
     /// topmost-first.
@@ -97,6 +109,7 @@ impl Default for Cascades {
     fn default() -> Self {
         Self {
             rows: array::from_fn(|_| Vec::new()),
+            shape_rects: array::from_fn(|_| Vec::new()),
             entries: Vec::new(),
             entry_ids: Vec::new(),
             by_id: FxHashMap::default(),
@@ -202,11 +215,19 @@ impl CascadesEngine {
             let rows = &mut r.rows[i];
             rows.clear();
             rows.reserve(tree.records.len());
+            let shape_rects = &mut r.shape_rects[i];
+            shape_rects.clear();
+            // Index-by-`shape_idx`. Resize so collapsed / invisible
+            // subtrees (which `compute_paint_rect` skips writing for)
+            // leave `Default::default()` in place — readers see zero,
+            // which damage / culling treat as "contributes nothing".
+            shape_rects.resize(tree.shapes.records.len(), Rect::ZERO);
             self.stack.clear();
             run_tree(
                 tree,
                 layer_layout,
                 rows,
+                shape_rects,
                 &mut r.entries,
                 &mut r.entry_ids,
                 &mut r.by_id,
@@ -216,10 +237,12 @@ impl CascadesEngine {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
     rows: &mut Vec<Cascade>,
+    shape_rects: &mut [Rect],
     entries: &mut Vec<HitEntry>,
     entry_ids: &mut Vec<WidgetId>,
     by_id: &mut FxHashMap<WidgetId, u32>,
@@ -252,7 +275,14 @@ fn run_tree(
         let layout_rect = layout.rect[id.index()];
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
-        let paint_rect = compute_paint_rect(tree, id, layout_rect, parent_transform, parent_clip);
+        let paint_rect = compute_paint_rect(
+            tree,
+            id,
+            layout_rect,
+            parent_transform,
+            parent_clip,
+            shape_rects,
+        );
         let row = Cascade {
             paint_rect,
             cascade_input: hash_cascade_input(
@@ -351,6 +381,7 @@ fn compute_paint_rect(
     layout_rect: Rect,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
+    shape_rects: &mut [Rect],
 ) -> Rect {
     let owner_local = Rect {
         min: Vec2::ZERO,
@@ -359,8 +390,15 @@ fn compute_paint_rect(
     let mut paint_local = owner_local;
     if tree.records.shape_span()[node.index()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
-            if let TreeItem::ShapeRecord(_, s) = item {
-                paint_local = paint_local.union(s.paint_bbox_local(layout_rect.size));
+            if let TreeItem::ShapeRecord(idx, s) = item {
+                let bbox = s.paint_bbox_local(layout_rect.size);
+                paint_local = paint_local.union(bbox);
+                let tree_local = Rect {
+                    min: layout_rect.min + bbox.min,
+                    size: bbox.size,
+                };
+                let screen = clip_to(parent_transform.apply_rect(tree_local), parent_clip);
+                shape_rects[idx as usize] = screen;
             }
         }
     }

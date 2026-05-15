@@ -59,10 +59,10 @@ fn predamaged_rects<'a>(
     now: Duration,
 ) -> impl Iterator<Item = Rect> + 'a {
     forest.iter_paint_order().flat_map(move |(layer, tree)| {
-        let rows = cascades.rows_for(layer);
+        let shape_rects = &cascades.shape_rects[layer as usize];
         tree.paint_anims.entries.iter().filter_map(move |e| {
             let fired = prev_time.is_none_or(|prev| e.anim.next_wake(prev) <= now);
-            fired.then(|| rows[e.node.index()].paint_rect)
+            fired.then(|| shape_rects[e.shape_idx as usize])
         })
     })
 }
