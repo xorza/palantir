@@ -288,7 +288,7 @@ impl MenuItem {
         // keypress synthesizes a click and closes the menu. Resolved
         // before the node records so we don't pay for the label
         // resolution on rows with no shortcut.
-        let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.shortcut_pressed(s));
+        let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.key_pressed(s));
         let shortcut_label = shortcut.map(|s| s.label());
 
         let family = text_style.family;
