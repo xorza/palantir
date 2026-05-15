@@ -22,7 +22,7 @@ use std::time::Duration;
 
 /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
 pub(crate) fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::default()
 }
 
 /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).

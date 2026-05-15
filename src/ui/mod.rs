@@ -2,6 +2,7 @@ pub(crate) mod cascade;
 pub(crate) mod damage;
 pub(crate) mod frame_report;
 pub(crate) mod frame_state;
+pub(crate) mod frame_stats;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -11,31 +12,26 @@ use crate::common::frame_arena::FrameArenaHandle;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Element, LayoutMode};
 use crate::forest::tree::Layer;
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::display::Display;
-use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
 use crate::primitives::rect::Rect;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
-use crate::text::FontFamily;
 use crate::text::TextShaper;
 use crate::ui::cascade::{Cascades, CascadesEngine};
 use crate::ui::damage::DamageEngine;
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
+use crate::ui::frame_stats::record_frame_stats;
 use crate::ui::state::StateMap;
-use crate::widgets::panel::Panel;
-use crate::widgets::text::Text;
-use crate::widgets::theme::{TextStyle, Theme};
+use crate::widgets::theme::Theme;
 use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
@@ -74,33 +70,6 @@ pub(crate) struct Wake {
     pub(crate) reasons: WakeReasons,
 }
 
-/// Rects damaged "before the main pass runs" — owner paint-rects of
-/// every paint anim whose quantum boundary fell in the
-/// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
-/// folded into the per-frame damage region alongside the structural
-/// diff. First frame (`prev_time == None`) fires every registered
-/// anim, mirroring the structural diff's "no prev snapshot ⇒ damage
-/// everything" path.
-///
-/// Free function rather than a `&self` method on [`Ui`] because the
-/// call site reaches into `&self.forest`, `&self.layout.cascades`,
-/// and `&mut self.damage_engine` field-by-field — a `&self`-borrowed
-/// iterator would conflict with the `&mut self.damage_engine` borrow.
-fn predamaged_rects<'a>(
-    forest: &'a Forest,
-    cascades: &'a Cascades,
-    prev_time: Option<Duration>,
-    now: Duration,
-) -> impl Iterator<Item = Rect> + 'a {
-    forest.iter_paint_order().flat_map(move |(layer, tree)| {
-        let shape_rects = &cascades.shape_rects[layer as usize];
-        tree.paint_anims.entries.iter().filter_map(move |e| {
-            let fired = prev_time.is_none_or(|prev| e.anim.next_wake(prev) <= now);
-            fired.then(|| shape_rects[e.shape_idx as usize])
-        })
-    })
-}
-
 /// Type-erased pointer to caller-owned app state, installed for the
 /// duration of [`Ui::frame`]. Retrieved via [`Ui::app`].
 #[derive(Clone, Copy)]
@@ -113,6 +82,11 @@ struct AppSlot {
 /// logical pixels (DIPs); `Display::scale_factor` converts to
 /// physical at the wgpu boundary. See `docs/repaint.md` for the
 /// frame-lifecycle rationale.
+///
+/// `Default` builds a self-contained `Ui` with mono-fallback shaper
+/// and a private frame arena. Hosts that need to share the shaper /
+/// arena with the wgpu backend use [`Self::new`] instead.
+#[derive(Default)]
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
@@ -226,31 +200,9 @@ impl Ui {
     /// own private arena.
     pub fn new(text: TextShaper, frame_arena: FrameArenaHandle) -> Self {
         Self {
-            forest: Forest::default(),
-            theme: Theme::default(),
-            debug_overlay: DebugOverlayConfig::default(),
-            state: StateMap::default(),
             text,
-            layout_engine: LayoutEngine::default(),
-            layout: Layout::default(),
-            input: InputState::new(),
-            cascades_engine: CascadesEngine::default(),
-            display: Display::default(),
-            damage_engine: DamageEngine::default(),
-            dt: 0.0,
-            dt_accum: 0.0,
-            frame_id: 0,
-            time: Duration::ZERO,
-            prev_time: None,
-            prev_surface: None,
-            fps_ema: 0.0,
-            anim: AnimMap::default(),
-            frame_state: FrameState::default(),
-            relayout_requested: false,
-            repaint_requested: false,
-            repaint_wakes: Vec::new(),
-            app_slot: None,
             frame_arena,
+            ..Self::default()
         }
     }
 
@@ -327,38 +279,7 @@ impl Ui {
             display.scale_factor,
         );
 
-        let raw_dt = now
-            .saturating_sub(self.time)
-            .as_secs_f32()
-            .min(Self::MAX_DT);
-        // EMA over instantaneous fps. First frame: raw_dt is `now` (vs
-        // ZERO), giving an absurd reading the first frame; skip the
-        // update there. Coefficient 0.1 ≈ ~10-frame window — smooth
-        // enough that the readout doesn't jitter wildly, fast enough
-        // to track real frame-rate drops.
-        if self.frame_id > 0 && raw_dt > EPS {
-            let inst = 1.0 / raw_dt;
-            self.fps_ema = if self.fps_ema == 0.0 {
-                inst
-            } else {
-                self.fps_ema * 0.9 + inst * 0.1
-            };
-        }
-        self.dt_accum += raw_dt;
-        // Fixed-step accumulator. Spend the whole bucket once we
-        // cross the threshold (spring substeps it internally); leave
-        // `dt = 0.0` on frames that don't cross so `tick`
-        // short-circuits without churning the integrator below f32
-        // precision.
-        self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
-            let spent = self.dt_accum;
-            self.dt_accum = 0.0;
-            spent
-        } else {
-            0.0
-        };
-        self.time = now;
-        self.frame_id += 1;
+        self.advance_clock(now);
         // Drop wakes whose deadline has fired (this frame is at or
         // past them). Sorted-ascending invariant means a prefix slice.
         // `fired_reasons` OR-folds every cause that drove this frame,
@@ -373,20 +294,10 @@ impl Ui {
 
         let force_full = self.should_invalidate_prev(display);
 
-        // Paint-only fast path: skip pre_record / record_pass /
-        // finalize_frame / layout / cascade and reuse the retained
-        // tree + cascades from the prior frame. Conditions:
-        //
-        // - last frame is a valid baseline (`prev_time.is_some()`,
-        //   `!force_full`),
-        // - no record-side trigger waiting (`!repaint_requested`,
-        //   `!had_input_since_last_frame`),
-        // - the wake(s) that fired are *purely* paint-anim quantum
-        //   boundaries (only the `ANIM` bit, no `REAL`).
-        //
-        // Read `repaint_requested` BEFORE the unconditional clear
-        // below — last frame's record may have set it, and we
-        // need that signal here.
+        // Anim-only fast path: prev frame is a valid baseline,
+        // nothing record-side is waiting, and the wake that fired is
+        // purely an `ANIM` quantum boundary. `repaint_requested` is
+        // read here before the unconditional clear below.
         let paint_only = !force_full
             && self.prev_time.is_some()
             && !self.repaint_requested
@@ -487,6 +398,42 @@ impl Ui {
         }
     }
 
+    /// Advance the per-frame clock: clamp raw dt (stalled frames
+    /// freeze tickers instead of teleporting), update the fps EMA,
+    /// step the fixed-step `dt`/`dt_accum` integrator, and bump
+    /// `time` + `frame_id`. The fixed-step accumulator zeroes `dt`
+    /// until it crosses [`ANIM_SUBSTEP_DT`] so spring integrators
+    /// don't churn below f32 ULP between vsync ticks.
+    fn advance_clock(&mut self, now: Duration) {
+        let raw_dt = now
+            .saturating_sub(self.time)
+            .as_secs_f32()
+            .min(Self::MAX_DT);
+        // EMA over instantaneous fps. First frame: raw_dt is `now`
+        // (vs ZERO), giving an absurd reading; skip the update there.
+        // Coefficient 0.1 ≈ ~10-frame window — smooth enough that
+        // the readout doesn't jitter wildly, fast enough to track
+        // real frame-rate drops.
+        if self.frame_id > 0 && raw_dt > EPS {
+            let inst = 1.0 / raw_dt;
+            self.fps_ema = if self.fps_ema == 0.0 {
+                inst
+            } else {
+                self.fps_ema * 0.9 + inst * 0.1
+            };
+        }
+        self.dt_accum += raw_dt;
+        self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
+            let spent = self.dt_accum;
+            self.dt_accum = 0.0;
+            spent
+        } else {
+            0.0
+        };
+        self.time = now;
+        self.frame_id += 1;
+    }
+
     /// Should we discard the last painted frame's damage snapshot? True
     /// on first frame, on a surface-rect change, or when the host
     /// failed to confirm submission of the last frame.
@@ -526,45 +473,11 @@ impl Ui {
         }
         let action_flag = self.input.take_action_flag();
         if self.debug_overlay.frame_stats {
-            self.record_frame_stats();
+            record_frame_stats(self);
         }
         self.forest.close_node();
         self.post_record();
         action_flag
-    }
-
-    /// Append the `frame_stats` readout into `Layer::Debug` pinned to
-    /// the top-right of the viewport, wrapped in a semi-transparent
-    /// black chrome so it stays legible against any background.
-    /// Records every frame so the text changes (and damage picks up
-    /// the small rect), which keeps the FPS readout ticking on
-    /// otherwise-idle frames.
-    fn record_frame_stats(&mut self) {
-        let label = format!("f {} · {:>4.0} fps", self.frame_id, self.fps_ema);
-        let style = TextStyle {
-            family: FontFamily::Mono,
-            color: Color::rgb(1.0, 0.2, 0.2),
-            font_size_px: 12.0,
-            ..self.theme.text
-        };
-        let chrome = Background {
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, 0.75).into(),
-            ..Default::default()
-        };
-        self.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
-            Panel::hstack()
-                .size((Sizing::FILL, Sizing::Hug))
-                .justify(Justify::End)
-                .show(ui, |ui| {
-                    Panel::hstack()
-                        .background(chrome)
-                        .size((Sizing::Hug, Sizing::Hug))
-                        .padding(Spacing::xy(4.0, 2.0))
-                        .show(ui, |ui| {
-                            Text::new(label).style(style).show(ui);
-                        });
-                });
-        });
     }
 
     /// Feed a palantir-native input event. Returns an [`InputDelta`]
@@ -893,6 +806,33 @@ impl Ui {
     pub fn shortcut_pressed(&self, s: crate::input::shortcut::Shortcut) -> bool {
         self.input.frame_keys.iter().any(|kp| s.matches(*kp))
     }
+}
+
+/// Rects damaged "before the main pass runs" — owner paint-rects of
+/// every paint anim whose quantum boundary fell in the
+/// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
+/// folded into the per-frame damage region alongside the structural
+/// diff. First frame (`prev_time == None`) fires every registered
+/// anim, mirroring the structural diff's "no prev snapshot ⇒ damage
+/// everything" path.
+///
+/// Free function rather than a `&self` method on [`Ui`] because the
+/// call site reaches into `&self.forest`, `&self.layout.cascades`,
+/// and `&mut self.damage_engine` field-by-field — a `&self`-borrowed
+/// iterator would conflict with the `&mut self.damage_engine` borrow.
+fn predamaged_rects<'a>(
+    forest: &'a Forest,
+    cascades: &'a Cascades,
+    prev_time: Option<Duration>,
+    now: Duration,
+) -> impl Iterator<Item = Rect> + 'a {
+    forest.iter_paint_order().flat_map(move |(layer, tree)| {
+        let shape_rects = &cascades.shape_rects[layer as usize];
+        tree.paint_anims.entries.iter().filter_map(move |e| {
+            let fired = prev_time.is_none_or(|prev| e.anim.next_wake(prev) <= now);
+            fired.then(|| shape_rects[e.shape_idx as usize])
+        })
+    })
 }
 
 #[cfg(test)]
