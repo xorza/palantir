@@ -10,6 +10,7 @@ use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::new_ui;
 use crate::support::testing::{run_at, run_at_acked, ui_at};
 use crate::ui::damage::Damage;
+use crate::ui::frame_report::RenderPlan;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
@@ -64,7 +65,12 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
     let mut frontend = crate::support::testing::new_frontend();
-    let buffer = frontend.build(&ui, Damage::Full);
+    let buffer = frontend.build(
+        &ui,
+        RenderPlan::Full {
+            clear: ui.theme.window_clear,
+        },
+    );
     let overlay_quads: Vec<_> = buffer
         .quads
         .iter()
@@ -130,7 +136,12 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
     let mut frontend = crate::support::testing::new_frontend();
-    let buffer = frontend.build(&ui, Damage::Full);
+    let buffer = frontend.build(
+        &ui,
+        RenderPlan::Full {
+            clear: ui.theme.window_clear,
+        },
+    );
     let overlay_quads: Vec<_> = buffer
         .quads
         .iter()
@@ -252,7 +263,12 @@ fn empty_ui_drives_a_frame_safely() {
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes recorded → a private frontend arena works.
     let mut frontend = crate::support::testing::new_frontend();
-    let buffer = frontend.build(&ui, Damage::Full);
+    let buffer = frontend.build(
+        &ui,
+        RenderPlan::Full {
+            clear: ui.theme.window_clear,
+        },
+    );
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
@@ -262,7 +278,10 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_engine.region.is_empty());
-    assert_eq!(ui.damage_engine.filter(ui.display.logical_rect()), None);
+    assert_eq!(
+        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::None,
+    );
 }
 
 /// Pin: an empty frame followed by a populated frame works (the
@@ -762,9 +781,9 @@ fn frame_stats_overlay_records_partial_damage() {
     });
     ui.frame_state.mark_submitted();
     assert!(
-        matches!(report.damage, Some(Damage::Partial(_))),
+        matches!(report.plan, Some(RenderPlan::Partial { .. })),
         "frame_stats should produce Partial damage on a static scene; got {:?}",
-        report.damage,
+        report.plan,
     );
     assert!(
         ui.fps_ema > 0.0,

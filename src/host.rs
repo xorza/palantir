@@ -133,9 +133,9 @@ impl Host {
         self.ui.frame(display, self.start.elapsed(), state, record)
     }
 
-    /// GPU submit against a caller-supplied texture. On the skip path
-    /// (`report.damage.is_none()`), copies the persistent backbuffer
-    /// onto `target` so callers that always present still see valid
+    /// GPU submit against a caller-supplied texture. On
+    /// `RenderPlan::Skip`, copies the persistent backbuffer onto
+    /// `target` so callers that always present still see valid
     /// pixels. Internal split for benches and the visual harness;
     /// production callers use [`Self::frame`].
     pub(crate) fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
@@ -153,19 +153,14 @@ impl Host {
             display_phys.x,
             display_phys.y,
         );
-        let Some(damage) = report.damage else {
+        let Some(plan) = report.plan else {
             self.backend.copy_backbuffer_to_surface(target);
             self.ui.frame_state.mark_submitted();
             return;
         };
-        let buffer = self.frontend.build(&self.ui, damage);
-        self.backend.submit(
-            target,
-            report.clear_color,
-            buffer,
-            damage,
-            self.ui.debug_overlay,
-        );
+        let buffer = self.frontend.build(&self.ui, plan);
+        self.backend
+            .submit(target, buffer, plan, self.ui.debug_overlay);
         self.ui.frame_state.mark_submitted();
     }
 

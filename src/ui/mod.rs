@@ -28,7 +28,7 @@ use crate::text::FontFamily;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
-use crate::ui::frame_report::FrameReport;
+use crate::ui::frame_report::{FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::panel::Panel;
@@ -126,6 +126,12 @@ pub struct Ui {
     ///
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArenaHandle,
+    /// Test/bench-only: count of frames that took the
+    /// paint-anim-only short-circuit (skipped pre_record + closure +
+    /// post_record + layout + cascades + finalize). Exposed via
+    /// `support::internals::paint_anim_only_frames`.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) paint_anim_only_frame_count: u64,
 }
 
 impl Ui {
@@ -179,6 +185,8 @@ impl Ui {
             repaint_wakes: Vec::new(),
             app_slot: None,
             frame_arena,
+            #[cfg(any(test, feature = "internals"))]
+            paint_anim_only_frame_count: 0,
         }
     }
 
@@ -294,10 +302,38 @@ impl Ui {
         self.repaint_wakes.drain(..fired);
         self.relayout_requested = false;
 
-        if self.should_invalidate_prev(display) {
+        let invalidating = self.should_invalidate_prev(display);
+        if invalidating {
             self.damage_engine.invalidate_prev();
         }
+        let display_unchanged = !invalidating;
         self.display = display;
+
+        // Paint-anim-only short-circuit. If a fired wake came from a
+        // paint anim and nothing else has changed since last frame,
+        // last frame's tree + cascades + layout are still
+        // bit-identical to what re-recording would produce —
+        // skip pre_record / closure / post_record / layout /
+        // cascades / finalize, jump straight to anim-damage compute.
+        // The encoder runs against the retained tree at the new
+        // `now`. Gate conditions are deliberately conservative:
+        // any signal we can't be sure about ⇒ full path.
+        let input_arrived = self.input.input_arrived_since_last_frame;
+        self.input.input_arrived_since_last_frame = false;
+        let wake_fired = fired > 0;
+        if display_unchanged
+            && wake_fired
+            && !input_arrived
+            && !self.anim.has_pending()
+            && !self.relayout_requested
+            && self.damage_engine.prev_now.is_some()
+            && self
+                .forest
+                .any_paint_anim_fired(self.damage_engine.prev_now.unwrap(), self.time)
+        {
+            return self.paint_anim_only_pass();
+        }
+
         // Pending until the renderer (`Host::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
         // ack via `ui.frame_state.mark_submitted()` or the next
@@ -334,9 +370,59 @@ impl Ui {
         FrameReport {
             repaint_requested: self.repaint_requested,
             repaint_after: self.repaint_wakes.first().copied(),
-            skip_render: damage.is_none(),
-            damage,
-            clear_color: self.theme.window_clear,
+            plan: RenderPlan::from_damage(damage, self.theme.window_clear),
+        }
+    }
+
+    /// Short-circuit path for paint-anim-only frames. Skips
+    /// `pre_record`, the user closure, `post_record`, `layout.run`,
+    /// `cascades.run`, and `finalize_frame`. The retained tree +
+    /// cascades + layout from last frame are bit-identical to what
+    /// re-recording would produce (gate proved it), so the encoder
+    /// reads them as-is at the new `now`. Re-folds each anim's next
+    /// wake into `repaint_wakes` so the next phase fires; updates
+    /// `last_quantum` so the next full path's diff has the right
+    /// baseline.
+    fn paint_anim_only_pass(&mut self) -> FrameReport {
+        profiling::scope!("Ui::paint_anim_only_pass");
+
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.paint_anim_only_frame_count += 1;
+        }
+        self.frame_state.mark_pending();
+
+        // Refresh per-entry `last_quantum` and schedule the next
+        // wake. Mirror of the tail of `Tree::post_record`, but
+        // there's no rollups / next_wake fold via post_record here
+        // since we skipped the whole recording pass.
+        let now = self.time;
+        let mut min_wake = Duration::MAX;
+        for tree in &mut self.forest.trees {
+            for entry in &mut tree.paint_anims.entries {
+                entry.last_quantum = entry.anim.quantum(now);
+                let w = entry.anim.next_wake(now);
+                if w < min_wake {
+                    min_wake = w;
+                }
+            }
+        }
+        if min_wake != Duration::MAX && min_wake > now {
+            self.request_repaint_after(min_wake - now);
+        }
+
+        let damage = self
+            .damage_engine
+            .compute_anim_only(&self.forest, &self.layout.cascades, now);
+
+        if damage.is_none() {
+            self.frame_state.mark_submitted();
+        }
+
+        FrameReport {
+            repaint_requested: self.repaint_requested,
+            repaint_after: self.repaint_wakes.first().copied(),
+            plan: RenderPlan::from_damage(damage, self.theme.window_clear),
         }
     }
 
@@ -515,7 +601,7 @@ impl Ui {
     /// here (once per `frame`) rather than per `post_record` so a
     /// widget that vanishes in pass A but returns in pass B keeps
     /// its state across the discard.
-    fn finalize_frame(&mut self) -> Option<Damage> {
+    fn finalize_frame(&mut self) -> Damage {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);

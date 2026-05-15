@@ -346,12 +346,20 @@ impl<T: Animatable> AnimMapTyped<T> {
 /// sweep, plus `as_any_mut` for downcast back to the concrete map.
 pub(crate) trait AnyTyped: 'static {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
+    /// True if any row in this typed map has `settled == false`.
+    /// Read by `AnimMap::has_pending` so the paint-anim-only frame
+    /// short-circuit can fall through to the full record path
+    /// whenever a state tween is still mid-flight.
+    fn has_pending(&self) -> bool;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         AnimMapTyped::<T>::sweep_removed(self, removed);
+    }
+    fn has_pending(&self) -> bool {
+        self.rows.values().any(|r| !r.settled)
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -405,5 +413,13 @@ impl AnimMap {
         for typed in self.by_type.values_mut() {
             typed.sweep_removed(removed);
         }
+    }
+
+    /// True if any registered state tween is still moving. The
+    /// paint-anim-only frame short-circuit reads this — when a hover
+    /// fade or press scale hasn't settled, the closure needs to run
+    /// to advance the integrator, so the full path takes over.
+    pub(crate) fn has_pending(&self) -> bool {
+        self.by_type.values().any(|t| t.has_pending())
     }
 }

@@ -14,8 +14,8 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::encode;
 use crate::text::TextShaper;
-use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use crate::ui::frame_report::RenderPlan;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -133,11 +133,12 @@ pub(crate) fn encode_cmds_with_rects(ui: &Ui, rects: &[Rect]) -> RenderCmdBuffer
 }
 
 fn encode_cmds_with_region(ui: &Ui, region: Option<DamageRegion>) -> RenderCmdBuffer {
-    let damage = match region {
-        Some(r) => Damage::Partial(r),
-        None => Damage::Full,
+    let clear = ui.theme.window_clear;
+    let plan = match region {
+        Some(region) => RenderPlan::Partial { clear, region },
+        None => RenderPlan::Full { clear },
     };
     let mut cmds = RenderCmdBuffer::default();
-    encode(ui, damage, &mut cmds);
+    encode(ui, plan, &mut cmds);
     cmds
 }
