@@ -61,6 +61,13 @@ impl WakeReasons {
     pub(crate) fn merge(self, r: Self) -> Self {
         Self(self.0 | r.0)
     }
+
+    /// `true` when the only reason set is `ANIM` — the predicate that
+    /// gates [`FrameProcessing::PaintOnly`].
+    #[inline]
+    pub(crate) fn is_anim_only(self) -> bool {
+        self == Self::ANIM
+    }
 }
 
 /// One entry on [`Ui::repaint_wakes`].
@@ -302,7 +309,7 @@ impl Ui {
             && self.prev_time.is_some()
             && !self.repaint_requested
             && !self.input.had_input_since_last_frame
-            && fired_reasons == WakeReasons::ANIM;
+            && fired_reasons.is_anim_only();
 
         self.repaint_requested = false;
         self.relayout_requested = false;
@@ -457,7 +464,10 @@ impl Ui {
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
     fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
-        self.pre_record();
+        {
+            profiling::scope!("Ui::pre_record");
+            self.forest.pre_record();
+        }
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
         // engine forces its rect to the surface — silently overriding
@@ -575,11 +585,6 @@ impl Ui {
         self.repaint_wakes.insert(pos, Wake { deadline, reasons });
     }
 
-    fn pre_record(&mut self) {
-        profiling::scope!("Ui::pre_record");
-        self.forest.pre_record();
-    }
-
     /// Record-half of `frame`: finalize hashes, run measure / arrange,
     /// then cascade. Cascade runs here (not in `finalize_frame`) so
     /// pass B of a `request_relayout` frame reads pass A's arranged
@@ -650,17 +655,16 @@ impl Ui {
     /// (Hug/Fill/Fixed) then governs the painted size within that
     /// available. Must be called at top-level (no node open) —
     /// egui-style: finish the `Main` scope first, then layer.
-    pub fn layer<R>(
+    pub fn layer(
         &mut self,
         layer: Layer,
         anchor: glam::Vec2,
         size: Option<crate::primitives::size::Size>,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
+        body: impl FnOnce(&mut Ui),
+    ) {
         self.forest.push_layer(layer, anchor, size);
-        let result = body(self);
+        body(self);
         self.forest.pop_layer();
-        result
     }
 
     /// Open a node with no paint chrome — the common path for layout-only
@@ -808,18 +812,12 @@ impl Ui {
     }
 }
 
-/// Rects damaged "before the main pass runs" — owner paint-rects of
-/// every paint anim whose quantum boundary fell in the
-/// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
-/// folded into the per-frame damage region alongside the structural
-/// diff. First frame (`prev_time == None`) fires every registered
-/// anim, mirroring the structural diff's "no prev snapshot ⇒ damage
-/// everything" path.
-///
-/// Free function rather than a `&self` method on [`Ui`] because the
-/// call site reaches into `&self.forest`, `&self.layout.cascades`,
-/// and `&mut self.damage_engine` field-by-field — a `&self`-borrowed
-/// iterator would conflict with the `&mut self.damage_engine` borrow.
+/// Tight per-shape rects for every paint anim whose quantum boundary
+/// fell in `(prev_time, now]`, folded into `DamageEngine::compute`'s
+/// region. First frame (`prev_time == None`) fires every anim — same
+/// "no prev snapshot ⇒ damage everything" rule as the structural
+/// diff. Free fn rather than `&self` method so the borrow stays
+/// disjoint from `&mut self.damage_engine` at the call site.
 fn predamaged_rects<'a>(
     forest: &'a Forest,
     cascades: &'a Cascades,
