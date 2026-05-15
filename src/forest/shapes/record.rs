@@ -410,6 +410,7 @@ impl ShapeRecord {
     /// paint into `local_rect` (when set) or the owner's full rect at
     /// `(0, 0)`. `Polyline` carries a pre-computed owner-relative bbox
     /// from `lower_polyline`.
+    #[inline]
     pub(crate) fn paint_bbox_local(&self, owner_size: Size) -> Rect {
         match self {
             ShapeRecord::Shadow {
