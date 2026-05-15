@@ -344,9 +344,11 @@ pub(crate) enum ShapeRecord {
         tint: ColorF16,
         vertices: Span,
         indices: Span,
-        /// Owner-local AABB of the mesh's vertex positions. Computed
-        /// once at lowering (`Shapes::add` already iterates the verts
-        /// to copy them) so the encoder/composer don't re-scan.
+        /// Owner-local AABB of the mesh's vertex positions. Snapshot of
+        /// `Mesh::bbox()` at lowering — the user-side `Mesh` does the
+        /// lazy compute (and caches it across frames for retained meshes),
+        /// the record just freezes the value so encoder/composer don't
+        /// re-scan.
         bbox: Rect,
         content_hash: u64,
     } = 3,
