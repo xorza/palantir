@@ -62,11 +62,6 @@ impl WakeReasons {
     pub(crate) const ANIM: Self = Self(1 << 1);
 
     #[inline]
-    pub(crate) fn contains(self, r: Self) -> bool {
-        self.0 & r.0 == r.0
-    }
-
-    #[inline]
     pub(crate) fn merge(self, r: Self) -> Self {
         Self(self.0 | r.0)
     }
@@ -364,21 +359,43 @@ impl Ui {
         };
         self.time = now;
         self.frame_id += 1;
-        self.repaint_requested = false;
         // Drop wakes whose deadline has fired (this frame is at or
         // past them). Sorted-ascending invariant means a prefix slice.
-        // `_fired_reasons` will gate the anim-only fast path once the
-        // skip branch lands; for now it's unused.
+        // `fired_reasons` OR-folds every cause that drove this frame,
+        // feeding the paint-only classification below.
         let fired_count = self
             .repaint_wakes
             .partition_point(|w| w.deadline <= self.time);
-        let _fired_reasons = self.repaint_wakes[..fired_count]
+        let fired_reasons = self.repaint_wakes[..fired_count]
             .iter()
             .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
         self.repaint_wakes.drain(..fired_count);
-        self.relayout_requested = false;
 
         let force_full = self.should_invalidate_prev(display);
+
+        // Paint-only fast path: skip pre_record / record_pass /
+        // finalize_frame / layout / cascade and reuse the retained
+        // tree + cascades from the prior frame. Conditions:
+        //
+        // - last frame is a valid baseline (`prev_time.is_some()`,
+        //   `!force_full`),
+        // - no record-side trigger waiting (`!repaint_requested`,
+        //   `!had_input_since_last_frame`),
+        // - the wake(s) that fired are *purely* paint-anim quantum
+        //   boundaries (only the `ANIM` bit, no `REAL`).
+        //
+        // Read `repaint_requested` BEFORE the unconditional clear
+        // below — last frame's record may have set it, and we
+        // need that signal here.
+        let paint_only = !force_full
+            && self.prev_time.is_some()
+            && !self.repaint_requested
+            && !self.input.had_input_since_last_frame
+            && fired_reasons == WakeReasons::ANIM;
+
+        self.repaint_requested = false;
+        self.relayout_requested = false;
+
         if force_full {
             self.damage_engine.invalidate_prev();
             self.prev_time = None;
@@ -392,32 +409,51 @@ impl Ui {
         // frame's `should_invalidate_prev` will force a `Full`.
         self.frame_state.mark_pending();
 
-        let action_flag = {
-            profiling::scope!("Ui::record_pass.A");
-            self.record_pass(&mut record)
+        let processing = if paint_only {
+            profiling::scope!("Ui::frame.paint_only");
+            FrameProcessing::PaintOnly
+        } else {
+            let action_flag = {
+                profiling::scope!("Ui::record_pass.A");
+                self.record_pass(&mut record)
+            };
+            let double_layout = action_flag || self.relayout_requested;
+            if double_layout {
+                profiling::scope!(
+                    "Ui::record_pass.B",
+                    if self.relayout_requested {
+                        "relayout"
+                    } else {
+                        "action"
+                    }
+                );
+                // Pass B paints, regardless of any further re-record
+                // request — caps relayout at one retry per `run_frame`.
+                self.input.drain_per_frame_queues();
+                let _ = self.record_pass(&mut record);
+            }
+            self.finalize_frame();
+            if double_layout {
+                FrameProcessing::DoubleLayout
+            } else {
+                FrameProcessing::SingleLayout
+            }
         };
-        let double_layout = action_flag || self.relayout_requested;
-        if double_layout {
-            profiling::scope!(
-                "Ui::record_pass.B",
-                if self.relayout_requested {
-                    "relayout"
-                } else {
-                    "action"
-                }
-            );
-            // Pass B paints, regardless of any further re-record
-            // request — caps relayout at one retry per `run_frame`.
-            self.input.drain_per_frame_queues();
-            let _ = self.record_pass(&mut record);
-        }
 
-        self.finalize_frame();
-
+        // Damage compute reads `ids.removed` to know which widgets
+        // dropped between frames. On `PaintOnly` no widgets were
+        // recorded so nothing was removed — pass an empty set
+        // instead of stale state from the previous frame.
+        let empty_removed: rustc_hash::FxHashSet<WidgetId> = rustc_hash::FxHashSet::default();
+        let removed = if paint_only {
+            &empty_removed
+        } else {
+            &self.forest.ids.removed
+        };
         let damage = self.damage_engine.compute(
             &self.forest,
             &self.layout.cascades,
-            &self.forest.ids.removed,
+            removed,
             self.display.logical_rect(),
             force_full,
             (!force_full)
@@ -447,11 +483,7 @@ impl Ui {
             repaint_requested: self.repaint_requested,
             repaint_after: self.repaint_wakes.first().map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
-            processing: if double_layout {
-                FrameProcessing::DoubleLayout
-            } else {
-                FrameProcessing::SingleLayout
-            },
+            processing,
         }
     }
 
@@ -601,17 +633,16 @@ impl Ui {
     /// anim and a widget asked for as `REAL | ANIM`, which forces the
     /// Full path (correct — the widget needs record).
     fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
-        let pos = self
+        let pos = match self
             .repaint_wakes
-            .binary_search_by_key(&deadline, |w| w.deadline);
-        match pos {
+            .binary_search_by_key(&deadline, |w| w.deadline)
+        {
             Ok(i) => {
                 self.repaint_wakes[i].reasons = self.repaint_wakes[i].reasons.merge(reasons);
                 return;
             }
-            Err(_) => {}
+            Err(pos) => pos,
         };
-        let pos = pos.unwrap_err();
         let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
         // Coalesce to the later of (existing, requested) — collapse
         // bursts into a single wake at the back of the window to avoid

@@ -941,3 +941,96 @@ fn app_type_mismatch_panics() {
         let _ = ui.app::<i64>();
     });
 }
+
+/// Anim-only fast path: when the only wake fired is a paint-anim
+/// quantum boundary (no input, no `request_repaint`, no real wake),
+/// `Ui::frame` skips record + post-record and emits
+/// `FrameProcessing::PaintOnly`.
+#[test]
+fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
+    use crate::animation::paint::PaintAnim;
+    use crate::primitives::brush::Brush;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+    use crate::ui::frame_report::FrameProcessing;
+
+    let half = Duration::from_millis(500);
+
+    fn body(ui: &mut Ui, half: Duration) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Frame::new().id_salt("blinker").size(20.0).show(ui);
+            ui.add_shape_animated(
+                Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+                    radius: Corners::ZERO,
+                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+                    stroke: Stroke::default(),
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: half,
+                    started_at: Duration::ZERO,
+                },
+            );
+        });
+    }
+
+    let mut ui = new_ui();
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    // Frame 0: record. Full path; schedules anim wake at `half`.
+    let r0 = ui.frame(display, Duration::ZERO, &mut (), |ui| body(ui, half));
+    ui.frame_state.mark_submitted();
+    assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
+    assert_eq!(r0.repaint_after(), Some(half));
+
+    // Frame 1 at the blink boundary: only anim wake fires → fast path.
+    let r1 = ui.frame(display, half, &mut (), |ui| body(ui, half));
+    assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
+}
+
+/// `request_repaint` co-firing with an anim wake produces the
+/// `REAL | ANIM` mix, so the classifier picks Full.
+#[test]
+fn paint_only_skipped_when_widget_requested_repaint() {
+    use crate::animation::paint::PaintAnim;
+    use crate::primitives::brush::Brush;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+    use crate::ui::frame_report::FrameProcessing;
+
+    let half = Duration::from_millis(500);
+
+    fn body(ui: &mut Ui, half: Duration) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Frame::new().id_salt("blinker").size(20.0).show(ui);
+            ui.add_shape_animated(
+                Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+                    radius: Corners::ZERO,
+                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+                    stroke: Stroke::default(),
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: half,
+                    started_at: Duration::ZERO,
+                },
+            );
+        });
+    }
+
+    let mut ui = new_ui();
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    // Frame 0: record + `request_repaint`. Next frame must be Full.
+    let r0 = ui.frame(display, Duration::ZERO, &mut (), |ui| {
+        body(ui, half);
+        ui.request_repaint();
+    });
+    ui.frame_state.mark_submitted();
+    assert!(r0.repaint_requested());
+
+    let r1 = ui.frame(display, half, &mut (), |ui| body(ui, half));
+    assert_eq!(r1.processing(), FrameProcessing::SingleLayout);
+}
