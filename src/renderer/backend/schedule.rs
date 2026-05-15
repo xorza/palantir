@@ -211,9 +211,10 @@ pub(crate) fn for_each_step(
             }
             active_mask = mask_idx;
         } else if g.quads.len != 0
-            || g.meshes.len != 0
             || (next_batch < buffer.text_batches.len()
                 && buffer.text_batches[next_batch].last_group as usize == i)
+            || (next_mesh_batch < buffer.mesh_batches.len()
+                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i)
         {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {

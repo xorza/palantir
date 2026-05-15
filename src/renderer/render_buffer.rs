@@ -25,11 +25,11 @@ pub(crate) struct RenderBuffer {
     /// in `RenderBuffer.texts` by composer construction. `DrawGroup`
     /// carries a `text_batch` index pointing here.
     pub(crate) text_batches: Vec<TextBatch>,
-    /// One entry per *batch* of mesh draws. Today's structural Phase 2
-    /// pushes one `MeshBatch` per group that emitted meshes — same
-    /// drawcalls as before, just routed through this parallel list so
-    /// schedule/backend treat meshes structurally like text. `DrawGroup.meshes`
-    /// still carries the same span; Phase 3 deletes it.
+    /// One entry per *batch* of mesh draws. Currently one `MeshBatch`
+    /// per group that emitted meshes (mesh batches don't span scissor
+    /// boundaries since meshes have no per-run bounds). Schedule and
+    /// backend treat meshes structurally like text — drained via the
+    /// same cursor-walking pattern as `text_batches`.
     pub(crate) mesh_batches: Vec<MeshBatch>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
@@ -86,7 +86,6 @@ pub(crate) struct DrawGroup {
     pub(crate) rounded_clip: Option<RoundedClip>,
     pub(crate) quads: Span,
     pub(crate) texts: Span,
-    pub(crate) meshes: Span,
 }
 
 /// A coalesced batch of text runs sharing one `glyphon::prepare` /

@@ -187,7 +187,7 @@ impl Host {
                 }
                 Suboptimal(_) | Outdated | Lost => {
                     tracing::warn!("surface acquire: suboptimal / outdated / lost");
-                    surface.configure(&self.backend.device, config);
+                    self.backend.configure_surface(surface, config);
                     true
                 }
                 Timeout | Validation => {
