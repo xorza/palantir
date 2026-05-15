@@ -18,3 +18,7 @@ if display_unchanged
 && !self.relayout_requested
 && self.damage_engine.prev_now.is_some()
 && self
+
+pub(crate) fn has_pending(&self) -> bool {
+self.by_type.values().any(|t| t.has_pending())
+}

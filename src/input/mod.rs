@@ -355,7 +355,7 @@ pub struct InputState {
     /// *anything* between the previous `frame()` return and this
     /// one." The short-circuit fails on any input arrival, since the
     /// closure might react to even a pointer move.
-    pub(crate) input_arrived_since_last_frame: bool,
+    pub(crate) had_input_since_last_frame: bool,
 }
 
 impl Default for InputState {
@@ -380,7 +380,7 @@ impl InputState {
             focused: None,
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
-            input_arrived_since_last_frame: false,
+            had_input_since_last_frame: false,
         }
     }
 
@@ -406,7 +406,7 @@ impl InputState {
         // observe even a pointer move (hover styling) or modifier
         // change (shortcut hint). Cleared at the top of `frame_inner`
         // after the gate has read it.
-        self.input_arrived_since_last_frame = true;
+        self.had_input_since_last_frame = true;
         if matches!(
             event,
             InputEvent::PointerPressed(_)
