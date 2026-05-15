@@ -1,14 +1,13 @@
 use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
-use super::support::{AxisAlignPair, place_axis, resolved_axis_align, zero_subtree};
+use super::support::{AxisAlignPair, TextCtx, place_axis, resolved_axis_align, zero_subtree};
 use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::{align::AxisAlign, sizing::Sizing, track::Track};
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextShaper;
 use fixedbitset::FixedBitSet;
 use glam::Vec2;
 use std::ops::Range;
@@ -333,7 +332,6 @@ impl GridHugStore {
 /// (`GridHugStore`), keyed by `GridDef` index, durable for the whole
 /// layout pass. Both are heap-resident and capacity-retained across
 /// frames; no fixed track-count limit.
-#[allow(clippy::too_many_arguments)]
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -341,22 +339,11 @@ pub(crate) fn measure(
     node: NodeId,
     idx: u16,
     inner_avail: Size,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
     let depth = layout.scratch.grid.depth_stack.enter();
-    let result = measure_inner(
-        layout,
-        tree,
-        node,
-        idx,
-        depth,
-        inner_avail,
-        text_bytes,
-        text,
-        out,
-    );
+    let result = measure_inner(layout, tree, node, idx, depth, inner_avail, tc, out);
     layout.scratch.grid.depth_stack.exit();
     result
 }
@@ -369,8 +356,7 @@ fn measure_inner(
     idx: u16,
     depth: usize,
     inner_avail: Size,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
     let GridShape {
@@ -384,7 +370,7 @@ fn measure_inner(
     if n_rows == 0 || n_cols == 0 {
         // Still measure children so their `desired` is set.
         for c in tree.children(node).map(|c| c.id) {
-            layout.measure(tree, c, Size::ZERO, text_bytes, text, out);
+            layout.measure(tree, c, Size::ZERO, tc, out);
         }
         return Size::ZERO;
     }
@@ -406,8 +392,8 @@ fn measure_inner(
         if !matches!(t.size, Sizing::Hug) {
             continue;
         }
-        let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, text_bytes, text);
-        let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, text_bytes, text);
+        let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+        let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
         let i = cell.col as usize;
         let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
         cols_min[i] = cols_min[i].max(min);
@@ -456,7 +442,7 @@ fn measure_inner(
         if child.visibility.is_collapsed() {
             // Still measure so the subtree's `desired` is zeroed
             // (LayoutEngine::measure short-circuits on collapsed).
-            layout.measure(tree, c, Size::ZERO, text_bytes, text, out);
+            layout.measure(tree, c, Size::ZERO, tc, out);
             continue;
         }
         let cell = tree.grid_of(c);
@@ -478,7 +464,7 @@ fn measure_inner(
             Size::new(avail_w, avail_h)
         };
 
-        let d = layout.measure(tree, c, avail, text_bytes, text, out);
+        let d = layout.measure(tree, c, avail, tc, out);
 
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
@@ -876,7 +862,6 @@ fn resolve_axis(
 ///   distribution time, not in intrinsic.
 ///
 /// Span > 1 cells are excluded (matches existing `measure` and the
-#[allow(clippy::too_many_arguments)]
 /// commitment in `src/layout/intrinsic.md`).
 pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
@@ -885,8 +870,7 @@ pub(crate) fn intrinsic(
     idx: u16,
     axis: Axis,
     req: LenReq,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
 ) -> f32 {
     let def = &tree.grid.defs[idx as usize];
     let (tracks, gap, n_tracks) = match axis {
@@ -935,7 +919,7 @@ pub(crate) fn intrinsic(
             continue;
         }
         let (t_min, t_max) = (t.min, t.max);
-        let child_v = layout.intrinsic(tree, c, axis, req, text_bytes, text);
+        let child_v = layout.intrinsic(tree, c, axis, req, tc);
         let slot = &mut layout.scratch.grid.track_aggregator[base + track_idx];
         *slot = slot.max(child_v.clamp(t_min, t_max));
     }

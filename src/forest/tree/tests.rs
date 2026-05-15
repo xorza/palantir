@@ -847,7 +847,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     let _cmds = encode_cmds(&ui);
 
     let arena = ui.frame_arena.borrow();
-    let bytes = arena.text_bytes.as_str();
+    let bytes = arena.fmt_scratch.as_str();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
 

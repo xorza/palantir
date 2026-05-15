@@ -69,15 +69,14 @@ pub struct FrameArena {
     /// encoder only needs the arena (not the originating tree) to
     /// resolve a gradient id.
     pub(crate) gradients: Vec<GradientPayload>,
-    /// Frame-scoped text-byte arena. `ShapeRecord::Text.text` is a
-    /// `Span` into this buffer; `Shape::Text` carriers (`Borrowed` /
-    /// `Owned`) memcpy bytes in at lowering, while
-    /// `InternedStr::Interned` (produced by [`crate::Ui::fmt`]) skips
-    /// the copy entirely. Cross-tree — keeping it on the frame arena
-    /// means [`InternedStr`](crate::InternedStr) handles survive
-    /// `Ui::layer(...)` scopes (the previous per-tree design would
-    /// silently mis-resolve spans across layer boundaries).
-    pub(crate) text_bytes: String,
+    /// `Ui::fmt` formatter scratch. The `InternedStr::Interned { span }`
+    /// handle returned by [`crate::Ui::fmt`] points into this buffer;
+    /// the `Borrowed` / `Owned` carriers don't touch it (they keep
+    /// bytes inline on `ShapeRecord::Text`). Cross-tree on purpose so
+    /// `Interned` handles survive `Ui::layer(...)` scopes. Cleared
+    /// per frame, capacity retained — steady-state `ui.fmt(...)`
+    /// flows skip the `format!() → String` allocation entirely.
+    pub(crate) fmt_scratch: String,
 }
 
 /// Control points for the unified bezier lowering — quadratic carries
@@ -97,7 +96,7 @@ impl FrameArena {
         self.polyline_colors.clear();
         self.bezier_scratch.clear();
         self.gradients.clear();
-        self.text_bytes.clear();
+        self.fmt_scratch.clear();
     }
 
     /// Pre-computed FxHash of `s` for stamping into

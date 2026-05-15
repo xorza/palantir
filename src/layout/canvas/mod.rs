@@ -1,11 +1,10 @@
 use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
-use super::support::{measure_per_axis_hug, zero_subtree};
+use super::support::{TextCtx, measure_per_axis_hug, zero_subtree};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextShaper;
 
 #[cfg(test)]
 mod tests;
@@ -25,27 +24,17 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
     // Active children only: a collapsed child at (100,100) must not
     // inflate the canvas's content size. `desired` is already ZERO for
     // collapsed children (reset at the top of `run`); arrange zeros
     // their subtrees regardless.
-    measure_per_axis_hug(
-        layout,
-        tree,
-        node,
-        inner_avail,
-        text_bytes,
-        text,
-        out,
-        |tree, c, d| {
-            let pos = tree.position_of(c);
-            Size::new(pos.x + d.w, pos.y + d.h)
-        },
-    )
+    measure_per_axis_hug(layout, tree, node, inner_avail, tc, out, |tree, c, d| {
+        let pos = tree.position_of(c);
+        Size::new(pos.x + d.w, pos.y + d.h)
+    })
 }
 
 /// Each child gets a slot at `inner.min + style.position`, sized per its
@@ -83,13 +72,12 @@ pub(crate) fn intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
 ) -> f32 {
     let mut max = 0.0_f32;
     for c in tree.active_children(node) {
         let pos = tree.position_of(c);
-        max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, text_bytes, text));
+        max = max.max(axis.main_v(pos) + layout.intrinsic(tree, c, axis, req, tc));
     }
     max
 }

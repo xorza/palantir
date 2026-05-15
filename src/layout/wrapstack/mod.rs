@@ -16,12 +16,11 @@
 use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
-use super::support::{JustifyOffsets, cross_place, justify_offsets, zero_subtree};
+use super::support::{JustifyOffsets, TextCtx, cross_place, justify_offsets, zero_subtree};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextShaper;
 
 /// One child's contribution to the current line. `m` always comes from
 /// the child's main-axis desired size; `x` is the cross contribution
@@ -102,7 +101,6 @@ impl WrapScratch {
 /// (one pass over children), and arrange uses the same logic on the
 /// same `desired` values, so the assignment is deterministic across
 /// both passes.
-#[allow(clippy::too_many_arguments)]
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -110,8 +108,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
     let panel = tree.panel(node);
@@ -134,8 +131,7 @@ pub(crate) fn measure(
             tree,
             c,
             axis.compose_size(f32::INFINITY, cross_avail),
-            text_bytes,
-            text,
+            tc,
             out,
         );
         let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
@@ -314,7 +310,6 @@ pub(crate) fn arrange(
 ///   single child sets the floor; smaller-than-that and even one row
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
-#[allow(clippy::too_many_arguments)]
 /// - Cross axis: max child intrinsic (single-line approximation).
 pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
@@ -323,8 +318,7 @@ pub(crate) fn intrinsic(
     main_axis: Axis,
     query_axis: Axis,
     req: LenReq,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
 ) -> f32 {
     let gap = tree.panel(node).gaps.gap();
     if main_axis == query_axis {
@@ -332,7 +326,7 @@ pub(crate) fn intrinsic(
             LenReq::MinContent => {
                 let mut floor = 0.0f32;
                 for c in tree.active_children(node) {
-                    floor = floor.max(layout.intrinsic(tree, c, query_axis, req, text_bytes, text));
+                    floor = floor.max(layout.intrinsic(tree, c, query_axis, req, tc));
                 }
                 floor
             }
@@ -340,7 +334,7 @@ pub(crate) fn intrinsic(
                 let mut total = 0.0f32;
                 let mut count = 0usize;
                 for c in tree.active_children(node) {
-                    total += layout.intrinsic(tree, c, query_axis, req, text_bytes, text);
+                    total += layout.intrinsic(tree, c, query_axis, req, tc);
                     count += 1;
                 }
                 total + gap * count.saturating_sub(1) as f32
@@ -353,7 +347,7 @@ pub(crate) fn intrinsic(
         // toolbar/badge use cases.
         let mut max = 0.0f32;
         for c in tree.active_children(node) {
-            max = max.max(layout.intrinsic(tree, c, query_axis, req, text_bytes, text));
+            max = max.max(layout.intrinsic(tree, c, query_axis, req, tc));
         }
         max
     }

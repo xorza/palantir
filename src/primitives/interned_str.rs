@@ -42,7 +42,7 @@ impl InternedStr<'_> {
     /// Resolve to `&str`. `Borrowed` / `Owned` carry the bytes inline;
     /// `Interned` indexes into the per-frame text arena passed in.
     /// Caller is responsible for passing the right arena — typically
-    /// `&frame_arena.text_bytes` during the layout / readback pass.
+    /// `&frame_arena.fmt_scratch` during the layout / readback pass.
     #[inline]
     pub fn as_str<'a>(&'a self, text_bytes: &'a str) -> &'a str {
         match self {

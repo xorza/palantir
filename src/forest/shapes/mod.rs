@@ -16,7 +16,11 @@ use crate::shape::{PolylineColors, Shape};
 /// Bulk variable-length payloads (mesh verts/indices, polyline
 /// points/colors, gradients) live on the `FrameArena` passed into
 /// [`Self::add`]; `ShapeRecord` variants reference them via spans /
-/// ids. Cleared per frame, capacity retained.
+/// ids. `ShapeRecord::Text.text` is the asymmetric case — it holds
+/// an [`InternedStr`](crate::InternedStr) inline: `Borrowed` /
+/// `Owned` carry bytes on the record itself, while `Interned`
+/// references `FrameArena::fmt_scratch` via a `Span`. Cleared per
+/// frame, capacity retained.
 #[derive(Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,

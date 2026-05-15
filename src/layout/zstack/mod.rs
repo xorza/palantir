@@ -2,13 +2,12 @@ use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use super::support::{
-    AxisAlignPair, children_max_intrinsic, measure_per_axis_hug, place_axis, resolved_axis_align,
-    zero_subtree,
+    AxisAlignPair, TextCtx, children_max_intrinsic, measure_per_axis_hug, place_axis,
+    resolved_axis_align, zero_subtree,
 };
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
-use crate::text::TextShaper;
 use glam::Vec2;
 
 #[cfg(test)]
@@ -23,10 +22,9 @@ pub(crate) fn intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
 ) -> f32 {
-    children_max_intrinsic(layout, tree, node, axis, req, text_bytes, text)
+    children_max_intrinsic(layout, tree, node, axis, req, tc)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -46,20 +44,10 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
-    measure_per_axis_hug(
-        layout,
-        tree,
-        node,
-        inner_avail,
-        text_bytes,
-        text,
-        out,
-        |_, _, d| d,
-    )
+    measure_per_axis_hug(layout, tree, node, inner_avail, tc, out, |_, _, d| d)
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and
