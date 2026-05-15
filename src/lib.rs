@@ -39,7 +39,7 @@ pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::InputPolicy;
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};
-pub use input::subscriptions::{KeyChord, KeyboardSense, PointerSense};
+pub use input::subscriptions::{KeyboardSense, PointerSense};
 pub use input::{FocusPolicy, InputDelta, InputEvent, ResponseState};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;

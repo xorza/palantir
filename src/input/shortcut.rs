@@ -98,6 +98,13 @@ impl Shortcut {
         Self { mods, key }
     }
 
+    /// Bare key, no modifiers. For subscriptions like
+    /// `Shortcut::key(Key::Escape)` and event triggers like
+    /// `Shortcut::key(Key::Enter)` that don't carry a chord.
+    pub const fn key(key: Key) -> Self {
+        Self::new(Mods::NONE, key)
+    }
+
     /// `Cmd+<c>` on macOS, `Ctrl+<c>` elsewhere. `c` should be
     /// uppercase ASCII (matching is case-insensitive, but the label
     /// uses what you pass).
@@ -115,12 +122,20 @@ impl Shortcut {
 
     /// True iff `kp` matches this shortcut. Modifier comparison is
     /// exact (`cmd+a` ≠ `cmd+shift+a`); `Char` keys compare
-    /// ignore-case to absorb shift-layout effects.
+    /// ignore-case to absorb shift-layout effects. Delegates to
+    /// [`Self::matches_key`] — the `repeat` flag is ignored.
     pub fn matches(self, kp: KeyPress) -> bool {
-        if Mods::from_event(kp.mods) != self.mods {
+        self.matches_key(kp.key, kp.mods)
+    }
+
+    /// As [`Self::matches`] but takes the `(key, mods)` pair
+    /// directly. Used by subscription wake-gate checks that don't
+    /// have a `KeyPress` in hand.
+    pub fn matches_key(self, key: Key, mods: Modifiers) -> bool {
+        if Mods::from_event(mods) != self.mods {
             return false;
         }
-        match (self.key, kp.key) {
+        match (self.key, key) {
             (Key::Char(a), Key::Char(b)) => a.eq_ignore_ascii_case(&b),
             (a, b) => a == b,
         }

@@ -173,8 +173,9 @@ fn non_pointer_events_wake_on_focus_or_subscription() {
 /// no subscriber) skip the frame under `OnDelta`.
 #[test]
 fn keydown_wakes_only_when_focus_or_subscription_exists() {
-    use crate::input::keyboard::{Key, Modifiers};
-    use crate::input::subscriptions::{KeyChord, PointerSense};
+    use crate::input::keyboard::Key;
+    use crate::input::shortcut::Shortcut;
+    use crate::input::subscriptions::PointerSense;
     use crate::primitives::widget_id::WidgetId;
     let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
@@ -199,10 +200,7 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
     ui.input.focused = None;
     run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
         build_hover_target(ui);
-        ui.subscribe_key(KeyChord {
-            key: Key::Escape,
-            mods: Modifiers::NONE,
-        });
+        ui.subscribe_key(Shortcut::key(Key::Escape));
         // Also reassert this so it survives — but we only test Escape below.
         let _ = PointerSense::BUTTONS;
     });
