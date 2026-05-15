@@ -10,7 +10,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn nested_scroll_panels_route_to_innermost_under_pointer() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let surface = UVec2::new(300, 300);
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -45,7 +45,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
 
 #[test]
 fn scroll_delta_zero_for_non_target() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -69,7 +69,7 @@ fn scroll_delta_zero_for_non_target() {
 
 #[test]
 fn pointer_left_clears_scroll_target() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()

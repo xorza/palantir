@@ -30,7 +30,7 @@ fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
 /// the children's full height. State is populated post-arrange.
 #[test]
 fn vertical_scroll_records_content_extent() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, SURFACE, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
@@ -50,7 +50,7 @@ fn vertical_scroll_records_content_extent() {
 /// Horizontal scroll measures children with INF on X.
 #[test]
 fn horizontal_scroll_records_content_extent() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
@@ -78,7 +78,7 @@ fn horizontal_scroll_records_content_extent() {
 /// Both-axis scroll measures with both axes unbounded.
 #[test]
 fn both_axis_scroll_records_content_extent() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, SURFACE, |ui| {
         Scroll::both()
             .id_salt("scroll")
@@ -100,7 +100,7 @@ fn both_axis_scroll_records_content_extent() {
 /// offset clamp + reservation guess + bar geometry.
 #[test]
 fn state_survives_across_frames() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()

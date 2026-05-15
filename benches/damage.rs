@@ -9,7 +9,7 @@
 //! is `Ui::post_record` time only. Decisions about per-pass cost
 //! (e.g. proximity-merge thresholds) need a GPU-aware bench.
 //!
-//! `Ui::new()` leaves the cosmic shaper unset, so text measurement
+//! `Ui::default()` leaves the cosmic shaper unset, so text measurement
 //! runs through the mono fallback (matches `frame.rs` / `caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -137,7 +137,7 @@ fn bench_workloads(c: &mut Criterion) {
     // are non-painting Panels so the damage diff walks every painting
     // leaf individually (no subtree-skip available).
     {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         warm_and_assert(&mut ui, display, |ui| build_grid(ui, &[], cold), "skip");
         group.bench_function("skip", |b| {
             b.iter(|| {
@@ -153,7 +153,7 @@ fn bench_workloads(c: &mut Criterion) {
     // row, jumping past the 32 per-cell entry lookups underneath.
     // Compare against `skip` to isolate the subtree-skip win.
     {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         warm_and_assert(
             &mut ui,
             display,
@@ -179,7 +179,7 @@ fn bench_workloads(c: &mut Criterion) {
 
     // Partial 1-rect — one cell flips colour each frame.
     {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let cell = [42usize];
         warm_and_assert(
             &mut ui,
@@ -202,7 +202,7 @@ fn bench_workloads(c: &mut Criterion) {
     // merge rule rejects (bbox waste huge), so the region keeps both
     // — drives the multi-pass path.
     {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut ui,
@@ -225,7 +225,7 @@ fn bench_workloads(c: &mut Criterion) {
     // Full path — every cell varies each frame; total damage area
     // exceeds the threshold and escalates to `Full`.
     {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let varying = |frame_n: u32| {
             move |ui: &mut Ui| {
                 Panel::vstack()

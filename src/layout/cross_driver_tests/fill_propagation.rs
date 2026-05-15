@@ -76,7 +76,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 /// `INFINITY` behavior on Hug axes precisely to avoid this.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut zstack_node = None;
     run_at_acked(&mut ui, UVec2::new(800, 600), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

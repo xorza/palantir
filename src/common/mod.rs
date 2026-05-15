@@ -3,5 +3,6 @@
 //! `crate::common::<sub>::<item>`.
 
 pub(crate) mod cache_arena;
+pub(crate) mod frame_arena;
 pub(crate) mod hash;
 pub(crate) mod platform;

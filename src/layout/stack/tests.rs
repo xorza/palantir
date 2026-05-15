@@ -18,7 +18,7 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
 
 #[test]
 fn hstack_arranges_two_buttons_side_by_side() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(800, 600), |ui| {
         root = Some(
@@ -60,7 +60,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
 
 #[test]
 fn vstack_with_fill_distributes_remainder() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 300), |ui| {
         root = Some(
@@ -84,7 +84,7 @@ fn vstack_with_fill_distributes_remainder() {
 
 #[test]
 fn hstack_fill_weights_split_remainder_proportionally() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Some(
@@ -112,7 +112,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
 
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Some(
@@ -153,7 +153,7 @@ fn hstack_justify_distributes_leftover() {
         ("space_around", Justify::SpaceAround, &[30.0, 130.0]),
     ];
     for (label, justify, expected_xs) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = None;
         run_at(&mut ui, UVec2::new(200, 100), |ui| {
             root = Some(
@@ -179,7 +179,7 @@ fn hstack_justify_distributes_leftover() {
 #[test]
 fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
     use crate::layout::types::justify::Justify;
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         root = Some(
@@ -206,7 +206,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
 
 #[test]
 fn hstack_gap_inserts_space_between_children() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Some(
@@ -229,7 +229,7 @@ fn hstack_gap_inserts_space_between_children() {
 
 #[test]
 fn hstack_align_center_centers_child_on_cross_axis() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         root = Some(
@@ -255,7 +255,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
 #[test]
 fn negative_left_margin_spills_outside_slot() {
     // CSS-style negative margin: smaller slot, larger render, shifted negative.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut button_node = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -284,7 +284,7 @@ fn negative_left_margin_spills_outside_slot() {
 /// hug to 200 (button + Fill share), not 216.
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         root = Some(
@@ -310,7 +310,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
 /// the cursor and does not count toward `total_gap`.
 #[test]
 fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         root = Some(
@@ -345,7 +345,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
 fn hstack_fill_max_size_caps_measured_share() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut fill_node = None;
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         Panel::hstack()
@@ -377,7 +377,7 @@ fn hstack_fill_max_size_caps_measured_share() {
 fn parent_max_size_clamps_children_available() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut child_node = None;
     let parent_node = under_outer(&mut ui, UVec2::new(1000, 200), |ui| {
         Panel::vstack()

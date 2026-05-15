@@ -623,13 +623,17 @@ impl<'a> TextEdit<'a> {
             // actually live (anchor != caret — collapsed selections are
             // stored as `None`, so any `Some` here has positive width).
             if is_focused && let Some(range) = selection.clone() {
-                // `ui.text` (the shaper) and `ui.forest` (where
-                // `add_shape` writes) are disjoint fields on `Ui`;
-                // cosmic's `LayoutRun::highlight` calls through the
-                // shaper while the closure pushes shapes — no
-                // `Vec<Rect>` round-trip needed. Single-line lays out
-                // unwrapped (`wrap_target=None`) and emits one rect.
+                // `ui.text` (the shaper) and `ui.forest` (record arena)
+                // are disjoint fields on `Ui`; split the borrow
+                // manually so the closure can push shapes while
+                // `ui.text` is mutably borrowed by `selection_rects`.
+                // The frame arena is `Rc<RefCell<_>>` — clone the
+                // handle outside and `borrow_mut` per-rect inside.
+                // Single-line lays out unwrapped (`wrap_target=None`)
+                // and emits one rect.
                 let sel_color = theme.selection;
+                let forest = &mut ui.forest;
+                let arena_handle = ui.frame_arena.clone();
                 ui.text.selection_rects(
                     text_ptr,
                     range,
@@ -639,17 +643,20 @@ impl<'a> TextEdit<'a> {
                     ctx.family,
                     ctx.halign,
                     |x, y, w, h| {
-                        ui.forest.add_shape(Shape::RoundedRect {
-                            local_rect: Some(Rect::new(
-                                ctx.padding.left() + offset.x + x - scroll.x,
-                                ctx.padding.top() + offset.y + y - scroll.y,
-                                w,
-                                h,
-                            )),
-                            radius: Default::default(),
-                            fill: sel_color.into(),
-                            stroke: Stroke::ZERO,
-                        });
+                        forest.add_shape(
+                            Shape::RoundedRect {
+                                local_rect: Some(Rect::new(
+                                    ctx.padding.left() + offset.x + x - scroll.x,
+                                    ctx.padding.top() + offset.y + y - scroll.y,
+                                    w,
+                                    h,
+                                )),
+                                radius: Default::default(),
+                                fill: sel_color.into(),
+                                stroke: Stroke::ZERO,
+                            },
+                            &mut arena_handle.borrow_mut(),
+                        );
                     },
                 );
             }

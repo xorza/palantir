@@ -1,6 +1,5 @@
 use super::quad::Quad;
 use crate::layout::types::span::Span;
-use crate::primitives::mesh::Mesh;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
@@ -112,9 +111,10 @@ pub(crate) struct RoundedClip {
     pub(crate) radius: Corners,
 }
 
-/// Scene-wide mesh pool: per-draw entries plus the shared vertex/index
-/// arena they slice into. Bundled so the three columns — which are
-/// always cleared, grown, and uploaded as a unit — can't drift.
+/// Scene-wide mesh pool: per-draw spans + per-instance GPU state. The
+/// underlying vertex/index bytes live in the frame's
+/// [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
+/// `MeshDraw` carries spans into that arena.
 #[derive(Default, Clone)]
 pub(crate) struct MeshScene {
     pub(crate) draws: Vec<MeshDraw>,
@@ -122,7 +122,6 @@ pub(crate) struct MeshScene {
     /// per-instance vertex buffer. Composer pushes both together; the
     /// backend looks them up by `instance_index`.
     pub(crate) instances: Vec<MeshInstance>,
-    pub(crate) arena: Mesh,
 }
 
 impl MeshScene {
@@ -130,13 +129,13 @@ impl MeshScene {
     pub(crate) fn clear(&mut self) {
         self.draws.clear();
         self.instances.clear();
-        self.arena.clear();
     }
 }
 
-/// One mesh draw within a group. Vertex/index slices live in
-/// `RenderBuffer.meshes.arena`; the per-instance transform + tint live
-/// in [`MeshScene::instances`] at the matching index.
+/// One mesh draw within a group. Vertex/index slices live in the
+/// frame's [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
+/// the per-instance transform + tint live in [`MeshScene::instances`]
+/// at the matching index.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,

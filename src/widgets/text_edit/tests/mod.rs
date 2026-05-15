@@ -127,7 +127,7 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// widths the click-positioning tests rely on.
 fn ui_at_no_cosmic(size: UVec2) -> Ui {
     use crate::layout::types::display::Display;
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     ui.display = Display::from_physical(size, 1.0);
     ui
 }

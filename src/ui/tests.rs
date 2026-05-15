@@ -39,7 +39,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 /// arranged rect after the regular paint walk.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let button_node = std::cell::Cell::new(NodeId(0));
     run_at(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -60,7 +60,10 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
     use crate::renderer::frontend::Frontend;
-    let mut frontend = Frontend::default();
+    // Share Ui's frame arena so any mesh/polyline bytes pushed at
+    // record time are visible at compose / upload — the Host wiring
+    // for real apps.
+    let mut frontend = Frontend::new(ui.frame_arena.clone());
     let buffer = frontend.build(&ui, Damage::Full);
     let overlay_quads: Vec<_> = buffer
         .quads
@@ -93,7 +96,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 /// so the encoder paints each overlay at the correct per-layer rect.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id_salt("dup").show(ui);
@@ -124,7 +127,10 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let main_rect = ui.layout[Layer::Main].rect[pair.first.1.index()];
     let popup_rect = ui.layout[Layer::Popup].rect[pair.second.1.index()];
     use crate::renderer::frontend::Frontend;
-    let mut frontend = Frontend::default();
+    // Share Ui's frame arena so any mesh/polyline bytes pushed at
+    // record time are visible at compose / upload — the Host wiring
+    // for real apps.
+    let mut frontend = Frontend::new(ui.frame_arena.clone());
     let buffer = frontend.build(&ui, Damage::Full);
     let overlay_quads: Vec<_> = buffer
         .quads
@@ -147,7 +153,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 /// the prior "sink in Debug" approach.
 #[test]
 fn collisions_do_not_record_into_debug_layer() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     assert!(
         !ui.debug_overlay.frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
@@ -176,7 +182,7 @@ fn auto_id_collisions_disambiguate() {
     fn chip(ui: &mut Ui) {
         Frame::new().auto_id().show(ui);
     }
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             chip(ui);
@@ -202,7 +208,7 @@ fn cascade_visible_to_relayout_pass() {
     let pass_b_rect = Cell::new(None::<Rect>);
     let id_salt = "cascade-relayout-probe";
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, SURFACE, |ui| {
         let probe_resp = std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -242,12 +248,15 @@ fn cascade_visible_to_relayout_pass() {
 fn empty_ui_drives_a_frame_safely() {
     use crate::renderer::frontend::Frontend;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at(&mut ui, SURFACE, |_| {});
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
-    let mut frontend = Frontend::default();
+    // Share Ui's frame arena so any mesh/polyline bytes pushed at
+    // record time are visible at compose / upload — the Host wiring
+    // for real apps.
+    let mut frontend = Frontend::new(ui.frame_arena.clone());
     let buffer = frontend.build(&ui, Damage::Full);
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
@@ -265,7 +274,7 @@ fn empty_ui_drives_a_frame_safely() {
 /// recorder retains no per-frame state across frames).
 #[test]
 fn empty_then_populated_frame() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(100, 100), |_| {});
     run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
@@ -281,7 +290,7 @@ fn empty_then_populated_frame() {
 #[test]
 #[should_panic(expected = "Display::scale_factor must be ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let _ = ui.frame(
         Display::from_physical(UVec2::new(800, 600), 0.0),
         Duration::ZERO,
@@ -299,7 +308,7 @@ fn display_logical_rect_scales() {
 
 #[test]
 fn prev_frame_empty_before_first_frame() {
-    let ui = Ui::new();
+    let ui = Ui::default();
     assert!(ui.damage_engine.prev.is_empty());
 }
 
@@ -308,7 +317,7 @@ fn prev_frame_empty_before_first_frame() {
 /// without chrome) don't.
 #[test]
 fn prev_frame_captures_painting_nodes() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut frame_node = None;
     run_at(&mut ui, SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
@@ -329,7 +338,7 @@ fn prev_frame_captures_painting_nodes() {
 
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Button::new().id_salt("gone").label("X").show(ui);
@@ -353,7 +362,7 @@ fn prev_frame_drops_disappeared_widgets() {
 
 #[test]
 fn prev_frame_updates_on_authoring_change() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let paint = |fill: Color| {
         move |ui: &mut Ui| {
             Frame::new()
@@ -621,7 +630,7 @@ fn frame_pass_count_matches_action_trigger() {
     ];
 
     for (label, prime, expected) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
         run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
@@ -661,7 +670,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     const MAX_DT: f32 = Ui::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::vstack().id_salt("root").show(ui, |_| {});
     });
@@ -732,7 +741,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 /// and updates `fps_ema` once two frames have elapsed.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     ui.debug_overlay.frame_stats = true;
     let display = Display::from_physical(SURFACE, 1.0);
 
@@ -785,7 +794,7 @@ fn frame_stats_overlay_records_partial_damage() {
 /// past its deadline.
 #[test]
 fn request_repaint_after_queues_distinct_deadlines() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let display = Display::from_physical(SURFACE, 1.0);
     let report = ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
@@ -824,7 +833,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 /// is a no-op — the queue is sorted + dedup'd.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         for _ in 0..10 {
@@ -843,7 +852,7 @@ fn request_repaint_after_dedups_within_frame() {
 /// frame; entries strictly past `now` survive.
 #[test]
 fn request_repaint_after_drains_fired_entries() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
         ui.request_repaint_after(Duration::from_secs_f32(0.5));
@@ -863,7 +872,7 @@ fn app_state_round_trip_across_frame() {
     struct App {
         count: u32,
     }
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut app = App { count: 0 };
     ui.frame(Display::default(), Duration::ZERO, &mut app, |ui| {
         ui.app::<App>().count += 1;
@@ -875,13 +884,13 @@ fn app_state_round_trip_across_frame() {
 #[test]
 #[should_panic(expected = "no app state installed")]
 fn app_without_install_panics() {
-    let _ = Ui::new().app::<u32>();
+    let _ = Ui::default().app::<u32>();
 }
 
 #[test]
 #[should_panic(expected = "type mismatch")]
 fn app_type_mismatch_panics() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a: u32 = 7;
     ui.frame(Display::default(), Duration::ZERO, &mut a, |ui| {
         let _ = ui.app::<i64>();

@@ -45,7 +45,7 @@ struct AnimUi {
 }
 
 fn setup_anim_ui(salt: &'static str) -> AnimUi {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let id = wid(salt);
     run_at(&mut ui, SURFACE, |ui| {
         Frame::new().id_salt(salt).show(ui);

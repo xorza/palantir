@@ -21,6 +21,8 @@ pub(crate) mod text;
 pub(crate) mod ui;
 pub(crate) mod widgets;
 
+pub use common::frame_arena::{FrameArena, FrameArenaHandle, new_handle};
+
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};

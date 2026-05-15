@@ -79,7 +79,7 @@ fn frame_with(ui: &mut Ui, mut body: impl FnMut(&mut Ui)) {
 
 #[test]
 fn sub_threshold_keeps_position_and_emits_click() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     frame_with(&mut ui, |ui| a.record(ui));
 
@@ -99,7 +99,7 @@ fn sub_threshold_keeps_position_and_emits_click() {
 
 #[test]
 fn supra_threshold_moves_widget_and_suppresses_click() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     frame_with(&mut ui, |ui| a.record(ui));
 
@@ -124,7 +124,7 @@ fn supra_threshold_moves_widget_and_suppresses_click() {
 
 #[test]
 fn drag_then_release_then_drag_restarts_from_new_anchor() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     frame_with(&mut ui, |ui| a.record(ui));
 
@@ -143,7 +143,7 @@ fn drag_then_release_then_drag_restarts_from_new_anchor() {
 
 #[test]
 fn only_pressed_card_moves_in_two_card_scene() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(20.0, 20.0));
     let mut b = Card::new("b", Vec2::new(200.0, 20.0));
 
@@ -166,7 +166,7 @@ fn only_pressed_card_moves_in_two_card_scene() {
 
 #[test]
 fn drag_started_fires_only_on_latch_frame() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(50.0, 50.0));
     let mut started = vec![];
 
@@ -208,7 +208,7 @@ fn drag_started_fires_only_on_latch_frame() {
 fn canvas_rearranges_with_dragged_child_position() {
     // `Ui::frame` re-records on action input, so pass-2 picks up the
     // dragged position and the same-frame layout reflects it.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut a = Card::new("a", Vec2::new(40.0, 40.0));
     frame_with(&mut ui, |ui| a.record(ui));
 

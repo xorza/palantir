@@ -6,6 +6,7 @@ pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
+use crate::common::frame_arena::{FrameArenaHandle, new_handle};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode};
@@ -115,11 +116,25 @@ pub struct Ui {
     /// by [`Self::frame`], cleared by the RAII guard on scope exit
     /// (incl. panic). Retrieved via [`Self::app`].
     app_slot: Option<AppSlot>,
+    /// Per-frame bulk geometry arena (mesh verts/indices, polyline
+    /// points/colors), shared with the renderer via [`Host`]: `Host`
+    /// constructs the canonical [`Rc`] and clones it into `Ui`,
+    /// `Frontend`, and `WgpuBackend` so every phase sees the same
+    /// bytes. Standalone `Ui::default()` builds its own private handle.
+    /// `add_shape` calls `borrow_mut()` for the call duration.
+    ///
+    /// [`Host`]: crate::Host
+    pub(crate) frame_arena: FrameArenaHandle,
 }
 
 impl Default for Ui {
+    /// Isolated `Ui` with the mono fallback shaper + a fresh private
+    /// frame arena. Suitable for tests, benches, and headless drivers
+    /// where the shaper / arena don't need to be shared with a
+    /// renderer; production goes through [`crate::Host`] which builds
+    /// a `Ui` via [`Self::new`] with shared handles.
     fn default() -> Self {
-        Self::new()
+        Self::new(TextShaper::default(), new_handle())
     }
 }
 
@@ -138,19 +153,18 @@ impl Ui {
     /// single, stable substep.
     pub(crate) const ANIM_FIXED_STEP: f32 = 1.0 / 240.0;
 
-    /// Construct with the mono-fallback shaper. Use for headless /
-    /// test / preview contexts where glyph cache identity doesn't
-    /// matter; production apps use [`crate::Host`], which builds a
-    /// `Ui` via [`Self::with_text`] under the hood and shares the
-    /// shaper with the backend.
-    pub fn new() -> Self {
-        Self::with_text(TextShaper::default())
-    }
-
-    /// Construct with an explicit shaper. The same handle must reach
-    /// the wgpu backend (via [`crate::Host::new`]) so layout-time
-    /// measurement and render-time shaping hit one buffer cache.
-    pub fn with_text(text: TextShaper) -> Self {
+    /// Construct with an explicit shaper *and* a shared frame-arena
+    /// handle. The same `TextShaper` handle must reach the wgpu
+    /// backend so layout-time measurement and render-time shaping
+    /// hit one buffer cache; the same `FrameArenaHandle` must reach
+    /// `Frontend` and `WgpuBackend` so every phase sees the same
+    /// per-frame mesh / polyline bytes. [`crate::Host::new`] wires
+    /// both at construction time.
+    ///
+    /// Tests / standalone callers usually want [`Self::default`],
+    /// which builds an isolated `Ui` with mono fallback shaper + its
+    /// own private arena.
+    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle) -> Self {
         Self {
             forest: Forest::default(),
             theme: Theme::default(),
@@ -174,6 +188,7 @@ impl Ui {
             repaint_requested: false,
             repaint_wakes: Vec::new(),
             app_slot: None,
+            frame_arena,
         }
     }
 
@@ -213,6 +228,10 @@ impl Ui {
         state: &mut T,
         mut record: impl FnMut(&mut Ui),
     ) -> FrameReport {
+        // The frame arena is shared via Rc so the renderer sees the
+        // same bytes. Clear it once at the top of the record cycle;
+        // capacity is retained.
+        self.frame_arena.borrow_mut().clear();
         // Install `state` as the ambient app slot for this frame; RAII
         // guard restores the prior slot on scope exit (incl. panic) so
         // nested frames stack cleanly.
@@ -523,7 +542,8 @@ impl Ui {
     // ── Recording (widget-facing) ─────────────────────────────────────
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
-        self.forest.add_shape(shape);
+        let mut arena = self.frame_arena.borrow_mut();
+        self.forest.add_shape(shape, &mut arena);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left

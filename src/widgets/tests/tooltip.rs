@@ -78,7 +78,7 @@ fn place_anchor_clamps_horizontally() {
 /// `time >= delay`, then visible.
 #[test]
 fn delay_gates_visibility() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let display = Display::from_physical(SURFACE, 1.0);
 
     let mut captured: Option<WidgetId> = None;

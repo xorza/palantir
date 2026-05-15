@@ -171,7 +171,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     //     module, since it's harness machinery, not a fixture,
     //   - drop the `alloc::` test-binary-crate prefix.
     let display = Display::from_physical(glam::UVec2::new(800, 600), 1.0);
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {

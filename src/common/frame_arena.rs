@@ -1,3 +1,13 @@
+//! Per-frame bulk geometry arena. Owned by `Host`, threaded `&mut` into
+//! `Ui::frame` (record + add_shape lowering) and into the frontend
+//! (compose-time polyline tessellation). Cleared at frame start.
+//!
+//! Replaces the previous three-step copy (user `Mesh` →
+//! `Tree.shapes.payloads` → `RenderCmdBuffer.shape_payloads` →
+//! `RenderBuffer.meshes.arena`) with a single arena. Shape records on
+//! the tree, payloads on the cmd buffer, and `MeshDraw` entries on the
+//! render buffer all carry spans into this arena directly.
+
 use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::layout::types::span::Span;
@@ -8,24 +18,32 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
+use std::cell::RefCell;
 use std::hash::Hasher;
+use std::rc::Rc;
 
-/// Per-frame side-table arenas for shape variants that need
-/// variable-length backing storage. Lives on both
-/// [`crate::forest::shapes::Shapes`] (records reference these via
-/// `Span`s) and
-/// [`crate::renderer::frontend::cmd_buffer::RenderCmdBuffer`] (cmd
-/// payloads do the same). Cleared together per frame, capacity
-/// retained — single struct keeps the lifecycle and future-extension
-/// story (curves, etc.) in one place instead of scattered fields on
-/// every container.
-///
-/// Lowering helpers (`lower_polyline`, `lower_bezier`) live as
-/// `impl` methods so callers append-through-the-arena rather than
-/// passing `&mut ShapePayloads` to free functions.
+/// Shared, interior-mutable handle to the per-frame arena. Each
+/// subsystem (`Ui`, `Frontend`, `WgpuBackend`) holds a clone; `Host`
+/// constructs the canonical `Rc` once and injects it into all three at
+/// construction time. Phases are sequential (record → encode → compose
+/// → upload) so the runtime borrow is never contested in practice;
+/// double-borrow would be a wiring bug worth panicking on.
+pub type FrameArenaHandle = Rc<RefCell<FrameArena>>;
+
+/// Construct a fresh handle wrapping a default-empty arena.
+pub fn new_handle() -> FrameArenaHandle {
+    Rc::new(RefCell::new(FrameArena::default()))
+}
+
+/// One arena per frame. All bulk shape-geometry bytes live here for
+/// the duration of a frame and are read by every later phase via
+/// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default)]
-pub(crate) struct ShapePayloads {
-    /// Vertex + index storage for `ShapeRecord::Mesh`.
+pub struct FrameArena {
+    /// User-supplied mesh geometry plus the compose-time polyline
+    /// tessellation output. The latter appends in
+    /// [`crate::renderer::frontend::Composer::compose`], so the arena
+    /// is mutably borrowed by compose too — not just record.
     pub(crate) meshes: Mesh,
     /// Point storage for `ShapeRecord::Polyline`. Indexed by the
     /// record's `points` `Span`.
@@ -34,11 +52,9 @@ pub(crate) struct ShapePayloads {
     /// record is 1, `points.len()`, or `points.len() - 1` per
     /// `ColorMode`.
     pub(crate) polyline_colors: Vec<Color>,
-    /// Scratch for bezier flattening. Lives here so capacity
-    /// persists across frames — steady-state alloc-free. Cleared
-    /// (length only) every `add_shape` call that uses it; the
-    /// flattened points it produces get copied into
-    /// `polyline_points` immediately after.
+    /// Scratch for bezier flattening. Cleared (length only) at the
+    /// top of every bezier lowering; the flattened points are copied
+    /// into `polyline_points` immediately after.
     pub(crate) bezier_scratch: Vec<FlatPoint>,
 }
 
@@ -52,7 +68,7 @@ pub(crate) enum BezierInputs {
     Cubic([Vec2; 4]),
 }
 
-impl ShapePayloads {
+impl FrameArena {
     pub(crate) fn clear(&mut self) {
         self.meshes.clear();
         self.polyline_points.clear();
@@ -62,9 +78,9 @@ impl ShapePayloads {
 
     /// Lower a (points, colors, width) authoring shape into a
     /// `ShapeRecord::Polyline`: validate `colors` length against
-    /// `points.len()`, copy both into the payload arenas, compute the
-    /// content hash. `Shape::Line` and `Shape::Polyline` both route
-    /// through this — one record path downstream.
+    /// `points.len()`, copy both into the arena, compute the content
+    /// hash. `Shape::Line` and `Shape::Polyline` both route through
+    /// this — one record path downstream.
     pub(crate) fn lower_polyline(
         &mut self,
         points: &[Vec2],
@@ -73,10 +89,6 @@ impl ShapePayloads {
         cap: LineCap,
         join: LineJoin,
     ) -> ShapeRecord {
-        // Length contract is enforced at the authoring boundary by
-        // `PolylineColors::assert_matches` in `Ui::add_shape`; the
-        // `Shape::Line` path constructs `Single(color)` internally and is
-        // unconstrained.
         let (mode, color_slice): (ColorMode, &[Color]) = match &colors {
             PolylineColors::Single(c) => (ColorMode::Single, std::slice::from_ref(c)),
             PolylineColors::PerPoint(cs) => (ColorMode::PerPoint, cs),
@@ -103,11 +115,6 @@ impl ShapePayloads {
         h.write_u8(join as u8);
         let content_hash = h.finish();
 
-        // Owner-relative AABB computed once here so the encoder hot path
-        // stays a straight `extend(map)`. Doesn't include cap-extension;
-        // the composer inflates by the tessellator's outer-fringe offset
-        // which already covers half-width (sufficient for Butt and a
-        // tight upper bound for Square).
         let bbox = points_aabb(points);
 
         ShapeRecord::Polyline {
@@ -125,10 +132,6 @@ impl ShapePayloads {
     /// Lower a flattened bezier (already in `self.bezier_scratch`) into
     /// `ShapeRecord::Polyline`: copy points and track bbox in one pass,
     /// push the single color, hash variant tag + control points + style.
-    /// `content_hash` covers control points + color + tolerance + width +
-    /// cap + join — the flattened output is derived from these and
-    /// shouldn't shift cache identity by itself. Solid color only for
-    /// now; t-parametric gradients (using `FlatPoint.t`) come later.
     pub(crate) fn lower_bezier(
         &mut self,
         ctrl: BezierInputs,
@@ -139,8 +142,6 @@ impl ShapePayloads {
         tolerance: f32,
     ) -> ShapeRecord {
         let Some((first, rest)) = self.bezier_scratch.split_first() else {
-            // `flatten_*` always emits at least 2 points (start + end);
-            // empty would mean a bezier with no endpoints. Defensive.
             unreachable!("flatten_{{cubic,quadratic}} always emits >= 2 points")
         };
 
@@ -159,10 +160,6 @@ impl ShapePayloads {
         }
         self.polyline_colors.push(color);
 
-        // Hash contract: bezier-derived records tag with `0xCB` + degree
-        // byte (0x01 cubic, 0x02 quadratic), so they can never collide
-        // with `lower_polyline`'s untagged hash even if the flattened
-        // bytes happened to match a hand-authored polyline.
         let mut h = FxHasher::new();
         h.write_u8(0xCB);
         match ctrl {
@@ -203,9 +200,6 @@ impl ShapePayloads {
     }
 }
 
-/// AABB of a non-empty point slice. Returns the zero rect on empty
-/// input — `Shape::is_noop` filters `points.len() < 2` upstream so
-/// the empty branch is defensive, not hot.
 fn points_aabb(points: &[Vec2]) -> Rect {
     let Some((&first, rest)) = points.split_first() else {
         return Rect::ZERO;

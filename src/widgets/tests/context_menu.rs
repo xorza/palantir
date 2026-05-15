@@ -50,7 +50,7 @@ fn menu_open(ui: &Ui) -> bool {
 
 #[test]
 fn secondary_click_opens_menu_at_pointer() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {
@@ -69,7 +69,7 @@ fn secondary_click_opens_menu_at_pointer() {
 
 #[test]
 fn outside_click_dismisses_menu() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {
@@ -95,7 +95,7 @@ fn outside_click_dismisses_menu() {
 
 #[test]
 fn item_click_dismisses_and_reports_clicked() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {
@@ -129,7 +129,7 @@ fn item_click_dismisses_and_reports_clicked() {
 /// mirroring native menu behaviour. Disabled items don't intercept.
 #[test]
 fn shortcut_press_fires_item_and_dismisses() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {
@@ -172,7 +172,7 @@ fn shortcut_press_fires_item_and_dismisses() {
 
 #[test]
 fn escape_dismisses_menu() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {
@@ -205,7 +205,7 @@ fn escape_dismisses_menu() {
 /// container.
 #[test]
 fn menu_body_width_does_not_span_surface() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut copied = false;
     let mut dismissed = false;
     run_at_acked(&mut ui, SURFACE, |ui| {

@@ -118,7 +118,7 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn warmed_ui() -> (Ui, Display) {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.

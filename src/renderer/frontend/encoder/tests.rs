@@ -3,6 +3,7 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
+use crate::common::frame_arena::new_handle;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
@@ -79,7 +80,7 @@ fn baseline_draw_rect_count_cases() {
         ),
     ];
     for (label, scene, expected) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| match scene {
                 Scene::Empty => {}
@@ -130,7 +131,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::corners::Corners;
     use crate::shape::{LineCap, LineJoin, Shape};
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::RoundedRect {
@@ -180,8 +181,10 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         .filter(|k| matches!(k, CmdKind::DrawPolyline))
         .count();
     assert_eq!(polylines, 1, "expected exactly one DrawPolyline cmd");
+    // Points live on the Rc-shared `Ui.frame_arena`; the 2-point line
+    // + noop-filtered duplicates leave exactly two entries.
     assert_eq!(
-        cmds.shape_payloads.polyline_points.len(),
+        ui.frame_arena.borrow().polyline_points.len(),
         2,
         "one 2-point line populates the points arena"
     );
@@ -199,7 +202,7 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
     use crate::renderer::quad::FillKind;
     use crate::shape::Shape;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::Shadow {
@@ -283,7 +286,7 @@ fn text_shape_emits_draw_text() {
 /// `DrawRect`s of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -302,7 +305,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
 
 #[test]
 fn clip_emits_balanced_push_pop() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -358,7 +361,7 @@ fn clip_emits_balanced_push_pop() {
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut panel_node = None;
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -416,7 +419,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_background() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -548,7 +551,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         });
     };
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut sink = (false, false, false);
     run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
 
@@ -615,7 +618,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -639,7 +642,7 @@ fn nested_clips_each_emit_their_own_pair() {
 
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut child_node = None;
     run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::vstack().auto_id().disabled(true).show(ui, |ui| {
@@ -691,7 +694,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
-    let mut ui = Ui::with_text(TextShaper::with_bundled_fonts());
+    let mut ui = Ui::new(TextShaper::with_bundled_fonts(), new_handle());
     run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
@@ -736,7 +739,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
         ("inside_filter_kept", Rect::new(0.0, 0.0, 200.0, 200.0), 2),
     ];
     for (label, filter, expected) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Frame::new()
@@ -786,7 +789,7 @@ fn damage_filter_culls_subtree_outside_damage() {
         ),
     ];
     for (label, wrap, push_kind, pop_kind) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let inner = |ui: &mut Ui| {
@@ -824,7 +827,7 @@ fn damage_filter_culls_subtree_outside_damage() {
 
 #[test]
 fn damage_filter_paints_leaves_in_any_rect() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::canvas()
             .auto_id()
@@ -859,7 +862,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
 /// on-screen sibling paints.
 #[test]
 fn viewport_cull_skips_offscreen_subtree() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
         Panel::canvas()
             .auto_id()

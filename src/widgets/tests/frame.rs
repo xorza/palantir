@@ -13,7 +13,7 @@ use glam::UVec2;
 
 #[test]
 fn frame_paints_a_single_rounded_rect() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut frame_node = None;
     run_at(&mut ui, UVec2::new(200, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -53,7 +53,7 @@ fn frame_paints_a_single_rounded_rect() {
 fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let surface = UVec2::new(200, 100);
     run_at_acked(&mut ui, surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

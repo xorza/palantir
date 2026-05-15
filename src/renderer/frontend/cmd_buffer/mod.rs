@@ -40,7 +40,6 @@
 //! noops are caught by `Shape::Polyline::is_noop` at the authoring
 //! boundary, which is the only practical gate.
 
-use crate::forest::shapes::payloads::ShapePayloads;
 use crate::forest::shapes::record::ShapeStroke;
 use crate::primitives::brush::{
     Brush, ConicGradient, FillAxis, Interp, LinearGradient, MAX_STOPS, RadialGradient, Stop,
@@ -192,29 +191,24 @@ impl DrawTextPayload {
     }
 }
 
-/// Stroked polyline payload. `width` is logical px. Points +
-/// colors live in [`RenderCmdBuffer::polyline_points`] /
-/// [`RenderCmdBuffer::polyline_colors`]; `colors_len` is 1
-/// (broadcast), `points_len` (per-point), or `points_len - 1`
-/// (per-segment), selected by `color_mode`.
+/// Stroked polyline payload. `width` is logical px. Points + colors
+/// live in [`FrameArena::polyline_points`] /
+/// [`FrameArena::polyline_colors`]; `colors_len` is 1 (broadcast),
+/// `points_len` (per-point), or `points_len - 1` (per-segment),
+/// selected by `color_mode`.
 ///
-/// `bbox` is the axis-aligned bounds of `points` in logical
-/// (cmd-buffer) coords. Composer transforms the 4 corners
-/// (uniform-scale `TranslateScale` preserves AABBs), inflates by
-/// the physical-px outer-fringe offset, and short-circuits the
-/// per-point transform when the result misses the active scissor.
+/// Points are stored **owner-local**; the composer applies `origin`
+/// (the owner-rect top-left) before the active push-transform stack.
+/// `bbox` is in the same owner-local space.
 ///
-/// `color_mode` / `cap` / `join` are `u8` storage tags. Trailing
-/// padding is injected by [`padding_struct::padding_struct`] so
-/// the struct stays a multiple of its alignment without
-/// hand-named `_pad` fields rotting when fields shift. Construct
-/// with `..bytemuck::Zeroable::zeroed()` to fill whatever padding
-/// the macro generated.
+/// [`FrameArena::polyline_points`]: crate::common::frame_arena::FrameArena::polyline_points
+/// [`FrameArena::polyline_colors`]: crate::common::frame_arena::FrameArena::polyline_colors
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawPolylinePayload {
     pub(crate) bbox: Rect,
+    pub(crate) origin: glam::Vec2,
     pub(crate) width: f32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
@@ -240,21 +234,22 @@ impl DrawPolylinePayload {
     }
 }
 
-/// Mesh draw payload. Spans are inlined as `(start, len)` u32 pairs so
-/// the payload is plain Pod — no `Span: Pod` needed. Vertex positions
-/// are already in logical-px world-coords (encoder pre-translates by
-/// the owner's top-left), matching the polyline convention.
+/// Mesh draw payload. Vertex/index data lives in
+/// [`FrameArena::meshes`]; spans are owner-local. The composer folds
+/// `origin` (owner-rect top-left) into the per-instance translate so
+/// the vertex stream stays content-stable across frames.
+///
+/// [`FrameArena::meshes`]: crate::common::frame_arena::FrameArena::meshes
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawMeshPayload {
-    /// Logical-px AABB of `vertices` in cmd-buffer (world) coords. The
-    /// composer transforms its four corners (uniform-scale
-    /// `TranslateScale` preserves AABBs), scales to physical px, and
-    /// uses the result for the overlap test + scissor cull — same
-    /// trick polylines use, so the per-vertex pass becomes a pure
-    /// `extend_from_slice` memcpy.
+    /// Owner-local AABB of `vertices`. The composer transforms the
+    /// four corners (uniform-scale `TranslateScale` preserves AABBs)
+    /// after adding `origin`, scales to physical px, and uses the
+    /// result for the overlap test + scissor cull.
     pub(crate) bbox: Rect,
+    pub(crate) origin: glam::Vec2,
     pub(crate) tint: ColorF16,
     pub(crate) v_start: u32,
     pub(crate) v_len: u32,
@@ -278,14 +273,6 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
-    /// Per-variant geometry referenced by `DrawMesh` / `DrawPolyline`
-    /// payloads (spans slice into the arenas inside this). The encoder
-    /// pre-translates polyline points by their owner's top-left and
-    /// stores meshes verbatim, so the data is owner-relative input
-    /// the composer can read without needing `&Tree`. Self-containment
-    /// pins the composer's contract — `&RenderCmdBuffer → RenderBuffer`
-    /// with no recording-state reach-back. See [`ShapePayloads`].
-    pub(crate) shape_payloads: ShapePayloads,
     /// Per-frame arena of gradient LUT keys referenced by
     /// `DrawRectPayload::fill_grad_idx`. Composer reads through this
     /// to register the gradient with the LUT atlas and pack the
@@ -319,7 +306,6 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
-        self.shape_payloads.clear();
         self.gradient_lut_keys.clear();
     }
 

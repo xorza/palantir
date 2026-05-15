@@ -124,7 +124,7 @@ fn main() {
     };
 
     let display = Display::from_physical(PHYSICAL, SCALE);
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
 
     for _ in 0..WARMUP_FRAMES {
         black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
