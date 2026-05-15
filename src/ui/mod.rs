@@ -8,6 +8,7 @@ use crate::animation::animatable::Animatable;
 use crate::animation::paint::PaintAnim;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::frame_arena::FrameArenaHandle;
+use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode};
@@ -38,19 +39,6 @@ use crate::widgets::theme::{TextStyle, Theme};
 use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
-
-/// Fixed substep used by the spring integrator and the `Ui::dt`
-/// accumulator. Stability requires `dt·√k < ~1`; 1/240 s keeps the
-/// product < 0.3 for `k ≤ 5000`. The `Ui` accumulator spends one
-/// step per crossed threshold so each spent step is a single, stable
-/// substep.
-pub(crate) const FIXED_STEP_DT: f32 = 1.0 / 240.0;
-
-/// Minimum gap between two scheduled repaint wakes. Wakes whose
-/// deadline lands within this window of an existing entry collapse
-/// to the earlier one — caps host wake-up rate at ~120 Hz under
-/// bursts of `request_repaint_after`.
-pub(crate) const REPAINT_COALESCE_DT: Duration = Duration::from_nanos(1_000_000_000 / 120);
 
 /// Rects damaged "before the main pass runs" — owner paint-rects of
 /// every paint anim whose quantum boundary fell in the
@@ -116,7 +104,7 @@ pub struct Ui {
     /// Effective per-frame dt fed into the animation integrators
     /// (`AnimMapTyped::tick` / `spring::step`). Real wall-clock dt is
     /// accumulated into [`Self::dt_accum`] and only spent here once
-    /// it crosses [`FIXED_STEP_DT`] — frames that don't spend
+    /// it crosses [`ANIM_SUBSTEP_DT`] — frames that don't spend
     /// see `dt = 0.0` and `tick` short-circuits the advance. Without
     /// this, NoVsync + `repaint_requested` spin the loop at 10s of
     /// kHz, `dt` drops to ~10 µs, and `cur += vel·dt` falls below the
@@ -326,7 +314,7 @@ impl Ui {
         // `dt = 0.0` on frames that don't cross so `tick`
         // short-circuits without churning the integrator below f32
         // precision.
-        self.dt = if self.dt_accum >= FIXED_STEP_DT {
+        self.dt = if self.dt_accum >= ANIM_SUBSTEP_DT {
             let spent = self.dt_accum;
             self.dt_accum = 0.0;
             spent

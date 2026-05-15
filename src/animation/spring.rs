@@ -5,7 +5,7 @@
 //! reach the threshold in <1s for typical stiffness.
 
 use crate::animation::animatable::Animatable;
-use crate::ui::FIXED_STEP_DT;
+use crate::common::time::ANIM_SUBSTEP_DT;
 
 // Settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to give
 // the integrator a more forgiving floor in pixel-scale animations
@@ -43,11 +43,11 @@ pub(crate) fn step<T: Animatable>(
     dt: f32,
 ) -> SpringStep<T> {
     // Sub-step so the inner Euler dt is always safely below the
-    // stability boundary. `ceil(dt / FIXED_STEP_DT)` substeps of
+    // stability boundary. `ceil(dt / ANIM_SUBSTEP_DT)` substeps of
     // equal width; for the typical 60Hz frame (dt = 0.016) this is 4
     // substeps, for the worst-case stalled frame (dt = MAX_DT = 0.1)
     // it's 24. Cheap relative to a single layout pass.
-    let n = (dt / FIXED_STEP_DT).ceil().max(1.0);
+    let n = (dt / ANIM_SUBSTEP_DT).ceil().max(1.0);
     let sub_dt = dt / n;
     let mut cur = current;
     let mut vel = velocity;
