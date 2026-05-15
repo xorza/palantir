@@ -20,10 +20,6 @@
 //! decodes each stop to a linear `Color` **once** per row before the
 //! 256-texel loop, so the inner loop never re-runs the cubic.
 //!
-//! - [`Interp::Srgb`]: a per-channel linear lerp on the pre-decoded
-//!   stops. Distinct from `Linear` only historically — under linear-u8
-//!   storage the two paths are numerically identical (the old
-//!   distinction lived in sRGB-byte quantisation).
 //! - [`Interp::Linear`]: physically correct linear blend. Shows the
 //!   classic midpoint dip on saturated complementary pairs (red↔green
 //!   muddy brown).
@@ -109,11 +105,9 @@ pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_
 
     // Precompute the per-stop forms the inner loop wants — once for
     // the row, not once per texel. Linear `Color` is needed by every
-    // interp (the `Linear` and `Oklab` math both run in it; `Srgb` is
-    // a 0..1 component lerp on the u8/255 normalised form which is
-    // numerically identical when we already have linear bytes thanks
-    // to the linear-u8 atlas). `Oklab` additionally needs the L/a/b
-    // triplet per stop — computing it 256× per texel would be wasted.
+    // interp (both `Linear` and `Oklab` math run in linear space).
+    // `Oklab` additionally needs the L/a/b triplet per stop —
+    // computing it 256× per texel would be wasted.
     let mut linear_stops: [Color; MAX_STOPS] = [Color::TRANSPARENT; MAX_STOPS];
     for i in 0..n {
         linear_stops[i] = sorted[i].color.into();
@@ -183,10 +177,7 @@ fn lerp_at(
     let ca = linear[i - 1];
     let cb = linear[i];
     match interp {
-        // `Srgb` and `Linear` are numerically identical under linear-u8
-        // atlas storage — they only diverged when the atlas used sRGB
-        // bytes. Kept as distinct enum variants for API stability.
-        Interp::Srgb | Interp::Linear => lerp_linear(ca, cb, u),
+        Interp::Linear => lerp_linear(ca, cb, u),
         Interp::Oklab => lerp_oklab(ca, cb, oklab[i - 1], oklab[i], u),
     }
 }
@@ -408,39 +399,14 @@ mod tests {
         }
     }
 
-    /// `Interp::Srgb`: midpoint of a 2-stop linear gradient from
-    /// `#000000` to `#ffffff` should be byte-equal `(0x80, 0x80, 0x80)`
-    /// (well, `127` or `128` after `.round()` — sRGB-space halfway).
-    /// Pinned because it's the simplest "did the basic plumbing work"
-    /// signal.
-    #[test]
-    fn srgb_midpoint_black_to_white_is_128() {
-        let g =
-            LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE).with_interp(Interp::Srgb);
-        let mut out = [0u8; LUT_ROW_BYTES];
-        bake_stops(&g.stops, g.interp, &mut out);
-        // Texel index 127.5 doesn't exist; check both bracket texels.
-        // 127/255 ≈ 0.498 → ~127; 128/255 ≈ 0.502 → ~128.
-        let mid = texel(&out, 127);
-        assert!(
-            (mid.r as i16 - 127).abs() <= 1,
-            "midpoint r={} not ~127",
-            mid.r,
-        );
-        assert_eq!(mid.r, mid.g);
-        assert_eq!(mid.g, mid.b);
-        assert_eq!(mid.a, 255);
-    }
-
     /// `Interp::Linear`: midpoint of black→white in linear-RGB space
     /// is exactly linear 0.5. Stored in the linear-u8 atlas as u8 ≈
-    /// 128 (was ≈ 188 when the atlas was sRGB-encoded). The sampler
-    /// pulls these bytes as plain `u8/255`, so what we store *is* the
-    /// linear value the shader uses. Regression check: an accidental
-    /// sRGB-space lerp would produce linear ≈ 0.215 → u8 ≈ 55, far
-    /// below the 100 threshold.
+    /// 128. The sampler pulls these bytes as plain `u8/255`, so what
+    /// we store *is* the linear value the shader uses. Regression
+    /// check: an accidental sRGB-space lerp would produce linear ≈
+    /// 0.215 → u8 ≈ 55, far below the 100 threshold.
     #[test]
-    fn linear_midpoint_black_to_white_is_brighter_than_srgb_midpoint() {
+    fn linear_midpoint_black_to_white_is_128() {
         let g = LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE)
             .with_interp(Interp::Linear);
         let mut out = [0u8; LUT_ROW_BYTES];
@@ -490,15 +456,15 @@ mod tests {
     fn endpoints_match_stops_exactly() {
         let c0 = ColorU8::rgb(11, 22, 33);
         let c1 = ColorU8::rgb(244, 233, 222);
-        for interp in [Interp::Srgb, Interp::Linear, Interp::Oklab] {
+        for interp in [Interp::Linear, Interp::Oklab] {
             let g = LinearGradient::two_stop(0.0, c0, c1).with_interp(interp);
             let mut out = [0u8; LUT_ROW_BYTES];
             bake_stops(&g.stops, g.interp, &mut out);
             let first = texel(&out, 0);
             let last = texel(&out, LUT_ROW_TEXELS - 1);
-            // sRGB matches exactly; linear/Oklab roundtrip through f32
-            // can drift ±1 LSB on extreme bytes — accept that.
-            let drift = if matches!(interp, Interp::Srgb) { 0 } else { 1 };
+            // Linear/Oklab roundtrip through f32 can drift ±1 LSB on
+            // extreme bytes — accept that.
+            let drift = 1;
             for (chan, (got, want)) in [
                 (first.r, c0.r),
                 (first.g, c0.g),
@@ -529,7 +495,7 @@ mod tests {
             ColorU8::rgb(255, 0, 0), // stop at 0.5
             ColorU8::rgb(0, 0, 255), // stop at 1.0
         )
-        .with_interp(Interp::Srgb);
+        .with_interp(Interp::Linear);
         let mut out = [0u8; LUT_ROW_BYTES];
         bake_stops(&g.stops, g.interp, &mut out);
         // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.
