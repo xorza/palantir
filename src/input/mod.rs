@@ -541,6 +541,7 @@ impl InputState {
             cap.frame_click = None;
             cap.frame_drag_started = None;
         }
+        self.had_input_since_last_frame = false;
         self.frame_scroll_pixels = Vec2::ZERO;
         self.frame_scroll_lines = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
