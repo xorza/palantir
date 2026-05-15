@@ -13,3 +13,5 @@ pub(crate) dirty: Vec<NodeId>,
 move text to framearena
 
 Drain-once for frame_keys/frame_text
+
+shortcut and keychore

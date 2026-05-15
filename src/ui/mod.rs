@@ -14,7 +14,10 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Element, LayoutMode};
 use crate::forest::tree::Layer;
+use crate::input::keyboard::KeyboardEvent;
+use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
+use crate::input::subscriptions::{KeyChord, KeyboardSense, PointerSense};
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
@@ -521,6 +524,14 @@ impl Ui {
         {
             profiling::scope!("Ui::pre_record");
             self.forest.pre_record();
+            // Subscription set is rebuilt from scratch each full record
+            // pass — symmetric to `Sense` on a node. Widgets re-assert
+            // during record; ones that didn't run drop their wake.
+            // Across silent (PaintOnly / skipped) frames the set
+            // persists, which is the whole point: a dormant popup
+            // needs `BUTTONS` to still be set when the next click
+            // outside lands.
+            self.input.subs.clear();
         }
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
@@ -551,6 +562,45 @@ impl Ui {
     /// still drive paints independently via `FrameReport::repaint_after`.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
         self.input.on_input(event, &self.layout.cascades)
+    }
+
+    /// Declare interest in off-target events of `flags`. Cleared
+    /// every full record pass — re-call each frame the widget is
+    /// active (idempotent OR). Stop calling to drop the wake.
+    pub fn subscribe_pointer(&mut self, flags: PointerSense) {
+        self.input.subs.pointer_mask |= flags;
+    }
+
+    /// Declare interest in a specific key chord (e.g. `Escape`,
+    /// `Ctrl+K`). Idempotent — duplicate subscribers collapse.
+    /// Cleared every full record pass.
+    pub fn subscribe_key(&mut self, chord: KeyChord) {
+        self.input.subs.subscribe_key(chord);
+    }
+
+    /// Unified pointer event stream captured this frame. Each
+    /// variant only fires when its [`PointerSense`] flag is held by
+    /// a subscriber — empty when no pointer subscriptions are
+    /// active. Subscribers `match` and filter by rect / button.
+    pub fn pointer_events(&self) -> &[PointerEvent] {
+        &self.input.frame_pointer_events
+    }
+
+    /// Unified keyboard event stream this frame —
+    /// [`KeyboardEvent::Down`] from `KeyDown` events and
+    /// [`KeyboardEvent::Text`] from typed/IME-committed text, in
+    /// arrival order. Single buffer for both the focused widget and
+    /// global [`KeyboardSense`] subscribers.
+    pub fn keyboard_events(&self) -> &[KeyboardEvent] {
+        &self.input.frame_keyboard_events
+    }
+
+    /// Declare interest in off-focus keyboard categories. Idempotent
+    /// OR; cleared pre-record like [`Self::subscribe_pointer`]. Use
+    /// for hotkey recorders, accel-underline UIs, command palettes
+    /// that record before focus.
+    pub fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
+        self.input.subs.keyboard_mask |= flags;
     }
 
     /// Re-record this frame after measure runs (for widgets that
@@ -848,15 +898,21 @@ impl Ui {
     /// can also be read by host code for modal-style behaviors.
     pub fn escape_pressed(&self) -> bool {
         use crate::input::keyboard::Key;
-        self.input.frame_keys.iter().any(|k| k.key == Key::Escape)
+        self.input.frame_keyboard_events.iter().any(|e| {
+            matches!(
+                e,
+                KeyboardEvent::Down(kp) if kp.key == Key::Escape,
+            )
+        })
     }
 
-    /// `true` if any keypress this frame matches `s`. Reads the same
-    /// `frame_keys` buffer that [`Self::escape_pressed`] uses — single
-    /// canonical entrypoint so widgets stop reaching for
-    /// `ui.input.frame_keys` directly.
+    /// `true` if any keypress this frame matches `s`. Iterates the
+    /// unified keyboard buffer.
     pub fn shortcut_pressed(&self, s: crate::input::shortcut::Shortcut) -> bool {
-        self.input.frame_keys.iter().any(|kp| s.matches(*kp))
+        self.input.frame_keyboard_events.iter().any(|e| match e {
+            KeyboardEvent::Down(kp) => s.matches(*kp),
+            _ => false,
+        })
     }
 }
 

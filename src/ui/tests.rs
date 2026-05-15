@@ -595,8 +595,9 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
 /// popup-dismissal class of bugs unfixed.
 #[test]
 fn frame_pass_count_matches_action_trigger() {
+    use crate::input::InputEvent;
     use crate::input::keyboard::{Key, Modifiers};
-    use crate::input::{InputEvent, PointerButton};
+    use crate::input::pointer::PointerButton;
     use glam::Vec2;
     use std::cell::Cell;
 
@@ -1224,14 +1225,17 @@ fn input_policy_routes_paint_only_gate() {
         );
     }
 
-    // --- OnDelta: action input (key, click) still records.
+    // --- OnDelta: action input still records. KeyDown now wakes
+    // only with focus or a chord subscriber, so prime focus first.
     {
+        use crate::primitives::widget_id::WidgetId;
         let mut ui = new_ui();
         ui.input_policy = InputPolicy::OnDelta;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
             body(ui, half)
         });
         ui.frame_state.mark_submitted();
+        ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         ui.on_input(InputEvent::KeyDown {
             key: Key::Enter,
@@ -1239,7 +1243,7 @@ fn input_policy_routes_paint_only_gate() {
         });
         assert!(
             ui.input.repaint_requested_since_last_frame,
-            "KeyDown must flip repaint_requested",
+            "KeyDown with focus held must flip repaint_requested",
         );
         let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
         assert_ne!(

@@ -1,7 +1,8 @@
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::input::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::new_ui;

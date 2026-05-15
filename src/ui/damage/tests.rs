@@ -263,7 +263,7 @@ fn popup_eater_does_not_force_full_repaint() {
 /// and forcing `Damage::Full`.
 #[test]
 fn click_on_empty_bg_does_not_force_full() {
-    use crate::input::PointerButton;
+    use crate::input::pointer::PointerButton;
     use std::time::Duration;
     let mut ui = new_ui();
     let build = |ui: &mut Ui| {

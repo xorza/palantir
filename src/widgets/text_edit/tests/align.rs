@@ -103,10 +103,14 @@ fn shift_arrow_right(ui: &mut Ui) {
         key: Key::ArrowRight,
         repeat: false,
     });
-    ui.input.frame_keys.last_mut().unwrap().mods = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
+    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
+        ui.input.frame_keyboard_events.last_mut()
+    {
+        kp.mods = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+    }
 }
 
 #[test]
