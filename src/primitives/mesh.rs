@@ -366,6 +366,18 @@ mod tests {
     }
 
     #[test]
+    fn triangle_keeps_bbox_cache() {
+        let mut m = red_tri();
+        let b0 = m.bbox();
+        assert_eq!(m.cached_bbox.get(), Some(b0));
+        // Pushing indices doesn't move any vertices, so bbox stays valid.
+        m.triangle(0, 1, 2);
+        assert_eq!(m.cached_bbox.get(), Some(b0));
+        // ...but content_hash must invalidate — render output changed.
+        assert_eq!(m.cached_hash.get(), None);
+    }
+
+    #[test]
     fn append_invalidates_bbox() {
         let mut a = red_tri();
         let _ = a.bbox();
