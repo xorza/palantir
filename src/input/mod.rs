@@ -1,4 +1,5 @@
 pub(crate) mod keyboard;
+pub(crate) mod policy;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
 
@@ -356,6 +357,13 @@ pub struct InputState {
     /// one." The short-circuit fails on any input arrival, since the
     /// closure might react to even a pointer move.
     pub(crate) had_input_since_last_frame: bool,
+    /// Sticky bit: set in [`Self::on_input`] whenever the returned
+    /// [`InputDelta::requests_repaint`] is `true` — i.e. an event that
+    /// could plausibly mutate visible state arrived (hover/scroll
+    /// target change, capture-active move, click, key, IME, modifier
+    /// change). Cleared alongside `had_input_since_last_frame`. Read
+    /// by `Ui::classify_frame` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
+    pub(crate) repaint_requested_since_last_frame: bool,
 }
 
 impl Default for InputState {
@@ -381,6 +389,7 @@ impl InputState {
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
+            repaint_requested_since_last_frame: false,
         }
     }
 
@@ -520,6 +529,9 @@ impl InputState {
                 true
             }
         };
+        if requests_repaint {
+            self.repaint_requested_since_last_frame = true;
+        }
         InputDelta { requests_repaint }
     }
 
@@ -542,6 +554,7 @@ impl InputState {
             cap.frame_drag_started = None;
         }
         self.had_input_since_last_frame = false;
+        self.repaint_requested_since_last_frame = false;
         self.frame_scroll_pixels = Vec2::ZERO;
         self.frame_scroll_lines = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;

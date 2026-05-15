@@ -1126,3 +1126,126 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::SingleLayout);
 }
+
+/// At an anim-only wake boundary, the classifier picks `PaintOnly`.
+/// Under `InputPolicy::OnDelta` (default) an inert pointer move
+/// since the last frame doesn't disqualify it — `requests_repaint`
+/// stayed `false`. Under `InputPolicy::Always` the same input
+/// upgrades the frame to `SingleLayout`.
+///
+/// Action input (click / key / IME) is unconditionally upgraded
+/// under both policies because `on_input` returns
+/// `requests_repaint = true` for them — exercised in the second
+/// half of the test.
+#[test]
+fn input_policy_routes_paint_only_gate() {
+    use crate::animation::paint::PaintAnim;
+    use crate::input::InputEvent;
+    use crate::input::keyboard::Key;
+    use crate::input::policy::InputPolicy;
+    use crate::primitives::brush::Brush;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+    use crate::ui::frame_report::FrameProcessing;
+    use glam::Vec2;
+
+    let display = Display::from_physical(UVec2::new(100, 100), 1.0);
+    let half = Duration::from_millis(500);
+
+    // Body declares an inert Frame *and* an anim shape so the next
+    // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
+    // entry, so OnDelta sees `requests_repaint = false`.
+    fn body(ui: &mut Ui, half: Duration) {
+        Panel::vstack().id_salt("root").show(ui, |ui| {
+            Frame::new().id_salt("inert").size(80.0).show(ui);
+            ui.add_shape_animated(
+                Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+                    radius: Corners::ZERO,
+                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+                    stroke: Stroke::default(),
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: half,
+                    started_at: Duration::ZERO,
+                },
+            );
+        });
+    }
+
+    // --- OnDelta: inert pointer move keeps the PaintOnly fast path.
+    {
+        let mut ui = new_ui();
+        ui.input_policy = InputPolicy::OnDelta;
+        let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+            body(ui, half)
+        });
+        ui.frame_state.mark_submitted();
+        assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
+
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        assert!(
+            ui.input.had_input_since_last_frame,
+            "had_input set after any event (precondition)",
+        );
+        assert!(
+            !ui.input.repaint_requested_since_last_frame,
+            "inert pointer move must not flip repaint_requested",
+        );
+
+        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        assert_eq!(
+            r1.processing(),
+            FrameProcessing::PaintOnly,
+            "OnDelta + inert pointer move + anim wake → PaintOnly",
+        );
+
+        // PaintOnly path must have drained input sticky bits and queues.
+        assert!(!ui.input.had_input_since_last_frame);
+        assert!(!ui.input.repaint_requested_since_last_frame);
+    }
+
+    // --- Always: same inert move upgrades the frame to SingleLayout.
+    {
+        let mut ui = new_ui();
+        ui.input_policy = InputPolicy::Always;
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+            body(ui, half)
+        });
+        ui.frame_state.mark_submitted();
+
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        assert_eq!(
+            r1.processing(),
+            FrameProcessing::SingleLayout,
+            "Always + any input forces SingleLayout",
+        );
+    }
+
+    // --- OnDelta: action input (key, click) still records.
+    {
+        let mut ui = new_ui();
+        ui.input_policy = InputPolicy::OnDelta;
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+            body(ui, half)
+        });
+        ui.frame_state.mark_submitted();
+
+        ui.on_input(InputEvent::KeyDown {
+            key: Key::Enter,
+            repeat: false,
+        });
+        assert!(
+            ui.input.repaint_requested_since_last_frame,
+            "KeyDown must flip repaint_requested",
+        );
+        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        assert_ne!(
+            r1.processing(),
+            FrameProcessing::PaintOnly,
+            "OnDelta must not pick PaintOnly on action input",
+        );
+    }
+}
