@@ -333,11 +333,6 @@ fn run_tree(
     }
 }
 
-/// Hash everything that flows top-down into node `i`'s cascade row and
-/// its arranged rect. If this matches prev *and* `subtree_hash[i]`
-/// matches prev, every descendant's `(paint_rect, node_hash)` is
-/// bit-identical to last frame by induction — damage can jump to
-/// `subtree_end[i]` without diffing per node.
 #[inline]
 fn hash_cascade_input(
     parent_transform: TranslateScale,
@@ -347,18 +342,33 @@ fn hash_cascade_input(
     layout_rect: Rect,
     invisible: bool,
 ) -> CascadeInputHash {
-    let mut h = Hasher::new();
-    h.pod(&parent_transform);
-    match parent_clip {
-        Some(c) => {
-            h.write_u8(1);
-            h.pod(&c);
-        }
-        None => h.write_u8(0),
+    let (clip_rect, clip_present) = match parent_clip {
+        Some(c) => (c, 1u8),
+        None => (Rect::ZERO, 0u8),
+    };
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::NoUninit)]
+    struct CascadeInputBytes {
+        parent_transform: TranslateScale, // 12B
+        layout_rect: Rect,                // 16B
+        clip_rect: Rect,                  // 16B (zeroed when absent)
+        clip_present: u8,
+        parent_dis: u8,
+        parent_inv: u8,
+        _pad: u8,
     }
-    h.write_u8(u8::from(parent_dis));
-    h.write_u8(u8::from(parent_inv));
-    h.pod(&layout_rect);
+    let packed = CascadeInputBytes {
+        parent_transform,
+        layout_rect,
+        clip_rect,
+        clip_present,
+        parent_dis: parent_dis as u8,
+        parent_inv: parent_inv as u8,
+        _pad: 0,
+    };
+    
+    let mut h = Hasher::new();
+    h.pod(&packed);
     CascadeInputHash::pack(h.finish(), invisible)
 }
 
