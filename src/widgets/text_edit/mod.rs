@@ -1,3 +1,4 @@
+use crate::animation::paint::PaintAnim;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::sense::Sense;
@@ -585,22 +586,20 @@ impl<'a> TextEdit<'a> {
             (state.scroll, state.last_caret_change)
         };
 
-        // Caret blink. Phase 0 = solid; flip every `BLINK_HALF`
-        // seconds. After `BLINK_STOP_AFTER_IDLE` the caret stays
-        // visible and no wake is scheduled, so an unattended focused
-        // editor doesn't keep the host's repaint loop spinning.
-        let caret_visible = if is_focused {
+        // Caret blink. `PaintAnim::BlinkOpacity` drives the on/off
+        // phase and wake scheduling — encoder skips the caret quad
+        // during the hidden half. After `BLINK_STOP_AFTER_IDLE` the
+        // caret stays solid and no anim is registered, so an
+        // unattended focused editor doesn't keep the host's repaint
+        // loop spinning.
+        let caret_anim = if is_focused {
             let elapsed = now.saturating_sub(last_caret_change).as_secs_f32();
-            if elapsed >= BLINK_STOP_AFTER_IDLE {
-                true
-            } else {
-                let phase = (elapsed / BLINK_HALF).floor();
-                let until_next = ((phase + 1.0) * BLINK_HALF - elapsed).max(0.0);
-                ui.request_repaint_after(Duration::from_secs_f32(until_next));
-                (phase as u64).is_multiple_of(2)
-            }
+            (elapsed < BLINK_STOP_AFTER_IDLE).then_some(PaintAnim::BlinkOpacity {
+                half_period: Duration::from_secs_f32(BLINK_HALF),
+                started_at: last_caret_change,
+            })
         } else {
-            true
+            None
         };
 
         // Phase 3: open the node and push shapes. `cursor_xy` +
@@ -703,21 +702,29 @@ impl<'a> TextEdit<'a> {
 
             // Caret. Painted as a thin Overlay rect at owner-local
             // coords so it stays in the widget's clip and renders
-            // *over* the text. Only when focused and inside the
-            // visible half of the blink cycle.
-            if is_focused && caret_visible {
+            // *over* the text. `caret_anim = Some(_)` registers a
+            // `BlinkOpacity` against the rect — encoder hides it
+            // during the off half; `post_record` folds the wake.
+            // When unfocused or quiesced, the rect is added without
+            // an anim (solid) — unfocused gets skipped at emit time
+            // anyway since callers gate on the same is_focused.
+            if is_focused {
                 let caret_rect = Rect::new(
                     ctx.padding.left() + offset.x + caret_pos.x - scroll.x,
                     ctx.padding.top() + offset.y + caret_pos.y_top - scroll.y,
                     theme.caret_width,
                     caret_pos.line_height,
                 );
-                ui.add_shape(Shape::RoundedRect {
+                let shape = Shape::RoundedRect {
                     local_rect: Some(caret_rect),
                     radius: Default::default(),
                     fill: theme.caret.into(),
                     stroke: Stroke::ZERO,
-                });
+                };
+                match caret_anim {
+                    Some(anim) => ui.add_shape_animated(shape, anim),
+                    None => ui.add_shape(shape),
+                }
             }
         });
 

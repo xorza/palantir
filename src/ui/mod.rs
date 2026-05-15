@@ -5,6 +5,7 @@ pub(crate) mod frame_state;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
+use crate::animation::paint::PaintAnim;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
@@ -495,7 +496,10 @@ impl Ui {
     /// against the final pass's id set.
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
-        self.forest.post_record();
+        let min_wake = self.forest.post_record(self.time);
+        if min_wake != Duration::MAX {
+            self.request_repaint_after(min_wake.saturating_sub(self.time));
+        }
         self.layout_engine.run(
             &self.forest,
             self.display.logical_rect(),
@@ -533,6 +537,18 @@ impl Ui {
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         let mut arena = self.frame_arena.borrow_mut();
         self.forest.add_shape(shape, &mut arena);
+    }
+
+    /// Append `shape` to the active node and register `anim` against
+    /// it. The encoder samples `anim` at paint time and folds the
+    /// resulting `PaintMod` into the shape's brush; `post_record`
+    /// folds the anim's `next_wake` into `repaint_wakes` so the
+    /// caller doesn't manage scheduling. Drops silently if the shape
+    /// itself was noop-collapsed (zero stroke + transparent fill,
+    /// etc.) — `PaintAnim` can't make a zero shape paintable.
+    pub fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
+        let mut arena = self.frame_arena.borrow_mut();
+        self.forest.add_shape_animated(shape, anim, &mut arena);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left

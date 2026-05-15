@@ -359,7 +359,7 @@ fn compute_paint_rect(
     let mut paint_local = owner_local;
     if tree.records.shape_span()[node.index()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
-            if let TreeItem::ShapeRecord(s) = item {
+            if let TreeItem::ShapeRecord(_, s) = item {
                 paint_local = paint_local.union(s.paint_bbox_local(layout_rect.size));
             }
         }

@@ -1,10 +1,12 @@
 use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
+use crate::animation::paint::PaintMod;
 use crate::forest::shapes::record::{
     GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
-use crate::forest::tree::{NodeId, Tree, TreeItem};
+use crate::forest::tree::{NodeId, PAINT_ANIM_NONE, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::stroke::Stroke;
@@ -15,6 +17,7 @@ use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
+use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
 /// collided this frame. Magenta — distinct from the opt-in red
@@ -71,6 +74,7 @@ pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
     };
 
     let viewport = ui.display.logical_rect();
+    let now = ui.time;
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layout = &ui.layout[layer];
         let rows = ui.layout.cascades.rows_for(layer);
@@ -82,12 +86,27 @@ pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
                 damage_filter,
                 viewport,
                 NodeId(root.first_node),
+                now,
                 out,
             );
         }
     }
 
     emit_collision_overlays(ui, out);
+}
+
+/// Sample the paint-anim attached to shape `shape_idx`, if any.
+/// Returns `PaintMod::IDENTITY` on the hot path (no anim — the vast
+/// majority of shapes), so callers can fold the result unconditionally
+/// once `Pulse` lands and we need fractional alpha. The encoder's
+/// noop-alpha skip ride-alongs the standard `noop_f32` predicate.
+#[inline]
+fn sample_paint_anim(tree: &Tree, shape_idx: u32, now: Duration) -> PaintMod {
+    let slot = tree.paint_anim_by_shape[shape_idx as usize];
+    if slot == PAINT_ANIM_NONE {
+        return PaintMod::IDENTITY;
+    }
+    tree.paint_anims[slot as usize].anim.sample(now)
 }
 
 /// Final pass: emit a magenta outline for each explicit-id collision
@@ -121,15 +140,26 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
 /// match. `text_ordinal` is the within-node index of the next
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
+#[allow(clippy::too_many_arguments)]
 fn emit_one_shape(
     tree: &Tree,
     layout: &LayerLayout,
     id: NodeId,
     owner_rect: Rect,
+    shape_idx: u32,
     shape: &ShapeRecord,
     text_ordinal: u32,
+    now: Duration,
     out: &mut RenderCmdBuffer,
 ) {
+    // Paint-anim gate. Slice 1 ships only `BlinkOpacity`, whose
+    // alpha is binary 0/1 — so we just skip emission when the
+    // sample says "hidden". Fractional-alpha multiplication
+    // arrives with the `Pulse` variant.
+    let paint_mod = sample_paint_anim(tree, shape_idx, now);
+    if noop_f32(paint_mod.alpha) {
+        return;
+    }
     match shape {
         ShapeRecord::RoundedRect {
             local_rect,
@@ -249,6 +279,7 @@ fn emit_one_shape(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn encode_node(
     tree: &Tree,
     layout: &LayerLayout,
@@ -256,6 +287,7 @@ fn encode_node(
     damage_filter: Option<&DamageRegion>,
     viewport: Rect,
     id: NodeId,
+    now: Duration,
     out: &mut RenderCmdBuffer,
 ) {
     if rows[id.index()].cascade_input.invisible() {
@@ -381,8 +413,18 @@ fn encode_node(
     let mut text_ordinal: u32 = 0;
     for item in tree.tree_items(id) {
         match item {
-            TreeItem::ShapeRecord(shape) => {
-                emit_one_shape(tree, layout, id, rect, shape, text_ordinal, out);
+            TreeItem::ShapeRecord(shape_idx, shape) => {
+                emit_one_shape(
+                    tree,
+                    layout,
+                    id,
+                    rect,
+                    shape_idx,
+                    shape,
+                    text_ordinal,
+                    now,
+                    out,
+                );
                 if matches!(shape, ShapeRecord::Text { .. }) {
                     text_ordinal += 1;
                 }
@@ -391,7 +433,16 @@ fn encode_node(
                 if let Some(t) = transform {
                     out.push_transform(t);
                 }
-                encode_node(tree, layout, rows, damage_filter, viewport, child.id, out);
+                encode_node(
+                    tree,
+                    layout,
+                    rows,
+                    damage_filter,
+                    viewport,
+                    child.id,
+                    now,
+                    out,
+                );
                 if transform.is_some() {
                     out.pop_transform();
                 }

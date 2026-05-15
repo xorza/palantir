@@ -3,15 +3,17 @@
 //! body recording dispatches into a different arena than `Main`
 //! and never interleaves.
 
+use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{RecordOutcome, SeenIds};
-use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
+use crate::forest::tree::{Layer, NodeId, PAINT_ANIM_NONE, PaintAnimEntry, PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::array;
+use std::time::Duration;
 use strum::EnumCount as _;
 
 /// One explicit-id collision recorded this frame. Both endpoints
@@ -92,17 +94,27 @@ impl Forest {
     /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
     /// is just a placement; the surface needed to derive each root's
     /// "available" room is passed straight to `LayoutEngine::run`.
+    ///
+    /// Returns the minimum paint-anim `next_wake` across all trees
+    /// (or `Duration::MAX` when nothing wants a wake). Caller folds
+    /// this into `Ui::repaint_wakes` so widgets don't have to call
+    /// `request_repaint_after` for animated shapes.
     #[profiling::function]
-    pub(crate) fn post_record(&mut self) {
+    pub(crate) fn post_record(&mut self, now: Duration) -> Duration {
         assert_eq!(
             self.current_layer,
             Layer::Main,
             "post_record called with active layer {:?} — Ui::layer body forgot to return",
             self.current_layer,
         );
+        let mut min_wake = Duration::MAX;
         for layer in Layer::PAINT_ORDER {
-            self.trees[layer as usize].post_record();
+            let w = self.trees[layer as usize].post_record(now);
+            if w < min_wake {
+                min_wake = w;
+            }
         }
+        min_wake
     }
 
     pub(crate) fn open_node(&mut self, mut element: Element) {
@@ -161,7 +173,44 @@ impl Forest {
             !tree.open_frames.is_empty(),
             "add_shape called with no open node",
         );
-        tree.shapes.add(shape, arena);
+        if tree.shapes.add(shape, arena).is_some() {
+            tree.paint_anim_by_shape.push(PAINT_ANIM_NONE);
+        }
+    }
+
+    /// Same as `add_shape`, but registers a `PaintAnim` against the
+    /// freshly-pushed shape so the encoder applies the sampled
+    /// `PaintMod` at paint time and `post_record` folds the anim's
+    /// `next_wake` into the host's repaint queue. Drops silently
+    /// (no entry pushed) if the shape itself was noop-collapsed.
+    pub(crate) fn add_shape_animated(
+        &mut self,
+        shape: Shape<'_>,
+        anim: PaintAnim,
+        arena: &mut FrameArena,
+    ) {
+        let tree = &mut self.trees[self.current_layer as usize];
+        let owner = tree
+            .open_frames
+            .last()
+            .expect("add_shape_animated called with no open node")
+            .node;
+        let Some(shape_idx) = tree.shapes.add(shape, arena) else {
+            return;
+        };
+        let entry_idx = tree.paint_anims.len();
+        assert!(
+            entry_idx < PAINT_ANIM_NONE as usize,
+            "more than {} paint-anim entries in one tree — bump paint_anim_by_shape to u32",
+            PAINT_ANIM_NONE,
+        );
+        tree.paint_anims.push(PaintAnimEntry {
+            anim,
+            shape_idx,
+            node: owner,
+            last_quantum: 0,
+        });
+        tree.paint_anim_by_shape.push(entry_idx as u16);
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
