@@ -3,7 +3,6 @@ mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
 mod viewport;
-mod viewport_uniform;
 
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
@@ -11,8 +10,7 @@ use self::debug_overlay::{
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
-use self::viewport::build_damage_scissors;
-use self::viewport_uniform::ViewportUniform;
+use self::viewport::{ViewportUniform, build_damage_scissors};
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{color::Color, rect::Rect, size::Size, spacing::Spacing, urect::URect};
@@ -89,7 +87,7 @@ pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
 /// compose — those happen elsewhere and arrive here as a
 /// `RenderBuffer`.
 pub(crate) struct WgpuBackend {
-    pub(crate) device: wgpu::Device,
+    device: wgpu::Device,
     queue: wgpu::Queue,
     viewport_uniform: ViewportUniform,
     quad: QuadPipeline,
@@ -117,6 +115,18 @@ pub(crate) struct WgpuBackend {
 }
 
 impl WgpuBackend {
+    /// Reconfigure a `wgpu::Surface` against this backend's device.
+    /// Encapsulates the device handle so callers don't need to read
+    /// it directly — used by the host on suboptimal/outdated/lost
+    /// surface acquisitions.
+    pub(crate) fn configure_surface(
+        &self,
+        surface: &wgpu::Surface,
+        config: &wgpu::SurfaceConfiguration,
+    ) {
+        surface.configure(&self.device, config);
+    }
+
     pub(crate) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -125,8 +135,8 @@ impl WgpuBackend {
         frame_arena: FrameArenaHandle,
     ) -> Self {
         let viewport_uniform = ViewportUniform::new(&device);
-        let quad = QuadPipeline::new(&device, format, viewport_uniform.buffer());
-        let mesh = MeshPipeline::new(&device, format, viewport_uniform.buffer());
+        let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
+        let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
         let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {

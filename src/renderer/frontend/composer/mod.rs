@@ -120,7 +120,6 @@ impl Composer {
                 rounded_clip: self.current_rounded,
                 quads: (self.quads_start..q_end).into(),
                 texts: (self.texts_start..t_end).into(),
-                meshes: (self.meshes_start..m_end).into(),
             });
         }
         self.quads_start = q_end;
@@ -175,6 +174,16 @@ impl Composer {
         });
         b.last_group = out.groups.len() as u32;
         b
+    }
+
+    /// `true` when `bounds` doesn't intersect the active scissor — the
+    /// caller should skip emission. Identical reject shape at every
+    /// shape-draw site; centralising it keeps each handler from
+    /// growing its own variant.
+    fn cull_against_active_clip(&self, bounds: URect) -> bool {
+        self.clip_stack
+            .last()
+            .is_some_and(|c| bounds.intersect(c.scissor).is_none())
     }
 
     /// Switch to a new clip (scissor + optional rounded), flushing
@@ -313,9 +322,7 @@ impl Composer {
                     // entirely outside the active scissor. The GPU
                     // would scissor it away anyway; this saves the
                     // `quads.push` + per-quad math.
-                    if let Some(active) = self.clip_stack.last()
-                        && quad_urect.intersect(active.scissor).is_none()
-                    {
+                    if self.cull_against_active_clip(quad_urect) {
                         continue;
                     }
                     // Overlap-aware kind transition: quad is the lowest
@@ -474,9 +481,7 @@ impl Composer {
                         },
                     };
                     let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
-                    if let Some(active) = self.clip_stack.last()
-                        && bbox_scissor.intersect(active.scissor).is_none()
-                    {
+                    if self.cull_against_active_clip(bbox_scissor) {
                         continue;
                     }
 

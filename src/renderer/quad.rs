@@ -64,8 +64,10 @@ impl FillKind {
     /// shader inverts coverage and clips to inside the source rect.
     pub(crate) const SHADOW_INSET: Self = Self(5);
 
-    /// `true` when the kind tag is `0`.
-    #[allow(dead_code)] // used in tests + future is_solid fast paths
+    /// `true` when the kind tag is `0`. Currently only used by
+    /// composer tests pinning solid-quad emission — the gradient/shadow
+    /// fast paths read the tag directly via the WGSL constants.
+    #[allow(dead_code)]
     #[inline]
     pub(crate) const fn is_solid(self) -> bool {
         (self.0 & 0xFF) == 0

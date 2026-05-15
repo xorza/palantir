@@ -12,7 +12,7 @@ use crate::primitives::size::Size;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshScene, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, MeshBatch, MeshScene, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
@@ -126,6 +126,21 @@ fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
     }
 }
 
+/// Adds one `MeshBatch` per entry in `anchors`, each anchored at the
+/// group index listed. Span values are stub indices into a parallel
+/// `meshes.draws` vec — the schedule only reads `last_group`, so the
+/// span content doesn't matter for these tests.
+fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
+    let mut buf = buf_with(groups);
+    for (i, &g) in anchors.iter().enumerate() {
+        buf.mesh_batches.push(MeshBatch {
+            meshes: Span::new(i as u32, 1),
+            last_group: g,
+        });
+    }
+    buf
+}
+
 // ---------- High-level ordering (was `render_schedule_*`) -----------
 
 /// Pin: text in group 0 renders *between* group 0's quads and group 1's
@@ -141,7 +156,6 @@ fn text_interleaves_per_group() {
             rounded_clip: None,
             quads: Span::new(0, 2),
             texts: Span::new(0, 1),
-            meshes: Span::default(),
         },
         // Group 1: 1 quad, no text
         DrawGroup {
@@ -149,7 +163,6 @@ fn text_interleaves_per_group() {
             rounded_clip: None,
             quads: Span::new(2, 1),
             texts: Span::new(1, 0),
-            meshes: Span::default(),
         },
     ]);
     assert_eq!(
@@ -168,14 +181,12 @@ fn text_emits_for_quadless_group() {
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         DrawGroup {
             scissor: None,
             rounded_clip: None,
             quads: Span::new(1, 0),
             texts: Span::new(0, 2),
-            meshes: Span::default(),
         },
     ]);
     assert_eq!(
@@ -199,7 +210,6 @@ fn preclear_emits_under_partial_damage() {
         rounded_clip: None,
         quads: Span::new(0, 1),
         texts: Span::new(0, 1),
-        meshes: Span::default(),
     }]);
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
@@ -226,14 +236,12 @@ fn schedule_replays_per_damage_rect() {
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         DrawGroup {
             scissor: Some(URect::new(50, 0, 50, 100)),
             rounded_clip: None,
             quads: Span::new(1, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
     ]);
     // DamageEngine rect A covers only group 0; rect B covers only group 1.
@@ -275,7 +283,6 @@ fn stencil_group_brackets_draws_with_mask_write() {
         }),
         quads: Span::new(0, 2),
         texts: Span::new(0, 1),
-        meshes: Span::default(),
     }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
@@ -305,7 +312,6 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
             }),
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         // Group 1: plain (no rounded clip)
         DrawGroup {
@@ -313,7 +319,6 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
             rounded_clip: None,
             quads: Span::new(1, 1),
             texts: Span::new(0, 1),
-            meshes: Span::default(),
         },
     ]);
     let mask_indices = &[Some(0u32), None];
@@ -354,7 +359,6 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
             }),
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         DrawGroup {
             scissor: Some(URect::new(0, 0, 100, 100)),
@@ -367,7 +371,6 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
             }),
             quads: Span::new(1, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         // Group 2: different mask — full transition required.
         DrawGroup {
@@ -381,7 +384,6 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
             }),
             quads: Span::new(2, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
     ]);
     let mask_indices = &[Some(0u32), Some(0u32), Some(1u32)];
@@ -417,7 +419,6 @@ fn stencil_text_only_group_still_writes_mask() {
         }),
         quads: Span::new(0, 0),
         texts: Span::new(0, 1),
-        meshes: Span::default(),
     }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
@@ -439,7 +440,6 @@ fn setscissor_steps_present_under_partial_damage() {
         rounded_clip: None,
         quads: Span::new(0, 1),
         texts: Span::new(0, 0),
-        meshes: Span::default(),
     }]);
     let damage = URect::new(0, 0, 80, 80);
     let steps = collect(&buf, Some(damage), &[], false);
@@ -464,7 +464,6 @@ fn group_outside_damage_emits_no_steps() {
             rounded_clip: None,
             quads: Span::new(0, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
         // Group 1: outside damage
         DrawGroup {
@@ -472,7 +471,6 @@ fn group_outside_damage_emits_no_steps() {
             rounded_clip: None,
             quads: Span::new(1, 1),
             texts: Span::new(0, 0),
-            meshes: Span::default(),
         },
     ]);
     let damage = URect::new(0, 0, 40, 40);
@@ -514,14 +512,12 @@ fn text_batch_spanning_two_groups_emits_once_at_last_group() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 1),
-                meshes: Span::default(),
             },
             DrawGroup {
                 scissor: None,
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(1, 1),
-                meshes: Span::default(),
             },
         ],
         vec![TextBatch {
@@ -547,7 +543,6 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 1),
-                meshes: Span::default(),
             },
             // Group 1: trailing quad-only group (different batch state).
             DrawGroup {
@@ -555,7 +550,6 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(0, 0),
-                meshes: Span::default(),
             },
         ],
         vec![TextBatch {
@@ -586,14 +580,12 @@ fn text_batch_anchored_in_damage_skipped_group_still_emits() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 1),
-                meshes: Span::default(),
             },
             DrawGroup {
                 scissor: Some(URect::new(60, 0, 40, 50)),
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(1, 1),
-                meshes: Span::default(),
             },
         ],
         vec![TextBatch {
@@ -626,7 +618,6 @@ fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 1),
-                meshes: Span::default(),
             },
             DrawGroup {
                 // Final group, outside damage.
@@ -634,7 +625,6 @@ fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(1, 1),
-                meshes: Span::default(),
             },
         ],
         vec![TextBatch {
@@ -662,14 +652,12 @@ fn two_text_batches_emit_at_their_own_last_groups() {
                 rounded_clip: None,
                 quads: Span::new(0, 1),
                 texts: Span::new(0, 1),
-                meshes: Span::default(),
             },
             DrawGroup {
                 scissor: None,
                 rounded_clip: None,
                 quads: Span::new(1, 1),
                 texts: Span::new(1, 1),
-                meshes: Span::default(),
             },
         ],
         vec![
@@ -691,5 +679,64 @@ fn two_text_batches_emit_at_their_own_last_groups() {
             DrawOp::Quads(1),
             DrawOp::Text(1),
         ],
+    );
+}
+
+/// Pin: each mesh-emitting group contributes its own `MeshBatch`,
+/// drained at the group iteration anchored by `last_group`. Two
+/// adjacent mesh groups → two emit steps, in order.
+#[test]
+fn mesh_batches_emit_per_group_in_order() {
+    let buf = buf_with_mesh_anchors(
+        vec![
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+        ],
+        &[0, 1],
+    );
+    assert_eq!(
+        simplify(&buf, &collect(&buf, None, &[], false)),
+        vec![DrawOp::Meshes(0), DrawOp::Meshes(1)],
+    );
+}
+
+/// Pin: a mesh batch anchored in a damage-skipped group is silently
+/// dropped — the stale-cursor advance at the top of each schedule
+/// iteration moves past it, so no `MeshBatch` step is emitted for
+/// invisible meshes. Counter-pin: the visible group still drains
+/// its own batch.
+#[test]
+fn mesh_batch_in_damage_skipped_group_drops_silently() {
+    let buf = buf_with_mesh_anchors(
+        vec![
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+            DrawGroup {
+                scissor: Some(URect::new(50, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+        ],
+        &[0, 1],
+    );
+    let damage = Some(URect::new(50, 0, 50, 100));
+    assert_eq!(
+        simplify(&buf, &collect(&buf, damage, &[], false)),
+        vec![DrawOp::PreClear, DrawOp::Meshes(1)],
     );
 }

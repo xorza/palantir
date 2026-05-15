@@ -183,21 +183,12 @@ fn lerp_at(
     let ca = linear[i - 1];
     let cb = linear[i];
     match interp {
-        Interp::Srgb => lerp_srgb_linear(ca, cb, u),
-        Interp::Linear => lerp_linear(ca, cb, u),
+        // `Srgb` and `Linear` are numerically identical under linear-u8
+        // atlas storage — they only diverged when the atlas used sRGB
+        // bytes. Kept as distinct enum variants for API stability.
+        Interp::Srgb | Interp::Linear => lerp_linear(ca, cb, u),
         Interp::Oklab => lerp_oklab(ca, cb, oklab[i - 1], oklab[i], u),
     }
-}
-
-/// Lerp two pre-unpacked `Color`s component-wise. Since the atlas now
-/// stores linear u8 (no sRGB encoding), `Srgb` interp degenerates to
-/// the same per-channel linear lerp as `Linear` — kept as a distinct
-/// arm so `Interp::Srgb` still routes through a named path (the
-/// difference between `Srgb` and `Linear` lived in the old sRGB-byte
-/// quantisation, which is gone).
-#[inline]
-fn lerp_srgb_linear(ca: Color, cb: Color, u: f32) -> ColorU8 {
-    lerp_linear(ca, cb, u)
 }
 
 /// Lerp in linear-RGB. Stops are pre-decoded to `Color` once in
