@@ -395,6 +395,26 @@ impl DamageEngine {
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
         Damage::new(surface, region)
     }
+
+    /// PaintOnly fast path. The tree wasn't rebuilt this frame, so
+    /// every node would match its prev snapshot and contribute nothing
+    /// to the structural diff — skip Pass 1 entirely. Only the
+    /// caller-supplied predamaged anim rects matter.
+    pub(crate) fn compute_paint_only(
+        &mut self,
+        surface: Rect,
+        pre_damaged_rects: impl IntoIterator<Item = Rect>,
+    ) -> Damage {
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.dirty.clear();
+            self.subtree_skips = 0;
+        }
+        self.raw_rects.clear();
+        self.raw_rects.extend(pre_damaged_rects);
+        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+        Damage::new(surface, region)
+    }
 }
 
 #[cfg(test)]
