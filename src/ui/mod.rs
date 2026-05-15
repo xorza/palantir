@@ -32,7 +32,6 @@ use crate::ui::frame_state::FrameState;
 use crate::ui::frame_stats::record_frame_stats;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use rustc_hash::FxHashSet;
 use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
@@ -366,30 +365,39 @@ impl Ui {
         // dropped between frames. On `PaintOnly` no widgets were
         // recorded so nothing was removed — pass an empty set
         // instead of stale state from the previous frame.
-        let empty_removed = FxHashSet::<WidgetId>::default();
-        let (removed, force_full) = match plan {
-            FramePlan::PaintOnly => (&empty_removed, false),
-            FramePlan::FullRecord { force_full } => (&self.forest.ids.removed, force_full),
-        };
-        let predamaged = (!force_full)
-            .then(|| {
-                predamaged_rects(
+        let surface = self.display.logical_rect();
+        let damage = match plan {
+            FramePlan::PaintOnly => {
+                let predamaged = predamaged_rects(
                     &self.forest,
                     &self.layout.cascades,
                     self.prev_stamp.map(|s| s.time),
                     self.time,
+                );
+                self.damage_engine.compute_paint_only(surface, predamaged)
+            }
+            FramePlan::FullRecord { force_full } => {
+                let predamaged = (!force_full)
+                    .then(|| {
+                        predamaged_rects(
+                            &self.forest,
+                            &self.layout.cascades,
+                            self.prev_stamp.map(|s| s.time),
+                            self.time,
+                        )
+                    })
+                    .into_iter()
+                    .flatten();
+                self.damage_engine.compute(
+                    &self.forest,
+                    &self.layout.cascades,
+                    &self.forest.ids.removed,
+                    surface,
+                    force_full,
+                    predamaged,
                 )
-            })
-            .into_iter()
-            .flatten();
-        let damage = self.damage_engine.compute(
-            &self.forest,
-            &self.layout.cascades,
-            removed,
-            self.display.logical_rect(),
-            force_full,
-            predamaged,
-        );
+            }
+        };
 
         // Skip frames have nothing for the host to submit, so ack
         // here — otherwise `frame_state` stays `Pending` and the next
