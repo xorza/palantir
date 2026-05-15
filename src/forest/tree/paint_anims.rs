@@ -90,16 +90,6 @@ impl PaintAnims {
         self.by_shape.push(idx as u16);
     }
 
-    /// True if at least one entry's next-wake fell in `(prev_now, now]`
-    /// — i.e. the visible state actually flipped since last frame.
-    /// Used by `Ui::frame_inner`'s short-circuit gate to confirm the
-    /// frame fired *because* of a paint anim, not despite one.
-    pub(crate) fn any_fired(&self, prev_now: Duration, now: Duration) -> bool {
-        self.entries
-            .iter()
-            .any(|e| e.anim.next_wake(prev_now) <= now)
-    }
-
     /// Sample the anim attached to shape `shape_idx`, if any. Returns
     /// [`PaintMod::IDENTITY`] on the hot path (no anim — the vast
     /// majority of shapes), so callers can fold the result
