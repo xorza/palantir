@@ -17,7 +17,8 @@ use crate::forest::tree::Layer;
 use crate::input::keyboard::KeyboardEvent;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
-use crate::input::subscriptions::{KeyChord, KeyboardSense, PointerSense};
+use crate::input::shortcut::Shortcut;
+use crate::input::subscriptions::{KeyboardSense, PointerSense};
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
@@ -571,11 +572,11 @@ impl Ui {
         self.input.subs.pointer_mask |= flags;
     }
 
-    /// Declare interest in a specific key chord (e.g. `Escape`,
-    /// `Ctrl+K`). Idempotent — duplicate subscribers collapse.
-    /// Cleared every full record pass.
-    pub fn subscribe_key(&mut self, chord: KeyChord) {
-        self.input.subs.subscribe_key(chord);
+    /// Declare interest in a specific shortcut (e.g. `Shortcut::key(Key::Escape)`,
+    /// `Shortcut::cmd('K')`). Idempotent — duplicate subscribers
+    /// collapse. Cleared every full record pass.
+    pub fn subscribe_key(&mut self, sc: Shortcut) {
+        self.input.subs.subscribe_key(sc);
     }
 
     /// Unified pointer event stream captured this frame. Each

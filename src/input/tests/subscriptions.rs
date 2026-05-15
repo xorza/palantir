@@ -10,7 +10,8 @@ use crate::Ui;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
-use crate::input::subscriptions::{KeyChord, PointerSense};
+use crate::input::shortcut::Shortcut;
+use crate::input::subscriptions::PointerSense;
 use crate::support::testing::{new_ui, run_at_acked};
 use glam::{UVec2, Vec2};
 
@@ -32,10 +33,7 @@ fn empty_sub_move(ui: &mut Ui) {
 
 fn empty_sub_escape(ui: &mut Ui) {
     empty(ui);
-    ui.subscribe_key(KeyChord {
-        key: Key::Escape,
-        mods: Modifiers::NONE,
-    });
+    ui.subscribe_key(Shortcut::key(Key::Escape));
 }
 
 #[test]
@@ -135,11 +133,15 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
     });
     assert!(!delta.requests_repaint);
 
-    let ctrl = Modifiers {
-        ctrl: true,
+    // Alt+Escape: subscriber asked for bare Escape → no match.
+    // (Avoid ctrl here: on macOS, raw Ctrl isn't represented in
+    // `Shortcut`'s `Mods` vocabulary, so ctrl+Escape would *match*
+    // Shortcut::key(Escape) — a documented platform compromise.)
+    let alt = Modifiers {
+        alt: true,
         ..Modifiers::NONE
     };
-    let _ = ui.on_input(InputEvent::ModifiersChanged(ctrl));
+    let _ = ui.on_input(InputEvent::ModifiersChanged(alt));
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,

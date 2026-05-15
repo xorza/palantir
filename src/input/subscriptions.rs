@@ -21,6 +21,7 @@
 //! pay nothing.
 
 use crate::input::keyboard::{Key, Modifiers};
+use crate::input::shortcut::Shortcut;
 use bitflags::bitflags;
 
 bitflags! {
@@ -77,38 +78,37 @@ impl KeyboardSense {
     pub const NONE: Self = Self::empty();
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct KeyChord {
-    pub key: Key,
-    pub mods: Modifiers,
-}
-
 /// Per-`Ui` wake-gate registry. Cleared pre-record; widgets re-OR /
 /// re-push their declarations during record.
 #[derive(Default)]
 pub(crate) struct Subscriptions {
     pub(crate) pointer_mask: PointerSense,
     pub(crate) keyboard_mask: KeyboardSense,
-    pub(crate) keys: Vec<KeyChord>,
+    /// Specific-chord wake list. [`Shortcut`] carries platform-aware
+    /// `Mods` (Cmd↔Ctrl) + ignore-case `Char` matching — the same
+    /// vocabulary menus / context-menus use, so subscriptions and
+    /// menu shortcuts share one type.
+    pub(crate) keys: Vec<Shortcut>,
 }
 
 impl Subscriptions {
-    /// Idempotent push — duplicate chords from multiple subscribers
-    /// collapse to one entry. Linear `contains` is fine at the
-    /// expected count. (Direct field assignment is the pattern for
-    /// `pointer_mask` / `keyboard_mask` — both are `pub(crate)` and
-    /// `Ui::subscribe_pointer` / `Ui::subscribe_keyboard` OR into them
-    /// inline; the dedup logic here is the only non-trivial bit.)
-    pub(crate) fn subscribe_key(&mut self, chord: KeyChord) {
-        if !self.keys.contains(&chord) {
-            self.keys.push(chord);
+    /// Idempotent push — duplicate shortcuts from multiple
+    /// subscribers collapse to one entry. Linear `contains` is fine
+    /// at the expected count. (Direct field assignment is the
+    /// pattern for `pointer_mask` / `keyboard_mask` — both are
+    /// `pub(crate)` and `Ui::subscribe_pointer` /
+    /// `Ui::subscribe_keyboard` OR into them inline; the dedup logic
+    /// here is the only non-trivial bit.)
+    pub(crate) fn subscribe_key(&mut self, sc: Shortcut) {
+        if !self.keys.contains(&sc) {
+            self.keys.push(sc);
         }
     }
 
     /// Test whether a key event would wake any specific-chord
     /// subscriber.
     pub(crate) fn matches_key(&self, key: Key, mods: Modifiers) -> bool {
-        self.keys.iter().any(|c| c.key == key && c.mods == mods)
+        self.keys.iter().any(|s| s.matches_key(key, mods))
     }
 
     /// Capacity-retained pre-record clear. Called from
