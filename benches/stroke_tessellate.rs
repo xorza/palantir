@@ -7,7 +7,7 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::support::internals::{TessColorMode, TessStyle, tessellate_polyline_for_bench};
-use palantir::{Color, LineCap, LineJoin, MeshVertex};
+use palantir::{Color, ColorU8, LineCap, LineJoin, MeshVertex};
 use std::hint::black_box;
 
 fn zigzag(n: usize, period: f32, amplitude: f32) -> Vec<Vec2> {
@@ -29,16 +29,16 @@ fn smooth_curve(n: usize, dx: f32) -> Vec<Vec2> {
         .collect()
 }
 
-fn red() -> Color {
-    Color::rgba(1.0, 0.0, 0.0, 1.0)
+fn red() -> ColorU8 {
+    ColorU8::from(Color::rgba(1.0, 0.0, 0.0, 1.0))
 }
-fn green() -> Color {
-    Color::rgba(0.0, 1.0, 0.0, 1.0)
+fn green() -> ColorU8 {
+    ColorU8::from(Color::rgba(0.0, 1.0, 0.0, 1.0))
 }
 
 fn run(
     points: &[Vec2],
-    colors: &[Color],
+    colors: &[ColorU8],
     style: TessStyle,
     verts: &mut Vec<MeshVertex>,
     indices: &mut Vec<u16>,
@@ -68,16 +68,16 @@ fn bench_tessellate(c: &mut Criterion) {
     // Smooth 1000-pt curve: every interior is a shallow miter →
     // single-cross-section merged path.
     let smooth_1k = smooth_curve(1000, 1.0);
-    let smooth_1k_per_pt: Vec<Color> = (0..1000)
+    let smooth_1k_per_pt: Vec<ColorU8> = (0..1000)
         .map(|i| {
             let t = i as f32 / 999.0;
-            Color::rgba(t, 1.0 - t, 0.5, 1.0)
+            ColorU8::from(Color::rgba(t, 1.0 - t, 0.5, 1.0))
         })
         .collect();
-    let smooth_1k_per_seg: Vec<Color> = (0..999)
+    let smooth_1k_per_seg: Vec<ColorU8> = (0..999)
         .map(|i| {
             let t = i as f32 / 998.0;
-            Color::rgba(t, 1.0 - t, 0.5, 1.0)
+            ColorU8::from(Color::rgba(t, 1.0 - t, 0.5, 1.0))
         })
         .collect();
 
@@ -205,7 +205,7 @@ fn bench_tessellate(c: &mut Criterion) {
 
     // PerSegment alternating — defeats the merge, two cross-
     // sections at every interior join.
-    let alt_per_seg: Vec<Color> = (0..999)
+    let alt_per_seg: Vec<ColorU8> = (0..999)
         .map(|i| if i & 1 == 0 { red() } else { green() })
         .collect();
     group.bench_function("smooth1k/per_segment_alt/butt_miter/w2", |b| {

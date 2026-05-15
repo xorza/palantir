@@ -12,7 +12,7 @@ use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::layout::types::span::Span;
 use crate::primitives::bezier::FlatPoint;
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -50,8 +50,10 @@ pub struct FrameArena {
     pub(crate) polyline_points: Vec<Vec2>,
     /// Color storage for `ShapeRecord::Polyline`. Length per
     /// record is 1, `points.len()`, or `points.len() - 1` per
-    /// `ColorMode`.
-    pub(crate) polyline_colors: Vec<Color>,
+    /// `ColorMode`. Stored as `ColorU8` (4 B/elem, same precision
+    /// the tessellator's destination `MeshVertex.color` uses) —
+    /// quantization happens once at lowering, not per-emitted-vertex.
+    pub(crate) polyline_colors: Vec<ColorU8>,
     /// Scratch for bezier flattening. Cleared (length only) at the
     /// top of every bezier lowering; the flattened points are copied
     /// into `polyline_points` immediately after.
@@ -99,7 +101,8 @@ impl FrameArena {
         let c_start = self.polyline_colors.len() as u32;
         let bbox = match points.split_first() {
             None => {
-                self.polyline_colors.extend_from_slice(color_slice);
+                self.polyline_colors
+                    .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
                 Rect::ZERO
             }
             Some((&first, rest)) => {
@@ -112,7 +115,8 @@ impl FrameArena {
                     lo = lo.min(p);
                     hi = hi.max(p);
                 }
-                self.polyline_colors.extend_from_slice(color_slice);
+                self.polyline_colors
+                    .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
                 Rect {
                     min: lo,
                     size: Size {
@@ -180,7 +184,7 @@ impl FrameArena {
             lo = lo.min(fp.p);
             hi = hi.max(fp.p);
         }
-        self.polyline_colors.push(color);
+        self.polyline_colors.push(color.into());
 
         let mut h = FxHasher::new();
         let degree = match ctrl {

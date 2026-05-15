@@ -1,22 +1,22 @@
 use super::*;
 use crate::primitives::color::ColorU8;
 
-fn red() -> Color {
-    Color {
+fn red() -> ColorU8 {
+    ColorU8::from(Color {
         r: 1.0,
         g: 0.0,
         b: 0.0,
         a: 1.0,
-    }
+    })
 }
 
-fn green() -> Color {
-    Color {
+fn green() -> ColorU8 {
+    ColorU8::from(Color {
         r: 0.0,
         g: 1.0,
         b: 0.0,
         a: 1.0,
-    }
+    })
 }
 
 /// Single-color: horizontal 2-point line at width=2.
@@ -44,9 +44,9 @@ fn single_horizontal_line_geometry() {
     assert_eq!(v[0].pos, Vec2::new(0.0, 1.5));
     assert_eq!(v[0].color.a, 0);
     assert_eq!(v[1].pos, Vec2::new(0.0, 1.0));
-    assert_eq!(v[1].color, ColorU8::from(red()));
+    assert_eq!(v[1].color, red());
     assert_eq!(v[2].pos, Vec2::new(0.0, -1.0));
-    assert_eq!(v[2].color, ColorU8::from(red()));
+    assert_eq!(v[2].color, red());
     assert_eq!(v[3].pos, Vec2::new(0.0, -1.5));
     assert_eq!(v[3].color.a, 0);
 }
@@ -100,9 +100,9 @@ fn per_point_colors_distinct_per_cross_section() {
         &mut i,
     );
     assert_eq!(v.len(), 12);
-    assert_eq!(v[1].color, ColorU8::from(red()));
-    assert_eq!(v[5].color, ColorU8::from(green()));
-    assert_eq!(v[9].color, ColorU8::from(red()));
+    assert_eq!(v[1].color, red());
+    assert_eq!(v[5].color, green());
+    assert_eq!(v[9].color, red());
 }
 
 /// PerSegment: interior cross-section duplicates; both copies
@@ -124,12 +124,12 @@ fn per_segment_duplicates_interior_cross_sections() {
         &mut i,
     );
     assert_eq!(v.len(), 16);
-    assert_eq!(v[1].color, ColorU8::from(red()));
+    assert_eq!(v[1].color, red());
     assert_eq!(v[5].pos.x, 10.0);
-    assert_eq!(v[5].color, ColorU8::from(red()));
+    assert_eq!(v[5].color, red());
     assert_eq!(v[9].pos.x, 10.0);
-    assert_eq!(v[9].color, ColorU8::from(green()));
-    assert_eq!(v[13].color, ColorU8::from(green()));
+    assert_eq!(v[9].color, green());
+    assert_eq!(v[13].color, green());
     assert_eq!(i.len(), 36);
 }
 
@@ -302,7 +302,7 @@ fn per_segment_round_caps() {
     assert_eq!(i.len(), 108);
     // First cap's center sits at verts[4] (after endpoint block) with red color.
     assert_eq!(v[4].pos, Vec2::ZERO);
-    assert_eq!(v[4].color, ColorU8::from(red()));
+    assert_eq!(v[4].color, red());
 }
 
 /// PerSegment + Bevel at a 90° join: dual cross-sections at the
@@ -543,7 +543,7 @@ fn coincident_points_filtered_per_segment() {
     assert_eq!(v.len(), 8);
     assert_eq!(i.len(), 18);
     // Surviving segment's color is the second (green).
-    assert_eq!(v[5].color, ColorU8::from(green()));
+    assert_eq!(v[5].color, green());
 }
 
 /// All-coincident input emits nothing.
@@ -643,14 +643,14 @@ fn per_point_round_caps_use_endpoint_color() {
     // Start cap center sits right after the first endpoint cross-section.
     let first_cap_center = v[4];
     assert_eq!(first_cap_center.pos, Vec2::ZERO);
-    assert_eq!(first_cap_center.color, ColorU8::from(red()));
+    assert_eq!(first_cap_center.color, red());
     // End cap center sits after the last endpoint block. Width=2 ⇒
     // round_segments=4 ⇒ each fan = 1 + 2·(4+1) = 11 verts. Layout:
     // 4 (start endpoint) + 11 (start cap) + 4 (interior) + 4 (end endpoint) + 11 (end cap) = 34.
     assert_eq!(v.len(), 34);
     let last_cap_center = v[4 + 11 + 4 + 4];
     assert_eq!(last_cap_center.pos, Vec2::new(20.0, 0.0));
-    assert_eq!(last_cap_center.color, ColorU8::from(red()));
+    assert_eq!(last_cap_center.color, red());
 }
 
 /// Zero / negative / NaN widths short-circuit cleanly — no verts,
