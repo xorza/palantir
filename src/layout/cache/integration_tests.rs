@@ -16,7 +16,8 @@ use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
 use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::{encode_cmds, new_ui_text, run_at_acked, ui_with_text};
+use crate::support::testing::new_ui;
+use crate::support::testing::{encode_cmds, run_at_acked, ui_with_text};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -334,7 +335,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             });
     };
 
-    let mut ui = new_ui_text();
+    let mut ui = new_ui();
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         let mut warm_nodes = Vec::new();

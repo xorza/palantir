@@ -4,13 +4,14 @@ use crate::input::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::support::testing::new_ui;
 use crate::support::testing::run_at_acked;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 #[test]
 fn nested_scroll_panels_route_to_innermost_under_pointer() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let surface = UVec2::new(300, 300);
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -45,7 +46,7 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
 
 #[test]
 fn scroll_delta_zero_for_non_target() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()
@@ -69,7 +70,7 @@ fn scroll_delta_zero_for_non_target() {
 
 #[test]
 fn pointer_left_clears_scroll_target() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()

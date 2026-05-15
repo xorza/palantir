@@ -71,7 +71,7 @@ Two test-facing wrappers in `harness/mod.rs`:
   warmup count. Use when debugging the harness itself or pinning a
   specific multi-phase behavior.
 
-Both run a fixed 800×600 logical display, drive `Ui::default()`, and on
+Both run a fixed 800×600 logical display, drive `new_ui()`, and on
 budget violation dump captured backtraces (filtered to user code via
 `format::user_frames`) before panicking.
 

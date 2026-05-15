@@ -1,15 +1,15 @@
-use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::support::internals::ResponseNodeExt;
+use crate::support::testing::new_ui;
 use crate::support::testing::under_outer;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn canvas_places_child_at_position_within_inner_rect() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
@@ -40,7 +40,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
 
 #[test]
 fn canvas_hugs_to_bounding_box_of_placed_children() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
@@ -70,7 +70,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     // Canvas measures `max(pos + desired)` starting at zero, so children
     // placed at negative coords don't grow the panel — they just bleed past
     // the inner top-left.
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
@@ -117,7 +117,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
         ("hug_canvas_falls_back_to_intrinsic", None, 0.0),
     ];
     for (label, fixed_size, expected) in cases {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
             let mut canvas = Panel::canvas().auto_id();
             if let Some(s) = *fixed_size {
@@ -147,7 +147,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
 
 #[test]
 fn canvas_collapsed_child_does_not_grow_bbox() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()
             .auto_id()
@@ -181,7 +181,7 @@ fn canvas_collapsed_child_does_not_grow_bbox() {
 /// rely on for free-form placement.
 #[test]
 fn canvas_ignores_child_align() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let mut child = None;
     let _panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::canvas()

@@ -6,6 +6,37 @@ use crate::Ui;
 use crate::common::frame_arena::new_handle;
 use crate::forest::element::Configure;
 use crate::forest::shapes::record::ShapeRecord;
+use crate::renderer::frontend::Frontend;
+use crate::text::TextShaper;
+
+/// Test-only `Ui` with the **mono-fallback** shaper and a fresh
+/// private frame arena. Replaces the deleted `impl Default for Ui`;
+/// many tests rely on the predictable 8 px/char widths that the mono
+/// fallback gives. Tests that need real text shaping use
+/// [`new_ui_text`] instead.
+pub(crate) fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
+
+/// Test-only `Ui` with a thread-shared cosmic shaper. Parsed once per
+/// thread (font-database build is multi-ms) so calling this in a
+/// tight loop pays the per-thread cost once. Cosmic state across
+/// tests is just a glyph cache — fine for layout-output assertions.
+pub(crate) fn new_ui_text() -> Ui {
+    thread_local! {
+        static SHARED: TextShaper = TextShaper::with_bundled_fonts();
+    }
+    Ui::new(SHARED.with(|c| c.clone()), new_handle())
+}
+
+/// Test-only `Frontend` with a private (disjoint-from-Ui) frame
+/// arena. Production wiring goes through [`crate::Host::new`] which
+/// builds both `Ui` and `Frontend` with the same shared handle.
+/// Fine for tests that don't push user-mesh or polyline shapes —
+/// rect-only fixtures don't read from the arena.
+pub(crate) fn new_frontend() -> Frontend {
+    Frontend::new(new_handle())
+}
 #[allow(unused_imports)]
 use crate::forest::tree::Layer;
 use crate::forest::tree::{NodeId, Tree, TreeItem};
@@ -14,7 +45,6 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::encode;
-use crate::text::TextShaper;
 use crate::ui::damage::region::DamageRegion;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -53,7 +83,7 @@ pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)
 /// drive a frame. For tests that introspect `ui.display` before
 /// recording or pre-seed `Ui` state.
 pub(crate) fn ui_at(size: UVec2) -> Ui {
-    let mut ui = Ui::default();
+    let mut ui = crate::support::testing::new_ui();
     ui.display = Display::from_physical(size, 1.0);
     ui
 }
@@ -62,20 +92,6 @@ pub(crate) fn ui_with_text(size: UVec2) -> Ui {
     let mut ui = new_ui_text();
     ui.display = Display::from_physical(size, 1.0);
     ui
-}
-
-pub(crate) fn new_ui_text() -> Ui {
-    // Cosmic-text's `FontSystem` parses bundled font bytes on
-    // construction — expensive (multiple ms). Tests that loop over
-    // many widths or sizes call `ui_with_text` per iteration; sharing
-    // one `TextShaper` per thread amortizes the parse across the
-    // thread's lifetime and cuts cross-driver test runtime ~10×.
-    // Fine because cosmic state across tests is just a glyph cache —
-    // tests assert on layout output, not cache contents.
-    thread_local! {
-        static SHARED: TextShaper = TextShaper::with_bundled_fonts();
-    }
-    Ui::new(SHARED.with(|c| c.clone()), new_handle())
 }
 
 /// Wrap the unit-under-test inside an outer `Fill` HStack so the panel
