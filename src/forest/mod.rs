@@ -7,7 +7,8 @@ use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{RecordOutcome, SeenIds};
-use crate::forest::tree::{Layer, NodeId, PAINT_ANIM_NONE, PaintAnimEntry, PendingAnchor, Tree};
+use crate::forest::tree::paint_anims::PaintAnimEntry;
+use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
@@ -174,7 +175,7 @@ impl Forest {
             "add_shape called with no open node",
         );
         if tree.shapes.add(shape, arena).is_some() {
-            tree.paint_anim_by_shape.push(PAINT_ANIM_NONE);
+            tree.paint_anims.push_unanimated();
         }
     }
 
@@ -198,19 +199,12 @@ impl Forest {
         let Some(shape_idx) = tree.shapes.add(shape, arena) else {
             return;
         };
-        let entry_idx = tree.paint_anims.len();
-        assert!(
-            entry_idx < PAINT_ANIM_NONE as usize,
-            "more than {} paint-anim entries in one tree — bump paint_anim_by_shape to u32",
-            PAINT_ANIM_NONE,
-        );
-        tree.paint_anims.push(PaintAnimEntry {
+        tree.paint_anims.push_entry(PaintAnimEntry {
             anim,
             shape_idx,
             node: owner,
             last_quantum: 0,
         });
-        tree.paint_anim_by_shape.push(entry_idx as u16);
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
