@@ -172,32 +172,56 @@ impl Mesh {
         self
     }
 
-    /// Convenience: filled triangle in a single color.
+    /// Convenience: filled triangle in a single color. Bbox falls out
+    /// of the three known vertices — pre-cached so the first `bbox()`
+    /// call is free.
     pub fn filled_triangle(a: Vec2, b: Vec2, c: Vec2, color: Color) -> Self {
         let mut m = Self::with_capacity(3, 3);
         let i0 = m.vertex(a, color);
         let i1 = m.vertex(b, color);
         let i2 = m.vertex(c, color);
         m.triangle(i0, i1, i2);
+        let lo = a.min(b).min(c);
+        let hi = a.max(b).max(c);
+        m.cached_bbox.set(Some(rect_from_extents(lo, hi)));
         m
     }
 
     /// Convenience: filled convex polygon (fan triangulation around the
     /// first vertex). For non-convex polygons the result is visually
-    /// wrong — caller's responsibility.
+    /// wrong — caller's responsibility. Bbox tracked during the fan
+    /// loop and pre-cached, so the first `bbox()` call is free.
     pub fn filled_polygon(points: &[Vec2], color: Color) -> Self {
         if points.len() < 3 {
             return Self::new();
         }
         let mut m = Self::with_capacity(points.len(), (points.len() - 2) * 3);
+        let mut lo = points[0];
+        let mut hi = points[0];
         let i0 = m.vertex(points[0], color);
         let mut prev = m.vertex(points[1], color);
+        lo = lo.min(points[1]);
+        hi = hi.max(points[1]);
         for &p in &points[2..] {
             let next = m.vertex(p, color);
             m.triangle(i0, prev, next);
             prev = next;
+            lo = lo.min(p);
+            hi = hi.max(p);
         }
+        m.cached_bbox.set(Some(rect_from_extents(lo, hi)));
         m
+    }
+}
+
+#[inline]
+fn rect_from_extents(lo: Vec2, hi: Vec2) -> Rect {
+    Rect {
+        min: lo,
+        size: Size {
+            w: hi.x - lo.x,
+            h: hi.y - lo.y,
+        },
     }
 }
 
@@ -214,13 +238,7 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
         lo = lo.min(v.pos);
         hi = hi.max(v.pos);
     }
-    Rect {
-        min: lo,
-        size: Size {
-            w: hi.x - lo.x,
-            h: hi.y - lo.y,
-        },
-    }
+    rect_from_extents(lo, hi)
 }
 
 #[cfg(test)]
@@ -319,6 +337,42 @@ mod tests {
         let h = m.content_hash();
         let c = m.clone();
         assert_eq!(c.cached_hash.get(), Some(h));
+    }
+
+    #[test]
+    fn filled_triangle_precaches_bbox() {
+        let m = Mesh::filled_triangle(
+            Vec2::new(-1.0, 2.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 7.0),
+            Color::default(),
+        );
+        // No `bbox()` call yet — must already be cached.
+        let cached = m
+            .cached_bbox
+            .get()
+            .expect("filled_triangle should pre-cache bbox");
+        assert_eq!(cached.min, Vec2::new(-1.0, 2.0));
+        assert_eq!(cached.size.w, 5.0);
+        assert_eq!(cached.size.h, 5.0);
+    }
+
+    #[test]
+    fn filled_polygon_precaches_bbox() {
+        let pts = [
+            Vec2::new(0.0, 0.0),
+            Vec2::new(3.0, 0.0),
+            Vec2::new(3.0, 2.0),
+            Vec2::new(0.0, 2.0),
+        ];
+        let m = Mesh::filled_polygon(&pts, Color::default());
+        let cached = m
+            .cached_bbox
+            .get()
+            .expect("filled_polygon should pre-cache bbox");
+        assert_eq!(cached.min, Vec2::ZERO);
+        assert_eq!(cached.size.w, 3.0);
+        assert_eq!(cached.size.h, 2.0);
     }
 
     #[test]
