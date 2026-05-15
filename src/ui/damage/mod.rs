@@ -234,7 +234,7 @@ impl DamageEngine {
         pre_damaged_rects: impl IntoIterator<Item = Rect>,
     ) -> Damage {
         // `force_full` is the "treat as a fresh frame" signal — set
-        // by the caller when `Ui::should_invalidate_prev` decided
+        // by the caller when `Ui::classify_frame` decided
         // this frame must repaint everything (surface changed, last
         // frame wasn't acked, or first frame). Caller has already
         // called `invalidate_prev` to drop the per-widget snapshot

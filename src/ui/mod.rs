@@ -172,7 +172,7 @@ pub struct Ui {
     /// Time + display from the previous successful frame, or `None`
     /// before the first frame and after
     /// [`DamageEngine::invalidate_prev`] rewinds the snapshot.
-    /// Drives `should_invalidate_prev` (surface-change detection)
+    /// Drives `classify_frame` (surface-change detection)
     /// and the paint-anim damage gate
     /// (`anim.next_wake(prev.time) <= now`). Updated at the bottom
     /// of `frame_inner` on every path.
@@ -324,7 +324,7 @@ impl Ui {
         // Pending until the renderer (`Host::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
         // ack via `ui.frame_state.mark_submitted()` or the next
-        // frame's `should_invalidate_prev` will force a `Full`.
+        // frame's `classify_frame` will force a `Full`.
         self.frame_state.mark_pending();
 
         let processing = match plan {
@@ -391,7 +391,7 @@ impl Ui {
 
         // Skip frames have nothing for the host to submit, so ack
         // here — otherwise `frame_state` stays `Pending` and the next
-        // paint frame's `should_invalidate_prev` escalates to `Full`.
+        // paint frame's `classify_frame` escalates to `Full`.
         if damage.is_none() {
             self.frame_state.mark_submitted();
         }
@@ -459,7 +459,22 @@ impl Ui {
             .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
         self.repaint_wakes.drain(..fired_count);
 
-        let force_full = self.should_invalidate_prev(display);
+        // Discard the prev-frame damage snapshot on first frame, on a
+        // surface-rect change, or when the host failed to confirm
+        // submission of the last frame.
+        let display_changed = self
+            .prev_stamp
+            .is_some_and(|prev| prev.display.logical_rect() != display.logical_rect());
+        let frame_skipped = !self.frame_state.was_last_submitted();
+        let force_full = display_changed || frame_skipped;
+        if force_full {
+            tracing::debug!(
+                display_changed,
+                frame_skipped,
+                first_frame = self.prev_stamp.is_none(),
+                "damage.invalidate_prev"
+            );
+        }
 
         // Anim-only fast path: prev frame is a valid baseline,
         // nothing record-side is waiting, and the wake that fired is
@@ -474,27 +489,6 @@ impl Ui {
         } else {
             FramePlan::FullRecord { force_full }
         }
-    }
-
-    /// Should we discard the last painted frame's damage snapshot? True
-    /// on first frame, on a surface-rect change, or when the host
-    /// failed to confirm submission of the last frame.
-    fn should_invalidate_prev(&self, new_display: Display) -> bool {
-        let new_surface = new_display.logical_rect();
-        let display_changed = self
-            .prev_stamp
-            .is_some_and(|prev| prev.display.logical_rect() != new_surface);
-        let frame_skipped = !self.frame_state.was_last_submitted();
-        let invalidate = display_changed || frame_skipped;
-        if invalidate {
-            tracing::debug!(
-                display_changed,
-                frame_skipped,
-                first_frame = self.prev_stamp.is_none(),
-                "damage.invalidate_prev"
-            );
-        }
-        invalidate
     }
 
     /// One `pre_record` → user record → drain action flag → `post_record`
