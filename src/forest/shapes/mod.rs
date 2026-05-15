@@ -8,29 +8,7 @@ use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
 use crate::primitives::brush::Brush;
-use crate::primitives::mesh::MeshVertex;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::shape::{PolylineColors, Shape};
-
-fn mesh_aabb(verts: &[MeshVertex]) -> Rect {
-    let Some((first, rest)) = verts.split_first() else {
-        return Rect::ZERO;
-    };
-    let mut lo = first.pos;
-    let mut hi = first.pos;
-    for v in rest {
-        lo = lo.min(v.pos);
-        hi = hi.max(v.pos);
-    }
-    Rect {
-        min: lo,
-        size: Size {
-            w: hi.x - lo.x,
-            h: hi.y - lo.y,
-        },
-    }
-}
 
 /// Per-frame shape store for one [`crate::forest::tree::Tree`].
 ///
@@ -246,7 +224,7 @@ impl Shapes {
                 let i_start = arena.meshes.indices.len() as u32;
                 arena.meshes.indices.extend_from_slice(&mesh.indices);
                 let content_hash = mesh.content_hash();
-                let bbox = mesh_aabb(&mesh.vertices);
+                let bbox = mesh.bbox();
                 ShapeRecord::Mesh {
                     local_rect,
                     tint: tint.expect_solid().into(),

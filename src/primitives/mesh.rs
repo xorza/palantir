@@ -1,4 +1,6 @@
 use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::rect::Rect;
+use crate::primitives::size::Size;
 use bytemuck::{Pod, Zeroable};
 use glam::Vec2;
 use rustc_hash::FxHasher;
@@ -57,6 +59,11 @@ pub struct Mesh {
     /// straight at `pub(crate)` fields — fine, since arena meshes
     /// never call `content_hash`.
     cached_hash: Cell<Option<u64>>,
+    /// Lazy cache of owner-local AABB. Same memoization contract as
+    /// `cached_hash`; populated by [`Self::bbox`], invalidated by
+    /// every public mutator. [`Self::with_known_bbox`] pre-seeds it
+    /// to skip the compute entirely.
+    cached_bbox: Cell<Option<Rect>>,
 }
 
 impl Mesh {
@@ -71,6 +78,7 @@ impl Mesh {
             vertices: Vec::with_capacity(vertices),
             indices: Vec::with_capacity(indices),
             cached_hash: Cell::new(None),
+            cached_bbox: Cell::new(None),
         }
     }
 
@@ -79,6 +87,7 @@ impl Mesh {
         self.vertices.clear();
         self.indices.clear();
         self.cached_hash.set(None);
+        self.cached_bbox.set(None);
     }
 
     #[inline]
@@ -109,6 +118,7 @@ impl Mesh {
         assert!(idx < u16::MAX as usize, "Mesh exceeds u16 vertex limit");
         self.vertices.push(MeshVertex::new(pos, color));
         self.cached_hash.set(None);
+        self.cached_bbox.set(None);
         idx as u16
     }
 
@@ -136,6 +146,28 @@ impl Mesh {
             self.indices.push(base + i);
         }
         self.cached_hash.set(None);
+        self.cached_bbox.set(None);
+    }
+
+    /// Owner-local AABB of `vertices`. Memoized; first call after any
+    /// public mutation does one O(n) pass, repeat calls are free.
+    /// Empty mesh returns `Rect::ZERO`.
+    pub fn bbox(&self) -> Rect {
+        if let Some(b) = self.cached_bbox.get() {
+            return b;
+        }
+        let b = compute_aabb(&self.vertices);
+        self.cached_bbox.set(Some(b));
+        b
+    }
+
+    /// Skip the lazy compute by handing over a pre-computed AABB.
+    /// Caller is responsible for correctness — a wrong bbox silently
+    /// breaks scissor culling. Use for procedural / baked meshes where
+    /// the AABB falls out of the construction algorithm.
+    pub fn with_known_bbox(self, bbox: Rect) -> Self {
+        self.cached_bbox.set(Some(bbox));
+        self
     }
 
     /// Convenience: filled triangle in a single color.
@@ -164,6 +196,25 @@ impl Mesh {
             prev = next;
         }
         m
+    }
+}
+
+fn compute_aabb(verts: &[MeshVertex]) -> Rect {
+    let Some((first, rest)) = verts.split_first() else {
+        return Rect::ZERO;
+    };
+    let mut lo = first.pos;
+    let mut hi = first.pos;
+    for v in rest {
+        lo = lo.min(v.pos);
+        hi = hi.max(v.pos);
+    }
+    Rect {
+        min: lo,
+        size: Size {
+            w: hi.x - lo.x,
+            h: hi.y - lo.y,
+        },
     }
 }
 
@@ -263,5 +314,72 @@ mod tests {
         let h = m.content_hash();
         let c = m.clone();
         assert_eq!(c.cached_hash.get(), Some(h));
+    }
+
+    #[test]
+    fn bbox_empty_mesh_is_zero() {
+        assert_eq!(Mesh::new().bbox(), Rect::ZERO);
+    }
+
+    #[test]
+    fn bbox_spans_vertex_extent() {
+        let m = Mesh::filled_triangle(
+            Vec2::new(-1.0, 2.0),
+            Vec2::new(4.0, 2.0),
+            Vec2::new(0.0, 7.0),
+            Color::default(),
+        );
+        let b = m.bbox();
+        assert_eq!(b.min, Vec2::new(-1.0, 2.0));
+        assert_eq!(b.size.w, 5.0);
+        assert_eq!(b.size.h, 5.0);
+    }
+
+    #[test]
+    fn bbox_memoizes_until_mutation() {
+        let mut m = red_tri();
+        let b0 = m.bbox();
+        assert_eq!(m.cached_bbox.get(), Some(b0));
+        m.vertex(Vec2::new(10.0, 10.0), Color::default());
+        assert_eq!(m.cached_bbox.get(), None);
+        let b1 = m.bbox();
+        assert_ne!(b0, b1);
+    }
+
+    #[test]
+    fn with_known_bbox_skips_compute() {
+        let bogus = Rect {
+            min: Vec2::new(100.0, 100.0),
+            size: Size { w: 1.0, h: 1.0 },
+        };
+        let m = red_tri().with_known_bbox(bogus);
+        assert_eq!(m.bbox(), bogus);
+    }
+
+    #[test]
+    fn clear_invalidates_bbox() {
+        let mut m = red_tri();
+        let _ = m.bbox();
+        m.clear();
+        assert_eq!(m.cached_bbox.get(), None);
+        assert_eq!(m.bbox(), Rect::ZERO);
+    }
+
+    #[test]
+    fn append_invalidates_bbox() {
+        let mut a = red_tri();
+        let _ = a.bbox();
+        let b = Mesh::filled_triangle(
+            Vec2::new(10.0, 10.0),
+            Vec2::new(11.0, 10.0),
+            Vec2::new(10.0, 11.0),
+            Color::default(),
+        );
+        a.append(&b);
+        assert_eq!(a.cached_bbox.get(), None);
+        let bb = a.bbox();
+        assert_eq!(bb.min, Vec2::ZERO);
+        assert_eq!(bb.size.w, 11.0);
+        assert_eq!(bb.size.h, 11.0);
     }
 }
