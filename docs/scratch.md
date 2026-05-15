@@ -8,9 +8,6 @@ PaintMod
 
 skip frame if window is not visible
 
-            #[cfg(any(test, feature = "internals"))]
-            paint_anim_only_frame_count: 0,
-
 let input_arrived = self.input.input_arrived_since_last_frame;
 self.input.input_arrived_since_last_frame = false;
 let wake_fired = fired > 0;
