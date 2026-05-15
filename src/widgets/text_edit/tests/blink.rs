@@ -198,8 +198,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 #[test]
 fn caret_blink_fires_paint_anim_only_short_circuit() {
     use crate::layout::types::display::Display;
-    use crate::support::internals::paint_anim_only_frames;
-    use crate::ui::frame_report::FrameReport;
+    use crate::ui::frame_report::{FrameProcessing, FrameReport};
     use std::time::Duration;
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -227,22 +226,19 @@ fn caret_blink_fires_paint_anim_only_short_circuit() {
     click_at(&mut ui, Vec2::new(20.0, 20.0));
     frame(&mut ui, &mut buf, 0.0);
 
-    // Mid-phase frame — neither full damage nor short-circuit fires
-    // (wake hasn't fired). Sanity-check the counter doesn't move.
-    let before = paint_anim_only_frames(&ui);
-    let _ = frame(&mut ui, &mut buf, 0.2);
-    assert_eq!(
-        paint_anim_only_frames(&ui),
-        before,
+    // Mid-phase frame — wake hasn't fired, full record path runs.
+    let report = frame(&mut ui, &mut buf, 0.2);
+    assert_ne!(
+        report.processing,
+        FrameProcessing::PaintOnly,
         "mid-phase frame must not take the short-circuit path",
     );
 
     // Cross-boundary wake fires. Nothing else changed → short-circuit.
-    let before = paint_anim_only_frames(&ui);
     let report = frame(&mut ui, &mut buf, 0.6);
     assert_eq!(
-        paint_anim_only_frames(&ui),
-        before + 1,
+        report.processing,
+        FrameProcessing::PaintOnly,
         "cross-boundary wake must take the short-circuit path",
     );
     assert!(
@@ -253,12 +249,11 @@ fn caret_blink_fires_paint_anim_only_short_circuit() {
     // Input arrival (pointer move) on a follow-up frame disqualifies
     // the next short-circuit even if a wake is firing — the closure
     // must run so widgets can react.
-    let before = paint_anim_only_frames(&ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
-    let _ = frame(&mut ui, &mut buf, 1.1);
-    assert_eq!(
-        paint_anim_only_frames(&ui),
-        before,
+    let report = frame(&mut ui, &mut buf, 1.1);
+    assert_ne!(
+        report.processing,
+        FrameProcessing::PaintOnly,
         "input arrival must force the full record path",
     );
 }

@@ -147,7 +147,7 @@ fn render_frame(
     let mut report =
         internals::host_cpu_frame(host, display, &mut (), |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
-        internals::force_report_damage_to_rects(&mut report, rects);
+        internals::force_report_damage_to_rects(&mut report, rects, color);
     }
     internals::host_render_to_texture(host, &gpu.surface_tex, &report);
     gpu.device

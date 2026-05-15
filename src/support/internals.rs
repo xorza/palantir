@@ -49,15 +49,6 @@ pub fn run_cascades(ui: &mut Ui) {
     ui.cascades_engine.run(&ui.forest, &mut ui.layout);
 }
 
-/// Count of frames so far that took the paint-anim-only
-/// short-circuit (skipped `pre_record` + user closure +
-/// `post_record` + layout + cascades + finalize). Bumped inside
-/// `Ui::paint_anim_only_pass`. Read by tests to assert the
-/// short-circuit fired (or didn't).
-pub fn paint_anim_only_frames(ui: &Ui) -> u64 {
-    ui.paint_anim_only_frame_count
-}
-
 /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
 pub fn anim_row_count<T: Animatable>(ui: &mut Ui) -> usize {
     ui.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
