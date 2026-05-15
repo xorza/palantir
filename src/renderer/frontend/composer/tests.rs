@@ -834,6 +834,23 @@ fn compose_mesh_between_texts_splits_text_batch() {
         2,
         "mesh between texts must split the batch",
     );
+    // Phase 2 structural: a polyline lowering produces a MeshBatch
+    // parallel to its group's meshes span (1:1 mapping today).
+    assert_eq!(
+        buf.mesh_batches.len(),
+        1,
+        "polyline must contribute one mesh batch",
+    );
+    let mb = buf.mesh_batches[0];
+    assert_eq!(
+        mb.meshes.len, 1,
+        "mesh batch covers exactly the one polyline draw",
+    );
+    assert_eq!(
+        mb.last_group as usize,
+        buf.groups.len() - 1,
+        "mesh batch anchors at the group that emitted the polyline",
+    );
 }
 
 /// Pin: a quad that overlaps prior batch text closes the batch — the

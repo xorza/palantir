@@ -44,9 +44,11 @@ pub(crate) enum RenderStep {
     /// one wgpu draw call covering every run in the batch.
     Text { batch: usize },
     /// Bind the mesh pipeline + issue one `draw_indexed` per
-    /// `MeshDraw` in `range`. Consumer pulls per-draw spans from
-    /// `RenderBuffer.meshes`.
-    Meshes { group: usize, range: Span },
+    /// `MeshDraw` in the referenced batch. Consumer pulls per-draw spans
+    /// from `RenderBuffer.mesh_batches[batch].meshes` (then via
+    /// `RenderBuffer.meshes`). One `MeshBatch { batch }` step → one
+    /// pipeline+buffer bind → N `draw_indexed` calls.
+    MeshBatch { batch: usize },
 }
 
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
@@ -111,6 +113,12 @@ pub(crate) fn for_each_step(
     // may differ from the active mask at the drain point — the text
     // will stencil-clip against the wrong mask. Accepted: rare combo.
     let mut next_batch: usize = 0;
+    // Parallel cursor for mesh batches. Structural Phase 2 produces one
+    // mesh batch per group with meshes (no cross-group spanning, since
+    // meshes need per-group scissor). Stale entries pointing at
+    // damage-skipped groups are silently advanced past at the top of
+    // each iteration — meshes inside a skipped group don't paint.
+    let mut next_mesh_batch: usize = 0;
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
     // (ref=1 inside the SDF, 0 outside). `None` means stencil is
@@ -120,6 +128,14 @@ pub(crate) fn for_each_step(
     let mut active_mask: Option<u32> = None;
 
     for (i, g) in buffer.groups.iter().enumerate() {
+        // Silently drop mesh batches that anchored in earlier
+        // damage-skipped groups — they had no visible scissor so their
+        // draws don't paint.
+        while next_mesh_batch < buffer.mesh_batches.len()
+            && (buffer.mesh_batches[next_mesh_batch].last_group as usize) < i
+        {
+            next_mesh_batch += 1;
+        }
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
             Some(d) => match group_scissor.intersect(d) {
@@ -181,15 +197,17 @@ pub(crate) fn for_each_step(
                 emit(RenderStep::Text { batch: next_batch });
                 next_batch += 1;
             }
-            if g.meshes.len != 0 {
-                // Restore the group's own scissor in case the text
-                // expansion widened it; mesh draws clip against the
-                // group's region same as quads.
+            // Drain mesh batches anchored at this group. Restore the
+            // group's own scissor in case text drain widened it; mesh
+            // draws clip against the group's region same as quads.
+            while next_mesh_batch < buffer.mesh_batches.len()
+                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i
+            {
                 emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::Meshes {
-                    group: i,
-                    range: g.meshes,
+                emit(RenderStep::MeshBatch {
+                    batch: next_mesh_batch,
                 });
+                next_mesh_batch += 1;
             }
             active_mask = mask_idx;
         } else if g.quads.len != 0
@@ -213,12 +231,14 @@ pub(crate) fn for_each_step(
                 emit(RenderStep::Text { batch: next_batch });
                 next_batch += 1;
             }
-            if g.meshes.len != 0 {
+            while next_mesh_batch < buffer.mesh_batches.len()
+                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i
+            {
                 emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::Meshes {
-                    group: i,
-                    range: g.meshes,
+                emit(RenderStep::MeshBatch {
+                    batch: next_mesh_batch,
                 });
+                next_mesh_batch += 1;
             }
         }
     }
