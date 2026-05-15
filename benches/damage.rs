@@ -14,9 +14,15 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
-use palantir::{Background, Color, Configure, Display, Frame, Panel, Rect, Sizing, Ui};
+use palantir::{
+    Background, Color, Configure, Display, Frame, Panel, Rect, Sizing, TextShaper, Ui, new_handle,
+};
 use std::hint::black_box;
 use std::time::Duration;
+
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);
 const COLS: usize = 32;

@@ -27,9 +27,13 @@ use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shadow,
-    Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
+    Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui, new_handle,
 };
 use std::hint::black_box;
+
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 const GROUPS: usize = 100;
 const ROWS_PER_GROUP: usize = 10;

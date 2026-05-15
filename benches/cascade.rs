@@ -14,8 +14,12 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
-use palantir::{Configure, Display, Frame, Panel, Sizing, Ui};
+use palantir::{Configure, Display, Frame, Panel, Sizing, TextShaper, Ui, new_handle};
 use std::hint::black_box;
+
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 /// Build a flat tree of `n` leaves under a single VStack root.
 /// Approximates a long list of items — the wide-and-shallow shape that
