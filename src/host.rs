@@ -21,7 +21,7 @@ use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::{Display, FrameReport};
+use crate::{Display, FrameReport, FrameStamp};
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
@@ -130,7 +130,11 @@ impl Host {
     ) -> FrameReport {
         // Ui::frame clears its own Rc-shared arena at the top of the
         // record cycle — the same Rc the frontend + backend hold.
-        self.ui.frame(display, self.start.elapsed(), state, record)
+        self.ui.frame(
+            FrameStamp::new(display, self.start.elapsed()),
+            state,
+            record,
+        )
     }
 
     /// GPU submit against a caller-supplied texture. On

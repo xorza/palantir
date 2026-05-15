@@ -26,8 +26,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Corners, Display, Frame, InputEvent, Panel, Rect, Scroll, Shadow,
-    Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui, new_handle,
+    Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
+    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui, new_handle,
 };
 use std::hint::black_box;
 
@@ -248,18 +248,34 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function("measure/cached", |b| {
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build,
+        );
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build,
+            ));
         });
     });
 
     group.bench_function("measure/forced_miss", |b| {
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build,
+        );
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build,
+            ));
         });
     });
 
@@ -278,22 +294,38 @@ fn bench(c: &mut Criterion) {
     //   pipeline.
     group.bench_function("scroll/idle", |b| {
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_scrolling,
+        );
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_scrolling,
+            ));
         });
     });
 
     group.bench_function("scroll/active", |b| {
         let mut ui = new_ui();
         // Frame 1: register the scroll viewport's rect/content/cascade.
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_scrolling,
+        );
         // Hover the pointer over the viewport so wheel events route to
         // the scroll target. `recompute_scroll_target` reads cascades,
         // so this needs the post-frame-1 cascade index.
         ui.on_input(InputEvent::PointerMoved(Vec2::new(640.0, 400.0)));
         // Frame 2: apply pointer-route + warm caches a second time.
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_scrolling,
+        );
         let mut sign: f32 = 1.0;
         b.iter(|| {
             // Alternating ±1 px keeps the offset bounded near 0 across
@@ -302,7 +334,11 @@ fn bench(c: &mut Criterion) {
             // is non-zero, so cascade_fp still busts.
             ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, sign)));
             sign = -sign;
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_scrolling,
+            ));
         });
     });
 
@@ -311,18 +347,34 @@ fn bench(c: &mut Criterion) {
     // baseline for the measure cache.
     group.bench_function("heavy/measure/cached", |b| {
         let mut ui = fresh_heavy_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_heavy);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_heavy,
+        );
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_heavy));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_heavy,
+            ));
         });
     });
 
     group.bench_function("heavy/measure/forced_miss", |b| {
         let mut ui = fresh_heavy_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_heavy);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_heavy,
+        );
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_heavy));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_heavy,
+            ));
         });
     });
 
@@ -332,18 +384,34 @@ fn bench(c: &mut Criterion) {
     // deleted). Kept as another baseline for measure.
     group.bench_function("dense/measure/cached", |b| {
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_dense,
+        );
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_dense,
+            ));
         });
     });
 
     group.bench_function("dense/measure/forced_miss", |b| {
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense);
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_dense,
+        );
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_dense,
+            ));
         });
     });
 

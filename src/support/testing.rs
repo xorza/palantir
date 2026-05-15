@@ -14,6 +14,7 @@ use crate::renderer::frontend::Frontend;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::encoder::encode;
 use crate::text::TextShaper;
+use crate::ui::FrameStamp;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::RenderPlan;
 use crate::widgets::panel::Panel;
@@ -49,7 +50,7 @@ pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &Shap
 /// One frame at `size`, time frozen at zero.
 pub(crate) fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(size, 1.0);
-    ui.frame(display, Duration::ZERO, &mut (), record);
+    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
 }
 
 /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).

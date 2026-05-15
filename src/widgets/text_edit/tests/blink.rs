@@ -52,9 +52,11 @@ fn caret_blinks_on_and_off_while_focused() {
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         use crate::layout::types::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
-        ui.frame(display, Duration::from_secs_f32(now_secs), &mut (), |ui| {
-            f(ui)
-        });
+        ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
+            &mut (),
+            |ui| f(ui),
+        );
         ui.frame_state.mark_submitted();
     }
 
@@ -154,9 +156,13 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
-        let report = ui.frame(display, Duration::from_secs_f32(t_secs), &mut (), |ui| {
-            record(ui, buf);
-        });
+        let report = ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(t_secs)),
+            &mut (),
+            |ui| {
+                record(ui, buf);
+            },
+        );
         ui.frame_state.mark_submitted();
         report
     };
@@ -204,7 +210,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let display = Display::from_physical(NARROW, 1.0);
 
     // Unfocused: no blink schedule.
-    let report = ui.frame(display, Duration::ZERO, &mut (), |ui| {
+    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id_salt("blink-wake")
@@ -221,7 +227,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     click_at(&mut ui, Vec2::new(20.0, 20.0));
-    let report = ui.frame(display, Duration::ZERO, &mut (), |ui| {
+    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id_salt("blink-wake")

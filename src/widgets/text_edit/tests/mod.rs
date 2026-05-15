@@ -27,6 +27,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::{
     click_at, run_at, run_at_acked, secondary_click_at, shapes_of, ui_with_text,
 };
+use crate::ui::FrameStamp;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};

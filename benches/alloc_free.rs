@@ -20,8 +20,8 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Configure, Display, Frame, Justify, Panel, Sizing, Text, TextShaper, TextStyle,
-    Ui, new_handle,
+    Align, Button, Configure, Display, Frame, FrameStamp, Justify, Panel, Sizing, Text, TextShaper,
+    TextStyle, Ui, new_handle,
 };
 use std::hint::black_box;
 
@@ -134,11 +134,19 @@ fn main() {
     let mut ui = new_ui();
 
     for _ in 0..WARMUP_FRAMES {
-        black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+        black_box(ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_ui,
+        ));
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+        black_box(ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            build_ui,
+        ));
     }
     let after = dhat::HeapStats::get();
 

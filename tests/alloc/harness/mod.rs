@@ -20,7 +20,7 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use palantir::{Display, FrameArena, TextShaper, Ui};
+use palantir::{Display, FrameArena, FrameStamp, TextShaper, Ui};
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -111,7 +111,11 @@ where
 
 #[inline]
 fn run_frame<S: FnMut(&mut Ui)>(ui: &mut Ui, scene: &mut S) {
-    let _ = ui.frame(DISPLAY, std::time::Duration::ZERO, &mut (), scene);
+    let _ = ui.frame(
+        FrameStamp::new(DISPLAY, std::time::Duration::ZERO),
+        &mut (),
+        scene,
+    );
 }
 
 fn fail_audit(

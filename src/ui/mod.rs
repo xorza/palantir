@@ -70,6 +70,24 @@ impl WakeReasons {
     }
 }
 
+/// Host-supplied per-frame inputs — monotonic time + active
+/// [`Display`]. Single struct so callers pass one argument and
+/// `Ui` carries one `Option<FrameStamp>` for prior-frame state
+/// instead of two parallel fields. `time` is the host's monotonic
+/// clock (driven by the same source between frames); `display`
+/// carries the surface size + scale factor.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct FrameStamp {
+    pub display: Display,
+    pub time: Duration,
+}
+
+impl FrameStamp {
+    pub fn new(display: Display, time: Duration) -> Self {
+        Self { display, time }
+    }
+}
+
 /// One entry on [`Ui::repaint_wakes`].
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Wake {
@@ -151,20 +169,14 @@ pub struct Ui {
     pub(crate) frame_id: u64,
     /// Host-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
-    /// `time` from the previous successful `frame()` call, or `None`
-    /// before the first frame and after [`DamageEngine::invalidate_prev`]
-    /// rewinds the snapshot. Drives the cross-frame "did a paint
-    /// anim's quantum boundary fall in this gap" check —
-    /// `entry.anim.next_wake(prev_time) <= now` fires the rect into
-    /// damage. Updated at the end of `frame_inner` on every path.
-    pub(crate) prev_time: Option<Duration>,
-    /// Logical surface rect from the previous successful frame, or
-    /// `None` on first frame / after invalidation. Compared against
-    /// the current `display.logical_rect()` in
-    /// `should_invalidate_prev` (surface change ⇒ force full) and in
-    /// the paint-anim gate (must match for the short-circuit).
-    /// Updated at the bottom of `frame_inner` on every path.
-    pub(crate) prev_surface: Option<Rect>,
+    /// Time + display from the previous successful frame, or `None`
+    /// before the first frame and after
+    /// [`DamageEngine::invalidate_prev`] rewinds the snapshot.
+    /// Drives `should_invalidate_prev` (surface-change detection)
+    /// and the paint-anim damage gate
+    /// (`anim.next_wake(prev.time) <= now`). Updated at the bottom
+    /// of `frame_inner` on every path.
+    pub(crate) prev_stamp: Option<FrameStamp>,
     /// EMA of `1/raw_dt` across frames. Zero on the first frame
     /// (no prior `time` to diff against); updated in
     /// [`Self::frame`]. Surfaced by the `frame_stats` debug overlay.
@@ -256,13 +268,12 @@ impl Ui {
     /// [`Self::app::<T>()`] for the duration of the call (RAII-restored
     /// on scope exit, incl. panic). Runs `record` once, re-records on
     /// action input or `request_relayout`, paints the last pass.
-    /// Callers without app state pass `&mut ()`. `now` is monotonic
-    /// host time; `Ui::{dt,time,frame_id}` derive from it. See
-    /// `docs/repaint.md`.
+    /// Callers without app state pass `&mut ()`. `stamp.time` is
+    /// monotonic host time; `Ui::{dt,time,frame_id}` derive from it.
+    /// See `docs/repaint.md`.
     pub fn frame<T: 'static>(
         &mut self,
-        display: Display,
-        now: Duration,
+        stamp: FrameStamp,
         state: &mut T,
         mut record: impl FnMut(&mut Ui),
     ) -> FrameReport {
@@ -287,34 +298,28 @@ impl Ui {
             type_id: TypeId::of::<T>(),
         });
         let g = Guard { ui: self, prev };
-        g.ui.frame_inner(display, now, &mut record)
+        g.ui.frame_inner(stamp, &mut record)
     }
 
-    fn frame_inner(
-        &mut self,
-        display: Display,
-        now: Duration,
-        mut record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
+    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
         assert!(
-            display.scale_factor >= EPS,
+            stamp.display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
-            display.scale_factor,
+            stamp.display.scale_factor,
         );
 
-        self.advance_clock(now);
-        let plan = self.classify_frame(display);
+        self.advance_clock(stamp.time);
+        let plan = self.classify_frame(stamp.display);
 
         self.repaint_requested = false;
         self.relayout_requested = false;
 
         if let FramePlan::FullRecord { force_full: true } = plan {
             self.damage_engine.invalidate_prev();
-            self.prev_time = None;
-            self.prev_surface = None;
+            self.prev_stamp = None;
         }
-        self.display = display;
+        self.display = stamp.display;
 
         // Pending until the renderer (`Host::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
@@ -376,7 +381,7 @@ impl Ui {
                     predamaged_rects(
                         &self.forest,
                         &self.layout.cascades,
-                        self.prev_time,
+                        self.prev_stamp.map(|s| s.time),
                         self.time,
                     )
                 })
@@ -391,8 +396,7 @@ impl Ui {
             self.frame_state.mark_submitted();
         }
 
-        self.prev_time = Some(self.time);
-        self.prev_surface = Some(self.display.logical_rect());
+        self.prev_stamp = Some(stamp);
 
         FrameReport {
             repaint_requested: self.repaint_requested,
@@ -461,7 +465,7 @@ impl Ui {
         // nothing record-side is waiting, and the wake that fired is
         // purely an `ANIM` quantum boundary.
         let paint_only = !force_full
-            && self.prev_time.is_some()
+            && self.prev_stamp.is_some()
             && !self.repaint_requested
             && !self.input.had_input_since_last_frame
             && fired_reasons.is_anim_only();
@@ -477,14 +481,16 @@ impl Ui {
     /// failed to confirm submission of the last frame.
     fn should_invalidate_prev(&self, new_display: Display) -> bool {
         let new_surface = new_display.logical_rect();
-        let display_changed = self.prev_surface.is_some_and(|prev| prev != new_surface);
+        let display_changed = self
+            .prev_stamp
+            .is_some_and(|prev| prev.display.logical_rect() != new_surface);
         let frame_skipped = !self.frame_state.was_last_submitted();
         let invalidate = display_changed || frame_skipped;
         if invalidate {
             tracing::debug!(
                 display_changed,
                 frame_skipped,
-                first_frame = self.prev_surface.is_none(),
+                first_frame = self.prev_stamp.is_none(),
                 "damage.invalidate_prev"
             );
         }

@@ -8,7 +8,7 @@
 
 use crate::allocator::with_audit;
 use crate::harness::{new_ui, run_audit, user_frames};
-use palantir::{Button, Configure, Display, Sizing, Ui};
+use palantir::{Button, Configure, Display, FrameStamp, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -174,22 +174,30 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     let mut ui = new_ui();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {
-            Button::new()
-                .auto_id()
-                .label("hello")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
-        });
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            |ui| {
+                Button::new()
+                    .auto_id()
+                    .label("hello")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            },
+        );
     }
     let r = with_audit(|| {
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {
-            Button::new()
-                .auto_id()
-                .label("hello")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui);
-        });
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            |ui| {
+                Button::new()
+                    .auto_id()
+                    .label("hello")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui);
+            },
+        );
     });
     let mut bt = r
         .traces
