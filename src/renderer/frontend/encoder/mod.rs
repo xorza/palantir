@@ -1,9 +1,8 @@
 use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
-use crate::animation::paint::PaintMod;
 use crate::forest::shapes::record::{
     GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
-use crate::forest::tree::{NodeId, PAINT_ANIM_NONE, Tree, TreeItem};
+use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::approx::noop_f32;
@@ -95,20 +94,6 @@ pub(crate) fn encode(ui: &Ui, damage: Damage, out: &mut RenderCmdBuffer) {
     emit_collision_overlays(ui, out);
 }
 
-/// Sample the paint-anim attached to shape `shape_idx`, if any.
-/// Returns `PaintMod::IDENTITY` on the hot path (no anim — the vast
-/// majority of shapes), so callers can fold the result unconditionally
-/// once `Pulse` lands and we need fractional alpha. The encoder's
-/// noop-alpha skip ride-alongs the standard `noop_f32` predicate.
-#[inline]
-fn sample_paint_anim(tree: &Tree, shape_idx: u32, now: Duration) -> PaintMod {
-    let slot = tree.paint_anim_by_shape[shape_idx as usize];
-    if slot == PAINT_ANIM_NONE {
-        return PaintMod::IDENTITY;
-    }
-    tree.paint_anims[slot as usize].anim.sample(now)
-}
-
 /// Final pass: emit a magenta outline for each explicit-id collision
 /// recorded this frame. Painted after the regular per-layer walk so
 /// it sits on top of everything; emitted with no scissor push so it
@@ -156,7 +141,7 @@ fn emit_one_shape(
     // alpha is binary 0/1 — so we just skip emission when the
     // sample says "hidden". Fractional-alpha multiplication
     // arrives with the `Pulse` variant.
-    let paint_mod = sample_paint_anim(tree, shape_idx, now);
+    let paint_mod = tree.paint_anims.sample(shape_idx, now);
     if noop_f32(paint_mod.alpha) {
         return;
     }

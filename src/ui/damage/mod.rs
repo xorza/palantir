@@ -369,7 +369,7 @@ impl DamageEngine {
         // background over the rect on the hidden side.
         for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
-            for entry in &tree.paint_anims {
+            for entry in &tree.paint_anims.entries {
                 let fire = match self.prev_now {
                     None => true,
                     Some(prev) => entry.anim.next_wake(prev) <= now,

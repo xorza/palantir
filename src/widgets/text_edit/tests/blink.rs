@@ -7,7 +7,7 @@ use crate::support::internals::ResponseNodeExt;
 #[test]
 fn caret_blinks_on_and_off_while_focused() {
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::{NodeId, PAINT_ANIM_NONE, TreeItem, TreeItems};
+    use crate::forest::tree::{NodeId, TreeItem, TreeItems};
     use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
@@ -45,14 +45,7 @@ fn caret_blinks_on_and_off_while_focused() {
                         ..
                     }
                 );
-                if !is_caret {
-                    return false;
-                }
-                let slot = tree.paint_anim_by_shape[idx as usize];
-                if slot == PAINT_ANIM_NONE {
-                    return true;
-                }
-                tree.paint_anims[slot as usize].anim.sample(now).alpha > 0.0
+                is_caret && tree.paint_anims.sample(idx, now).alpha > 0.0
             })
     }
 
