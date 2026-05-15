@@ -9,6 +9,7 @@ use crate::primitives::{color::Color, rect::Rect};
 use crate::support::internals::{ResponseNodeExt, damage_current_region};
 use crate::support::testing::new_ui;
 use crate::support::testing::{run_at, run_at_acked, ui_at};
+use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
 use crate::ui::frame_report::RenderPlan;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -306,8 +307,10 @@ fn empty_then_populated_frame() {
 fn frame_rejects_zero_scale_factor() {
     let mut ui = new_ui();
     let _ = ui.frame(
-        Display::from_physical(UVec2::new(800, 600), 0.0),
-        Duration::ZERO,
+        FrameStamp::new(
+            Display::from_physical(UVec2::new(800, 600), 0.0),
+            Duration::ZERO,
+        ),
         &mut (),
         |_| {},
     );
@@ -654,7 +657,7 @@ fn frame_pass_count_matches_action_trigger() {
 
         let count = Cell::new(0u32);
         let frame_id_before = ui.frame_id;
-        let _ = ui.frame(display, Duration::ZERO, &mut (), |ui| {
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
             count.set(count.get() + 1);
             Panel::vstack().id_salt("root").show(ui, |_| {});
         });
@@ -691,9 +694,13 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame A: idle, no repaint request, now = 16ms.
     let repaint = ui
-        .frame(display, Duration::from_millis(16), &mut (), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-        })
+        .frame(
+            FrameStamp::new(display, Duration::from_millis(16)),
+            &mut (),
+            |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+            },
+        )
         .repaint_requested();
     assert!(
         !repaint,
@@ -709,10 +716,14 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // Frame B: simulate an unsettled animation tick by setting the
     // internal flag during recording. The flag must reach `FrameOutput`.
     let repaint = ui
-        .frame(display, Duration::from_millis(32), &mut (), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-            ui.repaint_requested = true;
-        })
+        .frame(
+            FrameStamp::new(display, Duration::from_millis(32)),
+            &mut (),
+            |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+                ui.repaint_requested = true;
+            },
+        )
         .repaint_requested();
     assert!(
         repaint,
@@ -727,9 +738,13 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame C: oversized gap (5s) clamps dt to MAX_DT; `time` still
     // tracks true clock so animation math doesn't teleport.
-    let _ = ui.frame(display, Duration::from_millis(5_032), &mut (), |ui| {
-        Panel::vstack().id_salt("root").show(ui, |_| {});
-    });
+    let _ = ui.frame(
+        FrameStamp::new(display, Duration::from_millis(5_032)),
+        &mut (),
+        |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+        },
+    );
     assert_eq!(ui.time, Duration::from_millis(5_032));
     assert!(
         (ui.dt - MAX_DT).abs() < 1e-6,
@@ -740,9 +755,13 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // Frame D: prior frame's repaint_requested must NOT leak — resets
     // at the top of every `frame` regardless of pass count.
     let repaint = ui
-        .frame(display, Duration::from_millis(5_048), &mut (), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
-        })
+        .frame(
+            FrameStamp::new(display, Duration::from_millis(5_048)),
+            &mut (),
+            |ui| {
+                Panel::vstack().id_salt("root").show(ui, |_| {});
+            },
+        )
         .repaint_requested();
     assert!(
         !repaint,
@@ -762,7 +781,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    ui.frame(display, Duration::ZERO, &mut (), |ui| {
+    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
         Frame::new().id_salt("body").size(50.0).show(ui);
     });
     ui.frame_state.mark_submitted();
@@ -776,9 +795,13 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = ui.frame(display, Duration::from_millis(16), &mut (), |ui| {
-        Frame::new().id_salt("body").size(50.0).show(ui);
-    });
+    let report = ui.frame(
+        FrameStamp::new(display, Duration::from_millis(16)),
+        &mut (),
+        |ui| {
+            Frame::new().id_salt("body").size(50.0).show(ui);
+        },
+    );
     ui.frame_state.mark_submitted();
     assert!(
         matches!(report.plan, Some(RenderPlan::Partial { .. })),
@@ -794,9 +817,13 @@ fn frame_stats_overlay_records_partial_damage() {
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
     ui.debug_overlay.frame_stats = false;
-    ui.frame(display, Duration::from_millis(32), &mut (), |ui| {
-        Frame::new().id_salt("body").size(50.0).show(ui);
-    });
+    ui.frame(
+        FrameStamp::new(display, Duration::from_millis(32)),
+        &mut (),
+        |ui| {
+            Frame::new().id_salt("body").size(50.0).show(ui);
+        },
+    );
     assert!(
         ui.forest.tree(Layer::Debug).records.is_empty(),
         "Debug layer must clear once frame_stats is turned off",
@@ -810,10 +837,14 @@ fn frame_stats_overlay_records_partial_damage() {
 fn request_repaint_after_queues_distinct_deadlines() {
     let mut ui = new_ui();
     let display = Display::from_physical(SURFACE, 1.0);
-    let report = ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
-        ui.request_repaint_after(Duration::from_secs_f32(0.5));
-        ui.request_repaint_after(Duration::from_secs_f32(1.5));
-    });
+    let report = ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(0.0)),
+        &mut (),
+        |ui| {
+            ui.request_repaint_after(Duration::from_secs_f32(0.5));
+            ui.request_repaint_after(Duration::from_secs_f32(1.5));
+        },
+    );
     // Earliest deadline wins the report slot.
     assert_eq!(
         report.repaint_after(),
@@ -829,7 +860,11 @@ fn request_repaint_after_queues_distinct_deadlines() {
 
     // Run a frame at the first deadline. The earliest entry drains;
     // the second survives.
-    let report = ui.frame(display, Duration::from_secs_f32(0.5), &mut (), |_| {});
+    let report = ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(0.5)),
+        &mut (),
+        |_| {},
+    );
     assert_eq!(
         report.repaint_after(),
         Some(Duration::from_secs_f32(1.5)),
@@ -838,7 +873,11 @@ fn request_repaint_after_queues_distinct_deadlines() {
     assert_eq!(ui.repaint_wakes.len(), 1);
 
     // Run a frame at the second deadline. Queue empties.
-    let report = ui.frame(display, Duration::from_secs_f32(1.5), &mut (), |_| {});
+    let report = ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(1.5)),
+        &mut (),
+        |_| {},
+    );
     assert_eq!(report.repaint_after(), None);
     assert!(ui.repaint_wakes.is_empty());
 }
@@ -852,12 +891,16 @@ fn request_repaint_after_queues_distinct_deadlines() {
 fn request_repaint_after_dedups_within_frame() {
     let mut ui = new_ui();
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
-        for _ in 0..10 {
+    ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(0.0)),
+        &mut (),
+        |ui| {
+            for _ in 0..10 {
+                ui.request_repaint_after(Duration::from_secs_f32(0.5));
+            }
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
-        }
-        ui.request_repaint_after(Duration::from_secs_f32(0.5));
-    });
+        },
+    );
     assert_eq!(
         ui.repaint_wakes.len(),
         1,
@@ -868,20 +911,24 @@ fn request_repaint_after_dedups_within_frame() {
     // later deadline (prefer the longer wait); deadlines spaced
     // beyond the window stay distinct.
     let mut ui = new_ui();
-    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
-        // Earlier request first; second request lands ~4 ms later
-        // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
-        // to win.
-        ui.request_repaint_after(Duration::from_secs_f32(0.500));
-        ui.request_repaint_after(Duration::from_secs_f32(0.504));
-        // Reversed order — later first, then a near-earlier
-        // request. Existing later wake should suppress the earlier
-        // one (same outcome: only the later survives).
-        ui.request_repaint_after(Duration::from_secs_f32(0.512));
-        ui.request_repaint_after(Duration::from_secs_f32(0.508));
-        // Beyond the window — must stay distinct.
-        ui.request_repaint_after(Duration::from_secs_f32(0.600));
-    });
+    ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(0.0)),
+        &mut (),
+        |ui| {
+            // Earlier request first; second request lands ~4 ms later
+            // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
+            // to win.
+            ui.request_repaint_after(Duration::from_secs_f32(0.500));
+            ui.request_repaint_after(Duration::from_secs_f32(0.504));
+            // Reversed order — later first, then a near-earlier
+            // request. Existing later wake should suppress the earlier
+            // one (same outcome: only the later survives).
+            ui.request_repaint_after(Duration::from_secs_f32(0.512));
+            ui.request_repaint_after(Duration::from_secs_f32(0.508));
+            // Beyond the window — must stay distinct.
+            ui.request_repaint_after(Duration::from_secs_f32(0.600));
+        },
+    );
     let deadlines: Vec<Duration> = ui.repaint_wakes.iter().map(|w| w.deadline).collect();
     assert_eq!(
         deadlines,
@@ -899,15 +946,23 @@ fn request_repaint_after_dedups_within_frame() {
 fn request_repaint_after_drains_fired_entries() {
     let mut ui = new_ui();
     let display = Display::from_physical(SURFACE, 1.0);
-    ui.frame(display, Duration::from_secs_f32(0.0), &mut (), |ui| {
-        ui.request_repaint_after(Duration::from_secs_f32(0.5));
-        ui.request_repaint_after(Duration::from_secs_f32(1.0));
-        ui.request_repaint_after(Duration::from_secs_f32(2.0));
-    });
+    ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(0.0)),
+        &mut (),
+        |ui| {
+            ui.request_repaint_after(Duration::from_secs_f32(0.5));
+            ui.request_repaint_after(Duration::from_secs_f32(1.0));
+            ui.request_repaint_after(Duration::from_secs_f32(2.0));
+        },
+    );
     assert_eq!(ui.repaint_wakes.len(), 3);
 
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
-    let report = ui.frame(display, Duration::from_secs_f32(1.0), &mut (), |_| {});
+    let report = ui.frame(
+        FrameStamp::new(display, Duration::from_secs_f32(1.0)),
+        &mut (),
+        |_| {},
+    );
     assert_eq!(ui.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
 }
@@ -919,10 +974,14 @@ fn app_state_round_trip_across_frame() {
     }
     let mut ui = new_ui();
     let mut app = App { count: 0 };
-    ui.frame(Display::default(), Duration::ZERO, &mut app, |ui| {
-        ui.app::<App>().count += 1;
-        ui.app::<App>().count += 1;
-    });
+    ui.frame(
+        FrameStamp::new(Display::default(), Duration::ZERO),
+        &mut app,
+        |ui| {
+            ui.app::<App>().count += 1;
+            ui.app::<App>().count += 1;
+        },
+    );
     assert_eq!(app.count, 2);
 }
 
@@ -937,9 +996,13 @@ fn app_without_install_panics() {
 fn app_type_mismatch_panics() {
     let mut ui = new_ui();
     let mut a: u32 = 7;
-    ui.frame(Display::default(), Duration::ZERO, &mut a, |ui| {
-        let _ = ui.app::<i64>();
-    });
+    ui.frame(
+        FrameStamp::new(Display::default(), Duration::ZERO),
+        &mut a,
+        |ui| {
+            let _ = ui.app::<i64>();
+        },
+    );
 }
 
 /// Anim-only fast path: when the only wake fired is a paint-anim
@@ -979,13 +1042,15 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
-    let r0 = ui.frame(display, Duration::ZERO, &mut (), |ui| body(ui, half));
+    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+        body(ui, half)
+    });
     ui.frame_state.mark_submitted();
     assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after(), Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
-    let r1 = ui.frame(display, half, &mut (), |ui| body(ui, half));
+    let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
 }
 
@@ -1024,13 +1089,13 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
-    let r0 = ui.frame(display, Duration::ZERO, &mut (), |ui| {
+    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
         body(ui, half);
         ui.request_repaint();
     });
     ui.frame_state.mark_submitted();
     assert!(r0.repaint_requested());
 
-    let r1 = ui.frame(display, half, &mut (), |ui| body(ui, half));
+    let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::SingleLayout);
 }

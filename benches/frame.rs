@@ -219,13 +219,17 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn bench_frame(c: &mut Criterion) {
-    use palantir::Display;
+    use palantir::{Display, FrameStamp};
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut ui = new_ui();
 
     c.bench_function("frame/post_record", |b| {
         b.iter(|| {
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_ui,
+            ));
             // #[cfg(feature = "internals")]
             // palantir::support::internals::mark_frame_submitted(&ui);
         });
@@ -242,7 +246,11 @@ fn bench_frame(c: &mut Criterion) {
             let h = 640 + ((frame / 7) % 320);
             frame = frame.wrapping_add(1);
             let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
-            black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_ui));
+            black_box(ui.frame(
+                FrameStamp::new(display, std::time::Duration::ZERO),
+                &mut (),
+                build_ui,
+            ));
             // #[cfg(feature = "internals")]
             // palantir::support::internals::mark_frame_submitted(&ui);
         });

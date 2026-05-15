@@ -64,6 +64,7 @@ pub use primitives::widget_id::WidgetId;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::cosmic::CosmicMeasure;
 pub use text::{FontFamily, TextShaper};
+pub use ui::FrameStamp;
 pub use ui::Ui;
 pub use ui::frame_report::FrameReport;
 pub use widgets::Response;

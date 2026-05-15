@@ -15,7 +15,8 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
 use palantir::{
-    Background, Color, Configure, Display, Frame, Panel, Rect, Sizing, TextShaper, Ui, new_handle,
+    Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, TextShaper, Ui,
+    new_handle,
 };
 use std::hint::black_box;
 use std::time::Duration;
@@ -118,7 +119,11 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
 fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
-    let _ = ui.frame(display, Duration::ZERO, &mut (), &mut record);
+    let _ = ui.frame(
+        FrameStamp::new(display, Duration::ZERO),
+        &mut (),
+        &mut record,
+    );
     internals::mark_frame_submitted(ui);
 }
 

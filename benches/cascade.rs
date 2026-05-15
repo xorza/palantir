@@ -14,7 +14,7 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::support::internals;
-use palantir::{Configure, Display, Frame, Panel, Sizing, TextShaper, Ui, new_handle};
+use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, TextShaper, Ui, new_handle};
 use std::hint::black_box;
 
 fn new_ui() -> Ui {
@@ -49,9 +49,11 @@ fn bench_cascade(c: &mut Criterion) {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
         let mut ui = new_ui();
-        let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {
-            build_flat(ui, n)
-        });
+        let _ = ui.frame(
+            FrameStamp::new(display, std::time::Duration::ZERO),
+            &mut (),
+            |ui| build_flat(ui, n),
+        );
 
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {

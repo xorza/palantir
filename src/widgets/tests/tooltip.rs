@@ -15,6 +15,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::new_ui;
+use crate::ui::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{Tooltip, TooltipState, place_anchor};
@@ -84,16 +85,20 @@ fn delay_gates_visibility() {
 
     let mut captured: Option<WidgetId> = None;
     let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
-        ui.frame(display, Duration::from_secs_f32(secs), &mut (), |ui| {
-            Panel::vstack()
-                .id_salt("root")
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    let r = Button::new().id_salt("trig").label("hi").show(ui);
-                    *captured = Some(r.widget_id());
-                    Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
-                });
-        });
+        ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(secs)),
+            &mut (),
+            |ui| {
+                Panel::vstack()
+                    .id_salt("root")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        let r = Button::new().id_salt("trig").label("hi").show(ui);
+                        *captured = Some(r.widget_id());
+                        Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                    });
+            },
+        );
     };
 
     // First frame — pointer not yet over the button. State row exists,
