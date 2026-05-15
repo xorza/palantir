@@ -28,7 +28,7 @@ use crate::text::FontFamily;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
-use crate::ui::frame_report::{FrameReport, RenderPlan};
+use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::panel::Panel;
@@ -126,12 +126,6 @@ pub struct Ui {
     ///
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArenaHandle,
-    /// Test/bench-only: count of frames that took the
-    /// paint-anim-only short-circuit (skipped pre_record + closure +
-    /// post_record + layout + cascades + finalize). Exposed via
-    /// `support::internals::paint_anim_only_frames`.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) paint_anim_only_frame_count: u64,
 }
 
 impl Ui {
@@ -185,8 +179,6 @@ impl Ui {
             repaint_wakes: Vec::new(),
             app_slot: None,
             frame_arena,
-            #[cfg(any(test, feature = "internals"))]
-            paint_anim_only_frame_count: 0,
         }
     }
 
@@ -344,7 +336,8 @@ impl Ui {
             profiling::scope!("Ui::record_pass.A");
             self.record_pass(&mut record)
         };
-        if action_flag || self.relayout_requested {
+        let double_layout = action_flag || self.relayout_requested;
+        if double_layout {
             profiling::scope!(
                 "Ui::record_pass.B",
                 if self.relayout_requested {
@@ -371,6 +364,11 @@ impl Ui {
             repaint_requested: self.repaint_requested,
             repaint_after: self.repaint_wakes.first().copied(),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
+            processing: if double_layout {
+                FrameProcessing::DoubleLayout
+            } else {
+                FrameProcessing::SingleLayout
+            },
         }
     }
 
@@ -386,10 +384,6 @@ impl Ui {
     fn paint_anim_only_pass(&mut self) -> FrameReport {
         profiling::scope!("Ui::paint_anim_only_pass");
 
-        #[cfg(any(test, feature = "internals"))]
-        {
-            self.paint_anim_only_frame_count += 1;
-        }
         self.frame_state.mark_pending();
 
         // Refresh per-entry `last_quantum` and schedule the next
@@ -423,6 +417,7 @@ impl Ui {
             repaint_requested: self.repaint_requested,
             repaint_after: self.repaint_wakes.first().copied(),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
+            processing: FrameProcessing::PaintOnly,
         }
     }
 
