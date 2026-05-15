@@ -8,4 +8,4 @@ PaintMod
 
 skip frame if window is not visible
 
-damage collect all rects then collapse them in one pass - do optimally
+optimize DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
