@@ -68,7 +68,12 @@ fn first_frame_marks_every_painting_node_dirty() {
     });
     let painting = ui.forest.tree(Layer::Main).rollups.paints.count_ones(..);
     assert_eq!(ui.damage_engine.dirty.len(), painting);
-    assert!(!ui.damage_engine.region.is_empty());
+    // First frame is `force_full`, so `compute` short-circuits to
+    // `Damage::Full` after the structural diff and skips the
+    // collapse — `region` stays empty by design. Check the pre-
+    // collapse `raw_rects` buffer to confirm every painting node
+    // actually pushed its rect.
+    assert!(!ui.damage_engine.raw_rects.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
