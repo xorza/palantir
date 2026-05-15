@@ -35,7 +35,6 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
-use std::time::Duration;
 
 pub(crate) mod region;
 
@@ -84,12 +83,6 @@ pub(crate) struct NodeSnapshot {
 /// frame; it's mutated in place during `compute` (read old, write
 /// new) so steady-state frames don't allocate.
 ///
-/// `prev_surface` lets `compute` short-circuit to full repaint on
-/// surface change. Backend recreates the backbuffer on resize and
-/// force-clears it; if the encoder produced a damage-filtered
-/// partial paint instead, the cleared backbuffer would be left as
-/// clear color outside the tiny damage scissor.
-///
 /// Capacities on `dirty` and `prev` are retained across frames;
 /// `region` is inline (`DamageRegion` is `Copy`).
 pub(crate) struct DamageEngine {
@@ -109,16 +102,6 @@ pub(crate) struct DamageEngine {
     /// already enforced by `SeenIds::record` at recording time, so
     /// the bare `WidgetId` key is safe.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
-    /// Last frame's surface rect. `None` on first frame.
-    pub(crate) prev_surface: Option<Rect>,
-    /// `ui.time` from the previous `compute`. Drives the
-    /// animation-damage filter: an anim's owner rect only joins the
-    /// region when `entry.anim.next_wake(prev_now) <= now`, i.e. a
-    /// quantum boundary fell in the gap between the two frames.
-    /// `None` on the first frame and after `invalidate_prev_frame`
-    /// rewinds the snapshot — both fall through to "always add",
-    /// the same shape as `prev_surface == None`.
-    pub(crate) prev_now: Option<Duration>,
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the Occupied-equal arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
@@ -137,8 +120,6 @@ impl Default for DamageEngine {
             region: DamageRegion::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
-            prev_surface: None,
-            prev_now: None,
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
@@ -183,55 +164,36 @@ impl Damage {
 }
 
 impl DamageEngine {
-    /// Invalidate the previous-frame snapshot: clears the per-widget
-    /// `prev` map and `prev_surface`. `compute` treats
-    /// `prev_surface == None` as "force `Damage::Full`" — see
-    /// the `force_full` branch — so the next frame paints the whole
-    /// surface regardless of the diff. Called by `Ui::pre_record`
-    /// when the surface changed, the previous frame wasn't acked, or
+    /// Drop the per-widget previous-frame snapshot map. Pairs with
+    /// the caller passing `force_full = true` into the next
+    /// `compute` so the diff repopulates the map from scratch but
+    /// still returns `Damage::Full`. Called by `Ui::pre_record` when
+    /// the surface changed, the previous frame wasn't acked, or
     /// it's the first frame.
     pub(crate) fn invalidate_prev(&mut self) {
         self.prev.clear();
-        self.prev_surface = None;
-        self.prev_now = None;
     }
 
-    /// Paint-anim-only damage compute. Walks every tree's
-    /// `paint_anims.entries`, unions each fired entry's owner
-    /// `paint_rect` into a fresh region, and returns the standard
-    /// `Some(Partial)` / `Some(Full)` envelope. Does NOT touch
-    /// `self.prev` (the per-widget snapshots stay valid for the
-    /// next structural frame) and does NOT walk the tree
-    /// structurally — caller has already proven via the gate that
-    /// the tree, cascades, and layout are bit-identical to last
-    /// frame.
+    /// Paint-anim-only damage compute. Caller supplies the
+    /// screen-space rects of every paint anim that fired this frame
+    /// — typically [`Forest::iter_fired_paint_anim_rects`] — and
+    /// this routine unions them into a fresh damage region and
+    /// applies the area-coverage filter.
     ///
-    /// `prev_now` is read and updated to `Some(now)` so the next
-    /// frame's gate has the right baseline. The "fired" predicate
-    /// is the same as the one in `compute`: an entry fires when
-    /// `entry.anim.next_wake(prev_now) <= now`.
+    /// Does NOT touch `self.prev` (per-widget structural snapshots
+    /// stay valid). Caller has already proven via the gate that the
+    /// retained tree / cascades / layout are bit-identical to last
+    /// frame.
     pub(crate) fn compute_anim_only(
         &mut self,
-        forest: &Forest,
-        cascades: &Cascades,
-        now: Duration,
+        fired_rects: impl IntoIterator<Item = Rect>,
+        surface: Rect,
     ) -> Damage {
         let mut acc = DamageRegion::with_budget(self.budget_px);
-        for (layer, tree) in forest.iter_paint_order() {
-            let rows = cascades.rows_for(layer);
-            for entry in &tree.paint_anims.entries {
-                let fired = match self.prev_now {
-                    None => true,
-                    Some(prev) => entry.anim.next_wake(prev) <= now,
-                };
-                if fired {
-                    acc.add(rows[entry.node.index()].paint_rect);
-                }
-            }
+        for r in fired_rects {
+            acc.add(r);
         }
-        self.prev_now = Some(now);
         self.region = acc;
-        let surface = self.prev_surface.unwrap_or_default();
         self.filter(surface)
     }
 
@@ -271,16 +233,17 @@ impl DamageEngine {
         cascades: &Cascades,
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
-        now: Duration,
+        force_full: bool,
+        fired_anim_rects: impl IntoIterator<Item = Rect>,
     ) -> Damage {
-        // `prev_surface == None` is the "treat as a fresh frame"
-        // signal. `Ui::pre_record` clears it (and `prev`) when the
-        // surface changed, the previous `FrameOutput` wasn't acked,
-        // or it's the very first frame; this `compute` doesn't need
-        // to repeat that detection. Always update for the next
-        // frame's pre_record comparison.
-        let force_full = self.prev_surface.is_none();
-        self.prev_surface = Some(surface);
+        // `force_full` is the "treat as a fresh frame" signal — set
+        // by the caller when `Ui::should_invalidate_prev` decided
+        // this frame must repaint everything (surface changed, last
+        // frame wasn't acked, or first frame). Caller has already
+        // called `invalidate_prev` to drop the per-widget snapshot
+        // map; we still run the full diff pass to repopulate it for
+        // next frame, just return `Damage::Full` instead of the
+        // filtered region.
         #[cfg(any(test, feature = "internals"))]
         {
             self.dirty.clear();
@@ -390,35 +353,20 @@ impl DamageEngine {
                 let _ = dirty;
                 i += advance;
             }
+        }
 
-            // Animation-driven damage, per layer. `paint_anims` is
-            // a flat list of "this rect is animated"; structural
-            // hash diff above is content-only and (intentionally)
-            // doesn't pick up a paint-anim phase flip — bumping
-            // `node_hash` / `subtree_hash` would invalidate
-            // MeasureCache for the owner's ancestor chain on every
-            // phase flip, even though layout didn't change. So we
-            // damage anim rects here instead.
-            //
-            // The `next_wake(prev_now) <= now` test is the
-            // cross-frame "did the quantum change since last frame"
-            // predicate. First frame (`prev_now = None`) falls
-            // through to "always add", mirroring
-            // `prev_surface == None`. The encoder's
-            // `PaintAnims::sample` then decides whether the rect
-            // emits a quad this frame (visible half) or skips
-            // (hidden half); composing the cmd buffer without the
-            // caret quad paints background over the rect on the
-            // hidden side.
-            for entry in &tree.paint_anims.entries {
-                let fire = match self.prev_now {
-                    None => true,
-                    Some(prev) => entry.anim.next_wake(prev) <= now,
-                };
-                if fire {
-                    acc.add(rows[entry.node.index()].paint_rect);
-                }
-            }
+        // Animation-driven damage. Caller pre-walks the paint-anim
+        // registry (see `Forest::iter_fired_paint_anim_rects`) and
+        // hands us just the rects that fired this frame. The
+        // structural diff above is content-only and (intentionally)
+        // doesn't pick up phase flips — bumping
+        // `node_hash` / `subtree_hash` would invalidate MeasureCache
+        // for the owner's ancestor chain on every flip even though
+        // layout didn't change. The encoder's `PaintAnims::sample`
+        // decides per-rect whether to emit a quad (visible half) or
+        // skip (hidden half).
+        for r in fired_anim_rects {
+            acc.add(r);
         }
 
         // Evict last-frame snapshots for removed widgets. Every
@@ -430,7 +378,6 @@ impl DamageEngine {
             }
         }
 
-        self.prev_now = Some(now);
         self.region = acc;
         if force_full {
             return Damage::Full;
@@ -443,6 +390,7 @@ impl DamageEngine {
     /// is stable; the GPU has nothing to do). Coverage above
     /// [`FULL_REPAINT_THRESHOLD`] (or zero-area surface) ⇒
     /// `Damage::Full`. Otherwise `Damage::Partial(region)`.
+    // todo make private expose via internals if needed
     pub(crate) fn filter(&self, surface: Rect) -> Damage {
         if self.region.is_empty() {
             return Damage::None;
