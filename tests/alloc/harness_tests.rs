@@ -7,7 +7,7 @@
 //! panic + trace-dump failure path, and the `user_frames` filter.
 
 use crate::allocator::with_audit;
-use crate::harness::{run_audit, user_frames};
+use crate::harness::{new_ui, run_audit, user_frames};
 use palantir::{Button, Configure, Display, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
@@ -171,7 +171,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
     //     module, since it's harness machinery, not a fixture,
     //   - drop the `alloc::` test-binary-crate prefix.
     let display = Display::from_physical(glam::UVec2::new(800, 600), 1.0);
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     // Warm caches so we audit a steady-state alloc, not first-frame init.
     for _ in 0..4 {
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {

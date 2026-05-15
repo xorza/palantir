@@ -6,6 +6,7 @@ use crate::forest::element::Configure;
 use crate::input::sense::Sense;
 use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
+use crate::support::testing::new_ui;
 use crate::support::testing::run_at_acked;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -38,7 +39,7 @@ fn build_two_hover_targets(ui: &mut Ui) {
 
 #[test]
 fn move_over_inert_surface_does_not_request_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     // Both positions are outside the hover target → hovered stays None.
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
@@ -51,7 +52,7 @@ fn move_over_inert_surface_does_not_request_repaint() {
 
 #[test]
 fn move_within_same_hovered_widget_does_not_request_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     // First move: empty → over target. Repaint expected.
     let enter = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
@@ -66,7 +67,7 @@ fn move_within_same_hovered_widget_does_not_request_repaint() {
 
 #[test]
 fn move_from_inert_into_hover_target_requests_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
@@ -75,7 +76,7 @@ fn move_from_inert_into_hover_target_requests_repaint() {
 
 #[test]
 fn move_between_two_hover_targets_requests_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 200), build_two_hover_targets);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(150.0, 20.0)));
@@ -84,7 +85,7 @@ fn move_between_two_hover_targets_requests_repaint() {
 
 #[test]
 fn move_during_active_capture_requests_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id_salt("hot")
@@ -106,7 +107,7 @@ fn move_during_active_capture_requests_repaint() {
 
 #[test]
 fn pointer_left_after_hover_requests_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerLeft);
@@ -115,7 +116,7 @@ fn pointer_left_after_hover_requests_repaint() {
 
 #[test]
 fn pointer_left_with_nothing_active_does_not_request_repaint() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     // Never moved over the target, never captured → leaving is a no-op.
     let delta = ui.on_input(InputEvent::PointerLeft);
@@ -125,7 +126,7 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
 #[test]
 fn non_pointer_events_request_repaint() {
     use crate::input::keyboard::{Key, Modifiers, TextChunk};
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
     assert!(
         ui.on_input(InputEvent::KeyDown {

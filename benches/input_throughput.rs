@@ -25,10 +25,16 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::{
     Button, Configure, Display, Frame, InputEvent, Panel, PointerButton, Scroll, Sense, Sizing,
-    Text, Ui,
+    Text, TextShaper, Ui, new_handle,
 };
 use std::hint::black_box;
 use std::time::Duration;
+
+/// Local mono-fallback `Ui` constructor; `support::testing::new_ui`
+/// is gated behind `cfg(test)` and not visible from bench targets.
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
@@ -118,7 +124,7 @@ fn build_ui(ui: &mut Ui) {
 }
 
 fn warmed_ui() -> (Ui, Display) {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.

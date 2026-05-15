@@ -16,7 +16,7 @@
 //! the bench keeps measuring real per-frame work, not work against a
 //! pinned state.
 //!
-//! `Ui::default()` uses the mono text fallback (matches `frame.rs`); the
+//! `new_ui()` uses the mono text fallback (matches `frame.rs`); the
 //! cosmic shaper is not on the critical path here.
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -37,7 +37,7 @@ const SCALE: f32 = 2.0;
 const VIEWPORT_CENTER: Vec2 = Vec2::new(320.0, 250.0);
 
 fn warmed_ui() -> (Ui, Display) {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames so cascades populate and `post_record` latches the
     // Scroll widget as the scroll-target hit. Pointer must be inside

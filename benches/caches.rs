@@ -19,7 +19,7 @@
 //! only the steady-state aggregate in `frame.rs`. Run with
 //! `cargo bench --features "internals bench-deep"` to exercise these.
 //!
-//! `Ui::default()` leaves the cosmic shaper unset, so text measurement runs
+//! `new_ui()` leaves the cosmic shaper unset, so text measurement runs
 //! through the mono fallback — same shaper-free path as `benches/frame.rs`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
@@ -243,7 +243,7 @@ fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("caches");
 
     group.bench_function("measure/cached", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build);
         b.iter(|| {
             black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build));
@@ -251,7 +251,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("measure/forced_miss", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build);
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
@@ -273,7 +273,7 @@ fn bench(c: &mut Criterion) {
     //   scroll-driven transform changes don't tax the rest of the
     //   pipeline.
     group.bench_function("scroll/idle", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling);
         b.iter(|| {
             black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling));
@@ -281,7 +281,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("scroll/active", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         // Frame 1: register the scroll viewport's rect/content/cascade.
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_scrolling);
         // Hover the pointer over the viewport so wheel events route to
@@ -327,7 +327,7 @@ fn bench(c: &mut Criterion) {
     // a high-cmd-density workload (none found; encode cache later
     // deleted). Kept as another baseline for measure.
     group.bench_function("dense/measure/cached", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense);
         b.iter(|| {
             black_box(ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense));
@@ -335,7 +335,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("dense/measure/forced_miss", |b| {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), build_dense);
         b.iter(|| {
             internals::clear_measure_cache(&mut ui);
@@ -356,6 +356,10 @@ fn build_scrolling(ui: &mut Ui) {
 /// `CosmicMeasure`; calling once per bench arm and reusing across
 /// `b.iter` invocations amortizes font-database parsing.
 fn fresh_heavy_ui() -> Ui {
+    // Direct construction with bundled fonts (the
+    // `support::internals::new_ui_mono` helper covers the no-text
+    // case; this bench wants real shaping for steady-state text
+    // measure work).
     Ui::new(TextShaper::with_bundled_fonts(), palantir::new_handle())
 }
 

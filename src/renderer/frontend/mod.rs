@@ -18,7 +18,7 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
-use crate::common::frame_arena::{FrameArenaHandle, new_handle};
+use crate::common::frame_arena::FrameArenaHandle;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
@@ -43,15 +43,6 @@ pub(crate) struct Frontend {
     /// borrows it mutably to append polyline tessellation output and
     /// to read user-supplied mesh / polyline bytes.
     pub(crate) frame_arena: FrameArenaHandle,
-}
-
-impl Default for Frontend {
-    /// Standalone frontend with a private frame arena. Production goes
-    /// through [`Self::with_arena`] so the arena is shared across
-    /// `Ui`, `Frontend`, and `WgpuBackend`.
-    fn default() -> Self {
-        Self::new(new_handle())
-    }
 }
 
 impl Frontend {

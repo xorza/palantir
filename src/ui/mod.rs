@@ -6,7 +6,7 @@ pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
-use crate::common::frame_arena::{FrameArenaHandle, new_handle};
+use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Configure, Element, LayoutMode};
@@ -120,22 +120,11 @@ pub struct Ui {
     /// points/colors), shared with the renderer via [`Host`]: `Host`
     /// constructs the canonical [`Rc`] and clones it into `Ui`,
     /// `Frontend`, and `WgpuBackend` so every phase sees the same
-    /// bytes. Standalone `Ui::default()` builds its own private handle.
+    /// bytes. Standalone `new_ui()` builds its own private handle.
     /// `add_shape` calls `borrow_mut()` for the call duration.
     ///
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArenaHandle,
-}
-
-impl Default for Ui {
-    /// Isolated `Ui` with the mono fallback shaper + a fresh private
-    /// frame arena. Suitable for tests, benches, and headless drivers
-    /// where the shaper / arena don't need to be shared with a
-    /// renderer; production goes through [`crate::Host`] which builds
-    /// a `Ui` via [`Self::new`] with shared handles.
-    fn default() -> Self {
-        Self::new(TextShaper::default(), new_handle())
-    }
 }
 
 impl Ui {

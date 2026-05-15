@@ -1,10 +1,10 @@
-use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::support::internals::ResponseNodeExt;
+use crate::support::testing::new_ui;
 use crate::support::testing::{run_at, shapes_of};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -13,7 +13,7 @@ use glam::UVec2;
 fn zstack_layers_children_without_painting_background() {
     // Wrapped in HStack so the ZStack's Hug-to-children size is honored
     // (root would otherwise expand to surface).
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let mut zstack_node = None;
     let mut bg_node = None;
     let mut fg_node = None;
@@ -75,7 +75,7 @@ fn zstack_aligns_child_per_axis() {
         ),
     ];
     for (label, align, expected) in cases {
-        let mut ui = Ui::default();
+        let mut ui = new_ui();
         let mut child_node = None;
         run_at(&mut ui, UVec2::new(400, 400), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {

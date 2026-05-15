@@ -14,6 +14,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::support::internals::ResponseNodeExt;
+use crate::support::testing::new_ui;
 use crate::support::testing::{run_at_acked, ui_with_text};
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -76,7 +77,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 /// `INFINITY` behavior on Hug axes precisely to avoid this.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let mut zstack_node = None;
     run_at_acked(&mut ui, UVec2::new(800, 600), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

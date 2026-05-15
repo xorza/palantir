@@ -5,13 +5,23 @@
 //! padding/margin, and Canvas position. Drives all five passes
 //! (record/measure/arrange/cascade/encode+compose) every iteration.
 //!
-//! `Ui::default()` leaves the cosmic shaper unset, so text measurement runs
+//! `new_ui()` leaves the cosmic shaper unset, so text measurement runs
 //! through the mono fallback.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, Track, Ui};
+use palantir::{
+    Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, TextShaper, Track, Ui,
+    new_handle,
+};
 use std::hint::black_box;
 use std::rc::Rc;
+
+/// Local mono-fallback `Ui` constructor. The `internals::new_ui`
+/// helper lives behind the `internals` feature; `frame.rs` doesn't
+/// enable it, so we inline the equivalent here.
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 const SCALE: usize = 32;
 
@@ -211,7 +221,7 @@ fn build_ui(ui: &mut Ui) {
 fn bench_frame(c: &mut Criterion) {
     use palantir::Display;
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
 
     c.bench_function("frame/post_record", |b| {
         b.iter(|| {
@@ -224,7 +234,7 @@ fn bench_frame(c: &mut Criterion) {
     // Same workload, but the window resizes every iteration so the
     // measure/encode caches see a fresh `available` quantization each frame.
     // Approximates a live drag-resize.
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
     let mut frame = 0u32;
     c.bench_function("frame/post_record_resizing", |b| {
         b.iter(|| {

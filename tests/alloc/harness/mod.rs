@@ -20,7 +20,19 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use palantir::{Display, Ui};
+use palantir::{Display, FrameArena, TextShaper, Ui};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+/// Local mono-fallback Ui constructor — duplicates
+/// `support::internals::new_ui` here because the alloc tests aren't
+/// gated on the `internals` feature, so they can't import from there.
+pub(crate) fn new_ui() -> Ui {
+    Ui::new(
+        TextShaper::default(),
+        Rc::new(RefCell::new(FrameArena::default())),
+    )
+}
 
 const DISPLAY: Display = Display {
     physical: glam::UVec2::new(800, 600),
@@ -37,7 +49,7 @@ where
 {
     assert!(audit > 0, "audit frame count must be > 0");
 
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
 
     for _ in 0..warmup {
         run_frame(&mut ui, &mut scene);
@@ -70,7 +82,7 @@ where
     const STABLE_RUN: usize = 2;
     const AUDIT_FRAMES: usize = 64;
 
-    let mut ui = Ui::default();
+    let mut ui = new_ui();
 
     let mut warmup = 0usize;
     let mut stable = 0usize;
