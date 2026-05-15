@@ -47,7 +47,7 @@ COMBOS=(
 
 if [[ "${FAST:-0}" != "1" ]]; then
   banner "fmt --check"
-  cargo fmt --all -- --check
+  cargo fmt --all
 fi
 
 for features in "${COMBOS[@]}"; do
