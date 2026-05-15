@@ -20,8 +20,9 @@ use crate::Spacing;
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
+use crate::input::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
-use crate::input::{InputEvent, PointerButton};
+use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::support::testing::{

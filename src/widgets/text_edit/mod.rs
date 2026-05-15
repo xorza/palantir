@@ -1,6 +1,6 @@
 use crate::animation::paint::PaintAnim;
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::input::keyboard::{Key, KeyPress, Modifiers};
+use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign, VAlign};
@@ -948,68 +948,70 @@ fn handle_input(
         };
     }
 
-    // Drain per-frame keyboard queues. `frame_text` first (so a
-    // ModifiersChanged + keystrokes-for-shortcut sequence still leaves
-    // typed text intact), then `frame_keys` for navigation/edits.
-    if !ui.input.frame_text.is_empty() {
-        let to_insert: String = if ctx.multiline {
-            ui.input.frame_text.clone()
-        } else {
-            sanitize_single_line(&ui.input.frame_text)
-        };
-        if !to_insert.is_empty() {
-            record_edit(text, state, EditKind::Typing);
-            delete_selection(text, state);
-            text.insert_str(state.caret, &to_insert);
-            state.caret += to_insert.len();
-        }
-    }
-
-    // Drain keys: clipboard / undo shortcuts via `dispatch_shortcut`
-    // first, then editing keys via `apply_key`. Vertical-nav probes
-    // happen inline because they need the shaper + layout. Indexing
-    // (instead of iter) keeps the borrow on `frame_keys` short-lived
-    // so we can dispatch to `ui.text` inside the same loop without a
-    // scratch Vec.
+    // Drain the unified keyboard event stream in arrival order:
+    // Text chunks splice into the buffer (sanitized for single-line);
+    // Down events route through `dispatch_shortcut` (clipboard / undo)
+    // then `apply_key` (edit / nav). Vertical-nav probes happen inline
+    // because they need the shaper + layout. Indexing keeps the borrow
+    // on `frame_keyboard_events` short-lived so we can dispatch to
+    // `ui.text` inside the same loop without a scratch Vec.
     let mut vert: Option<VerticalMotion> = None;
-    let n = ui.input.frame_keys.len();
+    let n = ui.input.frame_keyboard_events.len();
     for i in 0..n {
-        let kp = ui.input.frame_keys[i];
-        if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open) {
-            continue;
-        }
-        if apply_key(text, state, kp, ctx.multiline, &mut vert) {
-            *blur_after = true;
-        }
-        if let Some(v) = vert.take() {
-            let pos = ui.text.cursor_xy(
-                text,
-                state.caret,
-                ctx.font_size,
-                ctx.line_height_px,
-                ctx.wrap_target,
-                ctx.family,
-                ctx.halign,
-            );
-            let probe_y = match v.direction {
-                VerticalDir::Up => pos.y_top - 1.0,
-                VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
-            };
-            let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
-                0
-            } else {
-                ui.text.byte_at_xy(
-                    text,
-                    pos.x,
-                    probe_y,
-                    ctx.font_size,
-                    ctx.line_height_px,
-                    ctx.wrap_target,
-                    ctx.family,
-                    ctx.halign,
-                )
-            };
-            move_caret(state, target, v.extend);
+        let ev = ui.input.frame_keyboard_events[i];
+        match ev {
+            KeyboardEvent::Text(chunk) => {
+                let raw = chunk.as_str();
+                let to_insert: String = if ctx.multiline {
+                    raw.to_string()
+                } else {
+                    sanitize_single_line(raw)
+                };
+                if !to_insert.is_empty() {
+                    record_edit(text, state, EditKind::Typing);
+                    delete_selection(text, state);
+                    text.insert_str(state.caret, &to_insert);
+                    state.caret += to_insert.len();
+                }
+            }
+            KeyboardEvent::Down(kp) => {
+                if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open) {
+                    continue;
+                }
+                if apply_key(text, state, kp, ctx.multiline, &mut vert) {
+                    *blur_after = true;
+                }
+                if let Some(v) = vert.take() {
+                    let pos = ui.text.cursor_xy(
+                        text,
+                        state.caret,
+                        ctx.font_size,
+                        ctx.line_height_px,
+                        ctx.wrap_target,
+                        ctx.family,
+                        ctx.halign,
+                    );
+                    let probe_y = match v.direction {
+                        VerticalDir::Up => pos.y_top - 1.0,
+                        VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
+                    };
+                    let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
+                        0
+                    } else {
+                        ui.text.byte_at_xy(
+                            text,
+                            pos.x,
+                            probe_y,
+                            ctx.font_size,
+                            ctx.line_height_px,
+                            ctx.wrap_target,
+                            ctx.family,
+                            ctx.halign,
+                        )
+                    };
+                    move_caret(state, target, v.extend);
+                }
+            }
         }
     }
 

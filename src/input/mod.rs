@@ -1,33 +1,20 @@
 pub(crate) mod keyboard;
+pub(crate) mod pointer;
 pub(crate) mod policy;
 pub(crate) mod sense;
 pub(crate) mod shortcut;
+pub(crate) mod subscriptions;
 
 use crate::input::keyboard::{
-    Key, KeyPress, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
+    Key, KeyPress, KeyboardEvent, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
+use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
+use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-#[repr(u8)]
-pub enum PointerButton {
-    Left = 0,
-    Right = 1,
-    Middle = 2,
-}
-
-impl PointerButton {
-    pub(crate) const COUNT: usize = 3;
-
-    #[inline]
-    fn idx(self) -> usize {
-        self as usize
-    }
-}
 
 /// Per-button press/drag/click capture. One slot per [`PointerButton`].
 /// Cleared on release, on cascade-eviction of the captured widget, and
@@ -315,17 +302,14 @@ pub struct InputState {
     /// at the widget from [`Self::frame_scroll_pixels`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
-    /// Keystrokes accumulated this frame, awaiting drain by the focused
-    /// widget at record time. Capacity-retained across frames; cleared
-    /// in [`Self::post_record`] regardless of whether anything consumed
-    /// them. Step-3 focus dispatch reads this; today nothing does.
-    pub(crate) frame_keys: Vec<KeyPress>,
-    /// Committed text accumulated this frame from `Text(chunk)` events.
-    /// One `String` rather than `Vec<TextChunk>` so consumers can splice
-    /// directly into their buffer without re-concatenating; chunks are
-    /// already grapheme-aligned at the translation boundary so byte
-    /// concatenation is safe. Capacity-retained, cleared in `post_record`.
-    pub(crate) frame_text: String,
+    /// Unified keyboard event stream this frame:
+    /// [`KeyboardEvent::Down`] from `KeyDown` events and
+    /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
+    /// Capacity-retained; cleared in [`Self::drain_per_frame_queues`].
+    /// Read by the focused widget (drains all events) and by global
+    /// keyboard subscribers ([`KeyboardSense`]) — both reading the
+    /// same buffer.
+    pub(crate) frame_keyboard_events: Vec<KeyboardEvent>,
     /// Latest modifier-key snapshot. Persists across `post_record` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
@@ -340,12 +324,16 @@ pub struct InputState {
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
     /// Set in `on_input` when an event arrives that could plausibly
-    /// drive a state mutation (clicks, keys, text, scroll). Read by
-    /// `Ui::run_frame` to decide whether to re-record the frame after
-    /// pass 1's `post_record` drains the input queues. Hover-only events
-    /// (`PointerMoved`, `PointerLeft`) and modifier changes don't flip
-    /// it — they fire too often and don't typically mutate user state.
-    /// Reset by `Ui::run_frame` after the decision is made.
+    /// drive a state mutation (pointer press/release, `KeyDown`,
+    /// `Text`). Read by `Ui::run_frame` to decide whether to
+    /// re-record the frame after pass 1's `post_record` drains the
+    /// input queues. Hover-only events (`PointerMoved`, `PointerLeft`)
+    /// and modifier changes don't flip it — they fire too often and
+    /// don't typically mutate user state. Note: this is the
+    /// *event-type* gate; it doesn't filter for whether the event
+    /// was actually consumed (an idle `KeyDown` with no focus + no
+    /// chord sub still sets it). False positives waste a pass; bias
+    /// is toward not missing real mutations.
     pub(crate) frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
     /// pointer moves and mod changes), cleared by `Ui::frame_inner`
@@ -364,6 +352,21 @@ pub struct InputState {
     /// change). Cleared alongside `had_input_since_last_frame`. Read
     /// by `Ui::classify_frame` under [`InputPolicy::OnDelta`](policy::InputPolicy::OnDelta).
     pub(crate) repaint_requested_since_last_frame: bool,
+    /// Wake-gate subscriptions ([`PointerSense`] / [`KeyboardSense`]
+    /// flag masks + specific-chord list). Cleared pre-record (in
+    /// `Ui::record_pass`); widgets re-assert each active frame. The
+    /// masks **persist across silent frames** — that's the wake
+    /// signal a dormant popup needs to be paged in by the next click.
+    /// `on_input` short-circuits on the masks before touching event
+    /// buffers, so idle frames pay nothing.
+    pub(crate) subs: Subscriptions,
+    /// Unified pointer event stream this frame: moves, presses,
+    /// releases, scrolls, zooms, leave. Pushes are gated per-category
+    /// on [`Subscriptions::pointer_mask`] (`MOVE` for `Move`,
+    /// `BUTTONS` for `Down`/`Up`, `SCROLL` for `Scroll`/`Zoom`, any
+    /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
+    /// in [`Self::drain_per_frame_queues`].
+    pub(crate) frame_pointer_events: Vec<PointerEvent>,
 }
 
 impl Default for InputState {
@@ -382,14 +385,15 @@ impl InputState {
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
-            frame_keys: Vec::new(),
-            frame_text: String::new(),
+            frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
             focus_policy: FocusPolicy::default(),
             frame_had_action: false,
             had_input_since_last_frame: false,
             repaint_requested_since_last_frame: false,
+            subs: Subscriptions::default(),
+            frame_pointer_events: Vec::new(),
         }
     }
 
@@ -401,6 +405,50 @@ impl InputState {
     #[inline]
     fn capture_mut(&mut self, b: PointerButton) -> &mut Capture {
         &mut self.captures[b.idx()]
+    }
+
+    /// Push a [`PointerEvent::Scroll`] when at least one subscriber
+    /// holds [`PointerSense::SCROLL`] AND we have a pointer position.
+    /// Returns whether the wake fires.
+    fn push_scroll_event(&mut self, pixels: Vec2, lines: Vec2) -> bool {
+        if !self.subs.pointer_mask.contains(PointerSense::SCROLL) {
+            return false;
+        }
+        let Some(pos) = self.pointer_pos else {
+            return false;
+        };
+        self.frame_pointer_events
+            .push(PointerEvent::Scroll { pos, pixels, lines });
+        true
+    }
+
+    fn record_pointer_down(&mut self, pos: Option<glam::Vec2>, button: PointerButton) -> bool {
+        self.record_pointer_button(pos, |pos| PointerEvent::Down { pos, button })
+    }
+
+    fn record_pointer_up(&mut self, pos: Option<glam::Vec2>, button: PointerButton) -> bool {
+        self.record_pointer_button(pos, |pos| PointerEvent::Up { pos, button })
+    }
+
+    /// Push a button event to [`Self::frame_pointer_events`] and
+    /// answer "should this event wake the next frame?" Wake fires
+    /// when any subscriber holds [`PointerSense::BUTTONS`] — single
+    /// bitwise AND on the cached `pointer_mask`. Returns `true` even
+    /// when `pos` is `None` so an off-surface press still wakes; the
+    /// `PointerEvent` itself is only pushed if there's a position
+    /// (no consumer can do anything useful without one).
+    fn record_pointer_button(
+        &mut self,
+        pos: Option<glam::Vec2>,
+        make_event: impl FnOnce(glam::Vec2) -> PointerEvent,
+    ) -> bool {
+        if !self.subs.pointer_mask.contains(PointerSense::BUTTONS) {
+            return false;
+        }
+        if let Some(pos) = pos {
+            self.frame_pointer_events.push(make_event(pos));
+        }
+        true
     }
 
     /// Feed a palantir-native input event. Hit-tests against the
@@ -447,9 +495,14 @@ impl InputState {
                 let hits = cascades.hit_test_pair(p, Sense::hovers, Sense::scrolls);
                 self.hovered = hits.hover;
                 self.scroll_target = hits.scroll;
+                let move_subbed = self.subs.pointer_mask.contains(PointerSense::MOVE);
+                if move_subbed {
+                    self.frame_pointer_events.push(PointerEvent::Move(p));
+                }
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
                     || self.captures.iter().any(|c| c.active.is_some())
+                    || move_subbed
             }
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
@@ -458,7 +511,17 @@ impl InputState {
                 self.pointer_pos = None;
                 self.hovered = None;
                 self.scroll_target = None;
-                observable
+                // `Leave` is rare; emit whenever any pointer-class
+                // subscription is active so subscribers can clean up
+                // (clear crosshair, dismiss hover preview).
+                let pointer_subbed = self
+                    .subs
+                    .pointer_mask
+                    .intersects(PointerSense::MOVE | PointerSense::BUTTONS | PointerSense::SCROLL);
+                if pointer_subbed {
+                    self.frame_pointer_events.push(PointerEvent::Leave);
+                }
+                observable || pointer_subbed
             }
             InputEvent::PointerPressed(btn) => {
                 // Hit-test for the press target (the topmost *clickable*
@@ -466,6 +529,7 @@ impl InputState {
                 // transparent to presses even though they show as hovered.
                 let pointer_pos = self.pointer_pos;
                 let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                let buttons_subbed = self.record_pointer_down(pointer_pos, btn);
                 let cap = self.capture_mut(btn);
                 cap.active = hit;
                 cap.press_pos = hit.and(pointer_pos);
@@ -486,11 +550,12 @@ impl InputState {
                     }
                 }
                 // Press on inert surface (no click target, no focus
-                // change) is observably a no-op — under `OnDelta` the
-                // frame stays on the paint-anim path. Focus-clearing
-                // clicks (e.g. outside a focused TextEdit) and any
-                // sense hit still record.
-                hit.is_some() || self.focused != prev_focus
+                // change, no `BUTTONS` subscriber) is observably
+                // a no-op — under `OnDelta` the frame stays on the
+                // paint-anim path. Focus-clearing clicks (outside a
+                // focused TextEdit) and any sense hit still record;
+                // popup-dismiss subscribers wake themselves.
+                hit.is_some() || self.focused != prev_focus || buttons_subbed
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
@@ -503,42 +568,62 @@ impl InputState {
                     if hit == Some(a) && !drag_suppressed_click {
                         self.capture_mut(btn).frame_click = Some(a);
                     }
-                    // Capture was live: click may have fired, or a drag
-                    // ended. Either way the owning widget needs a record.
-                    true
-                } else {
-                    // No capture → press landed on inert surface and
-                    // release is a stray. Skip.
-                    false
                 }
+                let buttons_subbed = self.record_pointer_up(pointer_pos, btn);
+                // Capture was live ⇒ owning widget needs a record;
+                // otherwise only `BUTTONS` subscribers wake.
+                captured.is_some() || buttons_subbed
             }
             InputEvent::ScrollPixels(d) => {
                 self.frame_scroll_pixels += d;
-                self.scroll_target.is_some()
+                let subbed = self.push_scroll_event(d, Vec2::ZERO);
+                self.scroll_target.is_some() || subbed
             }
             InputEvent::ScrollLines(d) => {
                 self.frame_scroll_lines += d;
-                self.scroll_target.is_some()
+                let subbed = self.push_scroll_event(Vec2::ZERO, d);
+                self.scroll_target.is_some() || subbed
             }
             InputEvent::Zoom(f) => {
                 self.frame_zoom_delta *= f;
-                self.scroll_target.is_some()
+                let subbed = if self.subs.pointer_mask.contains(PointerSense::SCROLL)
+                    && let Some(pos) = self.pointer_pos
+                {
+                    self.frame_pointer_events
+                        .push(PointerEvent::Zoom { pos, factor: f });
+                    true
+                } else {
+                    false
+                };
+                self.scroll_target.is_some() || subbed
             }
             InputEvent::KeyDown { key, repeat } => {
-                self.frame_keys.push(KeyPress {
-                    key,
-                    mods: self.modifiers,
-                    repeat,
-                });
-                true
+                let mods = self.modifiers;
+                self.frame_keyboard_events
+                    .push(KeyboardEvent::Down(KeyPress { key, mods, repeat }));
+                // Wake when a focused widget would consume the key
+                // OR a specific-chord subscriber asked for it
+                // OR a `KeyboardSense::KEY` subscriber is recording
+                // raw key events. Idle keys with none of those
+                // (typing into empty surface) skip the frame.
+                self.focused.is_some()
+                    || self.subs.matches_key(key, mods)
+                    || self.subs.keyboard_mask.contains(KeyboardSense::KEY)
             }
             InputEvent::Text(chunk) => {
-                self.frame_text.push_str(chunk.as_str());
-                true
+                self.frame_keyboard_events.push(KeyboardEvent::Text(chunk));
+                // Text is rare (only fires on IME commit / dead-key
+                // resolution on most platforms). Wake when a focused
+                // widget would consume it OR a TEXT subscriber wants
+                // it.
+                self.focused.is_some() || self.subs.keyboard_mask.contains(KeyboardSense::TEXT)
             }
             InputEvent::ModifiersChanged(m) => {
                 self.modifiers = m;
-                true
+                // Only wake if a subscriber asked. Accel-underline
+                // UIs / modifier debug overlays must subscribe to
+                // `MODIFIER`; nothing else cares.
+                self.subs.keyboard_mask.contains(KeyboardSense::MODIFIER)
             }
         };
         if requests_repaint {
@@ -567,11 +652,11 @@ impl InputState {
         }
         self.had_input_since_last_frame = false;
         self.repaint_requested_since_last_frame = false;
+        self.frame_pointer_events.clear();
         self.frame_scroll_pixels = Vec2::ZERO;
         self.frame_scroll_lines = Vec2::ZERO;
         self.frame_zoom_delta = 1.0;
-        self.frame_keys.clear();
-        self.frame_text.clear();
+        self.frame_keyboard_events.clear();
     }
 
     /// Recompute hover, drop transient per-frame flags, evict captured

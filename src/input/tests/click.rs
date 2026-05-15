@@ -273,7 +273,7 @@ fn secondary_click_press_release_emits_secondary_clicked() {
 
 #[test]
 fn left_and_right_click_are_independent() {
-    use crate::input::PointerButton;
+    use crate::input::pointer::PointerButton;
     use crate::support::testing::press_at;
     let mut ui = new_ui();
     let surface = UVec2::new(200, 80);

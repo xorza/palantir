@@ -130,22 +130,40 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         &cascades,
     );
 
-    assert_eq!(state.frame_keys.len(), 2);
-    assert_eq!(state.frame_keys[0].key, Key::Char('a'));
-    assert!(state.frame_keys[0].mods.ctrl);
-    assert!(!state.frame_keys[0].repeat);
-    assert_eq!(state.frame_keys[1].key, Key::Char('b'));
-    assert!(!state.frame_keys[1].mods.ctrl);
-    assert!(state.frame_keys[1].repeat);
+    use crate::input::keyboard::KeyboardEvent;
+    let presses: Vec<_> = state
+        .frame_keyboard_events
+        .iter()
+        .filter_map(|e| match e {
+            KeyboardEvent::Down(kp) => Some(*kp),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(presses.len(), 2);
+    assert_eq!(presses[0].key, Key::Char('a'));
+    assert!(presses[0].mods.ctrl);
+    assert!(!presses[0].repeat);
+    assert_eq!(presses[1].key, Key::Char('b'));
+    assert!(!presses[1].mods.ctrl);
+    assert!(presses[1].repeat);
 }
 
 #[test]
-fn text_events_concatenate_into_frame_text() {
+fn text_events_arrive_in_order_in_keyboard_buffer() {
+    use crate::input::keyboard::KeyboardEvent;
     let mut state = InputState::new();
     let cascades = Cascades::default();
     state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
     state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
-    assert_eq!(state.frame_text, "héllo");
+    let texts: Vec<_> = state
+        .frame_keyboard_events
+        .iter()
+        .filter_map(|e| match e {
+            KeyboardEvent::Text(c) => Some(c.as_str().to_string()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, vec!["hé".to_string(), "llo".to_string()]);
 }
 
 #[test]
@@ -153,7 +171,7 @@ fn focus_policy_routing() {
     use crate::FocusPolicy;
     use crate::Ui;
     use crate::forest::element::Configure;
-    use crate::input::PointerButton;
+    use crate::input::pointer::PointerButton;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::support::testing::{click_at, run_at_acked};
@@ -330,15 +348,12 @@ fn post_record_clears_keys_and_text_but_preserves_modifiers() {
         &cascades,
     );
     state.on_input(InputEvent::Text(TextChunk::new("x").unwrap()), &cascades);
-    let key_cap_before = state.frame_keys.capacity();
-    let text_cap_before = state.frame_text.capacity();
+    let buf_cap_before = state.frame_keyboard_events.capacity();
 
     state.post_record(&cascades);
 
-    assert!(state.frame_keys.is_empty());
-    assert!(state.frame_text.is_empty());
+    assert!(state.frame_keyboard_events.is_empty());
     // Capacity-retained: typing across frames stays alloc-free.
-    assert_eq!(state.frame_keys.capacity(), key_cap_before);
-    assert_eq!(state.frame_text.capacity(), text_cap_before);
+    assert_eq!(state.frame_keyboard_events.capacity(), buf_cap_before);
     assert!(state.modifiers.shift);
 }

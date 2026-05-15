@@ -63,10 +63,14 @@ fn multiline_paste_keeps_newlines() {
     // Inject `meta` modifier via the key event — InputState reads
     // modifiers from a separate `ModifiersChanged` queue, but for
     // this test we drive the synthesizer directly.
-    ui.input.frame_keys.last_mut().unwrap().mods = Modifiers {
-        meta: true,
-        ..Modifiers::NONE
-    };
+    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
+        ui.input.frame_keyboard_events.last_mut()
+    {
+        kp.mods = Modifiers {
+            meta: true,
+            ..Modifiers::NONE
+        };
+    }
     run_at_acked(&mut ui, UVec2::new(300, 200), multiline_editor(&mut buf));
     assert_eq!(buf, "line1\nline2\nline3");
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
@@ -93,10 +97,14 @@ fn multiline_selection_crosses_newline() {
         key: Key::ArrowDown,
         repeat: false,
     });
-    ui.input.frame_keys.last_mut().unwrap().mods = Modifiers {
-        shift: true,
-        ..Modifiers::NONE
-    };
+    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
+        ui.input.frame_keyboard_events.last_mut()
+    {
+        kp.mods = Modifiers {
+            shift: true,
+            ..Modifiers::NONE
+        };
+    }
     run_at_acked(&mut ui, UVec2::new(300, 200), multiline_editor(&mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
     assert!(

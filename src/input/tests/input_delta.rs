@@ -3,8 +3,9 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::input::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
-use crate::input::{InputEvent, PointerButton};
 use crate::layout::types::sizing::Sizing;
 use crate::support::testing::new_ui;
 use crate::support::testing::run_at_acked;
@@ -123,26 +124,93 @@ fn pointer_left_with_nothing_active_does_not_request_repaint() {
     assert!(!delta.requests_repaint);
 }
 
+/// `Text` wakes only when a focused widget would consume it OR a
+/// `KeyboardSense::TEXT` subscriber asked for it. `ModifiersChanged`
+/// wakes only with a `KeyboardSense::MODIFIER` subscriber.
 #[test]
-fn non_pointer_events_request_repaint() {
-    use crate::input::keyboard::{Key, Modifiers, TextChunk};
+fn non_pointer_events_wake_on_focus_or_subscription() {
+    use crate::input::keyboard::{Modifiers, TextChunk};
+    use crate::input::subscriptions::KeyboardSense;
+    use crate::primitives::widget_id::WidgetId;
     let mut ui = new_ui();
     run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
+
+    // No focus, no subscription → no wake.
     assert!(
-        ui.on_input(InputEvent::KeyDown {
-            key: Key::Enter,
-            repeat: false,
-        })
-        .requests_repaint,
+        !ui.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
+            .requests_repaint,
     );
     assert!(
-        ui.on_input(InputEvent::Text(TextChunk::new("a").unwrap()))
+        !ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
+            .requests_repaint,
+    );
+
+    // Focus held → Text wakes.
+    ui.input.focused = Some(WidgetId::from_hash("editor"));
+    assert!(
+        ui.on_input(InputEvent::Text(TextChunk::new("b").unwrap()))
+            .requests_repaint,
+    );
+    ui.input.focused = None;
+
+    // KeyboardSense subscribers → Text + ModifiersChanged wake.
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        build_hover_target(ui);
+        ui.subscribe_keyboard(KeyboardSense::TEXT | KeyboardSense::MODIFIER);
+    });
+    assert!(
+        ui.on_input(InputEvent::Text(TextChunk::new("c").unwrap()))
             .requests_repaint,
     );
     assert!(
         ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
+}
+
+/// `KeyDown` wakes only when a focused widget would consume it or
+/// a global chord subscriber asked for it. Idle keys (no focus,
+/// no subscriber) skip the frame under `OnDelta`.
+#[test]
+fn keydown_wakes_only_when_focus_or_subscription_exists() {
+    use crate::input::keyboard::{Key, Modifiers};
+    use crate::input::subscriptions::{KeyChord, PointerSense};
+    use crate::primitives::widget_id::WidgetId;
+    let mut ui = new_ui();
+    run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
+
+    // No focus, no chord sub → no wake.
+    let delta = ui.on_input(InputEvent::KeyDown {
+        key: Key::Enter,
+        repeat: false,
+    });
+    assert!(!delta.requests_repaint, "idle key must skip the frame");
+
+    // With focus held → wake.
+    ui.input.focused = Some(WidgetId::from_hash("editor"));
+    let delta = ui.on_input(InputEvent::KeyDown {
+        key: Key::Enter,
+        repeat: false,
+    });
+    assert!(delta.requests_repaint);
+
+    // No focus, but chord subscriber → wake. Subscriptions are
+    // cleared pre-record, so re-record with the sub re-asserted.
+    ui.input.focused = None;
+    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+        build_hover_target(ui);
+        ui.subscribe_key(KeyChord {
+            key: Key::Escape,
+            mods: Modifiers::NONE,
+        });
+        // Also reassert this so it survives — but we only test Escape below.
+        let _ = PointerSense::BUTTONS;
+    });
+    let delta = ui.on_input(InputEvent::KeyDown {
+        key: Key::Escape,
+        repeat: false,
+    });
+    assert!(delta.requests_repaint);
 }
 
 /// Press + release on an inert surface with no focus and no popup is

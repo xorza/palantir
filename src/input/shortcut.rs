@@ -1,6 +1,7 @@
 //! Platform-aware keyboard shortcuts. One value drives both display
 //! ("⌘C" on macOS, "Ctrl+C" elsewhere) and matching against incoming
-//! [`KeyPress`] events, so call sites stop hardcoding the OS split.
+//! [`KeyboardEvent::Down`] events, so call sites stop hardcoding the
+//! OS split.
 //!
 //! ## Conventions
 //!
@@ -8,13 +9,15 @@
 //!   (the event-state vocabulary). `cmd` resolves to Cmd on macOS and
 //!   Ctrl on Win/Linux — the platform's "primary command" modifier.
 //!   Raw-Ctrl on macOS is rare enough that the escape hatch is
-//!   "match `KeyPress` directly"; egui takes the same position.
+//!   "match a `KeyboardEvent::Down` directly"; egui takes the same position.
 //! - [`Shortcut::matches`] compares the modifier set *exactly*: Cmd+A
 //!   does NOT match Cmd+Shift+A. `Char` keys compare ignore-case
 //!   because [`Key::Char`] arrives post-shift-layout.
 //! - [`Shortcut::label`] returns `Cow::Borrowed` from a const table
 //!   for the hot set (`cmd[+shift] + ASCII letter`). Rare combos
 //!   allocate once via `Display`.
+//!
+//! [`KeyboardEvent::Down`]: crate::input::keyboard::KeyboardEvent::Down
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
@@ -24,7 +27,7 @@ use std::fmt;
 /// Modifier set for declaring shortcuts. `cmd` is the platform
 /// "primary command" key — Cmd on macOS, Ctrl on Win/Linux. `shift`
 /// and `alt` are literal. Raw Ctrl-on-macOS is not modelled; callers
-/// needing it match a [`KeyPress`] directly.
+/// needing it match the keyboard event directly.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
     pub cmd: bool,
@@ -110,9 +113,9 @@ impl Shortcut {
         Self::new(Mods::CMD_ALT, Key::Char(c))
     }
 
-    /// True iff `kp`'s modifier set + key match this shortcut.
-    /// Modifier comparison is exact (`cmd+a` ≠ `cmd+shift+a`); `Char`
-    /// keys compare ignore-case to absorb shift-layout effects.
+    /// True iff `kp` matches this shortcut. Modifier comparison is
+    /// exact (`cmd+a` ≠ `cmd+shift+a`); `Char` keys compare
+    /// ignore-case to absorb shift-layout effects.
     pub fn matches(self, kp: KeyPress) -> bool {
         if Mods::from_event(kp.mods) != self.mods {
             return false;

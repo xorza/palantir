@@ -1159,7 +1159,7 @@ mod bars {
 /// `[0, content - viewport]`.
 #[test]
 fn drag_thumb_pans_proportionally() {
-    use crate::input::PointerButton;
+    use crate::input::pointer::PointerButton;
     let mut ui = new_ui();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -1211,7 +1211,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
     // Both axes follow the same code path; pin both so the symmetric
     // helper can't drift. For each axis: click far end of track →
     // page forward by one viewport; click near end → page back to 0.
-    use crate::input::PointerButton;
+    use crate::input::pointer::PointerButton;
     enum AxisCase {
         V,
         H,
