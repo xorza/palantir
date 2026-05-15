@@ -135,9 +135,6 @@ pub enum Interp {
     /// do by default. Visible midpoint dip on saturated complementary
     /// pairs.
     Linear,
-    /// sRGB-space interpolation. Provided for compatibility with old
-    /// design tools (Photoshop pre-2023, Figma).
-    Srgb,
 }
 
 /// Linear gradient — paints colour along an axis at `angle` radians
