@@ -1,15 +1,22 @@
 # Paint-only frame mode (a.k.a. "paint tick")
 
-**Status:** proposal. No code yet. Audited against codebase
-2026-05-15 — frame lifecycle, `pre_record` / `post_record` shape,
-`tree.shapes` indexing, `SubtreeRollups`, `DamageEngine`,
-`repaint_wakes`, `AnimMap`, and `text_edit` caret all match
-current source. Storage choice for the paint-anim column was
-revised (see §`PaintAnim` registry below) — `SparseColumn<T>`
-doesn't exist; the tree's sparse-extras pattern is
-`ExtrasIdx`-packed `Slot`s indexing dense `*_table: Vec<T>`,
-and a paint-anim entry needs to be shape-keyed (not node-keyed)
-anyway.
+**Status:** slice 1 partially landed (2026-05-15) — `PaintAnim`
+module ships with `BlinkOpacity` only; `PaintMod` carries only an
+`alpha` field. The `Rotation` / `Pulse` / `Marquee` variants need
+encoder transform-mod plumbing (per-shape `TranslateScale` push
+into the cmd buffer); they're held out of slice 1 along with the
+`Spinner` widget, and land once the alpha-only path proves out.
+Slice 2 (post-record short-circuit) still gated on the bench.
+
+Audited against codebase 2026-05-15 — frame lifecycle,
+`pre_record` / `post_record` shape, `tree.shapes` indexing,
+`SubtreeRollups`, `DamageEngine`, `repaint_wakes`, `AnimMap`, and
+`text_edit` caret all match current source. Storage choice for
+the paint-anim column was revised (see §`PaintAnim` registry
+below) — `SparseColumn<T>` doesn't exist; the tree's
+sparse-extras pattern is `ExtrasIdx`-packed `Slot`s indexing
+dense `*_table: Vec<T>`, and a paint-anim entry needs to be
+shape-keyed (not node-keyed) anyway.
 **Goal:** drive time-based visuals (caret blink, spinner, focus pulse,
 marquee, indeterminate progress) without re-running record / measure /
 arrange / cascade on every wake. Spend only the encode + paint passes
