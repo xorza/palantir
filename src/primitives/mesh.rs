@@ -90,9 +90,11 @@ impl Mesh {
         self.cached_bbox.set(None);
     }
 
+    /// Non-paintable: missing vertices, or indices that don't form whole
+    /// triangles. Mirror of `DrawMeshPayload::is_noop` at the user-mesh layer.
     #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.vertices.is_empty() || self.indices.is_empty()
+    pub fn is_noop(&self) -> bool {
+        self.vertices.is_empty() || self.indices.len() < 3 || !self.indices.len().is_multiple_of(3)
     }
 
     /// Stable hash of vertex + index bytes. Memoized — repeat calls on
@@ -199,6 +201,9 @@ impl Mesh {
     }
 }
 
+// Sister inline loops in `common/frame_arena.rs::lower_polyline` /
+// `lower_bezier` fuse this AABB-of-points pattern with their copy
+// pass — don't "DRY" them into a shared helper, the fusion is the win.
 fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     let Some((first, rest)) = verts.split_first() else {
         return Rect::ZERO;
