@@ -14,6 +14,7 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Element, LayoutMode};
 use crate::forest::tree::Layer;
+use crate::input::policy::InputPolicy;
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
@@ -147,6 +148,12 @@ pub struct Ui {
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     pub(crate) input: InputState,
+    /// Selects which "did input arrive?" signal `classify_frame`
+    /// consults to gate the full record path. Default
+    /// [`InputPolicy::OnDelta`] skips record on inert pointer moves
+    /// and scroll-over-nothing; flip to [`InputPolicy::Always`] for
+    /// telemetry / custom canvases that need every event.
+    pub input_policy: InputPolicy,
     pub(crate) cascades_engine: CascadesEngine,
     pub(crate) display: Display,
     pub(crate) damage_engine: DamageEngine,
@@ -329,6 +336,17 @@ impl Ui {
         let processing = match plan {
             FramePlan::PaintOnly => {
                 profiling::scope!("Ui::frame.paint_only");
+                // PaintOnly skips `record_pass` → skips `post_record`
+                // → skips the per-frame input drain. Under `OnDelta`
+                // a frame can land here with `had_input_since_last_frame`
+                // true (e.g. pointer move over inert surface) and
+                // per-frame accumulators populated (scroll over a
+                // non-scroll widget). Drain them: nothing recorded this
+                // frame can react, and leaving them set would either
+                // pin the sticky bit forever or fire stale scroll the
+                // next time a real scroll widget appears under the
+                // pointer.
+                self.input.drain_per_frame_queues();
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
@@ -451,10 +469,11 @@ impl Ui {
     }
 
     /// Drain wakes whose deadline has fired and decide whether this
-    /// frame can take the anim-only fast path. Reads
-    /// `repaint_requested` and `input.had_input_since_last_frame` from
-    /// the prior frame's record; both must be observed BEFORE the
-    /// per-frame clear that follows in `frame_inner`.
+    /// frame can take the anim-only fast path. Reads `repaint_requested`
+    /// and one of the two input sticky bits (selected by
+    /// [`Self::input_policy`]) from the prior frame's record; all must
+    /// be observed BEFORE the per-frame clear that follows in
+    /// `frame_inner`.
     fn classify_frame(&mut self, display: Display) -> FramePlan {
         // `repaint_wakes` is sorted ascending, so fired = prefix slice.
         let fired_count = self
@@ -479,10 +498,14 @@ impl Ui {
             );
         }
 
+        let input_forces_record = match self.input_policy {
+            InputPolicy::Always => self.input.had_input_since_last_frame,
+            InputPolicy::OnDelta => self.input.repaint_requested_since_last_frame,
+        };
         let paint_only = !force_full
             && self.prev_stamp.is_some()
             && !self.repaint_requested
-            && !self.input.had_input_since_last_frame
+            && !input_forces_record
             && fired_reasons.is_anim_only();
         if paint_only {
             FramePlan::PaintOnly

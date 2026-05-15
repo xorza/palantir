@@ -35,6 +35,7 @@ pub use forest::tree::Layer;
 pub use forest::visibility::Visibility;
 pub use host::{FramePresent, Host};
 pub use input::keyboard::{Key, KeyPress, Modifiers, TextChunk};
+pub use input::policy::InputPolicy;
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};
 pub use input::{FocusPolicy, InputDelta, InputEvent, PointerButton, ResponseState};
