@@ -96,9 +96,32 @@ impl FrameArena {
         };
 
         let p_start = self.polyline_points.len() as u32;
-        self.polyline_points.extend_from_slice(points);
         let c_start = self.polyline_colors.len() as u32;
-        self.polyline_colors.extend_from_slice(color_slice);
+        let bbox = match points.split_first() {
+            None => {
+                self.polyline_colors.extend_from_slice(color_slice);
+                Rect::ZERO
+            }
+            Some((&first, rest)) => {
+                let mut lo = first;
+                let mut hi = first;
+                self.polyline_points.reserve(points.len());
+                self.polyline_points.push(first);
+                for &p in rest {
+                    self.polyline_points.push(p);
+                    lo = lo.min(p);
+                    hi = hi.max(p);
+                }
+                self.polyline_colors.extend_from_slice(color_slice);
+                Rect {
+                    min: lo,
+                    size: Size {
+                        w: hi.x - lo.x,
+                        h: hi.y - lo.y,
+                    },
+                }
+            }
+        };
 
         // Hash contract for polyline records: no variant tag. `Shape::Line`
         // and a 2-point `Shape::Polyline { Single(color) }` lower
@@ -109,13 +132,12 @@ impl FrameArena {
         let mut h = FxHasher::new();
         h.write(bytemuck::cast_slice(points));
         h.write(bytemuck::cast_slice(color_slice));
-        h.write_u32(width.to_bits());
-        h.write_u8(mode as u8);
-        h.write_u8(cap as u8);
-        h.write_u8(join as u8);
+        let style = (width.to_bits() as u64) << 24
+            | ((mode as u64) << 16)
+            | ((cap as u64) << 8)
+            | (join as u64);
+        h.write_u64(style);
         let content_hash = h.finish();
-
-        let bbox = points_aabb(points);
 
         ShapeRecord::Polyline {
             width,
@@ -161,21 +183,18 @@ impl FrameArena {
         self.polyline_colors.push(color);
 
         let mut h = FxHasher::new();
-        h.write_u8(0xCB);
+        let degree = match ctrl {
+            BezierInputs::Cubic(_) => 0x01_u16,
+            BezierInputs::Quadratic(_) => 0x02_u16,
+        };
+        h.write_u16(0xCB00 | degree);
         match ctrl {
-            BezierInputs::Cubic(ps) => {
-                h.write_u8(0x01);
-                h.write(bytemuck::bytes_of(&ps));
-            }
-            BezierInputs::Quadratic(ps) => {
-                h.write_u8(0x02);
-                h.write(bytemuck::bytes_of(&ps));
-            }
+            BezierInputs::Cubic(ps) => h.write(bytemuck::bytes_of(&ps)),
+            BezierInputs::Quadratic(ps) => h.write(bytemuck::bytes_of(&ps)),
         }
-        h.write_u32(width.to_bits());
-        h.write_u32(tolerance.to_bits());
-        h.write_u8(cap as u8);
-        h.write_u8(join as u8);
+        let dims = ((width.to_bits() as u64) << 32) | tolerance.to_bits() as u64;
+        h.write_u64(dims);
+        h.write_u16(((cap as u16) << 8) | join as u16);
         h.write(bytemuck::bytes_of(&color));
         let content_hash = h.finish();
 
@@ -197,23 +216,5 @@ impl FrameArena {
             bbox,
             content_hash,
         }
-    }
-}
-
-fn points_aabb(points: &[Vec2]) -> Rect {
-    let Some((&first, rest)) = points.split_first() else {
-        return Rect::ZERO;
-    };
-    let (mut lo, mut hi) = (first, first);
-    for p in rest {
-        lo = lo.min(*p);
-        hi = hi.max(*p);
-    }
-    Rect {
-        min: lo,
-        size: Size {
-            w: hi.x - lo.x,
-            h: hi.y - lo.y,
-        },
     }
 }
