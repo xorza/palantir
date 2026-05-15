@@ -198,10 +198,7 @@ fn showcase_gradients_tab_matches_golden() {
                             .gap(4.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .show(ui, |ui| {
-                                for (i, ip) in [Interp::Linear, Interp::Oklab]
-                                    .iter()
-                                    .enumerate()
-                                {
+                                for (i, ip) in [Interp::Linear, Interp::Oklab].iter().enumerate() {
                                     let g =
                                         LinearGradient::two_stop(0.0, red, green).with_interp(*ip);
                                     Frame::new()
