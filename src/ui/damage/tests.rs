@@ -1,3 +1,4 @@
+use super::region::DamageRegion;
 use super::{Damage, DamageEngine};
 use crate::Ui;
 use crate::forest::element::Configure;
@@ -8,7 +9,7 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::internals::ResponseNodeExt;
+use crate::support::internals::{ResponseNodeExt, damage_current_region};
 use crate::support::testing::new_ui;
 use crate::support::testing::run_at_acked;
 use crate::ui::frame_report::RenderPlan;
@@ -31,10 +32,13 @@ const DISPLAY: Display = Display {
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
-    let _ = ui.frame(DISPLAY, Duration::ZERO, &mut (), f);
-    let damage = ui.damage_engine.filter(ui.display.logical_rect());
+    let report = ui.frame(DISPLAY, Duration::ZERO, &mut (), f);
     ui.frame_state.mark_submitted();
-    damage
+    match report.plan {
+        None => Damage::None,
+        Some(RenderPlan::Full { .. }) => Damage::Full,
+        Some(RenderPlan::Partial { region, .. }) => Damage::Partial(region),
+    }
 }
 
 /// The standard "root with one 50×50 frame" tree used by most damage
@@ -89,9 +93,9 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut ui, build);
 
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_engine.region.is_empty());
+    assert!(damage_current_region(&ui).is_empty());
     assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
         Damage::None,
     );
 }
@@ -190,7 +194,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
         !ui.damage_engine.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
-    let rects: Vec<_> = ui.damage_engine.region.iter_rects().collect();
+    let rects: Vec<_> = damage_current_region(&ui).iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(0.0, 0.0, 50.0, 50.0)],
@@ -382,7 +386,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        ui.damage_engine.region.iter_rects().next(),
+        damage_current_region(&ui).iter_rects().next(),
         Some(ui.layout[Layer::Main].rect[dirty_id.index()])
     );
 }
@@ -448,7 +452,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     // Button is gone; root Panel is non-painting (no chrome) so it
     // never entered prev. Only contribution is the Button's prev
     // rect, surfaced via the `removed` list.
-    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
+    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
     assert_eq!(rects, vec![prev_button_rect]);
 }
 
@@ -480,7 +484,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!ui.damage_engine.region.is_empty());
+    assert!(!damage_current_region(&ui).is_empty());
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
@@ -497,14 +501,13 @@ fn damage_filter_returns_partial_when_small() {
     frame(&mut ui, |ui| {
         one_frame(ui, RED);
     });
-    let r = ui
-        .damage_engine
-        .region
+    let region = damage_current_region(&ui);
+    let r = region
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
     assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
         Damage::Partial(r.into()),
     );
 }
@@ -557,9 +560,8 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
     };
-    let damage_rect = ui
-        .damage_engine
-        .region
+    let region = damage_current_region(&ui);
+    let damage_rect = region
         .iter_rects()
         .next()
         .expect("child changed → some damage");
@@ -610,7 +612,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // into one bbox. (A *much* larger distance would push cost over
     // the budget; pinned by
     // `transform_animation_keeps_far_positions_split`.)
-    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
+    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
@@ -672,7 +674,7 @@ fn transform_animation_keeps_far_positions_split() {
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
     // 20 000 budget, this would merge; the guard above drops the
     // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
+    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
@@ -690,7 +692,13 @@ fn no_damage_means_skip() {
     // backbuffer already holds the right pixels). Distinct from
     // `Full` ("everything changed"), which is what coverage above
     // [`FULL_REPAINT_THRESHOLD`] produces.
-    assert_eq!(d.filter(TEST_SURFACE), Damage::None);
+    assert_eq!(
+        Damage::new(
+            TEST_SURFACE,
+            DamageRegion::collapse_from(&d.raw_rects, d.budget_px)
+        ),
+        Damage::None,
+    );
 }
 
 /// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
@@ -768,19 +776,14 @@ fn damage_filter_threshold_cases() {
             TEST_SURFACE,
             Damage::Full,
         ),
-        (
-            "zero_area_surface",
-            &[Rect::new(0.0, 0.0, 1.0, 1.0)],
-            Rect::ZERO,
-            Damage::Full,
-        ),
+        // Zero-area-surface case dropped: `Damage::new` now asserts
+        // `surface_area > 0.0` (host filters resize-to-zero before
+        // we ever reach this layer), so the prior `Damage::Full`
+        // fallback became unreachable.
     ];
     for (label, rects, surface, want) in cases {
-        let d = DamageEngine {
-            region: region(rects),
-            ..DamageEngine::default()
-        };
-        assert_eq!(d.filter(*surface), *want, "case: {label}");
+        let region = region(rects);
+        assert_eq!(Damage::new(*surface, region), *want, "case: {label}");
     }
 }
 
@@ -1044,9 +1047,12 @@ fn button_hover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
+        damage_current_region(&ui).iter_rects().next(),
+        Some(hot_rect)
+    );
+    assert_eq!(
+        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
         Damage::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -1103,9 +1109,12 @@ fn button_unhover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
-    assert_eq!(ui.damage_engine.region.iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
+        damage_current_region(&ui).iter_rects().next(),
+        Some(hot_rect)
+    );
+    assert_eq!(
+        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
         Damage::Partial(hot_rect.into()),
     );
 }
@@ -1157,9 +1166,8 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     // but the damage rect must stay inside the parent's clip.
     build(RED, &mut ui, &mut child_node);
 
-    let damage_rect = ui
-        .damage_engine
-        .region
+    let region = damage_current_region(&ui);
+    let damage_rect = region
         .iter_rects()
         .next()
         .expect("child changed → some damage");
@@ -1241,7 +1249,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         frame(&mut ui, |ui| {
             Panel::hstack().id_salt("root").show(ui, |_| {});
         });
-        let rects: Vec<Rect> = ui.damage_engine.region.iter_rects().collect();
+        let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
         assert_eq!(rects, vec![prev_rect], "[{label}] damage region");
     }
 }
@@ -1299,7 +1307,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     build(BLUE, &mut ui);
     build(RED, &mut ui);
 
-    for r in ui.damage_engine.region.iter_rects() {
+    for r in damage_current_region(&ui).iter_rects() {
         assert!(
             r.size.w <= viewport + 0.5 && r.size.h <= viewport + 0.5,
             "shadow halo damage must stay inside the {viewport}px clip; got {r:?}",

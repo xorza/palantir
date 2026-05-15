@@ -29,6 +29,7 @@ use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 #[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
+use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
@@ -107,7 +108,7 @@ pub(crate) struct DamageEngine {
     /// policy. Pass 2 hands this slice to `DamageRegion::collapse_from`
     /// which produces the bounded region. Retained capacity — no
     /// per-frame allocation in steady state.
-    raw_rects: Vec<Rect>,
+    pub(crate) raw_rects: Vec<Rect>,
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the Occupied-equal arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
@@ -173,7 +174,7 @@ impl Damage {
             return Damage::None;
         }
         let surface_area = surface.area();
-        assert!(surface_area > 0.0);
+        assert!(surface_area > EPS);
 
         if region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
             return Damage::Full;
@@ -191,17 +192,6 @@ impl DamageEngine {
     /// it's the first frame.
     pub(crate) fn invalidate_prev(&mut self) {
         self.prev.clear();
-    }
-
-    /// Test/bench inspection: rebuild the post-collapse region from
-    /// the last `compute`'s pass-1 buffer. Doesn't mutate any state.
-    /// On `force_full` frames the buffer holds only the structural
-    /// rects (the anim / evict tail is skipped by the short-circuit),
-    /// so the reconstructed region reflects "what would have been
-    /// shown if we hadn't escalated to Full".
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) fn current_region(&self) -> DamageRegion {
-        DamageRegion::collapse_from(&self.raw_rects, self.budget_px)
     }
 
     /// Diff against the just-finished frame and return a
