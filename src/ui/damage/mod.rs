@@ -35,6 +35,7 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
+use std::time::Duration;
 
 pub(crate) mod region;
 
@@ -110,6 +111,14 @@ pub(crate) struct DamageEngine {
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
     /// Last frame's surface rect. `None` on first frame.
     pub(crate) prev_surface: Option<Rect>,
+    /// `ui.time` from the previous `compute`. Drives the
+    /// animation-damage filter: an anim's owner rect only joins the
+    /// region when `entry.anim.next_wake(prev_now) <= now`, i.e. a
+    /// quantum boundary fell in the gap between the two frames.
+    /// `None` on the first frame and after `invalidate_prev_frame`
+    /// rewinds the snapshot — both fall through to "always add",
+    /// the same shape as `prev_surface == None`.
+    pub(crate) prev_now: Option<Duration>,
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the Occupied-equal arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
@@ -129,6 +138,7 @@ impl Default for DamageEngine {
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
             prev_surface: None,
+            prev_now: None,
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
@@ -171,6 +181,7 @@ impl DamageEngine {
     pub(crate) fn invalidate_prev(&mut self) {
         self.prev.clear();
         self.prev_surface = None;
+        self.prev_now = None;
     }
 
     /// Diff against the just-finished frame and return a
@@ -209,6 +220,7 @@ impl DamageEngine {
         cascades: &Cascades,
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
+        now: Duration,
     ) -> Option<Damage> {
         // `prev_surface == None` is the "treat as a fresh frame"
         // signal. `Ui::pre_record` clears it (and `prev`) when the
@@ -338,6 +350,37 @@ impl DamageEngine {
             }
         }
 
+        // Animation-driven damage. `paint_anims` is a flat per-tree
+        // list of "this rect is animated"; structural hash diff
+        // above is content-only and (intentionally) doesn't pick up
+        // a paint-anim phase flip — bumping `node_hash` /
+        // `subtree_hash` would invalidate MeasureCache for the
+        // owner's ancestor chain on every phase flip, even though
+        // layout didn't change. So we damage anim rects here
+        // instead.
+        //
+        // The `next_wake(prev_now) <= now` test is the cross-frame
+        // "did the quantum change since last frame" predicate.
+        // First frame (`prev_now = None`) falls through to "always
+        // add", mirroring `prev_surface == None`. The encoder's
+        // `sample_paint_anim` then decides whether the rect emits
+        // a quad this frame (visible half) or skips (hidden half);
+        // composing the cmd buffer without the caret quad paints
+        // background over the rect on the hidden side.
+        for (layer, tree) in forest.iter_paint_order() {
+            let rows = cascades.rows_for(layer);
+            for entry in &tree.paint_anims {
+                let fire = match self.prev_now {
+                    None => true,
+                    Some(prev) => entry.anim.next_wake(prev) <= now,
+                };
+                if fire {
+                    acc.add(rows[entry.node.index()].paint_rect);
+                }
+            }
+        }
+
+        self.prev_now = Some(now);
         self.region = acc;
         if force_full {
             return Some(Damage::Full);

@@ -133,6 +133,71 @@ fn caret_blinks_on_and_off_while_focused() {
     );
 }
 
+/// Between quantum boundaries, the caret's anim must NOT contribute
+/// damage — otherwise an unrelated 60 Hz wake source would force a
+/// caret repaint on every frame, defeating the point of damage.
+/// `DamageEngine` gates the anim-rect add on
+/// `entry.anim.next_wake(prev_now) <= now`.
+#[test]
+fn caret_anim_does_not_damage_between_quantum_boundaries() {
+    use crate::layout::types::display::Display;
+    use crate::ui::frame_report::FrameReport;
+    use std::time::Duration;
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::new();
+    let display = Display::from_physical(NARROW, 1.0);
+
+    // Single recording site keeps `track_caller` happy — every
+    // frame's `Panel::hstack` resolves to the same source location,
+    // so the Panel's auto-id is stable and structural damage stays
+    // empty unless something actually changed.
+    fn record(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("anim-damage")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+    let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
+        let report = ui.frame(display, Duration::from_secs_f32(t_secs), &mut (), |ui| {
+            record(ui, buf);
+        });
+        ui.frame_state.mark_submitted();
+        report
+    };
+
+    // Frame 1: warm up so the editor's WidgetId is recorded.
+    frame(&mut ui, &mut buf, 0.0);
+
+    // Frame 2 (focus): click lands; caret anim registers with
+    // started_at=0. First post-focus frame is structurally dirty
+    // (chrome/state change) — we don't assert on it.
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    frame(&mut ui, &mut buf, 0.0);
+
+    // Frame 3 mid-half-period (t=0.2 of a 0.5s half-period). Caret
+    // quantum unchanged since prev frame (t=0); `next_wake(0) = 0.5`
+    // which isn't `<= 0.2` → anim contributes no damage. No other
+    // source of damage either → report damage is `None`.
+    let report = frame(&mut ui, &mut buf, 0.2);
+    assert!(
+        report.damage.is_none(),
+        "mid-phase frame should not damage the caret rect (got {:?})",
+        report.damage,
+    );
+
+    // Frame 4 across the half-period boundary (t=0.6). prev_now=0.2;
+    // `next_wake(0.2) = 0.5` which IS `<= 0.6` → quantum flipped
+    // → caret rect joins damage.
+    let report = frame(&mut ui, &mut buf, 0.6);
+    assert!(
+        report.damage.is_some(),
+        "crossing a phase boundary must damage the caret rect",
+    );
+}
+
 /// Focused TextEdit must keep the host's repaint loop alive — without
 /// the wake schedule, the blink would freeze on whichever phase the
 /// last frame landed on.
