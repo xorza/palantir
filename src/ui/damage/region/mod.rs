@@ -183,5 +183,21 @@ impl From<Rect> for DamageRegion {
     }
 }
 
+impl DamageRegion {
+    /// Build a bounded region from a flat raw-rect buffer by folding
+    /// every entry through [`Self::add`]'s merge + budget policy.
+    /// Pairs with `DamageEngine`'s two-pass `compute`: pass 1 collects
+    /// rects from every damage source into a flat scratch buffer,
+    /// pass 2 calls this to collapse them down to ≤
+    /// [`DAMAGE_RECT_CAP`] rects respecting `budget_px`.
+    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32) -> Self {
+        let mut region = Self::with_budget(budget_px);
+        for r in rects {
+            region.add(*r);
+        }
+        region
+    }
+}
+
 #[cfg(test)]
 mod tests;

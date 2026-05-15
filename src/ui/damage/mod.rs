@@ -102,6 +102,13 @@ pub(crate) struct DamageEngine {
     /// already enforced by `SeenIds::record` at recording time, so
     /// the bare `WidgetId` key is safe.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
+    /// Pass-1 scratch buffer. `compute` walks every damage source
+    /// (structural diff, predamaged anim rects, removed-widget evict)
+    /// and appends each contribution here without applying the merge
+    /// policy. Pass 2 hands this slice to `DamageRegion::collapse_from`
+    /// which produces the bounded region. Retained capacity — no
+    /// per-frame allocation in steady state.
+    raw_rects: Vec<Rect>,
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the Occupied-equal arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
@@ -120,6 +127,7 @@ impl Default for DamageEngine {
             region: DamageRegion::default(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
+            raw_rects: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
@@ -211,7 +219,7 @@ impl DamageEngine {
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
         force_full: bool,
-        fired_anim_rects: impl IntoIterator<Item = Rect>,
+        pre_damaged_rects: impl IntoIterator<Item = Rect>,
     ) -> Damage {
         // `force_full` is the "treat as a fresh frame" signal — set
         // by the caller when `Ui::should_invalidate_prev` decided
@@ -226,7 +234,16 @@ impl DamageEngine {
             self.dirty.clear();
             self.subtree_skips = 0;
         }
-        let mut acc = DamageRegion::with_budget(self.budget_px);
+
+        // ── Pass 1: collect raw rects ─────────────────────────────
+        //
+        // Every damage source pushes its contributions into
+        // `self.raw_rects` without applying the merge or budget
+        // policy. Sources: structural diff (added / hash-changed /
+        // removed widget), predamaged anim rects, and the
+        // `removed`-set eviction tail. Pass 2 collapses the buffer
+        // into the bounded region.
+        self.raw_rects.clear();
 
         for (layer, tree) in forest.iter_paint_order() {
             let rows = cascades.rows_for(layer);
@@ -282,7 +299,7 @@ impl DamageEngine {
                     Entry::Vacant(_) if !curr_paints => (false, 1),
                     Entry::Vacant(e) => {
                         e.insert(curr);
-                        acc.add(curr_rect);
+                        self.raw_rects.push(curr_rect);
                         (true, 1)
                     }
                     Entry::Occupied(mut e)
@@ -312,9 +329,9 @@ impl DamageEngine {
                         }
                     }
                     Entry::Occupied(mut e) => {
-                        acc.add(e.get().rect);
+                        self.raw_rects.push(e.get().rect);
                         if curr_paints {
-                            acc.add(curr_rect);
+                            self.raw_rects.push(curr_rect);
                             e.insert(curr);
                         } else {
                             e.remove();
@@ -332,33 +349,39 @@ impl DamageEngine {
             }
         }
 
-        // Animation-driven damage. Caller pre-walks the paint-anim
-        // registry (see `predamaged_rects` in `ui/mod.rs`) and
-        // hands us just the rects that fired this frame. The
-        // structural diff above is content-only and (intentionally)
-        // doesn't pick up phase flips — bumping
-        // `node_hash` / `subtree_hash` would invalidate MeasureCache
-        // for the owner's ancestor chain on every flip even though
-        // layout didn't change. The encoder's `PaintAnims::sample`
-        // decides per-rect whether to emit a quad (visible half) or
-        // skip (hidden half).
-        for r in fired_anim_rects {
-            acc.add(r);
-        }
-
-        // Evict last-frame snapshots for removed widgets. Every
-        // remaining `prev` entry painted last frame (invariant), so its
-        // rect always contributes.
-        for wid in removed {
-            if let Some(snap) = self.prev.remove(wid) {
-                acc.add(snap.rect);
-            }
-        }
-
-        self.region = acc;
+        // Structural diff has populated `self.prev` for next frame's
+        // baseline; on `force_full` everything downstream just builds
+        // a region we'd discard, so short-circuit here. The removed
+        // eviction tail is a no-op in this branch (caller already
+        // cleared `self.prev` via `invalidate_prev`), and the anim
+        // iterator is lazy — dropping it without consuming is free.
         if force_full {
             return Damage::Full;
         }
+
+        // Predamaged anim rects — caller pre-walks the paint-anim
+        // registry (see `predamaged_rects` in `ui/mod.rs`) and hands
+        // us just the rects that fired this frame. The structural
+        // diff above is content-only and (intentionally) doesn't
+        // pick up phase flips — bumping `node_hash` / `subtree_hash`
+        // would invalidate MeasureCache for the owner's ancestor
+        // chain on every flip even though layout didn't change. The
+        // encoder's `PaintAnims::sample` decides per-rect whether to
+        // emit a quad (visible half) or skip (hidden half).
+        self.raw_rects.extend(pre_damaged_rects);
+
+        // Removed-widget eviction tail. Every remaining `prev` entry
+        // painted last frame (invariant), so its rect always
+        // contributes.
+        for wid in removed {
+            if let Some(snap) = self.prev.remove(wid) {
+                self.raw_rects.push(snap.rect);
+            }
+        }
+
+        // ── Pass 2: collapse to the bounded region ────────────────
+        self.region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+
         self.filter(surface)
     }
 
