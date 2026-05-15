@@ -1,5 +1,5 @@
 use crate::primitives::approx::noop_f32;
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::MeshVertex;
 use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::Vec2;
@@ -73,7 +73,7 @@ pub(crate) struct StrokeStyle {
 /// Composer is expected to split when needed.
 pub(crate) fn tessellate_polyline_aa(
     points: &[Vec2],
-    colors: &[Color],
+    colors: &[ColorU8],
     style: StrokeStyle,
     out_verts: &mut Vec<MeshVertex>,
     out_indices: &mut Vec<u16>,
@@ -131,13 +131,13 @@ pub(crate) fn tessellate_polyline_aa(
 /// equal; for PerSegment they differ at color boundaries.
 #[derive(Clone, Copy)]
 enum ColorPlan<'a> {
-    Single(Color),
-    PerPoint(&'a [Color]),
-    PerSegment(&'a [Color]),
+    Single(ColorU8),
+    PerPoint(&'a [ColorU8]),
+    PerSegment(&'a [ColorU8]),
 }
 
 impl<'a> ColorPlan<'a> {
-    fn from_mode(mode: ColorMode, colors: &'a [Color]) -> Self {
+    fn from_mode(mode: ColorMode, colors: &'a [ColorU8]) -> Self {
         match mode {
             ColorMode::Single => ColorPlan::Single(colors[0]),
             ColorMode::PerPoint => ColorPlan::PerPoint(colors),
@@ -148,15 +148,17 @@ impl<'a> ColorPlan<'a> {
     /// `(trailing, leading)` at kept point with original index `i`.
     /// `is_first` / `is_last` signal endpoints — there the missing
     /// side mirrors the present side so the walker has a single
-    /// cap color to use.
+    /// cap color to use. Stored colours are `ColorU8`; widened to
+    /// `Color` here so the alpha-scale arithmetic in the walker
+    /// stays in f32.
     fn at(self, i: usize, is_first: bool, is_last: bool) -> (Color, Color) {
         match self {
-            ColorPlan::Single(c) => (c, c),
-            ColorPlan::PerPoint(cs) => (cs[i], cs[i]),
+            ColorPlan::Single(c) => (c.into(), c.into()),
+            ColorPlan::PerPoint(cs) => (cs[i].into(), cs[i].into()),
             ColorPlan::PerSegment(cs) => {
                 let trailing = if is_first { cs[0] } else { cs[i - 1] };
                 let leading = if is_last { trailing } else { cs[i] };
-                (trailing, leading)
+                (trailing.into(), leading.into())
             }
         }
     }

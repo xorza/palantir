@@ -811,7 +811,7 @@ fn compose_mesh_between_texts_splits_text_batch() {
             arena.polyline_points.push(Vec2::new(0.0, 25.0));
             arena.polyline_points.push(Vec2::new(100.0, 25.0));
             let c_start = arena.polyline_colors.len() as u32;
-            arena.polyline_colors.push(Color::WHITE);
+            arena.polyline_colors.push(Color::WHITE.into());
             b.draw_polyline(DrawPolylinePayload {
                 bbox: rect(0.0, 25.0, 100.0, 0.0),
                 origin: Vec2::ZERO,

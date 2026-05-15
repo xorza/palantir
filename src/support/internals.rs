@@ -8,7 +8,7 @@ use crate::animation::animatable::Animatable;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::scroll::ScrollLayoutState;
 use crate::layout::types::display::Display;
-use crate::primitives::color::Color;
+use crate::primitives::color::ColorU8;
 use crate::primitives::mesh::MeshVertex;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
@@ -158,7 +158,7 @@ pub struct TessStyle {
 /// Stroke tessellator with caller-owned scratch.
 pub fn tessellate_polyline_for_bench(
     points: &[glam::Vec2],
-    colors: &[Color],
+    colors: &[ColorU8],
     style: TessStyle,
     out_verts: &mut Vec<MeshVertex>,
     out_indices: &mut Vec<u16>,
