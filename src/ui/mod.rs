@@ -21,13 +21,14 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::rect::Rect;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::FontFamily;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
-use crate::ui::damage::{Damage, DamageEngine};
+use crate::ui::damage::DamageEngine;
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
@@ -90,6 +91,20 @@ pub struct Ui {
     pub(crate) frame_id: u64,
     /// Host-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
+    /// `time` from the previous successful `frame()` call, or `None`
+    /// before the first frame and after [`DamageEngine::invalidate_prev`]
+    /// rewinds the snapshot. Drives the cross-frame "did a paint
+    /// anim's quantum boundary fall in this gap" check —
+    /// `entry.anim.next_wake(prev_time) <= now` fires the rect into
+    /// damage. Updated at the end of `frame_inner` on every path.
+    pub(crate) prev_time: Option<Duration>,
+    /// Logical surface rect from the previous successful frame, or
+    /// `None` on first frame / after invalidation. Compared against
+    /// the current `display.logical_rect()` in
+    /// `should_invalidate_prev` (surface change ⇒ force full) and in
+    /// the paint-anim gate (must match for the short-circuit).
+    /// Updated at the bottom of `frame_inner` on every path.
+    pub(crate) prev_surface: Option<Rect>,
     /// EMA of `1/raw_dt` across frames. Zero on the first frame
     /// (no prior `time` to diff against); updated in
     /// [`Self::frame`]. Surfaced by the `frame_stats` debug overlay.
@@ -171,6 +186,8 @@ impl Ui {
             dt_accum: 0.0,
             frame_id: 0,
             time: Duration::ZERO,
+            prev_time: None,
+            prev_surface: None,
             fps_ema: 0.0,
             anim: AnimMap::default(),
             frame_state: FrameState::default(),
@@ -294,37 +311,13 @@ impl Ui {
         self.repaint_wakes.drain(..fired);
         self.relayout_requested = false;
 
-        let invalidating = self.should_invalidate_prev(display);
-        if invalidating {
+        let force_full = self.should_invalidate_prev(display);
+        if force_full {
             self.damage_engine.invalidate_prev();
+            self.prev_time = None;
+            self.prev_surface = None;
         }
-        let display_unchanged = !invalidating;
         self.display = display;
-
-        // Paint-anim-only short-circuit. If a fired wake came from a
-        // paint anim and nothing else has changed since last frame,
-        // last frame's tree + cascades + layout are still
-        // bit-identical to what re-recording would produce —
-        // skip pre_record / closure / post_record / layout /
-        // cascades / finalize, jump straight to anim-damage compute.
-        // The encoder runs against the retained tree at the new
-        // `now`. Gate conditions are deliberately conservative:
-        // any signal we can't be sure about ⇒ full path.
-        let input_arrived = self.input.input_arrived_since_last_frame;
-        self.input.input_arrived_since_last_frame = false;
-        let wake_fired = fired > 0;
-        if display_unchanged
-            && wake_fired
-            && !input_arrived
-            && !self.anim.has_pending()
-            && !self.relayout_requested
-            && self.damage_engine.prev_now.is_some()
-            && self
-                .forest
-                .any_paint_anim_fired(self.damage_engine.prev_now.unwrap(), self.time)
-        {
-            return self.paint_anim_only_pass();
-        }
 
         // Pending until the renderer (`Host::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
@@ -351,7 +344,22 @@ impl Ui {
             self.input.drain_per_frame_queues();
             let _ = self.record_pass(&mut record);
         }
-        let damage = self.finalize_frame();
+
+        self.finalize_frame();
+
+        let fired_anim = self.forest.iter_fired_paint_anim_rects(
+            &self.layout.cascades,
+            self.prev_time,
+            self.time,
+        );
+        let damage = self.damage_engine.compute(
+            &self.forest,
+            &self.layout.cascades,
+            &self.forest.ids.removed,
+            self.display.logical_rect(),
+            force_full,
+            fired_anim,
+        );
 
         // Skip frames have nothing for the host to submit, so ack
         // here — otherwise `frame_state` stays `Pending` and the next
@@ -359,6 +367,9 @@ impl Ui {
         if damage.is_none() {
             self.frame_state.mark_submitted();
         }
+
+        self.prev_time = Some(self.time);
+        self.prev_surface = Some(self.display.logical_rect());
 
         FrameReport {
             repaint_requested: self.repaint_requested,
@@ -372,71 +383,19 @@ impl Ui {
         }
     }
 
-    /// Short-circuit path for paint-anim-only frames. Skips
-    /// `pre_record`, the user closure, `post_record`, `layout.run`,
-    /// `cascades.run`, and `finalize_frame`. The retained tree +
-    /// cascades + layout from last frame are bit-identical to what
-    /// re-recording would produce (gate proved it), so the encoder
-    /// reads them as-is at the new `now`. Re-folds each anim's next
-    /// wake into `repaint_wakes` so the next phase fires; updates
-    /// `last_quantum` so the next full path's diff has the right
-    /// baseline.
-    fn paint_anim_only_pass(&mut self) -> FrameReport {
-        profiling::scope!("Ui::paint_anim_only_pass");
-
-        self.frame_state.mark_pending();
-
-        // Refresh per-entry `last_quantum` and schedule the next
-        // wake. Mirror of the tail of `Tree::post_record`, but
-        // there's no rollups / next_wake fold via post_record here
-        // since we skipped the whole recording pass.
-        let now = self.time;
-        let mut min_wake = Duration::MAX;
-        for tree in &mut self.forest.trees {
-            for entry in &mut tree.paint_anims.entries {
-                entry.last_quantum = entry.anim.quantum(now);
-                let w = entry.anim.next_wake(now);
-                if w < min_wake {
-                    min_wake = w;
-                }
-            }
-        }
-        if min_wake != Duration::MAX && min_wake > now {
-            self.request_repaint_after(min_wake - now);
-        }
-
-        let damage = self
-            .damage_engine
-            .compute_anim_only(&self.forest, &self.layout.cascades, now);
-
-        if damage.is_none() {
-            self.frame_state.mark_submitted();
-        }
-
-        FrameReport {
-            repaint_requested: self.repaint_requested,
-            repaint_after: self.repaint_wakes.first().copied(),
-            plan: RenderPlan::from_damage(damage, self.theme.window_clear),
-            processing: FrameProcessing::PaintOnly,
-        }
-    }
-
     /// Should we discard the last painted frame's damage snapshot? True
     /// on first frame, on a surface-rect change, or when the host
     /// failed to confirm submission of the last frame.
     fn should_invalidate_prev(&self, new_display: Display) -> bool {
         let new_surface = new_display.logical_rect();
-        let display_changed = self
-            .damage_engine
-            .prev_surface
-            .is_some_and(|prev| prev != new_surface);
+        let display_changed = self.prev_surface.is_some_and(|prev| prev != new_surface);
         let frame_skipped = !self.frame_state.was_last_submitted();
         let invalidate = display_changed || frame_skipped;
         if invalidate {
             tracing::debug!(
                 display_changed,
                 frame_skipped,
-                first_frame = self.damage_engine.prev_surface.is_none(),
+                first_frame = self.prev_surface.is_none(),
                 "damage.invalidate_prev"
             );
         }
@@ -596,7 +555,7 @@ impl Ui {
     /// here (once per `frame`) rather than per `post_record` so a
     /// widget that vanishes in pass A but returns in pass B keeps
     /// its state across the discard.
-    fn finalize_frame(&mut self) -> Damage {
+    fn finalize_frame(&mut self) {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
@@ -605,13 +564,6 @@ impl Ui {
         self.anim.sweep_removed(removed);
 
         self.input.post_record(&self.layout.cascades);
-        self.damage_engine.compute(
-            &self.forest,
-            &self.layout.cascades,
-            &self.forest.ids.removed,
-            self.display.logical_rect(),
-            self.time,
-        )
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
