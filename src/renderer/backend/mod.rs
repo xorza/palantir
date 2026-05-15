@@ -646,12 +646,13 @@ impl WgpuBackend {
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
-                RenderStep::Meshes { range, .. } => {
+                RenderStep::MeshBatch { batch } => {
                     pass.push_debug_group("meshes");
                     if bound != Bound::Mesh {
                         self.mesh.bind(pass, use_stencil);
                         bound = Bound::Mesh;
                     }
+                    let range = buffer.mesh_batches[batch].meshes;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for (offset, draw) in buffer.meshes.draws[start..end].iter().enumerate() {

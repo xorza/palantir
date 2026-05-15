@@ -25,6 +25,12 @@ pub(crate) struct RenderBuffer {
     /// in `RenderBuffer.texts` by composer construction. `DrawGroup`
     /// carries a `text_batch` index pointing here.
     pub(crate) text_batches: Vec<TextBatch>,
+    /// One entry per *batch* of mesh draws. Today's structural Phase 2
+    /// pushes one `MeshBatch` per group that emitted meshes — same
+    /// drawcalls as before, just routed through this parallel list so
+    /// schedule/backend treat meshes structurally like text. `DrawGroup.meshes`
+    /// still carries the same span; Phase 3 deletes it.
+    pub(crate) mesh_batches: Vec<MeshBatch>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
     /// reads this to decide whether to walk the stencil-mask path;
@@ -55,6 +61,7 @@ impl Default for RenderBuffer {
             meshes: MeshScene::default(),
             groups: Vec::new(),
             text_batches: Vec::new(),
+            mesh_batches: Vec::new(),
             has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -97,6 +104,18 @@ pub(crate) struct TextBatch {
     /// Intermediate groups with no text (e.g. a quad-only group
     /// between two text groups sharing one batch) can fall between
     /// the batch's `first_group` and `last_group`.
+    pub(crate) last_group: u32,
+}
+
+/// A batch of mesh draws emitted together. `meshes` is a contiguous
+/// range into `MeshScene.draws` (and parallel `instances`); `last_group`
+/// is the group whose iteration drains this batch in the schedule —
+/// mirrors `TextBatch.last_group`. Today's structural Phase 2 produces
+/// one batch per group with meshes, so schedule iterates them via a
+/// cursor in lockstep with the group loop.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct MeshBatch {
+    pub(crate) meshes: Span,
     pub(crate) last_group: u32,
 }
 

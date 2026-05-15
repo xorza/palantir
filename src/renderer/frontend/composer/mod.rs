@@ -11,7 +11,7 @@ use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshDraw, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, MeshBatch, MeshDraw, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use glam::{UVec2, Vec2};
 
@@ -106,6 +106,15 @@ impl Composer {
         let t_end = out.texts.len() as u32;
         let m_end = out.meshes.draws.len() as u32;
         if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
+            // Push the mesh batch BEFORE the group itself so its
+            // `last_group` matches the in-flight group's eventual
+            // index (= current `out.groups.len()`).
+            if m_end > self.meshes_start {
+                out.mesh_batches.push(MeshBatch {
+                    meshes: (self.meshes_start..m_end).into(),
+                    last_group: out.groups.len() as u32,
+                });
+            }
             out.groups.push(DrawGroup {
                 scissor: self.current_scissor,
                 rounded_clip: self.current_rounded,
@@ -217,6 +226,7 @@ impl Composer {
         out.meshes.clear();
         out.groups.clear();
         out.text_batches.clear();
+        out.mesh_batches.clear();
         out.has_rounded_clip = false;
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;

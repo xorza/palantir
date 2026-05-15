@@ -47,7 +47,7 @@ fn collect(
     steps
 }
 
-fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
+fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
     let mut current_ref: u32 = 0;
     let mut out = Vec::new();
     for s in steps {
@@ -64,7 +64,9 @@ fn simplify(steps: &[RenderStep]) -> Vec<DrawOp> {
             }
             RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
-            RenderStep::Meshes { group, .. } => out.push(DrawOp::Meshes(*group)),
+            RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
+                buffer.mesh_batches[*batch].last_group as usize,
+            )),
         }
     }
     out
@@ -151,7 +153,7 @@ fn text_interleaves_per_group() {
         },
     ]);
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
     );
 }
@@ -177,7 +179,7 @@ fn text_emits_for_quadless_group() {
         },
     ]);
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         // Group 0 has no text → not part of a batch. Group 1's text
         // is the only batch (idx 0), emitted after group 1's quads
         // (it has none) → immediately.
@@ -201,11 +203,11 @@ fn preclear_emits_under_partial_damage() {
     }]);
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
-        simplify(&collect(&buf, damage, &[], false)),
+        simplify(&buf, &collect(&buf, damage, &[], false)),
         vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
     );
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
@@ -240,7 +242,7 @@ fn schedule_replays_per_damage_rect() {
     let mut combined = pass_a;
     combined.extend(pass_b);
     assert_eq!(
-        simplify(&combined),
+        simplify(&buf, &combined),
         vec![
             // Pass A: PreClear inside rect A, then group 0.
             DrawOp::PreClear,
@@ -277,7 +279,7 @@ fn stencil_group_brackets_draws_with_mask_write() {
     }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
-        simplify(&collect(&buf, None, mask_indices, true)),
+        simplify(&buf, &collect(&buf, None, mask_indices, true)),
         vec![DrawOp::MaskWrite(0), DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
@@ -316,7 +318,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     ]);
     let mask_indices = &[Some(0u32), None];
     assert_eq!(
-        simplify(&collect(&buf, None, mask_indices, true)),
+        simplify(&buf, &collect(&buf, None, mask_indices, true)),
         vec![
             // Rounded bracket
             DrawOp::MaskWrite(0),
@@ -384,7 +386,7 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     ]);
     let mask_indices = &[Some(0u32), Some(0u32), Some(1u32)];
     assert_eq!(
-        simplify(&collect(&buf, None, mask_indices, true)),
+        simplify(&buf, &collect(&buf, None, mask_indices, true)),
         vec![
             // Group 0: stamp mask 0.
             DrawOp::MaskWrite(0),
@@ -419,7 +421,7 @@ fn stencil_text_only_group_still_writes_mask() {
     }]);
     let mask_indices = &[Some(0u32)];
     assert_eq!(
-        simplify(&collect(&buf, None, mask_indices, true)),
+        simplify(&buf, &collect(&buf, None, mask_indices, true)),
         vec![DrawOp::MaskWrite(0), DrawOp::Text(0)],
     );
 }
@@ -475,7 +477,7 @@ fn group_outside_damage_emits_no_steps() {
     ]);
     let damage = URect::new(0, 0, 40, 40);
     assert_eq!(
-        simplify(&collect(&buf, Some(damage), &[], false)),
+        simplify(&buf, &collect(&buf, Some(damage), &[], false)),
         vec![DrawOp::PreClear, DrawOp::Quads(0)],
     );
 }
@@ -528,7 +530,7 @@ fn text_batch_spanning_two_groups_emits_once_at_last_group() {
         }],
     );
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Quads(1), DrawOp::Text(0)],
     );
 }
@@ -562,7 +564,7 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
         }],
     );
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
     );
 }
@@ -601,7 +603,7 @@ fn text_batch_anchored_in_damage_skipped_group_still_emits() {
     );
     // Damage rect: covers only group 0.
     let damage = URect::new(0, 0, 50, 50);
-    let steps = simplify(&collect(&buf, Some(damage), &[], false));
+    let steps = simplify(&buf, &collect(&buf, Some(damage), &[], false));
     // Must include Text(0) — group 0's text lives in batch 0, and
     // batch 0 anchored at the skipped group 1 must still emit.
     assert!(
@@ -641,7 +643,7 @@ fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
         }],
     );
     let damage = URect::new(0, 0, 50, 50);
-    let steps = simplify(&collect(&buf, Some(damage), &[], false));
+    let steps = simplify(&buf, &collect(&buf, Some(damage), &[], false));
     assert!(
         steps.contains(&DrawOp::Text(0)),
         "trailing drain must emit batch when last_group is tail-skipped; got {steps:?}",
@@ -682,7 +684,7 @@ fn two_text_batches_emit_at_their_own_last_groups() {
         ],
     );
     assert_eq!(
-        simplify(&collect(&buf, None, &[], false)),
+        simplify(&buf, &collect(&buf, None, &[], false)),
         vec![
             DrawOp::Quads(0),
             DrawOp::Text(0),
