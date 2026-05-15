@@ -1,4 +1,5 @@
 use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
+use crate::common::frame_arena::FrameArena;
 use crate::forest::shapes::record::{
     GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
@@ -64,7 +65,7 @@ fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> Brush
 /// damage ⇒ never call `encode`). `out` is cleared at entry and
 /// keeps its capacity for the next frame.
 #[profiling::function]
-pub(crate) fn encode(ui: &Ui, plan: RenderPlan, out: &mut RenderCmdBuffer) {
+pub(crate) fn encode(ui: &Ui, arena: &FrameArena, plan: RenderPlan, out: &mut RenderCmdBuffer) {
     out.clear();
 
     let damage_filter = match &plan {
@@ -74,6 +75,7 @@ pub(crate) fn encode(ui: &Ui, plan: RenderPlan, out: &mut RenderCmdBuffer) {
 
     let viewport = ui.display.logical_rect();
     let now = ui.time;
+    let gradients = arena.gradients.as_slice();
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layout = &ui.layout[layer];
         let rows = ui.layout.cascades.rows_for(layer);
@@ -82,6 +84,7 @@ pub(crate) fn encode(ui: &Ui, plan: RenderPlan, out: &mut RenderCmdBuffer) {
                 tree,
                 layout,
                 rows,
+                gradients,
                 damage_filter,
                 viewport,
                 NodeId(root.first_node),
@@ -133,6 +136,7 @@ fn emit_one_shape(
     owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
+    gradients: &[GradientPayload],
     text_ordinal: u32,
     now: Duration,
     out: &mut RenderCmdBuffer,
@@ -160,7 +164,7 @@ fn emit_one_shape(
                     size: lr.size,
                 },
             };
-            let src = shape_brush_source(&tree.shapes.gradients, *fill);
+            let src = shape_brush_source(gradients, *fill);
             out.draw_rect(r, *radius, src, *stroke);
         }
         ShapeRecord::Text {
@@ -269,6 +273,7 @@ fn encode_node(
     tree: &Tree,
     layout: &LayerLayout,
     rows: &[Cascade],
+    gradients: &[GradientPayload],
     damage_filter: Option<&DamageRegion>,
     viewport: Rect,
     id: NodeId,
@@ -337,7 +342,7 @@ fn encode_node(
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.radius, &bg.shadow);
-        let src = shape_brush_source(&tree.shapes.gradients, bg.fill);
+        let src = shape_brush_source(gradients, bg.fill);
         out.draw_rect(rect, bg.radius, src, bg.stroke);
     }
 
@@ -406,6 +411,7 @@ fn encode_node(
                     rect,
                     shape_idx,
                     shape,
+                    gradients,
                     text_ordinal,
                     now,
                     out,
@@ -422,6 +428,7 @@ fn encode_node(
                     tree,
                     layout,
                     rows,
+                    gradients,
                     damage_filter,
                     viewport,
                     child.id,

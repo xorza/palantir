@@ -663,7 +663,11 @@ impl Ui {
         chrome: Background,
         f: impl FnOnce(&mut Ui),
     ) {
-        self.forest.open_node_with_chrome(element, chrome);
+        {
+            let mut arena = self.frame_arena.borrow_mut();
+            self.forest
+                .open_node_with_chrome(element, chrome, &mut arena);
+        }
         f(self);
         self.forest.close_node();
     }

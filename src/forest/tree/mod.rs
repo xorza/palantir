@@ -23,6 +23,7 @@
 //! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
+use crate::common::frame_arena::FrameArena;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
     BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras, SizeClamp,
@@ -495,7 +496,12 @@ impl Tree {
     /// call site carries the 232-byte `Option<Background>` parameter,
     /// and so the `ClipMode::Rounded` zero-radius downgrade can be
     /// skipped statically when no radius is present.
-    pub(crate) fn open_node_with_chrome(&mut self, mut element: Element, bg: Background) -> NodeId {
+    pub(crate) fn open_node_with_chrome(
+        &mut self,
+        mut element: Element,
+        bg: Background,
+        arena: &mut FrameArena,
+    ) -> NodeId {
         // Tree-storage noop gate for chrome — mirrors `Shapes::add` for
         // the shape buffer and `cmd_buffer::draw_*` for emits. Whole-
         // `Background::is_noop` drops the entry so chrome iteration /
@@ -524,10 +530,10 @@ impl Tree {
         let needs_chrome_row = !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
         if needs_chrome_row {
             // Lower to `ChromeRow` here — gradients land in the
-            // shared `Shapes.gradients` arena alongside any from
+            // shared `FrameArena.gradients` arena alongside any from
             // `Shapes::add`, so chrome and shape paints share one
-            // per-tree gradient pool.
-            let row = self.shapes.lower_background(bg);
+            // frame-scoped gradient pool.
+            let row = arena.lower_background(bg);
             ex.chrome = Slot::from_len(self.chrome_table.len());
             self.chrome_table.push(row);
         }
