@@ -9,7 +9,6 @@
 //! See `docs/roadmap/paint-tick.md` for the full design.
 
 use crate::animation::paint::{PaintAnim, PaintMod};
-use crate::forest::tree::NodeId;
 use std::time::Duration;
 
 /// Sentinel in [`PaintAnims::by_shape`] meaning "this shape has no
@@ -25,17 +24,10 @@ const PAINT_ANIM_NONE: u16 = u16::MAX;
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
     /// Index into `Tree::shapes.records` of the shape this anim drives.
-    /// Encoder reads the entry through the parallel `by_shape` array
-    /// instead and doesn't need this back-reference; future
-    /// damage-region work may want it for owner-rect lookup via the
-    /// per-node shape spans.
-    #[allow(dead_code)]
+    /// Read by `Ui::predamaged_rects` to look up the shape's tight
+    /// screen-space damage rect off `Cascades::shape_rects[layer]`.
+    /// Encoder uses the parallel `by_shape` array instead.
     pub(crate) shape_idx: u32,
-    /// Node that owns the animated shape — set in
-    /// `Forest::add_shape_animated` from the currently-open frame.
-    /// Read by `DamageEngine::compute_anim_only` to look up
-    /// `paint_rect` for the anim-damage union.
-    pub(crate) node: NodeId,
 }
 
 /// Per-tree paint-animation registry. Pushed in lockstep with the

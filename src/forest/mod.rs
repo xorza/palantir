@@ -196,19 +196,15 @@ impl Forest {
         arena: &mut FrameArena,
     ) {
         let tree = &mut self.trees[self.current_layer as usize];
-        let owner = tree
-            .open_frames
-            .last()
-            .expect("add_shape_animated called with no open node")
-            .node;
+        assert!(
+            !tree.open_frames.is_empty(),
+            "add_shape_animated called with no open node",
+        );
         let Some(shape_idx) = tree.shapes.add(shape, arena) else {
             return;
         };
-        tree.paint_anims.push_entry(PaintAnimEntry {
-            anim,
-            shape_idx,
-            node: owner,
-        });
+        tree.paint_anims
+            .push_entry(PaintAnimEntry { anim, shape_idx });
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
