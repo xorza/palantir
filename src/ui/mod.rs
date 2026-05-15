@@ -77,6 +77,23 @@ pub(crate) struct Wake {
     pub(crate) reasons: WakeReasons,
 }
 
+/// What [`Ui::frame_inner`] should do this frame, decided at entry
+/// from fired wake reasons + input state + prior-frame validity.
+/// `PaintOnly` and `FullRecord` are mutually exclusive by construction
+/// — `paint_only ⇒ !force_full` is encoded in the variant shape
+/// instead of relying on two independent bools.
+#[derive(Clone, Copy, Debug)]
+enum FramePlan {
+    /// Skip pre_record / record / finalize / layout / cascade and
+    /// reuse the retained tree + cascades from the prior frame. Only
+    /// fired by the anim-only fast path.
+    PaintOnly,
+    /// Run record + (optional) double-layout + finalize. `force_full`
+    /// is true when the prior frame's damage snapshot must be
+    /// discarded (surface change, missed submit, first frame).
+    FullRecord { force_full: bool },
+}
+
 /// Type-erased pointer to caller-owned app state, installed for the
 /// duration of [`Ui::frame`]. Retrieved via [`Ui::app`].
 #[derive(Clone, Copy)]
@@ -287,34 +304,12 @@ impl Ui {
         );
 
         self.advance_clock(now);
-        // Drop wakes whose deadline has fired (this frame is at or
-        // past them). Sorted-ascending invariant means a prefix slice.
-        // `fired_reasons` OR-folds every cause that drove this frame,
-        // feeding the paint-only classification below.
-        let fired_count = self
-            .repaint_wakes
-            .partition_point(|w| w.deadline <= self.time);
-        let fired_reasons = self.repaint_wakes[..fired_count]
-            .iter()
-            .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
-        self.repaint_wakes.drain(..fired_count);
-
-        let force_full = self.should_invalidate_prev(display);
-
-        // Anim-only fast path: prev frame is a valid baseline,
-        // nothing record-side is waiting, and the wake that fired is
-        // purely an `ANIM` quantum boundary. `repaint_requested` is
-        // read here before the unconditional clear below.
-        let paint_only = !force_full
-            && self.prev_time.is_some()
-            && !self.repaint_requested
-            && !self.input.had_input_since_last_frame
-            && fired_reasons.is_anim_only();
+        let plan = self.classify_frame(display);
 
         self.repaint_requested = false;
         self.relayout_requested = false;
 
-        if force_full {
+        if let FramePlan::FullRecord { force_full: true } = plan {
             self.damage_engine.invalidate_prev();
             self.prev_time = None;
             self.prev_surface = None;
@@ -327,34 +322,37 @@ impl Ui {
         // frame's `should_invalidate_prev` will force a `Full`.
         self.frame_state.mark_pending();
 
-        let processing = if paint_only {
-            profiling::scope!("Ui::frame.paint_only");
-            FrameProcessing::PaintOnly
-        } else {
-            let action_flag = {
-                profiling::scope!("Ui::record_pass.A");
-                self.record_pass(&mut record)
-            };
-            let double_layout = action_flag || self.relayout_requested;
-            if double_layout {
-                profiling::scope!(
-                    "Ui::record_pass.B",
-                    if self.relayout_requested {
-                        "relayout"
-                    } else {
-                        "action"
-                    }
-                );
-                // Pass B paints, regardless of any further re-record
-                // request — caps relayout at one retry per `run_frame`.
-                self.input.drain_per_frame_queues();
-                let _ = self.record_pass(&mut record);
+        let processing = match plan {
+            FramePlan::PaintOnly => {
+                profiling::scope!("Ui::frame.paint_only");
+                FrameProcessing::PaintOnly
             }
-            self.finalize_frame();
-            if double_layout {
-                FrameProcessing::DoubleLayout
-            } else {
-                FrameProcessing::SingleLayout
+            FramePlan::FullRecord { .. } => {
+                let action_flag = {
+                    profiling::scope!("Ui::record_pass.A");
+                    self.record_pass(&mut record)
+                };
+                let double_layout = action_flag || self.relayout_requested;
+                if double_layout {
+                    profiling::scope!(
+                        "Ui::record_pass.B",
+                        if self.relayout_requested {
+                            "relayout"
+                        } else {
+                            "action"
+                        }
+                    );
+                    // Pass B paints, regardless of any further re-record
+                    // request — caps relayout at one retry per `run_frame`.
+                    self.input.drain_per_frame_queues();
+                    let _ = self.record_pass(&mut record);
+                }
+                self.finalize_frame();
+                if double_layout {
+                    FrameProcessing::DoubleLayout
+                } else {
+                    FrameProcessing::SingleLayout
+                }
             }
         };
 
@@ -363,10 +361,9 @@ impl Ui {
         // recorded so nothing was removed — pass an empty set
         // instead of stale state from the previous frame.
         let empty_removed: rustc_hash::FxHashSet<WidgetId> = rustc_hash::FxHashSet::default();
-        let removed = if paint_only {
-            &empty_removed
-        } else {
-            &self.forest.ids.removed
+        let (removed, force_full) = match plan {
+            FramePlan::PaintOnly => (&empty_removed, false),
+            FramePlan::FullRecord { force_full } => (&self.forest.ids.removed, force_full),
         };
         let damage = self.damage_engine.compute(
             &self.forest,
@@ -439,6 +436,40 @@ impl Ui {
         };
         self.time = now;
         self.frame_id += 1;
+    }
+
+    /// Drain wakes whose deadline has fired and decide whether this
+    /// frame can take the anim-only fast path. Reads
+    /// `repaint_requested` and `input.had_input_since_last_frame` from
+    /// the prior frame's record; both must be observed BEFORE the
+    /// per-frame clear that follows in `frame_inner`.
+    fn classify_frame(&mut self, display: Display) -> FramePlan {
+        // Sorted-ascending invariant means the fired set is a prefix
+        // slice; `fired_reasons` OR-folds every cause that drove this
+        // wake before we drop the entries.
+        let fired_count = self
+            .repaint_wakes
+            .partition_point(|w| w.deadline <= self.time);
+        let fired_reasons = self.repaint_wakes[..fired_count]
+            .iter()
+            .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
+        self.repaint_wakes.drain(..fired_count);
+
+        let force_full = self.should_invalidate_prev(display);
+
+        // Anim-only fast path: prev frame is a valid baseline,
+        // nothing record-side is waiting, and the wake that fired is
+        // purely an `ANIM` quantum boundary.
+        let paint_only = !force_full
+            && self.prev_time.is_some()
+            && !self.repaint_requested
+            && !self.input.had_input_since_last_frame
+            && fired_reasons.is_anim_only();
+        if paint_only {
+            FramePlan::PaintOnly
+        } else {
+            FramePlan::FullRecord { force_full }
+        }
     }
 
     /// Should we discard the last painted frame's damage snapshot? True
