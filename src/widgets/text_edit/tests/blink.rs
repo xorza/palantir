@@ -197,6 +197,57 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     );
 }
 
+/// Focusing a TextEdit at any wall-clock time must restart the blink,
+/// even when the caret/selection/text didn't change. Otherwise a fresh
+/// focus past `BLINK_STOP_AFTER_IDLE` lands with `elapsed > 30` and
+/// registers no anim — caret stays solid until the user types or moves
+/// the caret. Regression for the "caret doesn't blink unless I move
+/// the mouse" bug.
+#[test]
+fn focus_gain_resets_blink_even_without_caret_change() {
+    use crate::layout::types::display::Display;
+    use std::time::Duration;
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::new();
+    let display = Display::from_physical(NARROW, 1.0);
+
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id_salt("refocus-blink")
+                .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+    let frame = |ui: &mut Ui, buf: &mut String, t: f32| {
+        let r = ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(t)),
+            &mut (),
+            |ui| body(ui, buf),
+        );
+        ui.frame_state.mark_submitted();
+        r
+    };
+
+    // Warm up — unfocused, well past `BLINK_STOP_AFTER_IDLE` so any
+    // stale `last_caret_change=0` would put `elapsed` over the cliff.
+    frame(&mut ui, &mut buf, 100.0);
+
+    // Click to focus on the empty buffer at t=100s. Caret lands at
+    // byte 0 (unchanged from default), selection unchanged, text
+    // unchanged — only the focus edge fires.
+    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    let r = frame(&mut ui, &mut buf, 100.0);
+
+    // Focus rising edge must reset blink: anim registered → wake
+    // scheduled at the next half-period boundary.
+    assert!(
+        r.repaint_after().is_some(),
+        "focus gain must restart blink scheduling regardless of caret movement",
+    );
+}
+
 /// Focused TextEdit must keep the host's repaint loop alive — without
 /// the wake schedule, the blink would freeze on whichever phase the
 /// last frame landed on.

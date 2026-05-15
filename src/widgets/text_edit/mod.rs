@@ -64,6 +64,10 @@ pub(crate) struct TextEditState {
     /// Was the widget pressed last frame? Used to detect the press
     /// rising edge for anchor latching.
     pub(crate) prev_pressed: bool,
+    /// Was the widget focused last frame? Used to detect the
+    /// focus rising edge so the caret blink resets on re-focus
+    /// even when the caret position itself didn't change.
+    pub(crate) prev_focused: bool,
     pub(crate) undo: VecDeque<EditSnapshot>,
     pub(crate) redo: Vec<EditSnapshot>,
     /// Kind of the most recent recorded edit, used to coalesce
@@ -579,10 +583,12 @@ impl<'a> TextEdit<'a> {
             let caret_changed = caret_before != caret_byte
                 || sel_before != state.selection
                 || text_len_before != self.text.len();
+            let focus_gained = is_focused && !state.prev_focused;
             update_scroll(state, response.rect, &ctx, caret_pos, theme.caret_width);
-            if is_focused && caret_changed {
+            if is_focused && (caret_changed || focus_gained) {
                 state.last_caret_change = now;
             }
+            state.prev_focused = is_focused;
             (state.scroll, state.last_caret_change)
         };
 
