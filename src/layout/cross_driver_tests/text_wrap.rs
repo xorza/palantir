@@ -101,24 +101,30 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MaxContent,
-        &ui.frame_arena.borrow().text_bytes,
-        &ui.text,
+        &crate::layout::support::TextCtx {
+            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            shaper: &ui.text,
+        },
     );
     let min_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::X,
         LenReq::MinContent,
-        &ui.frame_arena.borrow().text_bytes,
-        &ui.text,
+        &crate::layout::support::TextCtx {
+            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            shaper: &ui.text,
+        },
     );
     let max_h = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         node,
         Axis::Y,
         LenReq::MaxContent,
-        &ui.frame_arena.borrow().text_bytes,
-        &ui.text,
+        &crate::layout::support::TextCtx {
+            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            shaper: &ui.text,
+        },
     );
 
     assert!(
@@ -356,16 +362,20 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &ui.frame_arena.borrow().text_bytes,
-        &ui.text,
+        &crate::layout::support::TextCtx {
+            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            shaper: &ui.text,
+        },
     );
     let min_w = ui.layout_engine.intrinsic(
         ui.forest.tree(Layer::Main),
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &ui.frame_arena.borrow().text_bytes,
-        &ui.text,
+        &crate::layout::support::TextCtx {
+            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            shaper: &ui.text,
+        },
     );
     assert!(
         (min_w - max_w).abs() <= 0.5,
@@ -424,8 +434,10 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &probe.frame_arena.borrow().text_bytes,
-        &probe.text,
+        &crate::layout::support::TextCtx {
+            bytes: &probe.frame_arena.borrow().fmt_scratch,
+            shaper: &probe.text,
+        },
     );
     assert!(label_full > 0.0);
 

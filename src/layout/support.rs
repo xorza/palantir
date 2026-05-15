@@ -19,6 +19,19 @@ use crate::shape::TextWrap;
 use crate::text::{FontFamily, TextShaper};
 use glam::Vec2;
 
+/// Read-only context every layout method threads through the
+/// measure / arrange / intrinsic recursion. Bundles the text shaper
+/// with the per-frame text-byte arena (the byte slice that
+/// `ShapeRecord::Text::text`'s `InternedStr::Interned` span resolves
+/// against — see [`InternedStr::as_str`](crate::InternedStr::as_str)).
+/// Single parameter slot instead of `(text_bytes: &str, text:
+/// &TextShaper)` everywhere keeps driver signatures readable.
+#[derive(Copy, Clone)]
+pub(crate) struct TextCtx<'a> {
+    pub(crate) bytes: &'a str,
+    pub(crate) shaper: &'a TextShaper,
+}
+
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`]; named so the fields aren't a tuple.
 pub(crate) struct LeafTextShape<'a> {
@@ -43,7 +56,7 @@ pub(crate) struct LeafTextShape<'a> {
 /// on which shape variants contribute to size.
 pub(crate) fn leaf_text_shapes<'a>(
     tree: &'a Tree,
-    text_bytes: &'a str,
+    tc: &TextCtx<'a>,
     node: NodeId,
 ) -> impl Iterator<Item = LeafTextShape<'a>> {
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
@@ -69,7 +82,7 @@ pub(crate) fn leaf_text_shapes<'a>(
                 align,
                 ..
             } => Some(LeafTextShape {
-                text: text.as_str(text_bytes),
+                text: text.as_str(tc.bytes),
                 font_size_px: *font_size_px,
                 line_height_px: *line_height_px,
                 wrap: *wrap,
@@ -180,12 +193,11 @@ pub(crate) fn children_max_intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
 ) -> f32 {
     let mut m = 0.0f32;
     for c in tree.active_children(node) {
-        m = m.max(layout.intrinsic(tree, c, axis, req, text_bytes, text));
+        m = m.max(layout.intrinsic(tree, c, axis, req, tc));
     }
     m
 }
@@ -262,14 +274,12 @@ pub(crate) fn justify_offsets(
 /// `child_avail`, then folds the child's contribution (size + offset
 /// from `contrib`) into a per-axis max. Drivers differ only in
 /// whether they add a positional offset.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_per_axis_hug(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    text_bytes: &str,
-    text: &TextShaper,
+    tc: &TextCtx<'_>,
     out: &mut Layout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
@@ -278,7 +288,7 @@ pub(crate) fn measure_per_axis_hug(
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.active_children(node) {
-        let d = layout.measure(tree, c, child_avail, text_bytes, text, out);
+        let d = layout.measure(tree, c, child_avail, tc, out);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);
         max_h = max_h.max(cont.h);

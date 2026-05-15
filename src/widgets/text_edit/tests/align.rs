@@ -599,7 +599,7 @@ mod per_line {
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
         let arena = ui.frame_arena.borrow();
-        let bytes = arena.text_bytes.as_str();
+        let bytes = arena.fmt_scratch.as_str();
         let tree = ui.forest.tree(Layer::Main);
         let shape_align = shapes_of(tree, node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => Some((*align, text.as_str(bytes).to_owned())),

@@ -726,11 +726,14 @@ impl Ui {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
         let arena = self.frame_arena.borrow();
+        let tc = crate::layout::support::TextCtx {
+            bytes: &arena.fmt_scratch,
+            shaper: &self.text,
+        };
         self.layout_engine.run(
             &self.forest,
-            &arena.text_bytes,
+            &tc,
             self.display.logical_rect(),
-            &self.text,
             &mut self.layout,
         );
         drop(arena);
@@ -761,22 +764,29 @@ impl Ui {
         self.forest.add_shape(shape, &mut arena);
     }
 
-    /// Format `args` directly into the active tree's text-bytes arena
-    /// and return an [`InternedStr::Interned`] handle. Pass the returned
-    /// value to any widget that takes `impl Into<InternedStr<'static>>`
+    /// Format `args` directly into the per-frame text arena and return
+    /// an [`InternedStr::Interned`] handle. Pass the returned value to
+    /// any widget that takes `impl Into<InternedStr<'static>>`
     /// (Text/Button/MenuItem) — the bytes are already in the destination
     /// buffer, so lowering is zero-copy and steady-state authoring of
     /// dynamic labels skips per-call `String` allocations.
     ///
-    /// The handle is valid until the next `frame()` call (clears
-    /// `text_bytes`). Don't carry it across layer boundaries — spans are
-    /// per-tree.
+    /// **Frame-scoped.** The handle is invalidated by the next
+    /// [`Self::frame`] call (the arena clears at frame start). Don't
+    /// store it in `state_mut::<T>(...)` or any cross-frame state — the
+    /// span will silently point at the wrong bytes next frame. For
+    /// persistent strings store the original `String` / `&'static str`
+    /// and `.into()` it back into `InternedStr` each frame. The type
+    /// signature can't express this constraint, so the borrow checker
+    /// won't catch a misuse — `#[must_use]` is a hint that the result
+    /// is meant to be consumed in the same frame.
+    #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr<'static> {
         let mut arena = self.frame_arena.borrow_mut();
-        let start = arena.text_bytes.len();
-        std::fmt::Write::write_fmt(&mut arena.text_bytes, args).unwrap();
-        let end = arena.text_bytes.len();
-        let bytes = &arena.text_bytes.as_str()[start..end];
+        let start = arena.fmt_scratch.len();
+        std::fmt::Write::write_fmt(&mut arena.fmt_scratch, args).unwrap();
+        let end = arena.fmt_scratch.len();
+        let bytes = &arena.fmt_scratch.as_str()[start..end];
         let hash = crate::common::frame_arena::FrameArena::hash_text(bytes);
         crate::InternedStr::Interned {
             span: crate::Span::new(start as u32, (end - start) as u32),

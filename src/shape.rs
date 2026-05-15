@@ -92,6 +92,16 @@ pub enum Shape<'a> {
         /// shift the text by scroll + alignment offsets the encoder
         /// can't compute.
         local_origin: Option<Vec2>,
+        /// Always `'static` — the carrier is moved into `ShapeRecord`
+        /// at lowering and lives there until the next frame's
+        /// `Shapes::clear`. Callers who only have a short-lived `&str`
+        /// must materialize it: pass `String` via `InternedStr::Owned`
+        /// (one alloc), or write into the per-frame format arena via
+        /// [`crate::Ui::fmt`] (zero alloc after warmup). Static
+        /// literals (`Button::new().label("foo")`) round-trip through
+        /// `InternedStr::Borrowed` with no allocation. `Shape<'a>`'s
+        /// `'a` parameter doesn't constrain this variant; it's used by
+        /// `Polyline.points` / `Mesh.mesh` instead.
         text: InternedStr<'static>,
         brush: Brush,
         font_size_px: f32,

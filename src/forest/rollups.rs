@@ -116,6 +116,7 @@ impl SubtreeRollups {
 
 #[cfg(test)]
 mod tests {
+    use crate::common::frame_arena::FrameArena;
     use crate::common::hash::Hasher;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
@@ -128,7 +129,7 @@ mod tests {
         ShapeRecord::Text {
             local_origin,
             text: InternedStr::Borrowed("hi"),
-            text_hash: 0xfeed_dead,
+            text_hash: FrameArena::hash_text("hi"),
             color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,
