@@ -1,10 +1,10 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::align::Align;
+use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::TextStyle;
-use std::borrow::Cow;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size by default; call
@@ -22,7 +22,7 @@ use std::borrow::Cow;
 /// ```
 pub struct Text {
     element: Element,
-    text: Cow<'static, str>,
+    text: InternedStr<'static>,
     style: Option<TextStyle>,
     wrap: TextWrap,
     align: Align,
@@ -30,7 +30,7 @@ pub struct Text {
 
 impl Text {
     #[track_caller]
-    pub fn new(text: impl Into<Cow<'static, str>>) -> Self {
+    pub fn new(text: impl Into<InternedStr<'static>>) -> Self {
         Self {
             element: Element::new(LayoutMode::Leaf),
             text: text.into(),

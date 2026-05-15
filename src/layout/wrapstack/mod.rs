@@ -102,6 +102,7 @@ impl WrapScratch {
 /// (one pass over children), and arrange uses the same logic on the
 /// same `desired` values, so the assignment is deterministic across
 /// both passes.
+#[allow(clippy::too_many_arguments)]
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -109,6 +110,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
+    text_bytes: &str,
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
@@ -132,6 +134,7 @@ pub(crate) fn measure(
             tree,
             c,
             axis.compose_size(f32::INFINITY, cross_avail),
+            text_bytes,
             text,
             out,
         );
@@ -311,6 +314,7 @@ pub(crate) fn arrange(
 ///   single child sets the floor; smaller-than-that and even one row
 ///   overflows).
 /// - **MaxContent** on main: sum + within-line gaps (single line).
+#[allow(clippy::too_many_arguments)]
 /// - Cross axis: max child intrinsic (single-line approximation).
 pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
@@ -319,6 +323,7 @@ pub(crate) fn intrinsic(
     main_axis: Axis,
     query_axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
 ) -> f32 {
     let gap = tree.panel(node).gaps.gap();
@@ -327,7 +332,7 @@ pub(crate) fn intrinsic(
             LenReq::MinContent => {
                 let mut floor = 0.0f32;
                 for c in tree.active_children(node) {
-                    floor = floor.max(layout.intrinsic(tree, c, query_axis, req, text));
+                    floor = floor.max(layout.intrinsic(tree, c, query_axis, req, text_bytes, text));
                 }
                 floor
             }
@@ -335,7 +340,7 @@ pub(crate) fn intrinsic(
                 let mut total = 0.0f32;
                 let mut count = 0usize;
                 for c in tree.active_children(node) {
-                    total += layout.intrinsic(tree, c, query_axis, req, text);
+                    total += layout.intrinsic(tree, c, query_axis, req, text_bytes, text);
                     count += 1;
                 }
                 total + gap * count.saturating_sub(1) as f32
@@ -348,7 +353,7 @@ pub(crate) fn intrinsic(
         // toolbar/badge use cases.
         let mut max = 0.0f32;
         for c in tree.active_children(node) {
-            max = max.max(layout.intrinsic(tree, c, query_axis, req, text));
+            max = max.max(layout.intrinsic(tree, c, query_axis, req, text_bytes, text));
         }
         max
     }

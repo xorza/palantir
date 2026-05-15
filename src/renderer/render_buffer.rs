@@ -1,5 +1,5 @@
 use super::quad::Quad;
-use crate::layout::types::span::Span;
+use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;

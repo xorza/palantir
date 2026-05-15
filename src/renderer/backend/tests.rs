@@ -4,11 +4,11 @@
 //! sequence can't drift from the real wgpu dispatch.
 
 use super::schedule::{RenderStep, for_each_step};
-use crate::layout::types::span::Span;
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{

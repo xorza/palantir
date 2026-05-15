@@ -50,8 +50,9 @@ fn build_ui(ui: &mut Ui) {
                         .size((Sizing::FILL, Sizing::Fixed(1.0)))
                         .show(ui);
                     for i in 0..5 {
+                        let label = ui.fmt(format_args!("Action {i}"));
                         Button::new().id_salt(("hdr", i))
-                            .label(format!("Action {i}"))
+                            .label(label)
                             .show(ui);
                     }
                 });
@@ -69,8 +70,9 @@ fn build_ui(ui: &mut Ui) {
                         .size((Sizing::Fixed(220.0), Sizing::FILL))
                         .show(ui, |ui| {
                             for i in 0..sidebar_items {
+                                let label = ui.fmt(format_args!("Sidebar item {i}"));
                                 Button::new().id_salt(("side", i))
-                                    .label(format!("Sidebar item {i}"))
+                                    .label(label)
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .show(ui);
                             }
@@ -85,7 +87,7 @@ fn build_ui(ui: &mut Ui) {
                                 .show(ui, |ui| {
                                     for i in 0..3 {
                                         Button::new().id_salt(("sb-foot", i))
-                                            .label(format!("F{i}"))
+                                            .label(ui.fmt(format_args!("F{i}")))
                                             .show(ui);
                                     }
                                 });
@@ -164,7 +166,8 @@ fn build_ui(ui: &mut Ui) {
                                             .gap(2.0)
                                             .size((Sizing::FILL, Sizing::Hug))
                                             .show(ui, |ui| {
-                                                Text::new(format!("user_{i}")).id_salt(("from", i))
+                                                let name = ui.fmt(format_args!("user_{i}"));
+                                                Text::new(name).id_salt(("from", i))
                                                     .style(palantir::TextStyle::default().with_font_size(12.0))
                                                     .show(ui);
                                                 Text::new("This is a longer message body that should wrap inside the Fill stack column without breaking words inside any single token.",).id_salt(("msg", i))

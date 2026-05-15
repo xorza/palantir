@@ -14,7 +14,6 @@ use crate::support::internals::ResponseNodeExt;
 use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
-use std::borrow::Cow;
 use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
@@ -102,6 +101,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MaxContent,
+        &ui.frame_arena.borrow().text_bytes,
         &ui.text,
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -109,6 +109,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MinContent,
+        &ui.frame_arena.borrow().text_bytes,
         &ui.text,
     );
     let max_h = ui.layout_engine.intrinsic(
@@ -116,6 +117,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::Y,
         LenReq::MaxContent,
+        &ui.frame_arena.borrow().text_bytes,
         &ui.text,
     );
 
@@ -354,6 +356,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MaxContent,
+        &ui.frame_arena.borrow().text_bytes,
         &ui.text,
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -361,6 +364,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MinContent,
+        &ui.frame_arena.borrow().text_bytes,
         &ui.text,
     );
     assert!(
@@ -420,6 +424,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
+        &probe.frame_arena.borrow().text_bytes,
         &probe.text,
     );
     assert!(label_full > 0.0);
@@ -456,7 +461,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
         ui.node(element, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),
-                text: Cow::Borrowed("first"),
+                text: "first".into(),
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
@@ -466,7 +471,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
             });
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),
-                text: Cow::Borrowed("second-with-different-text"),
+                text: "second-with-different-text".into(),
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,

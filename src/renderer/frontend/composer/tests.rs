@@ -1,7 +1,8 @@
 use super::super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
 use crate::common::frame_arena::FrameArena;
-use crate::layout::types::{display::Display, span::Span};
+use crate::layout::types::display::Display;
+use crate::primitives::span::Span;
 use crate::primitives::{
     brush::Brush, color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,

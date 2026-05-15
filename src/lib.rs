@@ -56,11 +56,13 @@ pub use primitives::brush::{
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
+pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
+pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
@@ -94,7 +96,7 @@ mod hot_struct_sizes {
     use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
     use crate::forest::tree::ExtrasIdx;
     use crate::layout::ShapedText;
-    use crate::layout::types::span::Span;
+    use crate::primitives::span::Span;
     use crate::renderer::frontend::cmd_buffer::{
         DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
     };

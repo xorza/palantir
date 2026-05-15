@@ -1,17 +1,17 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
+use crate::primitives::interned_str::InternedStr;
 use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::ButtonTheme;
-use std::borrow::Cow;
 
 pub struct Button {
     element: Element,
     style: Option<ButtonTheme>,
-    label: Cow<'static, str>,
+    label: InternedStr<'static>,
     label_align: Align,
 }
 
@@ -24,7 +24,7 @@ impl Button {
         Self {
             element,
             style: None,
-            label: Cow::Borrowed(""),
+            label: InternedStr::default(),
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
@@ -35,7 +35,7 @@ impl Button {
         self.style = Some(s);
         self
     }
-    pub fn label(mut self, s: impl Into<Cow<'static, str>>) -> Self {
+    pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
         self.label = s.into();
         self
     }

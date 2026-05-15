@@ -4,5 +4,4 @@ pub(crate) mod display;
 pub(crate) mod grid_cell;
 pub(crate) mod justify;
 pub(crate) mod sizing;
-pub(crate) mod span;
 pub(crate) mod track;
