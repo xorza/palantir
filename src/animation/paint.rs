@@ -80,24 +80,6 @@ impl PaintAnim {
         }
     }
 
-    /// Quantized state used for change-detection. Returns a small
-    /// integer that flips iff `sample(now)` would produce a visually
-    /// different output than `sample(prev)`. For `BlinkOpacity` this
-    /// is the visibility bit (`0` or `1`).
-    ///
-    /// Drives the slice-2 short-circuit damage path without rehashing
-    /// the brush. Unused on the slice-1 record path but pinned here
-    /// so the sampling math and quantization stay co-located.
-    #[inline]
-    pub(crate) fn quantum(self, now: Duration) -> i32 {
-        match self {
-            PaintAnim::BlinkOpacity {
-                half_period,
-                started_at,
-            } => i32::from(blink_visible_at(half_period, started_at, now)),
-        }
-    }
-
     /// Earliest `Duration` (absolute time, same epoch as
     /// `Ui::time` / `started_at`) at which `quantum` will next
     /// change. `post_record` folds the min of every live entry's
@@ -170,7 +152,6 @@ mod tests {
             started_at: START,
         };
         assert_eq!(a.sample(START).alpha, 1.0);
-        assert_eq!(a.quantum(START), 1);
     }
 
     #[test]
@@ -181,14 +162,13 @@ mod tests {
         };
         // Just before the boundary: still solid.
         let before = START + HP - Duration::from_micros(1);
-        assert_eq!(a.quantum(before), 1);
+        assert_eq!(a.sample(before).alpha, 1.0);
         // At the boundary: hidden.
         let at = START + HP;
-        assert_eq!(a.quantum(at), 0);
         assert_eq!(a.sample(at).alpha, 0.0);
         // Two boundaries later: solid again.
         let two = START + HP + HP;
-        assert_eq!(a.quantum(two), 1);
+        assert_eq!(a.sample(two).alpha, 1.0);
     }
 
     #[test]
@@ -217,7 +197,6 @@ mod tests {
         };
         let before = START - Duration::from_millis(200);
         assert_eq!(a.sample(before).alpha, 1.0);
-        assert_eq!(a.quantum(before), 1);
         assert_eq!(a.next_wake(before), START);
     }
 
