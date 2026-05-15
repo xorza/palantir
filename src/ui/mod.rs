@@ -40,6 +40,45 @@ use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
 
+/// Bitset over wake causes. OR-merged when two requests coalesce
+/// onto the same deadline slot, so the frame-entry classifier can see
+/// every reason behind a fired wake — used to pick `Full` vs
+/// `AnimOnly` processing in [`Ui::frame`]. Bit set, not enum, because
+/// a single deadline can legitimately have both bits at once
+/// (paint-anim quantum aligning with a widget-scheduled wake).
+#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
+pub(crate) struct WakeReasons(u8);
+
+impl WakeReasons {
+    /// Caller asked for a wake via [`Ui::request_repaint_after`] —
+    /// state-spring tick, host-driven schedule, widget that owes a
+    /// future paint. Requires a full record + measure + arrange +
+    /// cascade pass.
+    pub(crate) const REAL: Self = Self(1 << 0);
+    /// Paint-anim quantum boundary, filed in [`Ui::post_record`] from
+    /// `Forest::post_record`'s `min_wake`. On its own, only needs a
+    /// damage compute + paint — record/post-record output from the
+    /// prior frame is reused as-is.
+    pub(crate) const ANIM: Self = Self(1 << 1);
+
+    #[inline]
+    pub(crate) fn contains(self, r: Self) -> bool {
+        self.0 & r.0 == r.0
+    }
+
+    #[inline]
+    pub(crate) fn merge(self, r: Self) -> Self {
+        Self(self.0 | r.0)
+    }
+}
+
+/// One entry on [`Ui::repaint_wakes`].
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Wake {
+    pub(crate) deadline: Duration,
+    pub(crate) reasons: WakeReasons,
+}
+
 /// Rects damaged "before the main pass runs" — owner paint-rects of
 /// every paint anim whose quantum boundary fell in the
 /// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
@@ -139,14 +178,16 @@ pub struct Ui {
     pub(crate) fps_ema: f32,
     /// Set by [`Self::animate`] when an animation hasn't settled.
     pub(crate) repaint_requested: bool,
-    /// Pending wake-up deadlines (absolute Ui-time, sorted ascending,
-    /// dedup'd). Survive across frames — callers schedule once via
-    /// [`Self::request_repaint_after`] and the entry stays until its
-    /// deadline fires, at which point [`Self::frame`] drains it at the
-    /// top of the next frame. Hosts read the earliest pending entry
-    /// off [`FrameReport::repaint_after`] and pair with
+    /// Pending wake-up entries (absolute Ui-time, sorted ascending,
+    /// dedup'd). Each carries the OR'd set of [`WakeReasons`] that
+    /// asked for this deadline — when two requests coalesce into one
+    /// slot, their reasons merge so the frame-entry classifier sees
+    /// every cause that fired. Survive across frames; [`Self::frame`]
+    /// drains the prefix that has fired and reads `fired_reasons` to
+    /// pick the [`FrameProcessing`] path. Hosts read the earliest
+    /// pending entry off [`FrameReport::repaint_after`] and pair with
     /// `winit::ControlFlow::WaitUntil` (or equivalent).
-    pub(crate) repaint_wakes: Vec<Duration>,
+    pub(crate) repaint_wakes: Vec<Wake>,
     pub(crate) anim: AnimMap,
     /// Submission status of the last *painted* frame. NOT reset in
     /// `pre_record` — `click_on_empty_bg_does_not_force_full`
@@ -326,8 +367,15 @@ impl Ui {
         self.repaint_requested = false;
         // Drop wakes whose deadline has fired (this frame is at or
         // past them). Sorted-ascending invariant means a prefix slice.
-        let fired = self.repaint_wakes.partition_point(|&d| d <= self.time);
-        self.repaint_wakes.drain(..fired);
+        // `_fired_reasons` will gate the anim-only fast path once the
+        // skip branch lands; for now it's unused.
+        let fired_count = self
+            .repaint_wakes
+            .partition_point(|w| w.deadline <= self.time);
+        let _fired_reasons = self.repaint_wakes[..fired_count]
+            .iter()
+            .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
+        self.repaint_wakes.drain(..fired_count);
         self.relayout_requested = false;
 
         let force_full = self.should_invalidate_prev(display);
@@ -397,7 +445,7 @@ impl Ui {
 
         FrameReport {
             repaint_requested: self.repaint_requested,
-            repaint_after: self.repaint_wakes.first().copied(),
+            repaint_after: self.repaint_wakes.first().map(|w| w.deadline),
             plan: RenderPlan::from_damage(damage, self.theme.window_clear),
             processing: if double_layout {
                 FrameProcessing::DoubleLayout
@@ -540,23 +588,47 @@ impl Ui {
             self.frame_id,
         );
         let deadline = self.time.saturating_add(after);
-        let pos = match self.repaint_wakes.binary_search(&deadline) {
-            Ok(_) => return,
-            Err(pos) => pos,
+        self.schedule_wake(deadline, WakeReasons::REAL);
+    }
+
+    /// Shared inserter for [`Self::request_repaint_after`] (REAL) and
+    /// paint-anim quantum boundaries (ANIM, filed from
+    /// [`Self::post_record`]). Maintains the sorted-ascending
+    /// invariant on [`Self::repaint_wakes`], coalesces requests within
+    /// [`REPAINT_COALESCE_DT`] onto the later deadline, and OR-merges
+    /// reasons when two requests land on the same slot. Merging is
+    /// what lets the frame-entry classifier see a wake that *both* an
+    /// anim and a widget asked for as `REAL | ANIM`, which forces the
+    /// Full path (correct — the widget needs record).
+    fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
+        let pos = self
+            .repaint_wakes
+            .binary_search_by_key(&deadline, |w| w.deadline);
+        match pos {
+            Ok(i) => {
+                self.repaint_wakes[i].reasons = self.repaint_wakes[i].reasons.merge(reasons);
+                return;
+            }
+            Err(_) => {}
         };
+        let pos = pos.unwrap_err();
         let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
         // Coalesce to the later of (existing, requested) — collapse
         // bursts into a single wake at the back of the window to avoid
         // unnecessary host wakes. pos-1 is earlier than deadline
-        // (overwrite with ours); pos is later (skip insert).
-        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos]) {
+        // (overwrite with ours, but keep merged reasons); pos is later
+        // (keep its deadline, merge our reasons in).
+        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
+            self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
             return;
         }
-        if pos > 0 && near(self.repaint_wakes[pos - 1]) {
-            self.repaint_wakes[pos - 1] = deadline;
+        if pos > 0 && near(self.repaint_wakes[pos - 1].deadline) {
+            self.repaint_wakes[pos - 1].deadline = deadline;
+            self.repaint_wakes[pos - 1].reasons =
+                self.repaint_wakes[pos - 1].reasons.merge(reasons);
             return;
         }
-        self.repaint_wakes.insert(pos, deadline);
+        self.repaint_wakes.insert(pos, Wake { deadline, reasons });
     }
 
     fn pre_record(&mut self) {
@@ -576,7 +648,10 @@ impl Ui {
         profiling::scope!("Ui::post_record");
         let min_wake = self.forest.post_record(self.time);
         if min_wake != Duration::MAX {
-            self.request_repaint_after(min_wake.saturating_sub(self.time));
+            // Paint-anim quantum boundary — file with `ANIM` so the
+            // next frame's classifier can take the anim-only fast
+            // path if no other reasons coalesce onto the same slot.
+            self.schedule_wake(min_wake, WakeReasons::ANIM);
         }
         self.layout_engine.run(
             &self.forest,
