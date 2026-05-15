@@ -128,6 +128,7 @@ pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
 /// On a measure-cache hit at any ancestor, this function doesn't run
 /// and the row's `content` keeps last frame's value (cache hit ⟹
 /// identical measure ⟹ identical content extent).
+#[allow(clippy::too_many_arguments)]
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -135,6 +136,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner_avail: Size,
     mode: LayoutMode,
+    text_bytes: &str,
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
@@ -145,6 +147,7 @@ pub(crate) fn measure(
             node,
             Size::new(inner_avail.w, f32::INFINITY),
             Axis::Y,
+            text_bytes,
             text,
             out,
         ),
@@ -154,10 +157,13 @@ pub(crate) fn measure(
             node,
             Size::new(f32::INFINITY, inner_avail.h),
             Axis::X,
+            text_bytes,
             text,
             out,
         ),
-        LayoutMode::ScrollBoth => zstack::measure(layout, tree, node, Size::INF, text, out),
+        LayoutMode::ScrollBoth => {
+            zstack::measure(layout, tree, node, Size::INF, text_bytes, text, out)
+        }
         _ => unreachable!("scroll::measure called with non-Scroll mode {mode:?}"),
     };
 

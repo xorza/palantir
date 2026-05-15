@@ -75,6 +75,7 @@ pub(crate) fn compute(
     node: NodeId,
     axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
 ) -> f32 {
     let style = tree.records.layout()[node.index()];
@@ -105,6 +106,7 @@ pub(crate) fn compute(
                 node,
                 axis,
                 req,
+                text_bytes,
                 text,
                 style.mode,
                 style.mode_payload,
@@ -134,34 +136,48 @@ fn content_intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
     mode: LayoutMode,
     mode_payload: u16,
 ) -> f32 {
     match mode {
-        LayoutMode::Leaf => leaf(tree, node, axis, req, text),
-        LayoutMode::HStack => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
-        LayoutMode::VStack => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
+        LayoutMode::Leaf => leaf(tree, node, axis, req, text_bytes, text),
+        LayoutMode::HStack => {
+            stack::intrinsic(engine, tree, node, Axis::X, axis, req, text_bytes, text)
+        }
+        LayoutMode::VStack => {
+            stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text_bytes, text)
+        }
         LayoutMode::WrapHStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, req, text)
+            wrapstack::intrinsic(engine, tree, node, Axis::X, axis, req, text_bytes, text)
         }
         LayoutMode::WrapVStack => {
-            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, req, text)
+            wrapstack::intrinsic(engine, tree, node, Axis::Y, axis, req, text_bytes, text)
         }
-        LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, text),
-        LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, text),
-        LayoutMode::Grid => grid::intrinsic(engine, tree, node, mode_payload, axis, req, text),
+        LayoutMode::ZStack => zstack::intrinsic(engine, tree, node, axis, req, text_bytes, text),
+        LayoutMode::Canvas => canvas::intrinsic(engine, tree, node, axis, req, text_bytes, text),
+        LayoutMode::Grid => grid::intrinsic(
+            engine,
+            tree,
+            node,
+            mode_payload,
+            axis,
+            req,
+            text_bytes,
+            text,
+        ),
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
         // The non-panned axis falls back to the corresponding stack /
         // zstack intrinsic.
         LayoutMode::ScrollVertical => match axis {
             Axis::Y => 0.0,
-            Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text),
+            Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, text_bytes, text),
         },
         LayoutMode::ScrollHorizontal => match axis {
             Axis::X => 0.0,
-            Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text),
+            Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, text_bytes, text),
         },
         LayoutMode::ScrollBoth => 0.0,
     }
@@ -172,11 +188,18 @@ fn content_intrinsic(
 /// don't drive size. Lives here rather than in a `leaf` module because
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
-fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, text: &TextShaper) -> f32 {
+fn leaf(
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    text_bytes: &str,
+    text: &TextShaper,
+) -> f32 {
     let wid = tree.records.widget_id()[node.index()];
     let curr_hash = tree.rollups.node[node.index()];
     let mut acc = 0.0_f32;
-    for (ordinal, ts) in leaf_text_shapes(tree, node).enumerate() {
+    for (ordinal, ts) in leaf_text_shapes(tree, text_bytes, node).enumerate() {
         let ordinal = ordinal as u16;
         let m = text.shape_unbounded(
             wid,
@@ -289,13 +312,16 @@ mod tests {
         const SENTINEL: f32 = 1234.5;
         ui.layout_engine.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
+        let arena = ui.frame_arena.borrow();
         let v = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             child,
             Axis::X,
             LenReq::MinContent,
+            &arena.text_bytes,
             &ui.text,
         );
+        drop(arena);
         assert_eq!(
             v, SENTINEL,
             "cache hit must return the stored value verbatim, not recompute"
@@ -329,13 +355,16 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
+        let arena = ui.frame_arena.borrow();
         let _ = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             root,
             Axis::X,
             LenReq::MaxContent,
+            &arena.text_bytes,
             &ui.text,
         );
+        drop(arena);
 
         assert!(
             !ui.layout_engine.scratch.intrinsics[root.index()][slot].is_nan(),

@@ -17,8 +17,8 @@ use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 
+use crate::primitives::interned_str::InternedStr;
 use glam::Vec2;
-use std::borrow::Cow;
 
 /// Cross-frame state for one context-menu site, keyed off the trigger
 /// widget's id in [`crate::ui::state::StateMap`]. `anchor = Some` is
@@ -205,13 +205,13 @@ pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2
 /// don't intercept.
 pub struct MenuItem {
     element: Element,
-    label: Cow<'static, str>,
+    label: InternedStr<'static>,
     shortcut: Option<Shortcut>,
 }
 
 impl MenuItem {
     #[track_caller]
-    pub fn new(label: impl Into<Cow<'static, str>>) -> Self {
+    pub fn new(label: impl Into<InternedStr<'static>>) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
         element.set_sense(Sense::CLICK);
         Self {
@@ -315,7 +315,7 @@ impl MenuItem {
                 ui.node(sh_el, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
-                        text: s,
+                        text: s.into(),
                         brush: shortcut_color.into(),
                         font_size_px,
                         line_height_px,

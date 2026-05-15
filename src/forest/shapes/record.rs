@@ -1,17 +1,16 @@
 use crate::layout::types::align::Align;
-use crate::layout::types::span::Span;
 use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
+use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
 use half::f16;
-use std::borrow::Cow;
 use std::hash::{Hash, Hasher};
 
 /// Frame-local handle into [`crate::forest::shapes::Shapes::gradients`].
@@ -312,11 +311,15 @@ pub(crate) enum ShapeRecord {
     /// scroll/alignment offsets that depend on shaped-buffer state.
     Text {
         local_origin: Option<Vec2>,
-        /// `Cow<'static, str>` so static-string labels (the common case via
-        /// `&'static str → Into<Cow<…>>`) round-trip with only pointer-copy
-        /// `Clone`s — no per-frame heap alloc. Dynamic strings still allocate
-        /// once into `Cow::Owned` at the authoring boundary.
-        text: Cow<'static, str>,
+        /// User-facing [`InternedStr`](crate::InternedStr), moved
+        /// in at lowering. No carrier is normalised away — `Borrowed`
+        /// keeps the `&'static str` pointer (zero copy), `Owned`
+        /// moves the `String` (no realloc, dropped at next frame's
+        /// `Shapes::clear`), `Interned` carries the span+hash from
+        /// [`Ui::fmt`](crate::Ui::fmt) unchanged. `text_hash` is the
+        /// pre-computed FxHash for context-free `Hash for ShapeRecord`.
+        text: crate::primitives::interned_str::InternedStr<'static>,
+        text_hash: u64,
         color: ColorF16,
         font_size_px: f32,
         /// Line-height in logical px, fed straight to the shaper's
@@ -512,7 +515,8 @@ impl Hash for ShapeRecord {
             }
             ShapeRecord::Text {
                 local_origin,
-                text,
+                text: _,
+                text_hash,
                 color,
                 font_size_px,
                 line_height_px,
@@ -528,7 +532,7 @@ impl Hash for ShapeRecord {
                         h.write_u32(o.y.to_bits());
                     }
                 }
-                text.hash(h);
+                h.write_u64(*text_hash);
                 color.hash(h);
                 let dims =
                     ((font_size_px.to_bits() as u64) << 32) | line_height_px.to_bits() as u64;

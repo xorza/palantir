@@ -6,7 +6,7 @@
 //! asserted in tests can't drift from the order actually issued to
 //! wgpu. Pure data — no GPU calls live here.
 
-use crate::layout::types::span::Span;
+use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
 

@@ -725,12 +725,15 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
+        let arena = self.frame_arena.borrow();
         self.layout_engine.run(
             &self.forest,
+            &arena.text_bytes,
             self.display.logical_rect(),
             &self.text,
             &mut self.layout,
         );
+        drop(arena);
         self.cascades_engine.run(&self.forest, &mut self.layout);
     }
 
@@ -756,6 +759,29 @@ impl Ui {
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         let mut arena = self.frame_arena.borrow_mut();
         self.forest.add_shape(shape, &mut arena);
+    }
+
+    /// Format `args` directly into the active tree's text-bytes arena
+    /// and return an [`InternedStr::Interned`] handle. Pass the returned
+    /// value to any widget that takes `impl Into<InternedStr<'static>>`
+    /// (Text/Button/MenuItem) — the bytes are already in the destination
+    /// buffer, so lowering is zero-copy and steady-state authoring of
+    /// dynamic labels skips per-call `String` allocations.
+    ///
+    /// The handle is valid until the next `frame()` call (clears
+    /// `text_bytes`). Don't carry it across layer boundaries — spans are
+    /// per-tree.
+    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr<'static> {
+        let mut arena = self.frame_arena.borrow_mut();
+        let start = arena.text_bytes.len();
+        std::fmt::Write::write_fmt(&mut arena.text_bytes, args).unwrap();
+        let end = arena.text_bytes.len();
+        let bytes = &arena.text_bytes.as_str()[start..end];
+        let hash = crate::common::frame_arena::FrameArena::hash_text(bytes);
+        crate::InternedStr::Interned {
+            span: crate::Span::new(start as u32, (end - start) as u32),
+            hash,
+        }
     }
 
     /// Append `shape` to the active node and register `anim` against

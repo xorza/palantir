@@ -12,7 +12,6 @@ use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::record::{
     ChromeRow, GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke,
 };
-use crate::layout::types::span::Span;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::FlatPoint;
 use crate::primitives::brush::Brush;
@@ -20,6 +19,7 @@ use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::span::Span;
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::cell::RefCell;
@@ -69,6 +69,15 @@ pub struct FrameArena {
     /// encoder only needs the arena (not the originating tree) to
     /// resolve a gradient id.
     pub(crate) gradients: Vec<GradientPayload>,
+    /// Frame-scoped text-byte arena. `ShapeRecord::Text.text` is a
+    /// `Span` into this buffer; `Shape::Text` carriers (`Borrowed` /
+    /// `Owned`) memcpy bytes in at lowering, while
+    /// `InternedStr::Interned` (produced by [`crate::Ui::fmt`]) skips
+    /// the copy entirely. Cross-tree — keeping it on the frame arena
+    /// means [`InternedStr`](crate::InternedStr) handles survive
+    /// `Ui::layer(...)` scopes (the previous per-tree design would
+    /// silently mis-resolve spans across layer boundaries).
+    pub(crate) text_bytes: String,
 }
 
 /// Control points for the unified bezier lowering — quadratic carries
@@ -88,6 +97,17 @@ impl FrameArena {
         self.polyline_colors.clear();
         self.bezier_scratch.clear();
         self.gradients.clear();
+        self.text_bytes.clear();
+    }
+
+    /// Pre-computed FxHash of `s` for stamping into
+    /// `ShapeRecord::Text.text_hash`. Free fn (no state).
+    pub(crate) fn hash_text(s: &str) -> u64 {
+        use crate::common::hash::Hasher as FxHasher;
+        use std::hash::{Hash, Hasher};
+        let mut h = FxHasher::new();
+        s.hash(&mut h);
+        h.finish()
     }
 
     /// Lower a user-side `Brush` to the storage form: `Solid` stays

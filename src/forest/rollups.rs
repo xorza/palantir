@@ -120,14 +120,15 @@ mod tests {
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
+    use crate::primitives::interned_str::InternedStr;
     use crate::shape::TextWrap;
-    use std::borrow::Cow;
     use std::hash::{Hash, Hasher as _};
 
     fn text_shape(line_height_px: f32, local_origin: Option<glam::Vec2>) -> ShapeRecord {
         ShapeRecord::Text {
             local_origin,
-            text: Cow::Borrowed("hi"),
+            text: InternedStr::Borrowed("hi"),
+            text_hash: 0xfeed_dead,
             color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,

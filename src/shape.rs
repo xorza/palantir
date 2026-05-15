@@ -5,13 +5,13 @@ use crate::primitives::{
     brush::Brush,
     color::Color,
     corners::Corners,
+    interned_str::InternedStr,
     rect::Rect,
     shadow::Shadow,
     stroke::Stroke,
 };
 use crate::text::FontFamily;
 use glam::Vec2;
-use std::borrow::Cow;
 
 /// User-facing paint primitive. Pushed into the active tree via
 /// [`crate::Ui::add_shape`], which copies the data into the per-frame
@@ -92,7 +92,7 @@ pub enum Shape<'a> {
         /// shift the text by scroll + alignment offsets the encoder
         /// can't compute.
         local_origin: Option<Vec2>,
-        text: Cow<'static, str>,
+        text: InternedStr<'static>,
         brush: Brush,
         font_size_px: f32,
         line_height_px: f32,

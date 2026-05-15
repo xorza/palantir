@@ -2,8 +2,8 @@ pub(crate) mod record;
 
 use crate::common::frame_arena::{BezierInputs, FrameArena};
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
-use crate::layout::types::span::Span;
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
+use crate::primitives::span::Span;
 use crate::shape::{PolylineColors, Shape};
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].
@@ -141,16 +141,30 @@ impl Shapes {
                 wrap,
                 align,
                 family,
-            } => ShapeRecord::Text {
-                local_origin,
-                text,
-                color: brush.expect_solid().into(),
-                font_size_px,
-                line_height_px,
-                wrap,
-                align,
-                family,
-            },
+            } => {
+                use crate::primitives::interned_str::InternedStr;
+                // Each carrier costs only its hash compute:
+                // - `Interned` reuses the hash captured at `Ui::fmt` time.
+                // - `Borrowed` / `Owned` hash the bytes once at lowering;
+                //   the bytes stay where they are (no memcpy into the
+                //   text arena, no per-shape allocation).
+                let text_hash = match &text {
+                    InternedStr::Interned { hash, .. } => *hash,
+                    InternedStr::Borrowed(s) => FrameArena::hash_text(s),
+                    InternedStr::Owned(s) => FrameArena::hash_text(s),
+                };
+                ShapeRecord::Text {
+                    local_origin,
+                    text,
+                    text_hash,
+                    color: brush.expect_solid().into(),
+                    font_size_px,
+                    line_height_px,
+                    wrap,
+                    align,
+                    family,
+                }
+            }
             Shape::Shadow {
                 local_rect,
                 radius,

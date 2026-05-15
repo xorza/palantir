@@ -32,6 +32,7 @@ pub(crate) struct StackScratch {
     pub(crate) pool: Vec<FillEntry>,
 }
 
+#[allow(clippy::too_many_arguments)]
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -39,6 +40,7 @@ pub(crate) fn measure(
     node: NodeId,
     inner: Size,
     axis: Axis,
+    text_bytes: &str,
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
@@ -67,6 +69,7 @@ pub(crate) fn measure(
             tree,
             c,
             axis.compose_size(f32::INFINITY, cross_avail),
+            text_bytes,
             text,
             out,
         );
@@ -115,7 +118,7 @@ pub(crate) fn measure(
                     continue;
                 };
                 let cap = axis.main(tree.size_clamps_of(c).max);
-                let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text);
+                let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, text_bytes, text);
                 layout.scratch.stack_fill.pool.push(FillEntry {
                     node: c,
                     weight: w,
@@ -171,6 +174,7 @@ pub(crate) fn measure(
                     tree,
                     e.node,
                     axis.compose_size(main_avail, cross_avail),
+                    text_bytes,
                     text,
                     out,
                 );
@@ -190,6 +194,7 @@ pub(crate) fn measure(
                     tree,
                     c,
                     axis.compose_size(f32::INFINITY, cross_avail),
+                    text_bytes,
                     text,
                     out,
                 );
@@ -279,6 +284,7 @@ pub(crate) fn arrange(
 
 /// Intrinsic size of a stack on `query_axis` under `req`. When the query
 /// axis matches the stack's `main_axis`, sum children's intrinsic on
+#[allow(clippy::too_many_arguments)]
 /// that axis plus gaps; otherwise (cross axis), max over children.
 pub(crate) fn intrinsic(
     layout: &mut LayoutEngine,
@@ -287,6 +293,7 @@ pub(crate) fn intrinsic(
     main_axis: Axis,
     query_axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
 ) -> f32 {
     let gap = tree.panel(node).gaps.gap();
@@ -294,12 +301,12 @@ pub(crate) fn intrinsic(
         let mut total = 0.0_f32;
         let mut count = 0_usize;
         for c in tree.active_children(node) {
-            total += layout.intrinsic(tree, c, query_axis, req, text);
+            total += layout.intrinsic(tree, c, query_axis, req, text_bytes, text);
             count += 1;
         }
         total + gap * count.saturating_sub(1) as f32
     } else {
-        children_max_intrinsic(layout, tree, node, query_axis, req, text)
+        children_max_intrinsic(layout, tree, node, query_axis, req, text_bytes, text)
     }
 }
 

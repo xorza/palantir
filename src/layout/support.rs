@@ -41,10 +41,11 @@ pub(crate) struct LeafTextShape<'a> {
 /// shaping, `intrinsic::leaf` drives the unbounded content axis.
 /// Filtering and destructuring happen here so neither side can drift
 /// on which shape variants contribute to size.
-pub(crate) fn leaf_text_shapes(
-    tree: &Tree,
+pub(crate) fn leaf_text_shapes<'a>(
+    tree: &'a Tree,
+    text_bytes: &'a str,
     node: NodeId,
-) -> impl Iterator<Item = LeafTextShape<'_>> {
+) -> impl Iterator<Item = LeafTextShape<'a>> {
     // Direct slice into `tree.shapes` for `node`. Leaves have no children,
     // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
@@ -56,25 +57,27 @@ pub(crate) fn leaf_text_shapes(
     let span = tree.records.shape_span()[node.index()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
-    tree.shapes.records[lo..hi].iter().filter_map(|s| match s {
-        ShapeRecord::Text {
-            text,
-            font_size_px,
-            line_height_px,
-            wrap,
-            family,
-            align,
-            ..
-        } => Some(LeafTextShape {
-            text: text.as_ref(),
-            font_size_px: *font_size_px,
-            line_height_px: *line_height_px,
-            wrap: *wrap,
-            family: *family,
-            halign: align.halign(),
-        }),
-        _ => None,
-    })
+    tree.shapes.records[lo..hi]
+        .iter()
+        .filter_map(move |s| match s {
+            ShapeRecord::Text {
+                text,
+                font_size_px,
+                line_height_px,
+                wrap,
+                family,
+                align,
+                ..
+            } => Some(LeafTextShape {
+                text: text.as_str(text_bytes),
+                font_size_px: *font_size_px,
+                line_height_px: *line_height_px,
+                wrap: *wrap,
+                family: *family,
+                halign: align.halign(),
+            }),
+            _ => None,
+        })
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing
@@ -177,11 +180,12 @@ pub(crate) fn children_max_intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
 ) -> f32 {
     let mut m = 0.0f32;
     for c in tree.active_children(node) {
-        m = m.max(layout.intrinsic(tree, c, axis, req, text));
+        m = m.max(layout.intrinsic(tree, c, axis, req, text_bytes, text));
     }
     m
 }
@@ -258,11 +262,13 @@ pub(crate) fn justify_offsets(
 /// `child_avail`, then folds the child's contribution (size + offset
 /// from `contrib`) into a per-axis max. Drivers differ only in
 /// whether they add a positional offset.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn measure_per_axis_hug(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
+    text_bytes: &str,
     text: &TextShaper,
     out: &mut Layout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
@@ -272,7 +278,7 @@ pub(crate) fn measure_per_axis_hug(
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.active_children(node) {
-        let d = layout.measure(tree, c, child_avail, text, out);
+        let d = layout.measure(tree, c, child_avail, text_bytes, text, out);
         let cont = contrib(tree, c, d);
         max_w = max_w.max(cont.w);
         max_h = max_h.max(cont.h);

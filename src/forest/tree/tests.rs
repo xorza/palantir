@@ -846,6 +846,8 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     let _cmds = encode_cmds(&ui);
 
+    let arena = ui.frame_arena.borrow();
+    let bytes = arena.text_bytes.as_str();
     let main_tree = ui.forest.tree(Layer::Main);
     let popup_tree = ui.forest.tree(Layer::Popup);
 
@@ -854,7 +856,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [outer_span.start as usize..(outer_span.start + outer_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.as_ref()),
+            ShapeRecord::Text { text, .. } => Some(text.as_str(bytes)),
             _ => None,
         })
         .collect();
@@ -865,7 +867,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
         [popup_root_span.start as usize..(popup_root_span.start + popup_root_span.len) as usize]
         .iter()
         .filter_map(|s| match s {
-            ShapeRecord::Text { text, .. } => Some(text.as_ref()),
+            ShapeRecord::Text { text, .. } => Some(text.as_str(bytes)),
             _ => None,
         })
         .collect();

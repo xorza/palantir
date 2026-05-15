@@ -684,7 +684,7 @@ impl<'a> TextEdit<'a> {
                         ctx.padding.left() + offset.x - scroll.x,
                         ctx.padding.top() + offset.y - scroll.y,
                     )),
-                    text: display,
+                    text: display.into(),
                     brush: color.into(),
                     font_size_px: ctx.font_size,
                     line_height_px: ctx.line_height_px,

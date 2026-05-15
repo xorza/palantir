@@ -23,9 +23,10 @@ pub(crate) fn intrinsic(
     node: NodeId,
     axis: Axis,
     req: LenReq,
+    text_bytes: &str,
     text: &TextShaper,
 ) -> f32 {
-    children_max_intrinsic(layout, tree, node, axis, req, text)
+    children_max_intrinsic(layout, tree, node, axis, req, text_bytes, text)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).
@@ -45,10 +46,20 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
+    text_bytes: &str,
     text: &TextShaper,
     out: &mut Layout,
 ) -> Size {
-    measure_per_axis_hug(layout, tree, node, inner_avail, text, out, |_, _, d| d)
+    measure_per_axis_hug(
+        layout,
+        tree,
+        node,
+        inner_avail,
+        text_bytes,
+        text,
+        out,
+        |_, _, d| d,
+    )
 }
 
 /// Each child gets a slot inside `inner`, sized per its own `Sizing` and

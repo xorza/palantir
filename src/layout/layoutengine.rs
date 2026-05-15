@@ -10,13 +10,13 @@ use crate::layout::stack::StackScratch;
 use crate::layout::support::{AxisCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
-use crate::layout::types::span::Span;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
     Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::text::{FontFamily, TextShaper};
@@ -175,6 +175,7 @@ impl LayoutEngine {
         node: NodeId,
         axis: Axis,
         req: LenReq,
+        text_bytes: &str,
         text: &TextShaper,
     ) -> f32 {
         let slot = req.slot(axis);
@@ -182,7 +183,7 @@ impl LayoutEngine {
         if !cached.is_nan() {
             return cached;
         }
-        let v = intrinsic::compute(self, tree, node, axis, req, text);
+        let v = intrinsic::compute(self, tree, node, axis, req, text_bytes, text);
         self.scratch.intrinsics[node.index()][slot] = v;
         v
     }
@@ -196,6 +197,7 @@ impl LayoutEngine {
     pub(crate) fn run(
         &mut self,
         forest: &Forest,
+        text_bytes: &str,
         surface: Rect,
         text: &TextShaper,
         out: &mut Layout,
@@ -231,7 +233,7 @@ impl LayoutEngine {
                     let avail_h = slot.size.map_or(rem.y, |s| s.h.min(rem.y));
                     (slot.anchor, Size::new(avail_w, avail_h))
                 };
-                let desired = self.measure(tree, root, available, text, out);
+                let desired = self.measure(tree, root, available, text_bytes, text, out);
                 let size = if layer == Layer::Main {
                     available.max(desired)
                 } else {
@@ -254,6 +256,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available: Size,
+        text_bytes: &str,
         text: &TextShaper,
         out: &mut Layout,
     ) -> Size {
@@ -328,8 +331,8 @@ impl LayoutEngine {
         // `intrinsic_min`. Cached per (node, axis, slot) so repeat
         // queries during the same `run` are O(1).
         let intrinsic_min = Size::new(
-            self.intrinsic(tree, node, Axis::X, LenReq::MinContent, text),
-            self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, text),
+            self.intrinsic(tree, node, Axis::X, LenReq::MinContent, text_bytes, text),
+            self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, text_bytes, text),
         );
 
         // Floor `available` at `intrinsic_min` before dispatch: the
@@ -360,7 +363,8 @@ impl LayoutEngine {
         // same value because every driver's content size is monotone
         // in `available` and pass-1 already saturated at the floor.
         // Pinned by `cross_driver_tests::convergence`.
-        let content = self.measure_dispatch(tree, node, style, dispatch_avail, text, out);
+        let content =
+            self.measure_dispatch(tree, node, style, dispatch_avail, text_bytes, text, out);
         let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
         self.scratch.desired[node.index()] = desired;
@@ -421,14 +425,14 @@ impl LayoutEngine {
     /// `grid`) is a free module exporting three `pub(crate) fn`s,
     /// matched into here and into [`Self::arrange`] / `intrinsic::compute`:
     ///
-    /// - `measure(layout, tree, node, [variant_payload,] inner_avail, text) -> Size`
+    /// - `measure(layout, tree, node, [variant_payload,] inner_avail, text_bytes, text) -> Size`
     ///   — bottom-up. Recurses into children via `layout.measure(...)`.
     ///   Returns the driver's content size (pre-padding/margin/clamp;
     ///   the caller in [`Self::measure`] folds those in).
     /// - `arrange(layout, tree, node, [variant_payload,] inner)`
     ///   — top-down. Assigns each child a final rect and recurses via
     ///   `layout.arrange(...)`.
-    /// - `intrinsic(layout, tree, node, [variant_payload,] axis, req, text) -> f32`
+    /// - `intrinsic(layout, tree, node, [variant_payload,] axis, req, text_bytes, text) -> f32`
     ///   — pure on-demand query. Used by `grid::measure` Phase-1 column
     ///   resolution and `stack::measure` Fill min-content floor.
     ///
@@ -448,12 +452,14 @@ impl LayoutEngine {
     /// `arrange`, and `intrinsic::content_intrinsic`. The compiler
     /// flags the missing arms because `LayoutMode` matches are
     /// exhaustive.
+    #[allow(clippy::too_many_arguments)]
     fn measure_dispatch(
         &mut self,
         tree: &Tree,
         node: NodeId,
         style: LayoutCore,
         available: Size,
+        text_bytes: &str,
         text: &TextShaper,
         out: &mut Layout,
     ) -> Size {
@@ -489,20 +495,65 @@ impl LayoutEngine {
         let inner_avail = Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0));
 
         match style.mode {
-            LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, text, out),
-            LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, text, out),
-            LayoutMode::VStack => stack::measure(self, tree, node, inner_avail, Axis::Y, text, out),
-            LayoutMode::WrapHStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::X, text, out)
+            LayoutMode::Leaf => {
+                self.leaf_content_size(tree, node, inner_avail.w, text_bytes, text, out)
             }
-            LayoutMode::WrapVStack => {
-                wrapstack::measure(self, tree, node, inner_avail, Axis::Y, text, out)
+            LayoutMode::HStack => stack::measure(
+                self,
+                tree,
+                node,
+                inner_avail,
+                Axis::X,
+                text_bytes,
+                text,
+                out,
+            ),
+            LayoutMode::VStack => stack::measure(
+                self,
+                tree,
+                node,
+                inner_avail,
+                Axis::Y,
+                text_bytes,
+                text,
+                out,
+            ),
+            LayoutMode::WrapHStack => wrapstack::measure(
+                self,
+                tree,
+                node,
+                inner_avail,
+                Axis::X,
+                text_bytes,
+                text,
+                out,
+            ),
+            LayoutMode::WrapVStack => wrapstack::measure(
+                self,
+                tree,
+                node,
+                inner_avail,
+                Axis::Y,
+                text_bytes,
+                text,
+                out,
+            ),
+            LayoutMode::ZStack => {
+                zstack::measure(self, tree, node, inner_avail, text_bytes, text, out)
             }
-            LayoutMode::ZStack => zstack::measure(self, tree, node, inner_avail, text, out),
-            LayoutMode::Canvas => canvas::measure(self, tree, node, inner_avail, text, out),
-            LayoutMode::Grid => {
-                grid::measure(self, tree, node, style.mode_payload, inner_avail, text, out)
+            LayoutMode::Canvas => {
+                canvas::measure(self, tree, node, inner_avail, text_bytes, text, out)
             }
+            LayoutMode::Grid => grid::measure(
+                self,
+                tree,
+                node,
+                style.mode_payload,
+                inner_avail,
+                text_bytes,
+                text,
+                out,
+            ),
             // Scroll viewport. INF-axis measure of children; the
             // driver also writes the panned-axis content extent into
             // the persistent `ScrollLayoutState` row (see
@@ -510,7 +561,7 @@ impl LayoutEngine {
             mode @ (LayoutMode::ScrollVertical
             | LayoutMode::ScrollHorizontal
             | LayoutMode::ScrollBoth) => {
-                scroll::measure(self, tree, node, inner_avail, mode, text, out)
+                scroll::measure(self, tree, node, inner_avail, mode, text_bytes, text, out)
             }
         }
     }
@@ -555,13 +606,14 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         available_w: f32,
+        text_bytes: &str,
         text: &TextShaper,
         out: &mut Layout,
     ) -> Size {
         let span_start = out[self.active_layer].text_shapes.len() as u32;
         let mut s = Size::ZERO;
         let mut ordinal: u16 = 0;
-        for ts in leaf_text_shapes(tree, node) {
+        for ts in leaf_text_shapes(tree, text_bytes, node) {
             let m = self.shape_text(
                 tree,
                 node,
