@@ -6,7 +6,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::support::internals::ResponseNodeExt;
+use crate::support::internals::{ResponseNodeExt, damage_current_region};
 use crate::support::testing::new_ui;
 use crate::support::testing::{run_at, run_at_acked, ui_at};
 use crate::ui::damage::Damage;
@@ -277,9 +277,9 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_engine.region.is_empty());
+    assert!(damage_current_region(&ui).is_empty());
     assert_eq!(
-        ui.damage_engine.filter(ui.display.logical_rect()),
+        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
         Damage::None,
     );
 }

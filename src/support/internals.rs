@@ -95,9 +95,19 @@ pub fn text_shaper_has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: 
     shaper.inner.borrow().reuse.contains_key(&(wid, ordinal))
 }
 
+/// Test/bench inspection: rebuild the post-collapse damage region
+/// from `DamageEngine`'s last-frame pass-1 buffer. Doesn't mutate
+/// any state. On `force_full` frames the buffer holds only the
+/// structural rects (the anim / evict tail is skipped by the
+/// short-circuit), so the reconstructed region reflects "what would
+/// have been shown if we hadn't escalated to Full".
+pub(crate) fn damage_current_region(ui: &Ui) -> DamageRegion {
+    DamageRegion::collapse_from(&ui.damage_engine.raw_rects, ui.damage_engine.budget_px)
+}
+
 /// Damage rects produced by the most recent `post_record`.
 pub fn damage_rect_count(ui: &Ui) -> usize {
-    ui.damage_engine.region.iter_rects().count()
+    damage_current_region(ui).iter_rects().count()
 }
 
 /// Subtree-skip jumps the last damage diff performed.
@@ -107,7 +117,7 @@ pub fn damage_subtree_skips(ui: &Ui) -> u32 {
 
 /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
 pub fn damage_paint_kind(ui: &Ui) -> &'static str {
-    match ui.damage_engine.filter(ui.display.logical_rect()) {
+    match Damage::new(ui.display.logical_rect(), damage_current_region(ui)) {
         Damage::None => "skip",
         Damage::Full => "full",
         Damage::Partial(_) => "partial",
