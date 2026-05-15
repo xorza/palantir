@@ -8,17 +8,11 @@ PaintMod
 
 skip frame if window is not visible
 
-let input_arrived = self.input.input_arrived_since_last_frame;
-self.input.input_arrived_since_last_frame = false;
-let wake_fired = fired > 0;
-if display_unchanged
-&& wake_fired
-&& !input_arrived
-&& !self.anim.has_pending()
-&& !self.relayout_requested
-&& self.damage_engine.prev_now.is_some()
-&& self
-
-pub(crate) fn has_pending(&self) -> bool {
-self.by_type.values().any(|t| t.has_pending())
-}
+ge) doesn't need to look it up.
+pub(crate) fn iter_fired_paint_anim_rects<'a>(
+&'a self,
+cascades: &'a Cascades,
+prev_now: Option<Duration>,
+now: Duration,
+) -> impl Iterator<Item = Rect> + 'a {
+self.iter_paint_o

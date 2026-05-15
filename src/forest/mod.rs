@@ -10,8 +10,10 @@ use crate::forest::seen_ids::{RecordOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::shape::Shape;
+use crate::ui::cascade::Cascades;
 use glam::Vec2;
 use std::array;
 use std::time::Duration;
@@ -260,5 +262,26 @@ impl Forest {
             .iter()
             .copied()
             .map(move |layer| (layer, &self.trees[layer as usize]))
+    }
+
+    /// Cross-layer iterator over the screen-space paint rect of every
+    /// paint anim that crossed a quantum boundary since `prev_now`
+    /// (i.e. `anim.next_wake(prev_now) <= now`). First frame
+    /// (`prev_now == None`) fires every registered anim. Each
+    /// owner's `paint_rect` is resolved against `cascades` so the
+    /// caller (damage) doesn't need to look it up.
+    pub(crate) fn iter_fired_paint_anim_rects<'a>(
+        &'a self,
+        cascades: &'a Cascades,
+        prev_now: Option<Duration>,
+        now: Duration,
+    ) -> impl Iterator<Item = Rect> + 'a {
+        self.iter_paint_order().flat_map(move |(layer, tree)| {
+            let rows = cascades.rows_for(layer);
+            tree.paint_anims.entries.iter().filter_map(move |e| {
+                let fired = prev_now.is_none_or(|prev| e.anim.next_wake(prev) <= now);
+                fired.then(|| rows[e.node.index()].paint_rect)
+            })
+        })
     }
 }

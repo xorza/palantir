@@ -174,29 +174,6 @@ impl DamageEngine {
         self.prev.clear();
     }
 
-    /// Paint-anim-only damage compute. Caller supplies the
-    /// screen-space rects of every paint anim that fired this frame
-    /// — typically [`Forest::iter_fired_paint_anim_rects`] — and
-    /// this routine unions them into a fresh damage region and
-    /// applies the area-coverage filter.
-    ///
-    /// Does NOT touch `self.prev` (per-widget structural snapshots
-    /// stay valid). Caller has already proven via the gate that the
-    /// retained tree / cascades / layout are bit-identical to last
-    /// frame.
-    pub(crate) fn compute_anim_only(
-        &mut self,
-        fired_rects: impl IntoIterator<Item = Rect>,
-        surface: Rect,
-    ) -> Damage {
-        let mut acc = DamageRegion::with_budget(self.budget_px);
-        for r in fired_rects {
-            acc.add(r);
-        }
-        self.region = acc;
-        self.filter(surface)
-    }
-
     /// Diff against the just-finished frame and return a
     /// [`Damage`] ready for the renderer:
     ///
