@@ -344,7 +344,7 @@ fn skip_frame_does_not_force_next_to_full() {
 /// pattern — no swapchain acquire when there's nothing to paint, see
 /// `examples/showcase/main.rs`) never calls `mark_submitted`. Without
 /// `Ui::frame` self-acking skip frames, the next paint frame's
-/// `should_invalidate_prev` saw `frame_skipped = true` and escalated
+/// `classify_frame` saw `frame_skipped = true` and escalated
 /// to `Full` — visible as a full-window red flash in the damage debug
 /// overlay on every idle→input transition (e.g. mouse move).
 #[test]

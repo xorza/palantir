@@ -1,7 +1,7 @@
 //! Submission status of the most recently produced frame. Written by
 //! `Ui::frame` (→ `Pending` at frame top) and `Host::render` (→
 //! `Submitted` after a successful submit / backbuffer copy). Read by
-//! `Ui::should_invalidate_prev` to decide whether to rewind the
+//! `Ui::classify_frame` to decide whether to rewind the
 //! damage snapshot. Single-threaded; `Cell` suffices.
 
 use std::cell::Cell;
