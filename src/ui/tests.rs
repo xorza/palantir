@@ -882,8 +882,9 @@ fn request_repaint_after_dedups_within_frame() {
         // Beyond the window — must stay distinct.
         ui.request_repaint_after(Duration::from_secs_f32(0.600));
     });
+    let deadlines: Vec<Duration> = ui.repaint_wakes.iter().map(|w| w.deadline).collect();
     assert_eq!(
-        ui.repaint_wakes,
+        deadlines,
         vec![
             Duration::from_secs_f32(0.512),
             Duration::from_secs_f32(0.600),
