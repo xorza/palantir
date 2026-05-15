@@ -1052,6 +1052,33 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
     let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
+
+    // PaintOnly must emit a Partial damage plan covering the anim's
+    // tight rect — not Full (defeats the point) and not None (the
+    // blink phase actually flipped). Pin both invariants.
+    match r1.plan {
+        Some(crate::ui::frame_report::RenderPlan::Partial { region, .. }) => {
+            let rects: Vec<_> = region.iter_rects().collect();
+            assert_eq!(rects.len(), 1, "expected single damage rect, got {rects:?}");
+            let r = rects[0];
+            assert!(
+                r.size.w <= 8.0 && r.size.h <= 16.0,
+                "PaintOnly damage should be the anim's tight rect, got {r:?}",
+            );
+        }
+        other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
+    }
+    ui.frame_state.mark_submitted();
+
+    // Bug regression: PaintOnly skips post_record, but must still
+    // re-fold the retained paint_anims so the *next* blink boundary
+    // is queued. Without this fold the caret stops blinking until
+    // input forces a FullRecord (mouse-move regression).
+    assert_eq!(r1.repaint_after(), Some(half + half));
+    let r2 = ui.frame(FrameStamp::new(display, half + half), &mut (), |ui| {
+        body(ui, half)
+    });
+    assert_eq!(r2.processing(), FrameProcessing::PaintOnly);
 }
 
 /// `request_repaint` co-firing with an anim wake produces the

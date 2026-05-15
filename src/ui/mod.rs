@@ -352,6 +352,7 @@ impl Ui {
                     let _ = self.record_pass(&mut record);
                 }
                 self.finalize_frame();
+
                 if double_layout {
                     FrameProcessing::DoubleLayout
                 } else {
@@ -390,6 +391,17 @@ impl Ui {
         // paint frame's `classify_frame` escalates to `Full`.
         if damage.is_none() {
             self.frame_state.mark_submitted();
+        }
+
+        // Re-queue the next paint-anim boundary regardless of path.
+        // FullRecord rebuilt `paint_anims.entries` during record;
+        // PaintOnly retained last frame's. Either way the fold below
+        // gives the next quantum boundary — without this, PaintOnly
+        // drains the queued ANIM wake without replacing it and the
+        // caret freezes until input forces a FullRecord.
+        let min_wake = self.forest.min_paint_anim_wake(self.time);
+        if min_wake != Duration::MAX {
+            self.schedule_wake(min_wake, WakeReasons::ANIM);
         }
 
         self.prev_stamp = Some(stamp);
@@ -614,13 +626,7 @@ impl Ui {
     /// against the final pass's id set.
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
-        let min_wake = self.forest.post_record(self.time);
-        if min_wake != Duration::MAX {
-            // Paint-anim quantum boundary — file with `ANIM` so the
-            // next frame's classifier can take the anim-only fast
-            // path if no other reasons coalesce onto the same slot.
-            self.schedule_wake(min_wake, WakeReasons::ANIM);
-        }
+        self.forest.post_record();
         self.layout_engine.run(
             &self.forest,
             self.display.logical_rect(),
