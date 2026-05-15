@@ -11,6 +11,7 @@
 
 pub(crate) mod animatable;
 pub(crate) mod easing;
+pub(crate) mod paint;
 pub(crate) mod spring;
 #[cfg(test)]
 mod tests;

@@ -98,9 +98,14 @@ impl Shapes {
     /// canonicalises. Saves the per-shape lowering cost (polyline
     /// tessellation, bezier flattening, mesh hashing, text shaping
     /// downstream) that the cmd-buffer gate alone wouldn't.
-    pub(crate) fn add(&mut self, shape: Shape<'_>, arena: &mut FrameArena) {
+    /// Returns the index of the pushed `ShapeRecord` in `self.records`,
+    /// or `None` if the shape was dropped as a no-op. Callers that want
+    /// to attach side data keyed by shape-index (e.g. paint-anim
+    /// registry) use the returned index; the legacy "fire and forget"
+    /// path ignores it.
+    pub(crate) fn add(&mut self, shape: Shape<'_>, arena: &mut FrameArena) -> Option<u32> {
         if shape.is_noop() {
-            return;
+            return None;
         }
         if let Shape::Polyline { points, colors, .. } = &shape {
             colors.assert_matches(points.len());
@@ -235,6 +240,8 @@ impl Shapes {
                 }
             }
         };
+        let idx = self.records.len() as u32;
         self.records.push(record);
+        Some(idx)
     }
 }

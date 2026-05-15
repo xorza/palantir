@@ -7,7 +7,7 @@ use crate::support::internals::ResponseNodeExt;
 #[test]
 fn caret_blinks_on_and_off_while_focused() {
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::NodeId;
+    use crate::forest::tree::{NodeId, PAINT_ANIM_NONE, TreeItem, TreeItems};
     use std::time::Duration;
 
     fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
@@ -26,16 +26,34 @@ fn caret_blinks_on_and_off_while_focused() {
         // Caret is the only RoundedRect with `local_rect: Some(...)` on
         // a freshly focused, empty, unselected editor — `Background`
         // routes through `chrome` (no shape), selection wash is absent
-        // without a selection.
-        shapes_of(ui.forest.tree(Layer::Main), leaf).any(|s| {
-            matches!(
-                s,
-                ShapeRecord::RoundedRect {
-                    local_rect: Some(_),
-                    ..
+        // without a selection. Post-`PaintAnim`-migration the rect is
+        // always present when focused; the encoder hides it via the
+        // attached `PaintAnim`. "Painted" now means "rect present AND
+        // its anim (if any) samples to visible at the current time".
+        let tree = ui.forest.tree(Layer::Main);
+        let now = ui.time;
+        TreeItems::new(&tree.records, &tree.shapes.records, leaf)
+            .filter_map(|item| match item {
+                TreeItem::ShapeRecord(idx, s) => Some((idx, s)),
+                TreeItem::Child(_) => None,
+            })
+            .any(|(idx, s)| {
+                let is_caret = matches!(
+                    s,
+                    ShapeRecord::RoundedRect {
+                        local_rect: Some(_),
+                        ..
+                    }
+                );
+                if !is_caret {
+                    return false;
                 }
-            )
-        })
+                let slot = tree.paint_anim_by_shape[idx as usize];
+                if slot == PAINT_ANIM_NONE {
+                    return true;
+                }
+                tree.paint_anims[slot as usize].anim.sample(now).alpha > 0.0
+            })
     }
 
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {

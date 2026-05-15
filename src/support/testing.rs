@@ -41,7 +41,7 @@ pub(crate) fn new_frontend() -> Frontend {
 /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
 pub(crate) fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
     tree.tree_items(node).filter_map(|item| match item {
-        TreeItem::ShapeRecord(s) => Some(s),
+        TreeItem::ShapeRecord(_, s) => Some(s),
         TreeItem::Child(_) => None,
     })
 }

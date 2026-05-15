@@ -23,6 +23,7 @@
 //! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
+use crate::animation::paint::PaintAnim;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
     BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras, SizeClamp,
@@ -42,6 +43,7 @@ use crate::widgets::grid::GridDef;
 use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
+use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct NodeId(pub(crate) u32);
@@ -226,6 +228,39 @@ pub(crate) struct ExtrasIdx {
     pub(crate) chrome: Slot,
 }
 
+/// Sentinel in `Tree::paint_anim_by_shape` meaning "this shape has no
+/// paint-anim registration". `u16::MAX` mirrors the niche convention
+/// used by `Slot::ABSENT` for the sparse extras tables — keeps the
+/// encoder's per-shape lookup a single load + cmp.
+pub(crate) const PAINT_ANIM_NONE: u16 = u16::MAX;
+
+/// One row per registered paint animation. Lives in
+/// `Tree::paint_anims`, indexed by `Tree::paint_anim_by_shape[shape_idx]`
+/// (which holds `PAINT_ANIM_NONE` when the shape isn't animated).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PaintAnimEntry {
+    pub(crate) anim: PaintAnim,
+    /// Index into `Tree::shapes.records` of the shape this anim drives.
+    /// Used by the future damage-region computation (slice 2) to look
+    /// up the owning node via the per-node shape spans; encoder reads
+    /// the entry through the parallel `paint_anim_by_shape` array
+    /// instead and doesn't need this back-reference.
+    #[allow(dead_code)] // consumed by slice-2 damage walk
+    pub(crate) shape_idx: u32,
+    /// Node that owns the animated shape — set in
+    /// `Forest::add_shape_animated` from the currently-open frame.
+    /// Used in `post_record` to fold the anim's `quantum(now)` into
+    /// the owner's `rollups.node` hash (so a phase flip propagates
+    /// to `DamageEngine`) and to walk ancestors bumping their
+    /// `rollups.subtree` hash (so the subtree-skip path doesn't
+    /// erroneously skip the dirty descendant).
+    pub(crate) node: NodeId,
+    /// `anim.quantum(now)` captured in `post_record`. Drives slice-2's
+    /// short-circuit damage walk: compares against `quantum(now_next)`
+    /// on the next frame to detect a flip without rehashing.
+    pub(crate) last_quantum: i32,
+}
+
 #[derive(Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
@@ -294,6 +329,27 @@ pub(crate) struct Tree {
     /// and restore correctly without depending on that assert.
     pub(crate) pending_anchors: Vec<PendingAnchor>,
 
+    // -- Paint-anim registry ----------------------------------------------
+    /// Shape-keyed paint animation registrations. Pushed by
+    /// `Forest::add_shape_animated` parallel to a `shapes.records.push`;
+    /// cleared in `pre_record`. `last_quantum` is initialised in
+    /// `post_record`, where `Duration now` is in scope. See
+    /// `crate::animation::paint::PaintAnim` and
+    /// `docs/roadmap/paint-tick.md`.
+    pub(crate) paint_anims: Vec<PaintAnimEntry>,
+
+    /// One slot per `shapes.records[i]`. `PAINT_ANIM_NONE` for "no
+    /// anim"; otherwise a (u16-sized) index into `paint_anims`.
+    /// Encoder reads this at per-shape emit time; the niche keeps
+    /// the no-anim hot path to a single load + branch.
+    ///
+    /// Grown in lockstep with `shapes.records` from
+    /// `Forest::add_shape{,_animated}`. Cleared in `pre_record`.
+    /// Capacity caps animated shapes per tree at `u16::MAX - 1`,
+    /// which is well past anything realistic for paint animations
+    /// (caret, spinner, pulse — order of dozens, not thousands).
+    pub(crate) paint_anim_by_shape: Vec<u16>,
+
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 
@@ -314,6 +370,8 @@ impl Tree {
         self.chrome_table.clear();
         self.parents.clear();
         self.shapes.clear();
+        self.paint_anims.clear();
+        self.paint_anim_by_shape.clear();
         self.grid.clear();
         self.has_grid.clear();
         self.roots.clear();
@@ -321,9 +379,12 @@ impl Tree {
         self.pending_anchors.clear();
     }
 
-    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
+    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
+    /// initialise `paint_anims` entries' `last_quantum`, and return the
+    /// minimum `next_wake` across all registered paint anims (or
+    /// `Duration::MAX` when none are registered / none want to fire).
     /// Capacity retained across frames.
-    pub(crate) fn post_record(&mut self) {
+    pub(crate) fn post_record(&mut self, now: Duration) -> Duration {
         assert!(
             self.open_frames.is_empty(),
             "post_record called with {} node(s) still open — a widget builder forgot close_node",
@@ -331,6 +392,34 @@ impl Tree {
         );
         self.rollups.reset_for(self.records.len());
         self.compute_hashes();
+
+        let mut min_wake = Duration::MAX;
+        for entry in &mut self.paint_anims {
+            let q = entry.anim.quantum(now);
+            entry.last_quantum = q;
+            let w = entry.anim.next_wake(now);
+            if w < min_wake {
+                min_wake = w;
+            }
+
+            // Fold the quantum into the owning node's hashes so
+            // `DamageEngine` sees a phase flip as a paint-changed
+            // event. Without this the shape buffer is bit-identical
+            // across blink phases (the encoder hides the rect via
+            // `paint_anim_hides`), so subtree-skip would miss the
+            // damage. XOR mix is associative + commutative — multiple
+            // anims under one node fold cleanly, and nested ancestors
+            // accumulate without ordering hazards.
+            let mix = (q as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15);
+            let owner = entry.node;
+            self.rollups.node[owner.index()].0 ^= mix;
+            let mut cur = owner;
+            while cur != NodeId::ROOT {
+                self.rollups.subtree[cur.index()].0 ^= mix;
+                cur = self.parents[cur.index()];
+            }
+        }
+        min_wake
     }
 
     /// Fused reverse-pre-order pass: computes both `rollups.node[i]`
@@ -759,7 +848,11 @@ pub(crate) struct ChildIter<'a> {
 
 #[derive(Copy, Clone, Debug)]
 pub(crate) enum TreeItem<'a> {
-    ShapeRecord(&'a ShapeRecord),
+    /// `u32` is the shape's index into `Tree::shapes.records` — used
+    /// by the encoder to look up paint-anim registrations via
+    /// `Tree::paint_anim_by_shape[idx]`. Cascade / testing call sites
+    /// that only care about the record itself can ignore it.
+    ShapeRecord(u32, &'a ShapeRecord),
     Child(Child),
 }
 
@@ -831,9 +924,10 @@ impl<'a> Iterator for TreeItems<'a> {
             let cs = self.shapes_col[self.next_child_id as usize];
             let cs_start = cs.start as usize;
             if self.cursor < cs_start {
+                let idx = self.cursor as u32;
                 let s = &self.shapes[self.cursor];
                 self.cursor += 1;
-                return Some(TreeItem::ShapeRecord(s));
+                return Some(TreeItem::ShapeRecord(idx, s));
             }
             let visibility = self.layouts[self.next_child_id as usize].visibility();
             let child = Child {
@@ -845,9 +939,10 @@ impl<'a> Iterator for TreeItems<'a> {
             return Some(TreeItem::Child(child));
         }
         if self.cursor < self.parent_end {
+            let idx = self.cursor as u32;
             let s = &self.shapes[self.cursor];
             self.cursor += 1;
-            return Some(TreeItem::ShapeRecord(s));
+            return Some(TreeItem::ShapeRecord(idx, s));
         }
         None
     }
