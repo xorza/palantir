@@ -448,20 +448,15 @@ impl Ui {
     /// the prior frame's record; both must be observed BEFORE the
     /// per-frame clear that follows in `frame_inner`.
     fn classify_frame(&mut self, display: Display) -> FramePlan {
-        // Sorted-ascending invariant means the fired set is a prefix
-        // slice; `fired_reasons` OR-folds every cause that drove this
-        // wake before we drop the entries.
+        // `repaint_wakes` is sorted ascending, so fired = prefix slice.
         let fired_count = self
             .repaint_wakes
             .partition_point(|w| w.deadline <= self.time);
-        let fired_reasons = self.repaint_wakes[..fired_count]
-            .iter()
+        let fired_reasons = self
+            .repaint_wakes
+            .drain(..fired_count)
             .fold(WakeReasons::default(), |acc, w| acc.merge(w.reasons));
-        self.repaint_wakes.drain(..fired_count);
 
-        // Discard the prev-frame damage snapshot on first frame, on a
-        // surface-rect change, or when the host failed to confirm
-        // submission of the last frame.
         let display_changed = self
             .prev_stamp
             .is_some_and(|prev| prev.display.logical_rect() != display.logical_rect());
@@ -476,9 +471,6 @@ impl Ui {
             );
         }
 
-        // Anim-only fast path: prev frame is a valid baseline,
-        // nothing record-side is waiting, and the wake that fired is
-        // purely an `ANIM` quantum boundary.
         let paint_only = !force_full
             && self.prev_stamp.is_some()
             && !self.repaint_requested
