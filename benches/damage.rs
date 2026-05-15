@@ -123,12 +123,21 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
 }
 
 /// Warm two frames so subsequent iterations land on the steady-state
-/// `Damage` path the test claims. `expect_kind` asserts the
-/// path; without warmup the first iter would always be `Full` (no
-/// `prev_surface`) and skew measurements.
-fn warm_and_assert(ui: &mut Ui, display: Display, record: impl Fn(&mut Ui), expect_kind: &str) {
-    run_and_ack(ui, display, &record);
-    run_and_ack(ui, display, &record);
+/// `Damage` path the test claims. Pass the same closure for both
+/// frames to warm into a `skip` steady state; pass two different
+/// closures (e.g. cold + hot variants of the same scene) so the
+/// second frame's diff produces the `partial` / `full` damage the
+/// bench iter will then exercise. Without warmup the first iter
+/// would always be `Full` (no `prev_surface`) and skew measurements.
+fn warm_and_assert(
+    ui: &mut Ui,
+    display: Display,
+    frame1: impl Fn(&mut Ui),
+    frame2: impl Fn(&mut Ui),
+    expect_kind: &str,
+) {
+    run_and_ack(ui, display, &frame1);
+    run_and_ack(ui, display, &frame2);
     let kind = internals::damage_paint_kind(ui);
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
@@ -144,7 +153,13 @@ fn bench_workloads(c: &mut Criterion) {
     // leaf individually (no subtree-skip available).
     {
         let mut ui = new_ui();
-        warm_and_assert(&mut ui, display, |ui| build_grid(ui, &[], cold), "skip");
+        warm_and_assert(
+            &mut ui,
+            display,
+            |ui| build_grid(ui, &[], cold),
+            |ui| build_grid(ui, &[], cold),
+            "skip",
+        );
         group.bench_function("skip", |b| {
             b.iter(|| {
                 run_and_ack(&mut ui, display, |ui| build_grid(ui, &[], cold));
@@ -163,6 +178,7 @@ fn bench_workloads(c: &mut Criterion) {
         warm_and_assert(
             &mut ui,
             display,
+            |ui| build_painted_rows(ui, &[], cold),
             |ui| build_painted_rows(ui, &[], cold),
             "skip",
         );
@@ -191,6 +207,7 @@ fn bench_workloads(c: &mut Criterion) {
             &mut ui,
             display,
             |ui| build_grid(ui, &cell, cold),
+            |ui| build_grid(ui, &cell, hot),
             "partial",
         );
         let mut toggle = false;
@@ -214,6 +231,7 @@ fn bench_workloads(c: &mut Criterion) {
             &mut ui,
             display,
             |ui| build_grid(ui, &cells, cold),
+            |ui| build_grid(ui, &cells, hot),
             "partial",
         );
         assert!(internals::damage_rect_count(&ui) >= 2);
