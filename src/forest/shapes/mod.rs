@@ -1,89 +1,30 @@
 pub(crate) mod record;
 
 use crate::common::frame_arena::{BezierInputs, FrameArena};
-use crate::forest::shapes::record::{
-    ChromeRow, GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke,
-};
+use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::layout::types::span::Span;
-use crate::primitives::background::Background;
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
-use crate::primitives::brush::Brush;
 use crate::shape::{PolylineColors, Shape};
 
-/// Per-frame shape store for one [`crate::forest::tree::Tree`].
+/// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].
 ///
-/// - `records` is the flat shape buffer; each node owns a contiguous
-///   sub-range via `NodeRecord.shape_span`. The gaps between a node's
-///   children's spans hold that node's direct shapes in record order,
-///   which is what [`crate::forest::tree::TreeItems`] interleaves.
-/// - bulk variable-length payloads (mesh verts/indices, polyline
-///   points/colors) live on the `FrameArena` passed into [`Self::add`];
-///   `ShapeRecord` variants reference them via spans.
+/// Each node owns a contiguous sub-range of `records` via
+/// `NodeRecord.shape_span`. The gaps between a node's children's spans
+/// hold that node's direct shapes in record order, which is what
+/// [`crate::forest::tree::TreeItems`] interleaves.
 ///
-/// Cleared together per frame, capacity retained — same lifecycle as
-/// the rest of the tree.
+/// Bulk variable-length payloads (mesh verts/indices, polyline
+/// points/colors, gradients) live on the `FrameArena` passed into
+/// [`Self::add`]; `ShapeRecord` variants reference them via spans /
+/// ids. Cleared per frame, capacity retained.
 #[derive(Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
-    /// Per-frame gradient arena. `ShapeBrush::Gradient(id)` indexes
-    /// into this vec; the lowering site (`Self::lower_brush`) pushes
-    /// the gradient's `Brush::{Linear,Radial,Conic}` payload here so
-    /// `ShapeRecord` only carries a 4-byte handle instead of the
-    /// 88-byte `Brush` enum. Cleared per frame, capacity retained.
-    pub(crate) gradients: Vec<GradientPayload>,
 }
 
 impl Shapes {
     pub(crate) fn clear(&mut self) {
         self.records.clear();
-        self.gradients.clear();
-    }
-
-    /// Lower a user-side `Brush` to the storage form: `Solid` stays
-    /// inline, gradients push to `self.gradients` and return an
-    /// indexing `ShapeBrush::Gradient`. The pre-computed content hash
-    /// is returned alongside so the caller can stamp it into the
-    /// `ShapeRecord` and keep `ShapeRecord::Hash` context-free.
-    fn lower_brush(&mut self, brush: Brush) -> (ShapeBrush, u64) {
-        match brush {
-            Brush::Solid(c) => (ShapeBrush::Solid(c.into()), 0),
-            Brush::Linear(g) => {
-                let payload = GradientPayload::Linear(g);
-                let hash = payload.content_hash();
-                let id = self.gradients.len() as u32;
-                self.gradients.push(payload);
-                (ShapeBrush::Gradient(id), hash)
-            }
-            Brush::Radial(g) => {
-                let payload = GradientPayload::Radial(g);
-                let hash = payload.content_hash();
-                let id = self.gradients.len() as u32;
-                self.gradients.push(payload);
-                (ShapeBrush::Gradient(id), hash)
-            }
-            Brush::Conic(g) => {
-                let payload = GradientPayload::Conic(g);
-                let hash = payload.content_hash();
-                let id = self.gradients.len() as u32;
-                self.gradients.push(payload);
-                (ShapeBrush::Gradient(id), hash)
-            }
-        }
-    }
-
-    /// Lower a user-facing `Background` to a `ChromeRow`. Same
-    /// gradient-arena lowering as `Shapes::add` uses for
-    /// `RoundedRect.fill`, so chrome and shape paints share one
-    /// gradients vec per tree.
-    pub(crate) fn lower_background(&mut self, bg: Background) -> ChromeRow {
-        let (fill, fill_grad_hash) = self.lower_brush(bg.fill);
-        ChromeRow {
-            fill,
-            stroke: ShapeStroke::from(bg.stroke),
-            radius: bg.radius,
-            shadow: bg.shadow.into(),
-            fill_grad_hash,
-        }
     }
 
     /// Lower a user-facing [`Shape`] and append it to `records`:
@@ -117,7 +58,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let (fill, fill_grad_hash) = self.lower_brush(fill);
+                let (fill, fill_grad_hash) = arena.lower_brush(fill);
                 let stroke = ShapeStroke::from(stroke);
                 ShapeRecord::RoundedRect {
                     local_rect,

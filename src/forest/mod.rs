@@ -132,11 +132,16 @@ impl Forest {
         self.record_collision(outcome, layer, node);
     }
 
-    pub(crate) fn open_node_with_chrome(&mut self, mut element: Element, chrome: Background) {
+    pub(crate) fn open_node_with_chrome(
+        &mut self,
+        mut element: Element,
+        chrome: Background,
+        arena: &mut FrameArena,
+    ) {
         let layer = self.current_layer;
         let node = self.trees[layer as usize].peek_next_id();
         let outcome = self.ids.record(&mut element, layer, node);
-        let opened = self.trees[layer as usize].open_node_with_chrome(element, chrome);
+        let opened = self.trees[layer as usize].open_node_with_chrome(element, chrome, arena);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
     }

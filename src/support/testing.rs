@@ -139,6 +139,7 @@ fn encode_cmds_with_region(ui: &Ui, region: Option<DamageRegion>) -> RenderCmdBu
         None => RenderPlan::Full { clear },
     };
     let mut cmds = RenderCmdBuffer::default();
-    encode(ui, plan, &mut cmds);
+    let arena = ui.frame_arena.borrow();
+    encode(ui, &arena, plan, &mut cmds);
     cmds
 }

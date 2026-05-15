@@ -62,8 +62,8 @@ impl Frontend {
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
-        encode(ui, plan, &mut self.cmds);
         let mut arena = self.frame_arena.borrow_mut();
+        encode(ui, &arena, plan, &mut self.cmds);
         self.composer
             .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
         &self.buffer

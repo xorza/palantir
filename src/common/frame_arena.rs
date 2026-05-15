@@ -9,9 +9,13 @@
 //! render buffer all carry spans into this arena directly.
 
 use crate::common::hash::Hasher as FxHasher;
-use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::shapes::record::{
+    ChromeRow, GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke,
+};
 use crate::layout::types::span::Span;
+use crate::primitives::background::Background;
 use crate::primitives::bezier::FlatPoint;
+use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
@@ -58,6 +62,13 @@ pub struct FrameArena {
     /// top of every bezier lowering; the flattened points are copied
     /// into `polyline_points` immediately after.
     pub(crate) bezier_scratch: Vec<FlatPoint>,
+    /// Frame-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
+    /// by [`Self::lower_brush`]) indexes into this vec. Cross-tree —
+    /// keeping it on the frame arena means chrome lowering on one
+    /// tree and shape lowering on another share one pool, and the
+    /// encoder only needs the arena (not the originating tree) to
+    /// resolve a gradient id.
+    pub(crate) gradients: Vec<GradientPayload>,
 }
 
 /// Control points for the unified bezier lowering — quadratic carries
@@ -76,6 +87,40 @@ impl FrameArena {
         self.polyline_points.clear();
         self.polyline_colors.clear();
         self.bezier_scratch.clear();
+        self.gradients.clear();
+    }
+
+    /// Lower a user-side `Brush` to the storage form: `Solid` stays
+    /// inline, gradients push to `self.gradients` and return an
+    /// indexing `ShapeBrush::Gradient`. The pre-computed content hash
+    /// is returned alongside so the caller can stamp it into the
+    /// `ShapeRecord` / `ChromeRow` and keep their `Hash` impls
+    /// context-free (no need to thread the arena into hashing).
+    pub(crate) fn lower_brush(&mut self, brush: Brush) -> (ShapeBrush, u64) {
+        let payload = match brush {
+            Brush::Solid(c) => return (ShapeBrush::Solid(c.into()), 0),
+            Brush::Linear(g) => GradientPayload::Linear(g),
+            Brush::Radial(g) => GradientPayload::Radial(g),
+            Brush::Conic(g) => GradientPayload::Conic(g),
+        };
+        let hash = payload.content_hash();
+        let id = self.gradients.len() as u32;
+        self.gradients.push(payload);
+        (ShapeBrush::Gradient(id), hash)
+    }
+
+    /// Lower a user-facing `Background` to a `ChromeRow`. Same
+    /// gradient lowering as `Shapes::add` uses for `RoundedRect.fill`,
+    /// so chrome and shape paints share one pool.
+    pub(crate) fn lower_background(&mut self, bg: Background) -> ChromeRow {
+        let (fill, fill_grad_hash) = self.lower_brush(bg.fill);
+        ChromeRow {
+            fill,
+            stroke: ShapeStroke::from(bg.stroke),
+            radius: bg.radius,
+            shadow: bg.shadow.into(),
+            fill_grad_hash,
+        }
     }
 
     /// Lower a (points, colors, width) authoring shape into a
