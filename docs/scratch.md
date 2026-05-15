@@ -8,8 +8,6 @@ PaintMod
 
 skip frame if window is not visible
 
-optimize DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
-
 refactor internals - move them to corresponding modules witf cfg mod
 
 remove
