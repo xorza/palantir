@@ -50,7 +50,7 @@ impl Panel {
         self
     }
 
-    pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None

@@ -48,7 +48,7 @@ impl Button {
         self
     }
 
-    pub fn show(&self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let mut element = self.element;
         // One `response_for` call covers both theme-picking (with
         // self-disabled merged in) and the returned `Response.state`
@@ -83,7 +83,7 @@ impl Button {
         }
         let look = look_target.animate(ui, element.id, fallback_text, style_anim);
         let chrome = look.background;
-        let label = self.label.clone();
+        let label = self.label;
         let label_align = self.label_align;
 
         ui.node_with_chrome(element, chrome, |ui| {

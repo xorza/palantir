@@ -341,7 +341,7 @@ impl Scroll {
         self
     }
 
-    pub fn show(&self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         let mode = self.element.mode;
         assert!(
