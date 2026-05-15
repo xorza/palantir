@@ -2,6 +2,7 @@ use super::cmd_buffer::{
     CmdKind, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
     PushClipPayload, RenderCmdBuffer,
 };
+use crate::common::frame_arena::FrameArena;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
@@ -202,6 +203,7 @@ impl Composer {
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,
+        arena: &mut FrameArena,
         display: Display,
         out: &mut RenderBuffer,
     ) {
@@ -382,31 +384,21 @@ impl Composer {
                     // mesh-over-text is preserved.
                     self.close_batch(out);
                     let p: DrawMeshPayload = cmds.read(start);
-                    let v_start = p.v_start as usize;
-                    let v_end = v_start + p.v_len as usize;
-                    let i_start = p.i_start as usize;
-                    let i_end = i_start + p.i_len as usize;
-                    let phys_v_start = out.meshes.arena.vertices.len() as u32;
-                    // Verts copy verbatim — transform + tint are applied
-                    // by the mesh shader from the per-instance attrs
-                    // pushed below. Steady-state CPU cost is a pure
-                    // memcpy; vertex stream is content-stable across
-                    // frames (opens the door for a future retained-mesh
-                    // cache).
-                    out.meshes
-                        .arena
-                        .vertices
-                        .extend_from_slice(&cmds.shape_payloads.meshes.vertices[v_start..v_end]);
-                    let phys_i_start = out.meshes.arena.indices.len() as u32;
-                    out.meshes
-                        .arena
-                        .indices
-                        .extend_from_slice(&cmds.shape_payloads.meshes.indices[i_start..i_end]);
+                    // Verts already live in FrameArena owner-local;
+                    // span passes through to `MeshDraw` verbatim. The
+                    // per-instance translate folds in both the owner
+                    // origin and the active push-transform stack so the
+                    // shader produces physical coords. Phase 1's
+                    // transform/tint move plus this slice eliminates
+                    // both the per-vertex CPU multiply and the
+                    // per-frame vertex copy.
                     let phys_scale = current_transform.scale * scale;
-                    let phys_translate = current_transform.translation * scale;
+                    let phys_translate = (current_transform.scale * p.origin
+                        + current_transform.translation)
+                        * scale;
                     out.meshes.draws.push(MeshDraw {
-                        vertices: (phys_v_start..phys_v_start + p.v_len).into(),
-                        indices: (phys_i_start..phys_i_start + p.i_len).into(),
+                        vertices: (p.v_start..p.v_start + p.v_len).into(),
+                        indices: (p.i_start..p.i_start + p.i_len).into(),
                     });
                     let tint_color: Color = p.tint.into();
                     out.meshes.instances.push(MeshInstance {
@@ -422,9 +414,12 @@ impl Composer {
                         // displacement shader would silently produce
                         // false negatives — and false negatives in
                         // the overlap test reorder paint.
-                        let world = current_transform.apply_rect(p.bbox);
-                        let min = world.min * scale;
-                        let max = world.max() * scale;
+                        let world_bbox = current_transform.apply_rect(Rect {
+                            min: p.bbox.min + p.origin,
+                            size: p.bbox.size,
+                        });
+                        let min = world_bbox.min * scale;
+                        let max = world_bbox.max() * scale;
                         let fringe = Vec2::splat(0.5);
                         self.mesh_rects.push(urect_from_phys(
                             min - fringe,
@@ -455,14 +450,17 @@ impl Composer {
                     // reach. Short-circuits before transforming the
                     // full point list — the win for long flattened
                     // curves.
-                    let world = current_transform.apply_rect(p.bbox);
+                    let world_bbox = current_transform.apply_rect(Rect {
+                        min: p.bbox.min + p.origin,
+                        size: p.bbox.size,
+                    });
                     let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
                     let inflate_logical = inflate_phys / scale;
                     let inflated = Rect {
-                        min: world.min - Vec2::splat(inflate_logical),
+                        min: world_bbox.min - Vec2::splat(inflate_logical),
                         size: crate::primitives::size::Size {
-                            w: world.size.w + 2.0 * inflate_logical,
-                            h: world.size.h + 2.0 * inflate_logical,
+                            w: world_bbox.size.w + 2.0 * inflate_logical,
+                            h: world_bbox.size.h + 2.0 * inflate_logical,
                         },
                     };
                     let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
@@ -476,22 +474,24 @@ impl Composer {
                     let pts_end = pts_start + p.points_len as usize;
                     let cs_start = p.colors_start as usize;
                     let cs_end = cs_start + p.colors_len as usize;
-                    let src_points = &cmds.shape_payloads.polyline_points[pts_start..pts_end];
-                    let src_colors = &cmds.shape_payloads.polyline_colors[cs_start..cs_end];
+                    let src_points = &arena.polyline_points[pts_start..pts_end];
+                    let src_colors = &arena.polyline_colors[cs_start..cs_end];
 
-                    // Transform points into physical-px. No
-                    // pixel-snap — snapping stroke verts shifts
-                    // thin lines off-axis. Hairline regime
-                    // (<1 phys px) handled inside the tessellator.
+                    // Transform points into physical-px. Owner-local
+                    // origin is folded in here so points stay owner-
+                    // local in the arena (cross-frame stable). No
+                    // pixel-snap — snapping stroke verts shifts thin
+                    // lines off-axis. Hairline regime (<1 phys px)
+                    // handled inside the tessellator.
                     self.polyline_scratch.clear();
                     self.polyline_scratch.extend(
                         src_points
                             .iter()
-                            .map(|&q| current_transform.apply_point(q) * scale),
+                            .map(|&q| current_transform.apply_point(q + p.origin) * scale),
                     );
 
-                    let phys_v_start = out.meshes.arena.vertices.len() as u32;
-                    let phys_i_start = out.meshes.arena.indices.len() as u32;
+                    let phys_v_start = arena.meshes.vertices.len() as u32;
+                    let phys_i_start = arena.meshes.indices.len() as u32;
                     tessellate_polyline_aa(
                         &self.polyline_scratch,
                         src_colors,
@@ -501,11 +501,11 @@ impl Composer {
                             join,
                             width_phys,
                         },
-                        &mut out.meshes.arena.vertices,
-                        &mut out.meshes.arena.indices,
+                        &mut arena.meshes.vertices,
+                        &mut arena.meshes.indices,
                     );
-                    let v_len = out.meshes.arena.vertices.len() as u32 - phys_v_start;
-                    let i_len = out.meshes.arena.indices.len() as u32 - phys_i_start;
+                    let v_len = arena.meshes.vertices.len() as u32 - phys_v_start;
+                    let i_len = arena.meshes.indices.len() as u32 - phys_i_start;
                     if v_len == 0 {
                         continue;
                     }

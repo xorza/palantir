@@ -11,7 +11,7 @@ use glam::UVec2;
 
 #[test]
 fn collapsed_child_consumes_no_space_in_hstack() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = NodeId(0);
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
@@ -46,7 +46,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 
 #[test]
 fn collapsed_does_not_consume_fill_weight() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = NodeId(0);
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
@@ -87,7 +87,7 @@ fn collapsed_does_not_consume_fill_weight() {
 fn hidden_keeps_slot_but_emits_no_draws() {
     use crate::renderer::frontend::cmd_buffer::CmdKind;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = NodeId(0);
     run_at(&mut ui, UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
@@ -150,7 +150,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 fn hidden_button_does_not_click() {
     use glam::Vec2;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let surface = UVec2::new(400, 200);
     run_at(&mut ui, surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -194,7 +194,7 @@ fn hstack_child_align_per_axis_with_overrides() {
         ),
     ];
     for (label, second_override, second_y) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = NodeId(0);
         run_at(&mut ui, UVec2::new(200, 100), |ui| {
             root = Panel::hstack()

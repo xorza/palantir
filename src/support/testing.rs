@@ -3,6 +3,7 @@
 #![cfg(test)]
 
 use crate::Ui;
+use crate::common::frame_arena::new_handle;
 use crate::forest::element::Configure;
 use crate::forest::shapes::record::ShapeRecord;
 #[allow(unused_imports)]
@@ -52,7 +53,7 @@ pub(crate) fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)
 /// drive a frame. For tests that introspect `ui.display` before
 /// recording or pre-seed `Ui` state.
 pub(crate) fn ui_at(size: UVec2) -> Ui {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     ui.display = Display::from_physical(size, 1.0);
     ui
 }
@@ -74,7 +75,7 @@ pub(crate) fn new_ui_text() -> Ui {
     thread_local! {
         static SHARED: TextShaper = TextShaper::with_bundled_fonts();
     }
-    Ui::with_text(SHARED.with(|c| c.clone()))
+    Ui::new(SHARED.with(|c| c.clone()), new_handle())
 }
 
 /// Wrap the unit-under-test inside an outer `Fill` HStack so the panel

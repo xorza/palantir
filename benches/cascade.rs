@@ -9,7 +9,7 @@
 //! - cascade > 1 ms on N=2000 → ship the field split.
 //! - in between → judgement call.
 //!
-//! `Ui::new()` leaves the cosmic shaper unset, so text measurement
+//! `Ui::default()` leaves the cosmic shaper unset, so text measurement
 //! runs through the mono fallback (same as `frame.rs`/`caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
@@ -44,7 +44,7 @@ fn bench_cascade(c: &mut Criterion) {
     for &n in &[100usize, 500, 2000, 10_000] {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let _ = ui.frame(display, std::time::Duration::ZERO, &mut (), |ui| {
             build_flat(ui, n)
         });

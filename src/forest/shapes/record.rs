@@ -344,6 +344,10 @@ pub(crate) enum ShapeRecord {
         tint: ColorF16,
         vertices: Span,
         indices: Span,
+        /// Owner-local AABB of the mesh's vertex positions. Computed
+        /// once at lowering (`Shapes::add` already iterates the verts
+        /// to copy them) so the encoder/composer don't re-scan.
+        bbox: Rect,
         content_hash: u64,
     } = 3,
     /// Gaussian-blurred rounded rect — drop / inset shadow. All
@@ -534,6 +538,7 @@ impl Hash for ShapeRecord {
                 tint,
                 vertices: _,
                 indices: _,
+                bbox: _,
                 content_hash,
             } => {
                 match local_rect {
@@ -582,6 +587,7 @@ mod tests {
             }),
             vertices: Span::new(0, 3),
             indices: Span::new(0, 3),
+            bbox: crate::primitives::rect::Rect::ZERO,
             content_hash: 0xdead_beef,
         };
         let b = ShapeRecord::Mesh {
@@ -594,6 +600,7 @@ mod tests {
             }),
             vertices: Span::new(1234, 3),
             indices: Span::new(5678, 3),
+            bbox: crate::primitives::rect::Rect::ZERO,
             content_hash: 0xdead_beef,
         };
         let mut ha = FxHasher::new();

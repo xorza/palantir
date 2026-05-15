@@ -55,7 +55,7 @@ fn assert_node_columns_aligned(ui: &Ui) {
 
 #[test]
 fn leaf_snapshot_populated_after_first_frame() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_frame(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
@@ -76,7 +76,7 @@ fn leaf_snapshot_populated_after_first_frame() {
 
 #[test]
 fn unchanged_leaf_keeps_subtree_hash_across_frames() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui| {
         Frame::new()
             .id_salt("a")
@@ -97,7 +97,7 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
 
 #[test]
 fn changing_leaf_authoring_replaces_snapshot() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_frame(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
@@ -129,7 +129,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
 
 #[test]
 fn removed_widget_is_evicted() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_frame(&mut ui, |ui| {
         Frame::new().id_salt("gone").size(40.0).show(ui);
         Frame::new().id_salt("kept").size(40.0).show(ui);
@@ -154,7 +154,7 @@ fn cache_hit_replays_same_desired_size() {
     // Two identical frames: the second must produce the same `desired`
     // as the first. Correctness contract for the short-circuit — a
     // hit must not perturb layout output.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui| {
         Frame::new()
             .id_salt("a")
@@ -179,7 +179,7 @@ fn changing_available_forces_miss_and_remeasure() {
     // shrinks between frames → `available_q` arm of the cache key
     // diverges. The snapshot must be replaced, not stale.
     use crate::layout::types::sizing::Sizing;
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui| {
         Panel::hstack().id_salt("inner").show(ui, |ui| {
             Frame::new()
@@ -211,7 +211,7 @@ fn subtree_snapshot_covers_every_descendant() {
     // Phase-2 contract: a parent's snapshot stores `desired` for
     // every node in its subtree, in pre-order, contiguous. Verifies
     // that the snapshot's length matches the tree's `subtree_end`.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_frame(&mut ui, |ui| {
         Panel::vstack().id_salt("group").show(ui, |ui| {
             Frame::new().id_salt("c1").size(10.0).show(ui);
@@ -235,7 +235,7 @@ fn subtree_skip_preserves_descendant_rects() {
     // Identical frames must produce identical arranged rects for
     // every node, even when the parent (and so the whole subtree) is
     // short-circuited.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("group").show(ui, |ui| {
             Frame::new().id_salt("c1").size(10.0).show(ui);
@@ -284,7 +284,7 @@ fn in_place_rewrite_preserves_arena_position() {
     // Steady-state hot path: same WidgetId, same subtree size → the
     // arena range must be reused in place, never appended. Verifies
     // the optimization that lets us amortize allocations.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let build = |ui: &mut Ui, c: f32| {
         Frame::new()
             .id_salt("a")
@@ -328,7 +328,7 @@ fn arena_invariant_holds_under_fragmentation() {
     // inside `write_subtree`; we don't assert *which* write fired
     // it, only that the invariant holds at the end.
     use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
 
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
@@ -366,7 +366,7 @@ fn cache_hits_remain_valid_after_compaction() {
     // `desired` data on subsequent cache hits — i.e. the snapshot's
     // new arena range still contains the right bytes.
     use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
 
     // Frame 1: enough widgets to clear the floor; remember one that
     // we'll keep across frames.
@@ -443,7 +443,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         });
     };
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
         build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
@@ -532,7 +532,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
         Panel::vstack().id_salt("inner").show(ui, |_ui| {});
     };
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let blip = WidgetId::from_hash("blip");
 
     // Frame 1: present.

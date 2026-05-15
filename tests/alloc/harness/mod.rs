@@ -37,7 +37,7 @@ where
 {
     assert!(audit > 0, "audit frame count must be > 0");
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
 
     for _ in 0..warmup {
         run_frame(&mut ui, &mut scene);
@@ -70,7 +70,7 @@ where
     const STABLE_RUN: usize = 2;
     const AUDIT_FRAMES: usize = 64;
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
 
     let mut warmup = 0usize;
     let mut stable = 0usize;

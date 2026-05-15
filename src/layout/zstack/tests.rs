@@ -9,7 +9,7 @@ use glam::UVec2;
 
 #[test]
 fn zstack_hugs_to_largest_child_per_axis_independently() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let panel = under_outer(&mut ui, UVec2::new(800, 600), |ui| {
         Panel::zstack()
             .auto_id()
@@ -27,7 +27,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
 
 #[test]
 fn zstack_lays_children_at_inner_top_left_by_default() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
@@ -85,7 +85,7 @@ fn zstack_per_axis_alignment() {
         ),
     ];
     for (label, parent_align, children) in &cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
             let mut p = Panel::zstack()
                 .auto_id()
@@ -124,7 +124,7 @@ fn zstack_per_axis_alignment() {
 
 #[test]
 fn zstack_fill_child_stretches_to_inner() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
@@ -156,7 +156,7 @@ fn zstack_fill_child_stretches_to_inner() {
 fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     // Fill-on-both-axes children measure with INF → fall back to intrinsic;
     // a Hug ZStack therefore has no content to grow to.
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
@@ -176,7 +176,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
 
 #[test]
 fn zstack_collapsed_child_does_not_grow_panel() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
         Panel::zstack()
             .auto_id()

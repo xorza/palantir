@@ -18,6 +18,7 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub(crate) mod encoder;
 
+use crate::common::frame_arena::{FrameArenaHandle, new_handle};
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
@@ -34,14 +35,35 @@ use crate::ui::damage::Damage;
 /// Owned by [`Host`](crate::host::Host) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned
 /// `&RenderBuffer` straight to the backend.
-#[derive(Default)]
 pub(crate) struct Frontend {
     pub(crate) cmds: RenderCmdBuffer,
     pub(crate) composer: Composer,
     pub(crate) buffer: RenderBuffer,
+    /// Shared frame arena (clone of `Host`'s canonical handle). Compose
+    /// borrows it mutably to append polyline tessellation output and
+    /// to read user-supplied mesh / polyline bytes.
+    pub(crate) frame_arena: FrameArenaHandle,
+}
+
+impl Default for Frontend {
+    /// Standalone frontend with a private frame arena. Production goes
+    /// through [`Self::with_arena`] so the arena is shared across
+    /// `Ui`, `Frontend`, and `WgpuBackend`.
+    fn default() -> Self {
+        Self::new(new_handle())
+    }
 }
 
 impl Frontend {
+    pub(crate) fn new(frame_arena: FrameArenaHandle) -> Self {
+        Self {
+            cmds: RenderCmdBuffer::default(),
+            composer: Composer::default(),
+            buffer: RenderBuffer::default(),
+            frame_arena,
+        }
+    }
+
     /// Encode the tree into commands, compose them into the owned
     /// buffer, and return a borrow of the composed result.
     /// Disabled-dim and other paint-time theme constants are
@@ -50,8 +72,9 @@ impl Frontend {
     /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui, damage: Damage) -> &RenderBuffer {
         encode(ui, damage, &mut self.cmds);
+        let mut arena = self.frame_arena.borrow_mut();
         self.composer
-            .compose(&self.cmds, ui.display, &mut self.buffer);
+            .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
         &self.buffer
     }
 }

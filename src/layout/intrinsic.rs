@@ -224,7 +224,7 @@ mod tests {
     /// `stack::measure` queries `MinContent` on each Fill child.
     #[test]
     fn intrinsic_cache_populated_after_run() {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = crate::forest::tree::NodeId(0);
         crate::support::testing::run_at(&mut ui, UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
@@ -260,7 +260,7 @@ mod tests {
     /// — a recompute would overwrite the sentinel with the real value.
     #[test]
     fn intrinsic_query_short_circuits_on_cache_hit() {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = crate::forest::tree::NodeId(0);
         crate::support::testing::run_at(&mut ui, UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
@@ -308,7 +308,7 @@ mod tests {
     /// query.
     #[test]
     fn parent_intrinsic_query_populates_descendant_cache() {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = crate::forest::tree::NodeId(0);
         // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can

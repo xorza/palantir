@@ -3,6 +3,7 @@
 //! body recording dispatches into a different arena than `Main`
 //! and never interleaves.
 
+use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{RecordOutcome, SeenIds};
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
@@ -154,13 +155,13 @@ impl Forest {
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
-    pub(crate) fn add_shape(&mut self, shape: Shape<'_>) {
+    pub(crate) fn add_shape(&mut self, shape: Shape<'_>, arena: &mut FrameArena) {
         let tree = &mut self.trees[self.current_layer as usize];
         assert!(
             !tree.open_frames.is_empty(),
             "add_shape called with no open node",
         );
-        tree.shapes.add(shape);
+        tree.shapes.add(shape, arena);
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {

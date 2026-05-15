@@ -20,7 +20,7 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
 
 #[test]
 fn grid_fixed_and_fill_columns_split_remainder() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(400, 200), |ui| {
         root = Some(
@@ -47,7 +47,7 @@ fn grid_fixed_and_fill_columns_split_remainder() {
 
 #[test]
 fn grid_hug_column_takes_max_span1_child_intrinsic() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     // Hug col 0: max(button widths). Buttons measure label at 8px/char +
     // default padding 24 → label_w + 24.
@@ -121,7 +121,7 @@ fn grid_fill_weights_and_clamps() {
         ),
     ];
     for (label, c0, c1, want0, want1) in cases {
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = None;
         run_at(&mut ui, UVec2::new(400, 100), |ui| {
             root = Some(
@@ -154,7 +154,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
         } else {
             UVec2::new(400, 200)
         };
-        let mut ui = Ui::new();
+        let mut ui = Ui::default();
         let mut root = None;
         run_at(&mut ui, surface, |ui| {
             let primary = [
@@ -208,7 +208,7 @@ fn grid_span_covers_multiple_tracks_with_gap() {
 
 #[test]
 fn grid_hug_grid_collapses_fill_tracks() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut grid_node = None;
     run_at(&mut ui, UVec2::new(400, 200), |ui| {
         Panel::hstack()
@@ -238,7 +238,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
 fn grid_cell_alignment_override_pins_child_to_corner() {
     use crate::layout::types::{align::Align, align::HAlign, align::VAlign};
 
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     run_at(&mut ui, UVec2::new(200, 200), |ui| {
         root = Some(
@@ -285,7 +285,7 @@ fn resolve_axis_marks_fixed_and_hug_resolved_but_leaves_fill_unresolved() {
 /// Pin: 2-D span (row + col) covers the rectangular union with gaps.
 #[test]
 fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut root = None;
     // 3×3 of fixed-50 cells with gap=10. 2×2 cell at (0,0): w/h = 110.
     run_at(&mut ui, UVec2::new(400, 400), |ui| {
@@ -320,7 +320,7 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
 /// without panicking; child rects are zeroed at parent anchor.
 #[test]
 fn grid_empty_dim_measures_to_zero_and_zeros_children() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut grid_node = None;
     let mut ghost_node = None;
     let empty: Rc<[Track]> = Rc::from([] as [Track; 0]);
@@ -361,7 +361,7 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
 /// independent of other rows.
 #[test]
 fn grid_multi_row_hug_heights_resolve_independently() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut grid_node = None;
     let mut kids = Vec::new();
     run_at(&mut ui, UVec2::new(400, 400), |ui| {

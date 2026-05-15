@@ -13,6 +13,7 @@ use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::viewport::build_damage_scissors;
 use self::viewport_uniform::ViewportUniform;
+use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{color::Color, rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::render_buffer::RenderBuffer;
@@ -110,6 +111,9 @@ pub(crate) struct WgpuBackend {
     /// Stage 3 / Step 6 of the damage-rendering plan: we render here
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
+    /// Shared frame arena (clone of `Host`'s canonical handle). The
+    /// backend reads mesh vertices/indices from it during upload.
+    frame_arena: FrameArenaHandle,
 }
 
 impl WgpuBackend {
@@ -118,6 +122,7 @@ impl WgpuBackend {
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
+        frame_arena: FrameArenaHandle,
     ) -> Self {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, viewport_uniform.buffer());
@@ -134,6 +139,7 @@ impl WgpuBackend {
             debug,
             color_format: format,
             backbuffer: None,
+            frame_arena,
         }
     }
 
@@ -254,6 +260,8 @@ impl WgpuBackend {
         damage: Damage,
         debug_overlay: DebugOverlayConfig,
     ) {
+        let arena = self.frame_arena.clone();
+        let arena = arena.borrow();
         // Sync gradient LUT atlas to GPU. Idle frames (no new
         // gradients) drain an empty dirty flag and do nothing; first
         // frame uploads row 0's magenta fallback plus any baked rows
@@ -334,8 +342,8 @@ impl WgpuBackend {
         self.mesh.upload(
             &self.device,
             &self.queue,
-            &buffer.meshes.arena.vertices,
-            &buffer.meshes.arena.indices,
+            &arena.meshes.vertices,
+            &arena.meshes.indices,
             &buffer.meshes.instances,
         );
 

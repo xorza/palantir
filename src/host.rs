@@ -16,6 +16,7 @@
 
 use std::time::Instant;
 
+use crate::common::frame_arena::new_handle;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
@@ -54,10 +55,15 @@ impl Host {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
     ) -> Self {
+        // One canonical frame arena, cloned into every subsystem that
+        // touches per-frame mesh / polyline bytes. Each Rc-clone is
+        // cheap; runtime borrow-checking via RefCell catches any
+        // wiring mistake that would double-borrow.
+        let frame_arena = new_handle();
         Self {
-            ui: Ui::with_text(shaper.clone()),
-            frontend: Frontend::default(),
-            backend: WgpuBackend::new(device, queue, format, shaper),
+            ui: Ui::new(shaper.clone(), frame_arena.clone()),
+            frontend: Frontend::new(frame_arena.clone()),
+            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena),
             start: Instant::now(),
         }
     }
@@ -122,6 +128,8 @@ impl Host {
         state: &mut T,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
+        // Ui::frame clears its own Rc-shared arena at the top of the
+        // record cycle — the same Rc the frontend + backend hold.
         self.ui.frame(display, self.start.elapsed(), state, record)
     }
 

@@ -9,7 +9,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
-    let mut ui = Ui::new();
+    let mut ui = Ui::default();
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;

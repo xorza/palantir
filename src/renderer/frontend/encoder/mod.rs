@@ -7,7 +7,6 @@ use crate::layout::LayerLayout;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
-use crate::primitives::mesh::MeshVertex;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::quad::FillKind;
@@ -16,7 +15,6 @@ use crate::ui::Ui;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
-use glam::Vec2;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
 /// collided this frame. Magenta — distinct from the opt-in red
@@ -199,30 +197,17 @@ fn emit_one_shape(
             bbox,
             content_hash: _,
         } => {
-            // Points are owner-relative logical px; shift inline
-            // into the cmd-buffer arena. Bbox came pre-computed
-            // from `lower_polyline` in record coords; translating
-            // by `owner_rect.min` preserves it. Colors copy through
-            // unchanged — they already have the right length for
-            // `color_mode` (validated at lowering).
-            let src_pts = &tree.shapes.payloads.polyline_points[points.range()];
-            let src_cols = &tree.shapes.payloads.polyline_colors[colors.range()];
-            let out_arenas = &mut out.shape_payloads;
-            let points_start = out_arenas.polyline_points.len() as u32;
-            out_arenas
-                .polyline_points
-                .extend(src_pts.iter().map(|p| owner_rect.min + *p));
-            let colors_start = out_arenas.polyline_colors.len() as u32;
-            out_arenas.polyline_colors.extend_from_slice(src_cols);
+            // Points + colors live in the host's FrameArena; spans
+            // are forwarded verbatim. Owner-local convention — the
+            // composer folds `origin` into the per-point transform
+            // (no per-frame point copy any more).
             out.draw_polyline(DrawPolylinePayload {
-                bbox: Rect {
-                    min: bbox.min + owner_rect.min,
-                    size: bbox.size,
-                },
+                bbox: *bbox,
+                origin: owner_rect.min,
                 width: *width,
-                points_start,
+                points_start: points.start,
                 points_len: points.len,
-                colors_start,
+                colors_start: colors.start,
                 colors_len: colors.len,
                 color_mode: ColorModeBits::new(*color_mode),
                 cap: LineCapBits::new(*cap),
@@ -240,46 +225,24 @@ fn emit_one_shape(
             tint,
             vertices,
             indices,
+            bbox,
             content_hash: _,
         } => {
-            // Mesh verts are owner-local logical px; translate inline
-            // into the cmd buffer's mesh arena so the cmd buffer holds
-            // world-coord points (matches polyline). `local_rect`'s
-            // top-left, if given, offsets within the owner; otherwise
-            // the owner's own top-left is the origin.
+            // Verts live in the host's FrameArena owner-local;
+            // composer folds `origin` into the per-instance translate.
+            // No per-frame copy here.
             let origin = match local_rect {
                 None => owner_rect.min,
                 Some(lr) => owner_rect.min + lr.min,
             };
-            let src_verts = &tree.shapes.payloads.meshes.vertices[vertices.range()];
-            let src_idx = &tree.shapes.payloads.meshes.indices[indices.range()];
-            let out_meshes = &mut out.shape_payloads.meshes;
-            let v_start = out_meshes.vertices.len() as u32;
-            let mut min = Vec2::splat(f32::INFINITY);
-            let mut max = Vec2::splat(f32::NEG_INFINITY);
-            out_meshes.vertices.extend(src_verts.iter().map(|v| {
-                let pos = v.pos + origin;
-                min = min.min(pos);
-                max = max.max(pos);
-                MeshVertex {
-                    pos,
-                    color: v.color,
-                }
-            }));
-            let i_start = out_meshes.indices.len() as u32;
-            out_meshes.indices.extend_from_slice(src_idx);
-            let bbox = if src_verts.is_empty() {
-                Rect::ZERO
-            } else {
-                Rect::new(min.x, min.y, max.x - min.x, max.y - min.y)
-            };
             out.draw_mesh(DrawMeshPayload {
-                bbox,
+                bbox: *bbox,
+                origin,
                 tint: *tint,
-                v_start,
-                v_len: src_verts.len() as u32,
-                i_start,
-                i_len: src_idx.len() as u32,
+                v_start: vertices.start,
+                v_len: vertices.len,
+                i_start: indices.start,
+                i_len: indices.len,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
