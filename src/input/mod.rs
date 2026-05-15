@@ -474,6 +474,7 @@ impl InputState {
                 // focus from a TextEdit. Focusability is orthogonal to
                 // clickability (clicking a Button shouldn't steal focus
                 // from a TextEdit either, hence the separate test).
+                let prev_focus = self.focused;
                 if btn == PointerButton::Left {
                     let focus_hit = self
                         .pointer_pos
@@ -484,7 +485,12 @@ impl InputState {
                         (None, FocusPolicy::PreserveOnMiss) => {}
                     }
                 }
-                true
+                // Press on inert surface (no click target, no focus
+                // change) is observably a no-op — under `OnDelta` the
+                // frame stays on the paint-anim path. Focus-clearing
+                // clicks (e.g. outside a focused TextEdit) and any
+                // sense hit still record.
+                hit.is_some() || self.focused != prev_focus
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
@@ -497,8 +503,14 @@ impl InputState {
                     if hit == Some(a) && !drag_suppressed_click {
                         self.capture_mut(btn).frame_click = Some(a);
                     }
+                    // Capture was live: click may have fired, or a drag
+                    // ended. Either way the owning widget needs a record.
+                    true
+                } else {
+                    // No capture → press landed on inert surface and
+                    // release is a stray. Skip.
+                    false
                 }
-                true
             }
             InputEvent::ScrollPixels(d) => {
                 self.frame_scroll_pixels += d;

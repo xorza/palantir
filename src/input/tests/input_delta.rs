@@ -143,13 +143,47 @@ fn non_pointer_events_request_repaint() {
         ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE))
             .requests_repaint,
     );
-    // Click on empty surface still repaints (focus policy may clear focus).
+}
+
+/// Press + release on an inert surface with no focus and no popup is
+/// a true no-op — no hover hit, no click target, no focus change,
+/// no capture to settle. Under `InputPolicy::OnDelta` the host can
+/// skip the frame entirely.
+#[test]
+fn press_release_on_inert_with_no_focus_does_not_request_repaint() {
+    let mut ui = new_ui();
+    run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
+    // Pointer at (200, 200): well outside the 100×100 hover target.
+    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     assert!(
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left))
+        !ui.on_input(InputEvent::PointerPressed(PointerButton::Left))
             .requests_repaint,
+        "press on inert surface, no focus → no repaint",
     );
     assert!(
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left))
+        !ui.on_input(InputEvent::PointerReleased(PointerButton::Left))
             .requests_repaint,
+        "stray release (no capture) → no repaint",
     );
+}
+
+/// Click outside any focusable widget while focus is held by a
+/// `Focusable` widget clears focus under the default
+/// `FocusPolicy::ClearOnMiss` — observably a visual change, so the
+/// press must request repaint even though it didn't hit anything
+/// clickable.
+#[test]
+fn press_on_inert_clears_focus_and_requests_repaint() {
+    use crate::primitives::widget_id::WidgetId;
+    let mut ui = new_ui();
+    run_at_acked(&mut ui, UVec2::new(400, 400), build_hover_target);
+    // Forge a focused widget — emulating a prior TextEdit interaction.
+    ui.input.focused = Some(WidgetId::from_hash("editor"));
+    let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
+    let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert!(
+        delta.requests_repaint,
+        "press on inert with prior focus → focus clear → repaint",
+    );
+    assert!(ui.input.focused.is_none(), "focus must be cleared");
 }
