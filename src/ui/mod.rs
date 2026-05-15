@@ -380,12 +380,17 @@ impl Ui {
             &self.forest.ids.removed,
             self.display.logical_rect(),
             force_full,
-            predamaged_rects(
-                &self.forest,
-                &self.layout.cascades,
-                self.prev_time,
-                self.time,
-            ),
+            (!force_full)
+                .then(|| {
+                    predamaged_rects(
+                        &self.forest,
+                        &self.layout.cascades,
+                        self.prev_time,
+                        self.time,
+                    )
+                })
+                .into_iter()
+                .flatten(),
         );
 
         // Skip frames have nothing for the host to submit, so ack
