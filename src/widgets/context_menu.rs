@@ -95,7 +95,7 @@ impl ContextMenu {
     /// records [`MenuItem`]s inside `Layer::Popup`; the menu auto-
     /// closes on outside-click, Esc, or an item click.
     pub fn show(
-        &self,
+        self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &PopupHandle),
     ) -> ContextMenuResponse {
