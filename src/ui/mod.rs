@@ -565,24 +565,36 @@ impl Ui {
         self.input.on_input(event, &self.layout.cascades)
     }
 
-    /// Declare interest in off-target events of `flags`. Cleared
-    /// every full record pass — re-call each frame the widget is
-    /// active (idempotent OR). Stop calling to drop the wake.
+    // ── Subscriptions ─────────────────────────────────────────────
+    //
+    // Wake gates for off-target events. All three are idempotent and
+    // cleared pre-record: widgets re-call each active frame, stop
+    // calling to drop the wake. See `crate::input::subscriptions`.
+
+    /// Declare interest in off-target pointer events of `flags`.
     pub fn subscribe_pointer(&mut self, flags: PointerSense) {
         self.input.subs.pointer_mask |= flags;
     }
 
-    /// Declare interest in a specific shortcut (e.g. `Shortcut::key(Key::Escape)`,
-    /// `Shortcut::cmd('K')`). Idempotent — duplicate subscribers
-    /// collapse. Cleared every full record pass.
+    /// Declare interest in off-focus keyboard categories. Hotkey
+    /// recorders, accel-underline UIs, command palettes that record
+    /// before focus. Specific chords use [`Self::subscribe_key`].
+    pub fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
+        self.input.subs.keyboard_mask |= flags;
+    }
+
+    /// Declare interest in one specific shortcut (e.g.
+    /// `Shortcut::key(Key::Escape)`, `Shortcut::cmd('K')`).
+    /// Duplicate subscribers collapse.
     pub fn subscribe_key(&mut self, sc: Shortcut) {
         self.input.subs.subscribe_key(sc);
     }
 
-    /// Unified pointer event stream captured this frame. Each
-    /// variant only fires when its [`PointerSense`] flag is held by
-    /// a subscriber — empty when no pointer subscriptions are
-    /// active. Subscribers `match` and filter by rect / button.
+    // ── Event readers ────────────────────────────────────────────
+
+    /// Unified pointer event stream captured this frame. Empty when
+    /// no [`PointerSense`] subscriber is active. Subscribers `match`
+    /// and filter by rect / button.
     pub fn pointer_events(&self) -> &[PointerEvent] {
         &self.input.frame_pointer_events
     }
@@ -591,17 +603,29 @@ impl Ui {
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from typed/IME-committed text, in
     /// arrival order. Single buffer for both the focused widget and
-    /// global [`KeyboardSense`] subscribers.
+    /// global [`KeyboardSense`] / [`Shortcut`] subscribers.
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
         &self.input.frame_keyboard_events
     }
 
-    /// Declare interest in off-focus keyboard categories. Idempotent
-    /// OR; cleared pre-record like [`Self::subscribe_pointer`]. Use
-    /// for hotkey recorders, accel-underline UIs, command palettes
-    /// that record before focus.
-    pub fn subscribe_keyboard(&mut self, flags: KeyboardSense) {
-        self.input.subs.keyboard_mask |= flags;
+    // ── Keyboard convenience queries ──────────────────────────────
+
+    /// `true` if any [`KeyboardEvent::Down`] this frame matches
+    /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
+    /// stateful logic, iterate directly instead.
+    pub fn key_pressed(&self, sc: Shortcut) -> bool {
+        self.input.frame_keyboard_events.iter().any(|e| match e {
+            KeyboardEvent::Down(kp) => sc.matches(*kp),
+            _ => false,
+        })
+    }
+
+    /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
+    /// Used by [`crate::widgets::context_menu::ContextMenu`] to
+    /// dismiss on Esc.
+    pub fn escape_pressed(&self) -> bool {
+        use crate::input::keyboard::Key;
+        self.key_pressed(Shortcut::key(Key::Escape))
     }
 
     /// Re-record this frame after measure runs (for widgets that
@@ -892,28 +916,6 @@ impl Ui {
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.focus_policy = p;
-    }
-
-    /// `true` if Escape was pressed this frame. Used by
-    /// [`crate::widgets::context_menu::ContextMenu`] to dismiss on Esc;
-    /// can also be read by host code for modal-style behaviors.
-    pub fn escape_pressed(&self) -> bool {
-        use crate::input::keyboard::Key;
-        self.input.frame_keyboard_events.iter().any(|e| {
-            matches!(
-                e,
-                KeyboardEvent::Down(kp) if kp.key == Key::Escape,
-            )
-        })
-    }
-
-    /// `true` if any keypress this frame matches `s`. Iterates the
-    /// unified keyboard buffer.
-    pub fn shortcut_pressed(&self, s: crate::input::shortcut::Shortcut) -> bool {
-        self.input.frame_keyboard_events.iter().any(|e| match e {
-            KeyboardEvent::Down(kp) => s.matches(*kp),
-            _ => false,
-        })
     }
 }
 
