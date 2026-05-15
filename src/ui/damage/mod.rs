@@ -339,36 +339,26 @@ impl DamageEngine {
                 let _ = dirty;
                 i += advance;
             }
-        }
 
-        // Evict last-frame snapshots for removed widgets. Every
-        // remaining `prev` entry painted last frame (invariant), so its
-        // rect always contributes.
-        for wid in removed {
-            if let Some(snap) = self.prev.remove(wid) {
-                acc.add(snap.rect);
-            }
-        }
-
-        // Animation-driven damage. `paint_anims` is a flat per-tree
-        // list of "this rect is animated"; structural hash diff
-        // above is content-only and (intentionally) doesn't pick up
-        // a paint-anim phase flip — bumping `node_hash` /
-        // `subtree_hash` would invalidate MeasureCache for the
-        // owner's ancestor chain on every phase flip, even though
-        // layout didn't change. So we damage anim rects here
-        // instead.
-        //
-        // The `next_wake(prev_now) <= now` test is the cross-frame
-        // "did the quantum change since last frame" predicate.
-        // First frame (`prev_now = None`) falls through to "always
-        // add", mirroring `prev_surface == None`. The encoder's
-        // `sample_paint_anim` then decides whether the rect emits
-        // a quad this frame (visible half) or skips (hidden half);
-        // composing the cmd buffer without the caret quad paints
-        // background over the rect on the hidden side.
-        for (layer, tree) in forest.iter_paint_order() {
-            let rows = cascades.rows_for(layer);
+            // Animation-driven damage, per layer. `paint_anims` is
+            // a flat list of "this rect is animated"; structural
+            // hash diff above is content-only and (intentionally)
+            // doesn't pick up a paint-anim phase flip — bumping
+            // `node_hash` / `subtree_hash` would invalidate
+            // MeasureCache for the owner's ancestor chain on every
+            // phase flip, even though layout didn't change. So we
+            // damage anim rects here instead.
+            //
+            // The `next_wake(prev_now) <= now` test is the
+            // cross-frame "did the quantum change since last frame"
+            // predicate. First frame (`prev_now = None`) falls
+            // through to "always add", mirroring
+            // `prev_surface == None`. The encoder's
+            // `PaintAnims::sample` then decides whether the rect
+            // emits a quad this frame (visible half) or skips
+            // (hidden half); composing the cmd buffer without the
+            // caret quad paints background over the rect on the
+            // hidden side.
             for entry in &tree.paint_anims.entries {
                 let fire = match self.prev_now {
                     None => true,
@@ -377,6 +367,15 @@ impl DamageEngine {
                 if fire {
                     acc.add(rows[entry.node.index()].paint_rect);
                 }
+            }
+        }
+
+        // Evict last-frame snapshots for removed widgets. Every
+        // remaining `prev` entry painted last frame (invariant), so its
+        // rect always contributes.
+        for wid in removed {
+            if let Some(snap) = self.prev.remove(wid) {
+                acc.add(snap.rect);
             }
         }
 
