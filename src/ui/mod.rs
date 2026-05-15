@@ -27,7 +27,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::FontFamily;
 use crate::text::TextShaper;
-use crate::ui::cascade::CascadesEngine;
+use crate::ui::cascade::{Cascades, CascadesEngine};
 use crate::ui::damage::DamageEngine;
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
@@ -38,6 +38,33 @@ use crate::widgets::theme::{TextStyle, Theme};
 use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
+
+/// Rects damaged "before the main pass runs" — owner paint-rects of
+/// every paint anim whose quantum boundary fell in the
+/// `(prev_time, now]` window. Walked by `DamageEngine::compute` and
+/// folded into the per-frame damage region alongside the structural
+/// diff. First frame (`prev_time == None`) fires every registered
+/// anim, mirroring the structural diff's "no prev snapshot ⇒ damage
+/// everything" path.
+///
+/// Free function rather than a `&self` method on [`Ui`] because the
+/// call site reaches into `&self.forest`, `&self.layout.cascades`,
+/// and `&mut self.damage_engine` field-by-field — a `&self`-borrowed
+/// iterator would conflict with the `&mut self.damage_engine` borrow.
+fn predamaged_rects<'a>(
+    forest: &'a Forest,
+    cascades: &'a Cascades,
+    prev_time: Option<Duration>,
+    now: Duration,
+) -> impl Iterator<Item = Rect> + 'a {
+    forest.iter_paint_order().flat_map(move |(layer, tree)| {
+        let rows = cascades.rows_for(layer);
+        tree.paint_anims.entries.iter().filter_map(move |e| {
+            let fired = prev_time.is_none_or(|prev| e.anim.next_wake(prev) <= now);
+            fired.then(|| rows[e.node.index()].paint_rect)
+        })
+    })
+}
 
 /// Type-erased pointer to caller-owned app state, installed for the
 /// duration of [`Ui::frame`]. Retrieved via [`Ui::app`].
@@ -347,18 +374,18 @@ impl Ui {
 
         self.finalize_frame();
 
-        let fired_anim = self.forest.iter_fired_paint_anim_rects(
-            &self.layout.cascades,
-            self.prev_time,
-            self.time,
-        );
         let damage = self.damage_engine.compute(
             &self.forest,
             &self.layout.cascades,
             &self.forest.ids.removed,
             self.display.logical_rect(),
             force_full,
-            fired_anim,
+            predamaged_rects(
+                &self.forest,
+                &self.layout.cascades,
+                self.prev_time,
+                self.time,
+            ),
         );
 
         // Skip frames have nothing for the host to submit, so ack
