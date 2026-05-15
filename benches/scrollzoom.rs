@@ -22,12 +22,16 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::support::internals::mark_frame_submitted;
-use palantir::{Display, InputEvent, Ui};
+use palantir::{Display, InputEvent, TextShaper, Ui, new_handle};
 use std::hint::black_box;
 use std::time::Duration;
 
 #[path = "../src/showcase/complex_pan_zoom.rs"]
 mod pan_zoom;
+
+fn new_ui() -> Ui {
+    Ui::new(TextShaper::default(), new_handle())
+}
 
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
