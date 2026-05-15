@@ -9,3 +9,11 @@ PaintMod
 skip frame if window is not visible
 
 optimize DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+
+skip predamaged rect if forcefull force_full,
+predamaged_rects(
+&self.forest,
+&self.layout.cascades,
+self.prev_time,
+self.time,
+),
