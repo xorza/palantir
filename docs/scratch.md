@@ -1,5 +1,5 @@
 image
 
-local animation that dont need relayout
-
 checkbox
+
+combine wakes that happen almost at same time
