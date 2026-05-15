@@ -261,5 +261,4 @@ impl Forest {
             .copied()
             .map(move |layer| (layer, &self.trees[layer as usize]))
     }
-
 }

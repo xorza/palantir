@@ -333,7 +333,7 @@ impl DamageEngine {
         }
 
         // Animation-driven damage. Caller pre-walks the paint-anim
-        // registry (see `Forest::iter_fired_paint_anim_rects`) and
+        // registry (see `predamaged_rects` in `ui/mod.rs`) and
         // hands us just the rects that fired this frame. The
         // structural diff above is content-only and (intentionally)
         // doesn't pick up phase flips — bumping
