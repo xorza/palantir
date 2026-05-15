@@ -21,11 +21,10 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
-use crate::ui::cascade::{Cascades, CascadesEngine};
+use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::DamageEngine;
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
@@ -366,37 +365,24 @@ impl Ui {
         // recorded so nothing was removed — pass an empty set
         // instead of stale state from the previous frame.
         let surface = self.display.logical_rect();
+        let prev_time = self.prev_stamp.map(|s| s.time);
         let damage = match plan {
-            FramePlan::PaintOnly => {
-                let predamaged = predamaged_rects(
-                    &self.forest,
-                    &self.layout.cascades,
-                    self.prev_stamp.map(|s| s.time),
-                    self.time,
-                );
-                self.damage_engine.compute_paint_only(surface, predamaged)
-            }
-            FramePlan::FullRecord { force_full } => {
-                let predamaged = (!force_full)
-                    .then(|| {
-                        predamaged_rects(
-                            &self.forest,
-                            &self.layout.cascades,
-                            self.prev_stamp.map(|s| s.time),
-                            self.time,
-                        )
-                    })
-                    .into_iter()
-                    .flatten();
-                self.damage_engine.compute(
-                    &self.forest,
-                    &self.layout.cascades,
-                    &self.forest.ids.removed,
-                    surface,
-                    force_full,
-                    predamaged,
-                )
-            }
+            FramePlan::PaintOnly => self.damage_engine.compute_paint_only(
+                &self.forest,
+                &self.layout.cascades,
+                surface,
+                prev_time,
+                self.time,
+            ),
+            FramePlan::FullRecord { force_full } => self.damage_engine.compute(
+                &self.forest,
+                &self.layout.cascades,
+                &self.forest.ids.removed,
+                surface,
+                force_full,
+                prev_time,
+                self.time,
+            ),
         };
 
         // Skip frames have nothing for the host to submit, so ack
@@ -843,27 +829,6 @@ impl Ui {
     pub fn shortcut_pressed(&self, s: crate::input::shortcut::Shortcut) -> bool {
         self.input.frame_keys.iter().any(|kp| s.matches(*kp))
     }
-}
-
-/// Tight per-shape rects for every paint anim whose quantum boundary
-/// fell in `(prev_time, now]`, folded into `DamageEngine::compute`'s
-/// region. First frame (`prev_time == None`) fires every anim — same
-/// "no prev snapshot ⇒ damage everything" rule as the structural
-/// diff. Free fn rather than `&self` method so the borrow stays
-/// disjoint from `&mut self.damage_engine` at the call site.
-fn predamaged_rects<'a>(
-    forest: &'a Forest,
-    cascades: &'a Cascades,
-    prev_time: Option<Duration>,
-    now: Duration,
-) -> impl Iterator<Item = Rect> + 'a {
-    forest.iter_paint_order().flat_map(move |(layer, tree)| {
-        let shape_rects = &cascades.shape_rects[layer as usize];
-        tree.paint_anims.entries.iter().filter_map(move |e| {
-            let fired = prev_time.is_none_or(|prev| e.anim.next_wake(prev) <= now);
-            fired.then(|| shape_rects[e.shape_idx as usize])
-        })
-    })
 }
 
 #[cfg(test)]

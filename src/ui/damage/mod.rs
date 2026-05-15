@@ -36,6 +36,7 @@ use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::collections::hash_map::Entry;
+use std::time::Duration;
 
 pub(crate) mod region;
 
@@ -224,6 +225,7 @@ impl DamageEngine {
     /// repaint; it shouldn't happen in practice (host filters
     /// resize-to-zero), but cheap to handle.
     #[profiling::function]
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute(
         &mut self,
         forest: &Forest,
@@ -231,7 +233,8 @@ impl DamageEngine {
         removed: &FxHashSet<WidgetId>,
         surface: Rect,
         force_full: bool,
-        pre_damaged_rects: impl IntoIterator<Item = Rect>,
+        prev_time: Option<Duration>,
+        now: Duration,
     ) -> Damage {
         // `force_full` is the "treat as a fresh frame" signal — set
         // by the caller when `Ui::classify_frame` decided
@@ -371,16 +374,14 @@ impl DamageEngine {
             return Damage::Full;
         }
 
-        // Predamaged anim rects — caller pre-walks the paint-anim
-        // registry (see `predamaged_rects` in `ui/mod.rs`) and hands
-        // us just the rects that fired this frame. The structural
-        // diff above is content-only and (intentionally) doesn't
-        // pick up phase flips — bumping `node_hash` / `subtree_hash`
-        // would invalidate MeasureCache for the owner's ancestor
-        // chain on every flip even though layout didn't change. The
-        // encoder's `PaintAnims::sample` decides per-rect whether to
-        // emit a quad (visible half) or skip (hidden half).
-        self.raw_rects.extend(pre_damaged_rects);
+        // Predamaged anim rects. The structural diff above is
+        // content-only and (intentionally) doesn't pick up phase
+        // flips — bumping `node_hash` / `subtree_hash` would
+        // invalidate MeasureCache for the owner's ancestor chain on
+        // every flip even though layout didn't change. The encoder's
+        // `PaintAnims::sample` decides per-rect whether to emit a
+        // quad (visible half) or skip (hidden half).
+        extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
 
         // Removed-widget eviction tail. Every remaining `prev` entry
         // painted last frame (invariant), so its rect always
@@ -402,8 +403,11 @@ impl DamageEngine {
     /// caller-supplied predamaged anim rects matter.
     pub(crate) fn compute_paint_only(
         &mut self,
+        forest: &Forest,
+        cascades: &Cascades,
         surface: Rect,
-        pre_damaged_rects: impl IntoIterator<Item = Rect>,
+        prev_time: Option<Duration>,
+        now: Duration,
     ) -> Damage {
         #[cfg(any(test, feature = "internals"))]
         {
@@ -411,9 +415,30 @@ impl DamageEngine {
             self.subtree_skips = 0;
         }
         self.raw_rects.clear();
-        self.raw_rects.extend(pre_damaged_rects);
+        extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
         Damage::new(surface, region)
+    }
+}
+
+fn extend_predamaged(
+    out: &mut Vec<Rect>,
+    forest: &Forest,
+    cascades: &Cascades,
+    prev_time: Option<Duration>,
+    now: Duration,
+) {
+    // No prev frame ⇒ Pass 1 already contributed every painting
+    // widget's rect (every entry was Vacant), and a paint-anim rect
+    // is always a sub-rect of its owner — nothing new to add.
+    let Some(prev) = prev_time else { return };
+    for (layer, tree) in forest.iter_paint_order() {
+        let shape_rects = &cascades.shape_rects[layer as usize];
+        for e in &tree.paint_anims.entries {
+            if e.anim.next_wake(prev) <= now {
+                out.push(shape_rects[e.shape_idx as usize]);
+            }
+        }
     }
 }
 
