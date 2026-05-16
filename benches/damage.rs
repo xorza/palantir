@@ -111,7 +111,7 @@ fn build_painted_rows<T>(ui: &mut Ui<T>, hot: &[usize], hot_color: Color) {
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack<T>(ui: &mut Ui<T>, display: Display, mut record: impl FnMut(&mut Ui<T>)) {
+fn run_and_ack(ui: &mut Ui<()>, display: Display, mut record: impl FnMut(&mut Ui<()>)) {
     let _ = ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),
@@ -127,11 +127,11 @@ fn run_and_ack<T>(ui: &mut Ui<T>, display: Display, mut record: impl FnMut(&mut 
 /// second frame's diff produces the `partial` / `full` damage the
 /// bench iter will then exercise. Without warmup the first iter
 /// would always be `Full` (no `prev_surface`) and skew measurements.
-fn warm_and_assert<T>(
-    ui: &mut Ui<T>,
+fn warm_and_assert(
+    ui: &mut Ui<()>,
     display: Display,
-    frame1: impl Fn(&mut Ui<T>),
-    frame2: impl Fn(&mut Ui<T>),
+    frame1: impl Fn(&mut Ui<()>),
+    frame2: impl Fn(&mut Ui<()>),
     expect_kind: &str,
 ) {
     run_and_ack(ui, display, &frame1);

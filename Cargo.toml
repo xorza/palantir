@@ -47,6 +47,15 @@ criterion = "*"
 dhat = "*"
 image = { version = "*", default-features = false, features = ["png"] }
 
+[[test]]
+name = "visual"
+path = "tests/visual/main.rs"
+required-features = ["internals"]
+
+[[test]]
+name = "alloc"
+path = "tests/alloc/main.rs"
+
 [[bench]]
 name = "frame"
 harness = false
@@ -58,6 +67,7 @@ harness = false
 [[bench]]
 name = "alloc_free_gpu"
 harness = false
+required-features = ["internals"]
 
 [[bench]]
 name = "stroke_tessellate"
