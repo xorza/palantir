@@ -68,7 +68,7 @@ pub use primitives::brush::{
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
-pub use primitives::image::{Image, ImageHandle, ImageRegistry};
+pub use primitives::image::{Image, ImageFit, ImageHandle, ImageRegistry};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
@@ -123,7 +123,7 @@ mod hot_struct_sizes {
 
     /// `cargo test --lib print_hot_struct_sizes -- --nocapture --ignored`
     #[test]
-    #[ignore = "print-only; companion to docs/hot-struct-audit.md"]
+    #[ignore = "print-only"]
     fn print_hot_struct_sizes() {
         let rows = [
             row::<NodeRecord>("forest::NodeRecord"),
