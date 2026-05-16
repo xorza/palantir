@@ -57,7 +57,7 @@ fn warmed_ui() -> (Ui, Display) {
     (ui, display)
 }
 
-fn run_frame<T>(ui: &mut Ui<T>, display: Display) {
+fn run_frame(ui: &mut Ui<()>, display: Display) {
     ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),

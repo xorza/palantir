@@ -23,9 +23,6 @@
 //! how to interpret the numbers.
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::host::test_support::{
-    cpu_frame as host_cpu_frame, render_to_texture as host_render_to_texture,
-};
 use palantir::{Background, Color, Configure, Display, Frame, Host, Panel, Rect, Sizing, Ui};
 use std::hint::black_box;
 use std::time::Duration;
@@ -146,11 +143,11 @@ fn render_frame(
     color: Color,
     forced_damage: Option<&[Rect]>,
 ) {
-    let mut report = host_cpu_frame(host, display, &mut (), |ui| build_grid(ui, cells, color));
+    let mut report = host.cpu_frame_for_test(display, &mut (), |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
         report.force_damage_to_rects(rects, color);
     }
-    host_render_to_texture(host, &gpu.surface_tex, &report);
+    host.render_to_texture_for_test(&gpu.surface_tex, &report);
     gpu.device
         .poll(wgpu::PollType::wait_indefinitely())
         .expect("device poll wait");

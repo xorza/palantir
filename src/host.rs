@@ -284,27 +284,24 @@ pub enum FramePresent {
     Idle,
 }
 
+/// Test/bench surface — exposes the `pub(crate)` CPU/GPU split as
+/// public methods so external benches and the visual harness can
+/// drive each half independently without going through the
+/// swapchain.
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use super::*;
-
-    /// CPU half of `Host::frame` — runs `Ui::frame` without acquiring a swapchain.
-    pub fn cpu_frame<T: 'static>(
-        host: &mut Host<T>,
+impl<T: 'static> Host<T> {
+    /// CPU half of [`Self::frame`] — runs `Ui::frame` without acquiring a swapchain.
+    pub fn cpu_frame_for_test(
+        &mut self,
         display: Display,
         state: &mut T,
         record: impl FnMut(&mut Ui<T>),
     ) -> FrameReport {
-        host.cpu_frame(display, state, record)
+        self.cpu_frame(display, state, record)
     }
 
-    /// GPU half of `Host::frame` against a caller-supplied texture.
-    pub fn render_to_texture<T: 'static>(
-        host: &mut Host<T>,
-        target: &wgpu::Texture,
-        report: &FrameReport,
-    ) {
-        host.render_to_texture(target, report);
+    /// GPU half of [`Self::frame`] against a caller-supplied texture.
+    pub fn render_to_texture_for_test(&mut self, target: &wgpu::Texture, report: &FrameReport) {
+        self.render_to_texture(target, report);
     }
 }
