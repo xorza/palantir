@@ -1,6 +1,9 @@
-9. MeasureCache ancestor cache-hit hug-restore coupling
-   The cache-hit path in LayoutEngine::measure has to call hugs.restore_subtree(...) for any descendant Grid, or arrange collapses every cell.
-   This is a contract between the cache and the Grid driver enforced by a comment + one pinning test. As more drivers accumulate hidden
-   per-subtree state (the agent flagged this as the kind of footgun that grows quietly), the cache becomes a graveyard of "remember to restore X
-   for driver Y" clauses. Design call: do drivers register their own snapshot/restore hooks against the cache, or
-   stays-inline-with-a-comment-per-clause acceptable forever?
+My plan, which I think is the cleanest:
+
+1. Rename current pub struct Ui → pub struct UiCore. All its fields/methods stay as-is. Every &mut Ui in library widgets becomes &mut UiCore (~212 sites, mechanical via sd).
+2. Introduce pub struct Ui<T = ()> { core: UiCore, \_t: PhantomData<T> } with Deref/DerefMut to UiCore, owning .app() -> &mut T (no turbofish).
+3. Host<T = ()> owns Ui<T>. host.frame(stamp, scale, &mut state, |ui| { ... }) — closure gets &mut Ui<T>; widgets called inside deref-coerce to &mut UiCore.
+4. ui.app() lives on Ui<T>, not UiCore. Library widgets can't call .app() — which is correct (only user code knows the app type).
+
+That gives you ui.app() (no turbofish) at user code sites, keeps widgets non-generic, and the rename is purely mechanical. Showcase tabs that take &mut Ui and call .app() need to
+become &mut Ui<AppState> (small number).
