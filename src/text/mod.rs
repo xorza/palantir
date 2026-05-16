@@ -78,7 +78,7 @@ pub enum FontFamily {
 /// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
 ///   glyph is `font_size_px * 0.5` wide). Renderer drops these runs
 ///   (their [`TextCacheKey`] is [`TextCacheKey::INVALID`]). Useful
-///   for tests, headless drivers, and the `new_ui()` state.
+///   for tests, headless drivers, and the `Ui::for_test()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
 ///   shaping via cosmic-text.
 #[derive(Clone, Default)]

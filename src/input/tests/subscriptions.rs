@@ -12,7 +12,6 @@ use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::PointerSense;
-use crate::ui::test_support::new_ui;
 use glam::{UVec2, Vec2};
 
 fn empty(ui: &mut Ui) {
@@ -38,7 +37,7 @@ fn empty_sub_escape(ui: &mut Ui) {
 
 #[test]
 fn buttons_subscriber_wakes_press_on_inert() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -58,7 +57,7 @@ fn buttons_subscriber_wakes_press_on_inert() {
 
 #[test]
 fn press_on_inert_with_no_subscriber_does_not_wake() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let delta = ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -68,7 +67,7 @@ fn press_on_inert_with_no_subscriber_does_not_wake() {
 
 #[test]
 fn record_without_resubscribe_drops_wake() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
     ui.run_at_acked(UVec2::new(200, 200), empty);
 
@@ -79,7 +78,7 @@ fn record_without_resubscribe_drops_wake() {
 
 #[test]
 fn press_and_release_both_captured() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -96,7 +95,7 @@ fn press_and_release_both_captured() {
 /// `MOVE` wakes on every pointer move — even inert ones.
 #[test]
 fn move_subscriber_wakes_on_inert_move() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_move);
 
     let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -115,7 +114,7 @@ fn move_subscriber_wakes_on_inert_move() {
 /// via the existing hit-test path; we're only checking the buffer.
 #[test]
 fn move_without_subscriber_does_not_log() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty);
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert!(ui.pointer_events().is_empty());
@@ -123,7 +122,7 @@ fn move_without_subscriber_does_not_log() {
 
 #[test]
 fn key_chord_subscriber_wakes_only_exact_chord() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_escape);
     assert!(ui.input.focused.is_none());
 
@@ -158,7 +157,7 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
 
 #[test]
 fn pointer_events_drain_between_frames() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), empty_sub_buttons);
 
     let _ = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));

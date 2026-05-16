@@ -13,7 +13,6 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
-use crate::ui::test_support::new_ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use glam::{UVec2, Vec2};
@@ -53,7 +52,7 @@ fn main_panel_clicked(ui: &Ui) -> bool {
 
 #[test]
 fn click_inside_popup_does_not_dismiss() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
@@ -74,7 +73,7 @@ fn click_inside_popup_does_not_dismiss() {
 
 #[test]
 fn click_outside_popup_dismisses_and_blocks_main() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
@@ -102,7 +101,7 @@ fn click_outside_popup_dismisses_and_blocks_main() {
 /// has no popup-layer widgets — no stale frame ever reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut open = true;
     let scene = |ui: &mut Ui, open: &mut bool| {
         Panel::vstack()
@@ -158,7 +157,7 @@ fn popup_body_sizing_matches_sizing_mode() {
         ),
     ];
     for &(sw, sh, expected) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.run_at(SURFACE, |ui| {
             Panel::vstack()
                 .id_salt("main-bg")
@@ -190,7 +189,7 @@ fn popup_body_sizing_matches_sizing_mode() {
 
 #[test]
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);

@@ -5,7 +5,6 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::ui::test_support::new_ui;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -19,7 +18,7 @@ use glam::UVec2;
 fn surface_apply_to_sets_clip_bit_and_chrome() {
     use crate::ClipMode;
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut cases: Vec<(&str, crate::forest::tree::NodeId, ClipMode, bool)> = Vec::new();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -105,7 +104,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
 
 #[test]
 fn panel_hugs_largest_child_and_layers_them() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut panel_node = None;
     let mut a_node = None;
     let mut b_node = None;
@@ -171,7 +170,7 @@ fn panel_hugs_largest_child_and_layers_them() {
 
 #[test]
 fn panel_with_fill_child_grows_to_panel_inner() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut child_node = None;
     ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -212,7 +211,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
 #[test]
 fn child_inside_disabled_panel_sees_disabled_at_record_time() {
     use crate::primitives::widget_id::WidgetId;
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let child_id = WidgetId::from_hash("child");
     let mut observed = None;
     ui.run_at(UVec2::new(200, 200), |ui| {
@@ -231,7 +230,7 @@ fn child_inside_disabled_panel_sees_disabled_at_record_time() {
 fn disabled_panel_suppresses_clicks_on_descendants() {
     use glam::Vec2;
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let surface = UVec2::new(400, 200);
     let body = |ui: &mut Ui, captured: Option<&mut bool>| {
         Panel::hstack().auto_id().show(ui, |ui| {

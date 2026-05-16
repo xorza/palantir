@@ -2,8 +2,7 @@ use super::*;
 
 #[test]
 fn multiline_enter_inserts_newline() {
-    use crate::ui::test_support::ui_with_text;
-    let mut ui = ui_with_text(UVec2::new(300, 160));
+    let mut ui = Ui::for_test_at_text(UVec2::new(300, 160));
     let mut buf = String::from("abc");
     let ed_id = WidgetId::from_hash("ml-ed");
     // Focus + caret after "abc".
@@ -47,11 +46,10 @@ fn single_line_enter_does_not_insert_newline() {
 /// sanitize-on-paste behaviour is gated to single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
-    use crate::ui::test_support::ui_with_text;
     let _cb_guard = crate::clipboard::test_serialize_guard();
     crate::clipboard::set("line1\nline2\nline3");
 
-    let mut ui = ui_with_text(UVec2::new(300, 200));
+    let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
     let mut buf = String::new();
     let ed_id = WidgetId::from_hash("ml-ed");
     ui.request_focus(Some(ed_id));
@@ -82,8 +80,7 @@ fn multiline_paste_keeps_newlines() {
 /// straddles the `\n`.
 #[test]
 fn multiline_selection_crosses_newline() {
-    use crate::ui::test_support::ui_with_text;
-    let mut ui = ui_with_text(UVec2::new(300, 200));
+    let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
     let mut buf = String::from("first\nsecond");
     let ed_id = WidgetId::from_hash("ml-ed");
     ui.request_focus(Some(ed_id));

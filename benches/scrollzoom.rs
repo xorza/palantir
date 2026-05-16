@@ -16,21 +16,17 @@
 //! the bench keeps measuring real per-frame work, not work against a
 //! pinned state.
 //!
-//! `new_ui()` uses the mono text fallback (matches `frame.rs`); the
+//! `Ui::for_test()` uses the mono text fallback (matches `frame.rs`); the
 //! cosmic shaper is not on the critical path here.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
-use palantir::{Display, FrameArenaHandle, FrameStamp, InputEvent, TextShaper, Ui};
+use palantir::{Display, FrameStamp, InputEvent, Ui};
 use std::hint::black_box;
 use std::time::Duration;
 
 #[path = "../src/showcase/complex_pan_zoom.rs"]
 mod pan_zoom;
-
-fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), FrameArenaHandle::default())
-}
 
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
@@ -40,7 +36,7 @@ const SCALE: f32 = 2.0;
 const VIEWPORT_CENTER: Vec2 = Vec2::new(320.0, 250.0);
 
 fn warmed_ui() -> (Ui, Display) {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames so cascades populate and `post_record` latches the
     // Scroll widget as the scroll-target hit. Pointer must be inside

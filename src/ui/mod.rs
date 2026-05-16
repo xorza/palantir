@@ -220,7 +220,7 @@ pub struct Ui {
     /// points/colors), shared with the renderer via [`Host`]: `Host`
     /// constructs the canonical [`Rc`] and clones it into `Ui`,
     /// `Frontend`, and `WgpuBackend` so every phase sees the same
-    /// bytes. Standalone `new_ui()` builds its own private handle.
+    /// bytes. Standalone `Ui::for_test()` builds its own private handle.
     /// `add_shape` calls `borrow_mut()` for the call duration.
     ///
     /// [`Host`]: crate::Host
@@ -981,34 +981,34 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
-    /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
-    pub fn new_ui() -> Ui {
-        Ui::default()
-    }
-
-    /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).
-    pub fn new_ui_text() -> Ui {
-        thread_local! {
-            static SHARED: TextShaper = TextShaper::with_bundled_fonts();
-        }
-        Ui::new(SHARED.with(|c| c.clone()), FrameArenaHandle::default())
-    }
-
-    /// `Ui` pre-stamped with display dimensions; no frame driven yet.
-    pub fn ui_at(size: UVec2) -> Ui {
-        let mut ui = new_ui();
-        ui.display = Display::from_physical(size, 1.0);
-        ui
-    }
-
-    /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
-    pub fn ui_with_text(size: UVec2) -> Ui {
-        let mut ui = new_ui_text();
-        ui.display = Display::from_physical(size, 1.0);
-        ui
-    }
-
     impl Ui {
+        /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
+        pub fn for_test() -> Self {
+            Self::default()
+        }
+
+        /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).
+        pub fn for_test_text() -> Self {
+            thread_local! {
+                static SHARED: TextShaper = TextShaper::with_bundled_fonts();
+            }
+            Self::new(SHARED.with(|c| c.clone()), FrameArenaHandle::default())
+        }
+
+        /// `Ui` pre-stamped with display dimensions; no frame driven yet.
+        pub fn for_test_at(size: UVec2) -> Self {
+            let mut ui = Self::for_test();
+            ui.display = Display::from_physical(size, 1.0);
+            ui
+        }
+
+        /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
+        pub fn for_test_at_text(size: UVec2) -> Self {
+            let mut ui = Self::for_test_text();
+            ui.display = Display::from_physical(size, 1.0);
+            ui
+        }
+
         /// One frame at `size`, time frozen at zero.
         pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             let display = Display::from_physical(size, 1.0);

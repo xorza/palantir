@@ -2,7 +2,6 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::test_support::new_ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -21,7 +20,7 @@ fn build_focusable_leaf(ui: &mut Ui) {
 
 #[test]
 fn focused_reflects_focused_id_synchronously() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_focusable_leaf);
     assert!(!ui.response_for(focusable_id()).focused);
 
@@ -37,7 +36,7 @@ fn focused_reflects_focused_id_synchronously() {
 
 #[test]
 fn disabled_reflects_cascaded_ancestor_flag() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack()
             .id_salt("parent")
@@ -63,7 +62,7 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 
 #[test]
 fn disabled_false_when_chain_clean() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("parent").show(ui, |ui| {
             Frame::new()

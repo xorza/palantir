@@ -7,7 +7,6 @@ use crate::input::keyboard::Key;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::test_support::new_ui;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::panel::Panel;
@@ -50,7 +49,7 @@ fn menu_open(ui: &Ui) -> bool {
 
 #[test]
 fn secondary_click_opens_menu_at_pointer() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -65,7 +64,7 @@ fn secondary_click_opens_menu_at_pointer() {
 
 #[test]
 fn outside_click_dismisses_menu() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -85,7 +84,7 @@ fn outside_click_dismisses_menu() {
 
 #[test]
 fn item_click_dismisses_and_reports_clicked() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -113,7 +112,7 @@ fn item_click_dismisses_and_reports_clicked() {
 /// mirroring native menu behaviour. Disabled items don't intercept.
 #[test]
 fn shortcut_press_fires_item_and_dismisses() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -150,7 +149,7 @@ fn shortcut_press_fires_item_and_dismisses() {
 
 #[test]
 fn escape_dismisses_menu() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -177,7 +176,7 @@ fn escape_dismisses_menu() {
 /// container.
 #[test]
 fn menu_body_width_does_not_span_surface() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));

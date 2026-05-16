@@ -5,7 +5,6 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::ui::test_support::new_ui;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -40,7 +39,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
         ),
     ];
     for (label, count, expected) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut kids = Vec::new();
         let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
@@ -70,7 +69,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
 /// its line (no infinite recursion, no wrapping inside the child).
 #[test]
 fn wrap_hstack_oversize_child_owns_its_line() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut kids = Vec::new();
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
@@ -100,7 +99,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 /// lines start at the previous line's bottom + `line_gap`.
 #[test]
 fn wrap_hstack_line_height_is_max_child_cross() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut kids = Vec::new();
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
@@ -139,7 +138,7 @@ fn wrap_hstack_justify_per_line() {
         ("space_around", Justify::SpaceAround, [17.5, 122.5]),
     ];
     for (label, justify, expected) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut kids = Vec::new();
         let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
@@ -173,7 +172,7 @@ fn wrap_hstack_justify_per_line() {
 /// bottom, wrap to new column on the right.
 #[test]
 fn wrap_vstack_wraps_columns_when_main_overflows() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut kids = Vec::new();
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_vstack()
@@ -209,7 +208,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 /// WrapHStack (or some ancestor) must commit a finite main size.
 #[test]
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut wrap_node = None;
     let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         wrap_node = Some(
@@ -238,7 +237,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 /// height (CSS `align-items: stretch` default). Mirrors Stack cross.
 #[test]
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut kids = Vec::new();
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
@@ -280,7 +279,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
 /// stale values from prior frames.
 #[test]
 fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut kids = Vec::new();
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
@@ -318,7 +317,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 /// test rather than introduce the new behavior silently.
 #[test]
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut filler_node = None;
     let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
@@ -356,7 +355,7 @@ fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
 /// arrange takes a different slot than the outer.
 #[test]
 fn nested_wrap_hstacks_do_not_trample_scratch() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut inner_a = None;
     let mut inner_b = None;
     let mut outer_b = None;
@@ -448,7 +447,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut ui = crate::ui::test_support::new_ui();
+        let mut ui = crate::Ui::for_test();
         let mut wrap_kids = None;
         ui.run_at(UVec2::new(surface_w, 600), |ui| {
             wrap_kids = Some(build(ui));

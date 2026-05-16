@@ -6,7 +6,6 @@ use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::test_support::new_ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -34,7 +33,7 @@ fn read_state(ui: &mut Ui) -> ScrollState {
 
 #[test]
 fn scroll_state_records_viewport_and_content_after_arrange() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
     let row = read_state(&mut ui);
     assert_eq!(row.viewport.h, 200.0);
@@ -59,7 +58,7 @@ fn wheel_delta_advances_offset_with_clamp() {
         ("non_overflowing_stays_zero", 300.0, 100.0, &[500.0], 0.0),
     ];
     for (label, viewport_h, content_h, pushes, expected) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.run_at_acked(SURFACE, |ui| build(ui, *viewport_h, *content_h));
         ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         for wheel_y in *pushes {
@@ -73,7 +72,7 @@ fn wheel_delta_advances_offset_with_clamp() {
 
 #[test]
 fn horizontal_scroll_pans_only_x() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build_h = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
@@ -99,7 +98,7 @@ fn horizontal_scroll_pans_only_x() {
 
 #[test]
 fn both_axis_scroll_pans_both_axes() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build_xy = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::both()
@@ -161,7 +160,7 @@ fn scroll_records_content_extent() {
         ("empty_records_zero", Axis::Empty, "empty", Size::ZERO),
     ];
     for (label, axis, scroll_key, expected) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let surface = match axis {
             Axis::V | Axis::Empty => UVec2::new(400, 600),
             Axis::H => UVec2::new(800, 200),
@@ -256,7 +255,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
         });
     };
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at_acked(surface, build);
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let after_first = *ui.scroll_state(scroll_id);
@@ -331,7 +330,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
             pointer,
             pinches,
         } = *case;
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack()
                 .id_salt("root")
@@ -437,7 +436,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
 fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
     use crate::widgets::scroll::{ZoomConfig, ZoomPivot};
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::both()
@@ -493,7 +492,6 @@ mod bars {
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
     use crate::primitives::widget_id::WidgetId;
-    use crate::ui::test_support::new_ui;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
@@ -615,7 +613,7 @@ mod bars {
     /// Build a scroll over two frames so the second frame's record
     /// settles `ScrollState` before the bar-emit check.
     fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
         let scroll_id = WidgetId::from_hash("scroll");
@@ -723,7 +721,7 @@ mod bars {
     #[test]
     fn scroll_with_bars_composes_through_warm_cache() {
         let surface = UVec2::new(400, 300);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
@@ -748,7 +746,7 @@ mod bars {
     #[test]
     fn nested_clipped_scrolls_compose_through_warm_cache() {
         let surface = UVec2::new(800, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::hstack()
                 .id_salt("root")
@@ -794,7 +792,7 @@ mod bars {
     fn vertical_overflow_reserves_bar_width_on_inner() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
@@ -823,7 +821,7 @@ mod bars {
     fn user_padding_is_preserved_when_bar_reserves() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::vertical()
@@ -900,7 +898,7 @@ mod bars {
             });
         };
 
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.run_at_acked(surface, |ui| build(ui, 800.0));
         ui.run_at_acked(surface, |ui| build(ui, 800.0));
         assert_eq!(
@@ -923,7 +921,7 @@ mod bars {
     #[test]
     fn zoomed_content_shrinks_thumb_proportionally() {
         let surface = UVec2::new(400, 400);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
@@ -1041,7 +1039,7 @@ mod bars {
     fn cold_mount_overflow_paints_with_gutter_on_first_frame() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let theme = theme();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let scene = |ui: &mut Ui| {
@@ -1080,7 +1078,7 @@ mod bars {
     fn cold_mount_bar_geometry_matches_frame_two() {
         use crate::primitives::rect::Rect;
         let surface = UVec2::new(400, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let scene = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 Scroll::both()
@@ -1126,7 +1124,7 @@ mod bars {
     fn cold_mount_fits_paints_without_gutter_on_first_frame() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let scene = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -1158,7 +1156,7 @@ mod bars {
 #[test]
 fn drag_thumb_pans_proportionally() {
     use crate::input::pointer::PointerButton;
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()
@@ -1219,7 +1217,7 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
         ("horizontal", AxisCase::H, "hscroll", "__htrack", 200.0),
     ];
     for (label, axis, scroll_key, track_suffix, page_step) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let build_axis = |ui: &mut Ui| match axis {
             AxisCase::V => build(ui, 200.0, 800.0),
             AxisCase::H => {
@@ -1289,7 +1287,7 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // under ctrl still zooms — pre-split it did, and regressing that
     // breaks touchpad pinch-via-modifier. With line_px = 19.2 (default
     // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build_zoom = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::both()
@@ -1336,7 +1334,7 @@ fn wheel_zoom_step_is_font_independent() {
     // font-scaled denominator on the zoom side fails loudly.
     let mut last_zoom: Option<f32> = None;
     for font_size in [12.0_f32, 16.0, 24.0] {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.theme.text = ui.theme.text.with_font_size(font_size);
         let build_zoom = |ui: &mut Ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -1385,7 +1383,7 @@ fn line_wheel_step_scales_with_theme_font_size() {
         ("larger_24px_text", 24.0, 1.5, 36.0),
     ];
     for (label, font_size, line_height_mult, expected_px) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.theme.text = ui
             .theme
             .text

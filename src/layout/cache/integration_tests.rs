@@ -15,8 +15,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::ui::test_support::new_ui;
-use crate::ui::test_support::ui_with_text;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -193,7 +191,7 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut ui = ui_with_text(UVec2::new(800, 600));
+        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
             &mut ui,
             UVec2::new(800, 600),
@@ -274,7 +272,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             });
     };
 
-    let mut ui = ui_with_text(UVec2::new(800, 600));
+    let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
     ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
     let cold = ui.encode_cmds();
 
@@ -334,7 +332,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             });
     };
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         let mut warm_nodes = Vec::new();

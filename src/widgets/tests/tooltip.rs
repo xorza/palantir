@@ -15,7 +15,6 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::FrameStamp;
-use crate::ui::test_support::new_ui;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{Tooltip, TooltipState, place_anchor};
@@ -80,7 +79,7 @@ fn place_anchor_clamps_horizontally() {
 /// `time >= delay`, then visible.
 #[test]
 fn delay_gates_visibility() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
     let mut captured: Option<WidgetId> = None;
