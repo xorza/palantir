@@ -20,6 +20,7 @@
 
 use crate::forest::rollups::NodeHash;
 use crate::layout::types::align::HAlign;
+use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -36,6 +37,13 @@ pub(crate) mod cosmic;
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
+
+/// Output buffer for [`TextShaper::selection_rects`]. Stack-allocated
+/// for selections up to 16 visual lines; spills to heap for larger.
+/// 16 covers the typical use case (single-line input, few-line wrapped
+/// label) without alloc; rare multi-line editor selections beyond
+/// that pay one heap alloc per paint.
+pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the
@@ -413,12 +421,13 @@ impl TextShaper {
         .unwrap_or_else(|| mono_byte_at_x(text, x, font_size_px))
     }
 
-    /// Iterate selection rectangles for `range` against the laid-out
-    /// `text`. Calls `out` once per visual line that intersects the
-    /// range with `(x, y_top, width, height)` — the caller chooses
-    /// how to render them. Multi-line aware via cosmic `LayoutRun::
-    /// highlight`. Mono / empty-text path emits one 1D rect spanning
-    /// the byte range (no line breaks modelled).
+    /// Append selection rectangles for `range` against the laid-out
+    /// `text` to `out` (cleared on entry). One [`Rect`] per visual
+    /// line that intersects the range. Multi-line aware via cosmic
+    /// `LayoutRun::highlight`; mono / empty-text path emits one rect
+    /// spanning the byte range. Caller applies any padding / offset /
+    /// scroll math when consuming. Stack-fast for typical line
+    /// counts; oversized selections spill to heap (rare, user-driven).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn selection_rects(
         &self,
@@ -429,8 +438,9 @@ impl TextShaper {
         max_width_px: Option<f32>,
         family: FontFamily,
         halign: HAlign,
-        mut out: impl FnMut(f32, f32, f32, f32),
+        out: &mut SelectionRects,
     ) {
+        out.clear();
         if range.is_empty() {
             return;
         }
@@ -447,7 +457,7 @@ impl TextShaper {
                     let end = cursor_from_byte(text, range.end);
                     for run in buffer.layout_runs() {
                         if let Some((x, w)) = run.highlight(start, end) {
-                            out(x, run.line_top, w, run.line_height);
+                            out.push(Rect::new(x, run.line_top, w, run.line_height));
                         }
                     }
                 },
@@ -456,7 +466,7 @@ impl TextShaper {
         if !cosmic_ran {
             let x0 = caret_x_mono_single_line(text, range.start, font_size_px);
             let x1 = caret_x_mono_single_line(text, range.end, font_size_px);
-            out(x0, 0.0, x1 - x0, line_height_px);
+            out.push(Rect::new(x0, 0.0, x1 - x0, line_height_px));
         }
     }
 
