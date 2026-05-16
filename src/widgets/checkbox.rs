@@ -1,14 +1,8 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::Color;
-use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
-use crate::primitives::shadow::Shadow;
-use crate::primitives::stroke::Stroke;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
@@ -22,16 +16,15 @@ use glam::Vec2;
 /// derive from the outer widget id via `WidgetId::with`, so they stay
 /// stable across sibling insertions (no reliance on `SeenIds`'
 /// occurrence-counter disambiguation).
+///
+/// Visuals come from `theme.checkbox` ([`crate::ToggleTheme`]) —
+/// chrome via `unchecked.pick(state)` / `checked.pick(state)`, check
+/// glyph color from `indicator`, geometry from `box_size` etc.
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
     label: InternedStr<'static>,
 }
-
-const BOX_SIZE: f32 = 16.0;
-const BOX_RADIUS: f32 = 3.0;
-const ROW_GAP: f32 = 8.0;
-const CHECK_STROKE: f32 = 2.0;
 
 impl<'a> Checkbox<'a> {
     #[track_caller]
@@ -43,8 +36,6 @@ impl<'a> Checkbox<'a> {
             value,
             label: InternedStr::default(),
         }
-        .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
     }
 
     pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
@@ -54,7 +45,8 @@ impl<'a> Checkbox<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let mut state = ui.response_for(id);
+        let raw_state = ui.response_for(id);
+        let mut state = raw_state;
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // disabled checkbox doesn't toggle or paint hovered on its
         // first frame. Mirrors Button.
@@ -64,26 +56,40 @@ impl<'a> Checkbox<'a> {
         }
         let checked = *self.value;
 
-        let CheckboxVisuals {
-            box_chrome,
-            check_color,
-            label_color,
-        } = visuals(ui, state, checked);
+        let theme = &ui.theme.checkbox;
+        let look_target = *theme.pick(state, checked);
+        let row_gap = theme.row_gap;
+        let box_size = theme.box_size;
+        let indicator_stroke = theme.indicator_stroke;
+        let anim = theme.anim;
+        let indicator = theme.indicator_color(state);
         let text_style = ui.theme.text;
+        let label_color = if state.disabled {
+            text_style.color.with_alpha(0.45)
+        } else {
+            text_style.color
+        };
+
+        let look = look_target.animate(ui, id, text_style, anim);
+        let chrome = look.background;
         let label = self.label;
         let line_height_px = text_style.line_height_for(text_style.font_size_px);
 
-        ui.node(self.element, |ui| {
+        let mut element = self.element;
+        element.set_gap(row_gap);
+        element.set_child_align(Align::v(VAlign::Center));
+
+        ui.node(element, |ui| {
             let mut box_elem = Element::new(LayoutMode::Leaf);
             box_elem.set_id(id.with("box"));
-            box_elem.size = (Sizing::Fixed(BOX_SIZE), Sizing::Fixed(BOX_SIZE)).into();
-            ui.node_with_chrome(box_elem, box_chrome, |ui| {
-                if let Some(c) = check_color {
-                    let pts = CHECK_PTS;
+            box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
+            ui.node_with_chrome(box_elem, chrome, |ui| {
+                if checked {
+                    let pts = check_pts(box_size);
                     ui.add_shape(Shape::Polyline {
                         points: &pts,
-                        colors: PolylineColors::Single(c),
-                        width: CHECK_STROKE,
+                        colors: PolylineColors::Single(indicator),
+                        width: indicator_stroke,
                         cap: LineCap::Round,
                         join: LineJoin::Round,
                     });
@@ -108,7 +114,10 @@ impl<'a> Checkbox<'a> {
             }
         });
 
-        Response { id, state }
+        Response {
+            id,
+            state: raw_state,
+        }
     }
 }
 
@@ -118,63 +127,13 @@ impl Configure for Checkbox<'_> {
     }
 }
 
-// Three-point checkmark in box-local coords. Hand-tuned for the
-// `BOX_SIZE = 16.0` square; the const-assert pins the coupling.
-const _: () = assert!(BOX_SIZE == 16.0);
-const CHECK_PTS: [Vec2; 3] = [
-    Vec2::new(3.5, 8.5),
-    Vec2::new(7.0, 12.0),
-    Vec2::new(12.5, 4.5),
-];
-
-struct CheckboxVisuals {
-    box_chrome: Background,
-    /// `Some` only when the box should paint a checkmark.
-    check_color: Option<Color>,
-    label_color: Color,
-}
-
-fn visuals(ui: &Ui, state: ResponseState, checked: bool) -> CheckboxVisuals {
-    // Reach into `theme.button` for state-driven fills so a checkbox
-    // visually matches buttons side-by-side without a dedicated theme.
-    // The button theme's per-state *text* overrides aren't appropriate
-    // for an unrelated widget; foreground comes from `theme.text`.
-    // Promote to a `CheckboxTheme` when the framework grows one.
-    let base = ui.theme.button.pick(state).background.unwrap_or_default();
-    let radius = Corners::all(BOX_RADIUS);
-    let fg = if state.disabled {
-        ui.theme.text.color.with_alpha(0.45)
-    } else {
-        ui.theme.text.color
-    };
-
-    if checked {
-        // Filled box paints with the foreground; the checkmark uses
-        // `window_clear` so it reads as "punched out" against the row.
-        CheckboxVisuals {
-            box_chrome: Background {
-                fill: fg.into(),
-                stroke: Stroke::ZERO,
-                radius,
-                shadow: Shadow::NONE,
-            },
-            check_color: Some(ui.theme.window_clear),
-            label_color: fg,
-        }
-    } else {
-        CheckboxVisuals {
-            box_chrome: Background {
-                fill: base.fill,
-                stroke: if base.stroke.is_noop() {
-                    Stroke::solid(ui.theme.text.color.with_alpha(0.35), 1.0)
-                } else {
-                    base.stroke
-                },
-                radius,
-                shadow: Shadow::NONE,
-            },
-            check_color: None,
-            label_color: fg,
-        }
-    }
+// Three-point checkmark normalized to the box square. Coords were
+// hand-tuned at 16 px and scale linearly with `box_size`.
+fn check_pts(box_size: f32) -> [Vec2; 3] {
+    let s = box_size / 16.0;
+    [
+        Vec2::new(3.5 * s, 8.5 * s),
+        Vec2::new(7.0 * s, 12.0 * s),
+        Vec2::new(12.5 * s, 4.5 * s),
+    ]
 }

@@ -1,14 +1,10 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
-use crate::primitives::background::Background;
-use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::rect::Rect;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
@@ -23,17 +19,15 @@ use crate::widgets::Response;
 /// no `Clone` requirement.
 ///
 /// Layout matches [`crate::Checkbox`]: HStack [pip, label], one
-/// `Sense::CLICK` hit target spanning the whole row.
+/// `Sense::CLICK` hit target spanning the whole row. Visuals come
+/// from `theme.radio` ([`crate::ToggleTheme`]); the pip paints as a
+/// pill (`box_size * 0.5` radius) regardless of `box_radius`.
 pub struct RadioButton<'a, T: PartialEq> {
     element: Element,
     current: &'a mut T,
     value: T,
     label: InternedStr<'static>,
 }
-
-const PIP_SIZE: f32 = 16.0;
-const DOT_INSET: f32 = 4.0;
-const ROW_GAP: f32 = 8.0;
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
@@ -46,8 +40,6 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             value,
             label: InternedStr::default(),
         }
-        .gap(ROW_GAP)
-        .child_align(Align::v(VAlign::Center))
     }
 
     pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
@@ -57,7 +49,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let mut state = ui.response_for(id);
+        let raw_state = ui.response_for(id);
+        let mut state = raw_state;
         state.disabled |= self.element.is_disabled();
         let selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
@@ -66,27 +59,45 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             *self.current = self.value;
         }
 
-        let RadioVisuals {
-            pip_chrome,
-            dot_color,
-            label_color,
-        } = visuals(ui, state, selected);
+        let theme = &ui.theme.radio;
+        let look_target = *theme.pick(state, selected);
+        let row_gap = theme.row_gap;
+        let pip_size = theme.box_size;
+        let dot_inset = theme.indicator_inset;
+        let anim = theme.anim;
+        let indicator = theme.indicator_color(state);
         let text_style = ui.theme.text;
+        let label_color = if state.disabled {
+            text_style.color.with_alpha(0.45)
+        } else {
+            text_style.color
+        };
+
+        // Force pill radius regardless of any look's stored radius so a
+        // re-themed `theme.radio.checked.normal.background.radius`
+        // can't accidentally square-corner the pip.
+        let mut look = look_target.animate(ui, id, text_style, anim);
+        look.background.radius = Corners::all(pip_size * 0.5);
+        let chrome = look.background;
         let label = self.label;
         let line_height_px = text_style.line_height_for(text_style.font_size_px);
 
-        ui.node(self.element, |ui| {
+        let mut element = self.element;
+        element.set_gap(row_gap);
+        element.set_child_align(Align::v(VAlign::Center));
+
+        ui.node(element, |ui| {
             let mut pip_elem = Element::new(LayoutMode::Leaf);
             pip_elem.set_id(id.with("pip"));
-            pip_elem.size = (Sizing::Fixed(PIP_SIZE), Sizing::Fixed(PIP_SIZE)).into();
-            ui.node_with_chrome(pip_elem, pip_chrome, |ui| {
-                if let Some(c) = dot_color {
-                    let dot_size = PIP_SIZE - 2.0 * DOT_INSET;
-                    let dot = Rect::new(DOT_INSET, DOT_INSET, dot_size, dot_size);
+            pip_elem.size = (Sizing::Fixed(pip_size), Sizing::Fixed(pip_size)).into();
+            ui.node_with_chrome(pip_elem, chrome, |ui| {
+                if selected {
+                    let dot_size = pip_size - 2.0 * dot_inset;
+                    let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(dot),
                         radius: Corners::all(dot_size * 0.5),
-                        fill: c.into(),
+                        fill: indicator.into(),
                         stroke: Stroke::ZERO,
                     });
                 }
@@ -110,42 +121,15 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             }
         });
 
-        Response { id, state }
+        Response {
+            id,
+            state: raw_state,
+        }
     }
 }
 
 impl<T: PartialEq> Configure for RadioButton<'_, T> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-struct RadioVisuals {
-    pip_chrome: Background,
-    /// `Some` only when the pip should paint the inner dot.
-    dot_color: Option<Color>,
-    label_color: Color,
-}
-
-fn visuals(ui: &Ui, state: ResponseState, selected: bool) -> RadioVisuals {
-    let base = ui.theme.button.pick(state).background.unwrap_or_default();
-    let fg = if state.disabled {
-        ui.theme.text.color.with_alpha(0.45)
-    } else {
-        ui.theme.text.color
-    };
-    RadioVisuals {
-        pip_chrome: Background {
-            fill: base.fill,
-            stroke: if base.stroke.is_noop() {
-                Stroke::solid(ui.theme.text.color.with_alpha(0.35), 1.0)
-            } else {
-                base.stroke
-            },
-            radius: Corners::all(PIP_SIZE * 0.5),
-            shadow: Shadow::NONE,
-        },
-        dot_color: selected.then_some(fg),
-        label_color: fg,
     }
 }
