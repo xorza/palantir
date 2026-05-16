@@ -9,7 +9,6 @@
 //! Self-contained: only `palantir::` items, no `crate::` references,
 //! so `#[path]` includes from `benches/` / `examples/` work.
 
-use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Color, Configure, Corners, Frame, Grid,
@@ -18,7 +17,7 @@ use palantir::{
 };
 use std::rc::Rc;
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build<T>(ui: &mut Ui<T>) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
