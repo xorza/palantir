@@ -221,7 +221,7 @@ impl Default for ScrollbarTheme {
         // muted-text gray rather than pure black.
         let thumb = |alpha: f32| {
             let m = palette::TEXT_MUTED;
-            Color::linear_rgba(m.r, m.g, m.b, alpha)
+            m.with_alpha(alpha)
         };
         Self {
             width: 8.0,
@@ -368,7 +368,7 @@ impl Default for TextEditTheme {
         let radius = Corners::all(4.0);
         // Palette BORDER is ~2% above SURFACE — invisible. Derive edge from TEXT_MUTED alpha.
         let m = palette::TEXT_MUTED;
-        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
+        let edge = m.with_alpha(0.18);
         let normal_bg = Background {
             fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::solid(edge, 1.0),
@@ -390,7 +390,7 @@ impl Default for TextEditTheme {
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
         let acc = palette::ACCENT;
-        let selection = Color::linear_rgba(acc.r, acc.g, acc.b, 0.25);
+        let selection = acc.with_alpha(0.25);
         Self {
             normal: WidgetLook {
                 background: Some(normal_bg),
@@ -454,7 +454,7 @@ impl Default for ButtonTheme {
         // historical 4 px radius is retained.
         // Resting state at ELEM_HOVER tier; soft TEXT_MUTED-alpha edge (palette BORDER is invisible).
         let m = palette::TEXT_MUTED;
-        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.18);
+        let edge = m.with_alpha(0.18);
         let bg = |fill: Color| -> Option<Background> {
             Some(Background {
                 fill: fill.into(),
@@ -564,14 +564,14 @@ impl MenuItemTheme {
 impl Default for ContextMenuTheme {
     fn default() -> Self {
         let m = palette::TEXT_MUTED;
-        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.22);
+        let edge = m.with_alpha(0.22);
         let panel = Background {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
             radius: Corners::all(6.0),
             shadow: Shadow::NONE,
         };
-        let separator = Color::linear_rgba(m.r, m.g, m.b, 0.18);
+        let separator = m.with_alpha(0.18);
         Self {
             panel,
             padding: Spacing::all(4.0),
@@ -637,7 +637,7 @@ pub struct TooltipTheme {
 impl Default for TooltipTheme {
     fn default() -> Self {
         let m = palette::TEXT_MUTED;
-        let edge = Color::linear_rgba(m.r, m.g, m.b, 0.22);
+        let edge = m.with_alpha(0.22);
         let panel = Background {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),

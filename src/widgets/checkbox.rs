@@ -1,9 +1,9 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
@@ -18,7 +18,10 @@ use glam::Vec2;
 /// the value — same pattern as egui. Clicking the row flips it.
 ///
 /// Layout: HStack [box, label]. The whole row is one hit target with
-/// `Sense::CLICK`; clicking anywhere on it toggles.
+/// `Sense::CLICK`; clicking anywhere on it toggles. Child node ids
+/// derive from the outer widget id via `WidgetId::with`, so they stay
+/// stable across sibling insertions (no reliance on `SeenIds`'
+/// occurrence-counter disambiguation).
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
@@ -35,13 +38,13 @@ impl<'a> Checkbox<'a> {
     pub fn new(value: &'a mut bool) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
         element.set_sense(Sense::CLICK);
-        let mut this = Self {
+        Self {
             element,
             value,
             label: InternedStr::default(),
-        };
-        this = this.gap(ROW_GAP).child_align(Align::v(VAlign::Center));
-        this
+        }
+        .gap(ROW_GAP)
+        .child_align(Align::v(VAlign::Center))
     }
 
     pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
@@ -51,33 +54,35 @@ impl<'a> Checkbox<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
-        let state = ui.response_for(id);
-        if state.clicked {
+        let mut state = ui.response_for(id);
+        // Cascade lags by a frame; OR self-disabled in so a freshly
+        // disabled checkbox doesn't toggle or paint hovered on its
+        // first frame. Mirrors Button.
+        state.disabled |= self.element.is_disabled();
+        if state.clicked && !state.disabled {
             *self.value = !*self.value;
         }
         let checked = *self.value;
-        let disabled = state.disabled;
-        let hovered = state.hovered && !disabled;
-        let pressed = state.pressed && !disabled;
 
-        let BoxVisuals {
-            chrome: box_chrome,
+        let CheckboxVisuals {
+            box_chrome,
             check_color,
-        } = box_visuals(ui, checked, hovered, pressed, disabled);
-        let label_color = label_color(ui, disabled);
+            label_color,
+        } = visuals(ui, state, checked);
         let text_style = ui.theme.text;
         let label = self.label;
+        let line_height_px = text_style.line_height_for(text_style.font_size_px);
 
         ui.node(self.element, |ui| {
-            // The box.
             let mut box_elem = Element::new(LayoutMode::Leaf);
+            box_elem.set_id(id.with("box"));
             box_elem.size = (Sizing::Fixed(BOX_SIZE), Sizing::Fixed(BOX_SIZE)).into();
             ui.node_with_chrome(box_elem, box_chrome, |ui| {
-                if checked {
-                    let pts = check_polyline_pts();
+                if let Some(c) = check_color {
+                    let pts = CHECK_PTS;
                     ui.add_shape(Shape::Polyline {
                         points: &pts,
-                        colors: PolylineColors::Single(check_color),
+                        colors: PolylineColors::Single(c),
                         width: CHECK_STROKE,
                         cap: LineCap::Round,
                         join: LineJoin::Round,
@@ -87,14 +92,14 @@ impl<'a> Checkbox<'a> {
 
             if !label.is_empty() {
                 let mut label_elem = Element::new(LayoutMode::Leaf);
-                label_elem.size = (Sizing::Hug, Sizing::Hug).into();
+                label_elem.set_id(id.with("label"));
                 ui.node(label_elem, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: label,
                         brush: label_color.into(),
                         font_size_px: text_style.font_size_px,
-                        line_height_px: text_style.line_height_for(text_style.font_size_px),
+                        line_height_px,
                         wrap: TextWrap::Single,
                         align: Align::v(VAlign::Center),
                         family: text_style.family,
@@ -113,98 +118,81 @@ impl Configure for Checkbox<'_> {
     }
 }
 
-fn check_polyline_pts() -> [Vec2; 3] {
-    // Three-point checkmark inside a `BOX_SIZE` square (16px), in
-    // node-local coords: down-stroke to the elbow, then up-stroke
-    // to the top-right.
-    [
-        Vec2::new(3.5, 8.5),
-        Vec2::new(7.0, 12.0),
-        Vec2::new(12.5, 4.5),
-    ]
+/// Three-point checkmark inside the `BOX_SIZE`x`BOX_SIZE` box, in
+/// node-local coords. Coupled to `BOX_SIZE = 16.0`; updating either
+/// requires updating both.
+const _: () = assert!(BOX_SIZE == 16.0);
+const CHECK_PTS: [Vec2; 3] = [
+    Vec2::new(3.5, 8.5),
+    Vec2::new(7.0, 12.0),
+    Vec2::new(12.5, 4.5),
+];
+
+struct CheckboxVisuals {
+    box_chrome: Background,
+    /// `Some` only when the box should paint a checkmark.
+    check_color: Option<Color>,
+    label_color: Color,
 }
 
-struct BoxVisuals {
-    chrome: Background,
-    /// Color to stroke the checkmark with (only used when `checked`).
-    check_color: Color,
-}
-
-fn box_visuals(ui: &Ui, checked: bool, hovered: bool, pressed: bool, disabled: bool) -> BoxVisuals {
-    // Derive colors from the button theme so a Checkbox visually fits
-    // next to a Button without a dedicated theme. Checked fills with
-    // text color (foreground accent on dark themes); unchecked uses
-    // the button's normal/hover/pressed/disabled fills.
+fn visuals(ui: &Ui, state: ResponseState, checked: bool) -> CheckboxVisuals {
+    // Reach into `theme.button` for state-driven fills so a checkbox
+    // visually matches buttons side-by-side without a dedicated theme.
+    // Label color comes from `theme.text` directly — the button theme's
+    // per-state text overrides aren't appropriate for an unrelated
+    // widget. Promote to a `CheckboxTheme` when the framework grows one.
     let btn = &ui.theme.button;
-    let state = if disabled {
+    let look = if state.disabled {
         &btn.disabled
-    } else if pressed {
+    } else if state.pressed {
         &btn.pressed
-    } else if hovered {
+    } else if state.hovered {
         &btn.hovered
     } else {
         &btn.normal
     };
-    let base = state.background.unwrap_or_default();
+    let base = look.background.unwrap_or_default();
     let radius = Corners::all(BOX_RADIUS);
-    let text_color = state.text.map(|t| t.color).unwrap_or(ui.theme.text.color);
+    let text_color = ui.theme.text.color;
+    let label_color = if state.disabled {
+        text_color.with_alpha(0.45)
+    } else {
+        text_color
+    };
 
     if checked {
-        // Fill with the text color; check stroke uses the panel bg
-        // so it reads as a "punch-out". Falls back to the window
-        // clear if no panel bg is set.
-        let fill = if disabled {
-            with_alpha(text_color, 0.55)
+        // Filled box with the foreground color so it reads as "on";
+        // the checkmark uses the theme's window-clear color for
+        // contrast (matches the surface the row sits on).
+        let fill = if state.disabled {
+            text_color.with_alpha(0.45)
         } else {
             text_color
         };
-        let punch = ui
-            .theme
-            .panel_background
-            .and_then(|bg| match bg.fill {
-                Brush::Solid(c) => Some(c),
-                _ => None,
-            })
-            .unwrap_or(ui.theme.window_clear);
-        BoxVisuals {
-            chrome: Background {
+        CheckboxVisuals {
+            box_chrome: Background {
                 fill: fill.into(),
-                stroke: base.stroke,
+                stroke: Stroke::ZERO,
                 radius,
                 shadow: Shadow::NONE,
             },
-            check_color: punch,
+            check_color: Some(ui.theme.window_clear),
+            label_color,
         }
     } else {
-        BoxVisuals {
-            chrome: Background {
+        CheckboxVisuals {
+            box_chrome: Background {
                 fill: base.fill,
                 stroke: if base.stroke.is_noop() {
-                    Stroke::solid(with_alpha(text_color, 0.35), 1.0)
+                    Stroke::solid(text_color.with_alpha(0.35), 1.0)
                 } else {
                     base.stroke
                 },
                 radius,
                 shadow: Shadow::NONE,
             },
-            check_color: text_color,
+            check_color: None,
+            label_color,
         }
     }
-}
-
-fn label_color(ui: &Ui, disabled: bool) -> Color {
-    if disabled {
-        ui.theme
-            .button
-            .disabled
-            .text
-            .map(|t| t.color)
-            .unwrap_or(ui.theme.text.color)
-    } else {
-        ui.theme.text.color
-    }
-}
-
-fn with_alpha(c: Color, a: f32) -> Color {
-    Color::linear_rgba(c.r, c.g, c.b, a)
 }
