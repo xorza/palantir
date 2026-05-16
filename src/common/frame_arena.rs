@@ -167,7 +167,7 @@ impl FrameArena {
     /// is returned alongside so the caller can stamp it into the
     /// `ShapeRecord` / `ChromeRow` and keep their `Hash` impls
     /// context-free (no need to thread the arena into hashing).
-    pub(crate) fn lower_brush(&self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
+    pub(crate) fn lower_brush(&self, brush: Brush, atlas: &GradientAtlas) -> LoweredBrush {
         self.0.borrow_mut().lower_brush_inner(brush, atlas)
     }
 
@@ -176,7 +176,10 @@ impl FrameArena {
     /// so chrome and shape paints share one pool.
     pub(crate) fn lower_background(&self, bg: Background, atlas: &GradientAtlas) -> ChromeRow {
         let mut a = self.0.borrow_mut();
-        let (fill, fill_grad_hash) = a.lower_brush_inner(bg.fill, atlas);
+        let LoweredBrush {
+            brush: fill,
+            hash: fill_grad_hash,
+        } = a.lower_brush_inner(bg.fill, atlas);
         ChromeRow {
             fill,
             stroke: ShapeStroke::from(bg.stroke),
@@ -260,10 +263,27 @@ impl FrameArena {
     }
 }
 
+/// Result of lowering a user-side `Brush`. `brush` is the storage form
+/// (`Solid` inline or `Gradient(id)` indexing into the arena's
+/// gradient pool); `hash` is the pre-computed content hash so the
+/// caller can stamp it into a `ShapeRecord` / `ChromeRow` without
+/// threading the arena into their `Hash` impls. `hash == 0` for
+/// `Solid` (no gradient payload to identify).
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct LoweredBrush {
+    pub(crate) brush: ShapeBrush,
+    pub(crate) hash: u64,
+}
+
 impl FrameArenaInner {
-    fn lower_brush_inner(&mut self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
+    fn lower_brush_inner(&mut self, brush: Brush, atlas: &GradientAtlas) -> LoweredBrush {
         let (kind, axis, stops, interp, hash) = match brush {
-            Brush::Solid(c) => return (ShapeBrush::Solid(c.into()), 0),
+            Brush::Solid(c) => {
+                return LoweredBrush {
+                    brush: ShapeBrush::Solid(c.into()),
+                    hash: 0,
+                };
+            }
             Brush::Linear(g) => {
                 let h = grad_hash(0, &g);
                 (FillKind::linear(g.spread), g.axis(), g.stops, g.interp, h)
@@ -280,7 +300,10 @@ impl FrameArenaInner {
         let row = atlas.register_stops(&stops, interp);
         let id = self.gradients.len() as u32;
         self.gradients.push(LoweredGradient { axis, row, kind });
-        (ShapeBrush::Gradient(id), hash)
+        LoweredBrush {
+            brush: ShapeBrush::Gradient(id),
+            hash,
+        }
     }
 
     fn lower_polyline_inner(

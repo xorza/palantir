@@ -104,13 +104,13 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
         return;
     }
     for record in &ui.forest.collisions {
-        for (layer, node) in [record.first, record.second] {
-            let rects = &ui.layout[layer].rect;
-            if node.index() >= rects.len() {
+        for ep in [record.first, record.second] {
+            let rects = &ui.layout[ep.layer].rect;
+            if ep.node.index() >= rects.len() {
                 continue;
             }
             out.draw_rect(
-                rects[node.index()],
+                rects[ep.node.index()],
                 Corners::ZERO,
                 BrushSource::Solid(ColorF16::TRANSPARENT),
                 COLLISION_OVERLAY_STROKE.into(),

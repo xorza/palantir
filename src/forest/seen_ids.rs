@@ -42,6 +42,18 @@ pub(crate) enum IdSource {
     Auto,
 }
 
+/// One collision endpoint — a node together with its originating
+/// layer. Both halves of a `CollisionRecord` (and the `first`
+/// occurrence carried back by `RecordOutcome::DisambiguatedExplicit`)
+/// are `Endpoint`s so the encoder can resolve each side's arranged
+/// rect without a tree scan, even when the two endpoints straddle a
+/// `push_layer` boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct Endpoint {
+    pub(crate) layer: Layer,
+    pub(crate) node: NodeId,
+}
+
 /// Result of [`SeenIds::record`]. The `Forest` reads this to decide
 /// whether to pair both colliding nodes for the debug overlay.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -51,10 +63,10 @@ pub(crate) enum RecordOutcome {
     /// Auto-source collision — silently disambiguated.
     DisambiguatedAuto,
     /// Explicit-source collision — disambiguated; carries the
-    /// first-occurrence node's `(Layer, NodeId)` so the `Forest` can
-    /// pair both colliding nodes for the overlay without a tree
-    /// scan, even when the two endpoints are in different layers.
-    DisambiguatedExplicit { first: (Layer, NodeId) },
+    /// first-occurrence endpoint so the `Forest` can pair both
+    /// colliding nodes for the overlay without a tree scan, even
+    /// when the two endpoints are in different layers.
+    DisambiguatedExplicit { first: Endpoint },
 }
 
 #[derive(Default)]
@@ -119,7 +131,11 @@ impl SeenIds {
                 RecordOutcome::Inserted
             }
             Entry::Occupied(o) => {
-                let first = *o.get();
+                let (first_layer, first_node) = *o.get();
+                let first = Endpoint {
+                    layer: first_layer,
+                    node: first_node,
+                };
                 let explicit = matches!(element.id_source(), IdSource::Explicit);
                 let counter = self.dup.entry(id).or_insert(0);
                 let disambiguated = loop {

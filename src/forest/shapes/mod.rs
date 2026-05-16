@@ -67,14 +67,14 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let (fill, fill_grad_hash) = arena.lower_brush(fill, atlas);
+                let lowered = arena.lower_brush(fill, atlas);
                 let stroke = ShapeStroke::from(stroke);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     radius,
-                    fill,
+                    fill: lowered.brush,
                     stroke,
-                    fill_grad_hash,
+                    fill_grad_hash: lowered.hash,
                 }
             }
             Shape::Line {

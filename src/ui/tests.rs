@@ -116,20 +116,20 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     );
     let pair = ui.forest.collisions[0];
     assert_eq!(
-        pair.first.0,
+        pair.first.layer,
         Layer::Main,
         "first occurrence should be in Main, got {:?}",
-        pair.first.0,
+        pair.first.layer,
     );
     assert_eq!(
-        pair.second.0,
+        pair.second.layer,
         Layer::Popup,
         "second occurrence should be in Popup, got {:?}",
-        pair.second.0,
+        pair.second.layer,
     );
     // Each endpoint's rect must come from its own layer's `LayerLayout`.
-    let main_rect = ui.layout[Layer::Main].rect[pair.first.1.index()];
-    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.1.index()];
+    let main_rect = ui.layout[Layer::Main].rect[pair.first.node.index()];
+    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.index()];
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.

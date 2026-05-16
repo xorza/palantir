@@ -346,6 +346,15 @@ impl Tree {
             "post_record called with {} node(s) still open — a widget builder forgot close_node",
             self.open_frames.len(),
         );
+        // Encoder indexes `paint_anims.by_shape[shape_idx]` directly,
+        // so `by_shape` must stay in lockstep with `shapes.records`.
+        // `Forest::add_shape` / `add_shape_animated` push to both in
+        // pairs; this guards against a future refactor desyncing them.
+        assert_eq!(
+            self.paint_anims.by_shape.len(),
+            self.shapes.records.len(),
+            "paint_anims.by_shape desynced from shapes.records",
+        );
         self.rollups.reset_for(self.records.len());
         self.compute_hashes();
     }
