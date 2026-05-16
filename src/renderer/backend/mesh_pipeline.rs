@@ -4,7 +4,9 @@
 //! transform+tint. The vertex stream is content-stable across frames;
 //! per-draw state lives in a parallel instance buffer.
 
-use super::pipeline_utils::grow_instance_buffer;
+use super::pipeline_utils::{
+    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
+};
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;
 
@@ -57,40 +59,23 @@ impl MeshPipeline {
             }],
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.mesh.pl"),
-            bind_group_layouts: &[Some(&bind_layout)],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.mesh.pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.mesh.pl", &[Some(&bind_layout)]);
+        let pipeline = build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.mesh.pipeline",
+                shader: &shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
             },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        );
 
         let vertex_capacity = 256;
         let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -136,40 +121,23 @@ impl MeshPipeline {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.mesh.pl.stencil"),
-            bind_group_layouts: &[Some(&self.bind_layout)],
-            immediate_size: 0,
-        });
-        let pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.mesh.pipeline.stencil_test"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &self.shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &self.shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.color_format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
+        let layout =
+            build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[Some(&self.bind_layout)]);
+        self.stencil_test = Some(build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.mesh.pipeline.stencil_test",
+                shader: &self.shader,
+                layout: &layout,
+                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
+                color_format: self.color_format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: Some(super::stencil::stencil_test_state()),
             },
-            depth_stencil: Some(super::stencil::stencil_test_state()),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-        self.stencil_test = Some(pipe);
+        ));
     }
 
     #[profiling::function]

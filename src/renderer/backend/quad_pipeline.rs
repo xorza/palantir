@@ -2,7 +2,9 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use super::pipeline_utils::grow_instance_buffer;
+use super::pipeline_utils::{
+    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
+};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -202,56 +204,23 @@ impl QuadPipeline {
             ],
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.quad.pl"),
-            bind_group_layouts: &[Some(&bind_layout)],
-            immediate_size: 0,
-        });
-
-        let instance_layout = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Quad>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![
-                0 => Float32x2,   // pos
-                1 => Float32x2,   // size
-                2 => Uint32x2,    // fill (packed 4x f16: r|g|b|a)
-                3 => Uint32x2,    // radius (packed 4x f16: tl|tr|br|bl)
-                4 => Uint32x2,    // stroke.color (packed 4x f16)
-                5 => Float32,     // stroke.width
-                6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
-                7 => Uint32,      // fill_lut_row
-                8 => Uint32x2,    // fill_axis (packed 4x f16: lane0|lane1|lane2|lane3)
-            ],
-        };
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.quad.pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[instance_layout],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.quad.pl", &[Some(&bind_layout)]);
+        let pipeline = build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.quad.pipeline",
+                shader: &shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[quad_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
             },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        );
 
         let instance_capacity = 256;
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -332,62 +301,10 @@ impl QuadPipeline {
     }
 
     fn build_stencil_pipelines(&self, device: &wgpu::Device) -> StencilPipelines {
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.quad.pl.stencil"),
-            bind_group_layouts: &[Some(&self.bind_layout)],
-            immediate_size: 0,
-        });
-        let instance_layout = wgpu::VertexBufferLayout {
-            array_stride: std::mem::size_of::<Quad>() as u64,
-            step_mode: wgpu::VertexStepMode::Instance,
-            attributes: &wgpu::vertex_attr_array![
-                0 => Float32x2,
-                1 => Float32x2,
-                2 => Uint32x2,
-                3 => Uint32x2,
-                4 => Uint32x2,
-                5 => Float32,
-                6 => Uint32,
-                7 => Uint32,
-                8 => Uint32x2,
-            ],
-        };
-
-        let build = |label: &'static str,
-                     fragment_entry: &'static str,
-                     color_writes: wgpu::ColorWrites,
-                     blend: Option<wgpu::BlendState>,
-                     depth_stencil: wgpu::DepthStencilState|
-         -> wgpu::RenderPipeline {
-            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-                label: Some(label),
-                layout: Some(&layout),
-                vertex: wgpu::VertexState {
-                    module: &self.shader,
-                    entry_point: Some("vs"),
-                    compilation_options: Default::default(),
-                    buffers: std::slice::from_ref(&instance_layout),
-                },
-                fragment: Some(wgpu::FragmentState {
-                    module: &self.shader,
-                    entry_point: Some(fragment_entry),
-                    compilation_options: Default::default(),
-                    targets: &[Some(wgpu::ColorTargetState {
-                        format: self.color_format,
-                        blend,
-                        write_mask: color_writes,
-                    })],
-                }),
-                primitive: wgpu::PrimitiveState {
-                    topology: wgpu::PrimitiveTopology::TriangleStrip,
-                    ..Default::default()
-                },
-                depth_stencil: Some(depth_stencil),
-                multisample: wgpu::MultisampleState::default(),
-                multiview_mask: None,
-                cache: None,
-            })
-        };
+        let layout =
+            build_pipeline_layout(device, "palantir.quad.pl.stencil", &[Some(&self.bind_layout)]);
+        let instance = quad_instance_layout();
+        let vertex_buffers = std::slice::from_ref(&instance);
 
         // Mask-write: stencil Replace at every pixel the SDF passes
         // (`fs_mask` discards outside). Color writes off, blend inert.
@@ -397,33 +314,50 @@ impl QuadPipeline {
             depth_fail_op: wgpu::StencilOperation::Keep,
             pass_op: wgpu::StencilOperation::Replace,
         };
-        let mask_write = build(
-            "palantir.quad.pipeline.mask",
-            "fs_mask",
-            wgpu::ColorWrites::empty(),
-            None,
-            wgpu::DepthStencilState {
-                format: super::stencil::STENCIL_FORMAT,
-                depth_write_enabled: Some(false),
-                depth_compare: Some(wgpu::CompareFunction::Always),
-                stencil: wgpu::StencilState {
-                    front: mask_face,
-                    back: mask_face,
-                    read_mask: 0xff,
-                    write_mask: 0xff,
-                },
-                bias: wgpu::DepthBiasState::default(),
+        let mask_write = build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.quad.pipeline.mask",
+                shader: &self.shader,
+                layout: &layout,
+                vertex_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_format: self.color_format,
+                fragment_entry: "fs_mask",
+                color_writes: wgpu::ColorWrites::empty(),
+                blend: None,
+                depth_stencil: Some(wgpu::DepthStencilState {
+                    format: super::stencil::STENCIL_FORMAT,
+                    depth_write_enabled: Some(false),
+                    depth_compare: Some(wgpu::CompareFunction::Always),
+                    stencil: wgpu::StencilState {
+                        front: mask_face,
+                        back: mask_face,
+                        read_mask: 0xff,
+                        write_mask: 0xff,
+                    },
+                    bias: wgpu::DepthBiasState::default(),
+                }),
             },
         );
 
         // Stencil-test: same `fs` as the no-stencil pipeline, plus the
-        // shared `stencil_test_state` so text and quads can't drift.
-        let stencil_test = build(
-            "palantir.quad.pipeline.stencil_test",
-            "fs",
-            wgpu::ColorWrites::ALL,
-            Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-            super::stencil::stencil_test_state(),
+        // shared `stencil_test_state` so the four stencil-test
+        // pipelines can't drift.
+        let stencil_test = build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.quad.pipeline.stencil_test",
+                shader: &self.shader,
+                layout: &layout,
+                vertex_buffers,
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_format: self.color_format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: Some(super::stencil::stencil_test_state()),
+            },
         );
 
         StencilPipelines {
@@ -614,5 +548,25 @@ impl QuadPipeline {
             stroke_width: 0.0,
             ..Default::default()
         }
+    }
+}
+
+const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![
+    0 => Float32x2,   // pos
+    1 => Float32x2,   // size
+    2 => Uint32x2,    // fill (packed 4x f16: r|g|b|a)
+    3 => Uint32x2,    // radius (packed 4x f16: tl|tr|br|bl)
+    4 => Uint32x2,    // stroke.color (packed 4x f16)
+    5 => Float32,     // stroke.width
+    6 => Uint32,      // fill_kind (low byte: kind, bits 8..16: spread)
+    7 => Uint32,      // fill_lut_row
+    8 => Uint32x2,    // fill_axis (packed 4x f16: lane0|lane1|lane2|lane3)
+];
+
+fn quad_instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<Quad>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &QUAD_INSTANCE_ATTRS,
     }
 }
