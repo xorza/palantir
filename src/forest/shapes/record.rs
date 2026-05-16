@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
+use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::image::{ImageFit, ImageHandle};
@@ -8,6 +8,8 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
+use crate::renderer::gradient_atlas::LutRow;
+use crate::renderer::quad::FillKind;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
@@ -204,42 +206,19 @@ impl std::hash::Hash for LoweredShadow {
     }
 }
 
-/// Gradient variant stored in the per-frame arena. Same three shapes
-/// as `Brush::{Linear,Radial,Conic}` — kept as an enum (rather than
-/// three separate arenas) so a single `GradientId` indexes any kind
-/// and downstream consumers (`pack_brush`, atlas registration) branch
-/// on the variant.
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum GradientPayload {
-    Linear(LinearGradient),
-    Radial(RadialGradient),
-    Conic(ConicGradient),
-}
-
-impl GradientPayload {
-    /// Stable content hash for cache identity. Calls each gradient's
-    /// own `Hash` impl (`canon_bits` on the f32 fields), so two frames
-    /// with identical gradient authoring inputs produce the same hash
-    /// even though their `GradientId`s differ across frames.
-    pub(crate) fn content_hash(&self) -> u64 {
-        use crate::common::hash::Hasher as FxHasher;
-        let mut h = FxHasher::new();
-        match self {
-            GradientPayload::Linear(g) => {
-                h.write_u8(0);
-                g.hash(&mut h);
-            }
-            GradientPayload::Radial(g) => {
-                h.write_u8(1);
-                g.hash(&mut h);
-            }
-            GradientPayload::Conic(g) => {
-                h.write_u8(2);
-                g.hash(&mut h);
-            }
-        }
-        h.finish()
-    }
+/// Pre-baked gradient stored in the per-frame arena. The stops have
+/// already been registered with the gradient atlas at lowering time
+/// (yielding `row`); the per-variant geometry has been packed into
+/// `axis`; `kind` carries both the variant tag and the spread mode.
+/// Downstream consumers (encoder, cmd buffer, composer) just pass
+/// these three fields through to the GPU `Quad` — no per-encode
+/// dispatch, no per-compose atlas lookup.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct LoweredGradient {
+    pub(crate) axis: FillAxis,
+    pub(crate) row: LutRow,
+    pub(crate) kind: FillKind,
 }
 
 /// Discriminants pinned via `#[repr(u8)]` + explicit `= N` so cache

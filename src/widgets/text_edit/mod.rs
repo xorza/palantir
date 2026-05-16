@@ -639,6 +639,7 @@ impl<'a> TextEdit<'a> {
                 let sel_color = theme.selection;
                 let forest = &mut ui.forest;
                 let arena_handle = ui.frame_arena.clone();
+                let gradients = ui.caches.gradients.clone();
                 ui.text.selection_rects(
                     text_ptr,
                     range,
@@ -661,6 +662,7 @@ impl<'a> TextEdit<'a> {
                                 stroke: Stroke::ZERO,
                             },
                             &mut arena_handle.borrow_mut(),
+                            &gradients,
                         );
                     },
                 );

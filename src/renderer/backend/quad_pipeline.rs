@@ -8,7 +8,7 @@ use super::pipeline_utils::{
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
-use crate::renderer::gradient_atlas::GradientCpuAtlas;
+use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
@@ -264,29 +264,28 @@ impl QuadPipeline {
     /// overhead. Called from `WgpuBackend::submit` before the render
     /// pass starts.
     #[profiling::function]
-    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &GradientCpuAtlas) {
-        let Some(bytes) = atlas.flush() else {
-            return;
-        };
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &self.gradient_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            bytes,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
-                rows_per_image: Some(GRADIENT_ATLAS_SIDE),
-            },
-            wgpu::Extent3d {
-                width: GRADIENT_ATLAS_SIDE,
-                height: GRADIENT_ATLAS_SIDE,
-                depth_or_array_layers: 1,
-            },
-        );
+    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &GradientAtlas) {
+        atlas.flush_with(|bytes| {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.gradient_texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytes,
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
+                    rows_per_image: Some(GRADIENT_ATLAS_SIDE),
+                },
+                wgpu::Extent3d {
+                    width: GRADIENT_ATLAS_SIDE,
+                    height: GRADIENT_ATLAS_SIDE,
+                    depth_or_array_layers: 1,
+                },
+            );
+        });
     }
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from

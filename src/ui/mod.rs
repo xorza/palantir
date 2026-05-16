@@ -26,7 +26,7 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::image::ImageRegistry;
+use crate::renderer::caches::RenderCaches;
 
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
@@ -227,10 +227,13 @@ pub struct Ui {
     ///
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArenaHandle,
-    /// Cross-frame image cache shared with the wgpu backend. Users call
-    /// `ui.images.register(key, image)` to stage bytes once, then
-    /// reference the returned handle in [`Shape::Image`] every frame.
-    pub images: ImageRegistry,
+    /// Cross-frame GPU resource caches (image registry + gradient
+    /// atlas) shared with the wgpu backend. Users call
+    /// `ui.caches.images.register(key, image)` to stage bytes once,
+    /// then reference the returned handle in [`Shape::Image`] every
+    /// frame; gradient atlas registration is internal (driven from
+    /// shape lowering, not user code).
+    pub caches: RenderCaches,
 }
 
 impl Ui {
@@ -250,11 +253,11 @@ impl Ui {
     /// Tests / standalone callers usually want [`Self::default`],
     /// which builds an isolated `Ui` with mono fallback shaper + its
     /// own private arena.
-    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle, images: ImageRegistry) -> Self {
+    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle, caches: RenderCaches) -> Self {
         Self {
             text,
             frame_arena,
-            images,
+            caches,
             ..Self::default()
         }
     }
@@ -768,7 +771,8 @@ impl Ui {
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         let mut arena = self.frame_arena.borrow_mut();
-        self.forest.add_shape(shape, &mut arena);
+        self.forest
+            .add_shape(shape, &mut arena, &self.caches.gradients);
     }
 
     /// Format `args` directly into the per-frame text arena and return
@@ -810,7 +814,8 @@ impl Ui {
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
         let mut arena = self.frame_arena.borrow_mut();
-        self.forest.add_shape_animated(shape, anim, &mut arena);
+        self.forest
+            .add_shape_animated(shape, anim, &mut arena, &self.caches.gradients);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -855,7 +860,7 @@ impl Ui {
         {
             let mut arena = self.frame_arena.borrow_mut();
             self.forest
-                .open_node_with_chrome(element, chrome, &mut arena);
+                .open_node_with_chrome(element, chrome, &mut arena, &self.caches.gradients);
         }
         f(self);
         self.forest.close_node();
@@ -1002,7 +1007,7 @@ pub mod test_support {
             Self::new(
                 SHARED.with(|c| c.clone()),
                 FrameArenaHandle::default(),
-                ImageRegistry::default(),
+                RenderCaches::default(),
             )
         }
 

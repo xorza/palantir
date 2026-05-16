@@ -79,6 +79,7 @@ pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
+pub use renderer::caches::RenderCaches;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::cosmic::CosmicMeasure;
 pub use text::{FontFamily, TextShaper};

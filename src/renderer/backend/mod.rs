@@ -19,8 +19,8 @@ use self::schedule::{RenderStep, for_each_step};
 use self::viewport::{ViewportUniform, build_damage_scissors};
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::primitives::image::ImageRegistry;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
+use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
@@ -89,10 +89,10 @@ pub(crate) struct WgpuBackend {
     /// Shared frame arena (clone of `Host`'s canonical handle). The
     /// backend reads mesh vertices/indices from it during upload.
     frame_arena: FrameArenaHandle,
-    /// Shared user-image cache. Drained each frame by
-    /// [`ImagePipeline::drain_registry`] to upload newly registered
-    /// images to GPU.
-    images: ImageRegistry,
+    /// Shared cross-frame GPU resource caches (image registry +
+    /// gradient atlas). Drained / flushed each frame to push newly
+    /// registered images and dirty gradient rows to GPU.
+    caches: RenderCaches,
 }
 
 impl WgpuBackend {
@@ -114,7 +114,7 @@ impl WgpuBackend {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
         frame_arena: FrameArenaHandle,
-        images: ImageRegistry,
+        caches: RenderCaches,
     ) -> Self {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
@@ -134,7 +134,7 @@ impl WgpuBackend {
             color_format: format,
             backbuffer: None,
             frame_arena,
-            images,
+            caches,
         }
     }
 
@@ -262,9 +262,10 @@ impl WgpuBackend {
         // gradients) drain an empty dirty flag and do nothing; first
         // frame uploads row 0's magenta fallback plus any baked rows
         // composer queued. Has to run before the render pass starts —
-        // any quad with `fill_kind.is_gradient()` samples this texture.
+        // any quad whose `fill_kind` low byte is a gradient tag (1..=3)
+        // samples this texture.
         self.quad
-            .upload_gradients(&self.queue, &buffer.gradient_atlas);
+            .upload_gradients(&self.queue, &self.caches.gradients);
 
         let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
@@ -354,7 +355,7 @@ impl WgpuBackend {
         // the per-instance upload so first-frame images have a bind
         // group ready for the schedule's draw call.
         self.image
-            .drain_registry(&self.device, &self.queue, &self.images);
+            .drain_registry(&self.device, &self.queue, &self.caches.images);
         self.image
             .upload_instances(&self.device, &self.queue, &buffer.images.instances);
 

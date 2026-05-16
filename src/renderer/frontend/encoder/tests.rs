@@ -688,7 +688,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let mut ui = Ui::new(
         TextShaper::with_bundled_fonts(),
         FrameArenaHandle::default(),
-        crate::primitives::image::ImageRegistry::default(),
+        crate::renderer::caches::RenderCaches::default(),
     );
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

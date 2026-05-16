@@ -257,10 +257,9 @@ impl Composer {
     /// `TextRun`s + draw groups (scissor ranges) into the caller-
     /// provided `out` buffer. Pure: no device, no queue.
     ///
-    /// `out.gradient_atlas` is mutated in place: each `Brush::Linear`
-    /// encountered registers a row and the returned row id is packed
-    /// into the emitted `Quad`. Idempotent across frames — the same
-    /// gradient hashes to the same row and reuses it.
+    /// Gradient atlas registration happens at shape-lowering time
+    /// (upstream of this stage), so each `DrawRectPayload` carries a
+    /// pre-resolved `fill_lut_row`; nothing here touches the atlas.
     #[profiling::function]
     pub(crate) fn compose(
         &mut self,
@@ -376,12 +375,6 @@ impl Composer {
                     let world_radius = p.radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
-                    let fill_lut_row = if p.fill_kind.is_gradient() {
-                        let key = &cmds.gradient_lut_keys[p.fill_grad_idx as usize];
-                        out.gradient_atlas.register_stops(&key.stops, key.interp)
-                    } else {
-                        LutRow::FALLBACK
-                    };
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.fill,
@@ -389,7 +382,7 @@ impl Composer {
                         stroke_color: p.stroke_color,
                         stroke_width: p.stroke_width * current_transform.scale * scale,
                         fill_kind: p.fill_kind,
-                        fill_lut_row,
+                        fill_lut_row: p.fill_lut_row,
                         fill_axis: p.fill_axis,
                     });
                 }

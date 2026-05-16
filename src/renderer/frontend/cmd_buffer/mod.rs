@@ -40,49 +40,36 @@
 //! noops are caught by `Shape::Polyline::is_noop` at the authoring
 //! boundary, which is the only practical gate.
 
-use crate::forest::shapes::record::ShapeStroke;
-use crate::primitives::brush::{
-    Brush, ConicGradient, FillAxis, Interp, LinearGradient, MAX_STOPS, RadialGradient, Stop,
-};
+use crate::forest::shapes::record::{LoweredGradient, ShapeStroke};
+use crate::primitives::brush::FillAxis;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
+use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
-use tinyvec::ArrayVec;
 
-/// Borrow-form brush for the cmd-buffer side: `Solid` inline,
-/// gradient variants borrowed from the per-frame `Shapes.gradients`
-/// arena (or directly from a user-side `Brush`). Avoids spilling the
-/// 88-byte `Brush` enum to the stack on the hot solid path — `Color`
-/// inline is 16 B, gradient is an 8-byte pointer, total ~24 B.
+/// Cmd-buffer brush input. `Solid` carries an 8-byte `ColorF16`;
+/// `Gradient` carries the pre-baked 16-byte `LoweredGradient` (atlas
+/// row + axis + kind) produced at shape-lowering time. No arena
+/// indirection — registration with the gradient atlas already
+/// happened upstream.
 #[derive(Clone, Copy, Debug)]
-pub(crate) enum BrushSource<'a> {
+pub(crate) enum BrushSource {
     Solid(ColorF16),
-    Linear(&'a LinearGradient),
-    Radial(&'a RadialGradient),
-    Conic(&'a ConicGradient),
+    Gradient(LoweredGradient),
 }
 
-impl BrushSource<'_> {
+impl BrushSource {
+    /// `Gradient.is_noop()` is always `false` — the all-transparent-
+    /// stops case is filtered by `Brush::is_noop` *before* lowering,
+    /// and the lowered form drops the stops. A gradient slipping past
+    /// the upstream gate would paint a useless transparent quad; the
+    /// alpha blend produces nothing visible, so correctness is intact.
     #[inline]
     pub(crate) fn is_noop(self) -> bool {
         match self {
             Self::Solid(c) => c.is_noop(),
-            Self::Linear(g) => g.is_noop(),
-            Self::Radial(g) => g.is_noop(),
-            Self::Conic(g) => g.is_noop(),
-        }
-    }
-}
-
-impl<'a> From<&'a Brush> for BrushSource<'a> {
-    #[inline]
-    fn from(b: &'a Brush) -> Self {
-        match b {
-            Brush::Solid(c) => Self::Solid((*c).into()),
-            Brush::Linear(g) => Self::Linear(g),
-            Brush::Radial(g) => Self::Radial(g),
-            Brush::Conic(g) => Self::Conic(g),
+            Self::Gradient(_) => false,
         }
     }
 }
@@ -136,28 +123,26 @@ pub(crate) struct PushClipPayload {
 
 /// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
 /// is the kind tag; bits 8..16 carry `Spread` for gradient variants.
-/// `fill_grad_idx` indexes into [`RenderCmdBuffer::gradient_lut_keys`]
-/// when `fill_kind.is_gradient()`; unused (and unread) for solid.
-/// `fill_axis` carries gradient geometry computed at encode time from
-/// the brush's `axis()`. `fill: ColorF16` is the solid colour when
-/// `kind == SOLID`; for gradients it's zeroed and the composer's
-/// atlas lookup supplies the LUT row. Storing as `ColorF16` (4 B per
-/// colour vs. 16 B `Color`) saves 24 B per rect payload — the
-/// composer decodes via `Color::from(srgb)` at `Quad` write time.
-/// `Pod` invariant: `repr(C)` + no padding; the proc macro at the
-/// end of the field list backfills if alignment shifts.
+/// `fill_lut_row` is the pre-registered gradient atlas row (set at
+/// shape lowering time), or [`LutRow::FALLBACK`] for solid fills.
+/// `fill_axis` carries gradient geometry packed at lowering. `fill:
+/// ColorF16` is the solid colour when `kind == SOLID`; zeroed for
+/// gradients (the atlas row supplies the colour). Storing as
+/// `ColorF16` (8 B linear-RGB) vs. 16 B `Color` saves 8 B per rect
+/// payload — the composer decodes via `Color::from(f16)` at `Quad`
+/// write time. `Pod` invariant: `repr(C)` + no padding.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
     pub(crate) radius: Corners,
-    /// sRGB-encoded fill. Zeroed for gradients; composer's atlas
-    /// lookup supplies the LUT row in that case.
+    /// sRGB-encoded fill. Zeroed for gradients; the atlas row at
+    /// `fill_lut_row` supplies the colour in that case.
     pub(crate) fill: ColorF16,
     pub(crate) stroke_color: ColorF16,
     pub(crate) stroke_width: f32,
     pub(crate) fill_kind: FillKind,
-    pub(crate) fill_grad_idx: u32,
+    pub(crate) fill_lut_row: LutRow,
     pub(crate) fill_axis: FillAxis,
 }
 
@@ -320,32 +305,6 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
-    /// Per-frame arena of gradient LUT keys referenced by
-    /// `DrawRectPayload::fill_grad_idx`. Composer reads through this
-    /// to register the gradient with the LUT atlas and pack the
-    /// resulting row id into `Quad`. Variant-agnostic: linear / radial
-    /// / conic gradients all push a `GradientLutKey { stops, interp }`
-    /// — the per-fragment `t` derivation lives entirely in the shader,
-    /// driven by `fill_kind` + `fill_axis`. Cleared every frame;
-    /// capacity retained — steady-state alloc-free.
-    pub(crate) gradient_lut_keys: Vec<GradientLutKey>,
-}
-
-/// Per-frame entry the composer hands to the LUT atlas. Geometry has
-/// already been packed into the cmd's `FillAxis`; only the bake inputs
-/// survive here.
-#[derive(Clone, Debug)]
-pub(crate) struct GradientLutKey {
-    pub(crate) stops: ArrayVec<[Stop; MAX_STOPS]>,
-    pub(crate) interp: Interp,
-}
-
-/// Result of lowering a `Brush` into draw-rect payload fields.
-struct BrushPack {
-    fill_color: ColorF16,
-    fill_kind: FillKind,
-    fill_grad_idx: u32,
-    fill_axis: FillAxis,
 }
 
 impl RenderCmdBuffer {
@@ -353,7 +312,6 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
-        self.gradient_lut_keys.clear();
     }
 
     #[inline]
@@ -395,26 +353,18 @@ impl RenderCmdBuffer {
         &mut self,
         rect: Rect,
         radius: Corners,
-        fill: BrushSource<'_>,
+        fill: BrushSource,
         stroke: ShapeStroke,
     ) {
-        // Pre-pack gate: `Brush::is_noop` peeks inside gradient stops
-        // (which the packed payload's inline `fill` no longer carries
-        // — gradient color lives in the atlas LUT row indexed by
-        // `fill_grad_idx`). Catching the all-transparent-stops case
-        // here also avoids the atlas registration and `BrushPack`
-        // build downstream.
         if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
             return;
         }
 
         // Stroke stays solid-only — gradient strokes are a non-goal.
-        let BrushPack {
-            fill_color,
-            fill_kind,
-            fill_grad_idx,
-            fill_axis,
-        } = self.pack_brush(fill);
+        let (fill_color, fill_kind, fill_lut_row, fill_axis) = match fill {
+            BrushSource::Solid(c) => (c, FillKind::SOLID, LutRow::FALLBACK, FillAxis::ZERO),
+            BrushSource::Gradient(g) => (ColorF16::TRANSPARENT, g.kind, g.row, g.axis),
+        };
 
         let (stroke_color, stroke_width) = if stroke.is_noop() {
             (ColorF16::TRANSPARENT, 0.0)
@@ -428,7 +378,7 @@ impl RenderCmdBuffer {
             stroke_color,
             stroke_width,
             fill_kind,
-            fill_grad_idx,
+            fill_lut_row,
             fill_axis,
         };
         self.record_start(CmdKind::DrawRect);
@@ -511,49 +461,6 @@ impl RenderCmdBuffer {
         }
         self.record_start(CmdKind::DrawPolyline);
         write_pod(&mut self.data, payload);
-    }
-
-    /// Lower a `BrushSource` into payload fields. Solid: pass colour
-    /// through, zero gradient slots. Gradient: zero `fill_color`, push
-    /// the LUT key into the per-frame arena, encode kind + spread +
-    /// per-variant geometry into `fill_axis`. Takes the borrow-form
-    /// enum so the hot solid path never spills the 88-byte user-side
-    /// `Brush` to the stack.
-    fn pack_brush(&mut self, brush: BrushSource<'_>) -> BrushPack {
-        match brush {
-            BrushSource::Solid(c) => BrushPack {
-                fill_color: c,
-                fill_kind: FillKind::SOLID,
-                fill_grad_idx: 0,
-                fill_axis: FillAxis::ZERO,
-            },
-            BrushSource::Linear(g) => BrushPack {
-                fill_color: ColorF16::TRANSPARENT,
-                fill_kind: FillKind::linear(g.spread),
-                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
-                fill_axis: g.axis(),
-            },
-            BrushSource::Radial(g) => BrushPack {
-                fill_color: ColorF16::TRANSPARENT,
-                fill_kind: FillKind::radial(g.spread),
-                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
-                fill_axis: g.axis(),
-            },
-            BrushSource::Conic(g) => BrushPack {
-                fill_color: ColorF16::TRANSPARENT,
-                fill_kind: FillKind::conic(g.spread),
-                fill_grad_idx: self.push_gradient_lut_key(g.stops, g.interp),
-                fill_axis: g.axis(),
-            },
-        }
-    }
-
-    #[inline]
-    fn push_gradient_lut_key(&mut self, stops: ArrayVec<[Stop; MAX_STOPS]>, interp: Interp) -> u32 {
-        let idx = self.gradient_lut_keys.len() as u32;
-        self.gradient_lut_keys
-            .push(GradientLutKey { stops, interp });
-        idx
     }
 
     #[inline]

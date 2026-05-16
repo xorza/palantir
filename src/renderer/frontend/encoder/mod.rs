@@ -3,7 +3,7 @@ use super::cmd_buffer::{
 };
 use crate::common::frame_arena::FrameArena;
 use crate::forest::shapes::record::{
-    GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
+    LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
@@ -29,20 +29,14 @@ use std::time::Duration;
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
 /// Build a `BrushSource` from a lowered `ShapeBrush` + the per-frame
-/// gradient arena. `Solid` stays inline (no arena read at all);
-/// `Gradient(id)` borrows the corresponding `GradientPayload` and
-/// projects it to the matching `BrushSource::{Linear,Radial,Conic}`
-/// variant. No `Brush` value is ever materialized — the solid hot
-/// path writes 16 B of Color + 1 B tag instead of 88 B of enum.
+/// gradient arena. `Solid` stays inline; `Gradient(id)` reads the
+/// pre-baked `LoweredGradient` (row + axis + kind already finalised
+/// at shape-lowering time) — no per-encode dispatch.
 #[inline]
-fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> BrushSource<'_> {
+fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> BrushSource {
     match brush {
         ShapeBrush::Solid(c) => BrushSource::Solid(c),
-        ShapeBrush::Gradient(id) => match &gradients[id as usize] {
-            GradientPayload::Linear(g) => BrushSource::Linear(g),
-            GradientPayload::Radial(g) => BrushSource::Radial(g),
-            GradientPayload::Conic(g) => BrushSource::Conic(g),
-        },
+        ShapeBrush::Gradient(id) => BrushSource::Gradient(gradients[id as usize]),
     }
 }
 
@@ -133,7 +127,7 @@ fn emit_one_shape(
     owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
-    gradients: &[GradientPayload],
+    gradients: &[LoweredGradient],
     text_ordinal: u32,
     now: Duration,
     out: &mut RenderCmdBuffer,
@@ -300,7 +294,7 @@ fn encode_node(
     tree: &Tree,
     layout: &LayerLayout,
     rows: &[Cascade],
-    gradients: &[GradientPayload],
+    gradients: &[LoweredGradient],
     damage_filter: Option<&DamageRegion>,
     viewport: Rect,
     id: NodeId,

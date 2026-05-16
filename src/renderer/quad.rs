@@ -72,15 +72,6 @@ impl FillKind {
     pub(crate) const fn is_solid(self) -> bool {
         (self.0 & 0xFF) == 0
     }
-
-    /// `true` for any gradient variant. Used by the composer to decide
-    /// whether to register the gradient stops with the LUT atlas. All
-    /// gradient variants share the same atlas keying (stops + interp);
-    /// only the per-fragment `t` derivation differs.
-    #[inline]
-    pub(crate) const fn is_gradient(self) -> bool {
-        matches!(self.0 & 0xFF, 1..=3)
-    }
 }
 
 /// Per-instance quad data (84 B). Field types are the matching

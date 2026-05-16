@@ -4,6 +4,7 @@ use crate::common::frame_arena::{BezierInputs, FrameArena};
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
 use crate::primitives::span::Span;
+use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::{PolylineColors, Shape};
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].
@@ -48,7 +49,12 @@ impl Shapes {
     /// to attach side data keyed by shape-index (e.g. paint-anim
     /// registry) use the returned index; the legacy "fire and forget"
     /// path ignores it.
-    pub(crate) fn add(&mut self, shape: Shape<'_>, arena: &mut FrameArena) -> Option<u32> {
+    pub(crate) fn add(
+        &mut self,
+        shape: Shape<'_>,
+        arena: &mut FrameArena,
+        atlas: &GradientAtlas,
+    ) -> Option<u32> {
         if shape.is_noop() {
             return None;
         }
@@ -62,7 +68,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let (fill, fill_grad_hash) = arena.lower_brush(fill);
+                let (fill, fill_grad_hash) = arena.lower_brush(fill, atlas);
                 let stroke = ShapeStroke::from(stroke);
                 ShapeRecord::RoundedRect {
                     local_rect,

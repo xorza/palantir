@@ -15,9 +15,8 @@
 
 use std::time::Instant;
 
-use crate::common::frame_arena::FrameArenaHandle;
-use crate::primitives::image::ImageRegistry;
 use crate::renderer::backend::WgpuBackend;
+use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
@@ -69,12 +68,12 @@ impl Host {
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
         // wiring mistake that would double-borrow.
-        let frame_arena = FrameArenaHandle::default();
-        let images = ImageRegistry::default();
+        let caches = RenderCaches::default();
+        let frame_arena = crate::common::frame_arena::FrameArenaHandle::default();
         Self {
-            ui: Ui::new(shaper.clone(), frame_arena.clone(), images.clone()),
+            ui: Ui::new(shaper.clone(), frame_arena.clone(), caches.clone()),
             frontend: Frontend::new(frame_arena.clone()),
-            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena, images),
+            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena, caches),
             start: Instant::now(),
             occluded: false,
             occluded_at: None,

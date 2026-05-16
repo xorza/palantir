@@ -31,8 +31,9 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorU8, linear_to_oklab, oklab_to_linear};
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
 use std::hash::Hasher;
+use std::rc::Rc;
 
 /// Index into the gradient LUT atlas texture. `LutRow(0)` is the
 /// magenta debug fallback (so a stray default value paints obviously
@@ -363,6 +364,35 @@ impl GradientCpuAtlas {
             return None;
         }
         Some(bytemuck::cast_slice(&self.baked))
+    }
+}
+
+/// Cross-frame shared handle for the gradient LUT atlas. Cheap to
+/// clone (Rc-shared); `Host` owns the canonical instance and hands
+/// clones to subsystems that register or flush gradients. Sibling of
+/// [`crate::ImageRegistry`] — same lifetime, same access pattern.
+#[derive(Clone, Default)]
+pub(crate) struct GradientAtlas {
+    inner: Rc<RefCell<GradientCpuAtlas>>,
+}
+
+impl GradientAtlas {
+    /// Find-or-bake the row for `(stops, interp)`. See
+    /// [`GradientCpuAtlas::register_stops`].
+    #[inline]
+    pub(crate) fn register_stops(&self, stops: &[Stop], interp: Interp) -> LutRow {
+        self.inner.borrow_mut().register_stops(stops, interp)
+    }
+
+    /// Run `f` on the flushed bytes if the atlas is dirty, returning
+    /// `f`'s result. `None` when nothing changed (steady-state idle
+    /// frame). Closure form so the underlying borrow stays scoped to
+    /// the call — backend's `upload_gradients` runs `queue.write_texture`
+    /// inside the closure.
+    #[inline]
+    pub(crate) fn flush_with<R>(&self, f: impl FnOnce(&[u8]) -> R) -> Option<R> {
+        let atlas = self.inner.borrow();
+        atlas.flush().map(f)
     }
 }
 
