@@ -13,21 +13,21 @@ pub struct AppState {
     pub counter: i32,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(12.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            let value = ui.app::<AppState>().counter;
+            let value = ui.app().counter;
             Text::new(format!("counter: {value}")).auto_id().show(ui);
 
             Panel::hstack().auto_id().gap(8.0).show(ui, |ui| {
                 if Button::new().id_salt("dec").label("-").show(ui).clicked() {
-                    ui.app::<AppState>().counter -= 1;
+                    ui.app().counter -= 1;
                 }
                 if Button::new().id_salt("inc").label("+").show(ui).clicked() {
-                    ui.app::<AppState>().counter += 1;
+                    ui.app().counter += 1;
                 }
                 if Button::new()
                     .id_salt("reset")
@@ -35,7 +35,7 @@ pub fn build(ui: &mut Ui) {
                     .show(ui)
                     .clicked()
                 {
-                    ui.app::<AppState>().counter = 0;
+                    ui.app().counter = 0;
                 }
             });
 
@@ -43,11 +43,11 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn deeply_nested_reader(ui: &mut Ui) {
+fn deeply_nested_reader(ui: &mut Ui<AppState>) {
     Panel::vstack().auto_id().gap(4.0).show(ui, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                let v = ui.app::<AppState>().counter;
+                let v = ui.app().counter;
                 Text::new(format!("(deep) still sees: {v}"))
                     .auto_id()
                     .show(ui);

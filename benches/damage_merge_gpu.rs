@@ -90,7 +90,7 @@ fn init_gpu() -> Gpu {
     }
 }
 
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_grid<T>(ui: &mut Ui<T>, hot: &[usize], hot_color: Color) {
     Panel::vstack()
         .id_salt("root")
         .gap(GAP)

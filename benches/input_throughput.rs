@@ -38,7 +38,7 @@ const OVERLAP_LAYERS: usize = 64;
 const GRID_COLS: usize = 12;
 const GRID_ROWS: usize = 8;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui<T>(ui: &mut Ui<T>) {
     Panel::zstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))

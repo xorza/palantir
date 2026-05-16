@@ -10,6 +10,7 @@
 //! mid-recording mechanic; this file is the pinned target for that
 //! work.
 
+use super::app_state::AppState;
 use palantir::{
     Align, Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Shadow, Sizing,
     Stroke, Text, Ui, WidgetId,
@@ -21,7 +22,7 @@ struct MenuState {
     last_choice: Option<&'static str>,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     let menu_id = WidgetId::from_hash("popup-root");
 
     let mut trigger_rect: Option<Rect> = None;

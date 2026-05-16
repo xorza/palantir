@@ -9,11 +9,12 @@
 //! the next one.
 
 use glam::Vec2;
+use super::app_state::AppState;
 use palantir::{InputEvent, Ui, WidgetId};
 
 pub const NAME: &str = "pan+zoom auto";
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     let id = WidgetId::from_hash("pz-auto-tick");
     let frame = ui.state_mut::<u32>(id);
     let i = *frame;

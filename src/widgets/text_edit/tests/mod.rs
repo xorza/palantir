@@ -41,7 +41,7 @@ const SMALL: UVec2 = UVec2::new(200, 80);
 const WIDE: UVec2 = UVec2::new(400, 80);
 const NARROW: UVec2 = UVec2::new(300, 80);
 
-fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
+fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui<()>) + '_ {
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
@@ -91,7 +91,7 @@ fn cmd_shift_press(key: Key) -> KeyPress {
     kp
 }
 
-fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
+fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui<()>) + 'a {
     use crate::widgets::button::Button;
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -107,7 +107,7 @@ fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
     }
 }
 
-fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) + '_ {
+fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui<()>) + '_ {
     move |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
@@ -136,7 +136,7 @@ fn ui_at_no_cosmic(size: UVec2) -> Ui {
 /// navigation works in 2D. Driven via `apply_key` directly for the
 /// state-machine assertions; the full show()+layout path is exercised
 /// separately by `multiline_renders_multiple_visual_lines`.
-fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
+fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui<()>) + '_ {
     |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)

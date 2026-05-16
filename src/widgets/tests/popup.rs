@@ -25,7 +25,7 @@ const BODY_H: f32 = 60.0;
 // `Ui::frame` re-runs the build closure when action input is pending,
 // so we OR `dismissed` across passes — pass 1 sees the click, pass 2
 // would otherwise overwrite with a fresh false.
-fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
+fn record_body<T>(ui: &mut Ui<T>, config: ClickOutside, dismissed: &mut bool) {
     Panel::vstack()
         .id_salt("main-bg")
         .size((Sizing::FILL, Sizing::FILL))
@@ -45,7 +45,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
         });
 }
 
-fn main_panel_clicked(ui: &Ui) -> bool {
+fn main_panel_clicked<T>(ui: &Ui<T>) -> bool {
     let main_id = crate::primitives::widget_id::WidgetId::from_hash("main-bg");
     ui.response_for(main_id).clicked
 }

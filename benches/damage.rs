@@ -27,7 +27,7 @@ const ROWS: usize = 32;
 /// `hot_color`; the rest get a default cold colour. The id-salt
 /// scheme keeps cell identity stable across frames so damage diffs
 /// against the right `prev` snapshot.
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_grid<T>(ui: &mut Ui<T>, hot: &[usize], hot_color: Color) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -67,7 +67,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// predicate (rect + node_hash + subtree_hash + cascade_input all
 /// match prev at the row root) fires at each row, jumping past 32
 /// per-cell entry lookups. Cells listed in `hot` get `hot_color`.
-fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_painted_rows<T>(ui: &mut Ui<T>, hot: &[usize], hot_color: Color) {
     let row_bg = Color::rgb(0.1, 0.1, 0.12);
     Panel::vstack()
         .id_salt("root")
@@ -111,7 +111,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
+fn run_and_ack<T>(ui: &mut Ui<T>, display: Display, mut record: impl FnMut(&mut Ui<T>)) {
     let _ = ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),
@@ -127,11 +127,11 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
 /// second frame's diff produces the `partial` / `full` damage the
 /// bench iter will then exercise. Without warmup the first iter
 /// would always be `Full` (no `prev_surface`) and skew measurements.
-fn warm_and_assert(
-    ui: &mut Ui,
+fn warm_and_assert<T>(
+    ui: &mut Ui<T>,
     display: Display,
-    frame1: impl Fn(&mut Ui),
-    frame2: impl Fn(&mut Ui),
+    frame1: impl Fn(&mut Ui<T>),
+    frame2: impl Fn(&mut Ui<T>),
     expect_kind: &str,
 ) {
     run_and_ack(ui, display, &frame1);

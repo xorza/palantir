@@ -43,7 +43,7 @@ const DENSE_ROWS_PER_GROUP: usize = 12;
 /// by cmd-stream copy size, not just per-node walk overhead.
 const DENSE_SHAPES_PER_ROW: usize = 6;
 
-fn build(ui: &mut Ui) {
+fn build<T>(ui: &mut Ui<T>) {
     Panel::vstack()
         .id_salt("nested-root")
         .gap(4.0)
@@ -97,7 +97,7 @@ fn build(ui: &mut Ui) {
 /// group surface (DrawRectStroked instead of DrawRect). Used to verify
 /// the compose-cache contribution finding from the simpler `build`
 /// workload — if the cache earns < 1% here too, deletion is justified.
-fn build_heavy(ui: &mut Ui) {
+fn build_heavy<T>(ui: &mut Ui<T>) {
     let group_bg = Background {
         fill: Color::hex(0x1a1a1a).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
@@ -178,7 +178,7 @@ fn build_heavy(ui: &mut Ui) {
 /// memcpy-vs-walk asymmetry shows up if there is one. Keeps
 /// `Sizing::Fixed` everywhere so measure stays cheap and the encode
 /// signal isn't drowned by text shaping.
-fn build_dense(ui: &mut Ui) {
+fn build_dense<T>(ui: &mut Ui<T>) {
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
@@ -413,7 +413,7 @@ fn bench(c: &mut Criterion) {
     group.finish();
 }
 
-fn build_scrolling(ui: &mut Ui) {
+fn build_scrolling<T>(ui: &mut Ui<T>) {
     Scroll::vertical().id_salt("scroll-root").show(ui, build);
 }
 

@@ -4,8 +4,9 @@
 //! re-delay within ~1 s of the previous bubble).
 
 use palantir::{Button, Configure, Panel, Sizing, Tooltip, Ui};
+use super::app_state::AppState;
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -93,7 +94,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn row<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))

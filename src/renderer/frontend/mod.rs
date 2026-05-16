@@ -62,7 +62,7 @@ impl Frontend {
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
-    pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
+    pub(crate) fn build<T>(&mut self, ui: &Ui<T>, plan: RenderPlan) -> &RenderBuffer {
         let mut arena = self.frame_arena.inner_mut();
         encode(ui, &arena, plan, &mut self.cmds);
         self.composer

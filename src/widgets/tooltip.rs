@@ -144,7 +144,7 @@ impl<'r> Tooltip<'r> {
     /// Tick the hover timer, update visibility, and (when visible)
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
-    pub fn show(self, ui: &mut Ui) {
+    pub fn show<T>(self, ui: &mut Ui<T>) {
         let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
         let warmup = ui.theme.tooltip.warmup;
         let gap = ui.theme.tooltip.gap;

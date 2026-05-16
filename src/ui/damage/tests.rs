@@ -29,7 +29,7 @@ const DISPLAY: Display = Display {
 /// doesn't fire, and return the damage decision for the just-completed
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
-fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
+fn frame(ui: &mut Ui<()>, f: impl FnMut(&mut Ui<()>)) -> Damage {
     let report = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut (), f);
     ui.frame_state.mark_submitted();
     match report.plan {
@@ -45,7 +45,7 @@ fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
 const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
 const RED: Color = Color::rgb(0.9, 0.4, 0.8);
 
-fn one_frame(ui: &mut Ui, color: Color) {
+fn one_frame(ui: &mut Ui<()>, color: Color) {
     Panel::hstack().id_salt("root").show(ui, |ui| {
         Frame::new()
             .id_salt("a")

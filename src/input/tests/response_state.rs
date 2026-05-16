@@ -10,7 +10,7 @@ fn focusable_id() -> WidgetId {
     WidgetId::from_hash("focusable")
 }
 
-fn build_focusable_leaf(ui: &mut Ui) {
+fn build_focusable_leaf<T>(ui: &mut Ui<T>) {
     Frame::new()
         .id_salt("focusable")
         .focusable(true)

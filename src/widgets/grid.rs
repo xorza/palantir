@@ -125,7 +125,7 @@ impl Grid {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show<T>(self, ui: &mut Ui<T>, body: impl FnOnce(&mut Ui<T>)) -> Response {
         let id = self.element.id;
         let active_layer = ui.forest.current_layer;
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);

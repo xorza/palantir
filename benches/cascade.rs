@@ -20,7 +20,7 @@ use std::hint::black_box;
 /// Approximates a long list of items — the wide-and-shallow shape that
 /// stresses the cascade pre-order walk hardest because every leaf
 /// pushes a fresh `HitEntry`.
-fn build_flat(ui: &mut Ui, n: usize) {
+fn build_flat<T>(ui: &mut Ui<T>, n: usize) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)

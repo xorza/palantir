@@ -27,8 +27,8 @@ use crate::{Display, FrameReport, FrameStamp};
 /// GPU [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The
 /// renderer halves are private; reach the recorder via the public
 /// [`Host::ui`] field.
-pub struct Host {
-    pub ui: Ui,
+pub struct Host<T = ()> {
+    pub ui: Ui<T>,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
@@ -46,7 +46,7 @@ pub struct Host {
     occluded_at: Option<Instant>,
 }
 
-impl Host {
+impl<T: 'static> Host<T> {
     /// Construct with a bundled-fonts shaper shared between the `Ui`
     /// (measurement) and the backend (rasterization) so they hit one
     /// buffer cache.
@@ -129,13 +129,13 @@ impl Host {
     /// frames bypass surface acquisition entirely.
     ///
     /// Derives `Display`'s physical size from `config.width`/`config.height`.
-    pub fn frame<T: 'static>(
+    pub fn frame(
         &mut self,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut Ui<T>),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
@@ -159,12 +159,12 @@ impl Host {
     /// texture (no swapchain acquire). `Display`'s physical size is
     /// derived from `target.size()`. For the visual harness and
     /// offscreen benches.
-    pub fn frame_offscreen<T: 'static>(
+    pub fn frame_offscreen(
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut Ui<T>),
     ) {
         let size = target.size();
         let display =
@@ -177,11 +177,11 @@ impl Host {
     /// damage. Returns the host-facing [`FrameReport`]; thread it back
     /// into [`Self::render_to_texture`]. Internal split for benches and
     /// the visual harness; production callers use [`Self::frame`].
-    pub(crate) fn cpu_frame<T: 'static>(
+    pub(crate) fn cpu_frame(
         &mut self,
         display: Display,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut Ui<T>),
     ) -> FrameReport {
         // Ui::frame clears its own Rc-shared arena at the top of the
         // record cycle — the same Rc the frontend + backend hold.
@@ -294,7 +294,7 @@ pub mod test_support {
         host: &mut Host,
         display: Display,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut Ui<T>),
     ) -> FrameReport {
         host.cpu_frame(display, state, record)
     }

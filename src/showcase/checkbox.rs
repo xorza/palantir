@@ -1,4 +1,5 @@
 use palantir::{Checkbox, Configure, Panel, Sizing, Text, Ui, WidgetId};
+use super::app_state::AppState;
 
 #[derive(Default)]
 struct State {
@@ -8,7 +9,7 @@ struct State {
     disabled_on: bool,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     let state_id = WidgetId::from_hash("showcase::checkbox::state");
     Panel::vstack()
         .auto_id()

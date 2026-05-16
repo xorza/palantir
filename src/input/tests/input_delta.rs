@@ -10,7 +10,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn build_hover_target(ui: &mut Ui) {
+fn build_hover_target<T>(ui: &mut Ui<T>) {
     Panel::hstack()
         .id_salt("hot")
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -18,7 +18,7 @@ fn build_hover_target(ui: &mut Ui) {
         .show(ui, |_| {});
 }
 
-fn build_two_hover_targets(ui: &mut Ui) {
+fn build_two_hover_targets<T>(ui: &mut Ui<T>) {
     Panel::hstack()
         .id_salt("outer")
         .size((Sizing::Hug, Sizing::Hug))

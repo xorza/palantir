@@ -20,7 +20,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
-fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
+fn section<T>(ui: &mut Ui<T>, id: &'static str, body: &mut dyn FnMut(&mut Ui<T>)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
