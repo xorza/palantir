@@ -81,9 +81,6 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             pip_elem.size = (Sizing::Fixed(PIP_SIZE), Sizing::Fixed(PIP_SIZE)).into();
             ui.node_with_chrome(pip_elem, pip_chrome, |ui| {
                 if let Some(c) = dot_color {
-                    // Inner dot: small filled rounded-rect at full
-                    // radius (pill ⇒ circle). `local_rect` is in
-                    // pip-local coords.
                     let dot_size = PIP_SIZE - 2.0 * DOT_INSET;
                     let dot = Rect::new(DOT_INSET, DOT_INSET, dot_size, dot_size);
                     ui.add_shape(Shape::RoundedRect {
@@ -131,47 +128,24 @@ struct RadioVisuals {
 }
 
 fn visuals(ui: &Ui, state: ResponseState, selected: bool) -> RadioVisuals {
-    let btn = &ui.theme.button;
-    let look = if state.disabled {
-        &btn.disabled
-    } else if state.pressed {
-        &btn.pressed
-    } else if state.hovered {
-        &btn.hovered
+    let base = ui.theme.button.pick(state).background.unwrap_or_default();
+    let fg = if state.disabled {
+        ui.theme.text.color.with_alpha(0.45)
     } else {
-        &btn.normal
-    };
-    let base = look.background.unwrap_or_default();
-    let pip_radius = Corners::all(PIP_SIZE * 0.5);
-    let text_color = ui.theme.text.color;
-    let label_color = if state.disabled {
-        text_color.with_alpha(0.45)
-    } else {
-        text_color
-    };
-
-    let pip_chrome = Background {
-        fill: base.fill,
-        stroke: if base.stroke.is_noop() {
-            Stroke::solid(text_color.with_alpha(0.35), 1.0)
-        } else {
-            base.stroke
-        },
-        radius: pip_radius,
-        shadow: Shadow::NONE,
-    };
-    let dot_color = if selected {
-        Some(if state.disabled {
-            text_color.with_alpha(0.45)
-        } else {
-            text_color
-        })
-    } else {
-        None
+        ui.theme.text.color
     };
     RadioVisuals {
-        pip_chrome,
-        dot_color,
-        label_color,
+        pip_chrome: Background {
+            fill: base.fill,
+            stroke: if base.stroke.is_noop() {
+                Stroke::solid(ui.theme.text.color.with_alpha(0.35), 1.0)
+            } else {
+                base.stroke
+            },
+            radius: Corners::all(PIP_SIZE * 0.5),
+            shadow: Shadow::NONE,
+        },
+        dot_color: selected.then_some(fg),
+        label_color: fg,
     }
 }

@@ -118,9 +118,8 @@ impl Configure for Checkbox<'_> {
     }
 }
 
-/// Three-point checkmark inside the `BOX_SIZE`x`BOX_SIZE` box, in
-/// node-local coords. Coupled to `BOX_SIZE = 16.0`; updating either
-/// requires updating both.
+// Three-point checkmark in box-local coords. Hand-tuned for the
+// `BOX_SIZE = 16.0` square; the const-assert pins the coupling.
 const _: () = assert!(BOX_SIZE == 16.0);
 const CHECK_PTS: [Vec2; 3] = [
     Vec2::new(3.5, 8.5),
@@ -138,53 +137,36 @@ struct CheckboxVisuals {
 fn visuals(ui: &Ui, state: ResponseState, checked: bool) -> CheckboxVisuals {
     // Reach into `theme.button` for state-driven fills so a checkbox
     // visually matches buttons side-by-side without a dedicated theme.
-    // Label color comes from `theme.text` directly — the button theme's
-    // per-state text overrides aren't appropriate for an unrelated
-    // widget. Promote to a `CheckboxTheme` when the framework grows one.
-    let btn = &ui.theme.button;
-    let look = if state.disabled {
-        &btn.disabled
-    } else if state.pressed {
-        &btn.pressed
-    } else if state.hovered {
-        &btn.hovered
-    } else {
-        &btn.normal
-    };
-    let base = look.background.unwrap_or_default();
+    // The button theme's per-state *text* overrides aren't appropriate
+    // for an unrelated widget; foreground comes from `theme.text`.
+    // Promote to a `CheckboxTheme` when the framework grows one.
+    let base = ui.theme.button.pick(state).background.unwrap_or_default();
     let radius = Corners::all(BOX_RADIUS);
-    let text_color = ui.theme.text.color;
-    let label_color = if state.disabled {
-        text_color.with_alpha(0.45)
+    let fg = if state.disabled {
+        ui.theme.text.color.with_alpha(0.45)
     } else {
-        text_color
+        ui.theme.text.color
     };
 
     if checked {
-        // Filled box with the foreground color so it reads as "on";
-        // the checkmark uses the theme's window-clear color for
-        // contrast (matches the surface the row sits on).
-        let fill = if state.disabled {
-            text_color.with_alpha(0.45)
-        } else {
-            text_color
-        };
+        // Filled box paints with the foreground; the checkmark uses
+        // `window_clear` so it reads as "punched out" against the row.
         CheckboxVisuals {
             box_chrome: Background {
-                fill: fill.into(),
+                fill: fg.into(),
                 stroke: Stroke::ZERO,
                 radius,
                 shadow: Shadow::NONE,
             },
             check_color: Some(ui.theme.window_clear),
-            label_color,
+            label_color: fg,
         }
     } else {
         CheckboxVisuals {
             box_chrome: Background {
                 fill: base.fill,
                 stroke: if base.stroke.is_noop() {
-                    Stroke::solid(text_color.with_alpha(0.35), 1.0)
+                    Stroke::solid(ui.theme.text.color.with_alpha(0.35), 1.0)
                 } else {
                     base.stroke
                 },
@@ -192,7 +174,7 @@ fn visuals(ui: &Ui, state: ResponseState, checked: bool) -> CheckboxVisuals {
                 shadow: Shadow::NONE,
             },
             check_color: None,
-            label_color,
+            label_color: fg,
         }
     }
 }
