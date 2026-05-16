@@ -227,6 +227,18 @@ fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
             "Tab"
         }),
         Key::Escape => f.write_str("Esc"),
+        Key::F1 => f.write_str("F1"),
+        Key::F2 => f.write_str("F2"),
+        Key::F3 => f.write_str("F3"),
+        Key::F4 => f.write_str("F4"),
+        Key::F5 => f.write_str("F5"),
+        Key::F6 => f.write_str("F6"),
+        Key::F7 => f.write_str("F7"),
+        Key::F8 => f.write_str("F8"),
+        Key::F9 => f.write_str("F9"),
+        Key::F10 => f.write_str("F10"),
+        Key::F11 => f.write_str("F11"),
+        Key::F12 => f.write_str("F12"),
         Key::Other => f.write_str("?"),
     }
 }

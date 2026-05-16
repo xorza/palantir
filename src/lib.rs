@@ -32,6 +32,7 @@ pub(crate) mod shape;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+pub mod winit_host;
 
 pub use common::frame_arena::FrameArena;
 
@@ -109,6 +110,7 @@ pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
+pub use winit_host::WinitHost;
 
 #[cfg(test)]
 mod hot_struct_sizes {
