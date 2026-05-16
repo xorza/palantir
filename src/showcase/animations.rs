@@ -4,7 +4,6 @@
 //! fixture for `Ui::animate` end-to-end (target → tick → record →
 //! repaint loop).
 
-use super::app_state::AppState;
 use palantir::{
     AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, Ui,
     WidgetId,
@@ -15,7 +14,7 @@ struct Demo {
     wide: bool,
 }
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     let demo_id = WidgetId::from_hash("anim-demo");
     let mut clicked = false;
 
@@ -84,13 +83,7 @@ pub fn build(ui: &mut Ui<AppState>) {
     }
 }
 
-fn bar<T>(
-    ui: &mut Ui<T>,
-    key: &'static str,
-    label: &'static str,
-    spec: AnimSpec,
-    target_width: f32,
-) {
+fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
     let id = WidgetId::from_hash(("anim-bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()

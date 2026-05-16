@@ -1,7 +1,6 @@
-use super::app_state::AppState;
 use palantir::{Color, Configure, Mesh, Panel, Shape, Sizing, Ui};
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::hstack()
         .auto_id()
         .gap(24.0)
@@ -15,7 +14,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -23,7 +22,7 @@ fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
         .show(ui, paint);
 }
 
-fn triangle<T>(ui: &mut Ui<T>) {
+fn triangle(ui: &mut Ui) {
     let mut m = Mesh::new();
     let red = Color::rgb(1.0, 0.2, 0.2);
     let a = m.vertex(glam::Vec2::new(60.0, 10.0), red);
@@ -37,7 +36,7 @@ fn triangle<T>(ui: &mut Ui<T>) {
     });
 }
 
-fn polygon_star<T>(ui: &mut Ui<T>) {
+fn polygon_star(ui: &mut Ui) {
     // 5-pointed star sampled as a fan around the centroid.
     let cx = 60.0_f32;
     let cy = 60.0_f32;
@@ -69,7 +68,7 @@ fn polygon_star<T>(ui: &mut Ui<T>) {
     });
 }
 
-fn gradient_quad<T>(ui: &mut Ui<T>) {
+fn gradient_quad(ui: &mut Ui) {
     // Per-vertex colors create a 4-corner gradient.
     let mut m = Mesh::new();
     let tl = m.vertex(glam::Vec2::new(10.0, 10.0), Color::rgb(1.0, 0.0, 0.0));
@@ -86,7 +85,7 @@ fn gradient_quad<T>(ui: &mut Ui<T>) {
     });
 }
 
-fn stress<T>(ui: &mut Ui<T>) {
+fn stress(ui: &mut Ui) {
     // 5000-vertex grid of triangles. Exercises the alloc-free claim
     // and the index buffer growth path. The grid renders as a teal
     // wash since every vertex shares the same color.

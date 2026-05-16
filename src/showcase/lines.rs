@@ -1,11 +1,10 @@
-use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{
     Color, Configure, Corners, LineCap, LineJoin, Panel, PolylineColors, Rect, Shape, Sizing,
     Stroke, Ui,
 };
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -42,7 +41,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -50,7 +49,7 @@ fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
         .show(ui, paint);
 }
 
-fn widths<T>(ui: &mut Ui<T>) {
+fn widths(ui: &mut Ui) {
     let cyan = Color::rgb(0.2, 0.9, 1.0);
     for (i, w) in [1.0_f32, 2.0, 3.0, 5.0, 8.0].iter().enumerate() {
         let y = 12.0 + i as f32 * 20.0;
@@ -65,7 +64,7 @@ fn widths<T>(ui: &mut Ui<T>) {
     }
 }
 
-fn hairlines<T>(ui: &mut Ui<T>) {
+fn hairlines(ui: &mut Ui) {
     let white = Color::rgb(1.0, 1.0, 1.0);
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 12.0 + i as f32 * 20.0;
@@ -80,7 +79,7 @@ fn hairlines<T>(ui: &mut Ui<T>) {
     }
 }
 
-fn gradient<T>(ui: &mut Ui<T>) {
+fn gradient(ui: &mut Ui) {
     let pts = [
         Vec2::new(10.0, 10.0),
         Vec2::new(40.0, 110.0),
@@ -102,7 +101,7 @@ fn gradient<T>(ui: &mut Ui<T>) {
     });
 }
 
-fn joins<T>(ui: &mut Ui<T>) {
+fn joins(ui: &mut Ui) {
     // Same 90° corner painted three times to highlight join styles
     // at a non-clamp angle (where Miter actually mitres rather
     // than falling back to bevel). Row 1: Miter (sharp point).
@@ -128,7 +127,7 @@ fn joins<T>(ui: &mut Ui<T>) {
     }
 }
 
-fn caps<T>(ui: &mut Ui<T>) {
+fn caps(ui: &mut Ui) {
     // Three lines, one per cap style: Butt, Square, Round. All
     // share the same endpoints; the marker rules at the ends make
     // the difference visible — Butt stops at the marker, Square
@@ -175,7 +174,7 @@ fn caps<T>(ui: &mut Ui<T>) {
 /// Mesh path's current bug (straight-alpha source into premul
 /// blend): `(0, 1, 0) + magenta * 0.5 = (0.5, 1, 0.5)` → bright
 /// green. See `docs/review-wgsl-shaders.md` A1.
-fn backdrop<T>(ui: &mut Ui<T>) {
+fn backdrop(ui: &mut Ui) {
     ui.add_shape(Shape::RoundedRect {
         local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
         radius: Corners::ZERO,
@@ -186,7 +185,7 @@ fn backdrop<T>(ui: &mut Ui<T>) {
 
 /// Repro: solid translucent polyline. Expected mid-grey diagonal;
 /// renders bright-green under the current mesh.wgsl bug.
-fn translucent_solid<T>(ui: &mut Ui<T>) {
+fn translucent_solid(ui: &mut Ui) {
     backdrop(ui);
     let translucent_green = Color::rgba(0.0, 1.0, 0.0, 0.5);
     let pts = [Vec2::new(10.0, 20.0), Vec2::new(110.0, 100.0)];
@@ -201,7 +200,7 @@ fn translucent_solid<T>(ui: &mut Ui<T>) {
 
 /// Repro: per-point translucent. Same expected mid-grey; bug shows
 /// as bright vertex colours.
-fn translucent_per_point<T>(ui: &mut Ui<T>) {
+fn translucent_per_point(ui: &mut Ui) {
     backdrop(ui);
     let pts = [
         Vec2::new(10.0, 20.0),
@@ -226,7 +225,7 @@ fn translucent_per_point<T>(ui: &mut Ui<T>) {
 /// alpha makes the over-bright effect even more obvious.
 /// Expected: tint slightly toward green of the magenta backdrop.
 /// Buggy: nearly opaque green.
-fn translucent_quarter<T>(ui: &mut Ui<T>) {
+fn translucent_quarter(ui: &mut Ui) {
     backdrop(ui);
     let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
     ui.add_shape(Shape::Polyline {
@@ -238,7 +237,7 @@ fn translucent_quarter<T>(ui: &mut Ui<T>) {
     });
 }
 
-fn per_segment<T>(ui: &mut Ui<T>) {
+fn per_segment(ui: &mut Ui) {
     let pts = [
         Vec2::new(10.0, 60.0),
         Vec2::new(30.0, 30.0),

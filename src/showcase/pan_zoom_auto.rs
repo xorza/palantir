@@ -8,13 +8,12 @@
 //! from `ui.request_repaint()` each frame so the host keeps scheduling
 //! the next one.
 
-use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{InputEvent, Ui, WidgetId};
 
 pub const NAME: &str = "pan+zoom auto";
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     let id = WidgetId::from_hash("pz-auto-tick");
     let frame = ui.state_mut::<u32>(id);
     let i = *frame;

@@ -4,7 +4,6 @@
 //! including the per-corner SDF, the σ → 0 sharp fallback, and
 //! multi-shadow stacking via record order.
 
-use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 
@@ -16,7 +15,7 @@ fn shadow_shape(s: Shadow) -> Shape<'static> {
     }
 }
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -60,7 +59,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -76,7 +75,7 @@ fn radius() -> Corners {
     Corners::all(12.0)
 }
 
-fn card_fill<T>(ui: &mut Ui<T>) {
+fn card_fill(ui: &mut Ui) {
     ui.add_shape(Shape::RoundedRect {
         local_rect: Some(card_rect()),
         radius: radius(),
@@ -86,7 +85,7 @@ fn card_fill<T>(ui: &mut Ui<T>) {
 }
 
 /// Standard soft drop shadow — Material Design "elevation 2".
-fn soft<T>(ui: &mut Ui<T>) {
+fn soft(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.20),
         offset: Vec2::new(0.0, 4.0),
@@ -98,7 +97,7 @@ fn soft<T>(ui: &mut Ui<T>) {
 }
 
 /// Heavier drop, larger blur — "elevation 8" look.
-fn elevated<T>(ui: &mut Ui<T>) {
+fn elevated(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.28),
         offset: Vec2::new(0.0, 12.0),
@@ -110,7 +109,7 @@ fn elevated<T>(ui: &mut Ui<T>) {
 }
 
 /// Tight, dense shadow hugging the shape — UI button rest state.
-fn tight<T>(ui: &mut Ui<T>) {
+fn tight(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.35),
         offset: Vec2::new(0.0, 1.0),
@@ -123,7 +122,7 @@ fn tight<T>(ui: &mut Ui<T>) {
 
 /// σ = 0 — sharp drop. Should match the rounded-rect SDF exactly,
 /// shifted by `offset`. Pins the degenerate-blur code path visually.
-fn sharp<T>(ui: &mut Ui<T>) {
+fn sharp(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 1.0),
         offset: Vec2::new(6.0, 6.0),
@@ -135,7 +134,7 @@ fn sharp<T>(ui: &mut Ui<T>) {
 }
 
 /// Coloured glow, zero offset — bloom feel.
-fn glow<T>(ui: &mut Ui<T>) {
+fn glow(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.4, 0.6, 1.0, 0.6),
         offset: Vec2::ZERO,
@@ -147,7 +146,7 @@ fn glow<T>(ui: &mut Ui<T>) {
 }
 
 /// Inset shadow — interior darkening, pressed-button feel.
-fn inset<T>(ui: &mut Ui<T>) {
+fn inset(ui: &mut Ui) {
     card_fill(ui);
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.45),
@@ -162,7 +161,7 @@ fn inset<T>(ui: &mut Ui<T>) {
 /// painted via `Background` (fill + radius + shadow) instead of
 /// shape pushes. Demonstrates the option-1 path: shadow emitted by
 /// the encoder before the chrome rect.
-fn chrome_cell<T>(ui: &mut Ui<T>, id: &'static str, bg: Background) {
+fn chrome_cell(ui: &mut Ui, id: &'static str, bg: Background) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -241,7 +240,7 @@ fn chrome_translucent() -> Background {
 
 /// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
 /// order, the deepest first; composer batches them onto one draw.
-fn stacked<T>(ui: &mut Ui<T>) {
+fn stacked(ui: &mut Ui) {
     ui.add_shape(shadow_shape(Shadow {
         color: Color::rgba(0.0, 0.0, 0.0, 0.18),
         offset: Vec2::new(0.0, 24.0),

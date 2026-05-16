@@ -1,4 +1,3 @@
-use super::app_state::AppState;
 use super::swatch::swatch_bg;
 use crate::showcase::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
@@ -20,7 +19,7 @@ fn tile() -> Background {
     swatch_bg(swatch::A)
 }
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -99,7 +98,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt(id)
         .gap(4.0)

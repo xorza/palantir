@@ -80,7 +80,7 @@ impl Harness {
         physical: UVec2,
         scale: f32,
         clear: Color,
-        scene: impl FnMut(&mut Ui<()>),
+        scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.visual_test.target"),
@@ -100,7 +100,7 @@ impl Harness {
         });
 
         self.host.ui.theme.window_clear = clear;
-        self.host.frame_offscreen(&target, scale, &mut (), scene);
+        self.host.frame_offscreen(&target, scale, scene);
 
         readback(&self.device, &self.queue, &target, physical)
     }
@@ -109,7 +109,7 @@ impl Harness {
     /// Used by fixtures whose state populates over multiple frames
     /// (scrollbars reading their populated `ScrollState`, damage
     /// seeding `DamageEngine.prev`).
-    pub fn render_after_settle<F: FnMut(&mut Ui<()>) + Copy>(
+    pub fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
         &mut self,
         settle_frames: u32,
         physical: UVec2,
@@ -132,7 +132,7 @@ impl Harness {
         physical: UVec2,
         scale: f32,
         clear: Color,
-        scene: impl FnMut(&mut Ui<()>),
+        scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         self.host.ui.debug_overlay = overlay;
         let img = self.render(physical, scale, clear, scene);

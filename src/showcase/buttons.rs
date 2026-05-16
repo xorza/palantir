@@ -3,13 +3,12 @@
 //! ButtonTheme from scratch when an app wants something different
 //! from the framework default. Default styling demoed in the first row.
 
-use super::app_state::AppState;
 use palantir::{
     Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Shadow, Sizing, Stroke,
     TextStyle, Ui, WidgetLook,
 };
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -64,7 +63,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn row<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
+fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))

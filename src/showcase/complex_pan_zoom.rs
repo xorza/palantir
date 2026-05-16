@@ -17,7 +17,7 @@ use palantir::{
 };
 use std::rc::Rc;
 
-pub fn build<T>(ui: &mut Ui<T>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
@@ -54,7 +54,7 @@ pub fn build<T>(ui: &mut Ui<T>) {
         });
 }
 
-fn header_band<T>(ui: &mut Ui<T>) {
+fn header_band(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("hdr")
         .gap(6.0)
@@ -77,7 +77,7 @@ fn header_band<T>(ui: &mut Ui<T>) {
         });
 }
 
-fn property_grid<T>(ui: &mut Ui<T>) {
+fn property_grid(ui: &mut Ui) {
     const ROWS: usize = 12;
     let rows: Vec<Track> = (0..ROWS).map(|_| Track::hug()).collect();
     Grid::new()
@@ -138,7 +138,7 @@ fn property_grid<T>(ui: &mut Ui<T>) {
         });
 }
 
-fn gradient_strip<T>(ui: &mut Ui<T>) {
+fn gradient_strip(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("grad-row")
         .gap(6.0)
@@ -162,7 +162,7 @@ fn gradient_strip<T>(ui: &mut Ui<T>) {
         });
 }
 
-fn cell_grid<T>(ui: &mut Ui<T>, salt: &'static str, rows: u32, cols: u32) {
+fn cell_grid(ui: &mut Ui, salt: &'static str, rows: u32, cols: u32) {
     Panel::vstack()
         .id_salt((salt, "v"))
         .gap(4.0)
@@ -180,7 +180,7 @@ fn cell_grid<T>(ui: &mut Ui<T>, salt: &'static str, rows: u32, cols: u32) {
         });
 }
 
-fn cell<T>(ui: &mut Ui<T>, salt: &'static str, r: u32, c: u32) {
+fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) {
     Button::new()
         .id_salt((salt, "cell", r, c))
         .label(format!("{r},{c}"))
@@ -190,7 +190,7 @@ fn cell<T>(ui: &mut Ui<T>, salt: &'static str, r: u32, c: u32) {
         .show(ui);
 }
 
-fn chat_messages<T>(ui: &mut Ui<T>, count: u32) {
+fn chat_messages(ui: &mut Ui, count: u32) {
     Panel::vstack()
         .id_salt("chat")
         .gap(8.0)
@@ -235,7 +235,7 @@ fn chat_messages<T>(ui: &mut Ui<T>, count: u32) {
         });
 }
 
-fn canvas_polylines<T>(ui: &mut Ui<T>) {
+fn canvas_polylines(ui: &mut Ui) {
     Panel::canvas()
         .id_salt("polylines")
         .size((Sizing::FILL, Sizing::Fixed(120.0)))

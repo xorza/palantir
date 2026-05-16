@@ -38,7 +38,7 @@ const MEASURE_FRAMES: usize = 256;
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 
-fn build_ui<T>(ui: &mut Ui<T>) {
+fn build_ui(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
@@ -132,7 +132,6 @@ fn main() {
     for _ in 0..WARMUP_FRAMES {
         black_box(ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_ui,
         ));
     }
@@ -140,7 +139,6 @@ fn main() {
     for _ in 0..MEASURE_FRAMES {
         black_box(ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_ui,
         ));
     }

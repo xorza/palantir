@@ -4,7 +4,6 @@
 //! every frame. Stop colours stay vivid so spread/interp differences
 //! read at a glance.
 
-use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
@@ -18,7 +17,7 @@ const YELLOW: ColorU8 = ColorU8::hex(0xfacc15);
 const RED: ColorU8 = ColorU8::hex(0xff5e44);
 const GREEN: ColorU8 = ColorU8::hex(0x46c46c);
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -56,7 +55,7 @@ pub fn build(ui: &mut Ui<AppState>) {
 }
 
 /// One panel cell containing a single gradient-filled frame.
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -84,7 +83,7 @@ fn conic_filled(g: ConicGradient) -> Background {
     filled(Brush::Conic(g))
 }
 
-fn horizontal<T>(ui: &mut Ui<T>) {
+fn horizontal(ui: &mut Ui) {
     Frame::new()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -92,7 +91,7 @@ fn horizontal<T>(ui: &mut Ui<T>) {
         .show(ui);
 }
 
-fn vertical<T>(ui: &mut Ui<T>) {
+fn vertical(ui: &mut Ui) {
     Frame::new()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -104,7 +103,7 @@ fn vertical<T>(ui: &mut Ui<T>) {
         .show(ui);
 }
 
-fn diagonal<T>(ui: &mut Ui<T>) {
+fn diagonal(ui: &mut Ui) {
     Frame::new()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -118,7 +117,7 @@ fn diagonal<T>(ui: &mut Ui<T>) {
 
 /// Radial centred at (0.5, 0.5) with a circular radius of 0.5 (touches
 /// the bounding square mid-edges). Bright core, dark rim.
-fn radial_centered<T>(ui: &mut Ui<T>) {
+fn radial_centered(ui: &mut Ui) {
     let g = RadialGradient::two_stop_centered(YELLOW, NAVY);
     Frame::new()
         .auto_id()
@@ -129,7 +128,7 @@ fn radial_centered<T>(ui: &mut Ui<T>) {
 
 /// Off-centre radial — the bright core hugs the top-left, the rim
 /// reaches further along the diagonal.
-fn radial_offset<T>(ui: &mut Ui<T>) {
+fn radial_offset(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::new(0.25, 0.3),
         Vec2::new(0.9, 0.9),
@@ -148,7 +147,7 @@ fn radial_offset<T>(ui: &mut Ui<T>) {
 
 /// Elliptical radius — wider horizontally than vertically. Stretches
 /// the core into an oval.
-fn radial_ellipse<T>(ui: &mut Ui<T>) {
+fn radial_ellipse(ui: &mut Ui) {
     let g = RadialGradient::new(
         Vec2::splat(0.5),
         Vec2::new(0.55, 0.25),
@@ -167,7 +166,7 @@ fn radial_ellipse<T>(ui: &mut Ui<T>) {
 /// Conic colour-wheel centred in the cell. Six saturated stops sweep
 /// CCW from the positive-x axis, with stop 0 == stop 1 so the seam
 /// hides at angle 0.
-fn conic_wheel<T>(ui: &mut Ui<T>) {
+fn conic_wheel(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),
         0.0,
@@ -190,7 +189,7 @@ fn conic_wheel<T>(ui: &mut Ui<T>) {
 
 /// Conic with a non-zero `start_angle` — the same sweep, rotated. Pin
 /// for the `(theta - start_angle) / TAU` shader math.
-fn conic_rotated<T>(ui: &mut Ui<T>) {
+fn conic_rotated(ui: &mut Ui) {
     let g = ConicGradient::new(
         Vec2::splat(0.5),
         std::f32::consts::FRAC_PI_2,
@@ -211,7 +210,7 @@ fn conic_rotated<T>(ui: &mut Ui<T>) {
 /// mirror back in), a `Repeat` linear (stripes), and an Oklab radial
 /// (smooth perceptual midpoint). Confirms `Spread` + `Interp` reach
 /// non-linear variants.
-fn spread_and_interp<T>(ui: &mut Ui<T>) {
+fn spread_and_interp(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(4.0)

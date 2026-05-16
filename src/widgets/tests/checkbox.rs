@@ -4,7 +4,7 @@ use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn run(value: &mut bool, ui: &mut Ui<()>, surface: UVec2) {
+fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
     let mut v = *value;
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

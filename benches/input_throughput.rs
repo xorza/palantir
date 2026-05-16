@@ -38,7 +38,7 @@ const OVERLAP_LAYERS: usize = 64;
 const GRID_COLS: usize = 12;
 const GRID_ROWS: usize = 8;
 
-fn build_ui<T>(ui: &mut Ui<T>) {
+fn build_ui(ui: &mut Ui) {
     Panel::zstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -124,9 +124,9 @@ fn warmed_ui() -> (Ui, Display) {
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames: first builds cascades, second latches scroll-target
     // and any post_record state once the pointer is inside.
-    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), build_ui);
+    ui.frame(FrameStamp::new(display, Duration::ZERO), build_ui);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 200.0)));
-    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), build_ui);
+    ui.frame(FrameStamp::new(display, Duration::ZERO), build_ui);
     (ui, display)
 }
 

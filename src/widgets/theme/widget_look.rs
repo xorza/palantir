@@ -62,9 +62,9 @@ impl WidgetLook {
     ///
     /// `fallback_text` is used when `self.text == None` — pass
     /// `ui.theme.text` (TextStyle is `Copy`).
-    pub fn animate<T>(
+    pub fn animate(
         &self,
-        ui: &mut Ui<T>,
+        ui: &mut Ui,
         id: WidgetId,
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,

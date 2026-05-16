@@ -8,7 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn build_clickable<T>(ui: &mut Ui<T>) {
+fn build_clickable(ui: &mut Ui) {
     Panel::hstack()
         .id_salt("target")
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))

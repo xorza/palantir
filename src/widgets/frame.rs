@@ -30,7 +30,7 @@ impl Frame {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         match self.chrome {
             Some(c) => ui.node_with_chrome(self.element, c, |_| {}),

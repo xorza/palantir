@@ -20,7 +20,7 @@ use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
-pub(crate) fn record_frame_stats<T>(ui: &mut Ui<T>) {
+pub(crate) fn record_frame_stats(ui: &mut Ui) {
     let label = format!("f {} · {:>4.0} fps", ui.frame_id, ui.fps_ema);
     let style = TextStyle {
         family: FontFamily::Mono,

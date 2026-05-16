@@ -9,7 +9,7 @@ fn caret_blinks_on_and_off_while_focused() {
     use crate::forest::tree::{NodeId, TreeItem, TreeItems};
     use std::time::Duration;
 
-    fn body(ui: &mut Ui<()>, buf: &mut String, leaf: &mut Option<NodeId>) {
+    fn body(ui: &mut Ui, buf: &mut String, leaf: &mut Option<NodeId>) {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
@@ -21,7 +21,7 @@ fn caret_blinks_on_and_off_while_focused() {
         });
     }
 
-    fn caret_painted(ui: &Ui<()>, leaf: NodeId) -> bool {
+    fn caret_painted(ui: &Ui, leaf: NodeId) -> bool {
         // Caret is the only RoundedRect with `local_rect: Some(...)` on
         // a freshly focused, empty, unselected editor — `Background`
         // routes through `chrome` (no shape), selection wash is absent
@@ -48,12 +48,11 @@ fn caret_blinks_on_and_off_while_focused() {
             })
     }
 
-    fn frame_at(ui: &mut Ui<()>, now_secs: f32, mut f: impl FnMut(&mut Ui<()>)) {
+    fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
         use crate::layout::types::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
         ui.frame(
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
-            &mut (),
             |ui| f(ui),
         );
         ui.frame_state.mark_submitted();
@@ -146,7 +145,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // frame's `Panel::hstack` resolves to the same source location,
     // so the Panel's auto-id is stable and structural damage stays
     // empty unless something actually changed.
-    fn record(ui: &mut Ui<()>, buf: &mut String) {
+    fn record(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("anim-damage")
@@ -157,7 +156,6 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     let frame = |ui: &mut Ui, buf: &mut String, t_secs: f32| -> FrameReport {
         let report = ui.frame(
             FrameStamp::new(display, Duration::from_secs_f32(t_secs)),
-            &mut (),
             |ui| {
                 record(ui, buf);
             },
@@ -211,7 +209,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
     let mut buf = String::new();
     let display = Display::from_physical(NARROW, 1.0);
 
-    fn body(ui: &mut Ui<()>, buf: &mut String) {
+    fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("refocus-blink")
@@ -220,11 +218,9 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         });
     }
     let frame = |ui: &mut Ui, buf: &mut String, t: f32| {
-        let r = ui.frame(
-            FrameStamp::new(display, Duration::from_secs_f32(t)),
-            &mut (),
-            |ui| body(ui, buf),
-        );
+        let r = ui.frame(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
+            body(ui, buf)
+        });
         ui.frame_state.mark_submitted();
         r
     };
@@ -260,7 +256,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let display = Display::from_physical(NARROW, 1.0);
 
     // Unfocused: no blink schedule.
-    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id_salt("blink-wake")
@@ -277,7 +273,7 @@ fn focused_text_edit_schedules_blink_wake() {
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
     ui.click_at(Vec2::new(20.0, 20.0));
-    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
                 .id_salt("blink-wake")

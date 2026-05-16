@@ -15,7 +15,7 @@ enum Pick {
 /// Run one frame and return each row's reported `Response.rect`
 /// keyed to the click target (B / C). We need the rect so the click
 /// test can hit the actual painted area regardless of font metrics.
-fn frame_with_rects(ui: &mut Ui<()>, surface: UVec2, sel: &mut Pick) -> [Option<Rect>; 3] {
+fn frame_with_rects(ui: &mut Ui, surface: UVec2, sel: &mut Pick) -> [Option<Rect>; 3] {
     let mut local = *sel;
     let mut rects = [None; 3];
     ui.run_at(surface, |ui| {

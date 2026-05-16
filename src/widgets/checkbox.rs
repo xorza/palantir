@@ -43,7 +43,7 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let raw_state = ui.response_for(id);
         let mut state = raw_state;

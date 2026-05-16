@@ -43,7 +43,7 @@ const DENSE_ROWS_PER_GROUP: usize = 12;
 /// by cmd-stream copy size, not just per-node walk overhead.
 const DENSE_SHAPES_PER_ROW: usize = 6;
 
-fn build<T>(ui: &mut Ui<T>) {
+fn build(ui: &mut Ui) {
     Panel::vstack()
         .id_salt("nested-root")
         .gap(4.0)
@@ -97,7 +97,7 @@ fn build<T>(ui: &mut Ui<T>) {
 /// group surface (DrawRectStroked instead of DrawRect). Used to verify
 /// the compose-cache contribution finding from the simpler `build`
 /// workload — if the cache earns < 1% here too, deletion is justified.
-fn build_heavy<T>(ui: &mut Ui<T>) {
+fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
         fill: Color::hex(0x1a1a1a).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
@@ -178,7 +178,7 @@ fn build_heavy<T>(ui: &mut Ui<T>) {
 /// memcpy-vs-walk asymmetry shows up if there is one. Keeps
 /// `Sizing::Fixed` everywhere so measure stays cheap and the encode
 /// signal isn't drowned by text shaping.
-fn build_dense<T>(ui: &mut Ui<T>) {
+fn build_dense(ui: &mut Ui) {
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
@@ -243,34 +243,18 @@ fn bench(c: &mut Criterion) {
 
     group.bench_function("measure/cached", |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
-            build,
-        );
+        let _ = ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build);
         b.iter(|| {
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
-                build,
-            ));
+            black_box(ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build));
         });
     });
 
     group.bench_function("measure/forced_miss", |b| {
         let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
-            build,
-        );
+        let _ = ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build);
         b.iter(|| {
             ui.clear_measure_cache();
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
-                build,
-            ));
+            black_box(ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build));
         });
     });
 
@@ -291,13 +275,11 @@ fn bench(c: &mut Criterion) {
         let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_scrolling,
         );
         b.iter(|| {
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_scrolling,
             ));
         });
@@ -308,7 +290,6 @@ fn bench(c: &mut Criterion) {
         // Frame 1: register the scroll viewport's rect/content/cascade.
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_scrolling,
         );
         // Hover the pointer over the viewport so wheel events route to
@@ -318,7 +299,6 @@ fn bench(c: &mut Criterion) {
         // Frame 2: apply pointer-route + warm caches a second time.
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_scrolling,
         );
         let mut sign: f32 = 1.0;
@@ -331,7 +311,6 @@ fn bench(c: &mut Criterion) {
             sign = -sign;
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_scrolling,
             ));
         });
@@ -344,13 +323,11 @@ fn bench(c: &mut Criterion) {
         let mut ui = fresh_heavy_ui();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_heavy,
         );
         b.iter(|| {
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_heavy,
             ));
         });
@@ -360,14 +337,12 @@ fn bench(c: &mut Criterion) {
         let mut ui = fresh_heavy_ui();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_heavy,
         );
         b.iter(|| {
             ui.clear_measure_cache();
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_heavy,
             ));
         });
@@ -381,13 +356,11 @@ fn bench(c: &mut Criterion) {
         let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_dense,
         );
         b.iter(|| {
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_dense,
             ));
         });
@@ -397,14 +370,12 @@ fn bench(c: &mut Criterion) {
         let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
             build_dense,
         );
         b.iter(|| {
             ui.clear_measure_cache();
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_dense,
             ));
         });
@@ -413,7 +384,7 @@ fn bench(c: &mut Criterion) {
     group.finish();
 }
 
-fn build_scrolling<T>(ui: &mut Ui<T>) {
+fn build_scrolling(ui: &mut Ui) {
     Scroll::vertical().id_salt("scroll-root").show(ui, build);
 }
 

@@ -18,7 +18,7 @@ fn trigger_id() -> WidgetId {
     WidgetId::from_hash("trigger")
 }
 
-fn build<T>(ui: &mut Ui<T>, clicked_copy: &mut bool, _unused: &mut bool) {
+fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
@@ -43,7 +43,7 @@ fn build<T>(ui: &mut Ui<T>, clicked_copy: &mut bool, _unused: &mut bool) {
         });
 }
 
-fn menu_open<T>(ui: &Ui<T>) -> bool {
+fn menu_open(ui: &Ui) -> bool {
     ContextMenu::is_open(ui, trigger_id())
 }
 

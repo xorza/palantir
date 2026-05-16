@@ -5,9 +5,8 @@
 //! Single public entry: [`Host::frame`]. Runs CPU passes, acquires the
 //! next swapchain texture, submits, presents — folding
 //! Suboptimal / Outdated / Lost / Timeout / Validation / Occluded into a
-//! single "needs repaint" bool. Always takes ambient app state (`&mut ()`
-//! when there is none) so deep widgets can reach it via
-//! [`Ui::app::<T>()`] without explicit threading.
+//! single "needs repaint" bool. App-owned state lives in the caller's
+//! frame-builder closure (capture it) — palantir doesn't carry it.
 //!
 //! Internal split — [`Host::cpu_frame`] + [`Host::render_to_texture`] —
 //! is `pub(crate)`; benches and the visual test harness reach it via
@@ -27,8 +26,8 @@ use crate::{Display, FrameReport, FrameStamp};
 /// GPU [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The
 /// renderer halves are private; reach the recorder via the public
 /// [`Host::ui`] field.
-pub struct Host<T = ()> {
-    pub ui: Ui<T>,
+pub struct Host {
+    pub ui: Ui,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
@@ -46,7 +45,7 @@ pub struct Host<T = ()> {
     occluded_at: Option<Instant>,
 }
 
-impl<T: 'static> Host<T> {
+impl Host {
     /// Construct with a bundled-fonts shaper shared between the `Ui`
     /// (measurement) and the backend (rasterization) so they hit one
     /// buffer cache.
@@ -119,14 +118,12 @@ impl<T: 'static> Host<T> {
         self.occluded = occluded;
     }
 
-    /// Swapchain one-shot: run CPU + GPU + present. Installs `state` as
-    /// ambient app state for the frame; callers without app state pass
-    /// `&mut ()`. Folds the acquire dance
-    /// (Suboptimal / Outdated / Lost / Timeout / Validation / Occluded)
-    /// into the returned `repaint_requested` bool — `true` if the host
-    /// should request another redraw. Reconfigure-required variants
-    /// call `surface.configure(_, config)` before returning. Skip
-    /// frames bypass surface acquisition entirely.
+    /// Swapchain one-shot: run CPU + GPU + present. Folds the acquire
+    /// dance (Suboptimal / Outdated / Lost / Timeout / Validation /
+    /// Occluded) into the returned `repaint_requested` bool — `true`
+    /// if the host should request another redraw. Reconfigure-required
+    /// variants call `surface.configure(_, config)` before returning.
+    /// Skip frames bypass surface acquisition entirely.
     ///
     /// Derives `Display`'s physical size from `config.width`/`config.height`.
     pub fn frame(
@@ -134,8 +131,7 @@ impl<T: 'static> Host<T> {
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
-        state: &mut T,
-        record: impl FnMut(&mut Ui<T>),
+        record: impl FnMut(&mut Ui),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
@@ -151,7 +147,7 @@ impl<T: 'static> Host<T> {
 
         let display =
             Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
-        let report = self.cpu_frame(display, state, record);
+        let report = self.cpu_frame(display, record);
         self.present(surface, config, report)
     }
 
@@ -162,16 +158,12 @@ impl<T: 'static> Host<T> {
     pub(crate) fn cpu_frame(
         &mut self,
         display: Display,
-        state: &mut T,
-        record: impl FnMut(&mut Ui<T>),
+        record: impl FnMut(&mut Ui),
     ) -> FrameReport {
         // Ui::frame clears its own Rc-shared arena at the top of the
         // record cycle — the same Rc the frontend + backend hold.
-        self.ui.frame(
-            FrameStamp::new(display, self.start.elapsed()),
-            state,
-            record,
-        )
+        self.ui
+            .frame(FrameStamp::new(display, self.start.elapsed()), record)
     }
 
     /// GPU submit against a caller-supplied texture. On
@@ -272,15 +264,14 @@ pub enum FramePresent {
 /// drive each half independently without going through the
 /// swapchain.
 #[cfg(any(test, feature = "internals"))]
-impl<T: 'static> Host<T> {
+impl Host {
     /// CPU half of [`Self::frame`] — runs `Ui::frame` without acquiring a swapchain.
     pub fn cpu_frame_for_test(
         &mut self,
         display: Display,
-        state: &mut T,
-        record: impl FnMut(&mut Ui<T>),
+        record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        self.cpu_frame(display, state, record)
+        self.cpu_frame(display, record)
     }
 
     /// GPU half of [`Self::frame`] against a caller-supplied texture.
@@ -296,13 +287,12 @@ impl<T: 'static> Host<T> {
         &mut self,
         target: &wgpu::Texture,
         scale_factor: f32,
-        state: &mut T,
-        record: impl FnMut(&mut Ui<T>),
+        record: impl FnMut(&mut Ui),
     ) {
         let size = target.size();
         let display =
             Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
-        let report = self.cpu_frame(display, state, record);
+        let report = self.cpu_frame(display, record);
         self.render_to_texture(target, &report);
     }
 }

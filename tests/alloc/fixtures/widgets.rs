@@ -24,7 +24,7 @@ fn button_only_alloc_free() {
 #[test]
 fn nested_vstack_64_alloc_free() {
     audit_steady_state("nested_vstack_64", 0, |ui| {
-        fn rec(ui: &mut Ui<()>, depth: u32) {
+        fn rec(ui: &mut Ui, depth: u32) {
             if depth == 0 {
                 return;
             }

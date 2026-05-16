@@ -1,8 +1,7 @@
-use super::app_state::AppState;
 use crate::showcase::swatch;
 use palantir::{Background, Color, Configure, Frame, Panel, Sizing, Ui};
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::hstack()
         .auto_id()
         .gap(12.0)
@@ -42,7 +41,7 @@ pub fn build(ui: &mut Ui<AppState>) {
 }
 
 /// Plain layout cell: padding + gap, no decoration.
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
+fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -51,7 +50,7 @@ fn cell<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
         .show(ui, body);
 }
 
-fn sw<T>(ui: &mut Ui<T>, id: &'static str, w: f32, h: f32, c: Color) {
+fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
@@ -59,7 +58,7 @@ fn sw<T>(ui: &mut Ui<T>, id: &'static str, w: f32, h: f32, c: Color) {
         .show(ui);
 }
 
-fn positioned<T>(ui: &mut Ui<T>, id: &'static str, x: f32, y: f32, c: Color) {
+fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
     Frame::new()
         .id_salt(id)
         .position((x, y))

@@ -202,8 +202,8 @@ fn bar_plan(
 /// up. Track is always a leaf even when `theme.track` alpha is 0 so
 /// the click-to-page surface stays available — the gutter is reserved
 /// either way and matches OS scrollbar conventions.
-fn push_bar_nodes<T>(
-    ui: &mut Ui<T>,
+fn push_bar_nodes(
+    ui: &mut Ui,
     plan: BarPlan,
     track_id: WidgetId,
     thumb_id: WidgetId,
@@ -342,7 +342,7 @@ impl Scroll {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>, body: impl FnOnce(&mut Ui<T>)) -> Response {
+    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
         let id = self.element.id;
         let mode = self.element.mode;
         assert!(

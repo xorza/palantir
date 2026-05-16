@@ -7,8 +7,8 @@
 //! Usage:
 //!
 //! ```ignore
-//! WinitHost::new(WinitHostConfig::new("title"), AppState::default(), |ui| build_ui(ui))
-//!     .with_setup(|host| host.ui.theme.button.anim = Some(AnimSpec::SPRING))
+//! WinitHost::new(WinitHostConfig::new("title"), AppState::default(), |ui, app| build_ui(ui, app))
+//!     .with_setup(|ui| ui.theme.button.anim = Some(AnimSpec::SPRING))
 //!     .run();
 //! ```
 
@@ -24,7 +24,7 @@ use crate::host::{FramePresent, Host};
 use crate::input::InputEvent;
 use crate::ui::Ui;
 
-type SetupFn<T> = Box<dyn FnOnce(&mut Ui<T>)>;
+type SetupFn = Box<dyn FnOnce(&mut Ui)>;
 
 /// Tunables forwarded to winit + wgpu at startup. All fields are
 /// optional with sensible defaults; override what you care about.
@@ -64,23 +64,24 @@ impl WinitHostConfig {
     }
 }
 
-/// Top-level winit-driven palantir runtime. Generic over the app state
-/// `T` (installed ambient on the `Ui` every frame) and the
-/// frame-builder closure `F`.
+/// Top-level winit-driven palantir runtime. Owns the caller-supplied
+/// app state `T` for convenience (RAII lifetime, no `Rc<RefCell<>>`
+/// to manage) and threads `&mut T` into the frame-builder closure
+/// alongside `&mut Ui`. Generic over the closure type `F` as well.
 pub struct WinitHost<T, F> {
     config: WinitHostConfig,
     app: T,
     builder: F,
-    setup: Option<SetupFn<T>>,
-    state: Option<RuntimeState<T>>,
+    setup: Option<SetupFn>,
+    state: Option<RuntimeState>,
 }
 
-struct RuntimeState<T> {
+struct RuntimeState {
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
-    host: Host<T>,
+    host: Host,
     scale_factor: f32,
     /// Host-side scheduling state. Reset at the top of `draw` from the
     /// `FramePresent` the frame returned; re-armed to `Immediate` by
@@ -91,7 +92,7 @@ struct RuntimeState<T> {
 impl<T, F> WinitHost<T, F>
 where
     T: 'static,
-    F: FnMut(&mut Ui<T>),
+    F: FnMut(&mut Ui, &mut T),
 {
     pub fn new(config: WinitHostConfig, app: T, builder: F) -> Self {
         Self {
@@ -107,7 +108,7 @@ where
     /// `Ui` (after device + surface are up). Use for theme tweaks
     /// and any other `Ui` mutation that needs to happen before the
     /// first frame.
-    pub fn with_setup(mut self, setup: impl FnOnce(&mut Ui<T>) + 'static) -> Self {
+    pub fn with_setup(mut self, setup: impl FnOnce(&mut Ui) + 'static) -> Self {
         self.setup = Some(Box::new(setup));
         self
     }
@@ -130,8 +131,8 @@ where
         };
         rt.next = rt
             .host
-            .frame(&rt.surface, &rt.config, rt.scale_factor, app, |ui| {
-                builder(ui)
+            .frame(&rt.surface, &rt.config, rt.scale_factor, |ui| {
+                builder(ui, app)
             });
     }
 }
@@ -139,7 +140,7 @@ where
 impl<T, F> ApplicationHandler for WinitHost<T, F>
 where
     T: 'static,
-    F: FnMut(&mut Ui<T>),
+    F: FnMut(&mut Ui, &mut T),
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {

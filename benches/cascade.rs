@@ -20,7 +20,7 @@ use std::hint::black_box;
 /// Approximates a long list of items — the wide-and-shallow shape that
 /// stresses the cascade pre-order walk hardest because every leaf
 /// pushes a fresh `HitEntry`.
-fn build_flat<T>(ui: &mut Ui<T>, n: usize) {
+fn build_flat(ui: &mut Ui, n: usize) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -44,11 +44,9 @@ fn bench_cascade(c: &mut Criterion) {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
         let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            &mut (),
-            |ui| build_flat(ui, n),
-        );
+        let _ = ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), |ui| {
+            build_flat(ui, n)
+        });
 
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
