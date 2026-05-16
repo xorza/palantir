@@ -43,6 +43,33 @@ use rustc_hash::FxHashSet;
 /// Module-internal tests (e.g. `stack/tests.rs`) reach in via
 /// `pub(crate)` to pin measure output independently of
 /// arrange's slot-clamping.
+///
+/// ## Cache-hit contract
+///
+/// Fields split into two lifecycle categories:
+///
+/// 1. **Drained on measure exit** — `wrap.pool` / `wrap.starts`,
+///    `stack_fill.pool`, `grid.depth_stack`, `grid.track_aggregator`,
+///    `intrinsics`, `tmp_hugs`. Each driver pushes on enter and
+///    truncates on exit; arrange never reads them. A
+///    [`MeasureCache`] hit that skips a subtree's measure is
+///    invisible to these — they were never going to carry state out.
+///
+/// 2. **Retained measure → arrange** — `desired` and `grid.hugs`.
+///    `desired` is node-indexed and the cache transparently round-
+///    trips it through [`SubtreeArenas::desired`]. `grid.hugs` is
+///    indexed per-grid (not per-node) so the cache hit path has to
+///    explicitly call [`Self::restore_after_cache_hit`] to splat
+///    [`SubtreeArenas::hugs`] back into the live pool — without
+///    that, arrange reads zeros and every cell collapses to (0, 0).
+///
+/// **Adding a new field to category (2)** requires three coordinated
+/// edits: a snapshot writer into [`Self::tmp_hugs`]-style staging
+/// (or a new arena), a [`SubtreeArenas`] field carrying it through
+/// the cache, and a restore call inside
+/// [`Self::restore_after_cache_hit`]. Forgetting any one corrupts
+/// arrange silently — pinned per-driver by the fixtures in
+/// `src/layout/cache/integration_tests.rs`.
 #[derive(Default)]
 pub(crate) struct LayoutScratch {
     pub(crate) grid: GridContext,
@@ -61,6 +88,33 @@ impl LayoutScratch {
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         self.grid.hugs.reset_for(tree);
+    }
+
+    /// Splat every per-subtree side-state column carried by `arenas`
+    /// back into the live scratch pools. Called from `measure` after
+    /// the cache hit has already populated `desired` + text shapes;
+    /// owns the dispatch over category-(2) fields documented on
+    /// [`LayoutScratch`]. Adding a new retained driver column adds
+    /// one branch here so the engine's cache-hit path stays a single
+    /// method call. `#[inline]`-marked because it's hit on every
+    /// cache hit and the grid-free common path is a single bitset
+    /// test — folding it into the caller keeps the cold-path branch
+    /// predictor happy.
+    #[inline]
+    pub(crate) fn restore_after_cache_hit(
+        &mut self,
+        tree: &Tree,
+        subtree: std::ops::Range<usize>,
+        arenas: &SubtreeArenas<'_>,
+    ) {
+        // `grid.hugs` is the only retained category-(2) field today.
+        // The `has_grid` bitset gates the dispatch so grid-free
+        // subtrees pay one bit-test instead of walking the subtree
+        // looking for grids — keeps the hot path cold for the common
+        // case.
+        if tree.has_grid.contains(subtree.start) {
+            self.grid.hugs.restore_subtree(tree, subtree, arenas.hugs);
+        }
     }
 }
 
@@ -294,18 +348,15 @@ impl LayoutEngine {
                     len: snap_span.len,
                 };
             }
-            // Restore per-grid hug arrays. `grid::arrange` reads
-            // `LayoutEngine.scratch.grid.hugs`, populated only by
-            // `grid::measure`. Without this restore, a cache hit at
-            // any ancestor of a Grid leaves hugs zeroed and the
-            // grid would collapse every cell to (0, 0). Pinned by
-            // `widgets::tests::grid_cells_arranged_correctly_on_cache_hit_frame`.
-            if tree.has_grid.contains(curr_start) {
-                self.scratch
-                    .grid
-                    .hugs
-                    .restore_subtree(tree, curr_start..curr_end, hit.arenas.hugs);
-            }
+            // Restore every category-(2) per-subtree column carried
+            // by the snapshot (today: per-grid hug arrays). The
+            // dispatch lives on `LayoutScratch` so adding a new
+            // retained driver column is one edit there, not here.
+            // Pinned by `cache::integration_tests::cache_hit_preserves_grid_cell_rects`
+            // and the per-driver `cache_hit_preserves_*_rects`
+            // fixtures.
+            self.scratch
+                .restore_after_cache_hit(tree, curr_start..curr_end, &hit.arenas);
             return hit.root;
         }
 

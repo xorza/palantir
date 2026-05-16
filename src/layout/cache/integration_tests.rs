@@ -201,6 +201,146 @@ fn cache_hit_preserves_grid_cell_rects() {
     }
 }
 
+/// Per-driver cache-hit defense. Today only Grid retains per-subtree
+/// measure→arrange state (see `LayoutScratch` docs on the cache-hit
+/// contract); the other drivers drain their scratch on measure exit
+/// so a cache hit at an ancestor is structurally invisible to them.
+/// This test pins that property — any future driver that accidentally
+/// adds category-(2) state without wiring it through
+/// [`LayoutScratch::restore_after_cache_hit`] will desync these
+/// fixtures' warm rects from cold.
+///
+/// Each case builds a minimal subtree under the named driver, runs
+/// the same `record` cold then warm at the same surface, and asserts
+/// the captured leaf rects match. The cache is shared across the two
+/// frames inside one `Ui`, so the second frame's outer Panel cache
+/// hit forces the driver's measure to be skipped — if its arrange
+/// reads stale or zero state, the warm rect will diverge.
+#[test]
+fn cache_hit_preserves_per_driver_rects() {
+    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    let cases: &[(&str, Build)] = &[
+        ("hstack", |ui, capture| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Panel::hstack().id_salt("row").gap(6.0).show(ui, |ui| {
+                    for (i, label) in ["alpha", "beta", "gamma"].iter().enumerate() {
+                        capture.push(
+                            Text::new(*label)
+                                .id_salt(("cell", i))
+                                .style(TextStyle::default().with_font_size(14.0))
+                                .show(ui)
+                                .node(ui),
+                        );
+                    }
+                });
+            });
+        }),
+        ("vstack_fill_freeze", |ui, capture| {
+            // Three Fill children with min-content floors that force
+            // the freeze loop. Stack measure pushes onto
+            // `stack_fill.pool`; a cache hit at the outer panel skips
+            // the freeze entirely, so arrange must still read correct
+            // per-child slots from `desired` alone.
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Panel::vstack()
+                    .id_salt("freeze")
+                    .size((Sizing::Fixed(200.0), Sizing::Hug))
+                    .show(ui, |ui| {
+                        for (i, label) in [
+                            "needs-some-room-here",
+                            "wider-than-share-A",
+                            "wider-than-share-B",
+                        ]
+                        .iter()
+                        .enumerate()
+                        {
+                            capture.push(
+                                Text::new(*label)
+                                    .id_salt(("fill", i))
+                                    .size((Sizing::Fill(1.0), Sizing::Hug))
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        }
+                    });
+            });
+        }),
+        ("wrap_hstack", |ui, capture| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Panel::wrap_hstack()
+                    .id_salt("wrap")
+                    .size((Sizing::Fixed(120.0), Sizing::Hug))
+                    .gap(4.0)
+                    .line_gap(4.0)
+                    .show(ui, |ui| {
+                        for (i, label) in ["aa", "bbb", "cccc", "dd", "eeeee", "ff"]
+                            .iter()
+                            .enumerate()
+                        {
+                            capture.push(
+                                Text::new(*label)
+                                    .id_salt(("tag", i))
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        }
+                    });
+            });
+        }),
+        ("zstack", |ui, capture| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Panel::zstack()
+                    .id_salt("z")
+                    .size((Sizing::Fixed(160.0), Sizing::Fixed(40.0)))
+                    .show(ui, |ui| {
+                        for (i, label) in ["under", "over"].iter().enumerate() {
+                            capture.push(
+                                Text::new(*label)
+                                    .id_salt(("layer", i))
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        }
+                    });
+            });
+        }),
+        ("canvas", |ui, capture| {
+            Panel::vstack().auto_id().show(ui, |ui| {
+                Panel::canvas()
+                    .id_salt("c")
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+                    .show(ui, |ui| {
+                        for (i, label, pos) in [
+                            (0, "tl", glam::Vec2::new(4.0, 4.0)),
+                            (1, "br", glam::Vec2::new(80.0, 40.0)),
+                        ] {
+                            capture.push(
+                                Text::new(label)
+                                    .id_salt(("pin", i))
+                                    .position(pos)
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        }
+                    });
+            });
+        }),
+    ];
+    for (label, record) in cases {
+        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+        assert_warm_rects_match_cold(
+            &mut ui,
+            UVec2::new(800, 600),
+            &format!("case: {label}"),
+            *record,
+        );
+    }
+}
+
 /// Cache-correctness generalization: a measure-cache hit must not
 /// perturb ANY downstream consumer of per-frame engine state — so a
 /// fully-encoded `RenderCmdBuffer` from a warm frame must be
