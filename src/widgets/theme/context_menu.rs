@@ -1,4 +1,3 @@
-use crate::animation::AnimSpec;
 use crate::input::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -28,9 +27,6 @@ pub struct ContextMenuTheme {
     pub item: MenuItemTheme,
     /// Thin horizontal divider between groups (for `MenuItem::separator`).
     pub separator: Color,
-    /// Optional motion spec on `MenuItem` hover/press transitions.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub anim: Option<AnimSpec>,
 }
 
 /// Three-state row look for [`crate::widgets::context_menu::MenuItem`].
@@ -75,7 +71,6 @@ impl Default for ContextMenuTheme {
             min_width: 160.0,
             item: MenuItemTheme::default(),
             separator,
-            anim: None,
         }
     }
 }
