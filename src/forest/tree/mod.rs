@@ -601,11 +601,12 @@ impl Tree {
     /// `Grid` node and the def has nonzero rows + cols.
     #[inline(always)]
     fn check_grid_cell(&self, parent: Option<NodeId>, bounds: &BoundsExtras) {
-        if let Some(parent_id) = parent
-            && self.records.layout()[parent_id.0 as usize].mode == LayoutMode::Grid
-        {
-            let grid_idx = self.records.layout()[parent_id.0 as usize].mode_payload;
-            let def = &self.grid.defs[grid_idx as usize];
+        if let Some(parent_id) = parent {
+            let parent_layout = self.records.layout()[parent_id.0 as usize];
+            if parent_layout.mode != LayoutMode::Grid {
+                return;
+            }
+            let def = &self.grid.defs[parent_layout.mode_payload as usize];
             let n_rows = def.rows.len();
             let n_cols = def.cols.len();
             if n_rows > 0 && n_cols > 0 {
