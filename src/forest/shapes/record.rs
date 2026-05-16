@@ -2,7 +2,7 @@ use crate::layout::types::align::Align;
 use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
-use crate::primitives::image::ImageHandle;
+use crate::primitives::image::{ImageFit, ImageHandle};
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
@@ -377,7 +377,10 @@ pub(crate) enum ShapeRecord {
     Image {
         local_rect: Option<Rect>,
         tint: ColorF16,
+        /// Intrinsic dims live in `handle.size`; the encoder reads
+        /// them directly with no registry borrow.
         handle: ImageHandle,
+        fit: ImageFit,
     } = 5,
 }
 
@@ -591,6 +594,7 @@ impl Hash for ShapeRecord {
                 local_rect,
                 tint,
                 handle,
+                fit,
             } => {
                 match local_rect {
                     None => h.write_u8(0),
@@ -600,7 +604,16 @@ impl Hash for ShapeRecord {
                     }
                 }
                 tint.hash(h);
-                handle.hash(h);
+                // Hash `id` + `size` (handle's `Hash` impl keys on
+                // `id` only, but cache identity needs both — even
+                // though same-id-different-size can't legitimately
+                // happen, the dims are part of the lowered shape's
+                // appearance). Pack `size.x | size.y | fit` into one
+                // u64 so this is two writes total — id + packed.
+                h.write_u64(handle.id);
+                let packed =
+                    (handle.size.x as u64) | ((handle.size.y as u64) << 16) | ((*fit as u64) << 32);
+                h.write_u64(packed);
             }
         }
     }
@@ -651,7 +664,11 @@ mod tests {
         let make = |handle: u64, tint: Color| ShapeRecord::Image {
             local_rect: None,
             tint: ColorF16::from(tint),
-            handle: ImageHandle(handle),
+            handle: ImageHandle {
+                id: handle,
+                size: glam::U16Vec2::new(64, 64),
+            },
+            fit: ImageFit::Fill,
         };
         let h = |r: &ShapeRecord| {
             let mut s = FxHasher::new();

@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::image::ImageHandle;
+use crate::primitives::image::{ImageFit, ImageHandle};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{noop_f32, vec2_approx_eq},
@@ -130,14 +130,16 @@ pub enum Shape<'a> {
     /// Textured rectangle painted from a registered [`ImageHandle`].
     /// `local_rect = None` paints into the owner's full arranged rect;
     /// `Some(r)` paints `r` at owner-relative coords (`r.min = (0, 0)`
-    /// is the owner's top-left). `tint` multiplies the sampled pixel
-    /// in linear-RGB premultiplied space; `Color::WHITE` is "no tint."
-    /// The image's pixels live in [`crate::ImageRegistry`] and are
-    /// uploaded to GPU on first paint — the user just passes the
-    /// handle every frame.
+    /// is the owner's top-left). `fit` (default `Fill`) controls how
+    /// the image's intrinsic size maps onto that rect — see
+    /// [`ImageFit`]. `tint` multiplies the sampled pixel in linear-RGB
+    /// premultiplied space; `Color::WHITE` is "no tint." The image's
+    /// pixels live in [`crate::ImageRegistry`] and are uploaded to GPU
+    /// on first paint — the user just passes the handle every frame.
     Image {
         handle: ImageHandle,
         local_rect: Option<Rect>,
+        fit: ImageFit,
         tint: Color,
     },
     /// Gaussian-blurred rounded rectangle — drop shadow or inner
@@ -431,6 +433,7 @@ impl Shape<'_> {
                 handle,
                 local_rect,
                 tint,
+                ..
             } => handle.is_none() || local_rect_paint_empty(local_rect) || tint.is_noop(),
             Shape::Shadow {
                 local_rect, shadow, ..

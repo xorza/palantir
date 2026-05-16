@@ -200,15 +200,22 @@ pub(crate) struct ImageDraw {
 }
 
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
-/// buffer. The shader generates UVs from the four-corner `vertex_index`,
-/// samples the texture, and multiplies by `tint`. `Pod`-shaped so the
-/// upload is a single `write_buffer`.
+/// buffer. Shader interpolates `uv_min + corner * uv_size` per fragment
+/// (where `corner` is the four-corner `vertex_index`), samples the
+/// texture, and multiplies by `tint`. `uv_min`+`uv_size` carry the
+/// crop for `ImageFit::Cover`; the other fit modes ship `(0,0)+(1,1)`
+/// and let the encoder shape the paint rect instead. `Pod`-shaped so
+/// the upload is a single `write_buffer`.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ImageInstance {
     /// Physical-px paint rect.
     pub(crate) rect: Rect,
+    /// UV crop top-left (0..1 texture coords).
+    pub(crate) uv_min: glam::Vec2,
+    /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop).
+    pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
 }

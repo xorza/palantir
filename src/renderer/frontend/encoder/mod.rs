@@ -11,6 +11,7 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::image::ImageFit;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::quad::FillKind;
@@ -271,18 +272,29 @@ fn emit_one_shape(
             local_rect,
             tint,
             handle,
+            fit,
         } => {
-            let r = match local_rect {
+            let base = match local_rect {
                 None => owner_rect,
                 Some(lr) => Rect {
                     min: owner_rect.min + lr.min,
                     size: lr.size,
                 },
             };
+            // Dims live on the handle itself — no registry borrow.
+            // `size == ZERO` (e.g. NONE handle) makes `resolve_fit`
+            // fall through to the base rect + full UV.
+            let Resolved {
+                rect,
+                uv_min,
+                uv_size,
+            } = resolve_fit(base, handle.size(), *fit);
             out.draw_image(DrawImagePayload {
-                rect: r,
+                rect,
+                uv_min,
+                uv_size,
                 tint: *tint,
-                handle: handle.0,
+                handle: handle.id,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
@@ -536,6 +548,88 @@ fn emit_shadow(
         kind,
         FillAxis::from_lanes(offset.x, offset.y, blur, axis_w),
     );
+}
+
+/// Output of [`resolve_fit`]: the final paint rect + UV crop the
+/// encoder hands to the cmd buffer.
+struct Resolved {
+    rect: Rect,
+    uv_min: glam::Vec2,
+    uv_size: glam::Vec2,
+}
+
+const FULL_UV_MIN: glam::Vec2 = glam::Vec2::ZERO;
+const FULL_UV_SIZE: glam::Vec2 = glam::Vec2::ONE;
+
+/// Map `(base, image_size, fit)` → `(paint_rect, uv_crop)`. `base` is
+/// the encoder-resolved paint rect (owner rect or local override).
+/// `image_size = UVec2::ZERO` (missing registry entry at lowering time)
+/// falls through to the base rect with full UV — the backend's
+/// lookup-miss branch then skips the actual draw.
+fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
+    let iw = image_size.x as f32;
+    let ih = image_size.y as f32;
+    let bw = base.size.w;
+    let bh = base.size.h;
+    if iw <= 0.0 || ih <= 0.0 || bw <= 0.0 || bh <= 0.0 {
+        return Resolved {
+            rect: base,
+            uv_min: FULL_UV_MIN,
+            uv_size: FULL_UV_SIZE,
+        };
+    }
+    match fit {
+        ImageFit::Fill => Resolved {
+            rect: base,
+            uv_min: FULL_UV_MIN,
+            uv_size: FULL_UV_SIZE,
+        },
+        ImageFit::Contain => {
+            // Preserve aspect; the smaller axis ratio decides scale.
+            let scale = (bw / iw).min(bh / ih);
+            let w = iw * scale;
+            let h = ih * scale;
+            let dx = (bw - w) * 0.5;
+            let dy = (bh - h) * 0.5;
+            Resolved {
+                rect: Rect {
+                    min: base.min + glam::Vec2::new(dx, dy),
+                    size: Size { w, h },
+                },
+                uv_min: FULL_UV_MIN,
+                uv_size: FULL_UV_SIZE,
+            }
+        }
+        ImageFit::Cover => {
+            // Preserve aspect; the larger axis ratio decides scale —
+            // image overhangs the rect. Crop the overhang via UV
+            // (centered, so visible texels match `Contain`'s axis).
+            let scale = (bw / iw).max(bh / ih);
+            let w_phys = iw * scale; // >= bw
+            let h_phys = ih * scale; // >= bh
+            let uv_w = bw / w_phys; // <= 1
+            let uv_h = bh / h_phys; // <= 1
+            Resolved {
+                rect: base,
+                uv_min: glam::Vec2::new((1.0 - uv_w) * 0.5, (1.0 - uv_h) * 0.5),
+                uv_size: glam::Vec2::new(uv_w, uv_h),
+            }
+        }
+        ImageFit::None => {
+            // Paint at intrinsic px, centered. Image may exceed `base`
+            // — currently uncropped; future slice can add a scissor.
+            let dx = (bw - iw) * 0.5;
+            let dy = (bh - ih) * 0.5;
+            Resolved {
+                rect: Rect {
+                    min: base.min + glam::Vec2::new(dx, dy),
+                    size: Size { w: iw, h: ih },
+                },
+                uv_min: FULL_UV_MIN,
+                uv_size: FULL_UV_SIZE,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
