@@ -12,6 +12,7 @@ use self::stencil::STENCIL_FORMAT;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
+pub use self::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
@@ -115,11 +116,17 @@ impl WgpuBackend {
         shaper: TextShaper,
         frame_arena: FrameArenaHandle,
         caches: RenderCaches,
+        image_budget_bytes: u64,
     ) -> Self {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
         let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
-        let image = ImagePipeline::new(&device, format, &viewport_uniform.buffer);
+        let image = ImagePipeline::new(
+            &device,
+            format,
+            &viewport_uniform.buffer,
+            image_budget_bytes,
+        );
         let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {
@@ -450,6 +457,12 @@ impl WgpuBackend {
         if self.text.has_prepared() {
             self.text.post_record();
         }
+
+        // Apply per-frame draw marks and evict the GPU image cache
+        // down to budget. Runs after submit so this frame's draws have
+        // already consumed every entry they referenced — evicting now
+        // can't strand an in-flight draw.
+        self.image.end_of_frame_evict(&self.caches.images);
     }
 
     /// Full-viewport pass that draws one 40%-translucent black quad

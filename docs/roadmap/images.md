@@ -18,8 +18,17 @@ modes (shipped, see slice 2), and GPU-side eviction.
   carries an `ImageFit` field, layout-resolved into `local_rect` at
   paint time.
 - **Slice 3 (PNG / JPEG decode):** **not started.**
-- **Slice 4 (GPU LRU eviction):** **not started.** Hook
-  (`ImageRegistry::mark_pending`) wired but no policy.
+- **Slice 4 (GPU LRU eviction):** shipped. `ImagePipeline` carries a
+  byte budget (default `DEFAULT_IMAGE_BUDGET_BYTES` = 256 MB,
+  configurable at `Host::with_text_and_image_budget`); a per-frame
+  `frame_id` + `last_used_frame` stamp drives oldest-first eviction
+  in `end_of_frame_evict`, called after `queue.submit`. Evicted
+  handles are re-queued on the registry via `mark_pending` so the
+  next sighting re-uploads from the retained `Rc<Image>`. Entries
+  touched the same frame are excluded from eviction (would force
+  immediate re-upload). When the touched-this-frame set alone exceeds
+  budget, `tracing::error!` surfaces the overage with remediation
+  hint. Policy pinned by unit tests on the pure `pick_evictions` fn.
 
 ## Slice 3 — PNG / JPEG decode
 
@@ -62,61 +71,22 @@ for it. PNG-only ships first.
 `src/primitives/image.rs` + showcase tab update to load from
 `tests/visual/fixtures/` or similar.
 
-## Slice 4 — GPU-side LRU eviction
+## Slice 4 — GPU-side LRU eviction (shipped)
 
-`ImagePipeline.cache: FxHashMap<ImageHandle, GpuImage>` currently
-grows monotonically. Each `GpuImage` holds a `wgpu::Texture` (+ view
-+ bind group); for a 4K RGBA8 image that's ~64 MB of GPU memory.
-Hosts that register many large images and call `unregister` only
-when truly done (or never) will OOM.
-
-Eviction policy: **frames-since-last-used LRU** with a byte budget.
-
-```rust
-struct ImagePipeline {
-    // ...
-    cache: FxHashMap<ImageHandle, GpuImage>,
-    /// Updated each frame from `WgpuBackend.frame_id`.
-    frame_id: u64,
-    /// Budget; default ~256 MB. Exceeded → evict in `frames_since_used`
-    /// order until under budget.
-    budget_bytes: u64,
-}
-
-struct GpuImage {
-    // ...
-    bytes: u64,
-    last_used_frame: u64,
-}
-```
-
-Mark on every successful `draw()`: `last_used_frame = frame_id`. At
-end-of-frame, if `total_bytes > budget`, pop entries by ascending
-`last_used_frame` until under budget, calling
-`ImageRegistry::mark_pending(handle)` for each so the next sighting
-re-uploads from the registry's retained `Rc<Image>`.
-
-**Invariant the slice must preserve:** in any frame where a draw
-references `handle`, that handle is uploaded *before* the draw runs.
-`drain_registry` already runs before the render pass; eviction must
-run *after* the pass (otherwise we'd evict a handle and then try to
-draw against it the same frame).
-
-**Open questions:**
+See "Status" above. Open follow-up questions kept here for future
+slices:
 
 - **Per-handle pin?** A user-facing `ImageRegistry::pin(handle)` that
   excludes the handle from eviction. Useful for "always-needed" assets
-  (the app icon). Default is "no pin, all evictable."
+  (the app icon). Default today is "no pin, all evictable."
 - **Async re-upload?** Re-uploading a large texture inside a render-
   prep call hitches. A future slice could queue re-uploads onto a
   background thread (rayon? `wgpu::CommandEncoder`?) and let the
-  handle paint as a transparent placeholder until ready. Out of
-  slice-4 scope.
-
-**Cost estimate:** ~4–6 hrs. Two new fields on `ImagePipeline`, one
-end-of-frame sweep, registry-side `mark_pending` already exists.
-Tests: pin a fixture that registers N images > budget, draws them
-interleaved, asserts evictions land on the least-recently-used set.
+  handle paint as a transparent placeholder until ready.
+- **Runtime budget setter.** A `Host::set_image_budget_bytes` was
+  drafted then removed in favour of ctor-only configuration. Re-add
+  if/when a host needs to retune mid-session (e.g. responding to
+  device-pressure signals).
 
 ## Future work (no slice yet)
 
