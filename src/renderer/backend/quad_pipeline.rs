@@ -403,7 +403,7 @@ impl QuadPipeline {
             wgpu::ColorWrites::empty(),
             None,
             wgpu::DepthStencilState {
-                format: super::STENCIL_FORMAT,
+                format: super::stencil::STENCIL_FORMAT,
                 depth_write_enabled: Some(false),
                 depth_compare: Some(wgpu::CompareFunction::Always),
                 stencil: wgpu::StencilState {
@@ -423,7 +423,7 @@ impl QuadPipeline {
             "fs",
             wgpu::ColorWrites::ALL,
             Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-            super::stencil_test_state(),
+            super::stencil::stencil_test_state(),
         );
 
         StencilPipelines {
