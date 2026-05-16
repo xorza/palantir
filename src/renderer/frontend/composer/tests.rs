@@ -884,6 +884,8 @@ fn compose_emits_image_batch_for_drawimage() {
         |b, _arena| {
             b.draw_image(DrawImagePayload {
                 rect: rect(10.0, 20.0, 30.0, 40.0),
+                uv_min: glam::Vec2::ZERO,
+                uv_size: glam::Vec2::ONE,
                 tint: Color::WHITE.into(),
                 handle: 0xc0ffee,
                 ..bytemuck::Zeroable::zeroed()
