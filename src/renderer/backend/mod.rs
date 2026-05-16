@@ -630,6 +630,7 @@ impl WgpuBackend {
             None,
             QuadInstance,
             Mesh,
+            Image,
             MaskWrite,
         }
         let mut bound = Bound::None;
@@ -705,6 +706,20 @@ impl WgpuBackend {
                             draw.vertices.start as i32,
                             (start + offset) as u32,
                         );
+                    }
+                    pass.pop_debug_group();
+                }
+                RenderStep::ImageBatch { batch } => {
+                    pass.push_debug_group("images");
+                    if bound != Bound::Image {
+                        self.image.bind(pass, use_stencil);
+                        bound = Bound::Image;
+                    }
+                    let range = buffer.image_batches[batch].images;
+                    let start = range.start as usize;
+                    let end = start + range.len as usize;
+                    for (offset, draw) in buffer.images.draws[start..end].iter().enumerate() {
+                        self.image.draw(pass, draw.handle, (start + offset) as u32);
                     }
                     pass.pop_debug_group();
                 }

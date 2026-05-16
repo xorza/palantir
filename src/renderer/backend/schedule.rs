@@ -49,6 +49,12 @@ pub(crate) enum RenderStep {
     /// `RenderBuffer.meshes`). One `MeshBatch { batch }` step → one
     /// pipeline+buffer bind → N `draw_indexed` calls.
     MeshBatch { batch: usize },
+    /// Bind the image pipeline + issue one `draw` per `ImageDraw` in
+    /// the referenced batch. Consumer pulls per-draw handles from
+    /// `RenderBuffer.image_batches[batch].images` (then via
+    /// `RenderBuffer.images.draws`). The pipeline switches the per-image
+    /// bind group between draws.
+    ImageBatch { batch: usize },
 }
 
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
@@ -119,6 +125,9 @@ pub(crate) fn for_each_step(
     // damage-skipped groups are silently advanced past at the top of
     // each iteration — meshes inside a skipped group don't paint.
     let mut next_mesh_batch: usize = 0;
+    // Same shape as `next_mesh_batch`. Image batches anchor per group;
+    // structurally Phase 2 emits one per group with images.
+    let mut next_image_batch: usize = 0;
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
     // (ref=1 inside the SDF, 0 outside). `None` means stencil is
@@ -135,6 +144,11 @@ pub(crate) fn for_each_step(
             && (buffer.mesh_batches[next_mesh_batch].last_group as usize) < i
         {
             next_mesh_batch += 1;
+        }
+        while next_image_batch < buffer.image_batches.len()
+            && (buffer.image_batches[next_image_batch].last_group as usize) < i
+        {
+            next_image_batch += 1;
         }
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
@@ -209,12 +223,23 @@ pub(crate) fn for_each_step(
                 });
                 next_mesh_batch += 1;
             }
+            while next_image_batch < buffer.image_batches.len()
+                && buffer.image_batches[next_image_batch].last_group as usize == i
+            {
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::ImageBatch {
+                    batch: next_image_batch,
+                });
+                next_image_batch += 1;
+            }
             active_mask = mask_idx;
         } else if g.quads.len != 0
             || (next_batch < buffer.text_batches.len()
                 && buffer.text_batches[next_batch].last_group as usize == i)
             || (next_mesh_batch < buffer.mesh_batches.len()
                 && buffer.mesh_batches[next_mesh_batch].last_group as usize == i)
+            || (next_image_batch < buffer.image_batches.len()
+                && buffer.image_batches[next_image_batch].last_group as usize == i)
         {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
@@ -240,6 +265,15 @@ pub(crate) fn for_each_step(
                     batch: next_mesh_batch,
                 });
                 next_mesh_batch += 1;
+            }
+            while next_image_batch < buffer.image_batches.len()
+                && buffer.image_batches[next_image_batch].last_group as usize == i
+            {
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::ImageBatch {
+                    batch: next_image_batch,
+                });
+                next_image_batch += 1;
             }
         }
     }
