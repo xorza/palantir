@@ -18,7 +18,6 @@ use crate::ui::test_support::new_ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
-use crate::widgets::test_support::ResponseNodeExt;
 use glam::UVec2;
 
 /// Z-order showcase repro: two FILL/FILL cells side-by-side in an

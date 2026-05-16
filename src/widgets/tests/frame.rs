@@ -1,13 +1,11 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::tree::test_support::shapes_of;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -34,7 +32,9 @@ fn frame_paints_a_single_rounded_rect() {
     let frame_node = frame_node.unwrap();
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
-        shapes_of(ui.forest.tree(Layer::Main), frame_node)
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(frame_node)
             .next()
             .is_none()
     );

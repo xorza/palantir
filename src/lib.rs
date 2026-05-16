@@ -29,8 +29,6 @@ pub mod layout;
 pub mod primitives;
 pub mod renderer;
 pub(crate) mod shape;
-#[cfg(any(test, feature = "internals"))]
-pub mod support;
 pub mod text;
 pub mod ui;
 pub mod widgets;

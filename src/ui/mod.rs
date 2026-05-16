@@ -1021,6 +1021,27 @@ pub mod test_support {
             self.frame_state.mark_submitted();
         }
 
+        /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
+        pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
+            &mut self,
+            surface: UVec2,
+            mut f: F,
+        ) -> NodeId {
+            use crate::forest::element::Configure;
+            use crate::layout::types::sizing::Sizing;
+            use crate::widgets::panel::Panel;
+            let mut inner = None;
+            self.run_at(surface, |ui| {
+                Panel::hstack()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        inner = Some(f(ui));
+                    });
+            });
+            inner.unwrap()
+        }
+
         // ── input ────────────────────────────────────────────────
 
         pub fn click_at(&mut self, pos: Vec2) {

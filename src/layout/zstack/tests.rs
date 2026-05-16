@@ -1,16 +1,14 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
-use crate::support::testing::under_outer;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
 #[test]
 fn zstack_hugs_to_largest_child_per_axis_independently() {
     let mut ui = new_ui();
-    let panel = under_outer(&mut ui, UVec2::new(800, 600), |ui| {
+    let panel = ui.under_outer(UVec2::new(800, 600), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
@@ -28,7 +26,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
 #[test]
 fn zstack_lays_children_at_inner_top_left_by_default() {
     let mut ui = new_ui();
-    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
+    let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -86,7 +84,7 @@ fn zstack_per_axis_alignment() {
     ];
     for (label, parent_align, children) in &cases {
         let mut ui = new_ui();
-        let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
+        let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
             let mut p = Panel::zstack()
                 .auto_id()
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)));
@@ -125,7 +123,7 @@ fn zstack_per_axis_alignment() {
 #[test]
 fn zstack_fill_child_stretches_to_inner() {
     let mut ui = new_ui();
-    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
+    let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -157,7 +155,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
     // Fill-on-both-axes children measure with INF → fall back to intrinsic;
     // a Hug ZStack therefore has no content to grow to.
     let mut ui = new_ui();
-    let panel = under_outer(&mut ui, UVec2::new(200, 200), |ui| {
+    let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
@@ -177,7 +175,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
 #[test]
 fn zstack_collapsed_child_does_not_grow_panel() {
     let mut ui = new_ui();
-    let panel = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::zstack()
             .auto_id()
             .size((Sizing::Hug, Sizing::Hug))

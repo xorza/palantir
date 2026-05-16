@@ -13,7 +13,6 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;

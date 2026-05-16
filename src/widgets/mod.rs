@@ -69,13 +69,9 @@ pub mod test_support {
     use crate::Ui;
     use crate::forest::tree::NodeId;
 
-    /// Old `Response.node` field as an extension method.
-    pub trait ResponseNodeExt {
-        fn node(&self, ui: &Ui) -> NodeId;
-    }
-
-    impl ResponseNodeExt for Response {
-        fn node(&self, ui: &Ui) -> NodeId {
+    impl Response {
+        /// Old `Response.node` field as an inherent test-only method.
+        pub fn node(&self, ui: &Ui) -> NodeId {
             ui.node_for_widget_id(self.id)
         }
     }

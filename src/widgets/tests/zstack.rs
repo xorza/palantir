@@ -1,11 +1,9 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::tree::test_support::shapes_of;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -47,7 +45,7 @@ fn zstack_layers_children_without_painting_background() {
         });
     });
     let z = zstack_node.unwrap();
-    assert!(shapes_of(ui.forest.tree(Layer::Main), z).next().is_none());
+    assert!(ui.forest.tree(Layer::Main).shapes_of(z).next().is_none());
 
     let zr = ui.layout[Layer::Main].rect[z.index()];
     assert_eq!(zr.size.w, 120.0);

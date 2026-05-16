@@ -13,7 +13,6 @@ use crate::ui::FrameStamp;
 use crate::ui::frame_report::RenderPlan;
 use crate::ui::test_support::new_ui;
 use crate::widgets::popup::Popup;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;

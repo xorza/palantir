@@ -2,7 +2,6 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

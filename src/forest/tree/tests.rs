@@ -2,7 +2,6 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::test_support::shapes_of;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
@@ -14,7 +13,6 @@ use crate::renderer::frontend::cmd_buffer::CmdKind;
 use crate::shape::Shape;
 use crate::ui::test_support::new_ui;
 use crate::ui::test_support::ui_with_text;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -32,8 +30,11 @@ fn shapes_attached_to_button_node() {
 
     // Button chrome lives in `chrome_table`, not in shapes — only the
     // label `Text` shape lands here.
-    let shapes: Vec<&ShapeRecord> =
-        shapes_of(ui.forest.tree(Layer::Main), button_node.unwrap()).collect();
+    let shapes: Vec<&ShapeRecord> = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(button_node.unwrap())
+        .collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], ShapeRecord::Text { .. }));
     assert!(
@@ -109,7 +110,10 @@ fn interleaved_shapes_record_correct_order() {
         p_shapes.start + p_shapes.len,
         c1_shapes.start + c1_shapes.len + 1
     );
-    let sizes: Vec<f32> = shapes_of(ui.forest.tree(Layer::Main), p)
+    let sizes: Vec<f32> = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(p)
         .map(|s| match s {
             ShapeRecord::RoundedRect {
                 local_rect: Some(rect),

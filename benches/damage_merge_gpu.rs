@@ -26,7 +26,6 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::host::test_support::{
     cpu_frame as host_cpu_frame, render_to_texture as host_render_to_texture,
 };
-use palantir::ui::frame_report::test_support::force_report_damage_to_rects;
 use palantir::{Background, Color, Configure, Display, Frame, Host, Panel, Rect, Sizing, Ui};
 use std::hint::black_box;
 use std::time::Duration;
@@ -149,7 +148,7 @@ fn render_frame(
 ) {
     let mut report = host_cpu_frame(host, display, &mut (), |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
-        force_report_damage_to_rects(&mut report, rects, color);
+        report.force_damage_to_rects(rects, color);
     }
     host_render_to_texture(host, &gpu.surface_tex, &report);
     gpu.device

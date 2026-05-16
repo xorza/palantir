@@ -20,7 +20,6 @@ use crate::Spacing;
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::tree::test_support::shapes_of;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::pointer::PointerButton;

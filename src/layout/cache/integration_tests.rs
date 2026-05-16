@@ -17,7 +17,6 @@ use crate::primitives::{
 };
 use crate::ui::test_support::new_ui;
 use crate::ui::test_support::ui_with_text;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;

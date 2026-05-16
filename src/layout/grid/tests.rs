@@ -5,7 +5,6 @@ use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
 use glam::UVec2;
 use std::rc::Rc;

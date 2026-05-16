@@ -207,7 +207,6 @@ mod tests {
     use crate::forest::tree::Layer;
     use crate::layout::types::sizing::Sizing;
     use crate::ui::test_support::new_ui;
-    use crate::widgets::test_support::ResponseNodeExt;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 
