@@ -2,6 +2,7 @@ use crate::layout::types::align::Align;
 use crate::primitives::brush::{ConicGradient, LinearGradient, RadialGradient};
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
+use crate::primitives::image::ImageHandle;
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
@@ -367,6 +368,17 @@ pub(crate) enum ShapeRecord {
         radius: Corners,
         shadow: LoweredShadow,
     } = 4,
+    /// Textured rectangle. `handle` references an entry in the shared
+    /// [`ImageRegistry`](crate::ImageRegistry); the backend uploads on
+    /// first sight and keeps a GPU texture across frames. `local_rect =
+    /// None` paints into the owner's full arranged rect; `Some(r)`
+    /// paints `r` at owner-relative coords. `tint` multiplies sampled
+    /// pixels in linear-RGB premultiplied space.
+    Image {
+        local_rect: Option<Rect>,
+        tint: ColorF16,
+        handle: ImageHandle,
+    } = 5,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
@@ -431,12 +443,12 @@ impl ShapeRecord {
                 )
             }
             ShapeRecord::Polyline { bbox, .. } => *bbox,
-            ShapeRecord::RoundedRect { local_rect, .. } | ShapeRecord::Mesh { local_rect, .. } => {
-                local_rect.unwrap_or(Rect {
-                    min: Vec2::ZERO,
-                    size: owner_size,
-                })
-            }
+            ShapeRecord::RoundedRect { local_rect, .. }
+            | ShapeRecord::Mesh { local_rect, .. }
+            | ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            }),
             // `Text` carries an origin-only override — glyph extent
             // depends on shaped-buffer measurement which paint_bbox
             // doesn't have. Width reports zero on the `Some(origin)`
@@ -466,6 +478,7 @@ impl ShapeRecord {
             ShapeRecord::Text { .. } => 2,
             ShapeRecord::Mesh { .. } => 3,
             ShapeRecord::Shadow { .. } => 4,
+            ShapeRecord::Image { .. } => 5,
         }
     }
 }
@@ -574,6 +587,21 @@ impl Hash for ShapeRecord {
                 radius.hash(h);
                 shadow.hash(h);
             }
+            ShapeRecord::Image {
+                local_rect,
+                tint,
+                handle,
+            } => {
+                match local_rect {
+                    None => h.write_u8(0),
+                    Some(r) => {
+                        h.write_u8(1);
+                        r.hash(h);
+                    }
+                }
+                tint.hash(h);
+                handle.hash(h);
+            }
         }
     }
 }
@@ -616,5 +644,22 @@ mod tests {
         a.hash(&mut ha);
         b.hash(&mut hb);
         assert_eq!(ha.finish(), hb.finish());
+    }
+
+    #[test]
+    fn shape_image_hash_distinguishes_handle_and_tint() {
+        let make = |handle: u64, tint: Color| ShapeRecord::Image {
+            local_rect: None,
+            tint: ColorF16::from(tint),
+            handle: ImageHandle(handle),
+        };
+        let h = |r: &ShapeRecord| {
+            let mut s = FxHasher::new();
+            r.hash(&mut s);
+            s.finish()
+        };
+        let baseline = h(&make(0xa, Color::WHITE));
+        assert_ne!(baseline, h(&make(0xb, Color::WHITE)));
+        assert_ne!(baseline, h(&make(0xa, Color::rgba(1.0, 0.0, 0.0, 1.0))));
     }
 }

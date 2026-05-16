@@ -265,6 +265,11 @@ fn emit_one_shape(
                 ..bytemuck::Zeroable::zeroed()
             });
         }
+        ShapeRecord::Image { .. } => {
+            // TODO(slice-1, phase 3): emit `DrawImage` cmd. Phase 2
+            // only adds the variant + lowering; the cmd buffer + GPU
+            // pipeline land in phase 3.
+        }
     }
 }
 
