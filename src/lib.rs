@@ -100,8 +100,8 @@ pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::{
-    AnimatedLook, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme, TextEditTheme,
-    TextStyle, Theme, TooltipTheme, WidgetLook,
+    AnimatedLook, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme, StatefulLook,
+    TextEditTheme, TextStyle, Theme, ToggleTheme, TooltipTheme, WidgetLook,
 };
 pub use widgets::tooltip::Tooltip;
 
