@@ -67,6 +67,13 @@ pub enum FontFamily {
     Mono = 1,
 }
 
+// `TextCacheKey::is_invalid` and `TextCacheKey::INVALID` both fold
+// `family_q == 0` into the all-zeros sentinel. If `Sans`'s
+// discriminant ever moves off zero, a real `Sans` key collides with
+// `INVALID` and the renderer silently drops valid text runs. Pin
+// here so the drift trips the compile.
+const _: () = assert!(FontFamily::Sans as u8 == 0);
+
 /// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
 /// for real shaping (`None` ⇒ mono fallback), (2) a cross-frame reuse
 /// cache keyed by `(WidgetId, ordinal)` so layout skips `measure`
