@@ -4,7 +4,7 @@
 //! is cheap and every clone observes the same state.
 //!
 //! Lifetime: same as the renderer (constructed by `Host`, dropped when
-//! the surface goes away). Distinct from [`crate::common::frame_arena::FrameArenaHandle`]
+//! the surface goes away). Distinct from [`crate::common::frame_arena::FrameArena`]
 //! which is per-frame scratch.
 
 use crate::primitives::image::ImageRegistry;

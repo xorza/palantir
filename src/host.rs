@@ -83,7 +83,7 @@ impl Host {
         // cheap; runtime borrow-checking via RefCell catches any
         // wiring mistake that would double-borrow.
         let caches = RenderCaches::default();
-        let frame_arena = crate::common::frame_arena::FrameArenaHandle::default();
+        let frame_arena = crate::common::frame_arena::FrameArena::default();
         Self {
             ui: Ui::new(shaper.clone(), frame_arena.clone(), caches.clone()),
             frontend: Frontend::new(frame_arena.clone()),

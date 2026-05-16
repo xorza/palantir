@@ -3,7 +3,7 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
-use crate::common::frame_arena::FrameArenaHandle;
+use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::InputEvent;
@@ -181,7 +181,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     // Points live on the Rc-shared `Ui.frame_arena`; the 2-point line
     // + noop-filtered duplicates leave exactly two entries.
     assert_eq!(
-        ui.frame_arena.borrow().polyline_points.len(),
+        ui.frame_arena.inner().polyline_points.len(),
         2,
         "one 2-point line populates the points arena"
     );
@@ -687,7 +687,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
 
     let mut ui = Ui::new(
         TextShaper::with_bundled_fonts(),
-        FrameArenaHandle::default(),
+        FrameArena::default(),
         crate::renderer::caches::RenderCaches::default(),
     );
     ui.run_at_acked(UVec2::new(400, 400), |ui| {

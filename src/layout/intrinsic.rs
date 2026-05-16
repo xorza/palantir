@@ -283,7 +283,7 @@ mod tests {
         const SENTINEL: f32 = 1234.5;
         ui.layout_engine.scratch.intrinsics[child.index()][slot] = SENTINEL;
 
-        let arena = ui.frame_arena.borrow();
+        let arena = ui.frame_arena.inner();
         let v = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             child,
@@ -328,7 +328,7 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
-        let arena = ui.frame_arena.borrow();
+        let arena = ui.frame_arena.inner();
         let _ = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             root,

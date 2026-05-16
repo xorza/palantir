@@ -8,7 +8,7 @@ pub(crate) mod state;
 use crate::animation::animatable::Animatable;
 use crate::animation::paint::PaintAnim;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
-use crate::common::frame_arena::FrameArenaHandle;
+use crate::common::frame_arena::FrameArena;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
@@ -220,13 +220,12 @@ pub struct Ui {
     app_slot: Option<AppSlot>,
     /// Per-frame bulk geometry arena (mesh verts/indices, polyline
     /// points/colors), shared with the renderer via [`Host`]: `Host`
-    /// constructs the canonical [`Rc`] and clones it into `Ui`,
+    /// constructs the canonical handle and clones it into `Ui`,
     /// `Frontend`, and `WgpuBackend` so every phase sees the same
     /// bytes. Standalone `Ui::for_test()` builds its own private handle.
-    /// `add_shape` calls `borrow_mut()` for the call duration.
     ///
     /// [`Host`]: crate::Host
-    pub(crate) frame_arena: FrameArenaHandle,
+    pub(crate) frame_arena: FrameArena,
     /// Cross-frame GPU resource caches (image registry + gradient
     /// atlas) shared with the wgpu backend. Users call
     /// `ui.caches.images.register(key, image)` to stage bytes once,
@@ -245,7 +244,7 @@ impl Ui {
     /// Construct with an explicit shaper *and* a shared frame-arena
     /// handle. The same `TextShaper` handle must reach the wgpu
     /// backend so layout-time measurement and render-time shaping
-    /// hit one buffer cache; the same `FrameArenaHandle` must reach
+    /// hit one buffer cache; the same `FrameArena` must reach
     /// `Frontend` and `WgpuBackend` so every phase sees the same
     /// per-frame mesh / polyline bytes. [`crate::Host::new`] wires
     /// both at construction time.
@@ -253,7 +252,7 @@ impl Ui {
     /// Tests / standalone callers usually want [`Self::default`],
     /// which builds an isolated `Ui` with mono fallback shaper + its
     /// own private arena.
-    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle, caches: RenderCaches) -> Self {
+    pub fn new(text: TextShaper, frame_arena: FrameArena, caches: RenderCaches) -> Self {
         Self {
             text,
             frame_arena,
@@ -300,7 +299,7 @@ impl Ui {
         // The frame arena is shared via Rc so the renderer sees the
         // same bytes. Clear it once at the top of the record cycle;
         // capacity is retained.
-        self.frame_arena.borrow_mut().clear();
+        self.frame_arena.clear();
         // Install `state` as the ambient app slot for this frame; RAII
         // guard restores the prior slot on scope exit (incl. panic) so
         // nested frames stack cleanly.
@@ -735,7 +734,7 @@ impl Ui {
     fn post_record(&mut self) {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
-        let arena = self.frame_arena.borrow();
+        let arena = self.frame_arena.inner();
         let tc = crate::layout::support::TextCtx {
             bytes: &arena.fmt_scratch,
             shaper: &self.text,
@@ -770,9 +769,8 @@ impl Ui {
     // ── Recording (widget-facing) ─────────────────────────────────────
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
-        let mut arena = self.frame_arena.borrow_mut();
         self.forest
-            .add_shape(shape, &mut arena, &self.caches.gradients);
+            .add_shape(shape, &self.frame_arena, &self.caches.gradients);
     }
 
     /// Format `args` directly into the per-frame text arena and return
@@ -793,16 +791,7 @@ impl Ui {
     /// is meant to be consumed in the same frame.
     #[must_use]
     pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr<'static> {
-        let mut arena = self.frame_arena.borrow_mut();
-        let start = arena.fmt_scratch.len();
-        std::fmt::Write::write_fmt(&mut arena.fmt_scratch, args).unwrap();
-        let end = arena.fmt_scratch.len();
-        let bytes = &arena.fmt_scratch.as_str()[start..end];
-        let hash = crate::common::frame_arena::FrameArena::hash_text(bytes);
-        crate::InternedStr::Interned {
-            span: crate::Span::new(start as u32, (end - start) as u32),
-            hash,
-        }
+        self.frame_arena.intern_fmt(args)
     }
 
     /// Append `shape` to the active node and register `anim` against
@@ -813,9 +802,8 @@ impl Ui {
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
     pub fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
-        let mut arena = self.frame_arena.borrow_mut();
         self.forest
-            .add_shape_animated(shape, anim, &mut arena, &self.caches.gradients);
+            .add_shape_animated(shape, anim, &self.frame_arena, &self.caches.gradients);
     }
 
     /// Record `body` as a side layer placed at `anchor` (top-left
@@ -857,11 +845,12 @@ impl Ui {
         chrome: Background,
         f: impl FnOnce(&mut Ui),
     ) {
-        {
-            let mut arena = self.frame_arena.borrow_mut();
-            self.forest
-                .open_node_with_chrome(element, chrome, &mut arena, &self.caches.gradients);
-        }
+        self.forest.open_node_with_chrome(
+            element,
+            chrome,
+            &self.frame_arena,
+            &self.caches.gradients,
+        );
         f(self);
         self.forest.close_node();
     }
@@ -979,7 +968,7 @@ pub mod test_support {
     use super::*;
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
-    use crate::common::frame_arena::FrameArenaHandle;
+    use crate::common::frame_arena::FrameArena;
     use crate::forest::tree::{Layer, NodeId};
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
@@ -1006,7 +995,7 @@ pub mod test_support {
             }
             Self::new(
                 SHARED.with(|c| c.clone()),
-                FrameArenaHandle::default(),
+                FrameArena::default(),
                 RenderCaches::default(),
             )
         }
@@ -1190,7 +1179,7 @@ pub mod test_support {
                 None => RenderPlan::Full { clear },
             };
             let mut cmds = RenderCmdBuffer::default();
-            let arena = self.frame_arena.borrow();
+            let arena = self.frame_arena.inner();
             encode(self, &arena, plan, &mut cmds);
             cmds
         }

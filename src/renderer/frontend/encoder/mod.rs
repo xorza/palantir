@@ -1,7 +1,7 @@
 use super::cmd_buffer::{
     BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
 };
-use crate::common::frame_arena::FrameArena;
+use crate::common::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
 };
@@ -56,7 +56,12 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
 ///
 /// `out` is cleared at entry; capacity is retained across frames.
 #[profiling::function]
-pub(crate) fn encode(ui: &Ui, arena: &FrameArena, plan: RenderPlan, out: &mut RenderCmdBuffer) {
+pub(crate) fn encode(
+    ui: &Ui,
+    arena: &FrameArenaInner,
+    plan: RenderPlan,
+    out: &mut RenderCmdBuffer,
+) {
     out.clear();
 
     let damage_filter = match &plan {

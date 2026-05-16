@@ -19,7 +19,7 @@ pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
 pub mod encoder;
 
-use crate::common::frame_arena::FrameArenaHandle;
+use crate::common::frame_arena::FrameArena;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
@@ -43,11 +43,11 @@ pub(crate) struct Frontend {
     /// Shared frame arena (clone of `Host`'s canonical handle). Compose
     /// borrows it mutably to append polyline tessellation output and
     /// to read user-supplied mesh / polyline bytes.
-    pub(crate) frame_arena: FrameArenaHandle,
+    pub(crate) frame_arena: FrameArena,
 }
 
 impl Frontend {
-    pub(crate) fn new(frame_arena: FrameArenaHandle) -> Self {
+    pub(crate) fn new(frame_arena: FrameArena) -> Self {
         Self {
             cmds: RenderCmdBuffer::default(),
             composer: Composer::default(),
@@ -63,7 +63,7 @@ impl Frontend {
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
-        let mut arena = self.frame_arena.borrow_mut();
+        let mut arena = self.frame_arena.inner_mut();
         encode(ui, &arena, plan, &mut self.cmds);
         self.composer
             .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
@@ -75,12 +75,11 @@ impl Frontend {
 pub mod test_support {
     #![allow(dead_code)]
     use super::*;
-    use crate::common::frame_arena::FrameArenaHandle;
 
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
-            Self::new(FrameArenaHandle::default())
+            Self::new(FrameArena::default())
         }
     }
 }

@@ -21,15 +21,13 @@ pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
 use palantir::{Display, FrameArena, FrameStamp, TextShaper, Ui};
-use std::cell::RefCell;
-use std::rc::Rc;
 
 /// Local mono-fallback Ui constructor. Alloc tests don't enable the
 /// `internals` feature so they can't call `new_ui()`.
 pub(crate) fn new_ui() -> Ui {
     Ui::new(
         TextShaper::default(),
-        Rc::new(RefCell::new(FrameArena::default())),
+        FrameArena::default(),
         palantir::RenderCaches::default(),
     )
 }

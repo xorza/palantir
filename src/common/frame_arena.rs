@@ -1,6 +1,6 @@
-//! Per-frame bulk geometry arena. Owned by `Host`, threaded `&mut` into
-//! `Ui::frame` (record + add_shape lowering) and into the frontend
-//! (compose-time polyline tessellation). Cleared at frame start.
+//! Per-frame bulk geometry arena. Owned by `Host`, cloned (cheap, Rc)
+//! into every subsystem that touches per-frame mesh / polyline / fmt
+//! bytes (`Ui`, `Frontend`, `WgpuBackend`). Cleared at frame start.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
 //! `Tree.shapes.payloads` → `RenderCmdBuffer.shape_payloads` →
@@ -13,9 +13,10 @@ use crate::forest::shapes::record::{
     ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
-use crate::primitives::bezier::FlatPoint;
+use crate::primitives::bezier::{FlatPoint, flatten_cubic, flatten_quadratic};
 use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::interned_str::InternedStr;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -24,23 +25,30 @@ use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
-use std::cell::RefCell;
+use std::cell::{Ref, RefCell, RefMut};
+use std::fmt::Write as _;
 use std::hash::Hasher;
 use std::rc::Rc;
 
-/// Shared, interior-mutable handle to the per-frame arena. Each
-/// subsystem (`Ui`, `Frontend`, `WgpuBackend`) holds a clone; `Host`
-/// constructs the canonical `Rc` once and injects it into all three at
-/// construction time. Phases are sequential (record → encode → compose
-/// → upload) so the runtime borrow is never contested in practice;
-/// double-borrow would be a wiring bug worth panicking on.
-pub type FrameArenaHandle = Rc<RefCell<FrameArena>>;
+/// Shared per-frame arena. `Host` constructs one and clones it into
+/// every subsystem (`Ui`, `Frontend`, `WgpuBackend`). Phases run
+/// sequentially (record → encode → compose → upload) so the underlying
+/// borrow is never contested; a double-borrow indicates a wiring bug
+/// and panics.
+///
+/// User-facing operations (`clear`, `lower_*`, `intern_fmt`) take
+/// `&self` and borrow internally — call sites never touch RefCell.
+/// Pass-orchestration code (encode/compose/intrinsic) reaches the raw
+/// storage via [`Self::inner`] / [`Self::inner_mut`] once per pass and
+/// hands `&FrameArenaInner` down through the pass.
+#[derive(Clone, Default)]
+pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 
 /// One arena per frame. All bulk shape-geometry bytes live here for
 /// the duration of a frame and are read by every later phase via
 /// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default)]
-pub struct FrameArena {
+pub struct FrameArenaInner {
     /// User-supplied mesh geometry plus the compose-time polyline
     /// tessellation output. The latter appends in
     /// [`crate::renderer::frontend::Composer::compose`], so the arena
@@ -60,28 +68,28 @@ pub struct FrameArena {
     /// into `polyline_points` immediately after.
     pub(crate) bezier_scratch: Vec<FlatPoint>,
     /// Frame-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
-    /// by [`Self::lower_brush`]) indexes into this vec. Cross-tree —
-    /// keeping it on the frame arena means chrome lowering on one
-    /// tree and shape lowering on another share one pool, and the
-    /// encoder only needs the arena (not the originating tree) to
-    /// resolve a gradient id.
+    /// by `lower_brush`) indexes into this vec. Cross-tree — keeping
+    /// it on the frame arena means chrome lowering on one tree and
+    /// shape lowering on another share one pool, and the encoder only
+    /// needs the arena (not the originating tree) to resolve a
+    /// gradient id.
     pub(crate) gradients: Vec<LoweredGradient>,
     /// `Ui::fmt` formatter scratch. The `InternedStr::Interned { span }`
-    /// handle returned by [`crate::Ui::fmt`] points into this buffer;
-    /// the `Borrowed` / `Owned` carriers don't touch it (they keep
-    /// bytes inline on `ShapeRecord::Text`). Cross-tree on purpose so
-    /// `Interned` handles survive `Ui::layer(...)` scopes. Cleared
-    /// per frame, capacity retained — steady-state `ui.fmt(...)`
-    /// flows skip the `format!() → String` allocation entirely.
+    /// handle returned by [`FrameArena::intern_fmt`] points into this
+    /// buffer; the `Borrowed` / `Owned` carriers don't touch it (they
+    /// keep bytes inline on `ShapeRecord::Text`). Cross-tree on purpose
+    /// so `Interned` handles survive `Ui::layer(...)` scopes. Cleared
+    /// per frame, capacity retained — steady-state `ui.fmt(...)` flows
+    /// skip the `format!() → String` allocation entirely.
     pub(crate) fmt_scratch: String,
 }
 
 /// Control points for the unified bezier lowering — quadratic carries
 /// three, cubic four. Just enough variant info to hash the right bytes
 /// and tag the degree; flattening already happened before we get here
-/// (different `flatten_*` per variant), so `lower_bezier` itself is
-/// degree-agnostic past hashing.
-pub(crate) enum BezierInputs {
+/// (different `flatten_*` per variant), so `lower_bezier_inner` itself
+/// is degree-agnostic past hashing.
+enum BezierInputs {
     Quadratic([Vec2; 3]),
     Cubic([Vec2; 4]),
 }
@@ -100,32 +108,160 @@ fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
 }
 
 impl FrameArena {
-    pub(crate) fn clear(&mut self) {
-        self.meshes.clear();
-        self.polyline_points.clear();
-        self.polyline_colors.clear();
-        self.bezier_scratch.clear();
-        self.gradients.clear();
-        self.fmt_scratch.clear();
+    /// Borrow the raw inner storage for the duration of a pass. Used
+    /// by encode/compose/intrinsic — the orchestrator opens one borrow
+    /// at pass entry and threads `&FrameArenaInner` down so per-node
+    /// code touches fields directly. Authoring code (widgets, tests)
+    /// should prefer the `lower_*` / `intern_fmt` methods on `Self`.
+    pub(crate) fn inner(&self) -> Ref<'_, FrameArenaInner> {
+        self.0.borrow()
+    }
+
+    /// Mutable counterpart to [`Self::inner`]. Composer holds this for
+    /// the full compose pass (it appends polyline-tessellation output);
+    /// `Frontend::build` opens a single guard for encode + compose.
+    pub(crate) fn inner_mut(&self) -> RefMut<'_, FrameArenaInner> {
+        self.0.borrow_mut()
+    }
+
+    /// Drop all per-frame storage. Run once at frame start.
+    pub(crate) fn clear(&self) {
+        let mut a = self.0.borrow_mut();
+        a.meshes.clear();
+        a.polyline_points.clear();
+        a.polyline_colors.clear();
+        a.bezier_scratch.clear();
+        a.gradients.clear();
+        a.fmt_scratch.clear();
     }
 
     /// Pre-computed FxHash of `s` for stamping into
-    /// `ShapeRecord::Text.text_hash`. Free fn (no state).
+    /// `ShapeRecord::Text.text_hash`. Stateless.
     pub(crate) fn hash_text(s: &str) -> u64 {
-        use crate::common::hash::Hasher as FxHasher;
-        use std::hash::{Hash, Hasher};
+        use std::hash::Hash;
         let mut h = FxHasher::new();
         s.hash(&mut h);
         h.finish()
     }
 
+    /// Format `args` directly into the per-frame text arena and return
+    /// an `InternedStr::Interned` handle that spans the freshly-written
+    /// bytes. Backs [`crate::Ui::fmt`].
+    #[must_use]
+    pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr<'static> {
+        let mut a = self.0.borrow_mut();
+        let start = a.fmt_scratch.len();
+        a.fmt_scratch.write_fmt(args).unwrap();
+        let end = a.fmt_scratch.len();
+        let bytes = &a.fmt_scratch.as_str()[start..end];
+        let hash = Self::hash_text(bytes);
+        InternedStr::Interned {
+            span: Span::new(start as u32, (end - start) as u32),
+            hash,
+        }
+    }
+
     /// Lower a user-side `Brush` to the storage form: `Solid` stays
-    /// inline, gradients push to `self.gradients` and return an
+    /// inline, gradients push to `inner.gradients` and return an
     /// indexing `ShapeBrush::Gradient`. The pre-computed content hash
     /// is returned alongside so the caller can stamp it into the
     /// `ShapeRecord` / `ChromeRow` and keep their `Hash` impls
     /// context-free (no need to thread the arena into hashing).
-    pub(crate) fn lower_brush(&mut self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
+    pub(crate) fn lower_brush(&self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
+        self.0.borrow_mut().lower_brush_inner(brush, atlas)
+    }
+
+    /// Lower a user-facing `Background` to a `ChromeRow`. Same
+    /// gradient lowering as `Shapes::add` uses for `RoundedRect.fill`,
+    /// so chrome and shape paints share one pool.
+    pub(crate) fn lower_background(&self, bg: Background, atlas: &GradientAtlas) -> ChromeRow {
+        let mut a = self.0.borrow_mut();
+        let (fill, fill_grad_hash) = a.lower_brush_inner(bg.fill, atlas);
+        ChromeRow {
+            fill,
+            stroke: ShapeStroke::from(bg.stroke),
+            radius: bg.radius,
+            shadow: bg.shadow.into(),
+            fill_grad_hash,
+        }
+    }
+
+    /// Lower a (points, colors, width) authoring shape into a
+    /// `ShapeRecord::Polyline`: copy points and colors into the arena,
+    /// compute the content hash. `Shape::Line` and `Shape::Polyline`
+    /// both route through this — one record path downstream.
+    pub(crate) fn lower_polyline(
+        &self,
+        points: &[Vec2],
+        colors: PolylineColors<'_>,
+        width: f32,
+        cap: LineCap,
+        join: LineJoin,
+    ) -> ShapeRecord {
+        self.0
+            .borrow_mut()
+            .lower_polyline_inner(points, colors, width, cap, join)
+    }
+
+    /// Flatten a cubic bezier into the per-frame scratch and lower it
+    /// to a `ShapeRecord::Polyline`. Combined so the scratch borrow
+    /// doesn't escape the call.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lower_cubic_bezier(
+        &self,
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        p3: Vec2,
+        width: f32,
+        color: Color,
+        cap: LineCap,
+        join: LineJoin,
+        tolerance: f32,
+    ) -> ShapeRecord {
+        let mut a = self.0.borrow_mut();
+        a.bezier_scratch.clear();
+        flatten_cubic(p0, p1, p2, p3, tolerance, &mut a.bezier_scratch);
+        a.lower_bezier_inner(
+            BezierInputs::Cubic([p0, p1, p2, p3]),
+            width,
+            color,
+            cap,
+            join,
+            tolerance,
+        )
+    }
+
+    /// Flatten a quadratic bezier into the per-frame scratch and lower
+    /// it to a `ShapeRecord::Polyline`.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lower_quadratic_bezier(
+        &self,
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        width: f32,
+        color: Color,
+        cap: LineCap,
+        join: LineJoin,
+        tolerance: f32,
+    ) -> ShapeRecord {
+        let mut a = self.0.borrow_mut();
+        a.bezier_scratch.clear();
+        flatten_quadratic(p0, p1, p2, tolerance, &mut a.bezier_scratch);
+        a.lower_bezier_inner(
+            BezierInputs::Quadratic([p0, p1, p2]),
+            width,
+            color,
+            cap,
+            join,
+            tolerance,
+        )
+    }
+}
+
+impl FrameArenaInner {
+    fn lower_brush_inner(&mut self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
         let (kind, axis, stops, interp, hash) = match brush {
             Brush::Solid(c) => return (ShapeBrush::Solid(c.into()), 0),
             Brush::Linear(g) => {
@@ -147,26 +283,7 @@ impl FrameArena {
         (ShapeBrush::Gradient(id), hash)
     }
 
-    /// Lower a user-facing `Background` to a `ChromeRow`. Same
-    /// gradient lowering as `Shapes::add` uses for `RoundedRect.fill`,
-    /// so chrome and shape paints share one pool.
-    pub(crate) fn lower_background(&mut self, bg: Background, atlas: &GradientAtlas) -> ChromeRow {
-        let (fill, fill_grad_hash) = self.lower_brush(bg.fill, atlas);
-        ChromeRow {
-            fill,
-            stroke: ShapeStroke::from(bg.stroke),
-            radius: bg.radius,
-            shadow: bg.shadow.into(),
-            fill_grad_hash,
-        }
-    }
-
-    /// Lower a (points, colors, width) authoring shape into a
-    /// `ShapeRecord::Polyline`: validate `colors` length against
-    /// `points.len()`, copy both into the arena, compute the content
-    /// hash. `Shape::Line` and `Shape::Polyline` both route through
-    /// this — one record path downstream.
-    pub(crate) fn lower_polyline(
+    fn lower_polyline_inner(
         &mut self,
         points: &[Vec2],
         colors: PolylineColors<'_>,
@@ -213,9 +330,10 @@ impl FrameArena {
         // Hash contract for polyline records: no variant tag. `Shape::Line`
         // and a 2-point `Shape::Polyline { Single(color) }` lower
         // byte-identically by design — sharing a hash is correct. Bezier
-        // records tag themselves with `0xCB` + degree (see `lower_bezier`)
-        // so curve-derived polylines can never collide with hand-authored
-        // ones that happen to share the same flattened bytes.
+        // records tag themselves with `0xCB` + degree (see
+        // `lower_bezier_inner`) so curve-derived polylines can never
+        // collide with hand-authored ones that happen to share the same
+        // flattened bytes.
         let mut h = FxHasher::new();
         h.write(bytemuck::cast_slice(points));
         h.write(bytemuck::cast_slice(color_slice));
@@ -238,10 +356,7 @@ impl FrameArena {
         }
     }
 
-    /// Lower a flattened bezier (already in `self.bezier_scratch`) into
-    /// `ShapeRecord::Polyline`: copy points and track bbox in one pass,
-    /// push the single color, hash variant tag + control points + style.
-    pub(crate) fn lower_bezier(
+    fn lower_bezier_inner(
         &mut self,
         ctrl: BezierInputs,
         width: f32,
