@@ -59,10 +59,7 @@ pub(super) struct PipelineRecipe<'a> {
 /// truth for the descriptor fields each pipeline doesn't vary —
 /// vertex entry, sample count, multiview mask. The mesh / quad /
 /// image pipelines + their lazy stencil variants all go through here.
-pub(super) fn build_pipeline(
-    device: &wgpu::Device,
-    r: PipelineRecipe<'_>,
-) -> wgpu::RenderPipeline {
+pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(r.label),
         layout: Some(r.layout),

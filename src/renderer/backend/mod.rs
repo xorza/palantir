@@ -478,8 +478,7 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        self.debug
-            .draw_dim(&mut pass, &self.quad.pipeline, &self.quad.bind_group);
+        self.debug.draw_dim(&mut pass, &self.quad);
     }
 
     /// Open the main render pass against the backbuffer and walk the
@@ -769,12 +768,8 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
-            self.debug.draw_overlays(
-                &mut pass,
-                &self.quad.pipeline,
-                &self.quad.bind_group,
-                overlay_rects.len() as u32,
-            );
+            self.debug
+                .draw_overlays(&mut pass, &self.quad, overlay_rects.len() as u32);
         }
     }
 
