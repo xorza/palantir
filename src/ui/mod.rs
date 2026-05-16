@@ -334,6 +334,7 @@ impl<T> Ui<T> {
         }
         let prev = self.app_slot.replace(NonNull::from(state));
         let g = Guard { ui: self, prev };
+
         g.ui.frame_inner(stamp, &mut record)
     }
 
