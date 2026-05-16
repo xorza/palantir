@@ -4,6 +4,7 @@ pub(crate) mod bezier;
 pub(crate) mod brush;
 pub(crate) mod color;
 pub(crate) mod corners;
+pub(crate) mod image;
 pub(crate) mod interned_str;
 pub(crate) mod mesh;
 pub(crate) mod num;

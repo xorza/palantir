@@ -13,6 +13,7 @@ use self::schedule::{RenderStep, for_each_step};
 use self::viewport::{ViewportUniform, build_damage_scissors};
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::debug_overlay::DebugOverlayConfig;
+use crate::primitives::image::ImageRegistry;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
@@ -112,6 +113,10 @@ pub(crate) struct WgpuBackend {
     /// Shared frame arena (clone of `Host`'s canonical handle). The
     /// backend reads mesh vertices/indices from it during upload.
     frame_arena: FrameArenaHandle,
+    /// Shared user-image cache. Backend reads bytes from it lazily on
+    /// first sighting of an `ImageHandle` in a frame's `ImageInstance`s.
+    #[allow(dead_code)] // wired by Image pipeline (slice 1 Phase B)
+    images: ImageRegistry,
 }
 
 impl WgpuBackend {
@@ -133,6 +138,7 @@ impl WgpuBackend {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
         frame_arena: FrameArenaHandle,
+        images: ImageRegistry,
     ) -> Self {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
@@ -150,6 +156,7 @@ impl WgpuBackend {
             color_format: format,
             backbuffer: None,
             frame_arena,
+            images,
         }
     }
 
