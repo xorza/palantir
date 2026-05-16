@@ -30,6 +30,7 @@ pub(crate) fn new_ui() -> Ui {
     Ui::new(
         TextShaper::default(),
         Rc::new(RefCell::new(FrameArena::default())),
+        palantir::ImageRegistry::default(),
     )
 }
 

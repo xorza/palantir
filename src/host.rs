@@ -16,6 +16,7 @@
 use std::time::Instant;
 
 use crate::common::frame_arena::FrameArenaHandle;
+use crate::primitives::image::ImageRegistry;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
@@ -69,10 +70,11 @@ impl Host {
         // cheap; runtime borrow-checking via RefCell catches any
         // wiring mistake that would double-borrow.
         let frame_arena = FrameArenaHandle::default();
+        let images = ImageRegistry::default();
         Self {
-            ui: Ui::new(shaper.clone(), frame_arena.clone()),
+            ui: Ui::new(shaper.clone(), frame_arena.clone(), images.clone()),
             frontend: Frontend::new(frame_arena.clone()),
-            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena),
+            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena, images),
             start: Instant::now(),
             occluded: false,
             occluded_at: None,

@@ -26,6 +26,8 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
+use crate::primitives::image::ImageRegistry;
+
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
@@ -225,6 +227,10 @@ pub struct Ui {
     ///
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArenaHandle,
+    /// Cross-frame image cache shared with the wgpu backend. Users call
+    /// `ui.images.register(key, image)` to stage bytes once, then
+    /// reference the returned handle in [`Shape::Image`] every frame.
+    pub images: ImageRegistry,
 }
 
 impl Ui {
@@ -244,10 +250,11 @@ impl Ui {
     /// Tests / standalone callers usually want [`Self::default`],
     /// which builds an isolated `Ui` with mono fallback shaper + its
     /// own private arena.
-    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle) -> Self {
+    pub fn new(text: TextShaper, frame_arena: FrameArenaHandle, images: ImageRegistry) -> Self {
         Self {
             text,
             frame_arena,
+            images,
             ..Self::default()
         }
     }
@@ -992,7 +999,11 @@ pub mod test_support {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
-            Self::new(SHARED.with(|c| c.clone()), FrameArenaHandle::default())
+            Self::new(
+                SHARED.with(|c| c.clone()),
+                FrameArenaHandle::default(),
+                ImageRegistry::default(),
+            )
         }
 
         /// `Ui` pre-stamped with display dimensions; no frame driven yet.
