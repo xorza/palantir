@@ -11,6 +11,17 @@ struct Viewport {
 
 const ATLAS_ROWS_F: f32 = 256.0;
 
+// Divide-by-zero guard on object-local axes (quad size, gradient
+// span, radial radius). Anything smaller than this rounds to "no
+// meaningful direction" — the gradient collapses to a fallback.
+const ZERO_EPS: f32 = 1e-6;
+
+// Cutoff below which `blurred_rect_coverage` short-circuits to the
+// sharp SDF coverage. Below this, the erf-based Gaussian is
+// numerically indistinguishable from `clamp(0.5 - d, 0, 1)` but
+// risks divide-by-near-zero in `1/(√2 σ)`.
+const BLUR_EPS: f32 = 1e-4;
+
 // Brush kind low byte:
 //   0 = solid  (use `fill` directly)
 //   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
@@ -152,7 +163,7 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         return in.fill;
     }
     let spread  = (in.fill_kind >> 8u) & 0xFFu;
-    let local01 = in.local / max(in.size, vec2<f32>(1e-6));
+    let local01 = in.local / max(in.size, vec2<f32>(ZERO_EPS));
     var t01: f32 = 0.0;
     if (kind == BRUSH_KIND_LINEAR) {
         // Linear: project local01 onto the gradient direction, remap
@@ -162,15 +173,15 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         let t1   = in.fill_axis.w;
         let raw  = dot(local01, axis);
         let span = t1 - t0;
-        let span_safe = select(1.0, span, abs(span) > 1e-6);
+        let span_safe = select(1.0, span, abs(span) > ZERO_EPS);
         t01 = (raw - t0) / span_safe;
     } else if (kind == BRUSH_KIND_RADIAL) {
         // Radial: distance from `center` measured in `radius` units.
         // `t = 1.0` at the elliptical edge of the radius vector.
         let center = in.fill_axis.xy;
         let radius = in.fill_axis.zw;
-        let rx = select(1.0, radius.x, abs(radius.x) > 1e-6);
-        let ry = select(1.0, radius.y, abs(radius.y) > 1e-6);
+        let rx = select(1.0, radius.x, abs(radius.x) > ZERO_EPS);
+        let ry = select(1.0, radius.y, abs(radius.y) > ZERO_EPS);
         let d  = (local01 - center) / vec2<f32>(rx, ry);
         t01 = length(d);
     } else if (kind == BRUSH_KIND_CONIC) {
@@ -210,7 +221,7 @@ fn erf_approx(x: f32) -> f32 {
 // approximation for a rounded rect (the same trick Evan Wallace's
 // shader uses; see `references/vello.md` §3).
 fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
-    if (sigma <= 1.0e-4) {
+    if (sigma <= BLUR_EPS) {
         return clamp(0.5 - d, 0.0, 1.0);
     }
     // d < 0 inside the shape → coverage ≈ 1; d > 0 outside → 0.
