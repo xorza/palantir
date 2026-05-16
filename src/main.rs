@@ -1,13 +1,7 @@
-use std::sync::Arc;
-
 use palantir::{
-    Background, Button, Color, Configure, FramePresent, Host, InputEvent, Panel, Shadow, Sizing, Ui,
+    AnimSpec, Background, Button, Color, Configure, Key, Panel, Shadow, Shortcut, Sizing, Ui,
+    WinitHost,
 };
-use winit::application::ApplicationHandler;
-use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
-use winit::window::{Window, WindowId};
 
 mod showcase;
 use showcase::app_state::AppState;
@@ -69,231 +63,20 @@ fn main() {
         )
         .init();
 
-    let event_loop = EventLoop::new().expect("event loop");
-    let mut app = App::default();
-    event_loop.run_app(&mut app).expect("run app");
-}
-
-#[derive(Default)]
-struct App {
-    state: Option<State>,
-}
-
-struct State {
-    window: Arc<Window>,
-    surface: wgpu::Surface<'static>,
-    device: wgpu::Device,
-    config: wgpu::SurfaceConfiguration,
-    host: Host<AppState>,
-    scale_factor: f32,
-    active: usize,
-    /// Host-side scheduling state. Reset at the top of `draw` from the
-    /// `FramePresent` the frame returned; re-armed to `Immediate` by
-    /// input, resize, surface loss, occlusion, and animation tickers.
-    next: FramePresent,
-    /// Caller-owned app state, installed ambient on the `Ui` for the
-    /// duration of every frame via `Host::frame`.
-    /// The "app state" showcase tab reads/mutates it via `ui.app::<AppState>()`.
-    app: AppState,
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.state.is_some() {
-            return;
-        }
-
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes().with_title("palantir showcase"))
-                .expect("create window"),
-        );
-        let size = window.inner_size();
-
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
-        let surface = instance
-            .create_surface(window.clone())
-            .expect("create surface");
-
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
-            compatible_surface: Some(&surface),
-            force_fallback_adapter: false,
-        }))
-        .expect("request adapter");
-
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("palantir.device"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            experimental_features: wgpu::ExperimentalFeatures::default(),
-            memory_hints: wgpu::MemoryHints::default(),
-            trace: wgpu::Trace::Off,
-        }))
-        .expect("request device");
-
-        let caps = surface.get_capabilities(&adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| f.is_srgb())
-            .unwrap_or(caps.formats[0]);
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
-            present_mode: wgpu::PresentMode::AutoNoVsync,
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-
-        let mut host = Host::new(device.clone(), queue.clone(), format);
+    let mut active = 0usize;
+    WinitHost::new("palantir showcase", AppState { counter: 0 }, move |ui| {
+        build_ui(ui, &mut active)
+    })
+    .with_setup(|ui| {
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
-        host.ui.theme.button.anim = None;
-        host.ui.theme.button.anim = Some(palantir::AnimSpec::SPRING);
-        let scale_factor = window.scale_factor() as f32;
-
-        window.request_redraw();
-        self.state = Some(State {
-            window,
-            surface,
-            device,
-            config,
-            host,
-            scale_factor,
-            active: 0,
-            next: FramePresent::Immediate,
-            app: AppState { counter: 0 },
-        });
-    }
-
-    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        // WaitUntil deadline reached → switch to Immediate so the
-        // next about_to_wait requests a redraw. Without this, the
-        // scheduled wake fires but no frame ever paints.
-        if let StartCause::ResumeTimeReached { .. } = cause
-            && let Some(state) = self.state.as_mut()
-        {
-            state.next = FramePresent::Immediate;
-        }
-    }
-
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let Some(state) = self.state.as_ref() else {
-            return;
-        };
-
-        match state.next {
-            FramePresent::Immediate => {
-                state.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
-            }
-            FramePresent::At(at) => event_loop.set_control_flow(ControlFlow::WaitUntil(at)),
-            FramePresent::Idle => event_loop.set_control_flow(ControlFlow::Wait),
-        }
-    }
-
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        let Some(state) = self.state.as_mut() else {
-            return;
-        };
-
-        if let WindowEvent::KeyboardInput {
-            event:
-                KeyEvent {
-                    physical_key: PhysicalKey::Code(key),
-                    state: ElementState::Pressed,
-                    repeat: false,
-                    ..
-                },
-            ..
-        } = event
-            && handle_debug_key(state, key)
-        {
-            state.next = FramePresent::Immediate;
-        }
-
-        let mut wants_repaint = false;
-        InputEvent::from_winit(&event, state.scale_factor, |ev| {
-            wants_repaint |= state.host.ui.on_input(ev).requests_repaint;
-        });
-        if wants_repaint {
-            state.next = FramePresent::Immediate;
-        }
-
-        match event {
-            WindowEvent::RedrawRequested => state.draw(),
-
-            WindowEvent::CloseRequested => event_loop.exit(),
-
-            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                state.scale_factor = scale_factor as f32;
-                state.next = FramePresent::Immediate;
-            }
-            WindowEvent::Resized(new) => {
-                let max = state.device.limits().max_texture_dimension_2d;
-                state.config.width = new.width.clamp(1, max);
-                state.config.height = new.height.clamp(1, max);
-                state.surface.configure(&state.device, &state.config);
-                state.draw();
-            }
-            WindowEvent::Occluded(occluded) => {
-                state.host.set_occluded(occluded);
-                if !occluded {
-                    state.next = FramePresent::Immediate;
-                }
-            }
-
-            _ => {}
-        }
-    }
-}
-
-impl State {
-    fn draw(&mut self) {
-        let host = &mut self.host;
-        let app = &mut self.app;
-        let active = &mut self.active;
-        self.next = host.frame(&self.surface, &self.config, self.scale_factor, app, |ui| {
-            build_ui(ui, active)
-        });
-    }
-}
-
-/// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
-/// F9 toggles the frame/FPS readout. Returns `true` if the key was
-/// handled.
-fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
-    let overlay = &mut state.host.ui.debug_overlay;
-    match key {
-        KeyCode::F12 => {
-            overlay.damage_rect = !overlay.damage_rect;
-            eprintln!(
-                "[F12] damage rect overlay: {}",
-                if overlay.damage_rect { "on" } else { "off" }
-            );
-            true
-        }
-        KeyCode::F10 => {
-            overlay.dim_undamaged = !overlay.dim_undamaged;
-            eprintln!("[F10] darken undamaged: {}", overlay.dim_undamaged);
-            true
-        }
-        KeyCode::F9 => {
-            overlay.frame_stats = !overlay.frame_stats;
-            eprintln!("[F9] frame stats: {}", overlay.frame_stats);
-            true
-        }
-        _ => false,
-    }
+        ui.theme.button.anim = Some(AnimSpec::SPRING);
+    })
+    .run();
 }
 
 fn build_ui(ui: &mut Ui<AppState>, active: &mut usize) {
+    handle_debug_keys(ui);
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()
@@ -351,5 +134,36 @@ fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonThe
     palantir::ButtonTheme {
         normal: default.hovered,
         ..default.clone()
+    }
+}
+
+/// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
+/// F9 toggles the frame/FPS readout. Subscribes via the canonical
+/// `Ui::subscribe_key` so off-focus presses still wake the loop.
+fn handle_debug_keys(ui: &mut Ui<AppState>) {
+    let f12 = Shortcut::key(Key::F12);
+    let f10 = Shortcut::key(Key::F10);
+    let f9 = Shortcut::key(Key::F9);
+    ui.subscribe_key(f12);
+    ui.subscribe_key(f10);
+    ui.subscribe_key(f9);
+    let toggle_damage = ui.key_pressed(f12);
+    let toggle_dim = ui.key_pressed(f10);
+    let toggle_stats = ui.key_pressed(f9);
+    let o = &mut ui.debug_overlay;
+    if toggle_damage {
+        o.damage_rect = !o.damage_rect;
+        eprintln!(
+            "[F12] damage rect overlay: {}",
+            if o.damage_rect { "on" } else { "off" }
+        );
+    }
+    if toggle_dim {
+        o.dim_undamaged = !o.dim_undamaged;
+        eprintln!("[F10] darken undamaged: {}", o.dim_undamaged);
+    }
+    if toggle_stats {
+        o.frame_stats = !o.frame_stats;
+        eprintln!("[F9] frame stats: {}", o.frame_stats);
     }
 }
