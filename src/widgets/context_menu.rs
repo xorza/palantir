@@ -304,7 +304,7 @@ impl MenuItem {
                     font_size_px,
                     line_height_px,
                     wrap: TextWrap::Single,
-                    align: crate::layout::types::align::Align::default(),
+                    align: Align::default(),
                     family,
                 });
             });
@@ -320,7 +320,7 @@ impl MenuItem {
                         font_size_px,
                         line_height_px,
                         wrap: TextWrap::Single,
-                        align: crate::layout::types::align::Align::default(),
+                        align: Align::default(),
                         family,
                     });
                 });

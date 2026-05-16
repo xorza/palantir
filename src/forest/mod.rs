@@ -6,7 +6,7 @@
 use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
-use crate::forest::seen_ids::{RecordOutcome, SeenIds};
+use crate::forest::seen_ids::{Endpoint, RecordOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
@@ -24,8 +24,8 @@ use strum::EnumCount as _;
 /// Popup body). Resolved at recording time from `SeenIds.curr`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct CollisionRecord {
-    pub(crate) first: (Layer, NodeId),
-    pub(crate) second: (Layer, NodeId),
+    pub(crate) first: Endpoint,
+    pub(crate) second: Endpoint,
 }
 
 pub(crate) mod element;
@@ -162,17 +162,15 @@ impl Forest {
     /// silent — the disambiguation already ran inside `SeenIds::record`).
     fn record_collision(&mut self, outcome: RecordOutcome, layer: Layer, node: NodeId) {
         if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
+            let second = Endpoint { layer, node };
             tracing::error!(
-                first_layer = ?first.0,
-                first_node = ?first.1,
-                second_layer = ?layer,
-                second_node = ?node,
+                first_layer = ?first.layer,
+                first_node = ?first.node,
+                second_layer = ?second.layer,
+                second_node = ?second.node,
                 "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
             );
-            self.collisions.push(CollisionRecord {
-                first,
-                second: (layer, node),
-            });
+            self.collisions.push(CollisionRecord { first, second });
         }
     }
 

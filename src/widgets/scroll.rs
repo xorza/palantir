@@ -7,6 +7,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
+use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -164,8 +165,8 @@ fn bar_layout(
 /// so the visible thumb tracks the cursor 1:1.
 #[derive(Copy, Clone, Debug)]
 struct BarPlan {
-    track_rect: crate::primitives::rect::Rect,
-    thumb_rect: crate::primitives::rect::Rect,
+    track_rect: Rect,
+    thumb_rect: Rect,
 }
 
 fn bar_plan(
