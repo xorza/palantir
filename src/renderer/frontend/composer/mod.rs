@@ -1,17 +1,19 @@
 use super::cmd_buffer::{
-    CmdKind, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
-    PushClipPayload, RenderCmdBuffer,
+    CmdKind, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
+    DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use crate::common::frame_arena::FrameArena;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::Color;
+use crate::primitives::image::ImageHandle;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshBatch, MeshDraw, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, ImageBatch, ImageDraw, ImageInstance, MeshBatch, MeshDraw, MeshInstance,
+    RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use glam::{UVec2, Vec2};
 
@@ -62,6 +64,7 @@ pub(crate) struct Composer {
     quads_start: u32,
     texts_start: u32,
     meshes_start: u32,
+    images_start: u32,
     /// Bundled state for the currently-open text batch — `Some` while
     /// the composer is accumulating runs into a batch, `None`
     /// between batches. The rect scratch lives outside in
@@ -105,13 +108,24 @@ impl Composer {
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
         let m_end = out.meshes.draws.len() as u32;
-        if q_end > self.quads_start || t_end > self.texts_start || m_end > self.meshes_start {
-            // Push the mesh batch BEFORE the group itself so its
-            // `last_group` matches the in-flight group's eventual
-            // index (= current `out.groups.len()`).
+        let i_end = out.images.draws.len() as u32;
+        if q_end > self.quads_start
+            || t_end > self.texts_start
+            || m_end > self.meshes_start
+            || i_end > self.images_start
+        {
+            // Push the mesh/image batches BEFORE the group itself so
+            // their `last_group` matches the in-flight group's
+            // eventual index (= current `out.groups.len()`).
             if m_end > self.meshes_start {
                 out.mesh_batches.push(MeshBatch {
                     meshes: (self.meshes_start..m_end).into(),
+                    last_group: out.groups.len() as u32,
+                });
+            }
+            if i_end > self.images_start {
+                out.image_batches.push(ImageBatch {
+                    images: (self.images_start..i_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
@@ -125,6 +139,7 @@ impl Composer {
         self.quads_start = q_end;
         self.texts_start = t_end;
         self.meshes_start = m_end;
+        self.images_start = i_end;
         self.mesh_rects.clear();
     }
 
@@ -233,9 +248,11 @@ impl Composer {
         out.quads.clear();
         out.texts.clear();
         out.meshes.clear();
+        out.images.clear();
         out.groups.clear();
         out.text_batches.clear();
         out.mesh_batches.clear();
+        out.image_batches.clear();
         out.has_rounded_clip = false;
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -250,6 +267,7 @@ impl Composer {
         self.quads_start = 0;
         self.texts_start = 0;
         self.meshes_start = 0;
+        self.images_start = 0;
         self.open_batch = None;
         let mut current_transform = TranslateScale::IDENTITY;
 
@@ -444,6 +462,30 @@ impl Composer {
                             viewport_phys,
                         ));
                     }
+                }
+                CmdKind::DrawImage => {
+                    // Image sits above text in the kind order (same as
+                    // mesh): close any open text batch so batched text
+                    // emits before this group's images.
+                    self.close_batch(out);
+                    let p: DrawImagePayload = cmds.read(start);
+                    let world_rect = current_transform.apply_rect(p.rect);
+                    let image_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    if self.cull_against_active_clip(image_urect) {
+                        continue;
+                    }
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let tint_color: Color = p.tint.into();
+                    out.images.draws.push(ImageDraw {
+                        handle: ImageHandle(p.handle),
+                    });
+                    out.images.instances.push(ImageInstance {
+                        rect: phys_rect,
+                        tint: tint_color.into(),
+                        ..bytemuck::Zeroable::zeroed()
+                    });
+                    // Track for paint-order overlap with mesh-tier draws.
+                    self.mesh_rects.push(image_urect);
                 }
                 CmdKind::DrawPolyline => {
                     // Polyline tessellates to a mesh — same paint-order

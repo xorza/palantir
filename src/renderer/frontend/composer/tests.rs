@@ -876,3 +876,26 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
         "quad overlapping prior batch text must split the batch",
     );
 }
+
+#[test]
+fn compose_emits_image_batch_for_drawimage() {
+    use super::super::cmd_buffer::DrawImagePayload;
+    let buf = run(
+        |b, _arena| {
+            b.draw_image(DrawImagePayload {
+                rect: rect(10.0, 20.0, 30.0, 40.0),
+                tint: Color::WHITE.into(),
+                handle: 0xc0ffee,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(2.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.images.draws.len(), 1, "one image draw");
+    assert_eq!(buf.images.instances.len(), 1, "one image instance");
+    assert_eq!(buf.image_batches.len(), 1, "one image batch");
+    assert_eq!(buf.image_batches[0].images, Span::new(0, 1));
+    assert_eq!(buf.images.draws[0].handle.0, 0xc0ffee);
+    // Physical-px rect = logical * scale (no snap in `params`).
+    assert_eq!(buf.images.instances[0].rect, rect(20.0, 40.0, 60.0, 80.0));
+}

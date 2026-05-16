@@ -1,4 +1,6 @@
-use super::cmd_buffer::{BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
+use super::cmd_buffer::{
+    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
+};
 use crate::common::frame_arena::FrameArena;
 use crate::forest::shapes::record::{
     GradientPayload, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
@@ -265,10 +267,24 @@ fn emit_one_shape(
                 ..bytemuck::Zeroable::zeroed()
             });
         }
-        ShapeRecord::Image { .. } => {
-            // TODO(slice-1, phase 3): emit `DrawImage` cmd. Phase 2
-            // only adds the variant + lowering; the cmd buffer + GPU
-            // pipeline land in phase 3.
+        ShapeRecord::Image {
+            local_rect,
+            tint,
+            handle,
+        } => {
+            let r = match local_rect {
+                None => owner_rect,
+                Some(lr) => Rect {
+                    min: owner_rect.min + lr.min,
+                    size: lr.size,
+                },
+            };
+            out.draw_image(DrawImagePayload {
+                rect: r,
+                tint: *tint,
+                handle: handle.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
         }
     }
 }

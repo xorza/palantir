@@ -480,7 +480,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(crate::primitives::color
                 };
                 out.push((p.fill, visible));
             }
-            CmdKind::DrawText | CmdKind::DrawMesh | CmdKind::DrawPolyline => {}
+            CmdKind::DrawText | CmdKind::DrawMesh | CmdKind::DrawPolyline | CmdKind::DrawImage => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

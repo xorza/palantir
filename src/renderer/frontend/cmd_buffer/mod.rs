@@ -111,6 +111,12 @@ pub(crate) enum CmdKind {
     /// tessellates a fringe-AA stroke into `out.meshes.arena` —
     /// final paint reuses the mesh pipeline.
     DrawPolyline,
+    /// Textured rectangle paint cmd. Payload: [`DrawImagePayload`].
+    /// The composer transforms `rect` into physical-px and routes to
+    /// the backend's image pipeline, which samples the texture
+    /// registered against `handle` in the shared
+    /// [`ImageRegistry`](crate::ImageRegistry).
+    DrawImage,
 }
 
 /// Scissor clip payload. `radius` is all-zero for plain rect clips
@@ -264,6 +270,32 @@ impl DrawMeshPayload {
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         self.v_len == 0 || self.i_len < 3 || !self.i_len.is_multiple_of(3) || self.tint.is_noop()
+    }
+}
+
+/// Image draw payload. `rect` is the logical-px paint rect (already
+/// resolved against the owner — encoder folded in `local_rect` or the
+/// owner's full arranged rect). `tint` multiplies the sampled texel.
+/// `handle` is the user-supplied [`ImageHandle`] — the backend looks
+/// it up against its GPU texture cache.
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawImagePayload {
+    pub(crate) rect: Rect,
+    pub(crate) tint: ColorF16,
+    /// `ImageHandle` unwrapped to its `u64` so the payload stays Pod —
+    /// the wrapper isn't `repr(transparent)` (carries the `NONE`
+    /// sentinel sourcing API contract on the wrapper type).
+    pub(crate) handle: u64,
+}
+
+impl DrawImagePayload {
+    /// Canonical noop predicate — zero-extent rect, fully transparent
+    /// tint, or null handle (paints no pixels, no texture to sample).
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        self.rect.is_paint_empty() || self.tint.is_noop() || self.handle == 0
     }
 }
 
@@ -451,6 +483,16 @@ impl RenderCmdBuffer {
             return;
         }
         self.record_start(CmdKind::DrawMesh);
+        write_pod(&mut self.data, payload);
+    }
+
+    /// Record a `DrawImage` cmd. Composer transforms `rect` into
+    /// physical-px and routes to the backend's image pipeline.
+    pub(crate) fn draw_image(&mut self, payload: DrawImagePayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.record_start(CmdKind::DrawImage);
         write_pod(&mut self.data, payload);
     }
 
