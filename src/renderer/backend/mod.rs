@@ -18,7 +18,7 @@ use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::viewport::{ViewportUniform, build_damage_scissors};
-use crate::common::frame_arena::FrameArenaHandle;
+use crate::common::frame_arena::FrameArena;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::caches::RenderCaches;
@@ -89,7 +89,7 @@ pub(crate) struct WgpuBackend {
     backbuffer: Option<Backbuffer>,
     /// Shared frame arena (clone of `Host`'s canonical handle). The
     /// backend reads mesh vertices/indices from it during upload.
-    frame_arena: FrameArenaHandle,
+    frame_arena: FrameArena,
     /// Shared cross-frame GPU resource caches (image registry +
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
@@ -114,7 +114,7 @@ impl WgpuBackend {
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
-        frame_arena: FrameArenaHandle,
+        frame_arena: FrameArena,
         caches: RenderCaches,
         image_budget_bytes: u64,
     ) -> Self {
@@ -264,7 +264,7 @@ impl WgpuBackend {
             RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
         };
         let arena = self.frame_arena.clone();
-        let arena = arena.borrow();
+        let arena = arena.inner();
         // Sync gradient LUT atlas to GPU. Idle frames (no new
         // gradients) drain an empty dirty flag and do nothing; first
         // frame uploads row 0's magenta fallback plus any baked rows

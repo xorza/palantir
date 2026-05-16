@@ -429,7 +429,7 @@ fn fresh_heavy_ui() -> Ui {
     // measure work).
     Ui::new(
         TextShaper::with_bundled_fonts(),
-        palantir::FrameArenaHandle::default(),
+        palantir::FrameArena::default(),
     )
 }
 

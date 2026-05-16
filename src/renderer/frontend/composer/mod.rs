@@ -2,7 +2,7 @@ use super::cmd_buffer::{
     CmdKind, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
     DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
-use crate::common::frame_arena::FrameArena;
+use crate::common::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16};
@@ -264,7 +264,7 @@ impl Composer {
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,
-        arena: &mut FrameArena,
+        arena: &mut FrameArenaInner,
         display: Display,
         out: &mut RenderBuffer,
     ) {

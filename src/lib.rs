@@ -33,7 +33,7 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 
-pub use common::frame_arena::{FrameArena, FrameArenaHandle};
+pub use common::frame_arena::FrameArena;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;

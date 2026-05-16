@@ -1,6 +1,6 @@
 use super::super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
-use crate::common::frame_arena::FrameArena;
+use crate::common::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::span::Span;
 use crate::primitives::{
@@ -38,11 +38,11 @@ fn params(scale: f32, physical: UVec2) -> Display {
 }
 
 fn run(
-    build: impl FnOnce(&mut RenderCmdBuffer, &mut FrameArena),
+    build: impl FnOnce(&mut RenderCmdBuffer, &mut FrameArenaInner),
     display: &Display,
 ) -> RenderBuffer {
     let mut buffer = RenderCmdBuffer::default();
-    let mut arena = FrameArena::default();
+    let mut arena = FrameArenaInner::default();
     build(&mut buffer, &mut arena);
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
@@ -404,7 +404,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     let mut out = RenderBuffer::default();
     composer.compose(
         &buffer,
-        &mut FrameArena::default(),
+        &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -459,7 +459,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     let mut out = RenderBuffer::default();
     composer.compose(
         &buffer,
-        &mut FrameArena::default(),
+        &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -500,7 +500,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     let mut out = RenderBuffer::default();
     composer.compose(
         &buffer,
-        &mut FrameArena::default(),
+        &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );

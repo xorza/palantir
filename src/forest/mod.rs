@@ -145,7 +145,7 @@ impl Forest {
         &mut self,
         mut element: Element,
         chrome: Background,
-        arena: &mut FrameArena,
+        arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer;
@@ -187,7 +187,7 @@ impl Forest {
     pub(crate) fn add_shape(
         &mut self,
         shape: Shape<'_>,
-        arena: &mut FrameArena,
+        arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
         let tree = &mut self.trees[self.current_layer as usize];
@@ -209,7 +209,7 @@ impl Forest {
         &mut self,
         shape: Shape<'_>,
         anim: PaintAnim,
-        arena: &mut FrameArena,
+        arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
         let tree = &mut self.trees[self.current_layer as usize];

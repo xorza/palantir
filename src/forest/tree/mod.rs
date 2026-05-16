@@ -506,7 +506,7 @@ impl Tree {
         &mut self,
         mut element: Element,
         bg: Background,
-        arena: &mut FrameArena,
+        arena: &FrameArena,
         atlas: &GradientAtlas,
     ) -> NodeId {
         // Tree-storage noop gate for chrome — mirrors `Shapes::add` for

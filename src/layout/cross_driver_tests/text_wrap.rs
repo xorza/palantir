@@ -104,7 +104,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MaxContent,
         &crate::layout::support::TextCtx {
-            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
     );
@@ -114,7 +114,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MinContent,
         &crate::layout::support::TextCtx {
-            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
     );
@@ -124,7 +124,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::Y,
         LenReq::MaxContent,
         &crate::layout::support::TextCtx {
-            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
     );
@@ -365,7 +365,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &crate::layout::support::TextCtx {
-            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
     );
@@ -375,7 +375,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MinContent,
         &crate::layout::support::TextCtx {
-            bytes: &ui.frame_arena.borrow().fmt_scratch,
+            bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
     );
@@ -437,7 +437,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &crate::layout::support::TextCtx {
-            bytes: &probe.frame_arena.borrow().fmt_scratch,
+            bytes: &probe.frame_arena.inner().fmt_scratch,
             shaper: &probe.text,
         },
     );

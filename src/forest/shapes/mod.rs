@@ -1,8 +1,7 @@
 pub(crate) mod record;
 
-use crate::common::frame_arena::{BezierInputs, FrameArena};
+use crate::common::frame_arena::FrameArena;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
-use crate::primitives::bezier::{flatten_cubic, flatten_quadratic};
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::{PolylineColors, Shape};
@@ -52,7 +51,7 @@ impl Shapes {
     pub(crate) fn add(
         &mut self,
         shape: Shape<'_>,
-        arena: &mut FrameArena,
+        arena: &FrameArena,
         atlas: &GradientAtlas,
     ) -> Option<u32> {
         if shape.is_noop() {
@@ -109,18 +108,17 @@ impl Shapes {
                 cap,
                 join,
                 tolerance,
-            } => {
-                arena.bezier_scratch.clear();
-                flatten_cubic(p0, p1, p2, p3, tolerance, &mut arena.bezier_scratch);
-                arena.lower_bezier(
-                    BezierInputs::Cubic([p0, p1, p2, p3]),
-                    width,
-                    brush.expect_solid(),
-                    cap,
-                    join,
-                    tolerance,
-                )
-            }
+            } => arena.lower_cubic_bezier(
+                p0,
+                p1,
+                p2,
+                p3,
+                width,
+                brush.expect_solid(),
+                cap,
+                join,
+                tolerance,
+            ),
             Shape::QuadraticBezier {
                 p0,
                 p1,
@@ -130,18 +128,16 @@ impl Shapes {
                 cap,
                 join,
                 tolerance,
-            } => {
-                arena.bezier_scratch.clear();
-                flatten_quadratic(p0, p1, p2, tolerance, &mut arena.bezier_scratch);
-                arena.lower_bezier(
-                    BezierInputs::Quadratic([p0, p1, p2]),
-                    width,
-                    brush.expect_solid(),
-                    cap,
-                    join,
-                    tolerance,
-                )
-            }
+            } => arena.lower_quadratic_bezier(
+                p0,
+                p1,
+                p2,
+                width,
+                brush.expect_solid(),
+                cap,
+                join,
+                tolerance,
+            ),
             Shape::Text {
                 local_origin,
                 text,
@@ -200,10 +196,11 @@ impl Shapes {
                 local_rect,
                 tint,
             } => {
-                let v_start = arena.meshes.vertices.len() as u32;
-                arena.meshes.vertices.extend_from_slice(&mesh.vertices);
-                let i_start = arena.meshes.indices.len() as u32;
-                arena.meshes.indices.extend_from_slice(&mesh.indices);
+                let mut a = arena.inner_mut();
+                let v_start = a.meshes.vertices.len() as u32;
+                a.meshes.vertices.extend_from_slice(&mesh.vertices);
+                let i_start = a.meshes.indices.len() as u32;
+                a.meshes.indices.extend_from_slice(&mesh.indices);
                 let content_hash = mesh.content_hash();
                 let bbox = mesh.bbox();
                 ShapeRecord::Mesh {
