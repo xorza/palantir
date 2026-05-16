@@ -1,8 +1,3 @@
-8. Damage granularity for text reshape
-   Currently TextShaper reshapes on cache miss regardless of which sub-region damaged. A Damage::Partial(rect) arriving from a text-only change
-   still walks the shaper. The question is whether to thread the damage rect into shaping (so unchanged paragraphs short-circuit) or keep
-   shape-once-per-key-change. Real perf call, needs a workload.
-
 9. MeasureCache ancestor cache-hit hug-restore coupling
    The cache-hit path in LayoutEngine::measure has to call hugs.restore_subtree(...) for any descendant Grid, or arrange collapses every cell.
    This is a contract between the cache and the Grid driver enforced by a comment + one pinning test. As more drivers accumulate hidden
