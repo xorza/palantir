@@ -291,7 +291,7 @@ pub mod test_support {
 
     /// CPU half of `Host::frame` — runs `Ui::frame` without acquiring a swapchain.
     pub fn cpu_frame<T: 'static>(
-        host: &mut Host,
+        host: &mut Host<T>,
         display: Display,
         state: &mut T,
         record: impl FnMut(&mut Ui<T>),
@@ -300,7 +300,11 @@ pub mod test_support {
     }
 
     /// GPU half of `Host::frame` against a caller-supplied texture.
-    pub fn render_to_texture(host: &mut Host, target: &wgpu::Texture, report: &FrameReport) {
+    pub fn render_to_texture<T: 'static>(
+        host: &mut Host<T>,
+        target: &wgpu::Texture,
+        report: &FrameReport,
+    ) {
         host.render_to_texture(target, report);
     }
 }

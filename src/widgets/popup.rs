@@ -114,7 +114,11 @@ impl Popup {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>, body: impl FnOnce(&mut Ui<T>, &PopupHandle)) -> PopupResponse {
+    pub fn show<T>(
+        self,
+        ui: &mut Ui<T>,
+        body: impl FnOnce(&mut Ui<T>, &PopupHandle),
+    ) -> PopupResponse {
         let body_id = self.element.id;
         let eater_id = body_id.with("eater");
         // Eater records first → paints under the body. Hit-test runs

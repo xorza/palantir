@@ -1,5 +1,5 @@
-use palantir::{Checkbox, Configure, Panel, Sizing, Text, Ui, WidgetId};
 use super::app_state::AppState;
+use palantir::{Checkbox, Configure, Panel, Sizing, Text, Ui, WidgetId};
 
 #[derive(Default)]
 struct State {

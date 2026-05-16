@@ -1,5 +1,5 @@
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{
     Color, Configure, Corners, LineCap, LineJoin, Panel, PolylineColors, Rect, Shape, Sizing,
     Stroke, Ui,

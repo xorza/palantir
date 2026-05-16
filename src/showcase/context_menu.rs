@@ -89,7 +89,12 @@ enum MenuFlavor {
     Wide,
 }
 
-fn attach_menu<T>(ui: &mut Ui<T>, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
+fn attach_menu<T>(
+    ui: &mut Ui<T>,
+    trigger: &palantir::Response,
+    state_id: WidgetId,
+    flavor: MenuFlavor,
+) {
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
     if let MenuFlavor::Wide = flavor {
         menu = menu

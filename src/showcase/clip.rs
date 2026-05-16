@@ -1,5 +1,5 @@
-use crate::showcase::swatch;
 use super::app_state::AppState;
+use crate::showcase::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below

@@ -41,9 +41,9 @@ const DISPLAY: Display = Display {
 /// Run `scene` for `warmup` frames untracked, then audit each of
 /// `audit` frames individually. Fails as soon as a single frame
 /// exceeds `max_allocs`, dumping that frame's captured backtraces.
-pub(crate) fn run_audit<T, S>(name: &str, warmup: usize, audit: usize, max_allocs: u64, mut scene: S)
+pub(crate) fn run_audit<S>(name: &str, warmup: usize, audit: usize, max_allocs: u64, mut scene: S)
 where
-    S: FnMut(&mut Ui<T>),
+    S: FnMut(&mut Ui<()>),
 {
     assert!(audit > 0, "audit frame count must be > 0");
 
@@ -72,9 +72,9 @@ where
 /// individually — any frame over budget fails.
 ///
 /// Use this for new fixtures so you don't have to eyeball a warmup count.
-pub(crate) fn audit_steady_state<T, S>(name: &str, max_allocs: u64, mut scene: S)
+pub(crate) fn audit_steady_state<S>(name: &str, max_allocs: u64, mut scene: S)
 where
-    S: FnMut(&mut Ui<T>),
+    S: FnMut(&mut Ui<()>),
 {
     const MAX_WARMUP: usize = 8;
     const STABLE_RUN: usize = 2;
@@ -108,7 +108,7 @@ where
 }
 
 #[inline]
-fn run_frame<T, S: FnMut(&mut Ui<T>)>(ui: &mut Ui<T>, scene: &mut S) {
+fn run_frame<S: FnMut(&mut Ui<()>)>(ui: &mut Ui<()>, scene: &mut S) {
     let _ = ui.frame(
         FrameStamp::new(DISPLAY, std::time::Duration::ZERO),
         &mut (),

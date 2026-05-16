@@ -8,8 +8,8 @@
 //! from `ui.request_repaint()` each frame so the host keeps scheduling
 //! the next one.
 
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{InputEvent, Ui, WidgetId};
 
 pub const NAME: &str = "pan+zoom auto";

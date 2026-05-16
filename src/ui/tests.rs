@@ -682,7 +682,7 @@ fn frame_pass_count_matches_action_trigger() {
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    const MAX_DT: f32 = Ui::MAX_DT;
+    const MAX_DT: f32 = Ui::<()>::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
     let mut ui = Ui::for_test();
@@ -970,14 +970,14 @@ fn app_state_round_trip_across_frame() {
     struct App {
         count: u32,
     }
-    let mut ui = Ui::for_test();
+    let mut ui = crate::ui::Ui::<App>::default();
     let mut app = App { count: 0 };
     ui.frame(
         FrameStamp::new(Display::default(), Duration::ZERO),
         &mut app,
         |ui| {
-            ui.app::<App>().count += 1;
-            ui.app::<App>().count += 1;
+            ui.app().count += 1;
+            ui.app().count += 1;
         },
     );
     assert_eq!(app.count, 2);
@@ -986,21 +986,7 @@ fn app_state_round_trip_across_frame() {
 #[test]
 #[should_panic(expected = "no app state installed")]
 fn app_without_install_panics() {
-    let _ = Ui::for_test().app::<u32>();
-}
-
-#[test]
-#[should_panic(expected = "type mismatch")]
-fn app_type_mismatch_panics() {
-    let mut ui = Ui::for_test();
-    let mut a: u32 = 7;
-    ui.frame(
-        FrameStamp::new(Display::default(), Duration::ZERO),
-        &mut a,
-        |ui| {
-            let _ = ui.app::<i64>();
-        },
-    );
+    let _ = crate::ui::Ui::<u32>::default().app();
 }
 
 /// Anim-only fast path: when the only wake fired is a paint-anim

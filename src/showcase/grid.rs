@@ -1,5 +1,5 @@
-use crate::showcase::swatch;
 use super::app_state::AppState;
+use crate::showcase::swatch;
 use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Track, Ui};
 
 pub fn build(ui: &mut Ui<AppState>) {

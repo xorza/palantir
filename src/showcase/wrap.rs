@@ -4,8 +4,8 @@
 //! gap dimensions are independent: `.gap(g)` is within-line spacing,
 //! `.line_gap(g)` is between-line spacing.
 
-use super::swatch::{caption_style, section, swatch_bg};
 use super::app_state::AppState;
+use super::swatch::{caption_style, section, swatch_bg};
 use crate::showcase::swatch;
 use palantir::{
     Background, Configure, Corners, Frame, Justify, Panel, Shadow, Sizing, Stroke, Text, TextStyle,

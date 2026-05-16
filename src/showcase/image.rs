@@ -1,5 +1,5 @@
-use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 use super::app_state::AppState;
+use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 
 /// Synthesize a 64×64 sRGB checkerboard once, register it under a
 /// stable key. The framework's content-addressed `ImageRegistry`

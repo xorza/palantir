@@ -1,5 +1,5 @@
-use crate::showcase::swatch;
 use super::app_state::AppState;
+use crate::showcase::swatch;
 use glam::Vec2;
 use palantir::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 

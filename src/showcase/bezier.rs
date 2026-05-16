@@ -1,5 +1,5 @@
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{Color, Configure, LineCap, LineJoin, Panel, Shape, Sizing, Ui};
 
 pub fn build(ui: &mut Ui<AppState>) {
