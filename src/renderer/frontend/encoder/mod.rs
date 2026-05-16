@@ -46,27 +46,21 @@ fn shape_brush_source(gradients: &[GradientPayload], brush: ShapeBrush) -> Brush
     }
 }
 
-/// Walk the tree pre-order and emit logical-px paint commands. No GPU
-/// work, no scale/snap math — that lives in the backend's process
-/// step. Pure function over `(&Tree, &LayerLayout, &CascadesEngine)`, so
-/// the same call works in unit tests with no device. Reads
-/// invisibility cascade from `CascadesEngine` so encoder and hit-index
-/// can't drift.
+/// Walk every tree in `ui.forest` in paint order, emitting logical-px
+/// paint commands into `out`. No GPU work, no scale/snap math — that
+/// lives in the composer + backend. Per-tree layout and cascade rows
+/// are looked up by layer off `ui.layout`.
 ///
-/// `damage_filter` enables damage-aware partial paint: when
-/// `Some(region)`, leaf paint commands (`DrawRect`/`DrawText`) are
-/// skipped for nodes whose arranged rect doesn't intersect any rect
-/// in the region. Clip and transform push/pop pairs are *always*
-/// emitted so descendant scissor state and group boundaries
-/// (composer text↔quad split) stay correct. `None` paints
-/// everything — used for the first frame and full-repaint fallback.
-/// Encode every tree in `ui.forest` into `out` in paint order.
-/// Per-tree layout and cascade rows are looked up by layer off
-/// `ui.layout`. `damage` is the paint plan for this frame — `Full`
-/// paints everything, `Partial(region)` filters leaves against the
-/// region. The skip path is the caller's responsibility (`None`
-/// damage ⇒ never call `encode`). `out` is cleared at entry and
-/// keeps its capacity for the next frame.
+/// `plan` is the paint plan for this frame:
+/// - `RenderPlan::Full` paints everything (first frame, surface change,
+///   full-repaint fallback).
+/// - `RenderPlan::Partial { region, .. }` runs damage-aware subtree
+///   culling: a node whose `paint_rect` doesn't intersect any rect in
+///   `region` short-circuits the whole subtree's recursion *and* its
+///   Push/Pop emission. Caller's responsibility to skip the call
+///   entirely when there's no damage to paint.
+///
+/// `out` is cleared at entry; capacity is retained across frames.
 #[profiling::function]
 pub(crate) fn encode(ui: &Ui, arena: &FrameArena, plan: RenderPlan, out: &mut RenderCmdBuffer) {
     out.clear();

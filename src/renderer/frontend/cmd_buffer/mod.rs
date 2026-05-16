@@ -99,6 +99,11 @@ pub(crate) enum CmdKind {
     PushTransform,
     PopTransform,
     DrawRect,
+    /// Drop / inset box-shadow. Payload: [`DrawShadowPayload`]. Same
+    /// `Quad` shape at the GPU end as `DrawRect`, but the composer
+    /// scales `fill_axis` (logical-px shadow params) and skips the
+    /// stroke / gradient-atlas code paths.
+    DrawShadow,
     DrawText,
     /// Mesh paint cmd. Payload: [`DrawMeshPayload`]. Vertex/index
     /// bytes live in [`RenderCmdBuffer::mesh_vertices`] /
@@ -156,26 +161,32 @@ pub(crate) struct DrawRectPayload {
     pub(crate) fill_axis: FillAxis,
 }
 
-impl DrawRectPayload {
-    /// Post-pack noop predicate — zero-extent rect, or no visible
-    /// paint at all (transparent inline `fill` **and** zero-width /
-    /// noop stroke). Gradient `fill_kind` always reports painting at
-    /// this layer because the inline `fill` is zeroed for gradients
-    /// (the atlas LUT row supplies the color); the all-transparent-
-    /// stops case is filtered upstream in `draw_rect` via
-    /// `Brush::is_noop`, which sees the stops directly.
+/// Box-shadow paint payload. `rect` is the inflated paint bbox (source
+/// inflated by `|offset| + 3σ + spread` per axis at encode time).
+/// `radius` is the *source* shape's corner radii. `color` is the
+/// shadow tint. `fill_kind` is `FillKind::SHADOW_DROP` or
+/// `SHADOW_INSET`. `fill_axis` carries `(offset.x, offset.y, σ, w)`
+/// in logical-px — the composer scales these to physical-px so the
+/// shader's `local` coords line up.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawShadowPayload {
+    pub(crate) rect: Rect,
+    pub(crate) radius: Corners,
+    pub(crate) color: ColorF16,
+    pub(crate) fill_kind: FillKind,
+    pub(crate) fill_axis: FillAxis,
+}
+
+impl DrawShadowPayload {
+    /// Canonical noop predicate — zero-extent paint rect or fully
+    /// transparent tint. Shadow params themselves (`fill_axis`) are
+    /// not gated: a zero-σ drop shadow with non-zero offset still
+    /// paints a hard-edged offset rect; the `Shape::Shadow::is_noop`
+    /// authoring boundary catches the "no visible effect" cases.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        if self.rect.is_paint_empty() {
-            return true;
-        }
-        let fill_noop = if self.fill_kind.is_gradient() {
-            false
-        } else {
-            self.fill.is_noop()
-        };
-        let stroke_noop = self.stroke_width <= 0.0 || self.stroke_color.is_noop();
-        fill_noop && stroke_noop
+        self.rect.is_paint_empty() || self.color.is_noop()
     }
 }
 
@@ -198,17 +209,16 @@ impl DrawTextPayload {
 }
 
 /// Stroked polyline payload. `width` is logical px. Points + colors
-/// live in [`FrameArena::polyline_points`] /
-/// [`FrameArena::polyline_colors`]; `colors_len` is 1 (broadcast),
-/// `points_len` (per-point), or `points_len - 1` (per-segment),
-/// selected by `color_mode`.
+/// live on the host's [`FrameArena`] (`polyline_points` /
+/// `polyline_colors`) — the cmd buffer only carries the spans.
+/// `colors_len` is 1 (broadcast), `points_len` (per-point), or
+/// `points_len - 1` (per-segment), selected by `color_mode`.
 ///
 /// Points are stored **owner-local**; the composer applies `origin`
 /// (the owner-rect top-left) before the active push-transform stack.
 /// `bbox` is in the same owner-local space.
 ///
-/// [`FrameArena::polyline_points`]: crate::common::frame_arena::FrameArena::polyline_points
-/// [`FrameArena::polyline_colors`]: crate::common::frame_arena::FrameArena::polyline_colors
+/// [`FrameArena`]: crate::common::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -240,12 +250,13 @@ impl DrawPolylinePayload {
     }
 }
 
-/// Mesh draw payload. Vertex/index data lives in
-/// [`FrameArena::meshes`]; spans are owner-local. The composer folds
-/// `origin` (owner-rect top-left) into the per-instance translate so
-/// the vertex stream stays content-stable across frames.
+/// Mesh draw payload. Vertex/index data lives on the host's
+/// [`FrameArena`] (`meshes`); the cmd buffer only carries the spans
+/// (owner-local). The composer folds `origin` (owner-rect top-left)
+/// into the per-instance translate so the vertex stream stays
+/// content-stable across frames.
 ///
-/// [`FrameArena::meshes`]: crate::common::frame_arena::FrameArena::meshes
+/// [`FrameArena`]: crate::common::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -420,23 +431,17 @@ impl RenderCmdBuffer {
             fill_grad_idx,
             fill_axis,
         };
-        // Defense-in-depth: payload predicate covers post-pack states
-        // the pre-pack gate can't (e.g. a stroke that animation-decays
-        // between the two checks). Cheap; same noop policy.
-        if payload.is_noop() {
-            return;
-        }
         self.record_start(CmdKind::DrawRect);
         write_pod(&mut self.data, payload);
     }
 
-    /// Record a shadow paint cmd. Reuses the `DrawRect` slot — shadow
-    /// is just another quad-kind quad. `rect` is the paint bbox
-    /// (source.inflated by `|offset| + 3σ + spread` per axis at
+    /// Record a shadow paint cmd. `rect` is the paint bbox
+    /// (source inflated by `|offset| + 3σ + spread` per axis at
     /// encode time). `radius` is the *source* shape's corner radii.
     /// `color` is the shadow tint. `fill_kind` is
     /// `FillKind::SHADOW_DROP|SHADOW_INSET`. Shadow params
-    /// (`offset.x, offset.y, σ, _unused`) ride in `fill_axis`.
+    /// (`offset.x, offset.y, σ, w`) ride in `fill_axis` as logical-px;
+    /// the composer scales them to physical-px on emit.
     #[inline]
     pub(crate) fn draw_shadow(
         &mut self,
@@ -446,24 +451,17 @@ impl RenderCmdBuffer {
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
-        let payload = DrawRectPayload {
+        let payload = DrawShadowPayload {
             rect,
             radius,
-            fill: color,
-            stroke_color: ColorF16::TRANSPARENT,
-            stroke_width: 0.0,
+            color,
             fill_kind,
-            fill_grad_idx: 0,
             fill_axis,
         };
-        // Module-level noop policy: same payload predicate as
-        // `draw_rect`. Catches shadow whose tint decayed to
-        // transparent (or `Shadow::NONE`'s lerp endpoint) and
-        // zero-extent paint rects.
         if payload.is_noop() {
             return;
         }
-        self.record_start(CmdKind::DrawRect);
+        self.record_start(CmdKind::DrawShadow);
         write_pod(&mut self.data, payload);
     }
 
@@ -569,8 +567,14 @@ impl RenderCmdBuffer {
     /// guarantees the bytes are valid for the kind's expected payload.
     #[inline]
     pub(crate) fn read<T: bytemuck::Pod>(&self, start: u32) -> T {
+        // Arena is `Vec<u32>` (4-byte aligned). `pod_read_unaligned`
+        // below tolerates align >4, but payload size must be a whole
+        // number of u32 words for the slice math to round-trip — a
+        // `T` with `size_of % 4 != 0` would compile and silently read
+        // garbage from the trailing partial word.
+        const { assert!(size_of::<T>().is_multiple_of(4)) };
         let start = start as usize;
-        let n_words = std::mem::size_of::<T>() / 4;
+        let n_words = size_of::<T>() / 4;
         assert!(start + n_words <= self.data.len());
         let words = &self.data[start..start + n_words];
         // `pod_read_unaligned` so payloads with align >4 (e.g.

@@ -81,15 +81,6 @@ impl FillKind {
     pub(crate) const fn is_gradient(self) -> bool {
         matches!(self.0 & 0xFF, 1..=3)
     }
-
-    /// `true` for any shadow variant. Composer scales `fill_axis`
-    /// (`offset_xy, sigma, _`) by DPI for these — gradient axes are
-    /// 0..1 local coords and stay scale-free, but shadow params are
-    /// physical-px in the shader.
-    #[inline]
-    pub(crate) const fn is_shadow(self) -> bool {
-        matches!(self.0 & 0xFF, 4..=5)
-    }
 }
 
 /// Per-instance quad data (84 B). Field types are the matching
@@ -160,11 +151,6 @@ mod tests {
         assert_eq!(FillKind::conic(Spread::Pad).0 & 0xFF, 3);
         assert_eq!(FillKind::SHADOW_DROP.0 & 0xFF, 4);
         assert_eq!(FillKind::SHADOW_INSET.0 & 0xFF, 5);
-        // Sanity: shadow detector covers exactly 4..=5.
-        assert!(FillKind::SHADOW_DROP.is_shadow());
-        assert!(FillKind::SHADOW_INSET.is_shadow());
-        assert!(!FillKind::SOLID.is_shadow());
-        assert!(!FillKind::linear(Spread::Pad).is_shadow());
     }
 
     /// Pin: `Quad` is exactly 60 bytes — pos(8) + size(8) +

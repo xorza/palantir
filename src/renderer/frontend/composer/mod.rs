@@ -1,11 +1,11 @@
 use super::cmd_buffer::{
     CmdKind, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
-    DrawTextPayload, PushClipPayload, RenderCmdBuffer,
+    DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use crate::common::frame_arena::FrameArena;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::color::Color;
+use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageHandle;
 use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
@@ -29,8 +29,11 @@ use glam::{UVec2, Vec2};
 /// **quads → text → meshes**. That's safe iff for every prior draw of
 /// a higher kind, no later draw of a lower kind overlaps it — a draw
 /// that violates the rule forces a [`Self::flush`] so record order is
-/// honored. The check uses [`text_rects`](Self::text_rects) /
-/// [`mesh_rects`](Self::mesh_rects) accumulated for the in-flight group.
+/// honored. The check uses
+/// [`batch_text_rects`](Self::batch_text_rects) (per-batch text AABBs)
+/// and [`above_text_rects`](Self::above_text_rects) (per-group AABBs
+/// of mesh/image/polyline draws that paint above text under
+/// kind-reorder).
 #[derive(Default)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
@@ -51,11 +54,13 @@ pub(crate) struct Composer {
     /// Subsumes the old per-group `text_rects` since intra-group
     /// overlap is a special case of intra-batch overlap.
     batch_text_rects: Vec<URect>,
-    /// Per-group mesh AABBs. Used by the intra-group text-after-mesh
-    /// check (text recorded after a same-group mesh paints under it
-    /// under the kind reorder, so flush). Cleared per flush —
-    /// independent of batch state since mesh forces batch close.
-    mesh_rects: Vec<URect>,
+    /// Per-group AABBs of draws that paint above text under the
+    /// kind-reorder (mesh, image, polyline). Used by the intra-group
+    /// text-after-X check: text recorded after a same-group higher-kind
+    /// draw would be reordered above it on flush, so we force a flush
+    /// when the new text overlaps. Cleared per flush — independent of
+    /// batch state since every higher-kind draw also closes the batch.
+    above_text_rects: Vec<URect>,
     /// In-flight group state. `*_start` cursors mark where the open
     /// group's `quads`/`texts`/`meshes` slice begins in `out`;
     /// [`Self::flush`] closes the slice and advances them.
@@ -140,7 +145,7 @@ impl Composer {
         self.texts_start = t_end;
         self.meshes_start = m_end;
         self.images_start = i_end;
-        self.mesh_rects.clear();
+        self.above_text_rects.clear();
     }
 
     /// Finalize the open text batch (if any): push a [`TextBatch`]
@@ -196,9 +201,33 @@ impl Composer {
     /// shape-draw site; centralising it keeps each handler from
     /// growing its own variant.
     fn cull_against_active_clip(&self, bounds: URect) -> bool {
-        self.clip_stack
-            .last()
-            .is_some_and(|c| bounds.intersect(c.scissor).is_none())
+        self.current_scissor
+            .is_some_and(|s| bounds.intersect(s).is_none())
+    }
+
+    /// Force a flush / batch-close if a quad-tier draw at `overlap`
+    /// overlaps something already in the group (or the open batch's
+    /// text) that would be reordered above it. Quad is the lowest
+    /// paint kind, so any higher-kind draw it overlaps would paint
+    /// *under* it after the backend's intra-group reorder — flush to
+    /// keep record order. Text overlap is checked against the whole
+    /// open batch (which may span multiple groups); a hit also closes
+    /// the batch so the merged text doesn't paint over this quad at
+    /// end-of-batch. Coarse reject first against the batch's union
+    /// AABB before scanning per-rect — common case is "quad far from
+    /// any text," so the O(n) scan is wasted work without it.
+    fn quad_forces_flush(&mut self, overlap: URect, out: &mut RenderBuffer) {
+        let batch_text_hit = self
+            .open_batch
+            .as_ref()
+            .is_some_and(|b| b.text_union.intersect(overlap).is_some())
+            && any_overlap(&self.batch_text_rects, overlap);
+        if batch_text_hit {
+            self.close_batch(out);
+            self.flush(out);
+        } else if any_overlap(&self.above_text_rects, overlap) {
+            self.flush(out);
+        }
     }
 
     /// Switch to a new clip (scissor + optional rounded), flushing
@@ -261,7 +290,7 @@ impl Composer {
         self.clip_stack.clear();
         self.transform_stack.clear();
         self.batch_text_rects.clear();
-        self.mesh_rects.clear();
+        self.above_text_rects.clear();
         self.current_scissor = None;
         self.current_rounded = None;
         self.quads_start = 0;
@@ -343,44 +372,7 @@ impl Composer {
                     if self.cull_against_active_clip(quad_urect) {
                         continue;
                     }
-                    // Overlap-aware kind transition: quad is the lowest
-                    // kind, so anything higher already in the group
-                    // (text, mesh) that this quad overlaps would paint
-                    // *under* it after kind-reorder — flush to keep
-                    // record order. Text overlap is checked against the
-                    // whole open batch (which may span multiple groups);
-                    // a hit also closes the batch so the merged text
-                    // doesn't paint over this quad at end-of-batch.
-                    // Coarse reject first against the batch's union AABB
-                    // before scanning per-rect — the common case in a
-                    // large batch is "quad far from any text," so the
-                    // O(n) scan is wasted work without this.
-                    //
-                    // Shadow quads use a 2σ-deflated rect for the
-                    // overlap check: the outer 2σ rim of a Gaussian
-                    // contributes <5% alpha and is visually
-                    // indistinguishable from the background, so we
-                    // shouldn't force a batch flush for that ring.
-                    // Keeps adjacent text in the same batch when a
-                    // soft drop shadow sits 1–2σ away from text.
-                    let overlap_urect = if p.fill_kind.is_shadow() {
-                        let sigma_phys =
-                            p.fill_axis.t0().max(0.0) * current_transform.scale * scale;
-                        quad_urect.deflated((2.0 * sigma_phys) as u32)
-                    } else {
-                        quad_urect
-                    };
-                    let batch_text_hit = self
-                        .open_batch
-                        .as_ref()
-                        .is_some_and(|b| b.text_union.intersect(overlap_urect).is_some())
-                        && any_overlap(&self.batch_text_rects, overlap_urect);
-                    if batch_text_hit {
-                        self.close_batch(out);
-                        self.flush(out);
-                    } else if any_overlap(&self.mesh_rects, overlap_urect) {
-                        self.flush(out);
-                    }
+                    self.quad_forces_flush(quad_urect, out);
                     let world_radius = p.radius.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
@@ -390,15 +382,6 @@ impl Composer {
                     } else {
                         LutRow::FALLBACK
                     };
-                    // Shadow params (offset, σ) live in fill_axis as
-                    // logical-px scalars; scale to physical px so the
-                    // shader's `local` (physical px from vs) lines up.
-                    // Gradient axis is 0..1 local — never scaled.
-                    let fill_axis = if p.fill_kind.is_shadow() {
-                        p.fill_axis.scaled(current_transform.scale * scale)
-                    } else {
-                        p.fill_axis
-                    };
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.fill,
@@ -407,6 +390,41 @@ impl Composer {
                         stroke_width: p.stroke_width * current_transform.scale * scale,
                         fill_kind: p.fill_kind,
                         fill_lut_row,
+                        fill_axis: p.fill_axis,
+                    });
+                }
+                CmdKind::DrawShadow => {
+                    let p: DrawShadowPayload = cmds.read(start);
+                    let world_rect = current_transform.apply_rect(p.rect);
+                    let quad_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    if self.cull_against_active_clip(quad_urect) {
+                        continue;
+                    }
+                    // Shadow quads use a 2σ-deflated rect for the
+                    // overlap check: the outer 2σ rim of a Gaussian
+                    // contributes <5% alpha and is visually
+                    // indistinguishable from the background, so we
+                    // shouldn't force a batch flush for that ring.
+                    // Keeps adjacent text in the same batch when a
+                    // soft drop shadow sits 1–2σ away from text.
+                    let sigma_phys = p.fill_axis.t0().max(0.0) * current_transform.scale * scale;
+                    let overlap_urect = quad_urect.deflated((2.0 * sigma_phys) as u32);
+                    self.quad_forces_flush(overlap_urect, out);
+                    let world_radius = p.radius.scaled_by(current_transform.scale);
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let phys_radius = world_radius.scaled_by(scale);
+                    // Shadow params (offset, σ) are logical-px scalars;
+                    // scale to physical px so the shader's `local`
+                    // coords line up.
+                    let fill_axis = p.fill_axis.scaled(current_transform.scale * scale);
+                    out.quads.push(Quad {
+                        rect: phys_rect,
+                        fill: p.color,
+                        radius: phys_radius,
+                        stroke_color: ColorF16::TRANSPARENT,
+                        stroke_width: 0.0,
+                        fill_kind: p.fill_kind,
+                        fill_lut_row: LutRow::FALLBACK,
                         fill_axis,
                     });
                 }
@@ -456,7 +474,7 @@ impl Composer {
                         let min = world_bbox.min * scale;
                         let max = world_bbox.max() * scale;
                         let fringe = Vec2::splat(0.5);
-                        self.mesh_rects.push(urect_from_phys(
+                        self.above_text_rects.push(urect_from_phys(
                             min - fringe,
                             max + fringe,
                             viewport_phys,
@@ -495,7 +513,7 @@ impl Composer {
                         ..bytemuck::Zeroable::zeroed()
                     });
                     // Track for paint-order overlap with mesh-tier draws.
-                    self.mesh_rects.push(image_urect);
+                    self.above_text_rects.push(image_urect);
                 }
                 CmdKind::DrawPolyline => {
                     // Polyline tessellates to a mesh — same paint-order
@@ -590,7 +608,7 @@ impl Composer {
                         tint: crate::primitives::color::ColorU8::WHITE,
                         ..bytemuck::Zeroable::zeroed()
                     });
-                    self.mesh_rects.push(bbox_scissor);
+                    self.above_text_rects.push(bbox_scissor);
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -612,7 +630,7 @@ impl Composer {
                     // if any prior mesh in the group overlaps so this
                     // text doesn't get reordered above it. (No need
                     // to check quads: text paints over quads anyway.)
-                    if any_overlap(&self.mesh_rects, bounds) {
+                    if any_overlap(&self.above_text_rects, bounds) {
                         self.flush(out);
                     }
                     // open_batch must run BEFORE the text push so the
