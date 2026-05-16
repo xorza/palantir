@@ -5,7 +5,9 @@
 //! list each frame and uploads to GPU, then caches the resulting
 //! `GpuImage` by [`ImageHandle`] across frames.
 
-use super::pipeline_utils::grow_instance_buffer;
+use super::pipeline_utils::{
+    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
+};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -107,40 +109,26 @@ impl ImagePipeline {
             ..Default::default()
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.image.pl"),
-            bind_group_layouts: &[Some(&viewport_bgl), Some(&image_bgl)],
-            immediate_size: 0,
-        });
-
-        let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.image.pipeline"),
-            layout: Some(&pipeline_layout),
-            vertex: wgpu::VertexState {
-                module: &shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[instance_layout()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
+        let pipeline_layout = build_pipeline_layout(
+            device,
+            "palantir.image.pl",
+            &[Some(&viewport_bgl), Some(&image_bgl)],
+        );
+        let pipeline = build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.image.pipeline",
+                shader: &shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
             },
-            depth_stencil: None,
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
+        );
 
         let instance_capacity = 16;
         let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -172,40 +160,26 @@ impl ImagePipeline {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir.image.pl.stencil"),
-            bind_group_layouts: &[Some(&self.viewport_bgl), Some(&self.image_bgl)],
-            immediate_size: 0,
-        });
-        let pipe = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("palantir.image.pipeline.stencil_test"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &self.shader,
-                entry_point: Some("vs"),
-                compilation_options: Default::default(),
-                buffers: &[instance_layout()],
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &self.shader,
-                entry_point: Some("fs"),
-                compilation_options: Default::default(),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.color_format,
-                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-            }),
-            primitive: wgpu::PrimitiveState {
+        let layout = build_pipeline_layout(
+            device,
+            "palantir.image.pl.stencil",
+            &[Some(&self.viewport_bgl), Some(&self.image_bgl)],
+        );
+        self.stencil_test = Some(build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.image.pipeline.stencil_test",
+                shader: &self.shader,
+                layout: &layout,
+                vertex_buffers: &[instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                ..Default::default()
+                color_format: self.color_format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: Some(super::stencil::stencil_test_state()),
             },
-            depth_stencil: Some(super::stencil::stencil_test_state()),
-            multisample: wgpu::MultisampleState::default(),
-            multiview_mask: None,
-            cache: None,
-        });
-        self.stencil_test = Some(pipe);
+        ));
     }
 
     /// Drain pending images from the registry and upload them to GPU.

@@ -91,6 +91,18 @@ impl PoolState {
     /// after a real `atlas.trim` — those slots' atlas glyphs were just
     /// evicted, so a future hash hit would render against stale
     /// references.
+    ///
+    /// **Mode-switch behaviour.** Per-frame the surrounding pass
+    /// picks one [`StencilMode`] (asserted in
+    /// [`TextRenderer::prepare_batch`]), so on a trim frame the
+    /// *inactive* pool's `ready` is all-zero and this method clears
+    /// every slot. That's correct (the trim may have evicted atlas
+    /// glyphs the inactive pool's hashes referenced), but it means
+    /// the first frame after switching modes can't hash-skip — it
+    /// pays a full `glyphon::prepare` for every slot. Acceptable: a
+    /// pass-mode flip is rare (a single rounded-clip appearing /
+    /// disappearing in the tree) and the cost is bounded by the
+    /// active group count.
     fn invalidate_untouched(&mut self) {
         for i in 0..self.last_hashes.len() {
             if !self.ready.contains(i) {
@@ -169,8 +181,17 @@ pub(crate) struct TextRenderer {
     /// prior frame — trims down without losing live state.
     high_water: usize,
     /// Last viewport size pushed to glyphon's viewport uniform. `ZERO`
-    /// on construction; first non-zero `update_viewport` mismatches and
-    /// uploads. Saves a per-frame `viewport.update` call in steady state.
+    /// on construction; first non-zero `update_viewport` mismatches
+    /// and uploads. Saves a per-frame `viewport.update` call in steady
+    /// state.
+    ///
+    /// **Independent of [`super::viewport::ViewportUniform::last`].**
+    /// Both fields track the same logical signal but gate writes to
+    /// two *different* GPU buffers — glyphon owns its own uniform via
+    /// [`Viewport::update`] and isn't reachable through the shared
+    /// quad/mesh/image `ViewportUniform`. Drift between the caches
+    /// costs at most one extra `queue.write_buffer` per frame
+    /// (whichever cache missed); the bytes uploaded are the same.
     last_viewport: UVec2,
 }
 
