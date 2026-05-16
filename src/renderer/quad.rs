@@ -63,15 +63,6 @@ impl FillKind {
     /// Inset-shadow marker. Same packing as `SHADOW_DROP`; the
     /// shader inverts coverage and clips to inside the source rect.
     pub(crate) const SHADOW_INSET: Self = Self(5);
-
-    /// `true` when the kind tag is `0`. Currently only used by
-    /// composer tests pinning solid-quad emission — the gradient/shadow
-    /// fast paths read the tag directly via the WGSL constants.
-    #[allow(dead_code)]
-    #[inline]
-    pub(crate) const fn is_solid(self) -> bool {
-        (self.0 & 0xFF) == 0
-    }
 }
 
 /// Per-instance quad data (84 B). Field types are the matching
@@ -110,14 +101,14 @@ pub(crate) struct Quad {
     pub(crate) stroke_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
     pub(crate) fill_kind: FillKind,
-    /// Row index into the gradient atlas texture when
-    /// `fill_kind & 0xFF == 1`. `LutRow(0)` (`LutRow::FALLBACK`) is the
-    /// magenta debug fallback — any quad reaching the sampler with that
-    /// value paints magenta. Solid quads write `LutRow::FALLBACK` and
-    /// the shader ignores the field for `fill_kind.is_solid()`.
+    /// Row index into the gradient atlas texture when `fill_kind`'s
+    /// low byte is a gradient tag (1..=3). `LutRow(0)`
+    /// (`LutRow::FALLBACK`) is the magenta debug fallback — any quad
+    /// reaching the sampler with that value paints magenta. Solid
+    /// quads write `LutRow::FALLBACK` and the shader ignores the field.
     pub(crate) fill_lut_row: LutRow,
     /// Gradient axis vector — see [`FillAxis`]. Ignored when
-    /// `fill_kind.is_solid()`.
+    /// `fill_kind == FillKind::SOLID`.
     pub(crate) fill_axis: FillAxis,
 }
 

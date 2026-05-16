@@ -6,8 +6,9 @@
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
 //!    persistent per-frame allocation. [`Host`] calls [`Frontend::build`]
-//!    once per frame and feeds the composed buffer plus gradient atlas
-//!    into the backend.
+//!    once per frame and hands the composed buffer to the backend; the
+//!    backend reads its own clone of `RenderCaches` (image registry +
+//!    gradient atlas) for upload.
 //!
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
@@ -27,10 +28,10 @@ use crate::ui::Ui;
 use crate::ui::frame_report::RenderPlan;
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
-/// every persistent allocation (the encoder's
-/// [`RenderCmdBuffer`], the output `RenderBuffer` — which carries
-/// the gradient atlas as a field — and the [`Composer`] with its
-/// scratch). No GPU handles.
+/// every persistent allocation (the encoder's [`RenderCmdBuffer`],
+/// the output `RenderBuffer`, and the [`Composer`] with its scratch).
+/// No GPU handles; gradient atlas state lives on `RenderCaches`,
+/// shared with the backend.
 ///
 /// Owned by [`Host`](crate::host::Host) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned

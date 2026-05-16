@@ -16,13 +16,14 @@ use glam::Vec2;
 use half::f16;
 use std::hash::{Hash, Hasher};
 
-/// Frame-local handle into [`crate::forest::shapes::Shapes::gradients`].
+/// Frame-local handle into [`crate::common::frame_arena::FrameArena::gradients`].
 /// Stable only within one frame — cleared alongside the rest of the
-/// shape buffer in `Shapes::clear`.
+/// frame arena in `FrameArena::clear`.
 pub(crate) type GradientId = u32;
 
 /// Lowered fill. Solid carries 8-byte `ColorF16` (down from 16 B
-/// `Color`); gradient geometry lives in the per-frame `gradients`
+/// `Color`); gradient atlas row + axis + kind are pre-baked at
+/// lowering time and stored in the per-frame `FrameArena.gradients`
 /// arena via an index. The encoder/composer pipe `ColorF16` straight
 /// to the GPU vertex attribute (`Uint32x2` + `unpack2x16float`) —
 /// stays linear end-to-end, no sRGB cubic anywhere.
@@ -88,9 +89,9 @@ impl From<ShapeStroke> for Stroke {
 /// `Brush`); this row keeps the same fields in their lowered forms,
 /// shrinking the per-chrome footprint to ~96 B. Same lifecycle as
 /// shape records — written at `open_node_with_chrome`, cleared per
-/// frame. Gradient handle indexes into the same `Shapes.gradients`
-/// arena `ShapeBrush::Gradient` uses, so chrome and shape paints
-/// share storage.
+/// frame. Gradient handle indexes into `FrameArena.gradients` (the
+/// same arena `ShapeBrush::Gradient` uses), so chrome and shape
+/// paints share storage.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
@@ -248,8 +249,7 @@ pub(crate) enum ShapeRecord {
         /// 0 for solid. Lets `ShapeRecord::Hash` stay context-free —
         /// otherwise we'd need to thread the `gradients` arena into
         /// every hash call (subtree rollups, measure cache). The hash
-        /// is computed once at lowering time via
-        /// `GradientPayload::content_hash`.
+        /// is computed once at lowering time by `frame_arena::grad_hash`.
         fill_grad_hash: u64,
     } = 0,
     /// Stroked polyline. `points`/`colors` index into the active
