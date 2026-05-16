@@ -26,7 +26,8 @@ use crate::ClipMode;
 use crate::common::frame_arena::FrameArena;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
-    BoundsExtras, Element, LayoutCore, LayoutMode, NodeFlags, PanelExtras, SizeClamp,
+    BoundsExtras, Element, ElementColumns, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
+    SizeClamp,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
@@ -188,7 +189,8 @@ impl Slot {
     pub(crate) fn from_len(len: usize) -> Self {
         assert!(
             len < Self::ABSENT.0 as usize,
-            "Slot exhausted — more than 65 535 entries in a single sparse-column frame (got {len})",
+            "Slot exhausted — {} entries fill the sparse-column frame; index would collide with Slot::ABSENT (got {len})",
+            Self::ABSENT.0 as usize,
         );
         Self(len as u16)
     }
@@ -474,7 +476,14 @@ impl Tree {
     /// `SeenIds::record` can stash it for collision lookup before
     /// `element` is moved into the tree.
     pub(crate) fn peek_next_id(&self) -> NodeId {
-        NodeId(self.records.len() as u32)
+        let id = self.records.len() as u32;
+        // `NodeId::ROOT = u32::MAX` is the sentinel `Tree::parents`
+        // uses for root slots; a real node landing on that value
+        // would silently look up its own row as the parent. The
+        // sparse-column caps trip far sooner in practice — this guard
+        // exists so a runaway record path fails loudly instead.
+        assert!(id < u32::MAX, "Tree record cap reached: {id} nodes");
+        NodeId(id)
     }
 
     /// Push a node as a child of the currently-open node (or as a new
@@ -494,14 +503,7 @@ impl Tree {
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
-        if !cols.bounds.is_default() {
-            ex.bounds = Slot::from_len(self.bounds_table.len());
-            self.bounds_table.push(cols.bounds);
-        }
-        if !cols.panel.is_default() {
-            ex.panel = Slot::from_len(self.panel_table.len());
-            self.panel_table.push(cols.panel);
-        }
+        self.push_bounds_panel_extras(&cols, &mut ex);
         self.extras_idx.push(ex);
         self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
     }
@@ -535,14 +537,7 @@ impl Tree {
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
-        if !cols.bounds.is_default() {
-            ex.bounds = Slot::from_len(self.bounds_table.len());
-            self.bounds_table.push(cols.bounds);
-        }
-        if !cols.panel.is_default() {
-            ex.panel = Slot::from_len(self.panel_table.len());
-            self.panel_table.push(cols.panel);
-        }
+        self.push_bounds_panel_extras(&cols, &mut ex);
         let needs_chrome_row = !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
         if needs_chrome_row {
             // Lower to `ChromeRow` here — gradients land in the
@@ -555,6 +550,22 @@ impl Tree {
         }
         self.extras_idx.push(ex);
         self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
+    }
+
+    /// Push the non-default `bounds` / `panel` rows for one node into
+    /// their sparse columns and stamp the resulting slots into `ex`.
+    /// Shared between `open_node` and `open_node_with_chrome`; the
+    /// chrome path layers its own `chrome` slot on top.
+    #[inline(always)]
+    fn push_bounds_panel_extras(&mut self, cols: &ElementColumns, ex: &mut ExtrasIdx) {
+        if !cols.bounds.is_default() {
+            ex.bounds = Slot::from_len(self.bounds_table.len());
+            self.bounds_table.push(cols.bounds);
+        }
+        if !cols.panel.is_default() {
+            ex.panel = Slot::from_len(self.panel_table.len());
+            self.panel_table.push(cols.panel);
+        }
     }
 
     /// Roots/parent bookkeeping shared by both `open_node` variants.

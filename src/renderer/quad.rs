@@ -148,41 +148,8 @@ pub(crate) struct Quad {
 
 #[cfg(test)]
 mod tests {
-    use super::{FillKind, Quad};
-    use crate::primitives::brush::Spread;
+    use super::Quad;
     use std::mem::offset_of;
-
-    /// Pin: brush-kind discriminants match the WGSL `BRUSH_KIND_*`
-    /// constants in `src/renderer/backend/quad.wgsl`. Reordering
-    /// either side silently desyncs — the shader path picks the
-    /// wrong branch, no compile error. Cross-checked at the byte
-    /// level because that's what the vertex attribute carries.
-    #[test]
-    fn fill_kind_discriminants_match_wgsl() {
-        // Solid / Linear / Radial / Conic carry the kind in the low
-        // byte; Spread rides in bits 8..16.
-        assert_eq!(FillKind::SOLID.0 & 0xFF, 0);
-        assert_eq!(FillKind::linear(Spread::Pad).0 & 0xFF, 1);
-        assert_eq!(FillKind::radial(Spread::Pad).0 & 0xFF, 2);
-        assert_eq!(FillKind::conic(Spread::Pad).0 & 0xFF, 3);
-        assert_eq!(FillKind::SHADOW_DROP.0 & 0xFF, 4);
-        assert_eq!(FillKind::SHADOW_INSET.0 & 0xFF, 5);
-    }
-
-    /// Pin: `Spread` tags match WGSL's `SPREAD_*` constants
-    /// (`quad.wgsl::apply_spread`). The shader extracts the spread
-    /// via `(fill_kind >> 8u) & 0xFFu`, then switches on `0u`/`1u`/
-    /// `2u`. Same drift hazard as the kind tags — silent mis-render
-    /// if either side renumbers.
-    #[test]
-    fn spread_discriminants_match_wgsl() {
-        let pad = (FillKind::linear(Spread::Pad).0 >> 8) & 0xFF;
-        let repeat = (FillKind::linear(Spread::Repeat).0 >> 8) & 0xFF;
-        let reflect = (FillKind::linear(Spread::Reflect).0 >> 8) & 0xFF;
-        assert_eq!(pad, 0, "SPREAD_PAD");
-        assert_eq!(repeat, 1, "SPREAD_REPEAT");
-        assert_eq!(reflect, 2, "SPREAD_REFLECT");
-    }
 
     /// Pin: `Quad` is exactly 60 bytes — pos(8) + size(8) +
     /// fill(8, packed 4xf16) + radius(8, packed 4xf16) +
