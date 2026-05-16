@@ -2,24 +2,38 @@
 // `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
+#![allow(private_interfaces, private_bounds)]
+//! Most parent modules are `pub` so that gated `test_support` submodules
+//! (`#[cfg(any(test, feature = "internals"))] pub mod test_support`) are
+//! reachable from external benches / integration tests as
+//! `palantir::foo::bar::test_support::*`. Many items inside those parents
+//! stay `pub(crate)`; a `pub` `test_support` fn signature may name a
+//! `pub(crate)` type, but external callers can't instantiate / name it
+//! on their side, so the leak is nominal.
+
 extern crate self as palantir;
 
-pub(crate) mod animation;
+// Top-level modules are `pub` so that gated `test_support` submodules
+// inside them (`#[cfg(any(test, feature = "internals"))] pub mod
+// test_support`) are reachable from external benches / integration
+// tests as `palantir::foo::bar::test_support::*`. Items inside that
+// aren't `pub` remain unreachable to external consumers.
+pub mod animation;
 pub mod clipboard;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
-pub(crate) mod forest;
-pub(crate) mod host;
-pub(crate) mod input;
-pub(crate) mod layout;
-pub(crate) mod primitives;
-pub(crate) mod renderer;
+pub mod forest;
+pub mod host;
+pub mod input;
+pub mod layout;
+pub mod primitives;
+pub mod renderer;
 pub(crate) mod shape;
 #[cfg(any(test, feature = "internals"))]
 pub mod support;
-pub(crate) mod text;
-pub(crate) mod ui;
-pub(crate) mod widgets;
+pub mod text;
+pub mod ui;
+pub mod widgets;
 
 pub use common::frame_arena::{FrameArena, FrameArenaHandle, new_handle};
 

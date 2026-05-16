@@ -1,7 +1,7 @@
-pub(crate) mod cascade;
-pub(crate) mod damage;
-pub(crate) mod frame_report;
-pub(crate) mod frame_state;
+pub mod cascade;
+pub mod damage;
+pub mod frame_report;
+pub mod frame_state;
 pub(crate) mod frame_stats;
 pub(crate) mod state;
 
@@ -952,6 +952,55 @@ impl Ui {
     /// Set the press-on-non-focusable behavior. See [`FocusPolicy`].
     pub fn set_focus_policy(&mut self, p: FocusPolicy) {
         self.input.focus_policy = p;
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::FrameStamp;
+    use crate::common::frame_arena::new_handle;
+    use glam::UVec2;
+    use std::time::Duration;
+
+    /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
+    pub fn new_ui() -> Ui {
+        Ui::default()
+    }
+
+    /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).
+    pub fn new_ui_text() -> Ui {
+        thread_local! {
+            static SHARED: TextShaper = TextShaper::with_bundled_fonts();
+        }
+        Ui::new(SHARED.with(|c| c.clone()), new_handle())
+    }
+
+    /// `Ui` pre-stamped with display dimensions; no frame driven yet.
+    pub fn ui_at(size: UVec2) -> Ui {
+        let mut ui = new_ui();
+        ui.display = Display::from_physical(size, 1.0);
+        ui
+    }
+
+    /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
+    pub fn ui_with_text(size: UVec2) -> Ui {
+        let mut ui = new_ui_text();
+        ui.display = Display::from_physical(size, 1.0);
+        ui
+    }
+
+    /// One frame at `size`, time frozen at zero.
+    pub fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
+        let display = Display::from_physical(size, 1.0);
+        ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
+    }
+
+    /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
+    pub fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
+        run_at(ui, size, record);
+        ui.frame_state.mark_submitted();
     }
 }
 

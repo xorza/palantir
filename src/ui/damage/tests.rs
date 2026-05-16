@@ -9,12 +9,13 @@ use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::support::internals::{ResponseNodeExt, damage_current_region};
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at_acked;
 use crate::ui::FrameStamp;
+use crate::ui::damage::test_support::current_region as damage_current_region;
 use crate::ui::frame_report::RenderPlan;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
 use crate::widgets::popup::Popup;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -110,7 +111,7 @@ fn unchanged_authoring_produces_no_damage() {
 /// to a per-node walk that still produces correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
-    use crate::support::internals;
+    use crate::ui::damage::test_support as internals;
     let mut ui = new_ui();
     // Frame with a painting parent (background) wrapping painting
     // children — both root and children land in `prev` with matching
@@ -147,16 +148,16 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut ui, build);
     assert_eq!(
-        internals::damage_subtree_skips(&ui),
+        internals::subtree_skips(&ui),
         0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut ui, build);
     assert!(
-        internals::damage_subtree_skips(&ui) >= 1,
+        internals::subtree_skips(&ui) >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        internals::damage_subtree_skips(&ui),
+        internals::subtree_skips(&ui),
     );
     assert!(ui.damage_engine.dirty.is_empty());
 }

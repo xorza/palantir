@@ -12,7 +12,7 @@ use crate::input::keyboard::{Key, Modifiers};
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::PointerSense;
-use crate::support::testing::{new_ui, run_at_acked};
+use crate::ui::test_support::{new_ui, run_at_acked};
 use glam::{UVec2, Vec2};
 
 fn empty(ui: &mut Ui) {

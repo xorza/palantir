@@ -6,12 +6,12 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
+use crate::layout::scroll::test_support::scroll_state;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::internals::scroll_state;
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;

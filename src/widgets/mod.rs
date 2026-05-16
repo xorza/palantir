@@ -61,3 +61,23 @@ impl Response {
         self.state.drag_started
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code, private_interfaces)]
+    use super::*;
+    use crate::Ui;
+    use crate::forest::tree::NodeId;
+    use crate::forest::tree::test_support::node_for_widget_id;
+
+    /// Old `Response.node` field as an extension method.
+    pub trait ResponseNodeExt {
+        fn node(&self, ui: &Ui) -> NodeId;
+    }
+
+    impl ResponseNodeExt for Response {
+        fn node(&self, ui: &Ui) -> NodeId {
+            node_for_widget_id(ui, self.id)
+        }
+    }
+}

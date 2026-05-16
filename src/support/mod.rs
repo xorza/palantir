@@ -1,9 +1,8 @@
-//! Test + bench scaffolding. `internals` is the bench/test reach-in surface
-//! (gated on `cfg(test)` or `feature = "internals"`); `testing` is `cfg(test)`-only
-//! fixtures. Production builds compile out everything here.
+//! Cross-module test/bench fixtures. Most helpers live in `test_support`
+//! mods inside each production file (canonical paths
+//! `crate::foo::bar::test_support::*`); this module is reserved for
+//! fixtures that genuinely span modules and would feel arbitrary
+//! living in any one of them.
 
 #[cfg(any(test, feature = "internals"))]
-pub mod internals;
-
-#[cfg(test)]
-pub(crate) mod testing;
+pub mod testing;

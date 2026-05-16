@@ -1,13 +1,15 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
+use crate::forest::tree::test_support::shapes_of;
+use crate::input::test_support::click_at;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{click_at, run_at, run_at_acked, shapes_of};
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::{run_at, run_at_acked};
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

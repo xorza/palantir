@@ -11,11 +11,12 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::InputEvent;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
+use crate::input::test_support::{press_at, release_left};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{press_at, release_left, run_at_acked};
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{Response, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 

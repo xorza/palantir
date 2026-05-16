@@ -11,10 +11,11 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::input::test_support::click_at;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
-use crate::support::testing::new_ui;
-use crate::support::testing::{click_at, run_at, run_at_acked};
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::{run_at, run_at_acked};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use glam::{UVec2, Vec2};

@@ -225,3 +225,15 @@ pub(crate) fn arrange(
     // on actual pan input, which is the only place a stale offset
     // matters for the user.
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::Ui;
+
+    /// Scroll-state row for `id` (inserting default if absent).
+    pub fn scroll_state(ui: &mut Ui, id: WidgetId) -> &mut ScrollLayoutState {
+        ui.layout_engine.scroll_states.entry(id).or_default()
+    }
+}

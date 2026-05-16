@@ -2,7 +2,7 @@ use super::{
     TextEditState, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
     prev_word_boundary, word_range_at,
 };
-use crate::support::testing::new_ui;
+use crate::ui::test_support::new_ui;
 
 /// Test wrapper: routes one keypress through `dispatch_shortcut`
 /// (clipboard / undo / select-all) then falls through to single-line
@@ -20,15 +20,15 @@ use crate::Spacing;
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
+use crate::forest::tree::test_support::shapes_of;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::pointer::PointerButton;
+use crate::input::test_support::{click_at, secondary_click_at};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::testing::{
-    click_at, run_at, run_at_acked, secondary_click_at, shapes_of, ui_with_text,
-};
 use crate::ui::FrameStamp;
+use crate::ui::test_support::{run_at, run_at_acked, ui_with_text};
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};

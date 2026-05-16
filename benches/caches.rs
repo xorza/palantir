@@ -24,7 +24,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
-use palantir::support::internals;
+use palantir::layout::cache::test_support::clear_measure_cache;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
     Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui, new_handle,
@@ -270,7 +270,7 @@ fn bench(c: &mut Criterion) {
             build,
         );
         b.iter(|| {
-            internals::clear_measure_cache(&mut ui);
+            clear_measure_cache(&mut ui);
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
                 &mut (),
@@ -369,7 +369,7 @@ fn bench(c: &mut Criterion) {
             build_heavy,
         );
         b.iter(|| {
-            internals::clear_measure_cache(&mut ui);
+            clear_measure_cache(&mut ui);
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
                 &mut (),
@@ -406,7 +406,7 @@ fn bench(c: &mut Criterion) {
             build_dense,
         );
         b.iter(|| {
-            internals::clear_measure_cache(&mut ui);
+            clear_measure_cache(&mut ui);
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
                 &mut (),

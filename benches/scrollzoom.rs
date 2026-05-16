@@ -21,7 +21,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
-use palantir::support::internals::mark_frame_submitted;
+use palantir::ui::frame_state::test_support::mark_frame_submitted;
 use palantir::{Display, FrameStamp, InputEvent, TextShaper, Ui, new_handle};
 use std::hint::black_box;
 use std::time::Duration;

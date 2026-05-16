@@ -5,8 +5,8 @@ use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at_acked;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -572,7 +572,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     let warm_desired = ui.layout_engine.cache.nodes.desired[warm_snap.nodes.range()].to_vec();
     let warm_live = ui.layout_engine.cache.nodes.live;
 
-    crate::support::internals::clear_measure_cache(&mut ui);
+    crate::layout::cache::test_support::clear_measure_cache(&mut ui);
     run_frame(&mut ui, with_widget);
 
     let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();

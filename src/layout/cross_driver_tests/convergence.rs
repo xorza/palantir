@@ -14,12 +14,12 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::sizing::Sizing;
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
+use crate::widgets::test_support::ResponseNodeExt;
 use glam::UVec2;
 
 /// Z-order showcase repro: two FILL/FILL cells side-by-side in an
@@ -42,7 +42,7 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut ui = crate::support::testing::new_ui();
+        let mut ui = crate::ui::test_support::new_ui();
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);

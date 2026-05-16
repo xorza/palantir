@@ -9,9 +9,9 @@ use crate::forest::element::Configure;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at;
 use crate::ui::FrameStamp;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -163,7 +163,7 @@ fn instant_duration_is_noop_and_drops_row() {
         )
         .repaint_requested();
     assert!(!repaint);
-    assert_eq!(crate::support::internals::anim_row_count::<f32>(&mut ui), 0);
+    assert_eq!(crate::animation::test_support::row_count::<f32>(&mut ui), 0);
 
     // Mid-flight on FAST: row gets allocated.
     let _ = ui.frame(
@@ -182,7 +182,7 @@ fn instant_duration_is_noop_and_drops_row() {
             Frame::new().id_salt("anim-instant").show(ui);
         },
     );
-    assert!(crate::support::internals::anim_row_count::<f32>(&mut ui) > 0);
+    assert!(crate::animation::test_support::row_count::<f32>(&mut ui) > 0);
 
     // Switching to instant mid-flight: snap and drop.
     let _ = ui.frame(
@@ -195,7 +195,7 @@ fn instant_duration_is_noop_and_drops_row() {
         },
     );
     assert_eq!(
-        crate::support::internals::anim_row_count::<f32>(&mut ui),
+        crate::animation::test_support::row_count::<f32>(&mut ui),
         0,
         "instant must drop the stale row inserted by FAST",
     );
@@ -713,7 +713,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
         .repaint_requested();
     assert!(!repaint, "None spec must never request a repaint");
     assert!(
-        crate::support::internals::anim_row_count::<f32>(&mut ui) == 0,
+        crate::animation::test_support::row_count::<f32>(&mut ui) == 0,
         "None spec must not allocate a row",
     );
 }
@@ -746,7 +746,7 @@ fn animate_some_then_none_drops_stale_row() {
         },
     );
     assert!(
-        crate::support::internals::anim_row_count::<f32>(&mut ui) > 0,
+        crate::animation::test_support::row_count::<f32>(&mut ui) > 0,
         "Some(FAST) must allocate a row mid-flight",
     );
 
@@ -760,7 +760,7 @@ fn animate_some_then_none_drops_stale_row() {
         },
     );
     assert!(
-        crate::support::internals::anim_row_count::<f32>(&mut ui) == 0,
+        crate::animation::test_support::row_count::<f32>(&mut ui) == 0,
         "None spec must drop the stale row inserted by a prior Some()",
     );
 }
@@ -822,7 +822,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     assert_eq!(snap.text.font_size_px, fallback.font_size_px);
     assert_eq!(snap.text.line_height_mult, fallback.line_height_mult);
     assert_eq!(
-        crate::support::internals::anim_row_count::<AnimatedLook>(&mut ui),
+        crate::animation::test_support::row_count::<AnimatedLook>(&mut ui),
         0,
         "None spec: WidgetLook::animate must allocate no AnimatedLook row",
     );
@@ -847,7 +847,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         },
     );
     assert!(
-        crate::support::internals::anim_row_count::<AnimatedLook>(&mut ui) > 0,
+        crate::animation::test_support::row_count::<AnimatedLook>(&mut ui) > 0,
         "Some(FAST) on changed fill must allocate an AnimatedLook row",
     );
 }

@@ -3,9 +3,10 @@ use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{run_at, under_outer};
+use crate::support::testing::under_outer;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 

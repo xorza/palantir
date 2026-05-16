@@ -16,11 +16,12 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{
-    encode_cmds, encode_cmds_filtered, encode_cmds_with_rects, run_at_acked,
+use crate::renderer::frontend::encoder::test_support::{
+    encode_cmds, encode_cmds_filtered, encode_cmds_with_rects,
 };
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -269,7 +270,7 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
 #[test]
 fn text_shape_emits_draw_text() {
     use crate::Text;
-    use crate::support::testing::ui_with_text;
+    use crate::ui::test_support::ui_with_text;
     let mut ui = ui_with_text(UVec2::new(200, 200));
     run_at_acked(&mut ui, UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

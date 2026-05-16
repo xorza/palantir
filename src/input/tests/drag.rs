@@ -5,8 +5,8 @@ use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::testing::new_ui;
-use crate::support::testing::run_at_acked;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 

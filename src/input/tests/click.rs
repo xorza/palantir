@@ -2,9 +2,10 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::Sense;
+use crate::input::test_support::{click_at, press_at, release_left};
 use crate::layout::types::sizing::Sizing;
-use crate::support::testing::new_ui;
-use crate::support::testing::{click_at, press_at, release_left, run_at_acked};
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at_acked;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -242,7 +243,7 @@ fn zoom_panel_routes_clicks_by_world_rect() {
 
 #[test]
 fn secondary_click_press_release_emits_secondary_clicked() {
-    use crate::support::testing::secondary_click_at;
+    use crate::input::test_support::secondary_click_at;
     let mut ui = new_ui();
     let surface = UVec2::new(200, 80);
     let build = |ui: &mut Ui, sink: &mut bool| {
@@ -274,7 +275,7 @@ fn secondary_click_press_release_emits_secondary_clicked() {
 #[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
-    use crate::support::testing::press_at;
+    use crate::input::test_support::press_at;
     let mut ui = new_ui();
     let surface = UVec2::new(200, 80);
     let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {

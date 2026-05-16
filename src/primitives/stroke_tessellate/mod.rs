@@ -622,5 +622,54 @@ fn next_kept(points: &[Vec2], i: usize) -> usize {
     j
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::shape::{ColorMode, LineCap, LineJoin};
+
+    /// Bench-public mirror of internal `ColorMode`.
+    pub enum TessColorMode {
+        Single,
+        PerPoint,
+        PerSegment,
+    }
+
+    /// Bench-public mirror of internal `StrokeStyle`.
+    pub struct TessStyle {
+        pub mode: TessColorMode,
+        pub cap: LineCap,
+        pub join: LineJoin,
+        pub width_phys: f32,
+    }
+
+    /// Stroke tessellator with caller-owned scratch.
+    pub fn tessellate_polyline_for_bench(
+        points: &[glam::Vec2],
+        colors: &[ColorU8],
+        style: TessStyle,
+        out_verts: &mut Vec<MeshVertex>,
+        out_indices: &mut Vec<u16>,
+    ) {
+        let mode = match style.mode {
+            TessColorMode::Single => ColorMode::Single,
+            TessColorMode::PerPoint => ColorMode::PerPoint,
+            TessColorMode::PerSegment => ColorMode::PerSegment,
+        };
+        tessellate_polyline_aa(
+            points,
+            colors,
+            StrokeStyle {
+                mode,
+                cap: style.cap,
+                join: style.join,
+                width_phys: style.width_phys,
+            },
+            out_verts,
+            out_indices,
+        );
+    }
+}
+
 #[cfg(test)]
 mod tests;

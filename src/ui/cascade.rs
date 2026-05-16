@@ -366,7 +366,7 @@ fn hash_cascade_input(
         parent_inv: parent_inv as u8,
         _pad: 0,
     };
-    
+
     let mut h = Hasher::new();
     h.pod(&packed);
     CascadeInputHash::pack(h.finish(), invisible)
@@ -436,4 +436,15 @@ fn compute_paint_rect(
         size: paint_local.size,
     };
     clip_to(parent_transform.apply_rect(paint_tree_local), parent_clip)
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use crate::Ui;
+
+    /// Run only the cascade pass against the just-finished frame.
+    pub fn run_cascades(ui: &mut Ui) {
+        ui.cascades_engine.run(&ui.forest, &mut ui.layout);
+    }
 }

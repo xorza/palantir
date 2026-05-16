@@ -9,7 +9,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::layout::{LayerLayout, ShapedText};
-use crate::support::internals::ResponseNodeExt;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use std::rc::Rc;
 

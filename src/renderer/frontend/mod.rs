@@ -16,7 +16,7 @@
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
-pub(crate) mod encoder;
+pub mod encoder;
 
 use crate::common::frame_arena::FrameArenaHandle;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
@@ -67,5 +67,17 @@ impl Frontend {
         self.composer
             .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
         &self.buffer
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::common::frame_arena::new_handle;
+
+    /// `Frontend` with a private (disjoint-from-Ui) frame arena.
+    pub fn new_frontend() -> Frontend {
+        Frontend::new(new_handle())
     }
 }
