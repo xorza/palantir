@@ -10,10 +10,8 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::ui::FrameStamp;
-use crate::ui::damage::test_support::current_region as damage_current_region;
 use crate::ui::frame_report::RenderPlan;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at_acked;
 use crate::widgets::popup::Popup;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -95,9 +93,9 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut ui, build);
 
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(damage_current_region(&ui).is_empty());
+    assert!(ui.damage_region().is_empty());
     assert_eq!(
-        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
+        Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::None,
     );
 }
@@ -111,7 +109,6 @@ fn unchanged_authoring_produces_no_damage() {
 /// to a per-node walk that still produces correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
-    use crate::ui::damage::test_support as internals;
     let mut ui = new_ui();
     // Frame with a painting parent (background) wrapping painting
     // children — both root and children land in `prev` with matching
@@ -148,16 +145,16 @@ fn stable_painting_subtree_triggers_skip_jump() {
     };
     frame(&mut ui, build);
     assert_eq!(
-        internals::subtree_skips(&ui),
+        ui.damage_subtree_skips(),
         0,
         "first frame populates prev — no prior snapshots to skip against"
     );
 
     frame(&mut ui, build);
     assert!(
-        internals::subtree_skips(&ui) >= 1,
+        ui.damage_subtree_skips() >= 1,
         "identical second frame must skip at least the painting_parent subtree, got {}",
-        internals::subtree_skips(&ui),
+        ui.damage_subtree_skips(),
     );
     assert!(ui.damage_engine.dirty.is_empty());
 }
@@ -196,7 +193,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
         !ui.damage_engine.prev.contains_key(&id),
         "paints→non-paints transition must evict the prev entry"
     );
-    let rects: Vec<_> = damage_current_region(&ui).iter_rects().collect();
+    let rects: Vec<_> = ui.damage_region().iter_rects().collect();
     assert_eq!(
         rects,
         vec![Rect::new(0.0, 0.0, 50.0, 50.0)],
@@ -404,7 +401,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // doesn't move the rect, so prev == curr; the union is the
     // single rect.
     assert_eq!(
-        damage_current_region(&ui).iter_rects().next(),
+        ui.damage_region().iter_rects().next(),
         Some(ui.layout[Layer::Main].rect[dirty_id.index()])
     );
 }
@@ -470,7 +467,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
     // Button is gone; root Panel is non-painting (no chrome) so it
     // never entered prev. Only contribution is the Button's prev
     // rect, surfaced via the `removed` list.
-    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
     assert_eq!(rects, vec![prev_button_rect]);
 }
 
@@ -502,7 +499,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!damage_current_region(&ui).is_empty());
+    assert!(!ui.damage_region().is_empty());
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
@@ -519,13 +516,13 @@ fn damage_filter_returns_partial_when_small() {
     frame(&mut ui, |ui| {
         one_frame(ui, RED);
     });
-    let region = damage_current_region(&ui);
+    let region = ui.damage_region();
     let r = region
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
     assert_eq!(
-        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
+        Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::Partial(r.into()),
     );
 }
@@ -546,7 +543,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let mut ui = new_ui();
     let mut child_node = None;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
                 .transform(TranslateScale::from_translation(translate))
@@ -578,7 +575,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
     };
-    let region = damage_current_region(&ui);
+    let region = ui.damage_region();
     let damage_rect = region
         .iter_rects()
         .next()
@@ -600,7 +597,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let mut ui = new_ui();
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -630,7 +627,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     // into one bbox. (A *much* larger distance would push cost over
     // the budget; pinned by
     // `transform_animation_keeps_far_positions_split`.)
-    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(50.0, 0.0, 40.0, 40.0);
     assert_eq!(
@@ -665,7 +662,7 @@ fn transform_animation_keeps_far_positions_split() {
     ui.damage_engine.budget_px = 0.0;
     let mut child_node = None;
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -692,7 +689,7 @@ fn transform_animation_keeps_far_positions_split() {
     // bbox 240×40 = 9600. SAH cost = 6400 — under the default
     // 20 000 budget, this would merge; the guard above drops the
     // budget to 0 to pin the strict-overlap-only branch.
-    let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
     let prev = Rect::new(0.0, 0.0, 40.0, 40.0);
     let curr = Rect::new(200.0, 0.0, 40.0, 40.0);
     assert_eq!(rects.len(), 2, "far transform animation → two rects");
@@ -1049,7 +1046,7 @@ fn button_hover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 *hot = Some(
                     Button::new()
@@ -1101,12 +1098,9 @@ fn button_hover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
         WidgetId::from_hash("hot"),
     );
+    assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        damage_current_region(&ui).iter_rects().next(),
-        Some(hot_rect)
-    );
-    assert_eq!(
-        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
+        Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -1127,7 +1121,7 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut hot_node = None;
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 *hot = Some(
                     Button::new()
@@ -1163,12 +1157,9 @@ fn button_unhover_damage_covers_only_the_button() {
         ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].index()],
         WidgetId::from_hash("hot"),
     );
+    assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        damage_current_region(&ui).iter_rects().next(),
-        Some(hot_rect)
-    );
-    assert_eq!(
-        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
+        Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::Partial(hot_rect.into()),
     );
 }
@@ -1188,7 +1179,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     let viewport_size = 100.0;
     let child_size = 200.0;
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
-        run_at_acked(ui, UVec2::new(400, 400), |ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
             // layout engine, which would defeat the clip).
@@ -1220,7 +1211,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
     // but the damage rect must stay inside the parent's clip.
     build(RED, &mut ui, &mut child_node);
 
-    let region = damage_current_region(&ui);
+    let region = ui.damage_region();
     let damage_rect = region
         .iter_rects()
         .next()
@@ -1303,7 +1294,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         frame(&mut ui, |ui| {
             Panel::hstack().id_salt("root").show(ui, |_| {});
         });
-        let rects: Vec<Rect> = damage_current_region(&ui).iter_rects().collect();
+        let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
         assert_eq!(rects, vec![prev_rect], "[{label}] damage region");
     }
 }
@@ -1326,7 +1317,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 
     let mut ui = new_ui();
     let build = |fill: Color, ui: &mut Ui| {
-        run_at_acked(ui, UVec2::new(200, 200), |ui| {
+        ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().id_salt("host").show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("viewport")
@@ -1361,7 +1352,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     build(BLUE, &mut ui);
     build(RED, &mut ui);
 
-    for r in damage_current_region(&ui).iter_rects() {
+    for r in ui.damage_region().iter_rects() {
         assert!(
             r.size.w <= viewport + 0.5 && r.size.h <= viewport + 0.5,
             "shadow halo damage must stay inside the {viewport}px clip; got {r:?}",

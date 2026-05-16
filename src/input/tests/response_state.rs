@@ -3,7 +3,6 @@ use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at_acked;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
@@ -23,7 +22,7 @@ fn build_focusable_leaf(ui: &mut Ui) {
 #[test]
 fn focused_reflects_focused_id_synchronously() {
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(200, 200), build_focusable_leaf);
+    ui.run_at_acked(UVec2::new(200, 200), build_focusable_leaf);
     assert!(!ui.response_for(focusable_id()).focused);
 
     ui.request_focus(Some(focusable_id()));
@@ -50,8 +49,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
                     .show(ui);
             });
     };
-    run_at_acked(&mut ui, UVec2::new(200, 200), build);
-    run_at_acked(&mut ui, UVec2::new(200, 200), build);
+    ui.run_at_acked(UVec2::new(200, 200), build);
+    ui.run_at_acked(UVec2::new(200, 200), build);
 
     let parent_state = ui.response_for(WidgetId::from_hash("parent"));
     let child_state = ui.response_for(WidgetId::from_hash("child"));
@@ -73,7 +72,7 @@ fn disabled_false_when_chain_clean() {
                 .show(ui);
         });
     };
-    run_at_acked(&mut ui, UVec2::new(200, 200), build);
-    run_at_acked(&mut ui, UVec2::new(200, 200), build);
+    ui.run_at_acked(UVec2::new(200, 200), build);
+    ui.run_at_acked(UVec2::new(200, 200), build);
     assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
 }

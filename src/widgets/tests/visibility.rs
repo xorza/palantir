@@ -1,12 +1,9 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
-use crate::input::test_support::click_at;
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::renderer::frontend::encoder::test_support::encode_cmds;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -15,7 +12,7 @@ use glam::UVec2;
 fn collapsed_child_consumes_no_space_in_hstack() {
     let mut ui = new_ui();
     let mut root = NodeId(0);
-    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+    ui.run_at(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -50,7 +47,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 fn collapsed_does_not_consume_fill_weight() {
     let mut ui = new_ui();
     let mut root = NodeId(0);
-    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+    ui.run_at(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .show(ui, |ui| {
@@ -91,7 +88,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     let mut ui = new_ui();
     let mut root = NodeId(0);
-    run_at(&mut ui, UVec2::new(400, 100), |ui| {
+    ui.run_at(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
             .gap(10.0)
@@ -139,7 +136,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
     assert_eq!(b.min.x, 40.0 + 10.0 + 40.0 + 10.0);
 
     // ...but emits no DrawRect.
-    let cmds = encode_cmds(&ui);
+    let cmds = ui.encode_cmds();
     let draws = cmds
         .kinds
         .iter()
@@ -154,7 +151,7 @@ fn hidden_button_does_not_click() {
 
     let mut ui = new_ui();
     let surface = UVec2::new(400, 200);
-    run_at(&mut ui, surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("invisible")
@@ -164,10 +161,10 @@ fn hidden_button_does_not_click() {
         });
     });
 
-    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.click_at(Vec2::new(50.0, 20.0));
 
     let mut clicked = false;
-    run_at(&mut ui, surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
                 .id_salt("invisible")
@@ -198,7 +195,7 @@ fn hstack_child_align_per_axis_with_overrides() {
     for (label, second_override, second_y) in cases {
         let mut ui = new_ui();
         let mut root = NodeId(0);
-        run_at(&mut ui, UVec2::new(200, 100), |ui| {
+        ui.run_at(UVec2::new(200, 100), |ui| {
             root = Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::Fixed(100.0)))

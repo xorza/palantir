@@ -955,13 +955,30 @@ impl Ui {
     }
 }
 
+/// Central gated reach-in surface for tests and benches. All test/bench
+/// helpers that operate on `Ui` live here as methods on `Ui` (or as
+/// free constructors), so a single `use crate::ui::test_support::*;`
+/// brings in the entire surface. Items that don't touch `Ui` (e.g.
+/// `TextShaper::*`, `tessellate_polyline_for_bench`) stay in their
+/// own modules.
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
     use super::*;
     use crate::FrameStamp;
+    use crate::animation::animatable::Animatable;
     use crate::common::frame_arena::new_handle;
-    use glam::UVec2;
+    use crate::forest::tree::{Layer, NodeId};
+    use crate::input::InputEvent;
+    use crate::input::pointer::PointerButton;
+    use crate::layout::scroll::ScrollLayoutState;
+    use crate::primitives::rect::Rect;
+    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+    use crate::renderer::frontend::encoder::encode;
+    use crate::ui::damage::Damage;
+    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame_report::RenderPlan;
+    use glam::{UVec2, Vec2};
     use std::time::Duration;
 
     /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
@@ -991,16 +1008,155 @@ pub mod test_support {
         ui
     }
 
-    /// One frame at `size`, time frozen at zero.
-    pub fn run_at(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
-        let display = Display::from_physical(size, 1.0);
-        ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
-    }
+    impl Ui {
+        /// One frame at `size`, time frozen at zero.
+        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+            let display = Display::from_physical(size, 1.0);
+            self.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
+        }
 
-    /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-    pub fn run_at_acked(ui: &mut Ui, size: UVec2, record: impl FnMut(&mut Ui)) {
-        run_at(ui, size, record);
-        ui.frame_state.mark_submitted();
+        /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
+        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+            self.run_at(size, record);
+            self.frame_state.mark_submitted();
+        }
+
+        // ── input ────────────────────────────────────────────────
+
+        pub fn click_at(&mut self, pos: Vec2) {
+            self.on_input(InputEvent::PointerMoved(pos));
+            self.on_input(InputEvent::PointerPressed(PointerButton::Left));
+            self.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        }
+
+        pub fn press_at(&mut self, pos: Vec2) {
+            self.on_input(InputEvent::PointerMoved(pos));
+            self.on_input(InputEvent::PointerPressed(PointerButton::Left));
+        }
+
+        pub fn release_left(&mut self) {
+            self.on_input(InputEvent::PointerReleased(PointerButton::Left));
+        }
+
+        pub fn secondary_click_at(&mut self, pos: Vec2) {
+            self.on_input(InputEvent::PointerMoved(pos));
+            self.on_input(InputEvent::PointerPressed(PointerButton::Right));
+            self.on_input(InputEvent::PointerReleased(PointerButton::Right));
+        }
+
+        // ── layout cache ────────────────────────────────────────
+
+        /// Drop every measure-cache entry, forcing full re-measure next frame.
+        pub fn clear_measure_cache(&mut self) {
+            let cache = &mut self.layout_engine.cache;
+            cache.nodes.clear();
+            cache.hugs.clear();
+            cache.text_shapes_arena.clear();
+            cache.snapshots.clear();
+        }
+
+        /// Scroll-state row for `id` (inserting default if absent).
+        pub fn scroll_state(&mut self, id: WidgetId) -> &mut ScrollLayoutState {
+            self.layout_engine.scroll_states.entry(id).or_default()
+        }
+
+        // ── cascade ─────────────────────────────────────────────
+
+        /// Run only the cascade pass against the just-finished frame.
+        pub fn run_cascades(&mut self) {
+            self.cascades_engine.run(&self.forest, &mut self.layout);
+        }
+
+        // ── damage ──────────────────────────────────────────────
+
+        /// Rebuild the post-collapse damage region from `DamageEngine`'s
+        /// last-frame pass-1 buffer. Doesn't mutate state.
+        pub fn damage_region(&self) -> DamageRegion {
+            DamageRegion::collapse_from(&self.damage_engine.raw_rects, self.damage_engine.budget_px)
+        }
+
+        /// Damage rects produced by the most recent `post_record`.
+        pub fn damage_rect_count(&self) -> usize {
+            self.damage_region().iter_rects().count()
+        }
+
+        /// Subtree-skip jumps the last damage diff performed.
+        pub fn damage_subtree_skips(&self) -> u32 {
+            self.damage_engine.subtree_skips
+        }
+
+        /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
+        pub fn damage_paint_kind(&self) -> &'static str {
+            match Damage::new(self.display.logical_rect(), self.damage_region()) {
+                Damage::None => "skip",
+                Damage::Full => "full",
+                Damage::Partial(_) => "partial",
+            }
+        }
+
+        // ── frame state ─────────────────────────────────────────
+
+        /// Simulate a successful submit so the next frame doesn't auto-rewind to `Full`.
+        pub fn mark_frame_submitted(&self) {
+            self.frame_state.mark_submitted();
+        }
+
+        // ── animation ───────────────────────────────────────────
+
+        /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
+        pub fn anim_row_count<T: Animatable>(&mut self) -> usize {
+            self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
+        }
+
+        // ── forest ──────────────────────────────────────────────
+
+        /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
+        pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
+            let tree = self.forest.tree(Layer::Main);
+            let idx = tree
+                .records
+                .widget_id()
+                .iter()
+                .position(|w| *w == id)
+                .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
+            NodeId(idx as u32)
+        }
+
+        // ── encoder ─────────────────────────────────────────────
+
+        pub fn encode_cmds(&self) -> RenderCmdBuffer {
+            self.encode_cmds_filtered(None)
+        }
+
+        pub fn encode_cmds_filtered(&self, filter: Option<Rect>) -> RenderCmdBuffer {
+            self.encode_cmds_with_region(filter.map(DamageRegion::from))
+        }
+
+        /// Multi-rect variant; each rect is fed through `DamageRegion::add` so merge policy applies.
+        pub fn encode_cmds_with_rects(&self, rects: &[Rect]) -> RenderCmdBuffer {
+            let region = if rects.is_empty() {
+                None
+            } else {
+                let mut r = DamageRegion::default();
+                for rect in rects {
+                    r.add(*rect);
+                }
+                Some(r)
+            };
+            self.encode_cmds_with_region(region)
+        }
+
+        fn encode_cmds_with_region(&self, region: Option<DamageRegion>) -> RenderCmdBuffer {
+            let clear = self.theme.window_clear;
+            let plan = match region {
+                Some(region) => RenderPlan::Partial { clear, region },
+                None => RenderPlan::Full { clear },
+            };
+            let mut cmds = RenderCmdBuffer::default();
+            let arena = self.frame_arena.borrow();
+            encode(self, &arena, plan, &mut cmds);
+            cmds
+        }
     }
 }
 

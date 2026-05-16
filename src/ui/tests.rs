@@ -8,10 +8,9 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
 use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
-use crate::ui::damage::test_support::current_region as damage_current_region;
 use crate::ui::frame_report::RenderPlan;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::{run_at, run_at_acked, ui_at};
+use crate::ui::test_support::ui_at;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -45,7 +44,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut ui = new_ui();
     let button_node = std::cell::Cell::new(NodeId(0));
-    run_at(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let a = Button::new().id_salt("dup").show(ui);
             Button::new().id_salt("dup").show(ui);
@@ -105,7 +104,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let mut ui = new_ui();
-    run_at(&mut ui, UVec2::new(200, 200), |ui| {
+    ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id_salt("dup").show(ui);
         });
@@ -170,7 +169,7 @@ fn collisions_do_not_record_into_debug_layer() {
         !ui.debug_overlay.frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
-    run_at(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new().id_salt("dup").show(ui);
             Button::new().id_salt("dup").show(ui);
@@ -195,7 +194,7 @@ fn auto_id_collisions_disambiguate() {
         Frame::new().auto_id().show(ui);
     }
     let mut ui = new_ui();
-    run_at(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             chip(ui);
             chip(ui);
@@ -221,7 +220,7 @@ fn cascade_visible_to_relayout_pass() {
     let id_salt = "cascade-relayout-probe";
 
     let mut ui = new_ui();
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         let probe_resp = std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(Frame::new().id_salt(id_salt).size(40.0).show(ui));
@@ -259,7 +258,7 @@ fn cascade_visible_to_relayout_pass() {
 #[test]
 fn empty_ui_drives_a_frame_safely() {
     let mut ui = new_ui();
-    run_at(&mut ui, SURFACE, |_| {});
+    ui.run_at(SURFACE, |_| {});
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
@@ -279,9 +278,9 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(damage_current_region(&ui).is_empty());
+    assert!(ui.damage_region().is_empty());
     assert_eq!(
-        Damage::new(ui.display.logical_rect(), damage_current_region(&ui)),
+        Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::None,
     );
 }
@@ -291,8 +290,8 @@ fn empty_ui_drives_a_frame_safely() {
 #[test]
 fn empty_then_populated_frame() {
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(100, 100), |_| {});
-    run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at_acked(UVec2::new(100, 100), |_| {});
+    ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
     // Synthetic viewport root + user Panel = 2 records.
@@ -337,7 +336,7 @@ fn prev_frame_empty_before_first_frame() {
 fn prev_frame_captures_painting_nodes() {
     let mut ui = new_ui();
     let mut frame_node = None;
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             frame_node = Some(blue_frame(ui, "a"));
         });
@@ -357,7 +356,7 @@ fn prev_frame_captures_painting_nodes() {
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
     let mut ui = new_ui();
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Button::new().id_salt("gone").label("X").show(ui);
         });
@@ -368,7 +367,7 @@ fn prev_frame_drops_disappeared_widgets() {
             .contains_key(&WidgetId::from_hash("gone"))
     );
 
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |_| {});
     });
     assert!(
@@ -393,10 +392,10 @@ fn prev_frame_updates_on_authoring_change() {
                 .show(ui);
         }
     };
-    run_at_acked(&mut ui, SURFACE, paint(Color::rgb(0.2, 0.4, 0.8)));
+    ui.run_at_acked(SURFACE, paint(Color::rgb(0.2, 0.4, 0.8)));
     let h1 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
 
-    run_at_acked(&mut ui, SURFACE, paint(Color::rgb(0.9, 0.4, 0.8)));
+    ui.run_at_acked(SURFACE, paint(Color::rgb(0.9, 0.4, 0.8)));
     let h2 = ui.damage_engine.prev[&WidgetId::from_hash("a")].hash;
     assert_ne!(h1, h2);
 }
@@ -452,13 +451,13 @@ fn text_reshape_skipped_when_unchanged() {
         ("grid-intrinsic", grid_intrinsic),
     ] {
         let mut ui = new_ui();
-        run_at_acked(&mut ui, UVec2::new(400, 200), build);
+        ui.run_at_acked(UVec2::new(400, 200), build);
         let after_first = measure_calls(&ui);
         assert!(
             after_first > 0,
             "{label}: first frame should drive at least one measure call",
         );
-        run_at_acked(&mut ui, UVec2::new(400, 200), build);
+        ui.run_at_acked(UVec2::new(400, 200), build);
         let after_second = measure_calls(&ui);
         assert_eq!(
             after_second,
@@ -484,9 +483,9 @@ fn text_reshape_runs_when_content_changes() {
         }
     };
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(400, 200), render("first"));
+    ui.run_at_acked(UVec2::new(400, 200), render("first"));
     let before = measure_calls(&ui);
-    run_at_acked(&mut ui, UVec2::new(400, 200), render("second"));
+    ui.run_at_acked(UVec2::new(400, 200), render("second"));
     let after = measure_calls(&ui);
     assert!(
         after > before,
@@ -501,7 +500,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     use crate::widgets::text::Text;
 
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(400, 200), |ui| {
+    ui.run_at_acked(UVec2::new(400, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("hello").id_salt("transient").show(ui);
         });
@@ -512,7 +511,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         "text widget should populate text_reuse on first render",
     );
 
-    run_at_acked(&mut ui, UVec2::new(400, 200), |ui| {
+    ui.run_at_acked(UVec2::new(400, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
@@ -545,13 +544,13 @@ fn wrap_target_change_preserves_unbounded_cache() {
     };
 
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(400, 200), render(60.0));
+    ui.run_at_acked(UVec2::new(400, 200), render(60.0));
     let after_first = measure_calls(&ui);
     assert!(
         after_first >= 2,
         "first frame should measure both unbounded and wrap (got {after_first})",
     );
-    run_at_acked(&mut ui, UVec2::new(400, 200), render(80.0));
+    ui.run_at_acked(UVec2::new(400, 200), render(80.0));
     let after_second = measure_calls(&ui);
     let delta = after_second - after_first;
     assert_eq!(
@@ -567,19 +566,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     let id_a = WidgetId::from_hash("a");
     let id_b = WidgetId::from_hash("b");
 
-    run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Frame::new().id_salt("a").show(ui);
         Frame::new().id_salt("b").show(ui);
         *ui.state_mut::<u32>(id_a) = 11;
         *ui.state_mut::<u32>(id_b) = 22;
     });
-    run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Frame::new().id_salt("a").show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
         assert_eq!(*ui.state_mut::<u32>(id_a), 11);
     });
-    run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Frame::new().id_salt("b").show(ui);
         assert_eq!(
             *ui.state_mut::<u32>(id_b),
@@ -652,7 +651,7 @@ fn frame_pass_count_matches_action_trigger() {
         let mut ui = new_ui();
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
-        run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+        ui.run_at_acked(UVec2::new(100, 100), |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
         });
         prime(&mut ui);
@@ -690,7 +689,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(100, 100), |ui| {
+    ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::vstack().id_salt("root").show(ui, |_| {});
     });
 

@@ -12,9 +12,7 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::renderer::frontend::encoder::test_support::encode_cmds;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -72,7 +70,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
         let mut ui = new_ui();
         let mut left = None;
         let mut right = None;
-        run_at(&mut ui, UVec2::new(800, 600), |ui| {
+        ui.run_at(UVec2::new(800, 600), |ui| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
@@ -126,7 +124,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
     let mut prop_label = None;
     let mut prop_value = None;
 
-    run_at(&mut ui, UVec2::new(1500, 900), |ui| {
+    ui.run_at(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -214,7 +212,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
     let mut ui = crate::ui::test_support::new_ui_text();
-    run_at(&mut ui, UVec2::new(1500, 900), |ui| {
+    ui.run_at(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
             .gap(16.0)
@@ -247,7 +245,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             });
     });
 
-    let cmds = encode_cmds(&ui);
+    let cmds = ui.encode_cmds();
     let mut text_xs: Vec<f32> = Vec::new();
     for i in 0..cmds.kinds.len() {
         if cmds.kinds[i] == CmdKind::DrawText {
@@ -269,7 +267,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
     let mut ui = new_ui();
-    run_at(&mut ui, UVec2::new(1620, 980), |ui| {
+    ui.run_at(UVec2::new(1620, 980), |ui| {
         Panel::vstack().auto_id()
         .padding(12.0)
         .gap(12.0)
@@ -346,7 +344,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
         });
     });
 
-    let cmds = encode_cmds(&ui);
+    let cmds = ui.encode_cmds();
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
     for i in 0..cmds.kinds.len() {
         if cmds.kinds[i] == CmdKind::DrawText {

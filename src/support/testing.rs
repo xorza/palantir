@@ -9,7 +9,6 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::layout::types::sizing::Sizing;
-use crate::ui::test_support::run_at;
 use crate::widgets::panel::Panel;
 use glam::UVec2;
 
@@ -19,7 +18,7 @@ use glam::UVec2;
 #[allow(private_interfaces)]
 pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(ui: &mut Ui, surface: UVec2, mut f: F) -> NodeId {
     let mut inner = None;
-    run_at(ui, surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))

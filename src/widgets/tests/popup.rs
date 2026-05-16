@@ -11,11 +11,9 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::input::test_support::click_at;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::{run_at, run_at_acked};
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use glam::{UVec2, Vec2};
@@ -57,14 +55,14 @@ fn main_panel_clicked(ui: &Ui) -> bool {
 fn click_inside_popup_does_not_dismiss() {
     let mut ui = new_ui();
     let mut dismissed = false;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     let inside = Vec2::new(ANCHOR.x + BODY_W * 0.5, ANCHOR.y + BODY_H * 0.5);
-    click_at(&mut ui, inside);
+    ui.click_at(inside);
 
     let mut dismissed = false;
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(!dismissed, "click inside body must not signal dismissal");
@@ -78,13 +76,13 @@ fn click_inside_popup_does_not_dismiss() {
 fn click_outside_popup_dismisses_and_blocks_main() {
     let mut ui = new_ui();
     let mut dismissed = false;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
-    click_at(&mut ui, Vec2::new(300.0, 300.0));
+    ui.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
     });
     assert!(
@@ -127,9 +125,9 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
                 }
             });
     };
-    run_at_acked(&mut ui, SURFACE, |ui| scene(ui, &mut open));
-    click_at(&mut ui, Vec2::new(300.0, 300.0));
-    run_at(&mut ui, SURFACE, |ui| scene(ui, &mut open));
+    ui.run_at_acked(SURFACE, |ui| scene(ui, &mut open));
+    ui.click_at(Vec2::new(300.0, 300.0));
+    ui.run_at(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
         ui.forest
@@ -161,7 +159,7 @@ fn popup_body_sizing_matches_sizing_mode() {
     ];
     for &(sw, sh, expected) in cases {
         let mut ui = new_ui();
-        run_at(&mut ui, SURFACE, |ui| {
+        ui.run_at(SURFACE, |ui| {
             Panel::vstack()
                 .id_salt("main-bg")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -194,13 +192,13 @@ fn popup_body_sizing_matches_sizing_mode() {
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
     let mut ui = new_ui();
     let mut dismissed = false;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
-    click_at(&mut ui, Vec2::new(300.0, 300.0));
+    ui.click_at(Vec2::new(300.0, 300.0));
 
     let mut dismissed = false;
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);
     });
     assert!(!dismissed, "`Block` mode must not signal dismissal");

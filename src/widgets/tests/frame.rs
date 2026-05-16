@@ -2,13 +2,11 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::tree::test_support::shapes_of;
 use crate::input::sense::Sense;
-use crate::input::test_support::click_at;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::{run_at, run_at_acked};
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -17,7 +15,7 @@ use glam::UVec2;
 fn frame_paints_a_single_rounded_rect() {
     let mut ui = new_ui();
     let mut frame_node = None;
-    run_at(&mut ui, UVec2::new(200, 100), |ui| {
+    ui.run_at(UVec2::new(200, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             frame_node = Some(
                 Frame::new()
@@ -57,7 +55,7 @@ fn frame_with_sense_click_is_clickable() {
 
     let mut ui = new_ui();
     let surface = UVec2::new(200, 100);
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new()
                 .id_salt("hitbox")
@@ -66,10 +64,10 @@ fn frame_with_sense_click_is_clickable() {
                 .show(ui);
         });
     });
-    click_at(&mut ui, Vec2::new(50.0, 25.0));
+    ui.click_at(Vec2::new(50.0, 25.0));
 
     let mut clicked = false;
-    run_at(&mut ui, surface, |ui| {
+    ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked |= Frame::new()
                 .id_salt("hitbox")

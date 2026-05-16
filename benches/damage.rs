@@ -13,9 +13,7 @@
 //! runs through the mono fallback (matches `frame.rs` / `caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::ui::damage::region::test_support as damage_region_test;
-use palantir::ui::damage::test_support as damage_test;
-use palantir::ui::frame_state::test_support as frame_state_test;
+use palantir::ui::damage::region::test_support::region_after_adds;
 use palantir::{
     Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, TextShaper, Ui,
     new_handle,
@@ -126,7 +124,7 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
         &mut (),
         &mut record,
     );
-    frame_state_test::mark_frame_submitted(ui);
+    ui.mark_frame_submitted();
 }
 
 /// Warm two frames so subsequent iterations land on the steady-state
@@ -145,7 +143,7 @@ fn warm_and_assert(
 ) {
     run_and_ack(ui, display, &frame1);
     run_and_ack(ui, display, &frame2);
-    let kind = damage_test::paint_kind(ui);
+    let kind = ui.damage_paint_kind();
     assert_eq!(kind, expect_kind, "warmup did not settle on {expect_kind}");
 }
 
@@ -193,10 +191,10 @@ fn bench_workloads(c: &mut Criterion) {
         // jumps (one per stable row subtree). Without this, the bench
         // silently degrades to the same shape as `skip`.
         assert!(
-            damage_test::subtree_skips(&ui) >= ROWS as u32,
+            ui.damage_subtree_skips() >= ROWS as u32,
             "expected >= {} subtree skips, got {}",
             ROWS,
-            damage_test::subtree_skips(&ui),
+            ui.damage_subtree_skips(),
         );
         group.bench_function("skip_painted_rows", |b| {
             b.iter(|| {
@@ -241,7 +239,7 @@ fn bench_workloads(c: &mut Criterion) {
             |ui| build_grid(ui, &cells, hot),
             "partial",
         );
-        assert!(damage_test::rect_count(&ui) >= 2);
+        assert!(ui.damage_rect_count() >= 2);
         let mut toggle = false;
         group.bench_function("two_corner_change", |b| {
             b.iter(|| {
@@ -295,7 +293,7 @@ fn bench_workloads(c: &mut Criterion) {
         };
         run_and_ack(&mut ui, display, varying(0));
         run_and_ack(&mut ui, display, varying(1));
-        assert_eq!(damage_test::paint_kind(&ui), "full");
+        assert_eq!(ui.damage_paint_kind(), "full");
         let mut frame_n = 2u32;
         group.bench_function("full_repaint", |b| {
             b.iter(|| {
@@ -344,12 +342,12 @@ fn bench_region_add(c: &mut Criterion) {
     ];
 
     for (label, rects) in cases {
-        let retained = damage_region_test::region_after_adds(rects);
+        let retained = region_after_adds(rects);
         group.bench_with_input(
             BenchmarkId::new(*label, format!("{}_in_{}_out", rects.len(), retained)),
             rects,
             |b, rects| {
-                b.iter(|| black_box(damage_region_test::region_after_adds(rects)));
+                b.iter(|| black_box(region_after_adds(rects)));
             },
         );
     }

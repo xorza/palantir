@@ -6,7 +6,6 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at_acked;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -16,7 +15,7 @@ fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
 
 fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
     let mut record = Some(record);
-    run_at_acked(ui, size, |ui| {
+    ui.run_at_acked(size, |ui| {
         Panel::hstack()
             .id_salt("root")
             .show(ui, record.take().unwrap());
@@ -445,7 +444,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     };
 
     let mut ui = new_ui();
-    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
         build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
     let snap = |ui: &Ui, key: &str| {
@@ -466,7 +465,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     // Frame 2: only the changing leaf's color flips. Hash rollup
     // must propagate the change all the way to `root`; the stable
     // sibling subtree must be untouched.
-    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
         build(ui, Color::rgb(0.0, 1.0, 0.0));
     });
     let root_2 = snap(&ui, "root");
@@ -572,7 +571,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     let warm_desired = ui.layout_engine.cache.nodes.desired[warm_snap.nodes.range()].to_vec();
     let warm_live = ui.layout_engine.cache.nodes.live;
 
-    crate::layout::cache::test_support::clear_measure_cache(&mut ui);
+    ui.clear_measure_cache();
     run_frame(&mut ui, with_widget);
 
     let cold_snap = *ui.layout_engine.cache.snapshots.get(&blip).unwrap();

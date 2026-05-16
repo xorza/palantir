@@ -2,10 +2,8 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::Sense;
-use crate::input::test_support::{click_at, press_at, release_left};
 use crate::layout::types::sizing::Sizing;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at_acked;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -25,11 +23,11 @@ fn input_state_press_release_emits_click() {
                 .show(ui);
         });
     };
-    run_at_acked(&mut ui, surface, build);
-    click_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.run_at_acked(surface, build);
+    ui.click_at(Vec2::new(50.0, 20.0));
 
     let mut got_click = false;
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
                 .id_salt("target")
@@ -42,7 +40,7 @@ fn input_state_press_release_emits_click() {
     assert!(got_click, "press+release inside button rect should click");
 
     let mut still_clicking = false;
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             still_clicking |= Button::new()
                 .id_salt("target")
@@ -101,13 +99,13 @@ fn stack_sense_routing() {
                         .show(ui);
                 });
         };
-        run_at_acked(&mut ui, surface, build);
-        click_at(&mut ui, *click_pos);
+        ui.run_at_acked(surface, build);
+        ui.click_at(*click_pos);
 
         let mut child_clicked = false;
         let mut stack_clicked = false;
         let mut stack_hovered = false;
-        run_at_acked(&mut ui, surface, |ui| {
+        ui.run_at_acked(surface, |ui| {
             let r = Panel::hstack()
                 .id_salt("stack")
                 .padding(20.0)
@@ -141,7 +139,7 @@ fn stack_sense_routing() {
 fn input_state_release_outside_does_not_click() {
     let mut ui = new_ui();
     let surface = UVec2::new(400, 80);
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("target")
@@ -149,12 +147,12 @@ fn input_state_release_outside_does_not_click() {
                 .show(ui);
         });
     });
-    press_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.press_at(Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 20.0)));
-    release_left(&mut ui);
+    ui.release_left();
 
     let mut got_click = false;
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
                 .id_salt("target")
@@ -189,11 +187,11 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
         });
     };
     let mut sink = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
-    click_at(&mut ui, Vec2::new(150.0, 150.0));
+    ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+    ui.click_at(Vec2::new(150.0, 150.0));
 
     let mut clicked = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut clicked));
+    ui.run_at_acked(surface, |ui| build(ui, &mut clicked));
     assert!(
         !clicked,
         "click on overflow outside clip should not register"
@@ -232,18 +230,17 @@ fn zoom_panel_routes_clicks_by_world_rect() {
             });
         };
         let mut sink = false;
-        run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
-        click_at(&mut ui, *click_pos);
+        ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+        ui.click_at(*click_pos);
 
         let mut clicked = false;
-        run_at_acked(&mut ui, surface, |ui| build(ui, &mut clicked));
+        ui.run_at_acked(surface, |ui| build(ui, &mut clicked));
         assert_eq!(clicked, *expect, "case {label}");
     }
 }
 
 #[test]
 fn secondary_click_press_release_emits_secondary_clicked() {
-    use crate::input::test_support::secondary_click_at;
     let mut ui = new_ui();
     let surface = UVec2::new(200, 80);
     let build = |ui: &mut Ui, sink: &mut bool| {
@@ -259,23 +256,22 @@ fn secondary_click_press_release_emits_secondary_clicked() {
         });
     };
     let mut sink = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut sink));
-    secondary_click_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.run_at_acked(surface, |ui| build(ui, &mut sink));
+    ui.secondary_click_at(Vec2::new(50.0, 20.0));
 
     let mut got = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut got));
+    ui.run_at_acked(surface, |ui| build(ui, &mut got));
     assert!(got, "right press+release should set secondary_clicked");
 
     // One-shot.
     let mut still = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut still));
+    ui.run_at_acked(surface, |ui| build(ui, &mut still));
     assert!(!still, "secondary_clicked is one-shot");
 }
 
 #[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
-    use crate::input::test_support::press_at;
     let mut ui = new_ui();
     let surface = UVec2::new(200, 80);
     let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {
@@ -291,18 +287,18 @@ fn left_and_right_click_are_independent() {
     };
     let mut a = false;
     let mut b = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut a, &mut b));
+    ui.run_at_acked(surface, |ui| build(ui, &mut a, &mut b));
 
     // Left-press, then a right press+release while left is still held —
     // both should latch separately.
-    press_at(&mut ui, Vec2::new(50.0, 20.0));
+    ui.press_at(Vec2::new(50.0, 20.0));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Right));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     let mut lc = false;
     let mut rc = false;
-    run_at_acked(&mut ui, surface, |ui| build(ui, &mut lc, &mut rc));
+    ui.run_at_acked(surface, |ui| build(ui, &mut lc, &mut rc));
     assert!(lc, "left click should still fire");
     assert!(rc, "right click should still fire alongside left");
 }

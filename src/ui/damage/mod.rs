@@ -442,41 +442,5 @@ fn extend_predamaged(
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use super::*;
-    use crate::Ui;
-
-    /// Rebuild the post-collapse damage region from `DamageEngine`'s
-    /// last-frame pass-1 buffer. Doesn't mutate state. On `force_full`
-    /// frames the buffer holds only the structural rects (the anim /
-    /// evict tail is skipped by the short-circuit), so the reconstructed
-    /// region reflects "what would have been shown if we hadn't escalated
-    /// to Full".
-    pub fn current_region(ui: &Ui) -> DamageRegion {
-        DamageRegion::collapse_from(&ui.damage_engine.raw_rects, ui.damage_engine.budget_px)
-    }
-
-    /// Damage rects produced by the most recent `post_record`.
-    pub fn rect_count(ui: &Ui) -> usize {
-        current_region(ui).iter_rects().count()
-    }
-
-    /// Subtree-skip jumps the last damage diff performed.
-    pub fn subtree_skips(ui: &Ui) -> u32 {
-        ui.damage_engine.subtree_skips
-    }
-
-    /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
-    pub fn paint_kind(ui: &Ui) -> &'static str {
-        match Damage::new(ui.display.logical_rect(), current_region(ui)) {
-            Damage::None => "skip",
-            Damage::Full => "full",
-            Damage::Partial(_) => "partial",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests;
