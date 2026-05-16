@@ -1,4 +1,5 @@
 mod debug_overlay;
+mod image_pipeline;
 mod mesh_pipeline;
 mod quad_pipeline;
 mod schedule;
@@ -7,6 +8,7 @@ mod viewport;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
+use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
@@ -93,6 +95,7 @@ pub(crate) struct WgpuBackend {
     viewport_uniform: ViewportUniform,
     quad: QuadPipeline,
     mesh: MeshPipeline,
+    image: ImagePipeline,
     text: TextRenderer,
     debug: DebugOverlay,
     /// Color format the quad pipeline + text atlas were built for.
@@ -113,9 +116,9 @@ pub(crate) struct WgpuBackend {
     /// Shared frame arena (clone of `Host`'s canonical handle). The
     /// backend reads mesh vertices/indices from it during upload.
     frame_arena: FrameArenaHandle,
-    /// Shared user-image cache. Backend reads bytes from it lazily on
-    /// first sighting of an `ImageHandle` in a frame's `ImageInstance`s.
-    #[allow(dead_code)] // wired by Image pipeline (slice 1 Phase B)
+    /// Shared user-image cache. Drained each frame by
+    /// [`ImagePipeline::drain_registry`] to upload newly registered
+    /// images to GPU.
     images: ImageRegistry,
 }
 
@@ -143,6 +146,7 @@ impl WgpuBackend {
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
         let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
+        let image = ImagePipeline::new(&device, format, &viewport_uniform.buffer);
         let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {
@@ -151,6 +155,7 @@ impl WgpuBackend {
             viewport_uniform,
             quad,
             mesh,
+            image,
             text,
             debug,
             color_format: format,
@@ -354,6 +359,7 @@ impl WgpuBackend {
             self.ensure_stencil();
             self.quad.ensure_stencil(&self.device);
             self.mesh.ensure_stencil(&self.device);
+            self.image.ensure_stencil(&self.device);
             self.quad
                 .stage_masks(&self.device, &self.queue, &buffer.groups);
         }
@@ -369,6 +375,15 @@ impl WgpuBackend {
             &arena.meshes.indices,
             &buffer.meshes.instances,
         );
+
+        // Upload any newly registered images to GPU, then stream the
+        // per-instance buffer. Pending registry drain happens before
+        // the per-instance upload so first-frame images have a bind
+        // group ready for the schedule's draw call.
+        self.image
+            .drain_registry(&self.device, &self.queue, &self.images);
+        self.image
+            .upload_instances(&self.device, &self.queue, &buffer.images.instances);
 
         if !damage_scissors.is_empty() {
             self.quad
