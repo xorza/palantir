@@ -14,8 +14,8 @@ use showcase::app_state::AppState;
 use showcase::{
     alignment, animations, app_state, bezier, buttons, checkbox, clip, context_menu, disabled,
     drag, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
-    pan_zoom_auto, panels, popup, scroll, shadow, sizing, spacing, text, text_edit, text_zorder,
-    tooltips, transform, visibility, wrap,
+    pan_zoom_auto, panels, popup, radio, scroll, shadow, sizing, spacing, text, text_edit,
+    text_zorder, tooltips, transform, visibility, wrap,
 };
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
@@ -45,6 +45,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("spacing", spacing::build),
     ("buttons", buttons::build),
     ("checkbox", checkbox::build),
+    ("radio", radio::build),
     ("popup", popup::build),
     ("tooltips", tooltips::build),
     ("context menu", context_menu::build),

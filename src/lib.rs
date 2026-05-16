@@ -95,6 +95,7 @@ pub use widgets::frame::Frame;
 pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
 pub use widgets::popup::{ClickOutside, Popup};
+pub use widgets::radio::RadioButton;
 pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
