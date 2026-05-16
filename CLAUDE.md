@@ -2,7 +2,7 @@
 
 A Rust GUI crate. **Immediate-mode authoring API**, **WPF-contract two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 
-Read `DESIGN.md` for the full design rationale before making non-trivial changes.
+Read `DESIGN.md` for the full design rationale before making non-trivial changes. Generic Rust coding conventions live in `CODING_STYLE.md`.
 
 ## Posture
 
@@ -17,19 +17,10 @@ State-of-the-art UI framework, craft-driven. **No external consumers, no publish
 
 ## Code style
 
-- **Comments:** none except non-obvious _why_. Code is short and self-explanatory; keep it that way. **Be terse.** One short line is the target — never multi-paragraph essays, never narration of what the code does, never "this used to…/we changed it because…" history. If a comment can't fit in one line and still earn its place, delete it.
-- **Asserts:** default to release `assert!` for invariants, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve it for checks too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff.
+See `CODING_STYLE.md` for generic Rust conventions (comments, asserts, visibility, trivial accessors, tuple returns, inline `crate::` paths, re-exports, test/bench helper gating, fat-test-file splits, edition, and mechanical refactoring tooling). Palantir-specific rules below.
+
 - **"Non-paintable scalar" predicate:** when guarding on a magnitude (stroke width, alpha, radius — any scalar where ≤ 0, NaN, or near-zero means "skip / emit nothing"), use `crate::primitives::approx::noop_f32(v)`. It captures all three cases in one comparison and is the shared predicate behind `Stroke::is_noop` / `Color::is_noop` / `Shape::is_noop`. Don't hand-roll `if !(v > 0.0)` or `if v <= 0.0 || v.is_nan()` — they drift apart over time. `approx::EPS = 1e-4`; for sub-`EPS` thresholds use the constant directly.
-- **Edition 2024.** Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
 - **Tests in `lib.rs` pin layout semantics.** Add a test whenever you change measure/arrange behavior. Don't add wgpu code paths to the layout/tree modules.
-- **Test/bench helpers live in gated mods at the end of the production file they reach into.** Use `#[cfg(any(test, feature = "internals"))] pub(crate) mod test_support { ... }` for items benches/integration tests need (the `internals` feature is set up in `lib.rs`); plain `#[cfg(test)]` for in-tree-only helpers. Colocate the helper with the type whose privates it reads — `text_shaper_measure_calls` lives in `src/text/mod.rs`, `damage_rect_count` in `src/ui/damage/mod.rs`, etc. No big `support::internals` aggregator that re-exports everything; one canonical path per item, callers `use crate::foo::bar::test_support::helper`. Production types stay clean (no `#[allow(dead_code)] pub(crate) fn` debug accessors hanging off them). `support/testing.rs` is reserved for genuinely cross-module fixtures (e.g. helpers that build a `Panel` _and_ drive a frame) that have no single natural home.
-- **Prefer extending existing tests over adding atomic ones.** When pinning a new invariant, look for a nearby test exercising the same fixture or feature and add the assertion there. Combine related axes into table-driven sweeps (one fixture, multiple cases) instead of one test per case. Refactors that touch a feature then update one or two tests, not a dozen — fewer pin-points to migrate, less duplicated setup, the same coverage. Split into a new test only when a clean fixture for the new behavior would dominate the existing test, or when the failure mode is different enough that one assertion message wouldn't be useful.
-- **Split fat-test files** into `foo/{mod.rs, tests.rs}` when tests dominate (>40% or >150 lines).
-- **Visibility:** default to narrowest; demote `pub` → `pub(crate)` → private whenever nothing outside uses the item. `pub(crate)` on fields is fine — invariants live in the mutating methods, not in encapsulation theater. No `pub(in path)` / `pub(super)` — exotic noise; use `pub(crate)` for any cross-module access.
-- **No trivial accessors — prefer direct field access.** If a method body is just `self.field` / `&self.field` / `self.field = v`, or a one-hop call into a built-in collection method (`self.foo.len()`, `self.foo.is_empty()`, `self.foo.contains_key(k)`), delete it and make the field `pub(crate)`. Same for the inner crate boundary: another module reaching for `cache.snapshots.len()` is fine — don't wrap it in `cache.snapshot_count()`. Inline accessors are fine when they do real work (computation, invariant enforcement, returning a derived view).
-- **No tuple returns.** Give a named result struct next to the function. `Option`/`Result` excepted.
-- **No inline `crate::foo::bar::Type` paths** in expressions or patterns. Add a `use` at the top — surface dependencies in the imports block, don't bury them.
-- **No re-exports inside the crate.** Only `lib.rs` `pub use`s items to define the published surface. Intermediate `mod.rs` files don't re-export — make submodules `pub(crate)` and import via the canonical path (`use crate::primitives::color::Color`, not `use crate::primitives::Color`). One canonical path per item.
 - **`bytemuck::Pod` structs use `#[padding_struct::padding_struct]`.** The proc macro injects trailing padding fields so the struct's size is a multiple of its alignment, satisfying `Pod`'s no-padding-bytes invariant. Don't hand-add `_pad: u32` fields — they rot when a new field shifts the layout. Construct via `Self { real_field: x, ..bytemuck::Zeroable::zeroed() }` so the spread fills whatever padding the macro generated; `unsafe { std::mem::zeroed() }` for `const` sentinels. Existing examples: `DrawPolylinePayload` / `DrawMeshPayload` (`src/renderer/frontend/cmd_buffer/mod.rs`), `TextCacheKey` (`src/text/mod.rs`).
 - **`WidgetId`** is hashed from a user-supplied key — keep IDs stable across frames so persistent state survives. Auto-deriving constructors (`Button::new`, `Text::new`, `Panel::hstack`, …) use `WidgetId::auto_stable()` + `#[track_caller]` so calls at different source lines get distinct ids. `#[track_caller]` does **not** propagate through closure bodies, so a helper that builds widgets inside a closure passed to e.g. `Panel::show(ui, |ui| { ... })` resolves every call to the same source location — but `Ui::node` silently disambiguates auto-id collisions by mixing in a per-id occurrence counter, so loops and closure helpers Just Work. Per-widget state keys on the disambiguated id and is therefore positional within the colliding call site, so reordering helper calls or conditionally inserting one will re-key state for the affected occurrences. When call order isn't stable, override with `.with_id(key)` (the builder method on `Configure`) where `key` is something stable like the item's domain id. Explicit-key collisions are caller bugs: `SeenIds::record` disambiguates them the same way as auto ids and pushes a `CollisionRecord` onto `forest.collisions`. After the regular paint walk, the encoder (`encoder::emit_collision_overlays`) emits a magenta 3px stroke quad over each colliding node's arranged rect — unclipped, on top of every layer. Always on, no opt-in flag.
 
@@ -148,44 +139,6 @@ npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-to
 
 Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
 
-## Mechanical refactoring (large-scale renames, signature changes)
+## Mechanical refactoring
 
-**`sd` / `perl -i` are the wrong tools at this scale.** Regex-based find/replace has no AST awareness, so it bites in predictable ways: `click_at\(` also matches `secondary_click_at(`; `run_at\((\w+),` re-matches its own output and produces `ui.X.run_at(Y)` on the second pass; multi-line `use {a,b,c};` blocks don't split cleanly. Reserve `sd` for prose, config files, and renames where the symbol is genuinely unique. For Rust code use AST-aware tools.
-
-### Tool stack
-
-- **`rust-analyzer ssr`** — structural search/replace via AST placeholders. Pattern `$path::foo($ui, $rest) ==>> $ui.foo($rest)` anchors on path / call nodes, so free-fn-to-method conversions can't accidentally match a method call of the same name, and the rewritten form is structurally distinct from the input (idempotent by construction). Best for signature rewrites and call-site rewrites.
-- **`ast-grep`** — tree-sitter-based; YAML rule files with `inside` / `has` / `not` constraints. Strong Rust catalog. Best for AST-shape rewrites that ssr's placeholder grammar can't express — splitting `use foo::{a, b, c};` into N lines, restructuring nested expressions, applying rewrites only inside specific scopes.
-- **`rerast`** — type-aware Rust pattern rules. Less maintained but works where ssr / ast-grep can't see types.
-- **`cargo clippy --fix --all-targets --allow-dirty --allow-no-vcs`** — aftermath cleanup: unused imports, redundant `mut`, needless borrows. Run after every mechanical batch.
-- **`cargo fix --broken-code`** — applies machine-applicable rustc suggestions; pairs with a lint that flags the old pattern.
-
-### Workflow
-
-Phase strictly, never interleave:
-
-1. File moves (`git mv` for tracked files so rename history survives).
-2. Signature rewrites (free fn → method, param reordering, type changes).
-3. Call-site rewrites.
-4. Import fixups.
-5. `cargo clippy --fix` for unused-import cleanup.
-6. `cargo fmt --all`.
-
-### Rules to write idempotent rewrites
-
-A rule is idempotent when its output can't match its input pattern. Examples:
-
-- `foo($ui, $rest) ==>> $ui.foo($rest)` — output is a method call (different AST node from a free fn call); cannot re-match.
-- `foo($a) ==>> bar($a)` — safe if `bar` doesn't appear elsewhere.
-- `foo($a, $b) ==>> foo($b, $a)` — **not idempotent**; running twice un-does it. Add a sentinel marker or do it as a one-shot.
-
-Always dry-run with `--debug-query` / preview output before applying. Both ast-grep and ssr support this.
-
-### When to use what
-
-- **Symbol rename inside one crate, type-driven** → IDE rename via rust-analyzer (`textDocument/rename` LSP request, scriptable). Most precise.
-- **Free fn ↔ method, parameter reordering, deprecating an API** → `rust-analyzer ssr`.
-- **Import-block restructuring, AST-shape rewrites, cross-language** → `ast-grep`.
-- **Module path renames** (`crate::foo::bar` → `crate::baz::bar`) → `ast-grep` (anchored on `scoped_identifier`) or rust-analyzer's "Move module" refactor.
-- **Cleanup leftovers** (unused imports, dead allows, format) → `cargo clippy --fix` + `cargo fmt`.
-- **Prose, doc comments, TOML, shell scripts** → `sd` is fine; AST tools are overkill.
+See `CODING_STYLE.md` for the tool stack (rust-analyzer ssr / ast-grep / rerast / clippy --fix), phased workflow, idempotent-rewrite rules, and when-to-use-what guide for large-scale renames and signature changes.
