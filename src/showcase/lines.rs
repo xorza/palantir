@@ -1,5 +1,8 @@
 use glam::Vec2;
-use palantir::{Color, Configure, LineCap, LineJoin, Panel, PolylineColors, Shape, Sizing, Ui};
+use palantir::{
+    Color, Configure, Corners, LineCap, LineJoin, Panel, PolylineColors, Rect, Shape, Sizing,
+    Stroke, Ui,
+};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -25,6 +28,15 @@ pub fn build(ui: &mut Ui) {
                     cell(ui, "per_segment", per_segment);
                     cell(ui, "joins", joins);
                     cell(ui, "caps", caps);
+                });
+            Panel::hstack()
+                .id_salt("row3")
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    cell(ui, "translucent_solid", translucent_solid);
+                    cell(ui, "translucent_per_point", translucent_per_point);
+                    cell(ui, "translucent_quarter", translucent_quarter);
                 });
         });
 }
@@ -150,6 +162,79 @@ fn caps(ui: &mut Ui) {
             join: LineJoin::Miter,
         });
     }
+}
+
+/// Paint an opaque magenta backdrop so the next translucent draw
+/// composites against a known non-black, non-white colour — making
+/// the premultiplied-alpha bug obvious.
+///
+/// Backdrop = magenta `(1, 0, 1)`, translucent draw = green
+/// `(0, 1, 0)` at α=0.5. Correct blend (premultiplied source):
+/// `(0, 0.5, 0) + magenta * 0.5 = (0.5, 0.5, 0.5)` → mid grey.
+/// Mesh path's current bug (straight-alpha source into premul
+/// blend): `(0, 1, 0) + magenta * 0.5 = (0.5, 1, 0.5)` → bright
+/// green. See `docs/review-wgsl-shaders.md` A1.
+fn backdrop(ui: &mut Ui) {
+    ui.add_shape(Shape::RoundedRect {
+        local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
+        radius: Corners::ZERO,
+        fill: Color::rgb(1.0, 0.0, 1.0).into(),
+        stroke: Stroke::ZERO,
+    });
+}
+
+/// Repro: solid translucent polyline. Expected mid-grey diagonal;
+/// renders bright-green under the current mesh.wgsl bug.
+fn translucent_solid(ui: &mut Ui) {
+    backdrop(ui);
+    let translucent_green = Color::rgba(0.0, 1.0, 0.0, 0.5);
+    let pts = [Vec2::new(10.0, 20.0), Vec2::new(110.0, 100.0)];
+    ui.add_shape(Shape::Polyline {
+        points: &pts,
+        colors: PolylineColors::Single(translucent_green),
+        width: 16.0,
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+    });
+}
+
+/// Repro: per-point translucent. Same expected mid-grey; bug shows
+/// as bright vertex colours.
+fn translucent_per_point(ui: &mut Ui) {
+    backdrop(ui);
+    let pts = [
+        Vec2::new(10.0, 20.0),
+        Vec2::new(60.0, 100.0),
+        Vec2::new(110.0, 20.0),
+    ];
+    let cols = [
+        Color::rgba(1.0, 1.0, 0.0, 0.5),
+        Color::rgba(0.0, 1.0, 1.0, 0.5),
+        Color::rgba(1.0, 0.0, 1.0, 0.5),
+    ];
+    ui.add_shape(Shape::Polyline {
+        points: &pts,
+        colors: PolylineColors::PerPoint(&cols),
+        width: 14.0,
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+    });
+}
+
+/// Repro: α=0.25 — bug grows linearly with `(1 - a)`, so a lower
+/// alpha makes the over-bright effect even more obvious.
+/// Expected: tint slightly toward green of the magenta backdrop.
+/// Buggy: nearly opaque green.
+fn translucent_quarter(ui: &mut Ui) {
+    backdrop(ui);
+    let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
+    ui.add_shape(Shape::Polyline {
+        points: &pts,
+        colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.25)),
+        width: 24.0,
+        cap: LineCap::Butt,
+        join: LineJoin::Miter,
+    });
 }
 
 fn per_segment(ui: &mut Ui) {

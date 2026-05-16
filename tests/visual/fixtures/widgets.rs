@@ -657,3 +657,61 @@ fn polyline_round_join_matches_golden() {
     });
     assert_matches_golden("polyline_round_join", &img, Tolerance::default());
 }
+
+/// Pin: a translucent polyline must blend through
+/// `PREMULTIPLIED_ALPHA_BLENDING` correctly — the mesh pipeline's
+/// fragment shader must premultiply its straight-alpha vertex tint
+/// at output. The visual test paints a translucent green stroke
+/// (linear `(0, 1, 0)`, α=0.5) over an opaque magenta backdrop
+/// (linear `(1, 0, 1)`).
+///
+/// Correct premul source: linear blend yields `(0.5, 0.5, 0.5)` →
+/// sRGB-encoded ~`(188, 188, 188)` mid-grey.
+/// Bug (straight-alpha source mis-routed into premul blend): linear
+/// blend yields `(0.5, 1, 0.5)` → sRGB-encoded ~`(188, 255, 188)` —
+/// bright green tint, green channel >220.
+///
+/// Test asserts `green - max(red, blue) < 32` at the polyline's
+/// center pixel. A regression of the `mesh.wgsl::fs` premultiply
+/// step fails this with `delta ≈ 60+`.
+#[test]
+fn polyline_translucent_premultiplies_in_mesh_shader() {
+    use palantir::PolylineColors;
+    let mut h = Harness::new();
+    // Backdrop + a 24px horizontal translucent green stroke at y=60.
+    let img = h.render(UVec2::new(120, 120), 1.0, Color::BLACK, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(1.0, 0.0, 1.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+                let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
+                ui.add_shape(Shape::Polyline {
+                    points: &pts,
+                    colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                    width: 24.0,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
+                });
+            });
+    });
+    // Sample the stroke's center (x=60, y=60). RgbaImage is
+    // sRGB-encoded after the swapchain target's auto-encode.
+    let px = img.get_pixel(60, 60);
+    let r = px.0[0] as i32;
+    let g = px.0[1] as i32;
+    let b = px.0[2] as i32;
+    let dominant_green = g - r.max(b);
+    assert!(
+        dominant_green < 32,
+        "translucent polyline over magenta backdrop should blend to ~grey \
+         (g - max(r,b) ≈ 0 under correct premul); got rgb=({r}, {g}, {b}), \
+         green-dominance={dominant_green}. mesh.wgsl::fs probably forgot to \
+         premultiply (see docs/review-wgsl-shaders.md A1)."
+    );
+}
