@@ -1,7 +1,7 @@
 use crate::showcase::swatch;
-use palantir::{Configure, Frame, Panel, Sizing, Ui};
+use palantir::{Configure, Frame, Panel, Sizing, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -14,7 +14,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, gap: f32) {
+fn row(ui: &mut UiCore, id: &'static str, gap: f32) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Fixed(48.0)))

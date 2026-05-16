@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::cache::{ArenaSnapshot, AvailableKey};
@@ -8,11 +8,11 @@ use crate::primitives::{color::Color, size::Size};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
+fn run_frame(ui: &mut UiCore, record: impl FnOnce(&mut UiCore)) {
     run_frame_at(ui, UVec2::new(200, 200), record);
 }
 
-fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
+fn run_frame_at(ui: &mut UiCore, size: UVec2, record: impl FnOnce(&mut UiCore)) {
     let mut record = Some(record);
     ui.run_at_acked(size, |ui| {
         Panel::hstack()
@@ -28,7 +28,7 @@ struct SnapView<'a> {
     avail: AvailableKey,
 }
 
-fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
+fn snap_for(ui: &UiCore, wid: WidgetId) -> Option<SnapView<'_>> {
     let cache = &ui.layout_engine.cache;
     let snap = *cache.snapshots.get(&wid)?;
     let nodes = snap.nodes.range();
@@ -45,7 +45,7 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
 /// past its end). Pin the invariant after every operation that touches
 /// the cache.
 #[track_caller]
-fn assert_node_columns_aligned(ui: &Ui) {
+fn assert_node_columns_aligned(ui: &UiCore) {
     let n = &ui.layout_engine.cache.nodes;
     let len = n.desired.len();
     assert_eq!(n.text_spans.len(), len, "text_spans length drift");
@@ -54,7 +54,7 @@ fn assert_node_columns_aligned(ui: &Ui) {
 
 #[test]
 fn leaf_snapshot_populated_after_first_frame() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     run_frame(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
@@ -75,8 +75,8 @@ fn leaf_snapshot_populated_after_first_frame() {
 
 #[test]
 fn unchanged_leaf_keeps_subtree_hash_across_frames() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Frame::new()
             .id_salt("a")
             .size(50.0)
@@ -96,7 +96,7 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
 
 #[test]
 fn changing_leaf_authoring_replaces_snapshot() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     run_frame(&mut ui, |ui| {
         Frame::new()
             .id_salt("a")
@@ -128,7 +128,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
 
 #[test]
 fn removed_widget_is_evicted() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     run_frame(&mut ui, |ui| {
         Frame::new().id_salt("gone").size(40.0).show(ui);
         Frame::new().id_salt("kept").size(40.0).show(ui);
@@ -153,8 +153,8 @@ fn cache_hit_replays_same_desired_size() {
     // Two identical frames: the second must produce the same `desired`
     // as the first. Correctness contract for the short-circuit — a
     // hit must not perturb layout output.
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Frame::new()
             .id_salt("a")
             .size(50.0)
@@ -178,8 +178,8 @@ fn changing_available_forces_miss_and_remeasure() {
     // shrinks between frames → `available_q` arm of the cache key
     // diverges. The snapshot must be replaced, not stale.
     use crate::layout::types::sizing::Sizing;
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::hstack().id_salt("inner").show(ui, |ui| {
             Frame::new()
                 .id_salt("fill")
@@ -210,7 +210,7 @@ fn subtree_snapshot_covers_every_descendant() {
     // Phase-2 contract: a parent's snapshot stores `desired` for
     // every node in its subtree, in pre-order, contiguous. Verifies
     // that the snapshot's length matches the tree's `subtree_end`.
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     run_frame(&mut ui, |ui| {
         Panel::vstack().id_salt("group").show(ui, |ui| {
             Frame::new().id_salt("c1").size(10.0).show(ui);
@@ -234,8 +234,8 @@ fn subtree_skip_preserves_descendant_rects() {
     // Identical frames must produce identical arranged rects for
     // every node, even when the parent (and so the whole subtree) is
     // short-circuited.
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::vstack().id_salt("group").show(ui, |ui| {
             Frame::new().id_salt("c1").size(10.0).show(ui);
             Frame::new().id_salt("c2").size(20.0).show(ui);
@@ -283,8 +283,8 @@ fn in_place_rewrite_preserves_arena_position() {
     // Steady-state hot path: same WidgetId, same subtree size → the
     // arena range must be reused in place, never appended. Verifies
     // the optimization that lets us amortize allocations.
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui, c: f32| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore, c: f32| {
         Frame::new()
             .id_salt("a")
             .size(50.0)
@@ -327,7 +327,7 @@ fn arena_invariant_holds_under_fragmentation() {
     // inside `write_subtree`; we don't assert *which* write fired
     // it, only that the invariant holds at the end.
     use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
 
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
@@ -365,7 +365,7 @@ fn cache_hits_remain_valid_after_compaction() {
     // `desired` data on subsequent cache hits — i.e. the snapshot's
     // new arena range still contains the right bytes.
     use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
 
     // Frame 1: enough widgets to clear the floor; remember one that
     // we'll keep across frames.
@@ -417,7 +417,7 @@ fn cache_hits_remain_valid_after_compaction() {
 /// tests) or under-invalidates (ancestors hit with stale data).
 #[test]
 fn partial_invalidation_busts_ancestors_preserves_siblings() {
-    let build = |ui: &mut Ui, leaf_color: Color| {
+    let build = |ui: &mut UiCore, leaf_color: Color| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Panel::vstack().id_salt("changing-branch").show(ui, |ui| {
                 Frame::new()
@@ -442,11 +442,11 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         });
     };
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
-    let snap = |ui: &Ui, key: &str| {
+    let snap = |ui: &UiCore, key: &str| {
         ui.layout_engine
             .cache
             .snapshots
@@ -515,7 +515,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
 /// cache's `live_entries` accounting must stay consistent.
 #[test]
 fn cache_handles_widget_reappearance_after_eviction() {
-    let with_widget = |ui: &mut Ui| {
+    let with_widget = |ui: &mut UiCore| {
         Panel::vstack().id_salt("inner").show(ui, |ui| {
             Frame::new()
                 .id_salt("blip")
@@ -527,11 +527,11 @@ fn cache_handles_widget_reappearance_after_eviction() {
                 .show(ui);
         });
     };
-    let without_widget = |ui: &mut Ui| {
+    let without_widget = |ui: &mut UiCore| {
         Panel::vstack().id_salt("inner").show(ui, |_ui| {});
     };
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let blip = WidgetId::from_hash("blip");
 
     // Frame 1: present.

@@ -31,13 +31,13 @@ const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 /// frame before reading shapes for align assertions — `warmup_then`
 /// below packages that.
 fn frame(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
 ) -> NodeId {
     let mut node: Option<NodeId> = None;
-    let mut record = |ui: &mut Ui| {
+    let mut record = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
                 .id_salt("align-ed")
@@ -59,7 +59,7 @@ fn frame(
 /// has a real `response.rect`; the second frame's shape stream is
 /// what every align assertion reads.
 fn warmup_then(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
@@ -74,7 +74,7 @@ fn warmup_then(
 /// with a `local_rect` (selection rects come before the text; the
 /// caret comes after — for empty focused editors it's the only
 /// `RoundedRect` in the stream).
-fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
+fn shape_origins(ui: &UiCore, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let mut text_origin = None;
     let mut caret_origin = None;
     for s in ui.forest.tree(Layer::Main).shapes_of(node) {
@@ -97,7 +97,7 @@ fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec
 /// `InputEvent::KeyDown` is a unit event; modifier state attaches to
 /// the queued `KeyPress` after the fact (mirror of how
 /// `multiline.rs:96-98` builds shift+arrow).
-fn shift_arrow_right(ui: &mut Ui) {
+fn shift_arrow_right(ui: &mut UiCore) {
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowRight,
         repeat: false,
@@ -342,8 +342,8 @@ mod per_line {
     use crate::{Align, HAlign};
     use glam::UVec2;
 
-    fn cosmic_ui() -> Ui {
-        Ui::for_test_at_text(UVec2::new(800, 200))
+    fn cosmic_ui() -> UiCore {
+        UiCore::for_test_at_text(UVec2::new(800, 200))
     }
 
     #[test]
@@ -470,7 +470,7 @@ mod per_line {
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut node = None;
-        let mut record = |ui: &mut Ui| {
+        let mut record = |ui: &mut UiCore| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
                     TextEdit::new(&mut buf)
@@ -532,7 +532,7 @@ mod per_line {
     fn stable_multiline_holds_constant_per_frame_cost() {
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
-        let mut record = |ui: &mut Ui| {
+        let mut record = |ui: &mut UiCore| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id_salt("stable-ml")
@@ -581,7 +581,7 @@ mod per_line {
         let mut ui = cosmic_ui();
         let mut buf = String::new();
         let mut node = None;
-        let mut record = |ui: &mut Ui| {
+        let mut record = |ui: &mut UiCore| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
                     TextEdit::new(&mut buf)
@@ -711,7 +711,7 @@ mod per_line {
         let buf_init = String::from("short\nlonger line here");
         let id = WidgetId::from_hash("ml-right");
         let mut buf = buf_init.clone();
-        let mut record = |ui: &mut Ui| {
+        let mut record = |ui: &mut UiCore| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
                     .id_salt("ml-right")
@@ -761,7 +761,7 @@ fn multiline_default_is_top_left() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("abcd");
     let mut node: Option<NodeId> = None;
-    let mut record = |ui: &mut Ui| {
+    let mut record = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             node = Some(
                 TextEdit::new(&mut buf)

@@ -68,12 +68,12 @@ impl Response {
 pub mod test_support {
     #![allow(dead_code, private_interfaces)]
     use super::*;
-    use crate::Ui;
+    use crate::UiCore;
     use crate::forest::tree::NodeId;
 
     impl Response {
         /// Old `Response.node` field as an inherent test-only method.
-        pub fn node(&self, ui: &Ui) -> NodeId {
+        pub fn node(&self, ui: &UiCore) -> NodeId {
             ui.node_for_widget_id(self.id)
         }
     }

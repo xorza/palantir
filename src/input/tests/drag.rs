@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
@@ -8,7 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn build_clickable(ui: &mut Ui) {
+fn build_clickable(ui: &mut UiCore) {
     Panel::hstack()
         .id_salt("target")
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -22,7 +22,7 @@ fn id() -> WidgetId {
 
 #[test]
 fn drag_delta_none_before_press() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     assert_eq!(ui.input.drag_delta(id()), None, "no press → no drag");
@@ -30,7 +30,7 @@ fn drag_delta_none_before_press() {
 
 #[test]
 fn drag_delta_tracks_pointer_minus_press() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -45,7 +45,7 @@ fn drag_delta_tracks_pointer_minus_press() {
 
 #[test]
 fn drag_delta_persists_when_pointer_leaves_widget_rect() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(400, 400), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -56,7 +56,7 @@ fn drag_delta_persists_when_pointer_leaves_widget_rect() {
 
 #[test]
 fn drag_delta_clears_on_release() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -73,7 +73,7 @@ fn drag_delta_clears_on_release() {
 
 #[test]
 fn drag_delta_none_when_pointer_left_surface() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -84,7 +84,7 @@ fn drag_delta_none_when_pointer_left_surface() {
 
 #[test]
 fn drag_delta_only_for_active_widget() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 20.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -103,7 +103,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     // Outer non-clickable wraps a small clickable so the root doesn't
     // auto-fill the surface and swallow the press.
     let surface = UVec2::new(400, 400);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
                 .id_salt("target")
@@ -112,7 +112,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
                 .show(ui, |_| {});
         });
     };
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(surface, build);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));

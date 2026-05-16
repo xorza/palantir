@@ -5,10 +5,10 @@
 
 use palantir::{
     Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Shadow, Sizing, Stroke,
-    TextStyle, Ui, WidgetLook,
+    TextStyle, UiCore, WidgetLook,
 };
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -63,7 +63,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn row(ui: &mut UiCore, id: &'static str, body: impl FnOnce(&mut UiCore)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))

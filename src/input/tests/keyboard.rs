@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
 use crate::ui::cascade::Cascades;
@@ -169,7 +169,7 @@ fn text_events_arrive_in_order_in_keyboard_buffer() {
 #[test]
 fn focus_policy_routing() {
     use crate::FocusPolicy;
-    use crate::Ui;
+    use crate::UiCore;
     use crate::forest::element::Configure;
     use crate::input::pointer::PointerButton;
     use crate::layout::types::sizing::Sizing;
@@ -183,7 +183,7 @@ fn focus_policy_routing() {
     ];
     let surface = glam::UVec2::new(200, 80);
     let editable_id = WidgetId::from_hash("editable");
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("editable")
@@ -193,7 +193,7 @@ fn focus_policy_routing() {
         });
     };
     for (label, policy, expect_focus) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.set_focus_policy(*policy);
         ui.run_at_acked(surface, build);
         ui.click_at(glam::Vec2::new(50.0, 20.0));
@@ -211,21 +211,21 @@ fn focus_policy_routing() {
         assert_eq!(ui.focused_id(), expected, "{label}: after outside press");
     }
     // Default policy is ClearOnMiss.
-    assert_eq!(Ui::for_test().focus_policy(), FocusPolicy::ClearOnMiss);
+    assert_eq!(UiCore::for_test().focus_policy(), FocusPolicy::ClearOnMiss);
 }
 
 #[test]
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
-    use crate::Ui;
+    use crate::UiCore;
     use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
     let surface = glam::UVec2::new(400, 80);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("editable")
@@ -257,7 +257,7 @@ fn focus_is_evicted_when_widget_disappears() {
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = glam::UVec2::new(200, 80);
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -283,7 +283,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
 #[test]
 fn request_focus_bypasses_policy() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let id = crate::primitives::widget_id::WidgetId::from_hash("manual");
     ui.request_focus(Some(id));
     assert_eq!(ui.focused_id(), Some(id));
@@ -307,7 +307,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     }
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()

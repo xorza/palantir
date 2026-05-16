@@ -9,7 +9,7 @@
 //! through the mono fallback.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, Track, Ui};
+use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, Track, UiCore};
 use std::hint::black_box;
 use std::rc::Rc;
 
@@ -18,7 +18,7 @@ use std::rc::Rc;
 /// enable it, so we inline the equivalent here.
 const SCALE: usize = 32;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui(ui: &mut UiCore) {
     let sidebar_items = 5 * SCALE;
     let chat_messages = 2 * SCALE;
     let canvas_dots = 3 * SCALE;
@@ -217,7 +217,7 @@ fn build_ui(ui: &mut Ui) {
 fn bench_frame(c: &mut Criterion) {
     use palantir::{Display, FrameStamp};
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
-    let mut ui = Ui::default();
+    let mut ui = UiCore::default();
 
     c.bench_function("frame/post_record", |b| {
         b.iter(|| {
@@ -234,7 +234,7 @@ fn bench_frame(c: &mut Criterion) {
     // Same workload, but the window resizes every iteration so the
     // measure/encode caches see a fresh `available` quantization each frame.
     // Approximates a live drag-resize.
-    let mut ui = Ui::default();
+    let mut ui = UiCore::default();
     let mut frame = 0u32;
     c.bench_function("frame/post_record_resizing", |b| {
         b.iter(|| {

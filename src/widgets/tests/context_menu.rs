@@ -1,6 +1,6 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::Key;
@@ -18,7 +18,7 @@ fn trigger_id() -> WidgetId {
     WidgetId::from_hash("trigger")
 }
 
-fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
+fn build(ui: &mut UiCore, clicked_copy: &mut bool, _unused: &mut bool) {
     Panel::vstack()
         .id_salt("root")
         .size((Sizing::FILL, Sizing::FILL))
@@ -43,13 +43,13 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
         });
 }
 
-fn menu_open(ui: &Ui) -> bool {
+fn menu_open(ui: &UiCore) -> bool {
     ContextMenu::is_open(ui, trigger_id())
 }
 
 #[test]
 fn secondary_click_opens_menu_at_pointer() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -64,7 +64,7 @@ fn secondary_click_opens_menu_at_pointer() {
 
 #[test]
 fn outside_click_dismisses_menu() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -84,7 +84,7 @@ fn outside_click_dismisses_menu() {
 
 #[test]
 fn item_click_dismisses_and_reports_clicked() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -112,7 +112,7 @@ fn item_click_dismisses_and_reports_clicked() {
 /// mirroring native menu behaviour. Disabled items don't intercept.
 #[test]
 fn shortcut_press_fires_item_and_dismisses() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -149,7 +149,7 @@ fn shortcut_press_fires_item_and_dismisses() {
 
 #[test]
 fn escape_dismisses_menu() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
@@ -176,7 +176,7 @@ fn escape_dismisses_menu() {
 /// container.
 #[test]
 fn menu_body_width_does_not_span_surface() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut copied = false;
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));

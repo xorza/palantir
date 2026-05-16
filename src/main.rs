@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use palantir::{
-    Background, Button, Color, Configure, FramePresent, Host, InputEvent, Panel, Shadow, Sizing, Ui,
+    Background, Button, Color, Configure, FramePresent, Host, InputEvent, Panel, Shadow, Sizing, UiCore,
 };
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, StartCause, WindowEvent};
@@ -20,7 +20,7 @@ use showcase::{
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
 /// central panel. Adding a new showcase = one line here + one new module.
-type ShowcaseFn = fn(&mut Ui);
+type ShowcaseFn = fn(&mut UiCore);
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
@@ -293,7 +293,7 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
     }
 }
 
-fn build_ui(ui: &mut Ui, active: &mut usize) {
+fn build_ui(ui: &mut UiCore, active: &mut usize) {
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()

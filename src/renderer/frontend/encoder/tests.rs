@@ -2,7 +2,7 @@ use super::super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use super::align_text_in;
-use crate::Ui;
+use crate::UiCore;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
@@ -77,7 +77,7 @@ fn baseline_draw_rect_count_cases() {
         ),
     ];
     for (label, scene, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| match scene {
                 Scene::Empty => {}
@@ -128,7 +128,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::corners::Corners;
     use crate::shape::{LineCap, LineJoin, Shape};
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::RoundedRect {
@@ -199,7 +199,7 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     use crate::renderer::quad::FillKind;
     use crate::shape::Shape;
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::Shadow {
@@ -255,7 +255,7 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
 #[test]
 fn text_shape_emits_draw_text() {
     use crate::Text;
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 200));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(200, 200));
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Text::new("hi").auto_id().show(ui);
@@ -273,7 +273,7 @@ fn text_shape_emits_draw_text() {
 /// `DrawRect`s of its own.
 #[test]
 fn clip_only_surface_emits_clip_but_no_draw() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -292,7 +292,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
 
 #[test]
 fn clip_emits_balanced_push_pop() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -348,7 +348,7 @@ fn clip_emits_balanced_push_pop() {
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut panel_node = None;
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -406,7 +406,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
 
 #[test]
 fn clip_rounded_falls_back_to_scissor_without_background() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -495,7 +495,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let xform = TranslateScale::new(Vec2::new(5.0, 7.0), 2.0);
 
     let surface = UVec2::new(400, 400);
-    let build = |ui: &mut Ui, capture: &mut (bool, bool, bool)| {
+    let build = |ui: &mut UiCore, capture: &mut (bool, bool, bool)| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
                 .id_salt("mid")
@@ -542,7 +542,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
         });
     };
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut sink = (false, false, false);
     ui.run_at_acked(surface, |ui| build(ui, &mut sink));
 
@@ -581,7 +581,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     );
     assert!(ui.response_for(h_id).rect.is_some());
 
-    fn press_and_release_at(ui: &mut Ui, p: Vec2) {
+    fn press_and_release_at(ui: &mut UiCore, p: Vec2) {
         ui.on_input(InputEvent::PointerMoved(p));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -609,7 +609,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
 
 #[test]
 fn nested_clips_each_emit_their_own_pair() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
@@ -633,7 +633,7 @@ fn nested_clips_each_emit_their_own_pair() {
 
 #[test]
 fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut child_node = None;
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::vstack().auto_id().disabled(true).show(ui, |ui| {
@@ -685,7 +685,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
-    let mut ui = Ui::new(
+    let mut ui = UiCore::new(
         TextShaper::with_bundled_fonts(),
         FrameArena::default(),
         crate::renderer::caches::RenderCaches::default(),
@@ -734,7 +734,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
         ("inside_filter_kept", Rect::new(0.0, 0.0, 200.0, 200.0), 2),
     ];
     for (label, filter, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Frame::new()
@@ -784,10 +784,10 @@ fn damage_filter_culls_subtree_outside_damage() {
         ),
     ];
     for (label, wrap, push_kind, pop_kind) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                let inner = |ui: &mut Ui| {
+                let inner = |ui: &mut UiCore| {
                     Frame::new()
                         .id_salt("inner")
                         .size(20.0)
@@ -822,7 +822,7 @@ fn damage_filter_culls_subtree_outside_damage() {
 
 #[test]
 fn damage_filter_paints_leaves_in_any_rect() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::canvas()
             .auto_id()
@@ -857,7 +857,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
 /// on-screen sibling paints.
 #[test]
 fn viewport_cull_skips_offscreen_subtree() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::canvas()
             .auto_id()

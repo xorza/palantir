@@ -14,7 +14,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::Vec2;
@@ -203,7 +203,7 @@ fn bar_plan(
 /// the click-to-page surface stays available — the gutter is reserved
 /// either way and matches OS scrollbar conventions.
 fn push_bar_nodes(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     plan: BarPlan,
     track_id: WidgetId,
     thumb_id: WidgetId,
@@ -342,7 +342,7 @@ impl Scroll {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut UiCore, body: impl FnOnce(&mut UiCore)) -> Response {
         let id = self.element.id;
         let mode = self.element.mode;
         assert!(

@@ -9,7 +9,7 @@
 use crate::allocator::with_audit;
 use crate::harness;
 use crate::harness::{run_audit, user_frames};
-use palantir::{Button, Configure, Display, FrameStamp, Sizing, Ui};
+use palantir::{Button, Configure, Display, FrameStamp, Sizing, UiCore};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -143,7 +143,7 @@ fn stale_traces_drained_between_audits() {
 #[test]
 fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
     let result = catch_unwind(AssertUnwindSafe(|| {
-        run_audit("synthetic_overshoot", 0, 4, 0, |_ui: &mut Ui| {
+        run_audit("synthetic_overshoot", 0, 4, 0, |_ui: &mut UiCore| {
             one_alloc();
         });
     }));

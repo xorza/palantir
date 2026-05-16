@@ -1,5 +1,5 @@
 use palantir::{
-    Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
+    Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, UiCore, VAlign,
     WidgetId,
 };
 
@@ -18,7 +18,7 @@ use palantir::{
 /// so it survives across showcase tab switches. The widget itself takes
 /// `&mut String`, so we `mem::take` out of the state map for the body and put
 /// it back at the end. Two moves of a small `String` — fine.
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     let buf_a_id = WidgetId::from_hash("textedit_showcase__buffer_a");
     let buf_b_id = WidgetId::from_hash("textedit_showcase__buffer_b");
     let buf_ml_id = WidgetId::from_hash("textedit_showcase__buffer_ml");
@@ -136,7 +136,7 @@ pub fn build(ui: &mut Ui) {
 /// combination. Editors are wider than the natural label width and
 /// twice the line height so the vertical placement is obvious; each
 /// row's buffer survives across tab switches via `Ui::state_mut`.
-pub fn build_align(ui: &mut Ui) {
+pub fn build_align(ui: &mut UiCore) {
     const ROWS: [(VAlign, &str); 3] = [
         (VAlign::Top, "top"),
         (VAlign::Center, "center"),

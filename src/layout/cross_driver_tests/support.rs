@@ -4,7 +4,7 @@
 //! third caller appears.
 
 use crate::TextStyle;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -31,7 +31,7 @@ pub(crate) fn shaped_text(result: &LayerLayout, id: NodeId) -> ShapedText {
 /// in column 0 is the unit under test; column 1 carries a short label
 /// to keep the second column from collapsing. Returns the wrapping
 /// node so the test can read its shape afterwards.
-pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> NodeId {
+pub(crate) fn two_hug_cols_with_wrap(ui: &mut UiCore, paragraph: &'static str) -> NodeId {
     let mut text_node = None;
     Grid::new()
         .auto_id()
@@ -59,7 +59,7 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
 /// VStack containing a `(Fill × Hug)` HStack with a Fixed-size avatar
 /// followed by a wrapping `Fill` text. Models the chat-message
 /// pattern. Returns the message text node.
-pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
+pub(crate) fn chat_message(ui: &mut UiCore, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
     let mut message_node = None;
     Panel::vstack().auto_id().show(ui, |ui| {
         Panel::hstack()

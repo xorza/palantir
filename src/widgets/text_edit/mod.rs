@@ -12,7 +12,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
 use crate::text::{CursorPos, FontFamily};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -439,7 +439,7 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response {
+    pub fn show(mut self, ui: &mut UiCore) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
@@ -813,7 +813,7 @@ struct InputResult {
 /// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
 fn handle_input(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,

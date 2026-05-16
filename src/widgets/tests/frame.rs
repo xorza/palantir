@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
@@ -11,7 +11,7 @@ use glam::UVec2;
 
 #[test]
 fn frame_paints_a_single_rounded_rect() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut frame_node = None;
     ui.run_at(UVec2::new(200, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -53,7 +53,7 @@ fn frame_paints_a_single_rounded_rect() {
 fn frame_with_sense_click_is_clickable() {
     use glam::Vec2;
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 100);
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

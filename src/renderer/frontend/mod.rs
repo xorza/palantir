@@ -24,7 +24,7 @@ use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::ui::frame_report::RenderPlan;
 
 /// CPU paint stage: tree → encoded commands → composed buffer. Owns
@@ -62,7 +62,7 @@ impl Frontend {
     /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this
     /// stage reads everything it needs from the inputs without
     /// per-call theme threading.
-    pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
+    pub(crate) fn build(&mut self, ui: &UiCore, plan: RenderPlan) -> &RenderBuffer {
         let mut arena = self.frame_arena.inner_mut();
         encode(ui, &arena, plan, &mut self.cmds);
         self.composer

@@ -16,7 +16,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::ui::cascade::Cascade;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::RenderPlan;
@@ -57,7 +57,7 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
 /// `out` is cleared at entry; capacity is retained across frames.
 #[profiling::function]
 pub(crate) fn encode(
-    ui: &Ui,
+    ui: &UiCore,
     arena: &FrameArenaInner,
     plan: RenderPlan,
     out: &mut RenderCmdBuffer,
@@ -99,7 +99,7 @@ pub(crate) fn encode(
 /// ignores any clip context the colliding widgets sit under (scroll
 /// viewports, clipped popups). Both `NodeId`s are precomputed at
 /// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
+fn emit_collision_overlays(ui: &UiCore, out: &mut RenderCmdBuffer) {
     if ui.forest.collisions.is_empty() {
         return;
     }

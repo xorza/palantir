@@ -5,7 +5,7 @@
 //! hit.
 
 use crate::TextStyle;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::tree::NodeId;
@@ -23,10 +23,10 @@ use std::rc::Rc;
 /// every captured node's arranged rect matches across the two frames.
 /// `record` pushes the nodes whose rects matter into `capture`.
 fn assert_warm_rects_match_cold(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     size: UVec2,
     msg: &str,
-    mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
+    mut record: impl FnMut(&mut UiCore, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
     ui.run_at_acked(size, |ui| record(ui, &mut cold_nodes));
@@ -55,7 +55,7 @@ fn assert_warm_rects_match_cold(
 /// both, in pre-order).
 #[test]
 fn cache_hit_preserves_grid_cell_rects() {
-    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    type Build = fn(&mut UiCore, &mut Vec<NodeId>);
     let cases: &[(&str, Build)] = &[
         ("single_grid", |ui, capture| {
             Panel::vstack()
@@ -191,7 +191,7 @@ fn cache_hit_preserves_grid_cell_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+        let mut ui = UiCore::for_test_at_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
             &mut ui,
             UVec2::new(800, 600),
@@ -218,7 +218,7 @@ fn cache_hit_preserves_grid_cell_rects() {
 /// reads stale or zero state, the warm rect will diverge.
 #[test]
 fn cache_hit_preserves_per_driver_rects() {
-    type Build = fn(&mut Ui, &mut Vec<NodeId>);
+    type Build = fn(&mut UiCore, &mut Vec<NodeId>);
     let cases: &[(&str, Build)] = &[
         ("hstack", |ui, capture| {
             Panel::vstack().auto_id().show(ui, |ui| {
@@ -331,7 +331,7 @@ fn cache_hit_preserves_per_driver_rects() {
         }),
     ];
     for (label, record) in cases {
-        let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+        let mut ui = UiCore::for_test_at_text(UVec2::new(800, 600));
         assert_warm_rects_match_cold(
             &mut ui,
             UVec2::new(800, 600),
@@ -347,7 +347,7 @@ fn cache_hit_preserves_per_driver_rects() {
 /// byte-identical to one from a cold frame.
 #[test]
 fn encoded_buffer_stable_across_cache_hit_boundary() {
-    let record = |ui: &mut Ui| {
+    let record = |ui: &mut UiCore| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -412,7 +412,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             });
     };
 
-    let mut ui = Ui::for_test_at_text(UVec2::new(800, 600));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(800, 600));
     ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
     let cold = ui.encode_cmds();
 
@@ -430,7 +430,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
 /// via `internals::clear_measure_cache()` is the ground-truth oracle.
 #[test]
 fn cache_rects_match_cold_oracle_across_width_changes() {
-    let record = |ui: &mut Ui, capture: &mut Vec<NodeId>| {
+    let record = |ui: &mut UiCore, capture: &mut Vec<NodeId>| {
         capture.clear();
         Panel::vstack()
             .auto_id()
@@ -472,7 +472,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             });
     };
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         let mut warm_nodes = Vec::new();

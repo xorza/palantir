@@ -135,7 +135,7 @@ struct AppSlot {
 /// and a private frame arena. Hosts that need to share the shaper /
 /// arena with the wgpu backend use [`Self::new`] instead.
 #[derive(Default)]
-pub struct Ui {
+pub struct UiCore {
     pub(crate) forest: Forest,
     pub theme: Theme,
     /// Per-frame debug visualizations. Default all-off; flip flags
@@ -235,7 +235,7 @@ pub struct Ui {
     pub caches: RenderCaches,
 }
 
-impl Ui {
+impl UiCore {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
     /// animation tickers instead of teleporting; [`Self::time`]
     /// still tracks the host's true clock.
@@ -294,7 +294,7 @@ impl Ui {
         &mut self,
         stamp: FrameStamp,
         state: &mut T,
-        mut record: impl FnMut(&mut Ui),
+        mut record: impl FnMut(&mut UiCore),
     ) -> FrameReport {
         // The frame arena is shared via Rc so the renderer sees the
         // same bytes. Clear it once at the top of the record cycle;
@@ -304,7 +304,7 @@ impl Ui {
         // guard restores the prior slot on scope exit (incl. panic) so
         // nested frames stack cleanly.
         struct Guard<'a> {
-            ui: &'a mut Ui,
+            ui: &'a mut UiCore,
             prev: Option<AppSlot>,
         }
         impl Drop for Guard<'_> {
@@ -320,7 +320,11 @@ impl Ui {
         g.ui.frame_inner(stamp, &mut record)
     }
 
-    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
+    fn frame_inner(
+        &mut self,
+        stamp: FrameStamp,
+        mut record: impl FnMut(&mut UiCore),
+    ) -> FrameReport {
         profiling::scope!("Ui::frame");
         assert!(
             stamp.display.scale_factor >= EPS,
@@ -530,7 +534,7 @@ impl Ui {
     /// One `pre_record` → user record → drain action flag → `post_record`
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
-    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
+    fn record_pass(&mut self, record: &mut impl FnMut(&mut UiCore)) -> bool {
         {
             profiling::scope!("Ui::pre_record");
             self.forest.pre_record();
@@ -819,7 +823,7 @@ impl Ui {
         layer: Layer,
         anchor: glam::Vec2,
         size: Option<crate::primitives::size::Size>,
-        body: impl FnOnce(&mut Ui),
+        body: impl FnOnce(&mut UiCore),
     ) {
         self.forest.push_layer(layer, anchor, size);
         body(self);
@@ -829,7 +833,7 @@ impl Ui {
     /// Open a node with no paint chrome — the common path for layout-only
     /// containers, text leaves, and chrome-less Frames. Avoids passing
     /// a 232-byte `Option<Background>` through the call chain.
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) {
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut UiCore)) {
         self.forest.open_node(element);
         f(self);
         self.forest.close_node();
@@ -843,7 +847,7 @@ impl Ui {
         &mut self,
         element: Element,
         chrome: Background,
-        f: impl FnOnce(&mut Ui),
+        f: impl FnOnce(&mut UiCore),
     ) {
         self.forest.open_node_with_chrome(
             element,
@@ -982,7 +986,7 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
-    impl Ui {
+    impl UiCore {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
         pub fn for_test() -> Self {
             Self::default()
@@ -1015,19 +1019,19 @@ pub mod test_support {
         }
 
         /// One frame at `size`, time frozen at zero.
-        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut UiCore)) {
             let display = Display::from_physical(size, 1.0);
             self.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut UiCore)) {
             self.run_at(size, record);
             self.frame_state.mark_submitted();
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
-        pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
+        pub fn under_outer<F: FnMut(&mut UiCore) -> NodeId>(
             &mut self,
             surface: UVec2,
             mut f: F,

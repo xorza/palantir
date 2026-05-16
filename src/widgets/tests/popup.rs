@@ -9,7 +9,7 @@
 //! - `Dismiss` surfaces the outside-click via `PopupResponse.dismissed`
 //!   while `Block` swallows it silently.
 
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -25,7 +25,7 @@ const BODY_H: f32 = 60.0;
 // `Ui::frame` re-runs the build closure when action input is pending,
 // so we OR `dismissed` across passes — pass 1 sees the click, pass 2
 // would otherwise overwrite with a fresh false.
-fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
+fn record_body(ui: &mut UiCore, config: ClickOutside, dismissed: &mut bool) {
     Panel::vstack()
         .id_salt("main-bg")
         .size((Sizing::FILL, Sizing::FILL))
@@ -45,14 +45,14 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
         });
 }
 
-fn main_panel_clicked(ui: &Ui) -> bool {
+fn main_panel_clicked(ui: &UiCore) -> bool {
     let main_id = crate::primitives::widget_id::WidgetId::from_hash("main-bg");
     ui.response_for(main_id).clicked
 }
 
 #[test]
 fn click_inside_popup_does_not_dismiss() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
@@ -73,7 +73,7 @@ fn click_inside_popup_does_not_dismiss() {
 
 #[test]
 fn click_outside_popup_dismisses_and_blocks_main() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Dismiss, &mut dismissed);
@@ -101,9 +101,9 @@ fn click_outside_popup_dismisses_and_blocks_main() {
 /// has no popup-layer widgets — no stale frame ever reaches submit.
 #[test]
 fn run_frame_settles_popup_dismissal_in_one_call() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut open = true;
-    let scene = |ui: &mut Ui, open: &mut bool| {
+    let scene = |ui: &mut UiCore, open: &mut bool| {
         Panel::vstack()
             .id_salt("main-bg")
             .size((Sizing::FILL, Sizing::FILL))
@@ -157,7 +157,7 @@ fn popup_body_sizing_matches_sizing_mode() {
         ),
     ];
     for &(sw, sh, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at(SURFACE, |ui| {
             Panel::vstack()
                 .id_salt("main-bg")
@@ -189,7 +189,7 @@ fn popup_body_sizing_matches_sizing_mode() {
 
 #[test]
 fn click_outside_blocks_main_without_signaling_with_block_mode() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut dismissed = false;
     ui.run_at_acked(SURFACE, |ui| {
         record_body(ui, ClickOutside::Block, &mut dismissed);

@@ -4,7 +4,7 @@ use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use glam::Vec2;
 
@@ -43,7 +43,7 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut UiCore) -> Response {
         let id = self.element.id;
         let raw_state = ui.response_for(id);
         let mut state = raw_state;

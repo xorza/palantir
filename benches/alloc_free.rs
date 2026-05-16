@@ -21,7 +21,7 @@
 use glam::UVec2;
 use palantir::{
     Align, Button, Configure, Display, Frame, FrameStamp, Justify, Panel, Sizing, Text, TextStyle,
-    Ui,
+    UiCore,
 };
 use std::hint::black_box;
 
@@ -38,7 +38,7 @@ const MEASURE_FRAMES: usize = 256;
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
@@ -127,7 +127,7 @@ fn main() {
     };
 
     let display = Display::from_physical(PHYSICAL, SCALE);
-    let mut ui = Ui::default();
+    let mut ui = UiCore::default();
 
     for _ in 0..WARMUP_FRAMES {
         black_box(ui.frame(

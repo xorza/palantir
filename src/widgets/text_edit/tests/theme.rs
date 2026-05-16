@@ -279,7 +279,7 @@ fn no_selection_paints_no_highlight_rect() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+    let body = |ui: &mut UiCore, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
@@ -312,7 +312,7 @@ fn shift_end_paints_selection_highlight() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+    let body = |ui: &mut UiCore, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
@@ -442,7 +442,7 @@ fn line_height_override_changes_caret_rect_height() {
         let mut ui = ui_at_no_cosmic(NARROW);
         let mut buf = String::new();
         let mut leaf = None;
-        let body = |ui: &mut Ui,
+        let body = |ui: &mut UiCore,
                     leaf: &mut Option<crate::forest::tree::NodeId>,
                     buf: &mut String,
                     style: &Option<TextEditTheme>| {

@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::ShapeRecord;
@@ -18,7 +18,7 @@ const SURFACE: UVec2 = UVec2::new(200, 200);
 
 #[test]
 fn shapes_attached_to_button_node() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut button_node = None;
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -58,7 +58,7 @@ fn interleaved_shapes_record_correct_order() {
             stroke: Stroke::ZERO,
         }
     }
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut p = None;
     ui.run_at_acked(SURFACE, |ui| {
         p = Some(
@@ -149,7 +149,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
             stroke: Stroke::ZERO,
         }
     }
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut child_id = None;
     let mut parent_id = None;
     ui.run_at_acked(SURFACE, |ui| {
@@ -199,8 +199,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 
 // --- Authoring-hash tests ---------------------------------------------
 
-fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = Ui::for_test();
+fn record_hash<F: FnOnce(&mut UiCore) -> NodeId>(f: F) -> NodeHash {
+    let mut ui = UiCore::for_test();
     let mut target = None;
     let mut f = Some(f);
     ui.run_at_acked(SURFACE, |ui| {
@@ -211,7 +211,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 
 #[test]
 fn empty_tree_has_no_hashes() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(SURFACE, |_| {});
     // Synthetic viewport root: present even for an empty user record.
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
@@ -221,7 +221,7 @@ fn empty_tree_has_no_hashes() {
 
 #[test]
 fn same_authoring_produces_same_hash() {
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -241,7 +241,7 @@ fn same_authoring_produces_same_hash() {
 
 #[test]
 fn changing_fill_color_changes_hash() {
-    fn build_child(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build_child(ui: &mut UiCore, fill: Color) -> NodeId {
         let mut child = None;
         Panel::hstack().id_salt("root").show(ui, |ui| {
             child = Some(
@@ -273,7 +273,7 @@ fn widget_id_does_not_affect_hash() {
 #[test]
 fn changing_layout_property_changes_hash() {
     use crate::forest::visibility::Visibility;
-    type Build = fn(&mut Ui) -> NodeId;
+    type Build = fn(&mut UiCore) -> NodeId;
     let cases: &[(&str, Build, Build)] = &[
         (
             "size",
@@ -388,7 +388,7 @@ fn changing_layout_property_changes_hash() {
 #[test]
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;
-    fn build(ui: &mut Ui, label: &'static str) -> NodeId {
+    fn build(ui: &mut UiCore, label: &'static str) -> NodeId {
         let mut n = None;
         Panel::hstack().auto_id().show(ui, |ui| {
             n = Some(Text::new(label).id_salt("t").show(ui).node(ui));
@@ -402,7 +402,7 @@ fn changing_text_content_changes_hash() {
 
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
-    fn build(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build(ui: &mut UiCore, fill: Color) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -424,8 +424,8 @@ fn child_hash_does_not_affect_parent_hash() {
 
 // --- Subtree-hash rollup --------------------------------------------
 
-fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
-    let mut ui = Ui::for_test();
+fn record_subtree_hash<F: FnOnce(&mut UiCore) -> NodeId>(f: F) -> NodeHash {
+    let mut ui = UiCore::for_test();
     let mut target = None;
     let mut f = Some(f);
     ui.run_at_acked(SURFACE, |ui| {
@@ -436,7 +436,7 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 
 #[test]
 fn subtree_hash_stable_across_frames() {
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -464,7 +464,7 @@ fn subtree_hash_stable_across_frames() {
 
 #[test]
 fn subtree_hash_changes_when_descendant_changes() {
-    fn build(ui: &mut Ui, fill: Color) -> NodeId {
+    fn build(ui: &mut UiCore, fill: Color) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -486,8 +486,8 @@ fn subtree_hash_changes_when_descendant_changes() {
 
 #[test]
 fn subtree_hash_changes_on_sibling_reorder() {
-    fn build(ui: &mut Ui, swap: bool) -> NodeId {
-        let a = |ui: &mut Ui| {
+    fn build(ui: &mut UiCore, swap: bool) -> NodeId {
+        let a = |ui: &mut UiCore| {
             Frame::new()
                 .id_salt("a")
                 .size(50.0)
@@ -497,7 +497,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
                 })
                 .show(ui);
         };
-        let b = |ui: &mut Ui| {
+        let b = |ui: &mut UiCore| {
             Frame::new()
                 .id_salt("b")
                 .size(30.0)
@@ -532,7 +532,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
 fn transform_change_affects_subtree_but_not_node_hash() {
     use crate::primitives::transform::TranslateScale;
     use glam::Vec2;
-    fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
+    fn build(ui: &mut UiCore, t: TranslateScale) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .transform(t)
@@ -569,7 +569,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     let cols: Rc<[Track]> = Rc::from([Track::fill(), Track::fill()]);
     let rows: Rc<[Track]> = Rc::from([Track::fill()]);
 
-    let mut ui1 = Ui::for_test();
+    let mut ui1 = UiCore::for_test();
     let mut g1 = None;
     ui1.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -588,7 +588,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
                 .show(ui, |_| {});
         });
     });
-    let mut ui2 = Ui::for_test();
+    let mut ui2 = UiCore::for_test();
     let mut g2 = None;
     ui2.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
@@ -617,7 +617,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
 
 #[test]
 fn subtree_end_rolls_up_during_recording() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut root = None;
     ui.run_at_acked(SURFACE, |ui| {
         root = Some(
@@ -648,7 +648,7 @@ fn subtree_end_rolls_up_during_recording() {
 
 #[test]
 fn subtree_end_handles_deep_nesting() {
-    fn nest(ui: &mut Ui, depth: usize) {
+    fn nest(ui: &mut UiCore, depth: usize) {
         if depth == 0 {
             Frame::new().id_salt(("leaf", depth)).size(10.0).show(ui);
             return;
@@ -657,7 +657,7 @@ fn subtree_end_handles_deep_nesting() {
             .id_salt(("nest", depth))
             .show(ui, |ui| nest(ui, depth - 1));
     }
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(SURFACE, |ui| nest(ui, 16));
     let n = ui.forest.tree(Layer::Main).records.len() as u32;
     // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
@@ -680,7 +680,7 @@ fn subtree_end_handles_deep_nesting() {
 /// hashes for the second root regardless of the first's content.
 #[test]
 fn subtree_hash_rollup_root_local_across_two_roots() {
-    fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
+    fn build(ui: &mut UiCore, root_a_color: Color) -> u32 {
         Panel::vstack().id_salt("root-a").show(ui, |ui| {
             Frame::new()
                 .id_salt("a-leaf")
@@ -697,14 +697,14 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
         });
         b_first
     }
-    let mut ui1 = Ui::for_test();
+    let mut ui1 = UiCore::for_test();
     let mut b_first1 = 0;
     ui1.run_at_acked(SURFACE, |ui| {
         b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
     let h_b1 = ui1.forest.tree(Layer::Main).rollups.subtree[b_first1 as usize];
 
-    let mut ui2 = Ui::for_test();
+    let mut ui2 = UiCore::for_test();
     let mut b_first2 = 0;
     ui2.run_at_acked(SURFACE, |ui| {
         b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
@@ -716,7 +716,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
 
 #[test]
 fn ui_layer_records_popup_into_separate_tree() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack().id_salt("main-root").show(ui, |ui| {
@@ -763,7 +763,7 @@ fn ui_layer_size_caps_overlay_available() {
         (Some(Size::new(9999.0, 9999.0)), Size::new(350.0, 260.0)),
         (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 260.0)),
     ];
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     for (cap, expected) in cases {
         ui.run_at_acked(SURF, |ui| {
             Panel::vstack()
@@ -787,7 +787,7 @@ fn ui_layer_size_caps_overlay_available() {
 
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("only-main").show(ui, |ui| {
             Frame::new().id_salt("leaf").size(20.0).show(ui);
@@ -802,24 +802,24 @@ fn empty_popup_body_leaves_popup_tree_empty() {
 #[test]
 fn forest_independence_across_recording_orders() {
     let popup_anchor = glam::Vec2::new(10.0, 10.0);
-    let record_main = |ui: &mut Ui| {
+    let record_main = |ui: &mut UiCore| {
         Panel::vstack().id_salt("main-root").show(ui, |ui| {
             Frame::new().id_salt("main-leaf").size(50.0).show(ui);
         });
     };
-    let record_popup = |ui: &mut Ui| {
+    let record_popup = |ui: &mut UiCore| {
         ui.layer(Layer::Popup, popup_anchor, None, |ui| {
             Panel::vstack().id_salt("popup-root").show(ui, |ui| {
                 Frame::new().id_salt("popup-leaf").size(20.0).show(ui);
             });
         });
     };
-    let mut ui_p_first = Ui::for_test();
+    let mut ui_p_first = UiCore::for_test();
     ui_p_first.run_at_acked(UVec2::new(400, 400), |ui| {
         record_popup(ui);
         record_main(ui);
     });
-    let mut ui_m_first = Ui::for_test();
+    let mut ui_m_first = UiCore::for_test();
     ui_m_first.run_at_acked(UVec2::new(400, 400), |ui| {
         record_main(ui);
         record_popup(ui);
@@ -835,7 +835,7 @@ fn forest_independence_across_recording_orders() {
 
 #[test]
 fn mid_recording_popup_with_text_renders_through_encoder() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 100.0);
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack().id_salt("outer-main").show(ui, |ui| {
@@ -901,7 +901,7 @@ fn mid_recording_popup_keeps_trees_independent() {
         }
     }
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
     let mut parent = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
@@ -974,7 +974,7 @@ fn mid_recording_popup_keeps_trees_independent() {
 fn extras_columns_split_by_field_kind() {
     use crate::primitives::size::Size;
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack()
             .id_salt("panel-with-gap")
@@ -993,7 +993,7 @@ fn extras_columns_split_by_field_kind() {
 
 #[test]
 fn child_iter_traverses_correctly_after_finalize() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut root = None;
     ui.run_at_acked(SURFACE, |ui| {
         root = Some(

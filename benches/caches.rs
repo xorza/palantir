@@ -26,7 +26,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
-    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
+    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, UiCore,
 };
 use std::hint::black_box;
 
@@ -43,7 +43,7 @@ const DENSE_ROWS_PER_GROUP: usize = 12;
 /// by cmd-stream copy size, not just per-node walk overhead.
 const DENSE_SHAPES_PER_ROW: usize = 6;
 
-fn build(ui: &mut Ui) {
+fn build(ui: &mut UiCore) {
     Panel::vstack()
         .id_salt("nested-root")
         .gap(4.0)
@@ -97,7 +97,7 @@ fn build(ui: &mut Ui) {
 /// group surface (DrawRectStroked instead of DrawRect). Used to verify
 /// the compose-cache contribution finding from the simpler `build`
 /// workload — if the cache earns < 1% here too, deletion is justified.
-fn build_heavy(ui: &mut Ui) {
+fn build_heavy(ui: &mut UiCore) {
     let group_bg = Background {
         fill: Color::hex(0x1a1a1a).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
@@ -178,7 +178,7 @@ fn build_heavy(ui: &mut Ui) {
 /// memcpy-vs-walk asymmetry shows up if there is one. Keeps
 /// `Sizing::Fixed` everywhere so measure stays cheap and the encode
 /// signal isn't drowned by text shaping.
-fn build_dense(ui: &mut Ui) {
+fn build_dense(ui: &mut UiCore) {
     let avatar_bg = Background {
         fill: Color::hex(0x3a4a5c).into(),
         stroke: Stroke::ZERO,
@@ -242,7 +242,7 @@ fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("caches");
 
     group.bench_function("measure/cached", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -258,7 +258,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("measure/forced_miss", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -288,7 +288,7 @@ fn bench(c: &mut Criterion) {
     //   scroll-driven transform changes don't tax the rest of the
     //   pipeline.
     group.bench_function("scroll/idle", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -304,7 +304,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("scroll/active", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         // Frame 1: register the scroll viewport's rect/content/cascade.
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
@@ -378,7 +378,7 @@ fn bench(c: &mut Criterion) {
     // a high-cmd-density workload (none found; encode cache later
     // deleted). Kept as another baseline for measure.
     group.bench_function("dense/measure/cached", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -394,7 +394,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("dense/measure/forced_miss", |b| {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -413,7 +413,7 @@ fn bench(c: &mut Criterion) {
     group.finish();
 }
 
-fn build_scrolling(ui: &mut Ui) {
+fn build_scrolling(ui: &mut UiCore) {
     Scroll::vertical().id_salt("scroll-root").show(ui, build);
 }
 
@@ -422,12 +422,12 @@ fn build_scrolling(ui: &mut Ui) {
 /// reflects realistic per-glyph cost. Each call constructs a fresh
 /// `CosmicMeasure`; calling once per bench arm and reusing across
 /// `b.iter` invocations amortizes font-database parsing.
-fn fresh_heavy_ui() -> Ui {
+fn fresh_heavy_ui() -> UiCore {
     // Direct construction with bundled fonts (the
     // `support::internals::new_ui_mono` helper covers the no-text
     // case; this bench wants real shaping for steady-state text
     // measure work).
-    Ui::new(
+    UiCore::new(
         TextShaper::with_bundled_fonts(),
         palantir::FrameArena::default(),
     )

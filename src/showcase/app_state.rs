@@ -5,7 +5,7 @@
 //! also reads it to prove the install crosses arbitrary nesting and
 //! closure boundaries.
 
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
+use palantir::{Button, Configure, Panel, Sizing, Text, UiCore};
 
 /// State threaded through the entire showcase frame. Lives on `State`
 /// in `main.rs` and is installed via `Host::frame`.
@@ -13,7 +13,7 @@ pub struct AppState {
     pub counter: i32,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(12.0)
@@ -43,7 +43,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn deeply_nested_reader(ui: &mut Ui) {
+fn deeply_nested_reader(ui: &mut UiCore) {
     Panel::vstack().auto_id().gap(4.0).show(ui, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::vstack().auto_id().show(ui, |ui| {

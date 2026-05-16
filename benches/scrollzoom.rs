@@ -21,7 +21,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
-use palantir::{Display, FrameStamp, InputEvent, Ui};
+use palantir::{Display, FrameStamp, InputEvent, UiCore};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -35,8 +35,8 @@ const SCALE: f32 = 2.0;
 // surface). Picking the middle is robust to small layout drift.
 const VIEWPORT_CENTER: Vec2 = Vec2::new(320.0, 250.0);
 
-fn warmed_ui() -> (Ui, Display) {
-    let mut ui = Ui::for_test();
+fn warmed_ui() -> (UiCore, Display) {
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SIZE, SCALE);
     // Two frames so cascades populate and `post_record` latches the
     // Scroll widget as the scroll-target hit. Pointer must be inside
@@ -57,7 +57,7 @@ fn warmed_ui() -> (Ui, Display) {
     (ui, display)
 }
 
-fn run_frame(ui: &mut Ui, display: Display) {
+fn run_frame(ui: &mut UiCore, display: Display) {
     ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),

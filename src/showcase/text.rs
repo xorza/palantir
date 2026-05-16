@@ -2,7 +2,7 @@ use super::swatch::section;
 use crate::showcase::swatch;
 use palantir::Track;
 use palantir::{
-    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
+    Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, UiCore,
 };
 use std::rc::Rc;
 
@@ -13,7 +13,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
 /// "text" tab — basic single-text wrapping mechanics in fixed-width
 /// containers. The simplest demonstrations of `Text::new(...).auto_id().wrapping()`
 /// and the intrinsic-min overflow rule.
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -87,7 +87,7 @@ pub fn build(ui: &mut Ui) {
 /// "text layouts" tab — composition patterns from the intrinsic-dimensions
 /// plan: Grid Auto under constraint (Step B), property grid (Step B), and
 /// chat-message HStack with Fill text (Step C).
-pub fn build_layouts(ui: &mut Ui) {
+pub fn build_layouts(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -200,7 +200,7 @@ pub fn build_layouts(ui: &mut Ui) {
 }
 
 /// One chat row: avatar (Fixed circle) + Fill wrapping message.
-fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'static str) {
+fn chat_row(ui: &mut UiCore, key: &'static str, avatar_color: Color, message: &'static str) {
     Panel::hstack()
         .id_salt(("chat-row", key))
         .size((Sizing::FILL, Sizing::Hug))

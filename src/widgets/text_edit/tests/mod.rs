@@ -16,7 +16,7 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
     super::apply_key(text, state, kp, false, &mut vert)
 }
 use crate::Spacing;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::InputEvent;
@@ -41,8 +41,8 @@ const SMALL: UVec2 = UVec2::new(200, 80);
 const WIDE: UVec2 = UVec2::new(400, 80);
 const NARROW: UVec2 = UVec2::new(300, 80);
 
-fn editor_only(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
-    |ui: &mut Ui| {
+fn editor_only(buf: &mut String) -> impl FnMut(&mut UiCore) + '_ {
+    |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("editor")
@@ -91,9 +91,9 @@ fn cmd_shift_press(key: Key) -> KeyPress {
     kp
 }
 
-fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
+fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut UiCore) + 'a {
     use crate::widgets::button::Button;
-    |ui: &mut Ui| {
+    |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("editor")
@@ -107,8 +107,8 @@ fn editor_and_button<'a>(buf: &'a mut String) -> impl FnMut(&mut Ui) + 'a {
     }
 }
 
-fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) + '_ {
-    move |ui: &mut Ui| {
+fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut UiCore) + '_ {
+    move |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
                 .id_salt("ed")
@@ -124,9 +124,9 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// `ui_at_no_cosmic` constructs a Ui without cosmic, so the mono
 /// fallback drives caret-x (8 px/char at 16 px font) — predictable
 /// widths the click-positioning tests rely on.
-fn ui_at_no_cosmic(size: UVec2) -> Ui {
+fn ui_at_no_cosmic(size: UVec2) -> UiCore {
     use crate::layout::types::display::Display;
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.display = Display::from_physical(size, 1.0);
     ui
 }
@@ -136,8 +136,8 @@ fn ui_at_no_cosmic(size: UVec2) -> Ui {
 /// navigation works in 2D. Driven via `apply_key` directly for the
 /// state-machine assertions; the full show()+layout path is exercised
 /// separately by `multiline_renders_multiple_visual_lines`.
-fn multiline_editor(buf: &mut String) -> impl FnMut(&mut Ui) + '_ {
-    |ui: &mut Ui| {
+fn multiline_editor(buf: &mut String) -> impl FnMut(&mut UiCore) + '_ {
+    |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("ml-ed")

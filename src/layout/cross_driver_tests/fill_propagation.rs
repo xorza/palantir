@@ -6,7 +6,7 @@
 use super::support;
 use super::support::two_hug_cols_with_wrap;
 use crate::TextStyle;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::tree::NodeId;
@@ -19,7 +19,7 @@ use std::rc::Rc;
 
 const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
-fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
+fn assert_wrapped_within_surface(ui: &UiCore, node: NodeId, surface_w: f32) {
     let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     assert!(
         shaped.measured.h > 32.0,
@@ -39,7 +39,7 @@ fn assert_wrapped_within_surface(ui: &Ui, node: NodeId, surface_w: f32) {
 /// inside a ZStack (Phase-1 column intrinsics need a finite slot).
 #[test]
 fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         Panel::zstack()
@@ -56,7 +56,7 @@ fn fill_zstack_passes_finite_avail_so_nested_grid_constrains() {
 /// layout that historically passed `INFINITY` regardless of its own size.
 #[test]
 fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         Panel::canvas()
@@ -74,7 +74,7 @@ fn fill_canvas_passes_finite_avail_so_nested_grid_constrains() {
 /// `INFINITY` behavior on Hug axes precisely to avoid this.
 #[test]
 fn hug_zstack_does_not_recursively_size_to_fill_child() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut zstack_node = None;
     ui.run_at_acked(UVec2::new(800, 600), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -113,7 +113,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
 #[test]
 fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
     fn measure(surface_w: u32) -> f32 {
-        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
+        let mut ui = UiCore::for_test_at_text(UVec2::new(surface_w, 400));
         let mut value_node = None;
         ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
             Grid::new()
@@ -165,7 +165,7 @@ fn hug_grid_fill_col_does_not_grow_row_height_on_horizontal_resize() {
 /// pattern.
 #[test]
 fn fill_grid_fill_col_wraps_text_under_constrained_width() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(200, 400));
     let mut value_node = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -210,7 +210,7 @@ fn fill_grid_fill_col_wraps_text_under_constrained_width() {
 /// to the *wrapped* row heights, not the single-line intrinsic.
 #[test]
 fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(400, 600));
     let mut grid_node = None;
     ui.run_at_acked(UVec2::new(400, 600), |ui| {
         Panel::vstack()
@@ -269,7 +269,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
 /// cross axis.
 #[test]
 fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
-    let mut ui = Ui::for_test_at_text(UVec2::new(400, 600));
+    let mut ui = UiCore::for_test_at_text(UVec2::new(400, 600));
     let mut grid_node = None;
     ui.run_at_acked(UVec2::new(400, 600), |ui| {
         Panel::vstack()

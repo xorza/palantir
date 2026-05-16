@@ -2,7 +2,7 @@ use crate::animation::{AnimSlot, AnimSpec};
 use crate::input::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::theme::text_style::TextStyle;
 use palantir_anim_derive::Animatable;
 
@@ -64,7 +64,7 @@ impl WidgetLook {
     /// `ui.theme.text` (TextStyle is `Copy`).
     pub fn animate(
         &self,
-        ui: &mut Ui,
+        ui: &mut UiCore,
         id: WidgetId,
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,

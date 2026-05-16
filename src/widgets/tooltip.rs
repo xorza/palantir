@@ -7,7 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use crate::widgets::text::Text;
 use glam::Vec2;
@@ -144,7 +144,7 @@ impl<'r> Tooltip<'r> {
     /// Tick the hover timer, update visibility, and (when visible)
     /// record the bubble into `Layer::Tooltip` anchored next to the
     /// trigger.
-    pub fn show(self, ui: &mut Ui) {
+    pub fn show(self, ui: &mut UiCore) {
         let delay = self.delay.unwrap_or(ui.theme.tooltip.delay);
         let warmup = ui.theme.tooltip.warmup;
         let gap = ui.theme.tooltip.gap;

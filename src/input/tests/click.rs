@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::Sense;
@@ -11,9 +11,9 @@ fn input_state_press_release_emits_click() {
     // Frame 1 lays out the button; frame 2 reads .clicked() after a
     // press+release pair lands inside its rect; frame 3 confirms the
     // click is one-shot.
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 80);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("target")
@@ -84,9 +84,9 @@ fn stack_sense_routing() {
     for (label, sense, click_pos, expect_stack_click, expect_stack_hover, expect_child_click) in
         cases
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let surface = UVec2::new(200, 100);
-        let build = |ui: &mut Ui| {
+        let build = |ui: &mut UiCore| {
             Panel::hstack()
                 .id_salt("stack")
                 .padding(20.0)
@@ -136,7 +136,7 @@ fn stack_sense_routing() {
 
 #[test]
 fn input_state_release_outside_does_not_click() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(400, 80);
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -168,9 +168,9 @@ fn input_state_release_outside_does_not_click() {
 
 #[test]
 fn click_on_overflow_outside_clipped_parent_is_suppressed() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(400, 400);
-    let build = |ui: &mut Ui, capture: &mut bool| {
+    let build = |ui: &mut UiCore, capture: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
                 .id_salt("clipper")
@@ -211,9 +211,9 @@ fn zoom_panel_routes_clicks_by_world_rect() {
         ),
     ];
     for (label, scale, click_pos, expect) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let surface = UVec2::new(400, 400);
-        let build = |ui: &mut Ui, capture: &mut bool| {
+        let build = |ui: &mut UiCore, capture: &mut bool| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("zoomer")
@@ -240,9 +240,9 @@ fn zoom_panel_routes_clicks_by_world_rect() {
 
 #[test]
 fn secondary_click_press_release_emits_secondary_clicked() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 80);
-    let build = |ui: &mut Ui, sink: &mut bool| {
+    let build = |ui: &mut UiCore, sink: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = Button::new()
                 .id_salt("rc_target")
@@ -271,9 +271,9 @@ fn secondary_click_press_release_emits_secondary_clicked() {
 #[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 80);
-    let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {
+    let build = |ui: &mut UiCore, lc: &mut bool, rc: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = Button::new()
                 .id_salt("indep")

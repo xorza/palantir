@@ -7,7 +7,7 @@ use crate::primitives::interned_str::InternedStr;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::{Shape, TextWrap};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 
 /// One option in a radio group. `current` is the group's shared
@@ -47,7 +47,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut UiCore) -> Response {
         let id = self.element.id;
         let raw_state = ui.response_for(id);
         let mut state = raw_state;

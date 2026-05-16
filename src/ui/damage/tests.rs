@@ -1,6 +1,6 @@
 use super::region::DamageRegion;
 use super::{Damage, DamageEngine};
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::forest::tree::NodeId;
@@ -29,7 +29,7 @@ const DISPLAY: Display = Display {
 /// doesn't fire, and return the damage decision for the just-completed
 /// frame. Test sites that care about the damage shape bind the return;
 /// the rest ignore it.
-fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
+fn frame(ui: &mut UiCore, f: impl FnMut(&mut UiCore)) -> Damage {
     let report = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut (), f);
     ui.frame_state.mark_submitted();
     match report.plan {
@@ -45,7 +45,7 @@ fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
 const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
 const RED: Color = Color::rgb(0.9, 0.4, 0.8);
 
-fn one_frame(ui: &mut Ui, color: Color) {
+fn one_frame(ui: &mut UiCore, color: Color) {
     Panel::hstack().id_salt("root").show(ui, |ui| {
         Frame::new()
             .id_salt("a")
@@ -64,7 +64,7 @@ fn one_frame(ui: &mut Ui, color: Color) {
 /// non-painting and stays out of `dirty`/`region`.
 #[test]
 fn first_frame_marks_every_painting_node_dirty() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
@@ -83,8 +83,8 @@ fn first_frame_marks_every_painting_node_dirty() {
 /// nothing.
 #[test]
 fn unchanged_authoring_produces_no_damage() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         one_frame(ui, BLUE);
     };
     frame(&mut ui, build);
@@ -107,12 +107,12 @@ fn unchanged_authoring_produces_no_damage() {
 /// to a per-node walk that still produces correct damage.
 #[test]
 fn stable_painting_subtree_triggers_skip_jump() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     // Frame with a painting parent (background) wrapping painting
     // children — both root and children land in `prev` with matching
     // snapshots on the second frame, so the root's Occupied-equal arm
     // is reached with a span > 1 and the skip counter increments.
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Panel::hstack()
                 .id_salt("painting_parent")
@@ -164,8 +164,8 @@ fn stable_painting_subtree_triggers_skip_jump() {
 /// contribute no curr rect.
 #[test]
 fn paints_to_non_paints_transition_evicts_and_clears() {
-    let mut ui = Ui::for_test();
-    let with_bg = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let with_bg = |ui: &mut UiCore| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Frame::new()
                 .id_salt("a")
@@ -177,7 +177,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
                 .show(ui);
         });
     };
-    let no_bg = |ui: &mut Ui| {
+    let no_bg = |ui: &mut UiCore| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Frame::new().id_salt("a").size(50.0).show(ui);
         });
@@ -206,7 +206,7 @@ fn paints_to_non_paints_transition_evicts_and_clears() {
 /// rect lands in `region`.
 #[test]
 fn popup_eater_does_not_force_full_repaint() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let anchor = glam::Vec2::new(40.0, 40.0);
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut ui, |ui| {
@@ -261,8 +261,8 @@ fn popup_eater_does_not_force_full_repaint() {
 fn click_on_empty_bg_does_not_force_full() {
     use crate::input::pointer::PointerButton;
     use std::time::Duration;
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Frame::new()
                 .id_salt("a")
@@ -303,7 +303,7 @@ fn click_on_empty_bg_does_not_force_full() {
 /// the next `pre_record`'s auto-rewind doesn't kick in.
 #[test]
 fn skip_frame_does_not_force_next_to_full() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let first = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut (), |ui| {
             one_frame(ui, BLUE)
@@ -345,7 +345,7 @@ fn skip_frame_does_not_force_next_to_full() {
 /// overlay on every idle→input transition (e.g. mouse move).
 #[test]
 fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let first = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut (), |ui| {
             one_frame(ui, BLUE)
@@ -381,7 +381,7 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
 /// rect is identical) stays clean.
 #[test]
 fn fill_change_marks_only_the_changed_leaf() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
@@ -409,8 +409,8 @@ fn fill_change_marks_only_the_changed_leaf() {
 /// comparison even though their authoring didn't change.
 #[test]
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
-    let mut ui = Ui::for_test();
-    let build = |a_size: f32, ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |a_size: f32, ui: &mut UiCore| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Frame::new()
                 .id_salt("a")
@@ -450,7 +450,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 /// region to erase the leftover pixels.
 #[test]
 fn removed_widget_contributes_prev_rect_to_damage() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     frame(&mut ui, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Button::new().id_salt("gone").label("X").show(ui);
@@ -473,7 +473,7 @@ fn removed_widget_contributes_prev_rect_to_damage() {
 /// its current rect to damage and lands in the dirty list.
 #[test]
 fn added_widget_contributes_curr_rect_to_damage() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     frame(&mut ui, |ui| {
         Panel::hstack().id_salt("root").show(ui, |_| {});
     });
@@ -507,7 +507,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
 /// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
 #[test]
 fn damage_filter_returns_partial_when_small() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
@@ -538,9 +538,9 @@ fn damage_filter_returns_partial_when_small() {
 #[test]
 fn child_under_transformed_parent_damage_in_screen_space() {
     let translate = Vec2::new(100.0, 0.0);
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut child_node = None;
-    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
+    let build = |fill: Color, ui: &mut UiCore, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
@@ -592,9 +592,9 @@ fn child_under_transformed_parent_damage_in_screen_space() {
 /// frame's pixels would streak through `LoadOp::Load`).
 #[test]
 fn animated_parent_transform_unions_old_and_new_positions() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut child_node = None;
-    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
+    let build = |dx: f32, ui: &mut UiCore, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
@@ -653,13 +653,13 @@ fn animated_parent_transform_unions_old_and_new_positions() {
 /// can't silently flip behaviour without breaking a test.
 #[test]
 fn transform_animation_keeps_far_positions_split() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     // Drop the merge budget to strict-overlap-only so the prev/curr
     // pair (cost 6 400 < default budget) stays split. Pins both
     // ends of the merge rule against future budget tweaks.
     ui.damage_engine.budget_px = 0.0;
     let mut child_node = None;
-    let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
+    let build = |dx: f32, ui: &mut UiCore, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
                 .id_salt("outer")
@@ -825,8 +825,8 @@ fn display_change_forces_full_repaint() {
         ),
     ];
     for (label, mutated) in cases {
-        let mut ui = Ui::for_test();
-        let mut build = |ui: &mut Ui| {
+        let mut ui = UiCore::for_test();
+        let mut build = |ui: &mut UiCore| {
             one_frame(ui, BLUE);
         };
 
@@ -906,7 +906,7 @@ fn display_change_forces_full_repaint() {
 /// partial damage rect on the resize frame.
 #[test]
 fn small_damage_with_surface_change_forces_full_repaint() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let big = Display {
         physical: UVec2::new(2000, 2000),
         ..DISPLAY
@@ -918,7 +918,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     // so any damage rect change must come from the descendant nudge,
     // not the root re-resolving. Frame "small" ends up at
     // (3000, 0, 50, 60).
-    let mut scene = |ui: &mut Ui| {
+    let mut scene = |ui: &mut UiCore| {
         Panel::hstack()
             .id_salt("root")
             .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
@@ -989,8 +989,8 @@ fn small_damage_with_surface_change_forces_full_repaint() {
 /// would never apply.
 #[test]
 fn stable_surface_does_not_short_circuit() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui, color: Color| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore, color: Color| {
         one_frame(ui, color);
     };
 
@@ -1040,10 +1040,10 @@ fn stable_surface_does_not_short_circuit() {
 /// the damage stream settle, then assert on the *transition* frame.
 #[test]
 fn button_hover_damage_covers_only_the_button() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+    let build = |ui: &mut UiCore, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 *hot = Some(
@@ -1115,10 +1115,10 @@ fn button_hover_damage_covers_only_the_button() {
 /// is the button's fill flipping back, damage = button rect.
 #[test]
 fn button_unhover_damage_covers_only_the_button() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut hot_node = None;
     let mut cold_node = None;
-    let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
+    let build = |ui: &mut UiCore, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::vstack().id_salt("root").show(ui, |ui| {
                 *hot = Some(
@@ -1172,11 +1172,11 @@ fn button_unhover_damage_covers_only_the_button() {
 /// trip `FULL_REPAINT_THRESHOLD` every frame.
 #[test]
 fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut child_node = None;
     let viewport_size = 100.0;
     let child_size = 200.0;
-    let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
+    let build = |fill: Color, ui: &mut UiCore, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
@@ -1235,7 +1235,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     let frame_size = 50.0;
     let expected_overhang = 3.0 * 8.0 + 2.0;
 
-    type Build = fn(&mut Ui);
+    type Build = fn(&mut UiCore);
     let cases: &[(&str, Build)] = &[
         ("shape", |ui| {
             Panel::hstack()
@@ -1278,7 +1278,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         }),
     ];
     for (label, build) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         frame(&mut ui, |ui| {
             Panel::hstack().id_salt("root").show(ui, build);
         });
@@ -1313,8 +1313,8 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     let card = 40.0;
     let blur = 8.0;
 
-    let mut ui = Ui::for_test();
-    let build = |fill: Color, ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |fill: Color, ui: &mut UiCore| {
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().id_salt("host").show(ui, |ui| {
                 Panel::zstack()

@@ -1,6 +1,6 @@
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
+use palantir::{Button, Configure, Panel, Sizing, Text, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::hstack()
         .auto_id()
         .gap(16.0)
@@ -14,7 +14,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn section(ui: &mut Ui, id: &'static str, label: &'static str, disabled: bool) {
+fn section(ui: &mut UiCore, id: &'static str, label: &'static str, disabled: bool) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))

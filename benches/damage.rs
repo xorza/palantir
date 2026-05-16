@@ -14,7 +14,7 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::ui::damage::region::test_support::region_after_adds;
-use palantir::{Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, Ui};
+use palantir::{Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, UiCore};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -27,7 +27,7 @@ const ROWS: usize = 32;
 /// `hot_color`; the rest get a default cold colour. The id-salt
 /// scheme keeps cell identity stable across frames so damage diffs
 /// against the right `prev` snapshot.
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_grid(ui: &mut UiCore, hot: &[usize], hot_color: Color) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -67,7 +67,7 @@ fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// predicate (rect + node_hash + subtree_hash + cascade_input all
 /// match prev at the row root) fires at each row, jumping past 32
 /// per-cell entry lookups. Cells listed in `hot` get `hot_color`.
-fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_painted_rows(ui: &mut UiCore, hot: &[usize], hot_color: Color) {
     let row_bg = Color::rgb(0.1, 0.1, 0.12);
     Panel::vstack()
         .id_salt("root")
@@ -111,7 +111,7 @@ fn build_painted_rows(ui: &mut Ui, hot: &[usize], hot_color: Color) {
 /// `Submitted`. `Skip` frames self-ack at `post_record`; `Partial` /
 /// `Full` mark `Pending` and need an explicit submit-equivalent.
 /// The ack here is unconditional and idempotent.
-fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
+fn run_and_ack(ui: &mut UiCore, display: Display, mut record: impl FnMut(&mut UiCore)) {
     let _ = ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),
@@ -128,10 +128,10 @@ fn run_and_ack(ui: &mut Ui, display: Display, mut record: impl FnMut(&mut Ui)) {
 /// bench iter will then exercise. Without warmup the first iter
 /// would always be `Full` (no `prev_surface`) and skew measurements.
 fn warm_and_assert(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     display: Display,
-    frame1: impl Fn(&mut Ui),
-    frame2: impl Fn(&mut Ui),
+    frame1: impl Fn(&mut UiCore),
+    frame2: impl Fn(&mut UiCore),
     expect_kind: &str,
 ) {
     run_and_ack(ui, display, &frame1);
@@ -150,7 +150,7 @@ fn bench_workloads(c: &mut Criterion) {
     // are non-painting Panels so the damage diff walks every painting
     // leaf individually (no subtree-skip available).
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         warm_and_assert(
             &mut ui,
             display,
@@ -172,7 +172,7 @@ fn bench_workloads(c: &mut Criterion) {
     // row, jumping past the 32 per-cell entry lookups underneath.
     // Compare against `skip` to isolate the subtree-skip win.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         warm_and_assert(
             &mut ui,
             display,
@@ -199,7 +199,7 @@ fn bench_workloads(c: &mut Criterion) {
 
     // Partial 1-rect — one cell flips colour each frame.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let cell = [42usize];
         warm_and_assert(
             &mut ui,
@@ -223,7 +223,7 @@ fn bench_workloads(c: &mut Criterion) {
     // merge rule rejects (bbox waste huge), so the region keeps both
     // — drives the multi-pass path.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let cells = [0usize, (ROWS - 1) * COLS + (COLS - 1)];
         warm_and_assert(
             &mut ui,
@@ -247,9 +247,9 @@ fn bench_workloads(c: &mut Criterion) {
     // Full path — every cell varies each frame; total damage area
     // exceeds the threshold and escalates to `Full`.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let varying = |frame_n: u32| {
-            move |ui: &mut Ui| {
+            move |ui: &mut UiCore| {
                 Panel::vstack()
                     .id_salt("root")
                     .gap(2.0)

@@ -1,6 +1,6 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::primitives::background::Background;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 
 /// A simple decorated rectangle: optional background / size / margin
@@ -30,7 +30,7 @@ impl Frame {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut UiCore) -> Response {
         let id = self.element.id;
         match self.chrome {
             Some(c) => ui.node_with_chrome(self.element, c, |_| {}),

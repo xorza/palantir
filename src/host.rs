@@ -19,7 +19,7 @@ use crate::renderer::backend::{DEFAULT_IMAGE_BUDGET_BYTES, WgpuBackend};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
@@ -28,7 +28,7 @@ use crate::{Display, FrameReport, FrameStamp};
 /// renderer halves are private; reach the recorder via the public
 /// [`Host::ui`] field.
 pub struct Host {
-    pub ui: Ui,
+    pub ui: UiCore,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
@@ -85,7 +85,7 @@ impl Host {
         let caches = RenderCaches::default();
         let frame_arena = crate::common::frame_arena::FrameArena::default();
         Self {
-            ui: Ui::new(shaper.clone(), frame_arena.clone(), caches.clone()),
+            ui: UiCore::new(shaper.clone(), frame_arena.clone(), caches.clone()),
             frontend: Frontend::new(frame_arena.clone()),
             backend: WgpuBackend::new(
                 device,
@@ -135,7 +135,7 @@ impl Host {
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut UiCore),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
@@ -164,7 +164,7 @@ impl Host {
         target: &wgpu::Texture,
         scale_factor: f32,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut UiCore),
     ) {
         let size = target.size();
         let display =
@@ -181,7 +181,7 @@ impl Host {
         &mut self,
         display: Display,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut UiCore),
     ) -> FrameReport {
         // Ui::frame clears its own Rc-shared arena at the top of the
         // record cycle — the same Rc the frontend + backend hold.
@@ -294,7 +294,7 @@ pub mod test_support {
         host: &mut Host,
         display: Display,
         state: &mut T,
-        record: impl FnMut(&mut Ui),
+        record: impl FnMut(&mut UiCore),
     ) -> FrameReport {
         host.cpu_frame(display, state, record)
     }

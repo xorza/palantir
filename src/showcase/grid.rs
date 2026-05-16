@@ -1,7 +1,7 @@
 use crate::showcase::swatch;
-use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Track, Ui};
+use palantir::{Color, Configure, Frame, Grid, Panel, Sizing, Track, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -54,7 +54,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn cell(ui: &mut UiCore, id: &'static str, body: impl FnOnce(&mut UiCore)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -64,7 +64,7 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
 }
 
 fn grid_tile(
-    ui: &mut Ui,
+    ui: &mut UiCore,
     id: &'static str,
     cell: (u16, u16),
     span: Option<(u16, u16)>,

@@ -5,7 +5,7 @@
 
 use palantir::{
     Background, Button, Color, Configure, ContextMenu, Corners, Frame, Key, MenuItem, Mods, Panel,
-    Sense, Shadow, Shortcut, Sizing, Spacing, Stroke, Text, Ui, WidgetId,
+    Sense, Shadow, Shortcut, Sizing, Spacing, Stroke, Text, UiCore, WidgetId,
 };
 
 #[derive(Default)]
@@ -13,7 +13,7 @@ struct State {
     last_action: Option<&'static str>,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     let state_id = WidgetId::from_hash("ctx-menu-showcase");
 
     Panel::vstack()
@@ -88,7 +88,7 @@ enum MenuFlavor {
     Wide,
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
+fn attach_menu(ui: &mut UiCore, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
     if let MenuFlavor::Wide = flavor {
         menu = menu

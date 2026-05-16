@@ -13,14 +13,14 @@
 //! runs through the mono fallback (same as `frame.rs`/`caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, Ui};
+use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, UiCore};
 use std::hint::black_box;
 
 /// Build a flat tree of `n` leaves under a single VStack root.
 /// Approximates a long list of items — the wide-and-shallow shape that
 /// stresses the cascade pre-order walk hardest because every leaf
 /// pushes a fresh `HitEntry`.
-fn build_flat(ui: &mut Ui, n: usize) {
+fn build_flat(ui: &mut UiCore, n: usize) {
     Panel::vstack()
         .id_salt("root")
         .gap(2.0)
@@ -43,7 +43,7 @@ fn bench_cascade(c: &mut Criterion) {
     for &n in &[100usize, 500, 2000, 10_000] {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),

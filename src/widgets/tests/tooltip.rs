@@ -5,7 +5,7 @@
 //! pointer hover at advancing `Ui::time` to assert the delay actually
 //! gates `TooltipState.visible`.
 
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::InputEvent;
@@ -79,11 +79,11 @@ fn place_anchor_clamps_horizontally() {
 /// `time >= delay`, then visible.
 #[test]
 fn delay_gates_visibility() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
     let mut captured: Option<WidgetId> = None;
-    let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
+    let frame_at = |ui: &mut UiCore, secs: f32, captured: &mut Option<WidgetId>| {
         ui.frame(
             FrameStamp::new(display, Duration::from_secs_f32(secs)),
             &mut (),

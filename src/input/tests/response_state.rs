@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -10,7 +10,7 @@ fn focusable_id() -> WidgetId {
     WidgetId::from_hash("focusable")
 }
 
-fn build_focusable_leaf(ui: &mut Ui) {
+fn build_focusable_leaf(ui: &mut UiCore) {
     Frame::new()
         .id_salt("focusable")
         .focusable(true)
@@ -20,7 +20,7 @@ fn build_focusable_leaf(ui: &mut Ui) {
 
 #[test]
 fn focused_reflects_focused_id_synchronously() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_focusable_leaf);
     assert!(!ui.response_for(focusable_id()).focused);
 
@@ -36,8 +36,8 @@ fn focused_reflects_focused_id_synchronously() {
 
 #[test]
 fn disabled_reflects_cascaded_ancestor_flag() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::vstack()
             .id_salt("parent")
             .disabled(true)
@@ -62,8 +62,8 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 
 #[test]
 fn disabled_false_when_chain_clean() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::vstack().id_salt("parent").show(ui, |ui| {
             Frame::new()
                 .id_salt("child")

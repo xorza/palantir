@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
+use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, UiCore};
 
 /// Synthesize a 64×64 sRGB checkerboard once, register it under a
 /// stable key. The framework's content-addressed `ImageRegistry`
@@ -37,7 +37,7 @@ fn gradient() -> Image {
     Image::from_rgba8(W, H, pixels)
 }
 
-fn register(ui: &Ui) -> (ImageHandle, ImageHandle) {
+fn register(ui: &UiCore) -> (ImageHandle, ImageHandle) {
     let checker = ui
         .caches
         .images
@@ -49,7 +49,7 @@ fn register(ui: &Ui) -> (ImageHandle, ImageHandle) {
     (checker, gradient)
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     let (checker, gradient) = register(ui);
     Panel::vstack()
         .auto_id()
@@ -97,13 +97,13 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn fit_cell(ui: &mut Ui, label: &'static str, handle: ImageHandle, fit: ImageFit) {
+fn fit_cell(ui: &mut UiCore, label: &'static str, handle: ImageHandle, fit: ImageFit) {
     cell(ui, label, move |ui| {
         image(ui, handle, fit, Color::WHITE);
     });
 }
 
-fn image(ui: &mut Ui, handle: ImageHandle, fit: ImageFit, tint: Color) {
+fn image(ui: &mut UiCore, handle: ImageHandle, fit: ImageFit, tint: Color) {
     ui.add_shape(Shape::Image {
         handle,
         local_rect: None,
@@ -112,7 +112,7 @@ fn image(ui: &mut Ui, handle: ImageHandle, fit: ImageFit, tint: Color) {
     });
 }
 
-fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
+fn cell(ui: &mut UiCore, id: &'static str, paint: impl Fn(&mut UiCore)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))

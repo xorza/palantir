@@ -28,7 +28,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle, Ui,
+    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle, UiCore,
 };
 use pollster::FutureExt;
 
@@ -48,7 +48,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)

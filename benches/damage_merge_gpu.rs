@@ -26,7 +26,7 @@ use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::host::test_support::{
     cpu_frame as host_cpu_frame, render_to_texture as host_render_to_texture,
 };
-use palantir::{Background, Color, Configure, Display, Frame, Host, Panel, Rect, Sizing, Ui};
+use palantir::{Background, Color, Configure, Display, Frame, Host, Panel, Rect, Sizing, UiCore};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -90,7 +90,7 @@ fn init_gpu() -> Gpu {
     }
 }
 
-fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
+fn build_grid(ui: &mut UiCore, hot: &[usize], hot_color: Color) {
     Panel::vstack()
         .id_salt("root")
         .gap(GAP)

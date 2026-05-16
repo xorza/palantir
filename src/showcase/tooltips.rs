@@ -3,9 +3,9 @@
 //! between adjacent buttons quickly to see the warmup window (no
 //! re-delay within ~1 s of the previous bubble).
 
-use palantir::{Button, Configure, Panel, Sizing, Tooltip, Ui};
+use palantir::{Button, Configure, Panel, Sizing, Tooltip, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -93,7 +93,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn row(ui: &mut UiCore, id: &'static str, body: impl FnOnce(&mut UiCore)) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))

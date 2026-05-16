@@ -50,8 +50,8 @@ fn is_red(r: u8, g: u8, b: u8) -> bool {
 fn button_scene(
     id_salt: &'static str,
     label: &'static str,
-) -> impl FnMut(&mut palantir::Ui) + Copy {
-    move |ui: &mut palantir::Ui| {
+) -> impl FnMut(&mut palantir::UiCore) + Copy {
+    move |ui: &mut palantir::UiCore| {
         Panel::vstack()
             .auto_id()
             .padding(12.0)
@@ -70,8 +70,8 @@ fn button_scene(
 fn corner_pair_scene(
     tl_label: &'static str,
     br_label: &'static str,
-) -> impl FnMut(&mut palantir::Ui) + Copy {
-    move |ui: &mut palantir::Ui| {
+) -> impl FnMut(&mut palantir::UiCore) + Copy {
+    move |ui: &mut palantir::UiCore| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))

@@ -1,5 +1,5 @@
 use crate::TextStyle;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::display::Display;
@@ -15,11 +15,11 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
-fn measure_calls(ui: &Ui) -> u64 {
+fn measure_calls(ui: &UiCore) -> u64 {
     ui.text.measure_calls()
 }
 
-fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
+fn blue_frame(ui: &mut UiCore, salt: &'static str) -> NodeId {
     Frame::new()
         .id_salt(salt)
         .size(50.0)
@@ -39,7 +39,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
 /// arranged rect after the regular paint walk.
 #[test]
 fn duplicate_explicit_widget_id_disambiguates_and_flags() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let button_node = std::cell::Cell::new(NodeId(0));
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -100,7 +100,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
 /// so the encoder paints each overlay at the correct per-layer rect.
 #[test]
 fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Button::new().id_salt("dup").show(ui);
@@ -161,7 +161,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 /// the prior "sink in Debug" approach.
 #[test]
 fn collisions_do_not_record_into_debug_layer() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     assert!(
         !ui.debug_overlay.frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
@@ -187,10 +187,10 @@ fn collisions_do_not_record_into_debug_layer() {
 /// site fires more than once per frame — the "loop / closure helper" case.
 #[test]
 fn auto_id_collisions_disambiguate() {
-    fn chip(ui: &mut Ui) {
+    fn chip(ui: &mut UiCore) {
         Frame::new().auto_id().show(ui);
     }
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             chip(ui);
@@ -216,7 +216,7 @@ fn cascade_visible_to_relayout_pass() {
     let pass_b_rect = Cell::new(None::<Rect>);
     let id_salt = "cascade-relayout-probe";
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(SURFACE, |ui| {
         let probe_resp = std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -254,7 +254,7 @@ fn cascade_visible_to_relayout_pass() {
 /// produces no draw commands.
 #[test]
 fn empty_ui_drives_a_frame_safely() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(SURFACE, |_| {});
 
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
@@ -286,7 +286,7 @@ fn empty_ui_drives_a_frame_safely() {
 /// recorder retains no per-frame state across frames).
 #[test]
 fn empty_then_populated_frame() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(100, 100), |_| {});
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |_| {});
@@ -302,7 +302,7 @@ fn empty_then_populated_frame() {
 #[test]
 #[should_panic(expected = "Display::scale_factor must be ≥ EPSILON")]
 fn frame_rejects_zero_scale_factor() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let _ = ui.frame(
         FrameStamp::new(
             Display::from_physical(UVec2::new(800, 600), 0.0),
@@ -322,7 +322,7 @@ fn display_logical_rect_scales() {
 
 #[test]
 fn prev_frame_empty_before_first_frame() {
-    let ui = Ui::for_test();
+    let ui = UiCore::for_test();
     assert!(ui.damage_engine.prev.is_empty());
 }
 
@@ -331,7 +331,7 @@ fn prev_frame_empty_before_first_frame() {
 /// without chrome) don't.
 #[test]
 fn prev_frame_captures_painting_nodes() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut frame_node = None;
     ui.run_at(SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
@@ -352,7 +352,7 @@ fn prev_frame_captures_painting_nodes() {
 
 #[test]
 fn prev_frame_drops_disappeared_widgets() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().id_salt("root").show(ui, |ui| {
             Button::new().id_salt("gone").label("X").show(ui);
@@ -376,9 +376,9 @@ fn prev_frame_drops_disappeared_widgets() {
 
 #[test]
 fn prev_frame_updates_on_authoring_change() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let paint = |fill: Color| {
-        move |ui: &mut Ui| {
+        move |ui: &mut UiCore| {
             Frame::new()
                 .id_salt("a")
                 .size(50.0)
@@ -405,7 +405,7 @@ fn text_reshape_skipped_when_unchanged() {
     use crate::layout::types::{sizing::Sizing, track::Track};
     use crate::widgets::{grid::Grid, text::Text};
 
-    type Build = fn(&mut Ui);
+    type Build = fn(&mut UiCore);
 
     let single: Build = |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
@@ -447,7 +447,7 @@ fn text_reshape_skipped_when_unchanged() {
         ("wrapped", wrapped),
         ("grid-intrinsic", grid_intrinsic),
     ] {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.run_at_acked(UVec2::new(400, 200), build);
         let after_first = measure_calls(&ui);
         assert!(
@@ -473,13 +473,13 @@ fn text_reshape_runs_when_content_changes() {
     use crate::widgets::text::Text;
 
     let render = |content: &'static str| {
-        move |ui: &mut Ui| {
+        move |ui: &mut UiCore| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Text::new(content).id_salt("changing").show(ui);
             });
         }
     };
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(400, 200), render("first"));
     let before = measure_calls(&ui);
     ui.run_at_acked(UVec2::new(400, 200), render("second"));
@@ -496,7 +496,7 @@ fn text_reshape_runs_when_content_changes() {
 fn text_reuse_evicts_disappeared_widgets() {
     use crate::widgets::text::Text;
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(400, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             Text::new("hello").id_salt("transient").show(ui);
@@ -526,7 +526,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
     use crate::widgets::text::Text;
 
     let render = |slot_w: f32| {
-        move |ui: &mut Ui| {
+        move |ui: &mut UiCore| {
             Panel::vstack()
                 .auto_id()
                 .size((Sizing::Fixed(slot_w), Sizing::Hug))
@@ -540,7 +540,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
         }
     };
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(400, 200), render(60.0));
     let after_first = measure_calls(&ui);
     assert!(
@@ -559,7 +559,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
 
 #[test]
 fn state_map_persists_and_evicts_with_recorded_ids() {
-    let mut ui = Ui::for_test_at(UVec2::new(100, 100));
+    let mut ui = UiCore::for_test_at(UVec2::new(100, 100));
     let id_a = WidgetId::from_hash("a");
     let id_b = WidgetId::from_hash("b");
 
@@ -599,7 +599,7 @@ fn frame_pass_count_matches_action_trigger() {
     use std::cell::Cell;
 
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
-    type Prime = fn(&mut Ui);
+    type Prime = fn(&mut UiCore);
     let cases: &[(&str, Prime, usize)] = &[
         ("idle", |_ui| {}, 1),
         (
@@ -645,7 +645,7 @@ fn frame_pass_count_matches_action_trigger() {
     ];
 
     for (label, prime, expected) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
         ui.run_at_acked(UVec2::new(100, 100), |ui| {
@@ -682,10 +682,10 @@ fn frame_pass_count_matches_action_trigger() {
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    const MAX_DT: f32 = Ui::MAX_DT;
+    const MAX_DT: f32 = UiCore::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
         Panel::vstack().id_salt("root").show(ui, |_| {});
     });
@@ -772,7 +772,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 /// and updates `fps_ema` once two frames have elapsed.
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.debug_overlay.frame_stats = true;
     let display = Display::from_physical(SURFACE, 1.0);
 
@@ -833,7 +833,7 @@ fn frame_stats_overlay_records_partial_damage() {
 /// past its deadline.
 #[test]
 fn request_repaint_after_queues_distinct_deadlines() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
@@ -887,7 +887,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
 /// distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
@@ -908,7 +908,7 @@ fn request_repaint_after_dedups_within_frame() {
     // Near-duplicates within the 1/120 s window collapse onto the
     // later deadline (prefer the longer wait); deadlines spaced
     // beyond the window stay distinct.
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
         &mut (),
@@ -942,7 +942,7 @@ fn request_repaint_after_dedups_within_frame() {
 /// frame; entries strictly past `now` survive.
 #[test]
 fn request_repaint_after_drains_fired_entries() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
@@ -970,7 +970,7 @@ fn app_state_round_trip_across_frame() {
     struct App {
         count: u32,
     }
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut app = App { count: 0 };
     ui.frame(
         FrameStamp::new(Display::default(), Duration::ZERO),
@@ -986,13 +986,13 @@ fn app_state_round_trip_across_frame() {
 #[test]
 #[should_panic(expected = "no app state installed")]
 fn app_without_install_panics() {
-    let _ = Ui::for_test().app::<u32>();
+    let _ = UiCore::for_test().app::<u32>();
 }
 
 #[test]
 #[should_panic(expected = "type mismatch")]
 fn app_type_mismatch_panics() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let mut a: u32 = 7;
     ui.frame(
         FrameStamp::new(Display::default(), Duration::ZERO),
@@ -1018,7 +1018,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut UiCore, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1036,7 +1036,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
@@ -1092,7 +1092,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut UiCore, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1110,7 +1110,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
         });
     }
 
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
@@ -1154,7 +1154,7 @@ fn input_policy_routes_paint_only_gate() {
     // Body declares an inert Frame *and* an anim shape so the next
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
     // entry, so OnDelta sees `requests_repaint = false`.
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut UiCore, half: Duration) {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Frame::new().id_salt("inert").size(80.0).show(ui);
             ui.add_shape_animated(
@@ -1174,7 +1174,7 @@ fn input_policy_routes_paint_only_gate() {
 
     // --- OnDelta: inert pointer move keeps the PaintOnly fast path.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.input_policy = InputPolicy::OnDelta;
         let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
             body(ui, half)
@@ -1206,7 +1206,7 @@ fn input_policy_routes_paint_only_gate() {
 
     // --- Always: same inert move upgrades the frame to SingleLayout.
     {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.input_policy = InputPolicy::Always;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
             body(ui, half)
@@ -1226,7 +1226,7 @@ fn input_policy_routes_paint_only_gate() {
     // only with focus or a chord subscriber, so prime focus first.
     {
         use crate::primitives::widget_id::WidgetId;
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         ui.input_policy = InputPolicy::OnDelta;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
             body(ui, half)

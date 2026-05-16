@@ -4,7 +4,7 @@
 //! plus typed-slot dispatch via `Vec2` and `Color`.
 
 use super::*;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
@@ -39,13 +39,13 @@ fn wid(s: &'static str) -> WidgetId {
 /// widget (`Frame::new().id_salt(salt).show(ui)`) so the persistent
 /// state survives end-of-frame sweeps.
 struct AnimUi {
-    ui: Ui,
+    ui: UiCore,
     id: WidgetId,
     display: Display,
 }
 
 fn setup_anim_ui(salt: &'static str) -> AnimUi {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let id = wid(salt);
     ui.run_at(SURFACE, |ui| {
         Frame::new().id_salt(salt).show(ui);

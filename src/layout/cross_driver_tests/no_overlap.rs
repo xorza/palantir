@@ -4,7 +4,7 @@
 //! check on emitted `DrawText` x positions.
 
 use crate::TextStyle;
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -20,7 +20,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     Pack my box with five dozen liquor jugs. \
     How vexingly quick daft zebras jump!";
 
-fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
+fn section(ui: &mut UiCore, id: &'static str, body: &mut dyn FnMut(&mut UiCore)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Hug))
@@ -65,7 +65,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gap_xy) in cases {
-        let mut ui = Ui::for_test();
+        let mut ui = UiCore::for_test();
         let mut left = None;
         let mut right = None;
         ui.run_at(UVec2::new(800, 600), |ui| {
@@ -115,7 +115,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
 
     let mut hug_left = None;
     let mut hug_right = None;
@@ -209,7 +209,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = crate::Ui::for_test_text();
+    let mut ui = crate::UiCore::for_test_text();
     ui.run_at(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
@@ -264,7 +264,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 /// two distinct texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(UVec2::new(1620, 980), |ui| {
         Panel::vstack().auto_id()
         .padding(12.0)

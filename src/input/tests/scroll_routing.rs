@@ -1,4 +1,4 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::Sense;
@@ -9,9 +9,9 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn nested_scroll_panels_route_to_innermost_under_pointer() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(300, 300);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::zstack()
             .id_salt("outer")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
@@ -44,9 +44,9 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
 
 #[test]
 fn scroll_delta_zero_for_non_target() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 200);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::zstack()
             .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
@@ -68,9 +68,9 @@ fn scroll_delta_zero_for_non_target() {
 
 #[test]
 fn pointer_left_clears_scroll_target() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(200, 200);
-    let build = |ui: &mut Ui| {
+    let build = |ui: &mut UiCore| {
         Panel::zstack()
             .id_salt("scroller")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))

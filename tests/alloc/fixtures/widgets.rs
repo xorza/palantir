@@ -1,6 +1,6 @@
 use crate::harness::audit_steady_state;
 use palantir::{
-    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, Track, Ui,
+    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, Track, UiCore,
     WidgetId,
 };
 use std::rc::Rc;
@@ -24,7 +24,7 @@ fn button_only_alloc_free() {
 #[test]
 fn nested_vstack_64_alloc_free() {
     audit_steady_state("nested_vstack_64", 0, |ui| {
-        fn rec(ui: &mut Ui, depth: u32) {
+        fn rec(ui: &mut UiCore, depth: u32) {
             if depth == 0 {
                 return;
             }

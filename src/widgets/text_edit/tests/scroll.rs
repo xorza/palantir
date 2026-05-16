@@ -8,7 +8,7 @@ use super::*;
 #[test]
 fn scroll_keeps_caret_inside_visible_inner_rect() {
     let ed_id = WidgetId::from_hash("scroll-ed");
-    fn body(ui: &mut Ui, buf: &mut String) {
+    fn body(ui: &mut UiCore, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("scroll-ed")
@@ -52,7 +52,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
 #[test]
 fn click_hit_test_compensates_for_scroll() {
     let ed_id = WidgetId::from_hash("hit-ed");
-    fn body(ui: &mut Ui, buf: &mut String) {
+    fn body(ui: &mut UiCore, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("hit-ed")

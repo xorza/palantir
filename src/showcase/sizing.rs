@@ -1,8 +1,8 @@
 use super::swatch::swatch_bg;
 use crate::showcase::swatch;
-use palantir::{Color, Configure, Frame, Panel, Sizing, Ui};
+use palantir::{Color, Configure, Frame, Panel, Sizing, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -31,7 +31,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn row(ui: &mut UiCore, id: &'static str, body: impl FnOnce(&mut UiCore)) {
     Panel::hstack()
         .id_salt(id)
         .gap(8.0)
@@ -39,7 +39,7 @@ fn row(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
+fn fixed_box(ui: &mut UiCore, id: &'static str, w: f32, c: Color) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(40.0)))
@@ -47,7 +47,7 @@ fn fixed_box(ui: &mut Ui, id: &'static str, w: f32, c: Color) {
         .show(ui);
 }
 
-fn hug_box(ui: &mut Ui, id: &'static str, pad_x: f32) {
+fn hug_box(ui: &mut UiCore, id: &'static str, pad_x: f32) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Hug, Sizing::Fixed(40.0)))
@@ -56,7 +56,7 @@ fn hug_box(ui: &mut Ui, id: &'static str, pad_x: f32) {
         .show(ui);
 }
 
-fn fill_box(ui: &mut Ui, id: &'static str, weight: f32) {
+fn fill_box(ui: &mut UiCore, id: &'static str, weight: f32) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fill(weight), Sizing::Fixed(40.0)))

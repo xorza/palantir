@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
@@ -50,7 +50,7 @@ impl Panel {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut UiCore, body: impl FnOnce(&mut UiCore)) -> Response {
         let id = self.element.id;
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None

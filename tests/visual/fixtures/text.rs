@@ -128,7 +128,7 @@ fn text_row_list_survives_partial_damage_smoke() {
     let labels_initial = ["aaaa", "bbbb", "cccc", "dddd", "eeee", "ffff"];
 
     let scene = |labels: [&'static str; 6]| {
-        move |ui: &mut palantir::Ui| {
+        move |ui: &mut palantir::UiCore| {
             Panel::vstack()
                 .auto_id()
                 .padding(8.0)

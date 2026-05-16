@@ -1,10 +1,10 @@
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
-fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
+fn run(value: &mut bool, ui: &mut UiCore, surface: UVec2) {
     let mut v = *value;
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -16,7 +16,7 @@ fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
 
 #[test]
 fn clicking_toggles_value() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(300, 100);
     let mut v = false;
 
@@ -45,7 +45,7 @@ fn clicking_toggles_value() {
 
 #[test]
 fn disabled_checkbox_does_not_toggle() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     let surface = UVec2::new(300, 100);
     let mut v = false;
 

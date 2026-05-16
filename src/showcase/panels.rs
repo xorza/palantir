@@ -1,7 +1,7 @@
 use crate::showcase::swatch;
-use palantir::{Background, Color, Configure, Frame, Panel, Sizing, Ui};
+use palantir::{Background, Color, Configure, Frame, Panel, Sizing, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::hstack()
         .auto_id()
         .gap(12.0)
@@ -41,7 +41,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 /// Plain layout cell: padding + gap, no decoration.
-fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn cell(ui: &mut UiCore, id: &'static str, body: impl FnOnce(&mut UiCore)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -50,7 +50,7 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
+fn sw(ui: &mut UiCore, id: &'static str, w: f32, h: f32, c: Color) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
@@ -58,7 +58,7 @@ fn sw(ui: &mut Ui, id: &'static str, w: f32, h: f32, c: Color) {
         .show(ui);
 }
 
-fn positioned(ui: &mut Ui, id: &'static str, x: f32, y: f32, c: Color) {
+fn positioned(ui: &mut UiCore, id: &'static str, x: f32, y: f32, c: Color) {
     Frame::new()
         .id_salt(id)
         .position((x, y))

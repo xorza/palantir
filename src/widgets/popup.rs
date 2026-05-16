@@ -4,7 +4,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::frame::Frame;
 use glam::Vec2;
 use std::cell::Cell;
@@ -114,7 +114,7 @@ impl Popup {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
+    pub fn show(self, ui: &mut UiCore, body: impl FnOnce(&mut UiCore, &PopupHandle)) -> PopupResponse {
         let body_id = self.element.id;
         let eater_id = body_id.with("eater");
         // Eater records first → paints under the body. Hit-test runs

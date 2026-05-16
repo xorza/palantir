@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use crate::widgets::theme::text_style::TextStyle;
 
@@ -71,7 +71,7 @@ impl Text {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut UiCore) -> Response {
         let id = self.element.id;
         let style = self.style.unwrap_or(ui.theme.text);
         let line_height_px = style.line_height_for(style.font_size_px);

@@ -15,12 +15,12 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
 use crate::text::FontFamily;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
-pub(crate) fn record_frame_stats(ui: &mut Ui) {
+pub(crate) fn record_frame_stats(ui: &mut UiCore) {
     let label = format!("f {} · {:>4.0} fps", ui.frame_id, ui.fps_ema);
     let style = TextStyle {
         family: FontFamily::Mono,

@@ -3,9 +3,9 @@
 //! framework disambiguates the duplicates (so state stays intact) and
 //! paints a magenta 3px outline over every offender.
 
-use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, Ui};
+use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, UiCore};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -60,7 +60,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+fn row(ui: &mut UiCore, body: impl FnOnce(&mut UiCore)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::Hug))

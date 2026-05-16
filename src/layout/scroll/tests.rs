@@ -3,7 +3,7 @@
 //! [`super::ScrollLayoutState`] row, and the cache-hit fallback
 //! (driver doesn't fire; row keeps last frame's `content`).
 
-use crate::Ui;
+use crate::UiCore;
 use crate::forest::element::Configure;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
@@ -20,7 +20,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 /// `id_salt`. State is what the codebase reads at record time and is
 /// the stable observation point — on measure-cache hits the driver
 /// doesn't run, but the persisted row keeps last frame's value.
-fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
+fn state_for(ui: &mut UiCore, id_salt: &'static str) -> ScrollState {
     *ui.scroll_state(WidgetId::from_hash(id_salt).with("__viewport"))
 }
 
@@ -28,7 +28,7 @@ fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
 /// the children's full height. State is populated post-arrange.
 #[test]
 fn vertical_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
@@ -48,7 +48,7 @@ fn vertical_scroll_records_content_extent() {
 /// Horizontal scroll measures children with INF on X.
 #[test]
 fn horizontal_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
@@ -76,7 +76,7 @@ fn horizontal_scroll_records_content_extent() {
 /// Both-axis scroll measures with both axes unbounded.
 #[test]
 fn both_axis_scroll_records_content_extent() {
-    let mut ui = Ui::for_test();
+    let mut ui = UiCore::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
             .id_salt("scroll")
@@ -98,8 +98,8 @@ fn both_axis_scroll_records_content_extent() {
 /// offset clamp + reservation guess + bar geometry.
 #[test]
 fn state_survives_across_frames() {
-    let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
+    let mut ui = UiCore::for_test();
+    let build = |ui: &mut UiCore| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()
                 .id_salt("scroll")

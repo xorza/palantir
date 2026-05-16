@@ -15,7 +15,7 @@ fn context_menu_cut_copy_paste_clear() {
     fn editor_id() -> WidgetId {
         WidgetId::from_hash("ctx-ed")
     }
-    fn body(ui: &mut Ui, buf: &mut String) {
+    fn body(ui: &mut UiCore, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("ctx-ed")
@@ -23,14 +23,14 @@ fn context_menu_cut_copy_paste_clear() {
                 .show(ui);
         });
     }
-    fn open_menu_and_record(ui: &mut Ui, buf: &mut String) {
+    fn open_menu_and_record(ui: &mut UiCore, buf: &mut String) {
         ContextMenu::open(ui, editor_id(), Vec2::new(20.0, 10.0));
         ui.run_at(SMALL, |ui| body(ui, buf));
     }
     /// Click into the body element of the open menu at row-offset
     /// `(rel_x, rel_y)` from the body's top-left, then run a frame
     /// so the click is observed by `MenuItem::show`.
-    fn click_menu_row(ui: &mut Ui, buf: &mut String, row_idx: usize) {
+    fn click_menu_row(ui: &mut UiCore, buf: &mut String, row_idx: usize) {
         let body_id = editor_id().with("ctx_menu_body");
         let body_rect = ui
             .layout
@@ -278,7 +278,7 @@ fn secondary_click_opens_text_edit_menu() {
     let _cb_guard = crate::clipboard::test_serialize_guard();
 
     let editor_id = WidgetId::from_hash("ctx-ed-sec");
-    fn body(ui: &mut Ui, buf: &mut String) {
+    fn body(ui: &mut UiCore, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
                 .id_salt("ctx-ed-sec")

@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use std::rc::Rc;
 use std::sync::OnceLock;
@@ -125,7 +125,7 @@ impl Grid {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show(self, ui: &mut UiCore, body: impl FnOnce(&mut UiCore)) -> Response {
         let id = self.element.id;
         let active_layer = ui.forest.current_layer;
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);

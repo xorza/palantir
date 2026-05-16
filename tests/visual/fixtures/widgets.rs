@@ -374,7 +374,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 #[test]
 fn rounded_clip_survives_surface_resize() {
     let mut h = Harness::new();
-    let scene = |ui: &mut palantir::Ui| {
+    let scene = |ui: &mut palantir::UiCore| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))

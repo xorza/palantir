@@ -4,7 +4,7 @@ use crate::layout::types::align::Align;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
-use crate::ui::Ui;
+use crate::ui::UiCore;
 use crate::widgets::Response;
 use crate::widgets::theme::button::ButtonTheme;
 
@@ -48,7 +48,7 @@ impl Button {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut UiCore) -> Response {
         let mut element = self.element;
         // One `response_for` call covers both theme-picking (with
         // self-disabled merged in) and the returned `Response.state`

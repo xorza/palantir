@@ -5,7 +5,7 @@
 //! repaint loop).
 
 use palantir::{
-    AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, Ui,
+    AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, UiCore,
     WidgetId,
 };
 
@@ -14,7 +14,7 @@ struct Demo {
     wide: bool,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut UiCore) {
     let demo_id = WidgetId::from_hash("anim-demo");
     let mut clicked = false;
 
@@ -83,7 +83,7 @@ pub fn build(ui: &mut Ui) {
     }
 }
 
-fn bar(ui: &mut Ui, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
+fn bar(ui: &mut UiCore, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
     let id = WidgetId::from_hash(("anim-bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()
