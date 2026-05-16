@@ -4,6 +4,7 @@
 //! transform+tint. The vertex stream is content-stable across frames;
 //! per-draw state lives in a parallel instance buffer.
 
+use super::pipeline_utils::grow_instance_buffer;
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;
 
@@ -184,41 +185,44 @@ impl MeshPipeline {
             return;
         }
 
-        if instances.len() > self.instance_capacity {
-            self.instance_capacity = instances.len().next_power_of_two().max(16);
-            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.mesh.instances"),
-                size: (self.instance_capacity * std::mem::size_of::<MeshInstance>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
+        grow_instance_buffer(
+            device,
+            &mut self.instance_buffer,
+            &mut self.instance_capacity,
+            instances.len(),
+            std::mem::size_of::<MeshInstance>(),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            "palantir.mesh.instances",
+            16,
+        );
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
 
-        if vertices.len() > self.vertex_capacity {
-            self.vertex_capacity = vertices.len().next_power_of_two().max(64);
-            self.vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.mesh.vertices"),
-                size: (self.vertex_capacity * std::mem::size_of::<MeshVertex>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
+        grow_instance_buffer(
+            device,
+            &mut self.vertex_buffer,
+            &mut self.vertex_capacity,
+            vertices.len(),
+            std::mem::size_of::<MeshVertex>(),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            "palantir.mesh.vertices",
+            64,
+        );
         queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(vertices));
 
         // The index buffer's binding stride is 2 bytes (u16). wgpu
         // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
         // so pad the upload to an even count.
         let padded = (indices.len() + 1) & !1;
-        if padded > self.index_capacity {
-            self.index_capacity = padded.next_power_of_two().max(256);
-            self.index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.mesh.indices"),
-                size: (self.index_capacity * std::mem::size_of::<u16>()) as u64,
-                usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
+        grow_instance_buffer(
+            device,
+            &mut self.index_buffer,
+            &mut self.index_capacity,
+            padded,
+            std::mem::size_of::<u16>(),
+            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            "palantir.mesh.indices",
+            256,
+        );
         if indices.len() == padded {
             queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(indices));
         } else {
