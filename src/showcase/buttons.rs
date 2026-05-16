@@ -89,23 +89,17 @@ fn outlined_style() -> ButtonTheme {
             text: None,
         },
         hovered: WidgetLook {
-            background: Some(bg(
-                Color::linear_rgba(accent.r, accent.g, accent.b, 0.18),
-                stroke,
-            )),
+            background: Some(bg(accent.with_alpha(0.18), stroke)),
             text: None,
         },
         pressed: WidgetLook {
-            background: Some(bg(
-                Color::linear_rgba(accent.r, accent.g, accent.b, 0.35),
-                stroke,
-            )),
+            background: Some(bg(accent.with_alpha(0.35), stroke)),
             text: None,
         },
         disabled: WidgetLook {
             background: Some(bg(
                 Color::TRANSPARENT,
-                Stroke::solid(Color::linear_rgba(accent.r, accent.g, accent.b, 0.35), 1.5),
+                Stroke::solid(accent.with_alpha(0.35), 1.5),
             )),
             text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
         },
@@ -136,7 +130,7 @@ fn danger_style() -> ButtonTheme {
             text: Some(TextStyle::default().with_color(Color::WHITE)),
         },
         disabled: WidgetLook {
-            background: Some(bg(Color::linear_rgba(red.r, red.g, red.b, 0.4))),
+            background: Some(bg(red.with_alpha(0.4))),
             text: Some(TextStyle::default().with_color(Color::linear_rgba(1.0, 1.0, 1.0, 0.55))),
         },
         ..Default::default()

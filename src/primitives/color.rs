@@ -126,6 +126,18 @@ impl Color {
         Self { r, g, b, a }
     }
 
+    /// Replace the alpha channel, preserve RGB. Storage is linear /
+    /// straight-alpha (see `Color` docs), so this is a one-field swap —
+    /// no premultiply rebalancing.
+    pub const fn with_alpha(self, a: f32) -> Self {
+        Self {
+            r: self.r,
+            g: self.g,
+            b: self.b,
+            a,
+        }
+    }
+
     /// Multiply the linear RGB channels by `mul`, preserve alpha. Used by the
     /// encoder to dim disabled subtrees.
     pub const fn dim_rgb(self, mul: f32) -> Self {
