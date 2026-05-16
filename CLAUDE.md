@@ -17,12 +17,12 @@ State-of-the-art UI framework, craft-driven. **No external consumers, no publish
 
 ## Code style
 
-- **Comments:** none except non-obvious *why*. Code is short and self-explanatory; keep it that way. **Be terse.** One short line is the target — never multi-paragraph essays, never narration of what the code does, never "this used to…/we changed it because…" history. If a comment can't fit in one line and still earn its place, delete it.
+- **Comments:** none except non-obvious _why_. Code is short and self-explanatory; keep it that way. **Be terse.** One short line is the target — never multi-paragraph essays, never narration of what the code does, never "this used to…/we changed it because…" history. If a comment can't fit in one line and still earn its place, delete it.
 - **Asserts:** default to release `assert!` for invariants, not `debug_assert!` — `debug_assert!` is stripped in release and hides logic bugs in the build users actually run. Reserve it for checks too expensive for release (e.g. O(n) inside a hot loop), and call out the tradeoff.
 - **"Non-paintable scalar" predicate:** when guarding on a magnitude (stroke width, alpha, radius — any scalar where ≤ 0, NaN, or near-zero means "skip / emit nothing"), use `crate::primitives::approx::noop_f32(v)`. It captures all three cases in one comparison and is the shared predicate behind `Stroke::is_noop` / `Color::is_noop` / `Shape::is_noop`. Don't hand-roll `if !(v > 0.0)` or `if v <= 0.0 || v.is_nan()` — they drift apart over time. `approx::EPS = 1e-4`; for sub-`EPS` thresholds use the constant directly.
 - **Edition 2024.** Dependencies pinned to `*` for now (lockfile pins actual versions) — fine for prototype, pin before publishing.
 - **Tests in `lib.rs` pin layout semantics.** Add a test whenever you change measure/arrange behavior. Don't add wgpu code paths to the layout/tree modules.
-- **Test/bench helpers live in gated mods at the end of the production file they reach into.** Use `#[cfg(any(test, feature = "internals"))] pub(crate) mod test_support { ... }` for items benches/integration tests need (the `internals` feature is set up in `lib.rs`); plain `#[cfg(test)]` for in-tree-only helpers. Colocate the helper with the type whose privates it reads — `text_shaper_measure_calls` lives in `src/text/mod.rs`, `damage_rect_count` in `src/ui/damage/mod.rs`, etc. No big `support::internals` aggregator that re-exports everything; one canonical path per item, callers `use crate::foo::bar::test_support::helper`. Production types stay clean (no `#[allow(dead_code)] pub(crate) fn` debug accessors hanging off them). `support/testing.rs` is reserved for genuinely cross-module fixtures (e.g. helpers that build a `Panel` *and* drive a frame) that have no single natural home.
+- **Test/bench helpers live in gated mods at the end of the production file they reach into.** Use `#[cfg(any(test, feature = "internals"))] pub(crate) mod test_support { ... }` for items benches/integration tests need (the `internals` feature is set up in `lib.rs`); plain `#[cfg(test)]` for in-tree-only helpers. Colocate the helper with the type whose privates it reads — `text_shaper_measure_calls` lives in `src/text/mod.rs`, `damage_rect_count` in `src/ui/damage/mod.rs`, etc. No big `support::internals` aggregator that re-exports everything; one canonical path per item, callers `use crate::foo::bar::test_support::helper`. Production types stay clean (no `#[allow(dead_code)] pub(crate) fn` debug accessors hanging off them). `support/testing.rs` is reserved for genuinely cross-module fixtures (e.g. helpers that build a `Panel` _and_ drive a frame) that have no single natural home.
 - **Prefer extending existing tests over adding atomic ones.** When pinning a new invariant, look for a nearby test exercising the same fixture or feature and add the assertion there. Combine related axes into table-driven sweeps (one fixture, multiple cases) instead of one test per case. Refactors that touch a feature then update one or two tests, not a dozen — fewer pin-points to migrate, less duplicated setup, the same coverage. Split into a new test only when a clean fixture for the new behavior would dominate the existing test, or when the failure mode is different enough that one assertion message wouldn't be useful.
 - **Split fat-test files** into `foo/{mod.rs, tests.rs}` when tests dominate (>40% or >150 lines).
 - **Visibility:** default to narrowest; demote `pub` → `pub(crate)` → private whenever nothing outside uses the item. `pub(crate)` on fields is fine — invariants live in the mutating methods, not in encapsulation theater. No `pub(in path)` / `pub(super)` — exotic noise; use `pub(crate)` for any cross-module access.
@@ -40,10 +40,10 @@ Five passes per frame on an arena `Tree` rebuilt every frame (with `tree.post_re
 1. **Record** — user code (`Button::new().label("x").show(&mut ui)`) appends per-node columns + `Shape`s.
 2. **Measure** (post-order) — node returns desired size given available; `MeasureCache` short-circuits whole subtrees on `(WidgetId, subtree_hash, available_q)` hits. Single dispatch (no WPF-style grow loop).
 3. **Arrange** (pre-order) — parent assigns final `Rect` to each child.
-4. **Cascade** (pre-order) — `Cascades::run` flattens disabled/invisible/clip/transform and builds the hit index in the same walk; consumed by encoder *and* hit-test so they can't drift.
+4. **Cascade** (pre-order) — `Cascades::run` flattens disabled/invisible/clip/transform and builds the hit index in the same walk; consumed by encoder _and_ hit-test so they can't drift.
 5. **Encode + Compose + Paint** — `Encoder` walks the tree and emits a `RenderCmdBuffer` from scratch each frame; `Composer` groups by scissor, snaps to physical pixels; `WgpuBackend` submits instanced quads. `Damage` returns `Full` / `Partial(rect)` / `Skip` and filters which leaves the encoder paints. No encode or compose caches — both were implemented and removed after profiling (see `docs/cache-history/encode.md`); the encoder + composer are already memcpy-shaped and a per-frame rebuild beat a per-subtree cache replay.
 
-Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). Access via `Ui::state_mut::<T>(id)`; rows for `WidgetId`s not recorded this frame are dropped in `post_record` via the same `removed` slice that `Damage`, `TextShaper`, and `MeasureCache` consume.
+Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → Box<dyn Any>` map (`StateMap` on `Ui`). Access via `Ui::state_mut::<T>(id)`; rows for `WidgetId`s not recorded this frame are dropped in `post_record` via the same `removed` slice that `Damage`, `TextShaper`, and `MeasureCache` consume.
 
 **Tree = SoA columns indexed by `NodeId.0`:** `records: Soa<NodeRecord>` (via `soa-rs`) packs five per-node columns — `widget_id` (hit-test + state map + damage), `shape_span: Span` (slice into the flat shape buffer covering this node's subtree), `subtree_end: u32` (pre-order skip; `i + 1 == subtree_end` for a leaf — every walk), `layout: LayoutCore` (mode/size/padding/margin/align/visibility, bundled because measure reads all six together), `attrs: NodeFlags` (1-byte sense/disabled/clip/focusable — cascade/encoder). Adjacent on the tree but outside the SoA: `shapes: Shapes` (flat per-frame `ShapeRecord` buffer + per-variant payloads for `Polyline`/`Mesh`), `parents: Vec<NodeId>` (O(1) parent lookup), and four sparse side tables — `bounds: SparseColumn<BoundsExtras>` (transform / position), `panel: SparseColumn<PanelExtras>` (grid cell, scroll axes), `chrome: SparseColumn<Background>` (panel chrome), `clip_radius: SparseColumn<Corners>` (mask radius for `ClipMode::Rounded`). `rollups: SubtreeRollups` carries per-node + subtree hashes + a `paints` bitset, populated in `post_record`; key for cross-frame caches. soa-rs lays each `NodeRecord` field out as its own contiguous slice, so each pass touches only the columns it needs. Atomic push across the SoA columns means `open_node` writes all five per-node fields together — they can't drift. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, not on the tree.
 
@@ -55,7 +55,7 @@ Widget *state* (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 **Colour pipeline.** Linear-RGB f32 everywhere on the CPU side; sRGB encoding happens on the GPU at swapchain write. Specifically: `Color { r, g, b, a: f32 }` (`src/primitives/color.rs`) stores **premultiplied-friendly linear-RGB** values in 0..1 (or >1 for HDR-shaped tween outputs). User-facing constructors `Color::rgb(r,g,b)` / `Color::hex(0x...)` / `Color::rgb_u8(...)` interpret their input as **sRGB perceptual** and linearise via a cubic Hejl-Burgess-Dawson fit (`srgb_to_linear`, max error ~1.5e-3 — pinned by `cubic_srgb_max_error_under_two_thousandths`). `Color::linear_rgb` / `Color::linear_rgba` skip the linearisation for tween outputs and physically-derived values. Storage in `Background`, `Stroke`, `Brush::Solid`, `Quad`, etc. is always linear. All AA / blend / `Animatable::lerp` math runs in linear. The render surface is configured to an sRGB texture format (`is_srgb()` pick in `examples/showcase/main.rs`); the quad pipeline uses `BlendState::PREMULTIPLIED_ALPHA_BLENDING` and the fragment shader writes premultiplied linear-RGB (`vec4(rgb * a, a)` in `quad.wgsl`) — the GPU does the linear→sRGB encode automatically because the render target is sRGB-format. **Don't write sRGB-encoded values into `Color`** (skips the linearisation contract); use `Color::rgb`/`hex` for sRGB-perceptual input, `linear_rgb` for already-linear input. `Srgb8` (`src/primitives/color.rs`) is a 4-byte sRGB-packed storage type for places where 8-bit display precision suffices and footprint matters (currently `Stop.color` in gradients). Conversion via `From<Color>` / `From<Srgb8>` uses the same cubic-Newton inverse pair. The future gradient LUT atlas (slice 2, see `docs/roadmap/brushes-slice-2-plan.md`) will use `Rgba8UnormSrgb` texture format storing baked stops as straight (non-premul) sRGB bytes; sampling auto-decodes back to linear, the shader handles premul.
 
-**Sizing (flex-shrink with min-content floor):** `Fixed(n)` = exactly `n` (hard contract; can exceed parent's available). `Hug` = `min(content, available)` floored at `intrinsic_min`. `Fill(weight)` = `available` floored at `intrinsic_min`; with Fill siblings, each gets `leftover * weight / total_weight`, but a sibling whose floor exceeds its share *freezes* at floor and the rest re-divide (CSS Flexbox-style). The `intrinsic_min` floor is the largest non-shrinkable thing on this axis (Fixed descendant, explicit `min_size`, longest unbreakable word). Children clamp DOWN to fit parent — no WPF-style parent-grow. Overflow only happens when rigid descendants don't fit; downstream tolerates it. Canonical impl: `resolve_axis_size` in `src/layout/support.rs` + freeze loop in `src/layout/stack/mod.rs::measure`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs`.
+**Sizing (flex-shrink with min-content floor):** `Fixed(n)` = exactly `n` (hard contract; can exceed parent's available). `Hug` = `min(content, available)` floored at `intrinsic_min`. `Fill(weight)` = `available` floored at `intrinsic_min`; with Fill siblings, each gets `leftover * weight / total_weight`, but a sibling whose floor exceeds its share _freezes_ at floor and the rest re-divide (CSS Flexbox-style). The `intrinsic_min` floor is the largest non-shrinkable thing on this axis (Fixed descendant, explicit `min_size`, longest unbreakable word). Children clamp DOWN to fit parent — no WPF-style parent-grow. Overflow only happens when rigid descendants don't fit; downstream tolerates it. Canonical impl: `resolve_axis_size` in `src/layout/support.rs` + freeze loop in `src/layout/stack/mod.rs::measure`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs`.
 
 ## Project layout
 
@@ -148,3 +148,45 @@ npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-to
 ```
 
 Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
+
+## Mechanical refactoring (large-scale renames, signature changes)
+
+**`sd` / `perl -i` are the wrong tools at this scale.** Regex-based find/replace has no AST awareness, so it bites in predictable ways: `click_at\(` also matches `secondary_click_at(`; `run_at\((\w+),` re-matches its own output and produces `ui.X.run_at(Y)` on the second pass; multi-line `use {a,b,c};` blocks don't split cleanly. Reserve `sd` for prose, config files, and renames where the symbol is genuinely unique. For Rust code use AST-aware tools.
+
+### Tool stack
+
+- **`rust-analyzer ssr`** — structural search/replace via AST placeholders. Pattern `$path::foo($ui, $rest) ==>> $ui.foo($rest)` anchors on path / call nodes, so free-fn-to-method conversions can't accidentally match a method call of the same name, and the rewritten form is structurally distinct from the input (idempotent by construction). Best for signature rewrites and call-site rewrites.
+- **`ast-grep`** — tree-sitter-based; YAML rule files with `inside` / `has` / `not` constraints. Strong Rust catalog. Best for AST-shape rewrites that ssr's placeholder grammar can't express — splitting `use foo::{a, b, c};` into N lines, restructuring nested expressions, applying rewrites only inside specific scopes.
+- **`rerast`** — type-aware Rust pattern rules. Less maintained but works where ssr / ast-grep can't see types.
+- **`cargo clippy --fix --all-targets --allow-dirty --allow-no-vcs`** — aftermath cleanup: unused imports, redundant `mut`, needless borrows. Run after every mechanical batch.
+- **`cargo fix --broken-code`** — applies machine-applicable rustc suggestions; pairs with a lint that flags the old pattern.
+
+### Workflow
+
+Phase strictly, never interleave:
+
+1. File moves (`git mv` for tracked files so rename history survives).
+2. Signature rewrites (free fn → method, param reordering, type changes).
+3. Call-site rewrites.
+4. Import fixups.
+5. `cargo clippy --fix` for unused-import cleanup.
+6. `cargo fmt --all`.
+
+### Rules to write idempotent rewrites
+
+A rule is idempotent when its output can't match its input pattern. Examples:
+
+- `foo($ui, $rest) ==>> $ui.foo($rest)` — output is a method call (different AST node from a free fn call); cannot re-match.
+- `foo($a) ==>> bar($a)` — safe if `bar` doesn't appear elsewhere.
+- `foo($a, $b) ==>> foo($b, $a)` — **not idempotent**; running twice un-does it. Add a sentinel marker or do it as a one-shot.
+
+Always dry-run with `--debug-query` / preview output before applying. Both ast-grep and ssr support this.
+
+### When to use what
+
+- **Symbol rename inside one crate, type-driven** → IDE rename via rust-analyzer (`textDocument/rename` LSP request, scriptable). Most precise.
+- **Free fn ↔ method, parameter reordering, deprecating an API** → `rust-analyzer ssr`.
+- **Import-block restructuring, AST-shape rewrites, cross-language** → `ast-grep`.
+- **Module path renames** (`crate::foo::bar` → `crate::baz::bar`) → `ast-grep` (anchored on `scoped_identifier`) or rust-analyzer's "Move module" refactor.
+- **Cleanup leftovers** (unused imports, dead allows, format) → `cargo clippy --fix` + `cargo fmt`.
+- **Prose, doc comments, TOML, shell scripts** → `sd` is fine; AST tools are overkill.
