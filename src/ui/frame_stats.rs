@@ -18,7 +18,7 @@ use crate::text::FontFamily;
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
-use crate::widgets::theme::TextStyle;
+use crate::widgets::theme::text_style::TextStyle;
 
 pub(crate) fn record_frame_stats(ui: &mut Ui) {
     let label = format!("f {} · {:>4.0} fps", ui.frame_id, ui.fps_ema);

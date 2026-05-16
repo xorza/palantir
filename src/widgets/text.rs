@@ -4,7 +4,7 @@ use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::TextStyle;
+use crate::widgets::theme::text_style::TextStyle;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size by default; call

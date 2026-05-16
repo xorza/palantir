@@ -71,7 +71,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::forest::tree::Layer::Tooltip`] after the pointer has rested
-/// on the trigger for [`crate::widgets::theme::TooltipTheme::delay`]
+/// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
 /// seconds. A short warmup window (configured on the theme) keeps
 /// subsequent tooltips instant after one was dismissed, so scanning a
 /// row of buttons doesn't re-delay on every move.
@@ -128,7 +128,7 @@ impl<'r> Tooltip<'r> {
     }
 
     /// Override the per-tooltip delay (seconds). Falls back to
-    /// [`crate::widgets::theme::TooltipTheme::delay`] when unset.
+    /// [`crate::widgets::theme::tooltip::TooltipTheme::delay`] when unset.
     pub fn delay(mut self, secs: f32) -> Self {
         self.delay = Some(secs);
         self

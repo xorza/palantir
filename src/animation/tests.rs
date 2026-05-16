@@ -773,7 +773,8 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
-    use crate::widgets::theme::{AnimatedLook, TextStyle, WidgetLook};
+    use crate::widgets::theme::text_style::TextStyle;
+    use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
     use std::cell::Cell;
 
     let AnimUi {
