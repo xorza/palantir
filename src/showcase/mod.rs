@@ -21,6 +21,7 @@ pub mod pan_zoom;
 pub mod pan_zoom_auto;
 pub mod panels;
 pub mod popup;
+pub mod radio;
 pub mod scroll;
 pub mod shadow;
 pub mod sizing;

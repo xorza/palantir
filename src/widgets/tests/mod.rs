@@ -5,6 +5,7 @@ mod drag;
 mod frame;
 mod panel;
 mod popup;
+mod radio;
 mod scroll;
 mod tooltip;
 mod track_caller;
