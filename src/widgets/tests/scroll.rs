@@ -495,7 +495,7 @@ mod bars {
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
     use crate::widgets::scroll::{Scroll, bar_geometry};
-    use crate::widgets::theme::ScrollbarTheme;
+    use crate::widgets::theme::scrollbar::ScrollbarTheme;
     use glam::UVec2;
 
     fn theme() -> ScrollbarTheme {

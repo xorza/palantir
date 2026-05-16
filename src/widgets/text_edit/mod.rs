@@ -15,7 +15,7 @@ use crate::text::{CursorPos, FontFamily};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
-use crate::widgets::theme::TextEditTheme;
+use crate::widgets::theme::text_edit::TextEditTheme;
 use glam::Vec2;
 use std::borrow::Cow;
 use std::collections::VecDeque;

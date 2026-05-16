@@ -15,7 +15,7 @@ use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::ScrollbarTheme;
+use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use glam::Vec2;
 use std::ops::RangeInclusive;
 

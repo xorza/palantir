@@ -6,7 +6,7 @@ use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::ButtonTheme;
+use crate::widgets::theme::button::ButtonTheme;
 
 pub struct Button {
     element: Element,

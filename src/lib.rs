@@ -99,10 +99,15 @@ pub use widgets::radio::RadioButton;
 pub use widgets::scroll::Scroll;
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
-pub use widgets::theme::{
-    AnimatedLook, ButtonTheme, ContextMenuTheme, MenuItemTheme, ScrollbarTheme, StatefulLook,
-    TextEditTheme, TextStyle, Theme, ToggleTheme, TooltipTheme, WidgetLook,
-};
+pub use widgets::theme::Theme;
+pub use widgets::theme::button::ButtonTheme;
+pub use widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme};
+pub use widgets::theme::scrollbar::ScrollbarTheme;
+pub use widgets::theme::text_edit::TextEditTheme;
+pub use widgets::theme::text_style::TextStyle;
+pub use widgets::theme::toggle::ToggleTheme;
+pub use widgets::theme::tooltip::TooltipTheme;
+pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 
 #[cfg(test)]
