@@ -155,24 +155,6 @@ impl<T: 'static> Host<T> {
         self.present(surface, config, report)
     }
 
-    /// Offscreen one-shot: run CPU + GPU against a caller-supplied
-    /// texture (no swapchain acquire). `Display`'s physical size is
-    /// derived from `target.size()`. For the visual harness and
-    /// offscreen benches.
-    pub fn frame_offscreen(
-        &mut self,
-        target: &wgpu::Texture,
-        scale_factor: f32,
-        state: &mut T,
-        record: impl FnMut(&mut Ui<T>),
-    ) {
-        let size = target.size();
-        let display =
-            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
-        let report = self.cpu_frame(display, state, record);
-        self.render_to_texture(target, &report);
-    }
-
     /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
     /// damage. Returns the host-facing [`FrameReport`]; thread it back
     /// into [`Self::render_to_texture`]. Internal split for benches and
@@ -303,5 +285,23 @@ impl<T: 'static> Host<T> {
     /// GPU half of [`Self::frame`] against a caller-supplied texture.
     pub fn render_to_texture_for_test(&mut self, target: &wgpu::Texture, report: &FrameReport) {
         self.render_to_texture(target, report);
+    }
+
+    /// Offscreen one-shot: run CPU + GPU against a caller-supplied
+    /// texture (no swapchain acquire). `Display`'s physical size is
+    /// derived from `target.size()`. For the visual harness and
+    /// offscreen benches.
+    pub fn frame_offscreen(
+        &mut self,
+        target: &wgpu::Texture,
+        scale_factor: f32,
+        state: &mut T,
+        record: impl FnMut(&mut Ui<T>),
+    ) {
+        let size = target.size();
+        let display =
+            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+        let report = self.cpu_frame(display, state, record);
+        self.render_to_texture(target, &report);
     }
 }

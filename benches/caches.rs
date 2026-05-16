@@ -430,6 +430,7 @@ fn fresh_heavy_ui() -> Ui {
     Ui::new(
         TextShaper::with_bundled_fonts(),
         palantir::FrameArena::default(),
+        palantir::RenderCaches::default(),
     )
 }
 
