@@ -4,7 +4,10 @@ mod mesh_pipeline;
 mod pipeline_utils;
 mod quad_pipeline;
 mod schedule;
+mod stencil;
 mod viewport;
+
+use self::stencil::STENCIL_FORMAT;
 
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
@@ -50,39 +53,6 @@ struct StencilAttachment {
     #[allow(dead_code)] // owns the GPU resource that `view` points into
     tex: wgpu::Texture,
     view: wgpu::TextureView,
-}
-
-/// Format used for the lazy stencil attachment. `Stencil8` is the
-/// minimum that satisfies the rounded-clip mask path; no depth
-/// component is needed (UI is 2D, no z-test). Read by the
-/// stencil-aware quad pipeline variants in `quad_pipeline.rs`.
-pub(crate) const STENCIL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
-
-/// Stencil-test pipeline state shared by the four `stencil_test`
-/// pipelines built around the rounded-clip mask: `QuadPipeline`,
-/// `MeshPipeline`, `ImagePipeline`, plus glyphon's stencil-aware text
-/// renderer (`text.rs`). Sole source of truth so they can't drift
-/// (mismatched `read_mask` etc. would silently break rounded text /
-/// images under mask).
-pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
-    let face = wgpu::StencilFaceState {
-        compare: wgpu::CompareFunction::Equal,
-        fail_op: wgpu::StencilOperation::Keep,
-        depth_fail_op: wgpu::StencilOperation::Keep,
-        pass_op: wgpu::StencilOperation::Keep,
-    };
-    wgpu::DepthStencilState {
-        format: STENCIL_FORMAT,
-        depth_write_enabled: Some(false),
-        depth_compare: Some(wgpu::CompareFunction::Always),
-        stencil: wgpu::StencilState {
-            front: face,
-            back: face,
-            read_mask: 0xff,
-            write_mask: 0x00,
-        },
-        bias: wgpu::DepthBiasState::default(),
-    }
 }
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned

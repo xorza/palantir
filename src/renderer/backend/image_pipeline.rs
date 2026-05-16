@@ -200,7 +200,7 @@ impl ImagePipeline {
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
                 ..Default::default()
             },
-            depth_stencil: Some(super::stencil_test_state()),
+            depth_stencil: Some(super::stencil::stencil_test_state()),
             multisample: wgpu::MultisampleState::default(),
             multiview_mask: None,
             cache: None,

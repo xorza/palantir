@@ -323,7 +323,7 @@ impl TextRenderer {
                 // `&mut PoolState` would lock all of `self`.
                 let depth_stencil = match mode {
                     StencilMode::Plain => None,
-                    StencilMode::Stencil => Some(super::stencil_test_state()),
+                    StencilMode::Stencil => Some(super::stencil::stencil_test_state()),
                 };
                 let pool = match mode {
                     StencilMode::Plain => &mut self.plain,
