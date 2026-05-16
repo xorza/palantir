@@ -409,7 +409,11 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         &mut out,
     );
     let q = &out.quads[0];
-    assert!(q.fill_kind.is_solid(), "solid quad must carry kind=solid");
+    assert_eq!(
+        q.fill_kind,
+        crate::renderer::quad::FillKind::SOLID,
+        "solid quad must carry kind=solid",
+    );
     assert_eq!(
         q.fill_lut_row,
         crate::renderer::gradient_atlas::LutRow::FALLBACK,

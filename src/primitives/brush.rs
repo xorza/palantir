@@ -27,7 +27,7 @@ pub struct FillAxis(pub [u16; 4]);
 
 impl FillAxis {
     /// All-zero axis used for solid quads. The shader ignores it when
-    /// `FillKind::is_solid()`, so the value doesn't matter — keep it
+    /// `FillKind == SOLID`, so the value doesn't matter — keep it
     /// zeroed so Pod-byte cache keys are deterministic for solid
     /// quads.
     pub const ZERO: Self = Self([0; 4]);
