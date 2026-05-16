@@ -1,6 +1,7 @@
 mod debug_overlay;
 mod image_pipeline;
 mod mesh_pipeline;
+mod pipeline_utils;
 mod quad_pipeline;
 mod schedule;
 mod viewport;
@@ -57,10 +58,12 @@ struct StencilAttachment {
 /// stencil-aware quad pipeline variants in `quad_pipeline.rs`.
 pub(crate) const STENCIL_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Stencil8;
 
-/// Stencil-test pipeline state shared by the quad's `stencil_test`
-/// pipeline and glyphon's stencil-aware text renderer. Sole source of
-/// truth so the two can't drift (mismatched `read_mask` etc. would
-/// silently break rounded text under mask).
+/// Stencil-test pipeline state shared by the four `stencil_test`
+/// pipelines built around the rounded-clip mask: `QuadPipeline`,
+/// `MeshPipeline`, `ImagePipeline`, plus glyphon's stencil-aware text
+/// renderer (`text.rs`). Sole source of truth so they can't drift
+/// (mismatched `read_mask` etc. would silently break rounded text /
+/// images under mask).
 pub(crate) fn stencil_test_state() -> wgpu::DepthStencilState {
     let face = wgpu::StencilFaceState {
         compare: wgpu::CompareFunction::Equal,

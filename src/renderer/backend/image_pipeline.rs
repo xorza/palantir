@@ -5,6 +5,7 @@
 //! list each frame and uploads to GPU, then caches the resulting
 //! `GpuImage` by [`ImageHandle`] across frames.
 
+use super::pipeline_utils::grow_instance_buffer;
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -12,9 +13,9 @@ use std::rc::Rc;
 
 pub(crate) struct ImagePipeline {
     pipeline: wgpu::RenderPipeline,
-    /// Group 0: viewport uniform. Group 1 (texture+sampler) is built
-    /// per-image inside [`GpuImage`].
-    viewport_bg: wgpu::BindGroup,
+    /// Group 0 (viewport uniform). Group 1 (per-image texture +
+    /// sampler) is built inside [`upload`] and stored in [`cache`].
+    bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     /// Stencil-test variant — lazy-built when the first rounded-clip
@@ -26,21 +27,18 @@ pub(crate) struct ImagePipeline {
     viewport_bgl: wgpu::BindGroupLayout,
     image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    /// `ImageHandle → GpuImage`. Keyed across frames; the entry is
-    /// reused until the user calls `ImageRegistry::unregister` (which
-    /// just frees CPU bytes — GPU eviction is a slice-2 concern).
-    cache: FxHashMap<ImageHandle, GpuImage>,
-}
-
-/// Per-image GPU state. `bind_group` is what the draw call binds to
-/// group 1; `view` and `texture` are kept alive alongside it so wgpu
-/// validation doesn't reject the bind group on drop.
-struct GpuImage {
-    #[allow(dead_code)] // owns the GPU texture; bind_group references it
-    texture: wgpu::Texture,
-    #[allow(dead_code)] // owns the view; bind_group references it
-    view: wgpu::TextureView,
-    bind_group: wgpu::BindGroup,
+    /// `id → bind_group`. Keyed across frames; the entry is reused
+    /// until the user calls [`ImageRegistry::unregister`] (which just
+    /// frees CPU bytes — GPU eviction is roadmapped, see
+    /// `docs/roadmap/images.md`). Keyed by `u64` not `ImageHandle`
+    /// because `ImageHandle::Hash` keys on `id` only — using the
+    /// wrapper would carry the `size` lane through every lookup for
+    /// nothing.
+    ///
+    /// `wgpu::BindGroup` holds internal Arcs to its texture + view, so
+    /// dropping the wrapper here also drops the underlying GPU
+    /// resources (no separate `texture` / `view` fields needed).
+    cache: FxHashMap<u64, wgpu::BindGroup>,
 }
 
 impl ImagePipeline {
@@ -89,7 +87,7 @@ impl ImagePipeline {
             ],
         });
 
-        let viewport_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.image.viewport.bg"),
             layout: &viewport_bgl,
             entries: &[wgpu::BindGroupEntry {
@@ -154,7 +152,7 @@ impl ImagePipeline {
 
         Self {
             pipeline,
-            viewport_bg,
+            bind_group,
             instance_buffer,
             instance_capacity,
             stencil_test: None,
@@ -224,19 +222,34 @@ impl ImagePipeline {
         images: &ImageRegistry,
     ) {
         for (handle, image) in images.drain_pending() {
-            let gpu = self.upload(device, queue, &image);
-            self.cache.insert(handle, gpu);
+            let bind_group = self.upload(device, queue, handle.id, &image);
+            self.cache.insert(handle.id, bind_group);
         }
     }
 
-    fn upload(&self, device: &wgpu::Device, queue: &wgpu::Queue, image: &Rc<Image>) -> GpuImage {
+    /// Upload a fresh RGBA8 texture for `id` and build its per-image
+    /// bind group. The texture + view are held only by the returned
+    /// `BindGroup` — wgpu's internal Arcs keep them alive for the
+    /// bind group's lifetime; dropping the wrapper frees the GPU
+    /// resources too.
+    fn upload(
+        &self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        id: u64,
+        image: &Rc<Image>,
+    ) -> wgpu::BindGroup {
         let size = wgpu::Extent3d {
             width: image.width,
             height: image.height,
             depth_or_array_layers: 1,
         };
+        // Per-handle labels surface in wgpu validation traces so a
+        // mis-bound image points to its source asset directly.
+        let tex_label = format!("palantir.image.tex.{id:016x}");
+        let bg_label = format!("palantir.image.tex.bg.{id:016x}");
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.image.tex"),
+            label: Some(&tex_label),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -263,8 +276,8 @@ impl ImagePipeline {
             size,
         );
         let view = texture.create_view(&Default::default());
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.image.tex.bg"),
+        device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some(&bg_label),
             layout: &self.image_bgl,
             entries: &[
                 wgpu::BindGroupEntry {
@@ -276,12 +289,7 @@ impl ImagePipeline {
                     resource: wgpu::BindingResource::Sampler(&self.sampler),
                 },
             ],
-        });
-        GpuImage {
-            texture,
-            view,
-            bind_group,
-        }
+        })
     }
 
     /// Sync the per-instance buffer. Single contiguous upload — the
@@ -296,20 +304,20 @@ impl ImagePipeline {
         if instances.is_empty() {
             return;
         }
-        if instances.len() > self.instance_capacity {
-            self.instance_capacity = instances.len().next_power_of_two().max(16);
-            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.image.instances"),
-                size: (self.instance_capacity * std::mem::size_of::<ImageInstance>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
+        grow_instance_buffer(
+            device,
+            &mut self.instance_buffer,
+            &mut self.instance_capacity,
+            instances.len(),
+            std::mem::size_of::<ImageInstance>(),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            "palantir.image.instances",
+            16,
+        );
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
     }
 
     /// Bind once per pass before iterating image draws.
-    #[allow(dead_code)] // wired by schedule (slice 1 Phase 5)
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         if stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
@@ -317,25 +325,31 @@ impl ImagePipeline {
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(0, &self.viewport_bg, &[]);
+        pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
     }
 
     /// Issue one image draw. `instance` indexes into the per-frame
-    /// instance buffer. `handle` selects the bind group; missing
-    /// entries are silently skipped (the registry lookup raced an
-    /// `unregister`).
-    #[allow(dead_code)] // wired by schedule (slice 1 Phase 5)
+    /// instance buffer. `handle` selects the bind group; misses log
+    /// a warning and skip — a miss means either (a) the user
+    /// unregistered between record and submit (legal but exotic), or
+    /// (b) the registry never saw `handle` because it was minted by a
+    /// different `ImageRegistry` clone (caller bug).
     pub(crate) fn draw<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         handle: ImageHandle,
         instance: u32,
     ) {
-        let Some(g) = self.cache.get(&handle) else {
+        let Some(bg) = self.cache.get(&handle.id) else {
+            tracing::warn!(
+                handle_id = format!("{:016x}", handle.id),
+                "ImagePipeline::draw: no GPU texture for handle (unregistered between \
+                 record and submit, or handle from a different registry?). Skipping draw."
+            );
             return;
         };
-        pass.set_bind_group(1, &g.bind_group, &[]);
+        pass.set_bind_group(1, bg, &[]);
         pass.draw(0..4, instance..instance + 1);
     }
 }

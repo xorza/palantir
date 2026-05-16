@@ -2,6 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
+use super::pipeline_utils::grow_instance_buffer;
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -437,15 +438,16 @@ impl QuadPipeline {
             return;
         }
 
-        if quads.len() > self.instance_capacity {
-            self.instance_capacity = quads.len().next_power_of_two().max(8);
-            self.instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.quad.instances"),
-                size: (self.instance_capacity * std::mem::size_of::<Quad>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-        }
+        grow_instance_buffer(
+            device,
+            &mut self.instance_buffer,
+            &mut self.instance_capacity,
+            quads.len(),
+            std::mem::size_of::<Quad>(),
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            "palantir.quad.instances",
+            8,
+        );
         queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(quads));
     }
 
