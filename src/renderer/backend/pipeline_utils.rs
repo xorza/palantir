@@ -10,6 +10,7 @@
 /// <= *capacity`. Single source of truth for the wgpu vertex/index/
 /// instance buffer regrow pattern — see `quad_pipeline.rs`,
 /// `mesh_pipeline.rs`, `image_pipeline.rs`.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn grow_instance_buffer(
     device: &wgpu::Device,
     buffer: &mut wgpu::Buffer,
