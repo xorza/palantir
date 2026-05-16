@@ -1,4 +1,5 @@
 use crate::layout::types::align::Align;
+use crate::primitives::image::ImageHandle;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{noop_f32, vec2_approx_eq},
@@ -125,6 +126,19 @@ pub enum Shape<'a> {
         mesh: &'a Mesh,
         local_rect: Option<Rect>,
         tint: Brush,
+    },
+    /// Textured rectangle painted from a registered [`ImageHandle`].
+    /// `local_rect = None` paints into the owner's full arranged rect;
+    /// `Some(r)` paints `r` at owner-relative coords (`r.min = (0, 0)`
+    /// is the owner's top-left). `tint` multiplies the sampled pixel
+    /// in linear-RGB premultiplied space; `Color::WHITE` is "no tint."
+    /// The image's pixels live in [`crate::ImageRegistry`] and are
+    /// uploaded to GPU on first paint — the user just passes the
+    /// handle every frame.
+    Image {
+        handle: ImageHandle,
+        local_rect: Option<Rect>,
+        tint: Color,
     },
     /// Gaussian-blurred rounded rectangle — drop shadow or inner
     /// shadow. Closed-form analytic shader (Evan Wallace's erf
@@ -413,6 +427,11 @@ impl Shape<'_> {
                 local_rect,
                 tint,
             } => local_rect_paint_empty(local_rect) || tint.is_noop() || mesh.is_noop(),
+            Shape::Image {
+                handle,
+                local_rect,
+                tint,
+            } => handle.is_none() || local_rect_paint_empty(local_rect) || tint.is_noop(),
             Shape::Shadow {
                 local_rect, shadow, ..
             } => local_rect_paint_empty(local_rect) || shadow.is_noop(),

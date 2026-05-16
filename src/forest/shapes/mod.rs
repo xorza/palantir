@@ -178,6 +178,15 @@ impl Shapes {
                 radius,
                 shadow: shadow.into(),
             },
+            Shape::Image {
+                handle,
+                local_rect,
+                tint,
+            } => ShapeRecord::Image {
+                local_rect,
+                tint: tint.into(),
+                handle,
+            },
             Shape::Mesh {
                 mesh,
                 local_rect,
