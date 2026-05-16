@@ -121,8 +121,11 @@ impl MeshPipeline {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout =
-            build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[Some(&self.bind_layout)]);
+        let layout = build_pipeline_layout(
+            device,
+            "palantir.mesh.pl.stencil",
+            &[Some(&self.bind_layout)],
+        );
         self.stencil_test = Some(build_pipeline(
             device,
             PipelineRecipe {

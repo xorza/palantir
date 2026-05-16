@@ -102,18 +102,16 @@ impl DebugOverlay {
         queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
 
-    /// Bind the supplied no-stencil base pipeline + dim buffer and
-    /// draw one instance. The dim pass runs without a stencil
+    /// Bind the supplied quad pipeline's no-stencil base + dim buffer
+    /// and draw one instance. The dim pass runs without a stencil
     /// attachment (uniform dim across the viewport), so the
     /// no-stencil pipeline is always correct here.
     pub(super) fn draw_dim<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
-        bind_group: &'a wgpu::BindGroup,
+        quad: &'a super::QuadPipeline,
     ) {
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, bind_group, &[]);
+        quad.bind_debug(pass);
         pass.set_vertex_buffer(0, self.dim_buffer.slice(..));
         pass.draw(0..4, 0..1);
     }
@@ -162,19 +160,17 @@ impl DebugOverlay {
         );
     }
 
-    /// Bind the supplied no-stencil base pipeline + overlay buffer
-    /// and draw `count` instances. Used in the post-copy overlay
-    /// pass on the swapchain texture (no stencil attachment, no
-    /// scissor).
+    /// Bind the supplied quad pipeline's no-stencil base + overlay
+    /// buffer and draw `count` instances. Used in the post-copy
+    /// overlay pass on the swapchain texture (no stencil attachment,
+    /// no scissor).
     pub(super) fn draw_overlays<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        pipeline: &'a wgpu::RenderPipeline,
-        bind_group: &'a wgpu::BindGroup,
+        quad: &'a super::QuadPipeline,
         count: u32,
     ) {
-        pass.set_pipeline(pipeline);
-        pass.set_bind_group(0, bind_group, &[]);
+        quad.bind_debug(pass);
         pass.set_vertex_buffer(0, self.overlay_buffer.slice(..));
         pass.draw(0..4, 0..count);
     }

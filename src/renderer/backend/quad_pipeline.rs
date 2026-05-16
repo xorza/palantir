@@ -14,14 +14,12 @@ use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
 
 pub(crate) struct QuadPipeline {
-    /// The no-stencil base pipeline. `pub(crate)` so `DebugOverlay`
-    /// can bind it (dim + damage-rect overlays both ride it). Internal
-    /// callers also reach for it directly — invariants on the pipeline
-    /// live in `new`, not in an accessor.
-    pub(crate) pipeline: wgpu::RenderPipeline,
-    /// Bind group shared with `DebugOverlay`; same rationale as
-    /// `pipeline`.
-    pub(crate) bind_group: wgpu::BindGroup,
+    /// The no-stencil base pipeline. Reached only via methods —
+    /// `bind`, `draw_clear`, and `bind_debug` (the debug-overlay
+    /// entrypoint) own the `set_pipeline` / `set_bind_group` pair so
+    /// the public surface is "what to do", not "what to bind."
+    pipeline: wgpu::RenderPipeline,
+    bind_group: wgpu::BindGroup,
     instance_buffer: wgpu::Buffer,
     instance_capacity: usize,
     /// Lazy stencil-aware pipeline variants — built on first need
@@ -301,8 +299,11 @@ impl QuadPipeline {
     }
 
     fn build_stencil_pipelines(&self, device: &wgpu::Device) -> StencilPipelines {
-        let layout =
-            build_pipeline_layout(device, "palantir.quad.pl.stencil", &[Some(&self.bind_layout)]);
+        let layout = build_pipeline_layout(
+            device,
+            "palantir.quad.pl.stencil",
+            &[Some(&self.bind_layout)],
+        );
         let instance = quad_instance_layout();
         let vertex_buffers = std::slice::from_ref(&instance);
 
@@ -392,6 +393,16 @@ impl QuadPipeline {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+    }
+
+    /// Bind pipeline + viewport bind group **without** the instance
+    /// buffer. The caller (today: `DebugOverlay`) sets its own vertex
+    /// buffer next. Lets the debug-overlay quads ride the no-stencil
+    /// quad pipeline without exposing the pipeline / bind-group
+    /// fields directly — kills the prior `pub(crate)` leak.
+    pub(crate) fn bind_debug<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+        pass.set_pipeline(&self.pipeline);
+        pass.set_bind_group(0, &self.bind_group, &[]);
     }
 
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
