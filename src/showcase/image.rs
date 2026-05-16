@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Image, ImageHandle, Panel, Shape, Sizing, Ui};
+use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 
 /// Synthesize a 64×64 sRGB checkerboard once, register it under a
 /// stable key. The framework's content-addressed `ImageRegistry`
@@ -45,41 +45,65 @@ fn register(ui: &Ui) -> (ImageHandle, ImageHandle) {
 
 pub fn build(ui: &mut Ui) {
     let (checker, gradient) = register(ui);
-    Panel::hstack()
+    Panel::vstack()
         .auto_id()
-        .gap(24.0)
+        .gap(16.0)
         .padding(24.0)
         .size((Sizing::FILL, Sizing::FILL))
         .show(ui, |ui| {
-            cell(ui, "native", |ui| {
-                ui.add_shape(Shape::Image {
-                    handle: checker,
-                    local_rect: None,
-                    tint: Color::WHITE,
+            // Row 1: fit modes against a 64×64 source.
+            Panel::hstack()
+                .id_salt("fits")
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    fit_cell(ui, "Fill", checker, ImageFit::Fill);
+                    fit_cell(ui, "Contain", checker, ImageFit::Contain);
+                    fit_cell(ui, "Cover", checker, ImageFit::Cover);
+                    fit_cell(ui, "None", checker, ImageFit::None);
                 });
-            });
-            cell(ui, "stretched", |ui| {
-                ui.add_shape(Shape::Image {
-                    handle: gradient,
-                    local_rect: None,
-                    tint: Color::WHITE,
+            // Row 2: tint variations on the gradient.
+            Panel::hstack()
+                .id_salt("tints")
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    cell(ui, "no tint", |ui| {
+                        image(ui, gradient, ImageFit::Fill, Color::WHITE);
+                    });
+                    cell(ui, "red tint", |ui| {
+                        image(
+                            ui,
+                            gradient,
+                            ImageFit::Fill,
+                            Color::rgba(1.0, 0.3, 0.3, 1.0),
+                        );
+                    });
+                    cell(ui, "half alpha", |ui| {
+                        image(
+                            ui,
+                            gradient,
+                            ImageFit::Fill,
+                            Color::rgba(1.0, 1.0, 1.0, 0.5),
+                        );
+                    });
                 });
-            });
-            cell(ui, "red tint", |ui| {
-                ui.add_shape(Shape::Image {
-                    handle: checker,
-                    local_rect: None,
-                    tint: Color::rgba(1.0, 0.3, 0.3, 1.0),
-                });
-            });
-            cell(ui, "half alpha", |ui| {
-                ui.add_shape(Shape::Image {
-                    handle: gradient,
-                    local_rect: None,
-                    tint: Color::rgba(1.0, 1.0, 1.0, 0.5),
-                });
-            });
         });
+}
+
+fn fit_cell(ui: &mut Ui, label: &'static str, handle: ImageHandle, fit: ImageFit) {
+    cell(ui, label, move |ui| {
+        image(ui, handle, fit, Color::WHITE);
+    });
+}
+
+fn image(ui: &mut Ui, handle: ImageHandle, fit: ImageFit, tint: Color) {
+    ui.add_shape(Shape::Image {
+        handle,
+        local_rect: None,
+        fit,
+        tint,
+    });
 }
 
 fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {

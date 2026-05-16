@@ -273,16 +273,20 @@ impl DrawMeshPayload {
     }
 }
 
-/// Image draw payload. `rect` is the logical-px paint rect (already
-/// resolved against the owner — encoder folded in `local_rect` or the
-/// owner's full arranged rect). `tint` multiplies the sampled texel.
-/// `handle` is the user-supplied [`ImageHandle`] — the backend looks
-/// it up against its GPU texture cache.
+/// Image draw payload. `rect` is the logical-px paint rect (encoder
+/// already folded in `local_rect`, `fit`, and the image's intrinsic
+/// size). `uv_min` / `uv_size` are the texture crop — `(0,0)`+`(1,1)`
+/// for the common Fill/Contain/None modes; non-trivial only for Cover.
+/// `tint` multiplies the sampled texel. `handle` is the user-supplied
+/// [`ImageHandle`] — the backend looks it up against its GPU texture
+/// cache.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawImagePayload {
     pub(crate) rect: Rect,
+    pub(crate) uv_min: glam::Vec2,
+    pub(crate) uv_size: glam::Vec2,
     pub(crate) tint: ColorF16,
     /// `ImageHandle` unwrapped to its `u64` so the payload stays Pod —
     /// the wrapper isn't `repr(transparent)` (carries the `NONE`

@@ -895,3 +895,48 @@ fn viewport_cull_skips_offscreen_subtree() {
         "only the on-screen sibling should emit a DrawRect"
     );
 }
+
+/// Pin: image `fit` resolution. A 100×50 image painted into a 200×200
+/// rect produces a different paint rect for each fit mode:
+/// - `Fill` keeps the full 200×200 rect (image stretched).
+/// - `Contain` scales by min(200/100, 200/50)=2 → 200×100, centered.
+/// - `Cover` scales by max(200/100, 200/50)=4 → 400×200 conceptually,
+///   but rendered at full 200×200 with UV-cropped to (0.5..1.0)
+///   vertical band of the texture (`uv_size.y = 50/200 = 0.25`).
+/// - `None` paints at intrinsic 100×50 centered.
+#[test]
+fn image_fit_modes_resolve_to_expected_rects_and_uv() {
+    use super::resolve_fit;
+    use crate::ImageFit;
+    use glam::{UVec2, Vec2};
+
+    let base = Rect::new(0.0, 0.0, 200.0, 200.0);
+    let img = UVec2::new(100, 50);
+
+    let r = resolve_fit(base, img, ImageFit::Fill);
+    assert_eq!(r.rect, base);
+    assert_eq!(r.uv_min, Vec2::ZERO);
+    assert_eq!(r.uv_size, Vec2::ONE);
+
+    let r = resolve_fit(base, img, ImageFit::Contain);
+    assert_eq!(r.rect, Rect::new(0.0, 50.0, 200.0, 100.0));
+    assert_eq!(r.uv_size, Vec2::ONE);
+
+    let r = resolve_fit(base, img, ImageFit::Cover);
+    assert_eq!(r.rect, base);
+    // 200×200 paint rect over a 400×200 scaled image → keep 0.5 of the
+    // width centered; full height. UVs sample the centered band.
+    assert!((r.uv_size.x - 0.5).abs() < 1e-5);
+    assert!((r.uv_size.y - 1.0).abs() < 1e-5);
+    assert!((r.uv_min.x - 0.25).abs() < 1e-5);
+    assert!((r.uv_min.y - 0.0).abs() < 1e-5);
+
+    let r = resolve_fit(base, img, ImageFit::None);
+    assert_eq!(r.rect, Rect::new(50.0, 75.0, 100.0, 50.0));
+    assert_eq!(r.uv_size, Vec2::ONE);
+
+    // Missing registry entry → falls through to base + full UV.
+    let r = resolve_fit(base, UVec2::ZERO, ImageFit::Contain);
+    assert_eq!(r.rect, base);
+    assert_eq!(r.uv_size, Vec2::ONE);
+}

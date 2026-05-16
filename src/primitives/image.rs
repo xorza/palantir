@@ -18,20 +18,84 @@ use std::cell::RefCell;
 use std::hash::{Hash, Hasher as _};
 use std::rc::Rc;
 
-/// 64-bit hash of the user-supplied key. Stable across frames and
-/// across `Ui::frame` boundaries. [`ImageHandle::NONE`] (value `0`) is
-/// the "no image" sentinel — never produced by
-/// [`ImageRegistry::register`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct ImageHandle(pub(crate) u64);
+/// Handle into the [`ImageRegistry`]. `id` is a 64-bit hash of the
+/// user-supplied key (stable across frames); `size` is the image's
+/// intrinsic pixel dimensions, baked in at registration so downstream
+/// code (encoder, layout) never has to consult the registry to read
+/// them. `u16` axes cap each side at 65 535 px — enough for 8K
+/// (7 680). `Copy`, `repr` unconstrained, 16 B.
+///
+/// `Hash` / `Eq` key on `id` only; `size` is a fixed property of the
+/// content keyed by `id`, so two handles with the same `id` and
+/// different `size`s can't legitimately coexist (re-registering the
+/// same key drops the new bytes per [`ImageRegistry::register`]'s
+/// idempotent contract).
+///
+/// [`ImageHandle::NONE`] (`id == 0`) is the "no image" sentinel —
+/// never produced by [`ImageRegistry::register`].
+#[derive(Clone, Copy, Debug)]
+pub struct ImageHandle {
+    pub(crate) id: u64,
+    pub(crate) size: glam::U16Vec2,
+}
 
 impl ImageHandle {
-    pub const NONE: ImageHandle = ImageHandle(0);
+    pub const NONE: ImageHandle = ImageHandle {
+        id: 0,
+        size: glam::U16Vec2::ZERO,
+    };
 
     #[inline]
     pub fn is_none(self) -> bool {
-        self.0 == 0
+        self.id == 0
     }
+
+    /// Intrinsic pixel dimensions. `(0, 0)` for [`Self::NONE`].
+    #[inline]
+    pub fn size(self) -> glam::UVec2 {
+        self.size.as_uvec2()
+    }
+}
+
+impl PartialEq for ImageHandle {
+    #[inline]
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl Eq for ImageHandle {}
+
+impl std::hash::Hash for ImageHandle {
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
+        self.id.hash(h);
+    }
+}
+
+/// How an image's intrinsic size maps onto its paint rect. Same
+/// semantics as CSS `object-fit`. `Fill` (the default) stretches the
+/// image to exactly fill the rect — fastest, no UV crop needed.
+/// `Contain` / `None` produce a smaller paint rect inside the owner;
+/// `Cover` produces a UV crop so the full rect is painted with the
+/// image's centered portion.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum ImageFit {
+    /// Stretch the image to fill the rect exactly. Aspect ratio not
+    /// preserved. Default — matches the legacy "no fit" behaviour.
+    #[default]
+    Fill,
+    /// Preserve aspect ratio; fit the image entirely inside the rect.
+    /// Letterboxes (transparent margins) if aspect ratios differ.
+    Contain,
+    /// Preserve aspect ratio; fill the rect entirely. Crops the
+    /// image's longer axis (centered).
+    Cover,
+    /// Paint at the image's intrinsic pixel size, centered in the rect.
+    /// Larger-than-rect images overflow the rect (currently uncropped —
+    /// future slice can add per-image scissor).
+    None,
 }
 
 impl Default for ImageHandle {
@@ -81,7 +145,10 @@ pub struct ImageRegistry {
 
 #[derive(Default)]
 struct Inner {
-    by_id: FxHashMap<ImageHandle, Rc<Image>>,
+    /// Keyed on `id` (not `ImageHandle`) because the handle carries
+    /// `size` too — and we want re-registering the same id to find
+    /// the prior entry regardless of size lanes.
+    by_id: FxHashMap<u64, Rc<Image>>,
     /// Handles needing GPU upload — newly registered, or evicted by
     /// the backend and flagged via `mark_pending`. Drained each frame
     /// by the backend; dedup is by linear scan because the set is
@@ -103,28 +170,44 @@ impl ImageRegistry {
     /// frames, allowing the backend to re-upload after GPU eviction
     /// without involving the user.
     pub fn register<K: Hash>(&self, key: K, image: Image) -> ImageHandle {
-        let handle = hash_key(&key);
+        use std::collections::hash_map::Entry;
+        let id = hash_key(&key);
         let mut inner = self.inner.borrow_mut();
-        if let std::collections::hash_map::Entry::Vacant(slot) = inner.by_id.entry(handle) {
-            slot.insert(Rc::new(image));
-            inner.pending.push(handle);
+        let stored = match inner.by_id.entry(id) {
+            Entry::Vacant(slot) => {
+                let rc = Rc::new(image);
+                let inserted = slot.insert(rc).clone();
+                let h = ImageHandle {
+                    id,
+                    size: u16_size(&inserted),
+                };
+                inner.pending.push(h);
+                inserted
+            }
+            // Re-register under the same key drops the new `image`;
+            // returned handle carries the *original* image's size.
+            // Versioned keys are the user-facing escape hatch.
+            Entry::Occupied(slot) => slot.get().clone(),
+        };
+        ImageHandle {
+            id,
+            size: u16_size(&stored),
         }
-        handle
     }
 
     /// Free this entry's bytes. Future draws using `handle` paint
     /// nothing (the backend sees a missing entry and skips). Idempotent.
     pub fn unregister(&self, handle: ImageHandle) {
         let mut inner = self.inner.borrow_mut();
-        inner.by_id.remove(&handle);
-        inner.pending.retain(|h| *h != handle);
+        inner.by_id.remove(&handle.id);
+        inner.pending.retain(|h| h.id != handle.id);
     }
 
     /// Look up the bytes for a handle. `None` if the handle was never
     /// registered or has been unregistered.
     #[allow(dead_code)] // wired by backend image pipeline (slice 1 Phase B)
     pub(crate) fn get(&self, handle: ImageHandle) -> Option<Rc<Image>> {
-        self.inner.borrow().by_id.get(&handle).cloned()
+        self.inner.borrow().by_id.get(&handle.id).cloned()
     }
 
     /// Drain the set of handles needing GPU upload. The backend calls
@@ -138,7 +221,7 @@ impl ImageRegistry {
         let Inner { by_id, pending } = &mut *inner;
         pending
             .drain(..)
-            .filter_map(|h| by_id.get(&h).map(|img| (h, img.clone())))
+            .filter_map(|h| by_id.get(&h.id).map(|img| (h, img.clone())))
             .collect()
     }
 
@@ -148,19 +231,28 @@ impl ImageRegistry {
     #[allow(dead_code)] // GPU-side LRU lands in slice 2
     pub(crate) fn mark_pending(&self, handle: ImageHandle) {
         let mut inner = self.inner.borrow_mut();
-        if inner.by_id.contains_key(&handle) && !inner.pending.contains(&handle) {
+        if inner.by_id.contains_key(&handle.id) && !inner.pending.iter().any(|h| h.id == handle.id)
+        {
             inner.pending.push(handle);
         }
     }
 }
 
-/// Hash an arbitrary `Hash` key to an [`ImageHandle`]. `0` is reserved
-/// for [`ImageHandle::NONE`]; collisions there are bumped to `1`.
-fn hash_key<K: Hash>(key: &K) -> ImageHandle {
+/// Hash an arbitrary `Hash` key. `0` is reserved for
+/// [`ImageHandle::NONE`]; collisions there are bumped to `1`.
+fn hash_key<K: Hash>(key: &K) -> u64 {
     let mut h = Hasher::new();
     key.hash(&mut h);
     let v = h.finish();
-    ImageHandle(if v == 0 { 1 } else { v })
+    if v == 0 { 1 } else { v }
+}
+
+/// Saturating u32→u16 conversion for the handle's size lanes.
+fn u16_size(image: &Image) -> glam::U16Vec2 {
+    glam::U16Vec2::new(
+        image.width.min(u16::MAX as u32) as u16,
+        image.height.min(u16::MAX as u32) as u16,
+    )
 }
 
 #[cfg(test)]
@@ -224,7 +316,10 @@ mod tests {
     #[test]
     fn mark_pending_unknown_handle_noop() {
         let reg = ImageRegistry::default();
-        reg.mark_pending(ImageHandle(0xdead_beef));
+        reg.mark_pending(ImageHandle {
+            id: 0xdead_beef,
+            size: glam::U16Vec2::ZERO,
+        });
         assert!(reg.drain_pending().is_empty());
     }
 

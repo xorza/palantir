@@ -181,11 +181,13 @@ impl Shapes {
             Shape::Image {
                 handle,
                 local_rect,
+                fit,
                 tint,
             } => ShapeRecord::Image {
                 local_rect,
                 tint: tint.into(),
                 handle,
+                fit,
             },
             Shape::Mesh {
                 mesh,

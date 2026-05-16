@@ -17,7 +17,9 @@ struct VsIn {
     // Per-instance.
     @location(0) rect_min:  vec2<f32>,
     @location(1) rect_size: vec2<f32>,
-    @location(2) tint:      vec4<f32>,
+    @location(2) uv_min:    vec2<f32>,
+    @location(3) uv_size:   vec2<f32>,
+    @location(4) tint:      vec4<f32>,
 };
 
 struct VsOut {
@@ -43,7 +45,7 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     );
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
-    out.uv   = c;
+    out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
     return out;
 }

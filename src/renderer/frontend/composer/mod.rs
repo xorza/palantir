@@ -477,7 +477,15 @@ impl Composer {
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let tint_color: Color = p.tint.into();
                     out.images.draws.push(ImageDraw {
-                        handle: ImageHandle(p.handle),
+                        // Composer doesn't need `size` (the encoder
+                        // already resolved fit into `rect`+UV); pass
+                        // a size-less handle so paint-side equality
+                        // ignores the lane the registry uses for
+                        // bookkeeping.
+                        handle: ImageHandle {
+                            id: p.handle,
+                            size: glam::U16Vec2::ZERO,
+                        },
                     });
                     out.images.instances.push(ImageInstance {
                         rect: phys_rect,

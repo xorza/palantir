@@ -340,13 +340,15 @@ impl ImagePipeline {
     }
 }
 
-const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
+const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 5] = wgpu::vertex_attr_array![
     0 => Float32x2, // rect.min
     1 => Float32x2, // rect.size
+    2 => Float32x2, // uv_min
+    3 => Float32x2, // uv_size
     // `Unorm8x4` normalizes `u8/255 → 0..1`. Tint is linear straight-alpha
     // on the CPU; shader multiplies by the sampled texel and premultiplies
     // at write.
-    2 => Unorm8x4,  // tint
+    4 => Unorm8x4,  // tint
 ];
 
 fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
