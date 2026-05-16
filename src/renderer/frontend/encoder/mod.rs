@@ -517,5 +517,50 @@ fn emit_shadow(
     );
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use crate::Ui;
+    use crate::primitives::rect::Rect;
+    use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+    use crate::renderer::frontend::encoder::encode;
+    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame_report::RenderPlan;
+
+    pub fn encode_cmds(ui: &Ui) -> RenderCmdBuffer {
+        encode_cmds_filtered(ui, None)
+    }
+
+    pub fn encode_cmds_filtered(ui: &Ui, filter: Option<Rect>) -> RenderCmdBuffer {
+        encode_cmds_with_region(ui, filter.map(DamageRegion::from))
+    }
+
+    /// Multi-rect variant; each rect is fed through `DamageRegion::add` so merge policy applies.
+    pub fn encode_cmds_with_rects(ui: &Ui, rects: &[Rect]) -> RenderCmdBuffer {
+        let region = if rects.is_empty() {
+            None
+        } else {
+            let mut r = DamageRegion::default();
+            for rect in rects {
+                r.add(*rect);
+            }
+            Some(r)
+        };
+        encode_cmds_with_region(ui, region)
+    }
+
+    fn encode_cmds_with_region(ui: &Ui, region: Option<DamageRegion>) -> RenderCmdBuffer {
+        let clear = ui.theme.window_clear;
+        let plan = match region {
+            Some(region) => RenderPlan::Partial { clear, region },
+            None => RenderPlan::Full { clear },
+        };
+        let mut cmds = RenderCmdBuffer::default();
+        let arena = ui.frame_arena.borrow();
+        encode(ui, &arena, plan, &mut cmds);
+        cmds
+    }
+}
+
 #[cfg(test)]
 mod tests;

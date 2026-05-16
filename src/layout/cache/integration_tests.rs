@@ -15,9 +15,10 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{encode_cmds, run_at_acked, ui_with_text};
+use crate::renderer::frontend::encoder::test_support::encode_cmds;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::{run_at_acked, ui_with_text};
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -347,7 +348,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|n| ui.layout[Layer::Main].rect[n.index()])
             .collect();
 
-        crate::support::internals::clear_measure_cache(&mut ui);
+        crate::layout::cache::test_support::clear_measure_cache(&mut ui);
         let mut cold_nodes = Vec::new();
         run_at_acked(&mut ui, UVec2::new(w, 600), |ui| {
             record(ui, &mut cold_nodes);

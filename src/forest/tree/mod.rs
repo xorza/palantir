@@ -919,5 +919,33 @@ impl GridArena {
 }
 
 pub(crate) mod paint_anims;
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::Ui;
+
+    /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
+    pub fn node_for_widget_id(ui: &Ui, id: WidgetId) -> NodeId {
+        let tree = ui.forest.tree(Layer::Main);
+        let idx = tree
+            .records
+            .widget_id()
+            .iter()
+            .position(|w| *w == id)
+            .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
+        NodeId(idx as u32)
+    }
+
+    /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
+    pub fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
+        tree.tree_items(node).filter_map(|item| match item {
+            TreeItem::ShapeRecord(_, s) => Some(s),
+            TreeItem::Child(_) => None,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests;

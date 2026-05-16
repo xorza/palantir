@@ -32,7 +32,7 @@ pub(crate) mod node;
 pub(crate) mod rollups;
 pub(crate) mod seen_ids;
 pub(crate) mod shapes;
-pub(crate) mod tree;
+pub mod tree;
 pub(crate) mod visibility;
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,

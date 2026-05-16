@@ -5,9 +5,9 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
 use crate::support::testing::under_outer;
+use crate::ui::test_support::new_ui;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -450,9 +450,9 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut ui = crate::support::testing::new_ui();
+        let mut ui = crate::ui::test_support::new_ui();
         let mut wrap_kids = None;
-        crate::support::testing::run_at(&mut ui, UVec2::new(surface_w, 600), |ui| {
+        crate::ui::test_support::run_at(&mut ui, UVec2::new(surface_w, 600), |ui| {
             wrap_kids = Some(build(ui));
         });
         let (wrap, kids) = wrap_kids.unwrap();

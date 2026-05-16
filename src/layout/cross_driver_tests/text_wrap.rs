@@ -4,14 +4,16 @@ use crate::TextStyle;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Layer;
+use crate::forest::tree::test_support::shapes_of;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
+use crate::renderer::frontend::encoder::test_support::encode_cmds;
 use crate::shape::{Shape, TextWrap};
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::{encode_cmds, run_at_acked, shapes_of, ui_with_text};
+use crate::ui::test_support::{run_at_acked, ui_with_text};
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -493,7 +495,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
             });
         });
     });
-    crate::support::internals::node_for_widget_id(ui, leaf_id)
+    crate::forest::tree::test_support::node_for_widget_id(ui, leaf_id)
 }
 
 /// Pin: a custom widget that pushes two `ShapeRecord::Text` to the same

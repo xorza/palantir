@@ -191,5 +191,21 @@ impl From<Rect> for DamageRegion {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::primitives::rect::Rect;
+
+    /// `DamageRegion` rect count after adding `rects` in order (merge policy runs).
+    pub fn region_after_adds(rects: &[Rect]) -> usize {
+        let mut region = DamageRegion::default();
+        for r in rects {
+            region.add(*r);
+        }
+        region.iter_rects().count()
+    }
+}
+
 #[cfg(test)]
 mod tests;

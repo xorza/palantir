@@ -12,9 +12,10 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
-use crate::support::testing::{encode_cmds, run_at};
+use crate::renderer::frontend::encoder::test_support::encode_cmds;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::run_at;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -212,7 +213,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = crate::support::testing::new_ui_text();
+    let mut ui = crate::ui::test_support::new_ui_text();
     run_at(&mut ui, UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()

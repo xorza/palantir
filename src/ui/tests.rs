@@ -6,12 +6,13 @@ use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
-use crate::support::internals::{ResponseNodeExt, damage_current_region};
-use crate::support::testing::new_ui;
-use crate::support::testing::{run_at, run_at_acked, ui_at};
 use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
+use crate::ui::damage::test_support::current_region as damage_current_region;
 use crate::ui::frame_report::RenderPlan;
+use crate::ui::test_support::new_ui;
+use crate::ui::test_support::{run_at, run_at_acked, ui_at};
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 use std::time::Duration;
@@ -19,7 +20,7 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    crate::support::internals::text_shaper_measure_calls(&ui.text)
+    crate::text::test_support::measure_calls(&ui.text)
 }
 
 fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
@@ -65,7 +66,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
-    let mut frontend = crate::support::testing::new_frontend();
+    let mut frontend = crate::renderer::frontend::test_support::new_frontend();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -136,7 +137,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
-    let mut frontend = crate::support::testing::new_frontend();
+    let mut frontend = crate::renderer::frontend::test_support::new_frontend();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -263,7 +264,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes recorded → a private frontend arena works.
-    let mut frontend = crate::support::testing::new_frontend();
+    let mut frontend = crate::renderer::frontend::test_support::new_frontend();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -507,7 +508,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let wid = WidgetId::from_hash("transient");
     assert!(
-        crate::support::internals::text_shaper_has_reuse_entry(&ui.text, wid, 0),
+        crate::text::test_support::has_reuse_entry(&ui.text, wid, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -515,7 +516,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !crate::support::internals::text_shaper_has_reuse_entry(&ui.text, wid, 0),
+        !crate::text::test_support::has_reuse_entry(&ui.text, wid, 0),
         "removed widget's reuse entry must be swept",
     );
 }

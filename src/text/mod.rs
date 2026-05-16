@@ -83,10 +83,9 @@ pub enum FontFamily {
 ///   shaping via cosmic-text.
 #[derive(Clone, Default)]
 pub struct TextShaper {
-    /// `pub(crate)` for [`crate::support::internals`] observability
-    /// helpers. Direct field access from inside the crate is fine; the
-    /// invariants live in the mutating methods of `TextShaper`, not in
-    /// encapsulation theater.
+    /// `pub(crate)` for [`test_support`] observability helpers. Direct
+    /// field access from inside the crate is fine; invariants live in
+    /// the mutating methods of `TextShaper`, not in encapsulation theater.
     pub(crate) inner: Rc<RefCell<ShaperInner>>,
 }
 
@@ -100,14 +99,14 @@ pub(crate) struct ShaperInner {
     cosmic: Option<CosmicMeasure>,
     /// Total `measure` calls dispatched (cache misses). Cache hits
     /// don't increment. Read by tests pinning reshape-skip behaviour
-    /// via [`crate::support::internals::text_shaper_measure_calls`].
+    /// via [`test_support::measure_calls`].
     pub(crate) measure_calls: u64,
     /// Cross-frame cache of shaping output keyed by
     /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
     /// by authoring hash. The ordinal disambiguates leaves with
     /// multiple `ShapeRecord::Text` runs. The wrap slot's `target_q`
     /// quantization is layout policy chosen at the call site. Read by
-    /// tests via [`crate::support::internals::text_shaper_has_reuse_entry`].
+    /// tests via [`test_support::has_reuse_entry`].
     pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
 }
 
@@ -1046,5 +1045,21 @@ mod tests {
             widths[s.len()] > widths[0],
             "non-empty string has positive width",
         );
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+
+    /// Total cache-miss `measure` dispatches on `shaper`.
+    pub fn measure_calls(shaper: &TextShaper) -> u64 {
+        shaper.inner.borrow().measure_calls
+    }
+
+    /// `true` iff a reuse entry exists for `(wid, ordinal)`.
+    pub fn has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: u16) -> bool {
+        shaper.inner.borrow().reuse.contains_key(&(wid, ordinal))
     }
 }

@@ -234,7 +234,7 @@ fn bench_frame(c: &mut Criterion) {
                 build_ui,
             ));
             // #[cfg(feature = "internals")]
-            // palantir::support::internals::mark_frame_submitted(&ui);
+            // palantir::ui::frame_state::test_support::mark_frame_submitted(&ui);
         });
     });
 
@@ -255,7 +255,7 @@ fn bench_frame(c: &mut Criterion) {
                 build_ui,
             ));
             // #[cfg(feature = "internals")]
-            // palantir::support::internals::mark_frame_submitted(&ui);
+            // palantir::ui::frame_state::test_support::mark_frame_submitted(&ui);
         });
     });
 }

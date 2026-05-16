@@ -13,7 +13,7 @@
 //! runs through the mono fallback (same as `frame.rs`/`caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::support::internals;
+use palantir::ui::cascade::test_support::run_cascades;
 use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, TextShaper, Ui, new_handle};
 use std::hint::black_box;
 
@@ -57,7 +57,7 @@ fn bench_cascade(c: &mut Criterion) {
 
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
             b.iter(|| {
-                internals::run_cascades(&mut ui);
+                run_cascades(&mut ui);
                 black_box(&ui);
             });
         });

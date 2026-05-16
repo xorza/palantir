@@ -1,9 +1,9 @@
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
-use crate::support::internals::ResponseNodeExt;
-use crate::support::testing::new_ui;
 use crate::support::testing::under_outer;
+use crate::ui::test_support::new_ui;
+use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 

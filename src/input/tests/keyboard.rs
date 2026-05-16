@@ -1,7 +1,7 @@
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
-use crate::support::testing::new_ui;
 use crate::ui::cascade::Cascades;
+use crate::ui::test_support::new_ui;
 use winit::event::WindowEvent;
 use winit::keyboard::{Key as WK, NamedKey};
 
@@ -172,9 +172,10 @@ fn focus_policy_routing() {
     use crate::Ui;
     use crate::forest::element::Configure;
     use crate::input::pointer::PointerButton;
+    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::support::testing::{click_at, run_at_acked};
+    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     // (label, policy, expect_focus_after_outside_press).
@@ -219,9 +220,10 @@ fn focus_policy_routing() {
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::Ui;
     use crate::forest::element::Configure;
+    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::support::testing::{click_at, run_at_acked};
+    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = new_ui();
@@ -256,8 +258,9 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
     use crate::forest::element::Configure;
+    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
-    use crate::support::testing::{click_at, run_at_acked};
+    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = new_ui();
@@ -301,8 +304,9 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 
     use crate::forest::element::Configure;
     use crate::forest::visibility::Visibility;
+    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
-    use crate::support::testing::{click_at, run_at_acked};
+    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     enum Mode {

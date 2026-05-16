@@ -10,9 +10,8 @@
 //! [`Ui::app::<T>()`] without explicit threading.
 //!
 //! Internal split — [`Host::cpu_frame`] + [`Host::render_to_texture`] —
-//! is `pub(crate)` and exposed to out-of-crate benches / the visual test
-//! harness via `support::internals`. Callers that need to inspect the
-//! [`FrameReport`] between CPU and GPU stay on that split.
+//! is `pub(crate)`; benches and the visual test harness reach it via
+//! [`test_support`] (gated `cfg(any(test, feature = "internals"))`).
 
 use std::time::Instant;
 
@@ -223,4 +222,25 @@ pub enum FramePresent {
     Immediate,
     At(Instant),
     Idle,
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+
+    /// CPU half of `Host::frame` — runs `Ui::frame` without acquiring a swapchain.
+    pub fn cpu_frame<T: 'static>(
+        host: &mut Host,
+        display: Display,
+        state: &mut T,
+        record: impl FnMut(&mut Ui),
+    ) -> FrameReport {
+        host.cpu_frame(display, state, record)
+    }
+
+    /// GPU half of `Host::frame` against a caller-supplied texture.
+    pub fn render_to_texture(host: &mut Host, target: &wgpu::Texture, report: &FrameReport) {
+        host.render_to_texture(target, report);
+    }
 }

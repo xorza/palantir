@@ -1,5 +1,5 @@
 use super::*;
-use crate::support::internals::ResponseNodeExt;
+use crate::widgets::test_support::ResponseNodeExt;
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -376,7 +376,7 @@ fn click_without_drag_clears_prior_selection() {
     // Programmatic Ctrl+A select-all, then a press elsewhere should
     // collapse the selection (anchor latched on the press, no drag).
     // Uses press+frame+release so the rising edge actually fires.
-    use crate::support::testing::{press_at, release_left};
+    use crate::input::test_support::{press_at, release_left};
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
 

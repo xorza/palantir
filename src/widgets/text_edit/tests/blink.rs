@@ -1,5 +1,5 @@
 use super::*;
-use crate::support::internals::ResponseNodeExt;
+use crate::widgets::test_support::ResponseNodeExt;
 
 /// Caret blink: visible for the first half-period, hidden for the
 /// second, repeats. Reset to "visible" by any caret / selection /

@@ -9,7 +9,7 @@ use super::*;
 use crate::Align;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
-use crate::support::internals::ResponseNodeExt;
+use crate::widgets::test_support::ResponseNodeExt;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -335,8 +335,8 @@ fn selection_rects_offset_matches_text() {
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
     use super::super::*;
-    use crate::support::internals::ResponseNodeExt;
     use crate::text::FontFamily;
+    use crate::widgets::test_support::ResponseNodeExt;
     use crate::{Align, HAlign};
     use glam::UVec2;
 
@@ -528,7 +528,7 @@ mod per_line {
     /// would bump that delta by one or more.
     #[test]
     fn stable_multiline_holds_constant_per_frame_cost() {
-        use crate::support::internals::text_shaper_measure_calls;
+        use crate::text::test_support::measure_calls as text_shaper_measure_calls;
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut record = |ui: &mut Ui| {

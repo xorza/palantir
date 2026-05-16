@@ -107,3 +107,24 @@ impl FrameReport {
         self.processing
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+    use crate::primitives::rect::Rect;
+
+    /// Overwrite `report.plan`: empty ⇒ `Full { clear }`, otherwise `Partial`
+    /// built by adding each rect.
+    pub fn force_report_damage_to_rects(report: &mut FrameReport, rects: &[Rect], clear: Color) {
+        if rects.is_empty() {
+            report.plan = Some(RenderPlan::Full { clear });
+            return;
+        }
+        let mut region = DamageRegion::default();
+        for r in rects {
+            region.add(*r);
+        }
+        report.plan = Some(RenderPlan::Partial { clear, region });
+    }
+}
