@@ -34,6 +34,16 @@ pub struct Host {
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
+    /// When true, `frame()` short-circuits to `Idle` without running
+    /// `cpu_frame`. Every per-frame Ui flag (damage, repaint_requested,
+    /// animation driver state) is naturally preserved because nothing
+    /// consumes it. Input still flows through `Ui::on_input` and
+    /// accumulates for the first un-occluded frame.
+    occluded: bool,
+    /// Instant the window went occluded; on resume `start` is shifted
+    /// forward by the elapsed hidden duration so anim drivers don't
+    /// see a giant `dt` for the gap.
+    occluded_at: Option<Instant>,
 }
 
 impl Host {
@@ -64,7 +74,26 @@ impl Host {
             frontend: Frontend::new(frame_arena.clone()),
             backend: WgpuBackend::new(device, queue, format, shaper, frame_arena),
             start: Instant::now(),
+            occluded: false,
+            occluded_at: None,
         }
+    }
+
+    /// Drive from the host's window-event handler. While occluded,
+    /// `frame()` returns `Idle` without running CPU passes; pending
+    /// Ui state (damage, repaint requests, animation deadlines)
+    /// survives untouched until the window becomes visible again.
+    pub fn set_occluded(&mut self, occluded: bool) {
+        match (self.occluded, occluded) {
+            (false, true) => self.occluded_at = Some(Instant::now()),
+            (true, false) => {
+                if let Some(t) = self.occluded_at.take() {
+                    self.start += t.elapsed();
+                }
+            }
+            _ => {}
+        }
+        self.occluded = occluded;
     }
 
     /// Swapchain one-shot: run CPU + GPU + present. Installs `state` as
@@ -92,6 +121,10 @@ impl Host {
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("Host::frame");
+
+        if self.occluded {
+            return FramePresent::Idle;
+        }
 
         let display =
             Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
@@ -192,6 +225,10 @@ impl Host {
                     tracing::warn!("surface acquire: timeout / validation");
                     true
                 }
+                // Occlusion is normally handled by the early-out in
+                // `frame()` driven by `set_occluded`; if the surface
+                // reports it anyway (race with the window event),
+                // treat as "nothing to do".
                 Occluded => false,
             }
         };

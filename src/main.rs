@@ -239,7 +239,12 @@ impl ApplicationHandler for App {
                 state.surface.configure(&state.device, &state.config);
                 state.draw();
             }
-            WindowEvent::Occluded(false) => state.next = FramePresent::Immediate,
+            WindowEvent::Occluded(occluded) => {
+                state.host.set_occluded(occluded);
+                if !occluded {
+                    state.next = FramePresent::Immediate;
+                }
+            }
 
             _ => {}
         }
