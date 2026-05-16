@@ -6,12 +6,10 @@ use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::support::testing::under_outer;
 use crate::ui::test_support::new_ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
-use crate::widgets::test_support::ResponseNodeExt;
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 600);
@@ -169,7 +167,7 @@ fn scroll_records_content_extent() {
             Axis::H => UVec2::new(800, 200),
             Axis::XY => UVec2::new(400, 400),
         };
-        let scroll_node = under_outer(&mut ui, surface, |ui| match axis {
+        let scroll_node = ui.under_outer(surface, |ui| match axis {
             Axis::V => Scroll::vertical()
                 .id_salt("scroll")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
@@ -491,7 +489,6 @@ mod bars {
     use crate::Ui;
     use crate::forest::element::Configure;
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::forest::tree::test_support::shapes_of;
     use crate::forest::tree::{Layer, NodeId};
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
@@ -634,7 +631,9 @@ mod bars {
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-        shapes_of(ui.forest.tree(Layer::Main), node)
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(node)
             .filter(|s| {
                 matches!(
                     s,

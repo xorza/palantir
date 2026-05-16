@@ -5,9 +5,7 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{justify::Justify, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::support::testing::under_outer;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -44,7 +42,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
     for (label, count, expected) in cases {
         let mut ui = new_ui();
         let mut kids = Vec::new();
-        let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+        let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
                 .id_salt("w")
                 .size((Sizing::Fixed(200.0), Sizing::Hug))
@@ -74,7 +72,7 @@ fn wrap_hstack_packs_then_wraps_on_overflow() {
 fn wrap_hstack_oversize_child_owns_its_line() {
     let mut ui = new_ui();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("w")
             .size((Sizing::Fixed(100.0), Sizing::Hug))
@@ -104,7 +102,7 @@ fn wrap_hstack_oversize_child_owns_its_line() {
 fn wrap_hstack_line_height_is_max_child_cross() {
     let mut ui = new_ui();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
@@ -143,7 +141,7 @@ fn wrap_hstack_justify_per_line() {
     for (label, justify, expected) in cases {
         let mut ui = new_ui();
         let mut kids = Vec::new();
-        let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+        let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
             Panel::wrap_hstack()
                 .id_salt("w")
                 .size((Sizing::Fixed(200.0), Sizing::Hug))
@@ -177,7 +175,7 @@ fn wrap_hstack_justify_per_line() {
 fn wrap_vstack_wraps_columns_when_main_overflows() {
     let mut ui = new_ui();
     let mut kids = Vec::new();
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_vstack()
             .id_salt("w")
             .size((Sizing::Hug, Sizing::Fixed(100.0)))
@@ -213,7 +211,7 @@ fn wrap_vstack_wraps_columns_when_main_overflows() {
 fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
     let mut ui = new_ui();
     let mut wrap_node = None;
-    let _wrap = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _wrap = ui.under_outer(UVec2::new(400, 400), |ui| {
         wrap_node = Some(
             Panel::wrap_hstack()
                 .id_salt("w")
@@ -242,7 +240,7 @@ fn wrap_hstack_with_fixed_main_hugs_cross_to_packed_lines() {
 fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
     let mut ui = new_ui();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
@@ -284,7 +282,7 @@ fn wrap_hstack_cross_fill_child_stretches_to_row_height() {
 fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
     let mut ui = new_ui();
     let mut kids = Vec::new();
-    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("w")
             .size((Sizing::Fixed(200.0), Sizing::Hug))
@@ -322,7 +320,7 @@ fn wrap_hstack_collapsed_child_in_pack_is_skipped() {
 fn wrap_hstack_fill_main_child_treated_as_hug_for_now() {
     let mut ui = new_ui();
     let mut filler_node = None;
-    let _ = under_outer(&mut ui, UVec2::new(400, 400), |ui| {
+    let _ = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("w")
             .size((Sizing::Fixed(300.0), Sizing::Hug))
@@ -362,7 +360,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
     let mut inner_a = None;
     let mut inner_b = None;
     let mut outer_b = None;
-    let _ = under_outer(&mut ui, UVec2::new(600, 400), |ui| {
+    let _ = ui.under_outer(UVec2::new(600, 400), |ui| {
         Panel::wrap_hstack()
             .id_salt("outer")
             .size((Sizing::Fixed(500.0), Sizing::Hug))

@@ -1,13 +1,11 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
-use crate::forest::tree::test_support::shapes_of;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -155,7 +153,9 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     assert!(
-        shapes_of(ui.forest.tree(Layer::Main), panel_node.unwrap())
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(panel_node.unwrap())
             .next()
             .is_none(),
         "panel chrome doesn't show up in the shape stream"

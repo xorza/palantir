@@ -4,7 +4,6 @@ use crate::TextStyle;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Layer;
-use crate::forest::tree::test_support::shapes_of;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
@@ -12,7 +11,6 @@ use crate::primitives::color::Color;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
 use crate::ui::test_support::ui_with_text;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -46,7 +44,10 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         r.size.h,
     );
 
-    let shape = shapes_of(ui.forest.tree(Layer::Main), node)
+    let shape = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(node)
         .next()
         .expect("text shape");
     let wrap = match shape {

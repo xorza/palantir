@@ -925,12 +925,14 @@ pub mod test_support {
     #![allow(dead_code)]
     use super::*;
 
-    /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
-    pub fn shapes_of(tree: &Tree, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
-        tree.tree_items(node).filter_map(|item| match item {
-            TreeItem::ShapeRecord(_, s) => Some(s),
-            TreeItem::Child(_) => None,
-        })
+    impl Tree {
+        /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.
+        pub fn shapes_of(&self, node: NodeId) -> impl Iterator<Item = &ShapeRecord> + '_ {
+            self.tree_items(node).filter_map(|item| match item {
+                TreeItem::ShapeRecord(_, s) => Some(s),
+                TreeItem::Child(_) => None,
+            })
+        }
     }
 }
 

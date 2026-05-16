@@ -9,7 +9,6 @@ use super::*;
 use crate::Align;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{Layer, NodeId};
-use crate::widgets::test_support::ResponseNodeExt;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -78,7 +77,7 @@ fn warmup_then(
 fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let mut text_origin = None;
     let mut caret_origin = None;
-    for s in shapes_of(ui.forest.tree(Layer::Main), node) {
+    for s in ui.forest.tree(Layer::Main).shapes_of(node) {
         match s {
             ShapeRecord::Text {
                 local_origin: Some(o),
@@ -314,10 +313,14 @@ fn selection_rects_offset_matches_text() {
 
     // Selection wash is emitted *before* the text shape; pick the
     // first RoundedRect with a `local_rect` in the leaf's stream.
-    let first_rounded = shapes_of(ui.forest.tree(Layer::Main), node).find_map(|s| match s {
-        ShapeRecord::RoundedRect { local_rect, .. } => *local_rect,
-        _ => None,
-    });
+    let first_rounded = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(node)
+        .find_map(|s| match s {
+            ShapeRecord::RoundedRect { local_rect, .. } => *local_rect,
+            _ => None,
+        });
     let r = first_rounded.expect("selection wash rect present");
     let dx = ALIGN_W - TEXT_W_4CH;
     assert!(
@@ -336,7 +339,6 @@ fn selection_rects_offset_matches_text() {
 mod per_line {
     use super::super::*;
     use crate::text::FontFamily;
-    use crate::widgets::test_support::ResponseNodeExt;
     use crate::{Align, HAlign};
     use glam::UVec2;
 
@@ -528,7 +530,6 @@ mod per_line {
     /// would bump that delta by one or more.
     #[test]
     fn stable_multiline_holds_constant_per_frame_cost() {
-        use crate::text::test_support::measure_calls as text_shaper_measure_calls;
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut record = |ui: &mut Ui| {
@@ -545,16 +546,16 @@ mod per_line {
         // is primed.
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        let a = text_shaper_measure_calls(&ui.text);
+        let a = ui.text.measure_calls();
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        let b = text_shaper_measure_calls(&ui.text);
+        let b = ui.text.measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
-            let before = text_shaper_measure_calls(&ui.text);
+            let before = ui.text.measure_calls();
             ui.run_at_acked(UVec2::new(800, 200), &mut record);
-            let after = text_shaper_measure_calls(&ui.text);
+            let after = ui.text.measure_calls();
             assert_eq!(
                 after - before,
                 per_frame,
@@ -601,7 +602,7 @@ mod per_line {
         let arena = ui.frame_arena.borrow();
         let bytes = arena.fmt_scratch.as_str();
         let tree = ui.forest.tree(Layer::Main);
-        let shape_align = shapes_of(tree, node).find_map(|s| match s {
+        let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => Some((*align, text.as_str(bytes).to_owned())),
             _ => None,
         });

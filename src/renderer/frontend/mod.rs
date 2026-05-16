@@ -76,8 +76,10 @@ pub mod test_support {
     use super::*;
     use crate::common::frame_arena::new_handle;
 
-    /// `Frontend` with a private (disjoint-from-Ui) frame arena.
-    pub fn new_frontend() -> Frontend {
-        Frontend::new(new_handle())
+    impl Frontend {
+        /// `Frontend` with a private (disjoint-from-Ui) frame arena.
+        pub fn for_test() -> Self {
+            Self::new(new_handle())
+        }
     }
 }

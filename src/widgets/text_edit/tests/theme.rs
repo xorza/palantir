@@ -1,5 +1,4 @@
 use super::*;
-use crate::widgets::test_support::ResponseNodeExt;
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -37,7 +36,9 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
         });
     });
     let read_fs = |node: crate::forest::tree::NodeId| -> f32 {
-        shapes_of(ui.forest.tree(Layer::Main), node)
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(node)
             .find_map(|s| match s {
                 ShapeRecord::Text { font_size_px, .. } => Some(*font_size_px),
                 _ => None,
@@ -76,7 +77,10 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
             node = Some(Text::new("hi").auto_id().show(ui).node(ui));
         });
     });
-    let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
+    let color = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -107,7 +111,10 @@ fn text_widget_color_override_wins_over_theme() {
             );
         });
     });
-    let color = shapes_of(ui.forest.tree(Layer::Main), node.unwrap())
+    let color = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
             _ => None,
@@ -152,7 +159,9 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
         });
     });
     let read_lh = |node: crate::forest::tree::NodeId| -> f32 {
-        shapes_of(ui.forest.tree(Layer::Main), node)
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(node)
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -209,7 +218,10 @@ fn textedit_style_override_replaces_default_theme() {
                 );
             });
         });
-        let lh = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+        let lh = ui
+            .forest
+            .tree(Layer::Main)
+            .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
                 _ => None,
@@ -236,8 +248,11 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             );
         });
     });
-    let text_shape =
-        shapes_of(ui.forest.tree(Layer::Main), leaf_node.unwrap()).find_map(|s| match s {
+    let text_shape = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(leaf_node.unwrap())
+        .find_map(|s| match s {
             ShapeRecord::Text {
                 font_size_px,
                 line_height_px,
@@ -279,7 +294,10 @@ fn no_selection_paints_no_highlight_rect() {
     ui.click_at(Vec2::new(20.0, 20.0));
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: usize = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+    let rects: usize = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(leaf.unwrap())
         .filter(|s| matches!(s, ShapeRecord::RoundedRect { .. }))
         .count();
     assert_eq!(rects, 1, "only caret should paint without selection");
@@ -322,7 +340,10 @@ fn shift_end_paints_selection_highlight() {
     });
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: Vec<_> = shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+    let rects: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(leaf.unwrap())
         .filter_map(|s| match s {
             ShapeRecord::RoundedRect {
                 local_rect: Some(r),
@@ -438,7 +459,9 @@ fn line_height_override_changes_caret_rect_height() {
         ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
         ui.click_at(Vec2::new(20.0, 20.0));
         ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
-        shapes_of(ui.forest.tree(Layer::Main), leaf.unwrap())
+        ui.forest
+            .tree(Layer::Main)
+            .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::RoundedRect {
                     local_rect: Some(rect),

@@ -1053,13 +1053,15 @@ pub mod test_support {
     #![allow(dead_code)]
     use super::*;
 
-    /// Total cache-miss `measure` dispatches on `shaper`.
-    pub fn measure_calls(shaper: &TextShaper) -> u64 {
-        shaper.inner.borrow().measure_calls
-    }
+    impl TextShaper {
+        /// Total cache-miss `measure` dispatches.
+        pub fn measure_calls(&self) -> u64 {
+            self.inner.borrow().measure_calls
+        }
 
-    /// `true` iff a reuse entry exists for `(wid, ordinal)`.
-    pub fn has_reuse_entry(shaper: &TextShaper, wid: WidgetId, ordinal: u16) -> bool {
-        shaper.inner.borrow().reuse.contains_key(&(wid, ordinal))
+        /// `true` iff a reuse entry exists for `(wid, ordinal)`.
+        pub fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
+            self.inner.borrow().reuse.contains_key(&(wid, ordinal))
+        }
     }
 }

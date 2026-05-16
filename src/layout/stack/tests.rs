@@ -3,9 +3,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
-use crate::support::testing::under_outer;
 use crate::ui::test_support::new_ui;
-use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -380,7 +378,7 @@ fn parent_max_size_clamps_children_available() {
 
     let mut ui = new_ui();
     let mut child_node = None;
-    let parent_node = under_outer(&mut ui, UVec2::new(1000, 200), |ui| {
+    let parent_node = ui.under_outer(UVec2::new(1000, 200), |ui| {
         Panel::vstack()
             .id_salt("capped-parent")
             .size((Sizing::FILL, Sizing::Fixed(40.0)))
