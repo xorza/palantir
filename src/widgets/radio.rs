@@ -65,22 +65,16 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let pip_size = theme.box_size;
         let dot_inset = theme.indicator_inset;
         let anim = theme.anim;
-        let indicator = theme.indicator_color(state);
-        let text_style = ui.theme.text;
-        let label_color = if state.disabled {
-            text_style.color.with_alpha(0.45)
-        } else {
-            text_style.color
-        };
+        let indicator = theme.indicator;
+        let fallback_text = ui.theme.text;
 
         // Force pill radius regardless of any look's stored radius so a
         // re-themed `theme.radio.checked.normal.background.radius`
         // can't accidentally square-corner the pip.
-        let mut look = look_target.animate(ui, id, text_style, anim);
+        let mut look = look_target.animate(ui, id, fallback_text, anim);
         look.background.radius = Corners::all(pip_size * 0.5);
         let chrome = look.background;
         let label = self.label;
-        let line_height_px = text_style.line_height_for(text_style.font_size_px);
 
         let mut element = self.element;
         element.set_gap(row_gap);
@@ -110,12 +104,12 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: label,
-                        brush: label_color.into(),
-                        font_size_px: text_style.font_size_px,
-                        line_height_px,
+                        brush: look.text.color.into(),
+                        font_size_px: look.text.font_size_px,
+                        line_height_px: look.line_height_px(),
                         wrap: TextWrap::Single,
                         align: Align::v(VAlign::Center),
-                        family: text_style.family,
+                        family: look.text.family,
                     });
                 });
             }

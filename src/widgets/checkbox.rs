@@ -62,18 +62,12 @@ impl<'a> Checkbox<'a> {
         let box_size = theme.box_size;
         let indicator_stroke = theme.indicator_stroke;
         let anim = theme.anim;
-        let indicator = theme.indicator_color(state);
-        let text_style = ui.theme.text;
-        let label_color = if state.disabled {
-            text_style.color.with_alpha(0.45)
-        } else {
-            text_style.color
-        };
+        let indicator = theme.indicator;
+        let fallback_text = ui.theme.text;
 
-        let look = look_target.animate(ui, id, text_style, anim);
+        let look = look_target.animate(ui, id, fallback_text, anim);
         let chrome = look.background;
         let label = self.label;
-        let line_height_px = text_style.line_height_for(text_style.font_size_px);
 
         let mut element = self.element;
         element.set_gap(row_gap);
@@ -103,12 +97,12 @@ impl<'a> Checkbox<'a> {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: label,
-                        brush: label_color.into(),
-                        font_size_px: text_style.font_size_px,
-                        line_height_px,
+                        brush: look.text.color.into(),
+                        font_size_px: look.text.font_size_px,
+                        line_height_px: look.line_height_px(),
                         wrap: TextWrap::Single,
                         align: Align::v(VAlign::Center),
-                        family: text_style.family,
+                        family: look.text.family,
                     });
                 });
             }

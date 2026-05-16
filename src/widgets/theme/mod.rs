@@ -62,8 +62,8 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             button: ButtonTheme::default(),
-            checkbox: ToggleTheme::checkbox_default(),
-            radio: ToggleTheme::radio_default(),
+            checkbox: ToggleTheme::checkbox(),
+            radio: ToggleTheme::radio(),
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
             context_menu: ContextMenuTheme::default(),
