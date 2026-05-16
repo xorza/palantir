@@ -40,6 +40,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
+use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::widgets::grid::GridDef;
 use glam::Vec2;
 use soa_rs::Soa;
@@ -506,6 +507,7 @@ impl Tree {
         mut element: Element,
         bg: Background,
         arena: &mut FrameArena,
+        atlas: &GradientAtlas,
     ) -> NodeId {
         // Tree-storage noop gate for chrome — mirrors `Shapes::add` for
         // the shape buffer and `cmd_buffer::draw_*` for emits. Whole-
@@ -538,7 +540,7 @@ impl Tree {
             // shared `FrameArena.gradients` arena alongside any from
             // `Shapes::add`, so chrome and shape paints share one
             // frame-scoped gradient pool.
-            let row = arena.lower_background(bg);
+            let row = arena.lower_background(bg, atlas);
             ex.chrome = Slot::from_len(self.chrome_table.len());
             self.chrome_table.push(row);
         }

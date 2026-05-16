@@ -10,7 +10,7 @@
 
 use crate::common::hash::Hasher as FxHasher;
 use crate::forest::shapes::record::{
-    ChromeRow, GradientPayload, ShapeBrush, ShapeRecord, ShapeStroke,
+    ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
 use crate::primitives::bezier::FlatPoint;
@@ -20,6 +20,8 @@ use crate::primitives::mesh::Mesh;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
+use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::quad::FillKind;
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::cell::RefCell;
@@ -63,7 +65,7 @@ pub struct FrameArena {
     /// tree and shape lowering on another share one pool, and the
     /// encoder only needs the arena (not the originating tree) to
     /// resolve a gradient id.
-    pub(crate) gradients: Vec<GradientPayload>,
+    pub(crate) gradients: Vec<LoweredGradient>,
     /// `Ui::fmt` formatter scratch. The `InternedStr::Interned { span }`
     /// handle returned by [`crate::Ui::fmt`] points into this buffer;
     /// the `Borrowed` / `Owned` carriers don't touch it (they keep
@@ -82,6 +84,19 @@ pub struct FrameArena {
 pub(crate) enum BezierInputs {
     Quadratic([Vec2; 3]),
     Cubic([Vec2; 4]),
+}
+
+/// Stable content hash for a gradient variant: discriminant byte
+/// then the gradient's `Hash` impl (which hashes f32 canon-bits).
+/// Lets `ShapeRecord::Hash` stay context-free — we capture the hash
+/// at lowering and stamp it on the record alongside the
+/// `GradientId`, so downstream cache keys don't need the arena.
+#[inline]
+fn grad_hash<G: std::hash::Hash>(tag: u8, g: &G) -> u64 {
+    let mut h = FxHasher::new();
+    h.write_u8(tag);
+    g.hash(&mut h);
+    h.finish()
 }
 
 impl FrameArena {
@@ -110,24 +125,33 @@ impl FrameArena {
     /// is returned alongside so the caller can stamp it into the
     /// `ShapeRecord` / `ChromeRow` and keep their `Hash` impls
     /// context-free (no need to thread the arena into hashing).
-    pub(crate) fn lower_brush(&mut self, brush: Brush) -> (ShapeBrush, u64) {
-        let payload = match brush {
+    pub(crate) fn lower_brush(&mut self, brush: Brush, atlas: &GradientAtlas) -> (ShapeBrush, u64) {
+        let (kind, axis, stops, interp, hash) = match brush {
             Brush::Solid(c) => return (ShapeBrush::Solid(c.into()), 0),
-            Brush::Linear(g) => GradientPayload::Linear(g),
-            Brush::Radial(g) => GradientPayload::Radial(g),
-            Brush::Conic(g) => GradientPayload::Conic(g),
+            Brush::Linear(g) => {
+                let h = grad_hash(0, &g);
+                (FillKind::linear(g.spread), g.axis(), g.stops, g.interp, h)
+            }
+            Brush::Radial(g) => {
+                let h = grad_hash(1, &g);
+                (FillKind::radial(g.spread), g.axis(), g.stops, g.interp, h)
+            }
+            Brush::Conic(g) => {
+                let h = grad_hash(2, &g);
+                (FillKind::conic(g.spread), g.axis(), g.stops, g.interp, h)
+            }
         };
-        let hash = payload.content_hash();
+        let row = atlas.register_stops(&stops, interp);
         let id = self.gradients.len() as u32;
-        self.gradients.push(payload);
+        self.gradients.push(LoweredGradient { axis, row, kind });
         (ShapeBrush::Gradient(id), hash)
     }
 
     /// Lower a user-facing `Background` to a `ChromeRow`. Same
     /// gradient lowering as `Shapes::add` uses for `RoundedRect.fill`,
     /// so chrome and shape paints share one pool.
-    pub(crate) fn lower_background(&mut self, bg: Background) -> ChromeRow {
-        let (fill, fill_grad_hash) = self.lower_brush(bg.fill);
+    pub(crate) fn lower_background(&mut self, bg: Background, atlas: &GradientAtlas) -> ChromeRow {
+        let (fill, fill_grad_hash) = self.lower_brush(bg.fill, atlas);
         ChromeRow {
             fill,
             stroke: ShapeStroke::from(bg.stroke),

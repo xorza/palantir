@@ -2,7 +2,6 @@ use super::quad::Quad;
 use crate::primitives::image::ImageHandle;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
-use crate::renderer::gradient_atlas::GradientCpuAtlas;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -54,12 +53,6 @@ pub(crate) struct RenderBuffer {
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub(crate) scale: f32,
-    /// Cross-frame gradient LUT atlas. Composer registers each
-    /// `Brush::Linear` it encounters during compose; backend drains
-    /// the dirty marker via `flush()` and uploads when populated.
-    /// Persistent: rows stay baked across frames so repeated authoring
-    /// of the same gradient is O(1) hash lookup.
-    pub(crate) gradient_atlas: GradientCpuAtlas,
 }
 
 impl Default for RenderBuffer {
@@ -77,7 +70,6 @@ impl Default for RenderBuffer {
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
-            gradient_atlas: GradientCpuAtlas::default(),
         }
     }
 }

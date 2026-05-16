@@ -11,6 +11,7 @@ use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
+use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::array;
@@ -145,11 +146,13 @@ impl Forest {
         mut element: Element,
         chrome: Background,
         arena: &mut FrameArena,
+        atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer;
         let node = self.trees[layer as usize].peek_next_id();
         let outcome = self.ids.record(&mut element, layer, node);
-        let opened = self.trees[layer as usize].open_node_with_chrome(element, chrome, arena);
+        let opened =
+            self.trees[layer as usize].open_node_with_chrome(element, chrome, arena, atlas);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
     }
@@ -181,13 +184,18 @@ impl Forest {
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
     /// shapes outside an `open_node` / `close_node` scope.
-    pub(crate) fn add_shape(&mut self, shape: Shape<'_>, arena: &mut FrameArena) {
+    pub(crate) fn add_shape(
+        &mut self,
+        shape: Shape<'_>,
+        arena: &mut FrameArena,
+        atlas: &GradientAtlas,
+    ) {
         let tree = &mut self.trees[self.current_layer as usize];
         assert!(
             !tree.open_frames.is_empty(),
             "add_shape called with no open node",
         );
-        if tree.shapes.add(shape, arena).is_some() {
+        if tree.shapes.add(shape, arena, atlas).is_some() {
             tree.paint_anims.push_unanimated();
         }
     }
@@ -202,13 +210,14 @@ impl Forest {
         shape: Shape<'_>,
         anim: PaintAnim,
         arena: &mut FrameArena,
+        atlas: &GradientAtlas,
     ) {
         let tree = &mut self.trees[self.current_layer as usize];
         assert!(
             !tree.open_frames.is_empty(),
             "add_shape_animated called with no open node",
         );
-        let Some(shape_idx) = tree.shapes.add(shape, arena) else {
+        let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
             return;
         };
         tree.paint_anims

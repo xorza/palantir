@@ -4,7 +4,7 @@ use crate::common::frame_arena::FrameArena;
 use crate::layout::types::display::Display;
 use crate::primitives::span::Span;
 use crate::primitives::{
-    brush::Brush, color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
 use crate::renderer::render_buffer::RenderBuffer;
@@ -20,7 +20,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_rect(
         r,
         Corners::default(),
-        (&Brush::Solid(Color::rgb(1.0, 1.0, 1.0))).into(),
+        crate::renderer::frontend::cmd_buffer::BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
         Stroke::ZERO.into(),
     );
 }
@@ -371,7 +371,9 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.draw_rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
-                (&Brush::Solid(Color::rgb(1.0, 1.0, 1.0))).into(),
+                crate::renderer::frontend::cmd_buffer::BrushSource::Solid(
+                    Color::rgb(1.0, 1.0, 1.0).into(),
+                ),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5).into(),
             );
             b.pop_transform();
@@ -390,13 +392,12 @@ fn compose_scales_radius_and_stroke_under_transform() {
 /// regression that accidentally sets `fill_kind = 1` on solid quads.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
-    use crate::primitives::brush::LinearGradient;
-    use crate::primitives::color::ColorU8;
+    use crate::renderer::frontend::cmd_buffer::BrushSource;
     let mut buffer = RenderCmdBuffer::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
-        (&Brush::Solid(Color::rgb(0.5, 0.5, 0.5))).into(),
+        BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
     );
     let mut composer = Composer::default();
@@ -419,27 +420,35 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         crate::primitives::brush::FillAxis::ZERO,
         "solid quad axis is zeroed",
     );
-    // Suppress unused-import warning for the gradient helper used in
-    // the linear test below.
-    let _ = LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK);
 }
 
-/// `Brush::Linear` panel: composer registers the gradient with the
-/// atlas (returns a non-zero row), packs the row id into Quad's
-/// `fill_lut_row`, copies the axis vector, and sets `fill_kind = 1`
-/// with the spread mode in bits 8..16.
+/// `Brush::Linear` panel: lowering registers the gradient with the
+/// atlas (returns a non-zero row), packs the row + axis + kind into
+/// the cmd-buffer payload; composer pipes the row straight through
+/// to the emitted Quad.
 #[test]
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
+    use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::color::ColorU8;
+    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::gradient_atlas::GradientAtlas;
+    use crate::renderer::quad::FillKind;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
+    let atlas = GradientAtlas::default();
+    let row = atlas.register_stops(&g.stops, g.interp);
+    let lowered = LoweredGradient {
+        axis: expected_axis,
+        row,
+        kind: FillKind::linear(g.spread),
+    };
     let mut buffer = RenderCmdBuffer::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
         Corners::default(),
-        (&Brush::Linear(g)).into(),
+        BrushSource::Gradient(lowered),
         Stroke::ZERO.into(),
     );
     let mut composer = Composer::default();
@@ -451,15 +460,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         &mut out,
     );
     let q = &out.quads[0];
-    assert!(
-        q.fill_kind.is_gradient(),
-        "linear quad carries gradient kind"
-    );
-    // Spread bits aren't exposed as a public accessor on FillKind; pin
-    // identity via the matching constructor — same bit pattern reaches
-    // the shader regardless.
-    let expected_kind = crate::renderer::quad::FillKind::linear(Spread::Reflect);
-    assert_eq!(q.fill_kind, expected_kind);
+    assert_eq!(q.fill_kind, FillKind::linear(Spread::Reflect));
     assert!(q.fill_lut_row.0 >= 1, "linear quad must get a real row");
     assert_eq!(q.fill_axis, expected_axis);
 }
@@ -469,15 +470,25 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 /// frames and across multiple emitting widgets.
 #[test]
 fn compose_repeated_linear_brush_shares_atlas_row() {
+    use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::color::ColorU8;
+    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::gradient_atlas::GradientAtlas;
+    use crate::renderer::quad::FillKind;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
+    let atlas = GradientAtlas::default();
+    let lowered = LoweredGradient {
+        axis: g.axis(),
+        row: atlas.register_stops(&g.stops, g.interp),
+        kind: FillKind::linear(g.spread),
+    };
     let mut buffer = RenderCmdBuffer::default();
     for _ in 0..3 {
         buffer.draw_rect(
             rect(0.0, 0.0, 10.0, 10.0),
             Corners::default(),
-            (&Brush::Linear(g)).into(),
+            BrushSource::Gradient(lowered),
             Stroke::ZERO.into(),
         );
     }

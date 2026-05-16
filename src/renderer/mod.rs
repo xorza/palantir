@@ -17,6 +17,7 @@
 //! Both halves are owned and driven from [`Host`](crate::host::Host),
 //! the public top-level handle.
 pub(crate) mod backend;
+pub(crate) mod caches;
 pub mod frontend;
 pub(crate) mod gradient_atlas;
 pub(crate) mod quad;
