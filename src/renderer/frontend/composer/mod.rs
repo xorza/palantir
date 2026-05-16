@@ -489,6 +489,8 @@ impl Composer {
                     });
                     out.images.instances.push(ImageInstance {
                         rect: phys_rect,
+                        uv_min: p.uv_min,
+                        uv_size: p.uv_size,
                         tint: tint_color.into(),
                         ..bytemuck::Zeroable::zeroed()
                     });

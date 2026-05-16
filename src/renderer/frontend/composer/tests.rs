@@ -898,4 +898,29 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.images.draws[0].handle.id, 0xc0ffee);
     // Physical-px rect = logical * scale (no snap in `params`).
     assert_eq!(buf.images.instances[0].rect, rect(20.0, 40.0, 60.0, 80.0));
+    // Composer must forward the encoder's UV crop verbatim — a Zero
+    // UV size means "sample one texel forever" and silently paints
+    // every image as a uniform color (regression hunt: 2026-05).
+    assert_eq!(buf.images.instances[0].uv_min, glam::Vec2::ZERO);
+    assert_eq!(buf.images.instances[0].uv_size, glam::Vec2::ONE);
+}
+
+#[test]
+fn compose_image_forwards_uv_crop_for_cover_fit() {
+    use super::super::cmd_buffer::DrawImagePayload;
+    let buf = run(
+        |b, _arena| {
+            b.draw_image(DrawImagePayload {
+                rect: rect(0.0, 0.0, 100.0, 100.0),
+                uv_min: glam::Vec2::new(0.25, 0.0),
+                uv_size: glam::Vec2::new(0.5, 1.0),
+                tint: Color::WHITE.into(),
+                handle: 1,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.images.instances[0].uv_min, glam::Vec2::new(0.25, 0.0));
+    assert_eq!(buf.images.instances[0].uv_size, glam::Vec2::new(0.5, 1.0));
 }
