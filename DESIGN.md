@@ -160,6 +160,15 @@ Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The com
 
 Single render pass per surface, instanced draws.
 
+## Host layering
+
+Two types divide the runtime concerns so the pipeline stays usable without winit (benches, visual-diff tests, embedding inside a host that owns its own window):
+
+- **`Host<T>`** (`src/host.rs`) owns the recorder (`Ui`), the CPU `Frontend`, and the GPU `WgpuBackend`. Single public entry `Host::frame(surface, config, scale, &mut app, build)` runs the five passes, acquires the swapchain texture, submits, and returns a `FramePresent { Immediate, At(Instant), Idle }` summarising what wake-up cadence the recorder wants next (animation tickers, pending input, surface state).
+- **`WinitHost<T, F>`** (`src/winit_host.rs`) is the reference event-loop integration: a winit `ApplicationHandler` wrapping a `Host` + `Window` + `wgpu::Surface`. Picks an sRGB swapchain, maps `FramePresent` → winit `ControlFlow`, translates `WindowEvent`s through `InputEvent::from_winit` into `Ui::on_input`, and forwards resize / occlusion / scale-factor changes. Constructor takes a `WinitHostConfig` (title, initial/min `LogicalSize<u32>`, `wgpu::PresentMode` — default `AutoVsync` — `PowerPreference`, `max_frame_latency`); all fields are public.
+
+The split keeps `Host` reusable: benches drive it via `test_support` reach-ins without spinning up a real window, and a downstream embedder can wrap `Host` in their own event loop while still getting the `FramePresent` scheduling hints.
+
 ## Non-Goals (v1)
 
 - Accessibility tree (add later via `accesskit`).
