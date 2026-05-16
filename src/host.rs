@@ -15,7 +15,7 @@
 
 use std::time::Instant;
 
-use crate::renderer::backend::WgpuBackend;
+use crate::renderer::backend::{DEFAULT_IMAGE_BUDGET_BYTES, WgpuBackend};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
@@ -64,6 +64,20 @@ impl Host {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
     ) -> Self {
+        Self::with_text_and_image_budget(device, queue, format, shaper, DEFAULT_IMAGE_BUDGET_BYTES)
+    }
+
+    /// Like [`Self::with_text`] but lets the host pick a GPU image
+    /// cache budget up front. Default ([`DEFAULT_IMAGE_BUDGET_BYTES`])
+    /// is 256 MB. Can also be adjusted later via
+    /// [`Self::set_image_budget_bytes`].
+    pub fn with_text_and_image_budget(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+        shaper: TextShaper,
+        image_budget_bytes: u64,
+    ) -> Self {
         // One canonical frame arena, cloned into every subsystem that
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
@@ -73,7 +87,15 @@ impl Host {
         Self {
             ui: Ui::new(shaper.clone(), frame_arena.clone(), caches.clone()),
             frontend: Frontend::new(frame_arena.clone()),
-            backend: WgpuBackend::new(device, queue, format, shaper, frame_arena, caches),
+            backend: WgpuBackend::new(
+                device,
+                queue,
+                format,
+                shaper,
+                frame_arena,
+                caches,
+                image_budget_bytes,
+            ),
             start: Instant::now(),
             occluded: false,
             occluded_at: None,

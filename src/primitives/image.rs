@@ -203,13 +203,6 @@ impl ImageRegistry {
         inner.pending.retain(|h| h.id != handle.id);
     }
 
-    /// Look up the bytes for a handle. `None` if the handle was never
-    /// registered or has been unregistered.
-    #[allow(dead_code)] // wired by backend image pipeline (slice 1 Phase B)
-    pub(crate) fn get(&self, handle: ImageHandle) -> Option<Rc<Image>> {
-        self.inner.borrow().by_id.get(&handle.id).cloned()
-    }
-
     /// Drain the set of handles needing GPU upload. The backend calls
     /// this once per frame; for each returned `(handle, Rc<Image>)` it
     /// uploads to GPU and stores the `GpuTexture` in its own cache.
@@ -336,5 +329,19 @@ mod tests {
     #[should_panic(expected = "Image::from_rgba8")]
     fn wrong_pixel_count_panics() {
         let _ = Image::from_rgba8(2, 2, vec![0; 3]);
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    #![allow(dead_code)]
+    use super::*;
+
+    impl ImageRegistry {
+        /// Look up the bytes for a handle. `None` if the handle was
+        /// never registered or has been unregistered.
+        pub fn get(&self, handle: ImageHandle) -> Option<Rc<Image>> {
+            self.inner.borrow().by_id.get(&handle.id).cloned()
+        }
     }
 }
