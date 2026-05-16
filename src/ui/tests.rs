@@ -15,11 +15,11 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
-fn measure_calls(ui: &Ui<()>) -> u64 {
+fn measure_calls(ui: &Ui) -> u64 {
     ui.text.measure_calls()
 }
 
-fn blue_frame(ui: &mut Ui<()>, salt: &'static str) -> NodeId {
+fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Frame::new()
         .id_salt(salt)
         .size(50.0)
@@ -187,7 +187,7 @@ fn collisions_do_not_record_into_debug_layer() {
 /// site fires more than once per frame — the "loop / closure helper" case.
 #[test]
 fn auto_id_collisions_disambiguate() {
-    fn chip(ui: &mut Ui<()>) {
+    fn chip(ui: &mut Ui) {
         Frame::new().auto_id().show(ui);
     }
     let mut ui = Ui::for_test();
@@ -308,7 +308,6 @@ fn frame_rejects_zero_scale_factor() {
             Display::from_physical(UVec2::new(800, 600), 0.0),
             Duration::ZERO,
         ),
-        &mut (),
         |_| {},
     );
 }
@@ -655,7 +654,7 @@ fn frame_pass_count_matches_action_trigger() {
 
         let count = Cell::new(0u32);
         let frame_id_before = ui.frame_id;
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             count.set(count.get() + 1);
             Panel::vstack().id_salt("root").show(ui, |_| {});
         });
@@ -682,7 +681,7 @@ fn frame_pass_count_matches_action_trigger() {
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
 fn frame_plumbs_now_dt_and_repaint_request() {
-    const MAX_DT: f32 = Ui::<()>::MAX_DT;
+    const MAX_DT: f32 = Ui::MAX_DT;
     let display = Display::from_physical(UVec2::new(100, 100), 1.0);
 
     let mut ui = Ui::for_test();
@@ -692,13 +691,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     // Frame A: idle, no repaint request, now = 16ms.
     let repaint = ui
-        .frame(
-            FrameStamp::new(display, Duration::from_millis(16)),
-            &mut (),
-            |ui| {
-                Panel::vstack().id_salt("root").show(ui, |_| {});
-            },
-        )
+        .frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+        })
         .repaint_requested();
     assert!(
         !repaint,
@@ -714,14 +709,10 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // Frame B: simulate an unsettled animation tick by setting the
     // internal flag during recording. The flag must reach `FrameOutput`.
     let repaint = ui
-        .frame(
-            FrameStamp::new(display, Duration::from_millis(32)),
-            &mut (),
-            |ui| {
-                Panel::vstack().id_salt("root").show(ui, |_| {});
-                ui.repaint_requested = true;
-            },
-        )
+        .frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
+            Panel::vstack().id_salt("root").show(ui, |_| {});
+            ui.repaint_requested = true;
+        })
         .repaint_requested();
     assert!(
         repaint,
@@ -738,7 +729,6 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // tracks true clock so animation math doesn't teleport.
     let _ = ui.frame(
         FrameStamp::new(display, Duration::from_millis(5_032)),
-        &mut (),
         |ui| {
             Panel::vstack().id_salt("root").show(ui, |_| {});
         },
@@ -755,7 +745,6 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     let repaint = ui
         .frame(
             FrameStamp::new(display, Duration::from_millis(5_048)),
-            &mut (),
             |ui| {
                 Panel::vstack().id_salt("root").show(ui, |_| {});
             },
@@ -779,7 +768,7 @@ fn frame_stats_overlay_records_partial_damage() {
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
     // diff against), but the Debug layer should already carry the
     // readout.
-    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+    ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         Frame::new().id_salt("body").size(50.0).show(ui);
     });
     ui.frame_state.mark_submitted();
@@ -793,13 +782,9 @@ fn frame_stats_overlay_records_partial_damage() {
     // Debug-layer readout dirties → expect `Partial`, not `Full`,
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
-    let report = ui.frame(
-        FrameStamp::new(display, Duration::from_millis(16)),
-        &mut (),
-        |ui| {
-            Frame::new().id_salt("body").size(50.0).show(ui);
-        },
-    );
+    let report = ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
+        Frame::new().id_salt("body").size(50.0).show(ui);
+    });
     ui.frame_state.mark_submitted();
     assert!(
         matches!(report.plan, Some(RenderPlan::Partial { .. })),
@@ -815,13 +800,9 @@ fn frame_stats_overlay_records_partial_damage() {
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
     ui.debug_overlay.frame_stats = false;
-    ui.frame(
-        FrameStamp::new(display, Duration::from_millis(32)),
-        &mut (),
-        |ui| {
-            Frame::new().id_salt("body").size(50.0).show(ui);
-        },
-    );
+    ui.frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
+        Frame::new().id_salt("body").size(50.0).show(ui);
+    });
     assert!(
         ui.forest.tree(Layer::Debug).records.is_empty(),
         "Debug layer must clear once frame_stats is turned off",
@@ -837,7 +818,6 @@ fn request_repaint_after_queues_distinct_deadlines() {
     let display = Display::from_physical(SURFACE, 1.0);
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
-        &mut (),
         |ui| {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
             ui.request_repaint_after(Duration::from_secs_f32(1.5));
@@ -860,7 +840,6 @@ fn request_repaint_after_queues_distinct_deadlines() {
     // the second survives.
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.5)),
-        &mut (),
         |_| {},
     );
     assert_eq!(
@@ -873,7 +852,6 @@ fn request_repaint_after_queues_distinct_deadlines() {
     // Run a frame at the second deadline. Queue empties.
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(1.5)),
-        &mut (),
         |_| {},
     );
     assert_eq!(report.repaint_after(), None);
@@ -891,7 +869,6 @@ fn request_repaint_after_dedups_within_frame() {
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
-        &mut (),
         |ui| {
             for _ in 0..10 {
                 ui.request_repaint_after(Duration::from_secs_f32(0.5));
@@ -911,7 +888,6 @@ fn request_repaint_after_dedups_within_frame() {
     let mut ui = Ui::for_test();
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
-        &mut (),
         |ui| {
             // Earlier request first; second request lands ~4 ms later
             // (well under 1/120 s ≈ 8.33 ms). Expect the later deadline
@@ -946,7 +922,6 @@ fn request_repaint_after_drains_fired_entries() {
     let display = Display::from_physical(SURFACE, 1.0);
     ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(0.0)),
-        &mut (),
         |ui| {
             ui.request_repaint_after(Duration::from_secs_f32(0.5));
             ui.request_repaint_after(Duration::from_secs_f32(1.0));
@@ -958,36 +933,16 @@ fn request_repaint_after_drains_fired_entries() {
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(1.0)),
-        &mut (),
         |_| {},
     );
     assert_eq!(ui.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
 }
 
-#[test]
-fn app_state_round_trip_across_frame() {
-    struct App {
-        count: u32,
-    }
-    let mut ui = crate::ui::Ui::<App>::default();
-    let mut app = App { count: 0 };
-    ui.frame(
-        FrameStamp::new(Display::default(), Duration::ZERO),
-        &mut app,
-        |ui| {
-            ui.app().count += 1;
-            ui.app().count += 1;
-        },
-    );
-    assert_eq!(app.count, 2);
-}
-
-#[test]
-#[should_panic(expected = "no app state installed")]
-fn app_without_install_panics() {
-    let _ = crate::ui::Ui::<u32>::default().app();
-}
+// `app_state_round_trip_across_frame` and `app_without_install_panics`
+// were removed when `Ui` lost its `<T>` parameter. App-owned state now
+// lives in the caller's frame-builder closure (capture it) — see the
+// `app_state` showcase for the canonical pattern.
 
 /// Anim-only fast path: when the only wake fired is a paint-anim
 /// quantum boundary (no input, no `request_repaint`, no real wake),
@@ -1004,7 +959,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui<()>, half: Duration) {
+    fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1026,7 +981,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record. Full path; schedules anim wake at `half`.
-    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
     ui.frame_state.mark_submitted();
@@ -1034,7 +989,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r0.repaint_after(), Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
-    let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+    let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
@@ -1059,9 +1014,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // is queued. Without this fold the caret stops blinking until
     // input forces a FullRecord (mouse-move regression).
     assert_eq!(r1.repaint_after(), Some(half + half));
-    let r2 = ui.frame(FrameStamp::new(display, half + half), &mut (), |ui| {
-        body(ui, half)
-    });
+    let r2 = ui.frame(FrameStamp::new(display, half + half), |ui| body(ui, half));
     assert_eq!(r2.processing(), FrameProcessing::PaintOnly);
 }
 
@@ -1078,7 +1031,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui<()>, half: Duration) {
+    fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1100,14 +1053,14 @@ fn paint_only_skipped_when_widget_requested_repaint() {
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Frame 0: record + `request_repaint`. Next frame must be Full.
-    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half);
         ui.request_repaint();
     });
     ui.frame_state.mark_submitted();
     assert!(r0.repaint_requested());
 
-    let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+    let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
     assert_eq!(r1.processing(), FrameProcessing::SingleLayout);
 }
 
@@ -1140,7 +1093,7 @@ fn input_policy_routes_paint_only_gate() {
     // Body declares an inert Frame *and* an anim shape so the next
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
     // entry, so OnDelta sees `requests_repaint = false`.
-    fn body(ui: &mut Ui<()>, half: Duration) {
+    fn body(ui: &mut Ui, half: Duration) {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Frame::new().id_salt("inert").size(80.0).show(ui);
             ui.add_shape_animated(
@@ -1162,7 +1115,7 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::OnDelta;
-        let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+        let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
         ui.frame_state.mark_submitted();
@@ -1178,7 +1131,7 @@ fn input_policy_routes_paint_only_gate() {
             "inert pointer move must not flip repaint_requested",
         );
 
-        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
             r1.processing(),
             FrameProcessing::PaintOnly,
@@ -1194,13 +1147,13 @@ fn input_policy_routes_paint_only_gate() {
     {
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::Always;
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
         ui.frame_state.mark_submitted();
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
-        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
             r1.processing(),
             FrameProcessing::SingleLayout,
@@ -1214,7 +1167,7 @@ fn input_policy_routes_paint_only_gate() {
         use crate::primitives::widget_id::WidgetId;
         let mut ui = Ui::for_test();
         ui.input_policy = InputPolicy::OnDelta;
-        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
+        let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
         ui.frame_state.mark_submitted();
@@ -1228,7 +1181,7 @@ fn input_policy_routes_paint_only_gate() {
             ui.input.repaint_requested_since_last_frame,
             "KeyDown with focus held must flip repaint_requested",
         );
-        let r1 = ui.frame(FrameStamp::new(display, half), &mut (), |ui| body(ui, half));
+        let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_ne!(
             r1.processing(),
             FrameProcessing::PaintOnly,

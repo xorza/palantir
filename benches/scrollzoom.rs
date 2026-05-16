@@ -41,28 +41,16 @@ fn warmed_ui() -> (Ui, Display) {
     // Two frames so cascades populate and `post_record` latches the
     // Scroll widget as the scroll-target hit. Pointer must be inside
     // the viewport before frame 2's post_record runs.
-    ui.frame(
-        FrameStamp::new(display, Duration::ZERO),
-        &mut (),
-        pan_zoom::build,
-    );
+    ui.frame(FrameStamp::new(display, Duration::ZERO), pan_zoom::build);
     ui.mark_frame_submitted();
     ui.on_input(InputEvent::PointerMoved(VIEWPORT_CENTER));
-    ui.frame(
-        FrameStamp::new(display, Duration::ZERO),
-        &mut (),
-        pan_zoom::build,
-    );
+    ui.frame(FrameStamp::new(display, Duration::ZERO), pan_zoom::build);
     ui.mark_frame_submitted();
     (ui, display)
 }
 
-fn run_frame(ui: &mut Ui<()>, display: Display) {
-    ui.frame(
-        FrameStamp::new(display, Duration::ZERO),
-        &mut (),
-        pan_zoom::build,
-    );
+fn run_frame(ui: &mut Ui, display: Display) {
+    ui.frame(FrameStamp::new(display, Duration::ZERO), pan_zoom::build);
     ui.mark_frame_submitted();
 }
 

@@ -31,7 +31,7 @@ const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 /// frame before reading shapes for align assertions — `warmup_then`
 /// below packages that.
 fn frame(
-    ui: &mut Ui<()>,
+    ui: &mut Ui,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
@@ -59,7 +59,7 @@ fn frame(
 /// has a real `response.rect`; the second frame's shape stream is
 /// what every align assertion reads.
 fn warmup_then(
-    ui: &mut Ui<()>,
+    ui: &mut Ui,
     buf: &mut String,
     text_align: Option<Align>,
     placeholder: Option<&'static str>,
@@ -74,7 +74,7 @@ fn warmup_then(
 /// with a `local_rect` (selection rects come before the text; the
 /// caret comes after — for empty focused editors it's the only
 /// `RoundedRect` in the stream).
-fn shape_origins(ui: &Ui<()>, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
+fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let mut text_origin = None;
     let mut caret_origin = None;
     for s in ui.forest.tree(Layer::Main).shapes_of(node) {
@@ -97,7 +97,7 @@ fn shape_origins(ui: &Ui<()>, node: NodeId) -> (Option<glam::Vec2>, Option<glam:
 /// `InputEvent::KeyDown` is a unit event; modifier state attaches to
 /// the queued `KeyPress` after the fact (mirror of how
 /// `multiline.rs:96-98` builds shift+arrow).
-fn shift_arrow_right(ui: &mut Ui<()>) {
+fn shift_arrow_right(ui: &mut Ui) {
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowRight,
         repeat: false,

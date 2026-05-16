@@ -4,17 +4,28 @@ use palantir::{
 };
 
 mod showcase;
-use showcase::app_state::AppState;
+use showcase::app_state::{self, AppState};
 use showcase::{
-    alignment, animations, app_state, bezier, buttons, checkbox, clip, context_menu, disabled,
-    drag, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
-    pan_zoom_auto, panels, popup, radio, scroll, shadow, sizing, spacing, text, text_edit,
-    text_zorder, tooltips, transform, visibility, wrap,
+    alignment, animations, bezier, buttons, checkbox, clip, context_menu, disabled, drag, gap,
+    gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels,
+    popup, radio, scroll, shadow, sizing, spacing, text, text_edit, text_zorder, tooltips,
+    transform, visibility, wrap,
 };
 
-/// Each showcase: a label for the toolbar button, and a builder that fills the
-/// central panel. Adding a new showcase = one line here + one new module.
-type ShowcaseFn = fn(&mut Ui<AppState>);
+/// State the showcase binary carries across frames: which tab is
+/// active, plus the counter the `app_state` page reads/writes.
+struct State {
+    active: usize,
+    app: AppState,
+}
+
+/// Each non-stateful showcase: a label for the toolbar button, and a
+/// builder that fills the central panel. Adding a new showcase = one
+/// line here + one new module. The `app_state` page is dispatched
+/// separately so it can receive `&mut AppState`.
+type ShowcaseFn = fn(&mut Ui);
+
+const APP_STATE_LABEL: &str = "app state";
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
@@ -44,7 +55,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("tooltips", tooltips::build),
     ("context menu", context_menu::build),
     ("animations", animations::build),
-    ("app state", app_state::build),
+    (APP_STATE_LABEL, |_ui| {}),
     ("mesh", mesh::build),
     ("image", image::build),
     ("lines", lines::build),
@@ -63,11 +74,13 @@ fn main() {
         )
         .init();
 
-    let mut active = 0usize;
     WinitHost::new(
         WinitHostConfig::new("palantir showcase"),
-        AppState { counter: 0 },
-        move |ui| build_ui(ui, &mut active),
+        State {
+            active: 0,
+            app: AppState { counter: 0 },
+        },
+        build_ui,
     )
     .with_setup(|ui| {
         // Library default is no button animation (`anim = None`).
@@ -77,7 +90,7 @@ fn main() {
     .run();
 }
 
-fn build_ui(ui: &mut Ui<AppState>, active: &mut usize) {
+fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
@@ -99,11 +112,11 @@ fn build_ui(ui: &mut Ui<AppState>, active: &mut usize) {
                 .show(ui, |ui| {
                     for (i, (label, _)) in SHOWCASES.iter().enumerate() {
                         let mut btn = Button::new().id_salt(*label).label(*label);
-                        if i == *active {
+                        if i == state.active {
                             btn = btn.style(active_style.clone());
                         }
                         if btn.show(ui).clicked() {
-                            *active = i;
+                            state.active = i;
                         }
                     }
                 });
@@ -122,8 +135,12 @@ fn build_ui(ui: &mut Ui<AppState>, active: &mut usize) {
                     shadow: Shadow::NONE,
                 })
                 .show(ui, |ui| {
-                    let (_, build_fn) = SHOWCASES[*active];
-                    build_fn(ui);
+                    let (label, build_fn) = SHOWCASES[state.active];
+                    if label == APP_STATE_LABEL {
+                        app_state::build(ui, &mut state.app);
+                    } else {
+                        build_fn(ui);
+                    }
                 });
         });
 }
@@ -142,7 +159,7 @@ fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonThe
 /// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
 /// F9 toggles the frame/FPS readout. Subscribes via the canonical
 /// `Ui::subscribe_key` so off-focus presses still wake the loop.
-fn handle_debug_keys(ui: &mut Ui<AppState>) {
+fn handle_debug_keys(ui: &mut Ui) {
     let f12 = Shortcut::key(Key::F12);
     let f10 = Shortcut::key(Key::F10);
     let f9 = Shortcut::key(Key::F9);

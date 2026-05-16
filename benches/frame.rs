@@ -18,7 +18,7 @@ use std::rc::Rc;
 /// enable it, so we inline the equivalent here.
 const SCALE: usize = 32;
 
-fn build_ui<T>(ui: &mut Ui<T>) {
+fn build_ui(ui: &mut Ui) {
     let sidebar_items = 5 * SCALE;
     let chat_messages = 2 * SCALE;
     let canvas_dots = 3 * SCALE;
@@ -223,7 +223,6 @@ fn bench_frame(c: &mut Criterion) {
         b.iter(|| {
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_ui,
             ));
             // #[cfg(feature = "internals")]
@@ -244,7 +243,6 @@ fn bench_frame(c: &mut Criterion) {
             let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
-                &mut (),
                 build_ui,
             ));
             // #[cfg(feature = "internals")]

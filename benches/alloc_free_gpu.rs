@@ -48,7 +48,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-fn build_ui<T>(ui: &mut Ui<T>) {
+fn build_ui(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
@@ -189,7 +189,7 @@ fn main() {
     });
     let run = |host: &mut Host| {
         host.ui.theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, &mut (), build_ui);
+        host.frame_offscreen(&target, SCALE, build_ui);
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

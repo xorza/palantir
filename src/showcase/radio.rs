@@ -1,4 +1,3 @@
-use super::app_state::AppState;
 use palantir::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -23,7 +22,7 @@ struct State {
     size: Size,
 }
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     let state_id = WidgetId::from_hash("showcase::radio::state");
     Panel::vstack()
         .auto_id()

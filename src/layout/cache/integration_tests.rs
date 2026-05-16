@@ -23,10 +23,10 @@ use std::rc::Rc;
 /// every captured node's arranged rect matches across the two frames.
 /// `record` pushes the nodes whose rects matter into `capture`.
 fn assert_warm_rects_match_cold(
-    ui: &mut Ui<()>,
+    ui: &mut Ui,
     size: UVec2,
     msg: &str,
-    mut record: impl FnMut(&mut Ui<()>, &mut Vec<NodeId>),
+    mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
     ui.run_at_acked(size, |ui| record(ui, &mut cold_nodes));

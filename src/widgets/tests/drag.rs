@@ -40,7 +40,7 @@ impl Card {
         }
     }
 
-    fn record(&mut self, ui: &mut Ui<()>) {
+    fn record(&mut self, ui: &mut Ui) {
         let r = Frame::new()
             .id_salt(self.label)
             .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
@@ -64,7 +64,7 @@ impl Card {
     }
 }
 
-fn frame_with(ui: &mut Ui<()>, mut body: impl FnMut(&mut Ui<()>)) {
+fn frame_with(ui: &mut Ui, mut body: impl FnMut(&mut Ui)) {
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()

@@ -87,7 +87,7 @@ fn init_gpu() -> Gpu {
     }
 }
 
-fn build_grid<T>(ui: &mut Ui<T>, hot: &[usize], hot_color: Color) {
+fn build_grid(ui: &mut Ui, hot: &[usize], hot_color: Color) {
     Panel::vstack()
         .id_salt("root")
         .gap(GAP)
@@ -143,7 +143,7 @@ fn render_frame(
     color: Color,
     forced_damage: Option<&[Rect]>,
 ) {
-    let mut report = host.cpu_frame_for_test(display, &mut (), |ui| build_grid(ui, cells, color));
+    let mut report = host.cpu_frame_for_test(display, |ui| build_grid(ui, cells, color));
     if let Some(rects) = forced_damage {
         report.force_damage_to_rects(rects, color);
     }

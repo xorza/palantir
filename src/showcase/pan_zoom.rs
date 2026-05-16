@@ -1,4 +1,3 @@
-use super::app_state::AppState;
 use palantir::{
     AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Shadow,
     Sizing, Stroke, TextStyle, Ui, WidgetLook,
@@ -10,7 +9,7 @@ use palantir::{
 /// cursor. Cells are buttons so hover / press / click input still works
 /// correctly through the scroll viewport's transform; the hovered cell
 /// brightens via the standard ButtonTheme animation path.
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     let last_click_id = palantir::WidgetId::from_hash("pz-last-click");
     let mut clicked: Option<(u32, u32)> = *ui.state_mut::<Option<(u32, u32)>>(last_click_id);
     Panel::vstack()
@@ -58,7 +57,7 @@ pub fn build(ui: &mut Ui<AppState>) {
     *ui.state_mut::<Option<(u32, u32)>>(last_click_id) = clicked;
 }
 
-fn cell<T>(ui: &mut Ui<T>, r: u32, c: u32) -> bool {
+fn cell(ui: &mut Ui, r: u32, c: u32) -> bool {
     Button::new()
         .id_salt(("pz-cell", r, c))
         .label(format!("{r},{c}"))

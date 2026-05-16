@@ -14,23 +14,23 @@ use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::PointerSense;
 use glam::{UVec2, Vec2};
 
-fn empty<T>(ui: &mut Ui<T>) {
+fn empty(ui: &mut Ui) {
     use crate::forest::element::Configure;
     use crate::widgets::panel::Panel;
     Panel::vstack().id_salt("root").show(ui, |_| {});
 }
 
-fn empty_sub_buttons<T>(ui: &mut Ui<T>) {
+fn empty_sub_buttons(ui: &mut Ui) {
     empty(ui);
     ui.subscribe_pointer(PointerSense::BUTTONS);
 }
 
-fn empty_sub_move<T>(ui: &mut Ui<T>) {
+fn empty_sub_move(ui: &mut Ui) {
     empty(ui);
     ui.subscribe_pointer(PointerSense::MOVE);
 }
 
-fn empty_sub_escape<T>(ui: &mut Ui<T>) {
+fn empty_sub_escape(ui: &mut Ui) {
     empty(ui);
     ui.subscribe_key(Shortcut::key(Key::Escape));
 }

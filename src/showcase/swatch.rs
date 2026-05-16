@@ -42,11 +42,11 @@ pub fn on_swatch_text() -> TextStyle {
 
 /// Title + body pair: a small caption above a child block. No card
 /// decoration — the surrounding showcase panel already contains the demo.
-pub fn section<T, H: Hash + Copy>(
-    ui: &mut Ui<T>,
+pub fn section<H: Hash + Copy>(
+    ui: &mut Ui,
     id: H,
     title: &'static str,
-    body: impl FnOnce(&mut Ui<T>),
+    body: impl FnOnce(&mut Ui),
 ) {
     Panel::vstack()
         .id_salt(id)

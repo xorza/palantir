@@ -38,7 +38,6 @@ use crate::ui::frame_state::FrameState;
 use crate::ui::frame_stats::record_frame_stats;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use std::ptr::NonNull;
 use std::time::Duration;
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
@@ -125,7 +124,7 @@ enum FramePlan {
 /// `Default` builds a self-contained `Ui` with mono-fallback shaper
 /// and a private frame arena. Hosts that need to share the shaper /
 /// arena with the wgpu backend use [`Self::new`] instead.
-pub struct Ui<T = ()> {
+pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
     /// Per-frame debug visualizations. Default all-off; flip flags
@@ -204,12 +203,6 @@ pub struct Ui<T = ()> {
     /// `post_record` to trigger one re-record per
     /// `run_frame`.
     relayout_requested: bool,
-    /// Ambient caller-owned app state for the current frame. Installed
-    /// by [`Self::frame`], cleared by the RAII guard on scope exit
-    /// (incl. panic). Retrieved via [`Self::app`].
-    app_slot: Option<NonNull<T>>,
-    /// Carries `T` without storing one.
-    _t: std::marker::PhantomData<fn() -> T>,
     /// Per-frame bulk geometry arena (mesh verts/indices, polyline
     /// points/colors), shared with the renderer via [`Host`]: `Host`
     /// constructs the canonical handle and clones it into `Ui`,
@@ -227,7 +220,7 @@ pub struct Ui<T = ()> {
     pub caches: RenderCaches,
 }
 
-impl<T> Default for Ui<T> {
+impl Default for Ui {
     fn default() -> Self {
         Self {
             forest: Default::default(),
@@ -253,15 +246,13 @@ impl<T> Default for Ui<T> {
             anim: Default::default(),
             frame_state: Default::default(),
             relayout_requested: false,
-            app_slot: None,
-            _t: std::marker::PhantomData,
             frame_arena: Default::default(),
             caches: Default::default(),
         }
     }
 }
 
-impl<T> Ui<T> {
+impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
     /// animation tickers instead of teleporting; [`Self::time`]
     /// still tracks the host's true clock.
@@ -287,62 +278,21 @@ impl<T> Ui<T> {
         }
     }
 
-    /// Borrow the app state installed by the enclosing [`Self::frame`].
-    /// Panics if no slot is installed or `T` doesn't match the installed
-    /// type — both are caller bugs, not runtime conditions.
-    pub fn app(&mut self) -> &mut T {
-        let mut ptr = self
-            .app_slot
-            .expect("Ui::app called with no app state installed");
-        // SAFETY: `frame` borrows `state: &mut T` for the closure's
-        // duration; the typed slot stores that pointer until the RAII
-        // guard restores `prev` on scope exit (incl. panic).
-        unsafe { ptr.as_mut() }
-    }
-
     // ── Frame lifecycle ───────────────────────────────────────────────
 
-    /// The only public entry point for driving a frame. Installs
-    /// `state` as ambient app state visible to deep widgets via
-    /// [`Self::app::<T>()`] for the duration of the call (RAII-restored
-    /// on scope exit, incl. panic). Runs `record` once, re-records on
-    /// action input or `request_relayout`, paints the last pass.
-    /// Callers without app state pass `&mut ()`. `stamp.time` is
-    /// monotonic host time; `Ui::{dt,time,frame_id}` derive from it.
-    /// See `docs/repaint.md`.
-    pub fn frame(
-        &mut self,
-        stamp: FrameStamp,
-        state: &mut T,
-        mut record: impl FnMut(&mut Ui<T>),
-    ) -> FrameReport {
+    /// The only public entry point for driving a frame. Runs `record`
+    /// once, re-records on action input or `request_relayout`, paints
+    /// the last pass. `stamp.time` is monotonic host time;
+    /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
+    pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         // The frame arena is shared via Rc so the renderer sees the
         // same bytes. Clear it once at the top of the record cycle;
         // capacity is retained.
         self.frame_arena.clear();
-        // Install `state` as the ambient app slot for this frame; RAII
-        // guard restores the prior slot on scope exit (incl. panic) so
-        // nested frames stack cleanly.
-        struct Guard<'a, T> {
-            ui: &'a mut Ui<T>,
-            prev: Option<NonNull<T>>,
-        }
-        impl<T> Drop for Guard<'_, T> {
-            fn drop(&mut self) {
-                self.ui.app_slot = self.prev;
-            }
-        }
-        let prev = self.app_slot.replace(NonNull::from(state));
-        let g = Guard { ui: self, prev };
-
-        g.ui.frame_inner(stamp, &mut record)
+        self.frame_inner(stamp, &mut record)
     }
 
-    fn frame_inner(
-        &mut self,
-        stamp: FrameStamp,
-        mut record: impl FnMut(&mut Ui<T>),
-    ) -> FrameReport {
+    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
         assert!(
             stamp.display.scale_factor >= EPS,
@@ -552,7 +502,7 @@ impl<T> Ui<T> {
     /// One `pre_record` → user record → drain action flag → `post_record`
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
-    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui<T>)) -> bool {
+    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
         {
             profiling::scope!("Ui::pre_record");
             self.forest.pre_record();
@@ -841,7 +791,7 @@ impl<T> Ui<T> {
         layer: Layer,
         anchor: glam::Vec2,
         size: Option<crate::primitives::size::Size>,
-        body: impl FnOnce(&mut Ui<T>),
+        body: impl FnOnce(&mut Ui),
     ) {
         self.forest.push_layer(layer, anchor, size);
         body(self);
@@ -851,7 +801,7 @@ impl<T> Ui<T> {
     /// Open a node with no paint chrome — the common path for layout-only
     /// containers, text leaves, and chrome-less Frames. Avoids passing
     /// a 232-byte `Option<Background>` through the call chain.
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui<T>)) {
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) {
         self.forest.open_node(element);
         f(self);
         self.forest.close_node();
@@ -865,7 +815,7 @@ impl<T> Ui<T> {
         &mut self,
         element: Element,
         chrome: Background,
-        f: impl FnOnce(&mut Ui<T>),
+        f: impl FnOnce(&mut Ui),
     ) {
         self.forest.open_node_with_chrome(
             element,
@@ -1004,7 +954,7 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
-    impl<T> Ui<T> {
+    impl Ui {
         // ── forest ──────────────────────────────────────────────
 
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
@@ -1020,7 +970,7 @@ pub mod test_support {
         }
     }
 
-    impl Ui<()> {
+    impl Ui {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
         pub fn for_test() -> Self {
             Self::default()
@@ -1053,19 +1003,19 @@ pub mod test_support {
         }
 
         /// One frame at `size`, time frozen at zero.
-        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui<()>)) {
+        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             let display = Display::from_physical(size, 1.0);
-            self.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
+            self.frame(FrameStamp::new(display, Duration::ZERO), record);
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui<()>)) {
+        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             self.run_at(size, record);
             self.frame_state.mark_submitted();
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
-        pub fn under_outer<F: FnMut(&mut Ui<()>) -> NodeId>(
+        pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
             &mut self,
             surface: UVec2,
             mut f: F,

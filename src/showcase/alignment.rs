@@ -1,8 +1,7 @@
-use super::app_state::AppState;
 use crate::showcase::swatch;
 use palantir::{Align, Color, Configure, Frame, HAlign, Panel, Sizing, Ui, VAlign};
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -39,7 +38,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn chip<T>(ui: &mut Ui<T>, id: &'static str, c: Color, align: Align) {
+fn chip(ui: &mut Ui, id: &'static str, c: Color, align: Align) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))

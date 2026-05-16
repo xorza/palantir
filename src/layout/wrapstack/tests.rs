@@ -8,7 +8,7 @@ use crate::primitives::color::Color;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn cell<T>(ui: &mut Ui<T>, id: &'static str, w: f32, h: f32) -> NodeId {
+fn cell(ui: &mut Ui, id: &'static str, w: f32, h: f32) -> NodeId {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(w), Sizing::Fixed(h)))
@@ -404,7 +404,7 @@ fn nested_wrap_hstacks_do_not_trample_scratch() {
 fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     use crate::widgets::button::Button;
 
-    fn build(ui: &mut Ui<()>) -> (NodeId, Vec<NodeId>) {
+    fn build(ui: &mut Ui) -> (NodeId, Vec<NodeId>) {
         let mut wrap_node = None;
         let mut kids = Vec::new();
         Panel::vstack()

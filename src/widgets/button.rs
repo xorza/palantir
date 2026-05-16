@@ -48,7 +48,7 @@ impl Button {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let mut element = self.element;
         // One `response_for` call covers both theme-picking (with
         // self-disabled merged in) and the returned `Response.state`

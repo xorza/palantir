@@ -241,7 +241,7 @@ fn same_authoring_produces_same_hash() {
 
 #[test]
 fn changing_fill_color_changes_hash() {
-    fn build_child(ui: &mut Ui<()>, fill: Color) -> NodeId {
+    fn build_child(ui: &mut Ui, fill: Color) -> NodeId {
         let mut child = None;
         Panel::hstack().id_salt("root").show(ui, |ui| {
             child = Some(
@@ -388,7 +388,7 @@ fn changing_layout_property_changes_hash() {
 #[test]
 fn changing_text_content_changes_hash() {
     use crate::widgets::text::Text;
-    fn build(ui: &mut Ui<()>, label: &'static str) -> NodeId {
+    fn build(ui: &mut Ui, label: &'static str) -> NodeId {
         let mut n = None;
         Panel::hstack().auto_id().show(ui, |ui| {
             n = Some(Text::new(label).id_salt("t").show(ui).node(ui));
@@ -402,7 +402,7 @@ fn changing_text_content_changes_hash() {
 
 #[test]
 fn child_hash_does_not_affect_parent_hash() {
-    fn build(ui: &mut Ui<()>, fill: Color) -> NodeId {
+    fn build(ui: &mut Ui, fill: Color) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -464,7 +464,7 @@ fn subtree_hash_stable_across_frames() {
 
 #[test]
 fn subtree_hash_changes_when_descendant_changes() {
-    fn build(ui: &mut Ui<()>, fill: Color) -> NodeId {
+    fn build(ui: &mut Ui, fill: Color) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .show(ui, |ui| {
@@ -486,7 +486,7 @@ fn subtree_hash_changes_when_descendant_changes() {
 
 #[test]
 fn subtree_hash_changes_on_sibling_reorder() {
-    fn build(ui: &mut Ui<()>, swap: bool) -> NodeId {
+    fn build(ui: &mut Ui, swap: bool) -> NodeId {
         let a = |ui: &mut Ui| {
             Frame::new()
                 .id_salt("a")
@@ -532,7 +532,7 @@ fn subtree_hash_changes_on_sibling_reorder() {
 fn transform_change_affects_subtree_but_not_node_hash() {
     use crate::primitives::transform::TranslateScale;
     use glam::Vec2;
-    fn build(ui: &mut Ui<()>, t: TranslateScale) -> NodeId {
+    fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
         Panel::hstack()
             .id_salt("root")
             .transform(t)
@@ -648,7 +648,7 @@ fn subtree_end_rolls_up_during_recording() {
 
 #[test]
 fn subtree_end_handles_deep_nesting() {
-    fn nest(ui: &mut Ui<()>, depth: usize) {
+    fn nest(ui: &mut Ui, depth: usize) {
         if depth == 0 {
             Frame::new().id_salt(("leaf", depth)).size(10.0).show(ui);
             return;
@@ -680,7 +680,7 @@ fn subtree_end_handles_deep_nesting() {
 /// hashes for the second root regardless of the first's content.
 #[test]
 fn subtree_hash_rollup_root_local_across_two_roots() {
-    fn build(ui: &mut Ui<()>, root_a_color: Color) -> u32 {
+    fn build(ui: &mut Ui, root_a_color: Color) -> u32 {
         Panel::vstack().id_salt("root-a").show(ui, |ui| {
             Frame::new()
                 .id_salt("a-leaf")

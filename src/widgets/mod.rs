@@ -73,7 +73,7 @@ pub mod test_support {
 
     impl Response {
         /// Old `Response.node` field as an inherent test-only method.
-        pub fn node<T>(&self, ui: &Ui<T>) -> NodeId {
+        pub fn node(&self, ui: &Ui) -> NodeId {
             ui.node_for_widget_id(self.id)
         }
     }

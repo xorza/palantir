@@ -1,8 +1,7 @@
-use super::app_state::AppState;
 use crate::showcase::swatch;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Ui, Visibility};
 
-pub fn build(ui: &mut Ui<AppState>) {
+pub fn build(ui: &mut Ui) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -16,7 +15,7 @@ pub fn build(ui: &mut Ui<AppState>) {
         });
 }
 
-fn row<T>(ui: &mut Ui<T>, id: &'static str, middle: Visibility) {
+fn row(ui: &mut Ui, id: &'static str, middle: Visibility) {
     Panel::hstack()
         .id_salt(id)
         .gap(12.0)
@@ -29,7 +28,7 @@ fn row<T>(ui: &mut Ui<T>, id: &'static str, middle: Visibility) {
         });
 }
 
-fn tile<T, I: std::hash::Hash>(ui: &mut Ui<T>, id: I, c: Color, vis: Visibility) {
+fn tile<I: std::hash::Hash>(ui: &mut Ui, id: I, c: Color, vis: Visibility) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))

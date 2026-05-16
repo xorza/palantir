@@ -71,7 +71,7 @@ impl Text {
         self
     }
 
-    pub fn show<T>(self, ui: &mut Ui<T>) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response {
         let id = self.element.id;
         let style = self.style.unwrap_or(ui.theme.text);
         let line_height_px = style.line_height_for(style.font_size_px);
