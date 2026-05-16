@@ -18,7 +18,7 @@ use std::rc::Rc;
 /// enable it, so we inline the equivalent here.
 const SCALE: usize = 32;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui<T>(ui: &mut Ui<T>) {
     let sidebar_items = 5 * SCALE;
     let chat_messages = 2 * SCALE;
     let canvas_dots = 3 * SCALE;

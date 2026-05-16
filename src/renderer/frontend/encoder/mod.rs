@@ -56,8 +56,8 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
 ///
 /// `out` is cleared at entry; capacity is retained across frames.
 #[profiling::function]
-pub(crate) fn encode(
-    ui: &Ui,
+pub(crate) fn encode<T>(
+    ui: &Ui<T>,
     arena: &FrameArenaInner,
     plan: RenderPlan,
     out: &mut RenderCmdBuffer,
@@ -99,7 +99,7 @@ pub(crate) fn encode(
 /// ignores any clip context the colliding widgets sit under (scroll
 /// viewports, clipped popups). Both `NodeId`s are precomputed at
 /// recording time (`SeenIds.curr` hashmap lookup) — no tree scan.
-fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
+fn emit_collision_overlays<T>(ui: &Ui<T>, out: &mut RenderCmdBuffer) {
     if ui.forest.collisions.is_empty() {
         return;
     }

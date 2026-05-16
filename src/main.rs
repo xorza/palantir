@@ -20,7 +20,7 @@ use showcase::{
 
 /// Each showcase: a label for the toolbar button, and a builder that fills the
 /// central panel. Adding a new showcase = one line here + one new module.
-type ShowcaseFn = fn(&mut Ui);
+type ShowcaseFn = fn(&mut Ui<AppState>);
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
@@ -84,7 +84,7 @@ struct State {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
     config: wgpu::SurfaceConfiguration,
-    host: Host,
+    host: Host<AppState>,
     scale_factor: f32,
     active: usize,
     /// Host-side scheduling state. Reset at the top of `draw` from the
@@ -293,7 +293,7 @@ fn handle_debug_key(state: &mut State, key: KeyCode) -> bool {
     }
 }
 
-fn build_ui(ui: &mut Ui, active: &mut usize) {
+fn build_ui(ui: &mut Ui<AppState>, active: &mut usize) {
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()

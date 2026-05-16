@@ -1,8 +1,9 @@
 use crate::showcase::swatch;
+use super::app_state::AppState;
 use glam::Vec2;
 use palantir::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::hstack()
         .auto_id()
         .gap(16.0)
@@ -45,7 +46,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
+fn cell<T>(ui: &mut Ui<T>, id: &'static str, body: impl FnOnce(&mut Ui<T>)) {
     Panel::vstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -53,7 +54,7 @@ fn cell(ui: &mut Ui, id: &'static str, body: impl FnOnce(&mut Ui)) {
         .show(ui, body);
 }
 
-fn tile(ui: &mut Ui, id: &'static str) {
+fn tile<T>(ui: &mut Ui<T>, id: &'static str) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(60.0), Sizing::Fixed(60.0)))

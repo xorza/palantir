@@ -1,7 +1,8 @@
 use crate::showcase::swatch;
+use super::app_state::AppState;
 use palantir::{Configure, Frame, Panel, Sizing, Ui};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -14,7 +15,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, id: &'static str, gap: f32) {
+fn row<T>(ui: &mut Ui<T>, id: &'static str, gap: f32) {
     Panel::hstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::Fixed(48.0)))

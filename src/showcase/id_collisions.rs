@@ -4,8 +4,9 @@
 //! paints a magenta 3px outline over every offender.
 
 use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, Ui};
+use super::app_state::AppState;
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -60,7 +61,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn row(ui: &mut Ui, body: impl FnOnce(&mut Ui)) {
+fn row<T>(ui: &mut Ui<T>, body: impl FnOnce(&mut Ui<T>)) {
     Panel::hstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::Hug))

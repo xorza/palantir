@@ -6,7 +6,7 @@ use crate::primitives::rect::Rect;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
+fn child_rects<T>(ui: &Ui<T>, root: NodeId) -> Vec<Rect> {
     ui.forest
         .tree(Layer::Main)
         .children(root)

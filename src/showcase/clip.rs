@@ -1,4 +1,5 @@
 use crate::showcase::swatch;
+use super::app_state::AppState;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below
@@ -15,7 +16,7 @@ fn card() -> Background {
     }
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -96,7 +97,7 @@ pub fn build(ui: &mut Ui) {
 /// rounded → respects the corner radius. Sized small enough that the
 /// "no clip" overflow doesn't punch out of the showcase area into
 /// the toolbar above.
-fn spiller(ui: &mut Ui, id: impl std::hash::Hash) {
+fn spiller<T>(ui: &mut Ui<T>, id: impl std::hash::Hash) {
     Frame::new()
         .id_salt(id)
         .size((Sizing::Fixed(240.0), Sizing::Fixed(280.0)))

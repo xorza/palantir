@@ -1,7 +1,8 @@
 use crate::showcase::swatch::{on_swatch_text, swatch_bg};
+use super::app_state::AppState;
 use palantir::{Color, Configure, Panel, Scroll, Sizing, Text, TextStyle, Ui};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)
@@ -56,7 +57,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&mut Ui)) {
+fn card<T>(ui: &mut Ui<T>, key: &'static str, label: &'static str, body: impl FnOnce(&mut Ui<T>)) {
     Panel::vstack()
         .id_salt(key)
         .size((Sizing::FILL, Sizing::FILL))
@@ -71,7 +72,7 @@ fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&
         });
 }
 
-fn row(ui: &mut Ui, ns: &'static str, i: u32) {
+fn row<T>(ui: &mut Ui<T>, ns: &'static str, i: u32) {
     Panel::hstack()
         .id_salt((ns, "scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
@@ -85,7 +86,7 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
         });
 }
 
-fn col(ui: &mut Ui, i: u32) {
+fn col<T>(ui: &mut Ui<T>, i: u32) {
     Panel::vstack()
         .id_salt(("h", "scroll-col", i))
         .size((Sizing::Fixed(60.0), Sizing::FILL))
@@ -99,7 +100,7 @@ fn col(ui: &mut Ui, i: u32) {
         });
 }
 
-fn grid(ui: &mut Ui) {
+fn grid<T>(ui: &mut Ui<T>) {
     // Single Hug-sized child holding a 12×16 colored grid via nested
     // VStack/HStack. Both-axes Scroll measures with INF on both axes,
     // so the inner stacks size to natural content and overflow the

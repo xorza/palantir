@@ -439,7 +439,7 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response {
+    pub fn show<T>(mut self, ui: &mut Ui<T>) -> Response {
         let id = self.element.id;
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
@@ -812,8 +812,8 @@ struct InputResult {
 /// out of `show()` keeps the borrow choreography contained: we touch
 /// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
-fn handle_input(
-    ui: &mut Ui,
+fn handle_input<T>(
+    ui: &mut Ui<T>,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,

@@ -8,11 +8,11 @@ use crate::primitives::{color::Color, size::Size};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
+fn run_frame(ui: &mut Ui<()>, record: impl FnOnce(&mut Ui<()>)) {
     run_frame_at(ui, UVec2::new(200, 200), record);
 }
 
-fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
+fn run_frame_at(ui: &mut Ui<()>, size: UVec2, record: impl FnOnce(&mut Ui<()>)) {
     let mut record = Some(record);
     ui.run_at_acked(size, |ui| {
         Panel::hstack()
@@ -28,7 +28,7 @@ struct SnapView<'a> {
     avail: AvailableKey,
 }
 
-fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
+fn snap_for(ui: &Ui<()>, wid: WidgetId) -> Option<SnapView<'_>> {
     let cache = &ui.layout_engine.cache;
     let snap = *cache.snapshots.get(&wid)?;
     let nodes = snap.nodes.range();
@@ -45,7 +45,7 @@ fn snap_for(ui: &Ui, wid: WidgetId) -> Option<SnapView<'_>> {
 /// past its end). Pin the invariant after every operation that touches
 /// the cache.
 #[track_caller]
-fn assert_node_columns_aligned(ui: &Ui) {
+fn assert_node_columns_aligned(ui: &Ui<()>) {
     let n = &ui.layout_engine.cache.nodes;
     let len = n.desired.len();
     assert_eq!(n.text_spans.len(), len, "text_spans length drift");

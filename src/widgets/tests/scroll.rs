@@ -13,7 +13,7 @@ use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 600);
 
-fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
+fn build(ui: &mut Ui<()>, viewport_h: f32, content_h: f32) {
     Panel::vstack().id_salt("root").show(ui, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
@@ -27,7 +27,7 @@ fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
     });
 }
 
-fn read_state(ui: &mut Ui) -> ScrollState {
+fn read_state(ui: &mut Ui<()>) -> ScrollState {
     *ui.scroll_state(WidgetId::from_hash("scroll").with("__viewport"))
 }
 
@@ -612,7 +612,7 @@ mod bars {
 
     /// Build a scroll over two frames so the second frame's record
     /// settles `ScrollState` before the bar-emit check.
-    fn record_two_frames<F: Fn(&mut Ui) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
+    fn record_two_frames<F: Fn(&mut Ui<()>) + Copy>(surface: UVec2, build: F) -> (Ui, NodeId) {
         let mut ui = Ui::for_test();
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
@@ -628,7 +628,7 @@ mod bars {
         (ui, NodeId(idx as u32))
     }
 
-    fn count_positioned(ui: &Ui, node: NodeId) -> usize {
+    fn count_positioned(ui: &Ui<()>, node: NodeId) -> usize {
         ui.forest
             .tree(Layer::Main)
             .shapes_of(node)
@@ -647,7 +647,7 @@ mod bars {
     /// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs
     /// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
     /// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
-    fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<crate::primitives::rect::Rect> {
+    fn thumb_rects(ui: &Ui<()>, scroll_key: &str) -> Vec<crate::primitives::rect::Rect> {
         let tree = ui.forest.tree(Layer::Main);
         let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);

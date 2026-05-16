@@ -15,11 +15,11 @@ use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
-fn measure_calls(ui: &Ui) -> u64 {
+fn measure_calls(ui: &Ui<()>) -> u64 {
     ui.text.measure_calls()
 }
 
-fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
+fn blue_frame(ui: &mut Ui<()>, salt: &'static str) -> NodeId {
     Frame::new()
         .id_salt(salt)
         .size(50.0)
@@ -187,7 +187,7 @@ fn collisions_do_not_record_into_debug_layer() {
 /// site fires more than once per frame — the "loop / closure helper" case.
 #[test]
 fn auto_id_collisions_disambiguate() {
-    fn chip(ui: &mut Ui) {
+    fn chip(ui: &mut Ui<()>) {
         Frame::new().auto_id().show(ui);
     }
     let mut ui = Ui::for_test();
@@ -1018,7 +1018,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut Ui<()>, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1092,7 +1092,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     let half = Duration::from_millis(500);
 
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut Ui<()>, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new().id_salt("blinker").size(20.0).show(ui);
             ui.add_shape_animated(
@@ -1154,7 +1154,7 @@ fn input_policy_routes_paint_only_gate() {
     // Body declares an inert Frame *and* an anim shape so the next
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
     // entry, so OnDelta sees `requests_repaint = false`.
-    fn body(ui: &mut Ui, half: Duration) {
+    fn body(ui: &mut Ui<()>, half: Duration) {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Frame::new().id_salt("inert").size(80.0).show(ui);
             ui.add_shape_animated(

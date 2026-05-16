@@ -1,7 +1,8 @@
 use glam::Vec2;
+use super::app_state::AppState;
 use palantir::{Color, Configure, LineCap, LineJoin, Panel, Shape, Sizing, Ui};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -20,7 +21,7 @@ pub fn build(ui: &mut Ui) {
         });
 }
 
-fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
+fn cell<T>(ui: &mut Ui<T>, id: &'static str, paint: impl Fn(&mut Ui<T>)) {
     Panel::zstack()
         .id_salt(id)
         .size((Sizing::FILL, Sizing::FILL))
@@ -37,7 +38,7 @@ const Q0: Vec2 = Vec2::new(10.0, 100.0);
 const Q1: Vec2 = Vec2::new(60.0, 5.0);
 const Q2: Vec2 = Vec2::new(110.0, 100.0);
 
-fn cubic(ui: &mut Ui) {
+fn cubic<T>(ui: &mut Ui<T>) {
     ui.add_shape(Shape::CubicBezier {
         p0: P0,
         p1: P1,
@@ -51,7 +52,7 @@ fn cubic(ui: &mut Ui) {
     });
 }
 
-fn quadratic(ui: &mut Ui) {
+fn quadratic<T>(ui: &mut Ui<T>) {
     ui.add_shape(Shape::QuadraticBezier {
         p0: Q0,
         p1: Q1,
@@ -64,7 +65,7 @@ fn quadratic(ui: &mut Ui) {
     });
 }
 
-fn tolerance_sweep(ui: &mut Ui) {
+fn tolerance_sweep<T>(ui: &mut Ui<T>) {
     // Same curve at three flattening tolerances. Loose tolerances
     // produce visibly polygonal output; tight ones look smooth.
     for (i, tol) in [4.0_f32, 1.0, 0.25].iter().enumerate() {

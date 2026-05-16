@@ -20,7 +20,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 /// `id_salt`. State is what the codebase reads at record time and is
 /// the stable observation point — on measure-cache hits the driver
 /// doesn't run, but the persisted row keeps last frame's value.
-fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
+fn state_for(ui: &mut Ui<()>, id_salt: &'static str) -> ScrollState {
     *ui.scroll_state(WidgetId::from_hash(id_salt).with("__viewport"))
 }
 

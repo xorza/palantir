@@ -6,10 +6,11 @@
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
 use super::swatch::{caption_style, swatch_bg};
+use super::app_state::AppState;
 use crate::showcase::swatch;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -61,7 +62,7 @@ pub fn build(ui: &mut Ui) {
 ///   (paint order: bg, label).
 /// - `true` — same plus a black Frame *after* the text. Paint order is
 ///   (bg, label, occluder); the occluder correctly covers the label.
-fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, quad_after: bool) {
+fn cell<T>(ui: &mut Ui<T>, id: &'static str, caption: &'static str, accent: Color, quad_after: bool) {
     Panel::vstack()
         .id_salt(("cell", id))
         .size((Sizing::FILL, Sizing::FILL))

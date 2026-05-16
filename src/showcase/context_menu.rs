@@ -3,6 +3,7 @@
 //! report `clicked()` and the menu auto-closes on click, outside-
 //! click, or Esc.
 
+use super::app_state::AppState;
 use palantir::{
     Background, Button, Color, Configure, ContextMenu, Corners, Frame, Key, MenuItem, Mods, Panel,
     Sense, Shadow, Shortcut, Sizing, Spacing, Stroke, Text, Ui, WidgetId,
@@ -13,7 +14,7 @@ struct State {
     last_action: Option<&'static str>,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     let state_id = WidgetId::from_hash("ctx-menu-showcase");
 
     Panel::vstack()
@@ -88,7 +89,7 @@ enum MenuFlavor {
     Wide,
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
+fn attach_menu<T>(ui: &mut Ui<T>, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
     if let MenuFlavor::Wide = flavor {
         menu = menu

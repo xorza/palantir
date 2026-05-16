@@ -5,13 +5,14 @@
 //! `.line_gap(g)` is between-line spacing.
 
 use super::swatch::{caption_style, section, swatch_bg};
+use super::app_state::AppState;
 use crate::showcase::swatch;
 use palantir::{
     Background, Configure, Corners, Frame, Justify, Panel, Shadow, Sizing, Stroke, Text, TextStyle,
     Ui,
 };
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()
         .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
@@ -119,7 +120,7 @@ const TAGS: &[&str] = &[
 /// Pill-shaped tag chip — the "chip" look IS the demo aesthetic, so a
 /// bg + stroke is needed to make it read as a chip rather than bare
 /// text. Uses a translucent accent so chips harmonize with the palette.
-fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
+fn chip<T, H: std::hash::Hash>(ui: &mut Ui<T>, key: H, label: &'static str) {
     Panel::hstack()
         .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
@@ -140,7 +141,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         });
 }
 
-fn badge<H: std::hash::Hash>(ui: &mut Ui, key: H) {
+fn badge<T, H: std::hash::Hash>(ui: &mut Ui<T>, key: H) {
     Frame::new()
         .id_salt(("badge", &key))
         .size((Sizing::Fixed(80.0), Sizing::Fixed(28.0)))

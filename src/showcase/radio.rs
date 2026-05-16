@@ -1,4 +1,5 @@
 use palantir::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
+use super::app_state::AppState;
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Flavor {
@@ -22,7 +23,7 @@ struct State {
     size: Size,
 }
 
-pub fn build(ui: &mut Ui) {
+pub fn build(ui: &mut Ui<AppState>) {
     let state_id = WidgetId::from_hash("showcase::radio::state");
     Panel::vstack()
         .auto_id()

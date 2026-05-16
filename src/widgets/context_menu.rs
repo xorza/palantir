@@ -82,7 +82,7 @@ impl ContextMenu {
     /// Derive `for_id` from a trigger widget's response, and auto-open
     /// at the current pointer position if the trigger reported
     /// `secondary_clicked` this frame.
-    pub fn attach(ui: &mut Ui, resp: &Response) -> Self {
+    pub fn attach<T>(ui: &mut Ui<T>, resp: &Response) -> Self {
         if resp.secondary_clicked()
             && let Some(p) = ui.pointer_pos()
         {
@@ -94,10 +94,10 @@ impl ContextMenu {
     /// Record the menu and return per-frame outcome. The body closure
     /// records [`MenuItem`]s inside `Layer::Popup`; the menu auto-
     /// closes on outside-click, Esc, or an item click.
-    pub fn show(
+    pub fn show<T>(
         self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui, &PopupHandle),
+        ui: &mut Ui<T>,
+        body: impl FnOnce(&mut Ui<T>, &PopupHandle),
     ) -> ContextMenuResponse {
         if ui.escape_pressed() {
             ContextMenu::close(ui, self.for_id);
@@ -148,19 +148,19 @@ impl ContextMenu {
 
     /// Open the context menu keyed off `for_id` at surface-space
     /// `anchor`. Idempotent — repeated calls refresh the anchor.
-    pub fn open(ui: &mut Ui, for_id: WidgetId, anchor: Vec2) {
+    pub fn open<T>(ui: &mut Ui<T>, for_id: WidgetId, anchor: Vec2) {
         ui.state_mut::<ContextMenuState>(for_id).anchor = Some(anchor);
     }
 
     /// Close the context menu keyed off `for_id`. No-op if already closed.
-    pub fn close(ui: &mut Ui, for_id: WidgetId) {
+    pub fn close<T>(ui: &mut Ui<T>, for_id: WidgetId) {
         ui.state_mut::<ContextMenuState>(for_id).anchor = None;
     }
 
     /// `true` while the menu keyed off `for_id` has an active anchor.
     /// Cheap immutable probe — no row is allocated for triggers that
     /// have never been opened.
-    pub fn is_open(ui: &Ui, for_id: WidgetId) -> bool {
+    pub fn is_open<T>(ui: &Ui<T>, for_id: WidgetId) -> bool {
         ui.try_state::<ContextMenuState>(for_id)
             .is_some_and(|st| st.anchor.is_some())
     }
@@ -239,7 +239,7 @@ impl MenuItem {
     /// Thin horizontal divider — no label, no input. Free function in
     /// disguise: chain `.show(ui)` and ignore the response.
     #[track_caller]
-    pub fn separator(ui: &mut Ui) -> Response {
+    pub fn separator<T>(ui: &mut Ui<T>) -> Response {
         let mut element = Element::new(LayoutMode::Leaf);
         element.set_sense(Sense::NONE);
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
@@ -258,7 +258,7 @@ impl MenuItem {
         Response { id, state }
     }
 
-    pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
+    pub fn show<T>(self, ui: &mut Ui<T>, popup: &PopupHandle) -> Response {
         let id = self.element.id;
         let disabled = self.element.is_disabled();
         let mut raw_state = ui.response_for(id);
@@ -292,7 +292,7 @@ impl MenuItem {
         let shortcut_label = shortcut.map(|s| s.label());
 
         let family = text_style.family;
-        let body = |ui: &mut Ui| {
+        let body = |ui: &mut Ui<T>| {
             let mut label_el = Element::new(LayoutMode::Leaf);
             label_el.set_id(id.with("label"));
             label_el.size = (Sizing::Hug, Sizing::Hug).into();

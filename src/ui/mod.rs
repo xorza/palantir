@@ -38,7 +38,6 @@ use crate::ui::frame_state::FrameState;
 use crate::ui::frame_stats::record_frame_stats;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use std::any::TypeId;
 use std::ptr::NonNull;
 use std::time::Duration;
 
@@ -118,14 +117,6 @@ enum FramePlan {
     FullRecord { force_full: bool },
 }
 
-/// Type-erased pointer to caller-owned app state, installed for the
-/// duration of [`Ui::frame`]. Retrieved via [`Ui::app`].
-#[derive(Clone, Copy)]
-struct AppSlot {
-    ptr: NonNull<()>,
-    type_id: TypeId,
-}
-
 /// Recorder + input/response broker. All public coordinates are
 /// logical pixels (DIPs); `Display::scale_factor` converts to
 /// physical at the wgpu boundary. See `docs/repaint.md` for the
@@ -134,8 +125,7 @@ struct AppSlot {
 /// `Default` builds a self-contained `Ui` with mono-fallback shaper
 /// and a private frame arena. Hosts that need to share the shaper /
 /// arena with the wgpu backend use [`Self::new`] instead.
-#[derive(Default)]
-pub struct Ui {
+pub struct Ui<T = ()> {
     pub(crate) forest: Forest,
     pub theme: Theme,
     /// Per-frame debug visualizations. Default all-off; flip flags
@@ -217,7 +207,9 @@ pub struct Ui {
     /// Ambient caller-owned app state for the current frame. Installed
     /// by [`Self::frame`], cleared by the RAII guard on scope exit
     /// (incl. panic). Retrieved via [`Self::app`].
-    app_slot: Option<AppSlot>,
+    app_slot: Option<NonNull<T>>,
+    /// Carries `T` without storing one.
+    _t: std::marker::PhantomData<fn() -> T>,
     /// Per-frame bulk geometry arena (mesh verts/indices, polyline
     /// points/colors), shared with the renderer via [`Host`]: `Host`
     /// constructs the canonical handle and clones it into `Ui`,
@@ -235,7 +227,41 @@ pub struct Ui {
     pub caches: RenderCaches,
 }
 
-impl Ui {
+impl<T> Default for Ui<T> {
+    fn default() -> Self {
+        Self {
+            forest: Default::default(),
+            theme: Default::default(),
+            debug_overlay: Default::default(),
+            state: Default::default(),
+            text: Default::default(),
+            layout_engine: Default::default(),
+            layout: Default::default(),
+            input: Default::default(),
+            input_policy: Default::default(),
+            cascades_engine: Default::default(),
+            display: Default::default(),
+            damage_engine: Default::default(),
+            dt: 0.0,
+            dt_accum: 0.0,
+            frame_id: 0,
+            time: Duration::ZERO,
+            prev_stamp: None,
+            fps_ema: 0.0,
+            repaint_requested: false,
+            repaint_wakes: Vec::new(),
+            anim: Default::default(),
+            frame_state: Default::default(),
+            relayout_requested: false,
+            app_slot: None,
+            _t: std::marker::PhantomData,
+            frame_arena: Default::default(),
+            caches: Default::default(),
+        }
+    }
+}
+
+impl<T> Ui<T> {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
     /// animation tickers instead of teleporting; [`Self::time`]
     /// still tracks the host's true clock.
@@ -264,20 +290,14 @@ impl Ui {
     /// Borrow the app state installed by the enclosing [`Self::frame`].
     /// Panics if no slot is installed or `T` doesn't match the installed
     /// type — both are caller bugs, not runtime conditions.
-    pub fn app<T: 'static>(&mut self) -> &mut T {
-        let slot = self
+    pub fn app(&mut self) -> &mut T {
+        let mut ptr = self
             .app_slot
             .expect("Ui::app called with no app state installed");
-        assert!(
-            slot.type_id == TypeId::of::<T>(),
-            "Ui::app::<T>() type mismatch — installed type differs from requested",
-        );
-        // SAFETY: `frame` borrows `state: &mut T` for its full duration;
-        // `Ui::app` reborrows through `&mut self` so the returned
-        // `&mut T` can't alias another `Ui` access. The Guard restores
-        // `prev` on drop (incl. panic), so the pointer is live whenever
-        // the slot is `Some`.
-        unsafe { slot.ptr.cast::<T>().as_mut() }
+        // SAFETY: `frame` borrows `state: &mut T` for the closure's
+        // duration; the typed slot stores that pointer until the RAII
+        // guard restores `prev` on scope exit (incl. panic).
+        unsafe { ptr.as_mut() }
     }
 
     // ── Frame lifecycle ───────────────────────────────────────────────
@@ -290,11 +310,11 @@ impl Ui {
     /// Callers without app state pass `&mut ()`. `stamp.time` is
     /// monotonic host time; `Ui::{dt,time,frame_id}` derive from it.
     /// See `docs/repaint.md`.
-    pub fn frame<T: 'static>(
+    pub fn frame(
         &mut self,
         stamp: FrameStamp,
         state: &mut T,
-        mut record: impl FnMut(&mut Ui),
+        mut record: impl FnMut(&mut Ui<T>),
     ) -> FrameReport {
         // The frame arena is shared via Rc so the renderer sees the
         // same bytes. Clear it once at the top of the record cycle;
@@ -303,24 +323,21 @@ impl Ui {
         // Install `state` as the ambient app slot for this frame; RAII
         // guard restores the prior slot on scope exit (incl. panic) so
         // nested frames stack cleanly.
-        struct Guard<'a> {
-            ui: &'a mut Ui,
-            prev: Option<AppSlot>,
+        struct Guard<'a, T> {
+            ui: &'a mut Ui<T>,
+            prev: Option<NonNull<T>>,
         }
-        impl Drop for Guard<'_> {
+        impl<T> Drop for Guard<'_, T> {
             fn drop(&mut self) {
                 self.ui.app_slot = self.prev;
             }
         }
-        let prev = self.app_slot.replace(AppSlot {
-            ptr: NonNull::from(state).cast(),
-            type_id: TypeId::of::<T>(),
-        });
+        let prev = self.app_slot.replace(NonNull::from(state));
         let g = Guard { ui: self, prev };
         g.ui.frame_inner(stamp, &mut record)
     }
 
-    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
+    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui<T>)) -> FrameReport {
         profiling::scope!("Ui::frame");
         assert!(
             stamp.display.scale_factor >= EPS,
@@ -530,7 +547,7 @@ impl Ui {
     /// One `pre_record` → user record → drain action flag → `post_record`
     /// cycle. Returns whether the cycle saw action input (which triggers
     /// a second pass in `Ui::frame`).
-    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
+    fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui<T>)) -> bool {
         {
             profiling::scope!("Ui::pre_record");
             self.forest.pre_record();
@@ -819,7 +836,7 @@ impl Ui {
         layer: Layer,
         anchor: glam::Vec2,
         size: Option<crate::primitives::size::Size>,
-        body: impl FnOnce(&mut Ui),
+        body: impl FnOnce(&mut Ui<T>),
     ) {
         self.forest.push_layer(layer, anchor, size);
         body(self);
@@ -829,7 +846,7 @@ impl Ui {
     /// Open a node with no paint chrome — the common path for layout-only
     /// containers, text leaves, and chrome-less Frames. Avoids passing
     /// a 232-byte `Option<Background>` through the call chain.
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) {
+    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui<T>)) {
         self.forest.open_node(element);
         f(self);
         self.forest.close_node();
@@ -843,7 +860,7 @@ impl Ui {
         &mut self,
         element: Element,
         chrome: Background,
-        f: impl FnOnce(&mut Ui),
+        f: impl FnOnce(&mut Ui<T>),
     ) {
         self.forest.open_node_with_chrome(
             element,
@@ -868,8 +885,8 @@ impl Ui {
     /// Cross-frame state row for `id`, `T::default()` on first
     /// access. Rows for `WidgetId`s not recorded this frame are
     /// evicted in `post_record`. Panics on type collision at `id`.
-    pub fn state_mut<T: Default + 'static>(&mut self, id: WidgetId) -> &mut T {
-        self.state.get_or_insert_with(id, T::default)
+    pub fn state_mut<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
+        self.state.get_or_insert_with(id, S::default)
     }
 
     /// Read-only peek at the cross-frame state row for `id`. `None` if
@@ -877,22 +894,22 @@ impl Ui {
     /// mutate. Use this on the `&Ui` side (probes, hit-test helpers,
     /// "is this menu open?" checks) where `state_mut`'s `&mut Ui`
     /// receiver would be a needless borrow upgrade.
-    pub fn try_state<T: 'static>(&self, id: WidgetId) -> Option<&T> {
-        self.state.try_get::<T>(id)
+    pub fn try_state<S: 'static>(&self, id: WidgetId) -> Option<&S> {
+        self.state.try_get::<S>(id)
     }
 
     /// Advance an animation row keyed by `(id, slot)` and return the
     /// current value. `spec = None` snaps to `target` and drops any
     /// stale row without requesting a repaint — the canonical
     /// "no animation" path. See `src/animation/animations.md`.
-    pub fn animate<T: Animatable>(
+    pub fn animate<V: Animatable>(
         &mut self,
         id: WidgetId,
         slot: impl Into<AnimSlot>,
-        target: T,
+        target: V,
         spec: Option<AnimSpec>,
-    ) -> T {
-        // Hottest path: no spec, no typed map for `T` ever allocated.
+    ) -> V {
+        // Hottest path: no spec, no typed map for `V` ever allocated.
         // Skip the `slot.into()`, filter closure, and TypeId-keyed
         // HashMap probe — they're per-widget per-frame on a widget
         // that never animates (the dominant case in static UIs).
@@ -906,14 +923,14 @@ impl Ui {
             // Drop stale row so a future `Some(_)` starts fresh from
             // `target`. `try_typed_mut` avoids allocating a typed map
             // just to remove from one that may not exist.
-            if let Some(typed) = self.anim.try_typed_mut::<T>() {
+            if let Some(typed) = self.anim.try_typed_mut::<V>() {
                 typed.rows.remove(&(id, slot));
             }
             return target;
         };
         let r = self
             .anim
-            .typed_mut::<T>()
+            .typed_mut::<V>()
             .tick(id, slot, target, spec, self.dt, self.frame_id);
         if !r.settled {
             self.repaint_requested = true;
@@ -982,7 +999,7 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
-    impl Ui {
+    impl Ui<()> {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
         pub fn for_test() -> Self {
             Self::default()
@@ -1015,19 +1032,19 @@ pub mod test_support {
         }
 
         /// One frame at `size`, time frozen at zero.
-        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub fn run_at(&mut self, size: UVec2, record: impl FnMut(&mut Ui<()>)) {
             let display = Display::from_physical(size, 1.0);
             self.frame(FrameStamp::new(display, Duration::ZERO), &mut (), record);
         }
 
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
-        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
+        pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui<()>)) {
             self.run_at(size, record);
             self.frame_state.mark_submitted();
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
-        pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
+        pub fn under_outer<F: FnMut(&mut Ui<()>) -> NodeId>(
             &mut self,
             surface: UVec2,
             mut f: F,

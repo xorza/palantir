@@ -48,7 +48,7 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
-fn build_ui(ui: &mut Ui) {
+fn build_ui<T>(ui: &mut Ui<T>) {
     Panel::vstack()
         .auto_id()
         .gap(8.0)

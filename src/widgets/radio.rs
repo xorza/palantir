@@ -47,7 +47,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show<A>(self, ui: &mut Ui<A>) -> Response {
         let id = self.element.id;
         let raw_state = ui.response_for(id);
         let mut state = raw_state;

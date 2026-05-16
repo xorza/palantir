@@ -75,12 +75,12 @@ impl Harness {
         }
     }
 
-    pub fn render(
+    pub fn render<T>(
         &mut self,
         physical: UVec2,
         scale: f32,
         clear: Color,
-        scene: impl FnMut(&mut Ui),
+        scene: impl FnMut(&mut Ui<T>),
     ) -> RgbaImage {
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.visual_test.target"),
@@ -109,7 +109,7 @@ impl Harness {
     /// Used by fixtures whose state populates over multiple frames
     /// (scrollbars reading their populated `ScrollState`, damage
     /// seeding `DamageEngine.prev`).
-    pub fn render_after_settle<F: FnMut(&mut Ui) + Copy>(
+    pub fn render_after_settle<T, F: FnMut(&mut Ui<T>) + Copy>(
         &mut self,
         settle_frames: u32,
         physical: UVec2,
@@ -126,13 +126,13 @@ impl Harness {
     /// Render one frame with `debug_overlay` set to `overlay`, then
     /// clear it again. Used by damage fixtures that flip the overlay
     /// only for the captured frame.
-    pub fn render_with_overlay(
+    pub fn render_with_overlay<T>(
         &mut self,
         overlay: DebugOverlayConfig,
         physical: UVec2,
         scale: f32,
         clear: Color,
-        scene: impl FnMut(&mut Ui),
+        scene: impl FnMut(&mut Ui<T>),
     ) -> RgbaImage {
         self.host.ui.debug_overlay = overlay;
         let img = self.render(physical, scale, clear, scene);
