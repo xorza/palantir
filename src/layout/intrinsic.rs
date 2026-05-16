@@ -222,7 +222,7 @@ mod tests {
     fn intrinsic_cache_populated_after_run() {
         let mut ui = new_ui();
         let mut root = crate::forest::tree::NodeId(0);
-        crate::ui::test_support::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+        ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::Hug))
@@ -258,7 +258,7 @@ mod tests {
     fn intrinsic_query_short_circuits_on_cache_hit() {
         let mut ui = new_ui();
         let mut root = crate::forest::tree::NodeId(0);
-        crate::ui::test_support::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+        ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::Hug))
@@ -314,7 +314,7 @@ mod tests {
         // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can
         // observe which nodes the parent query repopulates.
-        crate::ui::test_support::run_at(&mut ui, UVec2::new(400, 300), |ui| {
+        ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
                 .size((Sizing::Hug, Sizing::Hug))

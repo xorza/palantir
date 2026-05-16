@@ -11,10 +11,9 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
-use crate::renderer::frontend::encoder::test_support::encode_cmds;
 use crate::shape::Shape;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::{run_at_acked, ui_with_text};
+use crate::ui::test_support::ui_with_text;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -25,7 +24,7 @@ const SURFACE: UVec2 = UVec2::new(200, 200);
 fn shapes_attached_to_button_node() {
     let mut ui = new_ui();
     let mut button_node = None;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             button_node = Some(Button::new().auto_id().label("X").show(ui).node(ui));
         });
@@ -62,7 +61,7 @@ fn interleaved_shapes_record_correct_order() {
     }
     let mut ui = new_ui();
     let mut p = None;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         p = Some(
             Panel::vstack()
                 .auto_id()
@@ -121,7 +120,7 @@ fn interleaved_shapes_record_correct_order() {
         .collect();
     assert_eq!(sizes, vec![10.0, 20.0, 30.0]);
 
-    let cmds = encode_cmds(&ui);
+    let cmds = ui.encode_cmds();
     let draw_rect_count = cmds
         .kinds
         .iter()
@@ -151,7 +150,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let mut ui = new_ui();
     let mut child_id = None;
     let mut parent_id = None;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         parent_id = Some(
             Panel::vstack()
                 .auto_id()
@@ -193,7 +192,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     );
 
     // Encoder walks without panicking (the original symptom).
-    let _cmds = encode_cmds(&ui);
+    let _cmds = ui.encode_cmds();
 }
 
 // --- Authoring-hash tests ---------------------------------------------
@@ -202,7 +201,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = new_ui();
     let mut target = None;
     let mut f = Some(f);
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         target = Some((f.take().unwrap())(ui));
     });
     ui.forest.tree(Layer::Main).rollups.node[target.unwrap().index()]
@@ -211,7 +210,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
 #[test]
 fn empty_tree_has_no_hashes() {
     let mut ui = new_ui();
-    run_at_acked(&mut ui, SURFACE, |_| {});
+    ui.run_at_acked(SURFACE, |_| {});
     // Synthetic viewport root: present even for an empty user record.
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert_eq!(ui.forest.tree(Layer::Main).rollups.node.len(), 1);
@@ -427,7 +426,7 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     let mut ui = new_ui();
     let mut target = None;
     let mut f = Some(f);
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         target = Some((f.take().unwrap())(ui));
     });
     ui.forest.tree(Layer::Main).rollups.subtree[target.unwrap().index()]
@@ -570,7 +569,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
 
     let mut ui1 = new_ui();
     let mut g1 = None;
-    run_at_acked(&mut ui1, SURFACE, |ui| {
+    ui1.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             g1 = Some(
                 Grid::new()
@@ -589,7 +588,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
     });
     let mut ui2 = new_ui();
     let mut g2 = None;
-    run_at_acked(&mut ui2, SURFACE, |ui| {
+    ui2.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Grid::new()
                 .id_salt("other")
@@ -618,7 +617,7 @@ fn grid_per_node_hash_independent_of_arena_slot() {
 fn subtree_end_rolls_up_during_recording() {
     let mut ui = new_ui();
     let mut root = None;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         root = Some(
             Panel::hstack()
                 .id_salt("root")
@@ -657,7 +656,7 @@ fn subtree_end_handles_deep_nesting() {
             .show(ui, |ui| nest(ui, depth - 1));
     }
     let mut ui = new_ui();
-    run_at_acked(&mut ui, SURFACE, |ui| nest(ui, 16));
+    ui.run_at_acked(SURFACE, |ui| nest(ui, 16));
     let n = ui.forest.tree(Layer::Main).records.len() as u32;
     // Synthetic viewport + 16 nested vstacks + 1 leaf frame.
     assert_eq!(n, 18);
@@ -698,14 +697,14 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
     }
     let mut ui1 = new_ui();
     let mut b_first1 = 0;
-    run_at_acked(&mut ui1, SURFACE, |ui| {
+    ui1.run_at_acked(SURFACE, |ui| {
         b_first1 = build(ui, Color::rgb(1.0, 0.0, 0.0));
     });
     let h_b1 = ui1.forest.tree(Layer::Main).rollups.subtree[b_first1 as usize];
 
     let mut ui2 = new_ui();
     let mut b_first2 = 0;
-    run_at_acked(&mut ui2, SURFACE, |ui| {
+    ui2.run_at_acked(SURFACE, |ui| {
         b_first2 = build(ui, Color::rgb(0.0, 1.0, 0.0));
     });
     let h_b2 = ui2.forest.tree(Layer::Main).rollups.subtree[b_first2 as usize];
@@ -717,7 +716,7 @@ fn subtree_hash_rollup_root_local_across_two_roots() {
 fn ui_layer_records_popup_into_separate_tree() {
     let mut ui = new_ui();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
-    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack().id_salt("main-root").show(ui, |ui| {
             Frame::new().id_salt("main-leaf").size(50.0).show(ui);
             Frame::new().id_salt("main-leaf-2").size(30.0).show(ui);
@@ -764,7 +763,7 @@ fn ui_layer_size_caps_overlay_available() {
     ];
     let mut ui = new_ui();
     for (cap, expected) in cases {
-        run_at_acked(&mut ui, SURF, |ui| {
+        ui.run_at_acked(SURF, |ui| {
             Panel::vstack()
                 .id_salt("main")
                 .size((Sizing::FILL, Sizing::FILL))
@@ -787,7 +786,7 @@ fn ui_layer_size_caps_overlay_available() {
 #[test]
 fn empty_popup_body_leaves_popup_tree_empty() {
     let mut ui = new_ui();
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         Panel::vstack().id_salt("only-main").show(ui, |ui| {
             Frame::new().id_salt("leaf").size(20.0).show(ui);
         });
@@ -814,12 +813,12 @@ fn forest_independence_across_recording_orders() {
         });
     };
     let mut ui_p_first = new_ui();
-    run_at_acked(&mut ui_p_first, UVec2::new(400, 400), |ui| {
+    ui_p_first.run_at_acked(UVec2::new(400, 400), |ui| {
         record_popup(ui);
         record_main(ui);
     });
     let mut ui_m_first = new_ui();
-    run_at_acked(&mut ui_m_first, UVec2::new(400, 400), |ui| {
+    ui_m_first.run_at_acked(UVec2::new(400, 400), |ui| {
         record_main(ui);
         record_popup(ui);
     });
@@ -836,7 +835,7 @@ fn forest_independence_across_recording_orders() {
 fn mid_recording_popup_with_text_renders_through_encoder() {
     let mut ui = ui_with_text(UVec2::new(400, 400));
     let popup_anchor = glam::Vec2::new(50.0, 100.0);
-    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack().id_salt("outer-main").show(ui, |ui| {
             Button::new().id_salt("trigger").label("menu").show(ui);
             ui.layer(Layer::Popup, popup_anchor, None, |ui| {
@@ -846,7 +845,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
             });
         });
     });
-    let _cmds = encode_cmds(&ui);
+    let _cmds = ui.encode_cmds();
 
     let arena = ui.frame_arena.borrow();
     let bytes = arena.fmt_scratch.as_str();
@@ -903,7 +902,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     let mut ui = new_ui();
     let popup_anchor = glam::Vec2::new(50.0, 60.0);
     let mut parent = None;
-    run_at_acked(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
         parent = Some(
             Panel::vstack()
                 .id_salt("main-parent")
@@ -974,7 +973,7 @@ fn extras_columns_split_by_field_kind() {
     use crate::primitives::size::Size;
 
     let mut ui = new_ui();
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack()
             .id_salt("panel-with-gap")
             .gap(8.0)
@@ -994,7 +993,7 @@ fn extras_columns_split_by_field_kind() {
 fn child_iter_traverses_correctly_after_finalize() {
     let mut ui = new_ui();
     let mut root = None;
-    run_at_acked(&mut ui, SURFACE, |ui| {
+    ui.run_at_acked(SURFACE, |ui| {
         root = Some(
             Panel::hstack()
                 .id_salt("root")

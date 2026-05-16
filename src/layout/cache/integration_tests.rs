@@ -15,9 +15,8 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::encoder::test_support::encode_cmds;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::{run_at_acked, ui_with_text};
+use crate::ui::test_support::ui_with_text;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
@@ -33,14 +32,14 @@ fn assert_warm_rects_match_cold(
     mut record: impl FnMut(&mut Ui, &mut Vec<NodeId>),
 ) {
     let mut cold_nodes = Vec::new();
-    run_at_acked(ui, size, |ui| record(ui, &mut cold_nodes));
+    ui.run_at_acked(size, |ui| record(ui, &mut cold_nodes));
     let cold: Vec<_> = cold_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
         .collect();
 
     let mut warm_nodes = Vec::new();
-    run_at_acked(ui, size, |ui| record(ui, &mut warm_nodes));
+    ui.run_at_acked(size, |ui| record(ui, &mut warm_nodes));
     let warm: Vec<_> = warm_nodes
         .iter()
         .map(|n| ui.layout[Layer::Main].rect[n.index()])
@@ -277,11 +276,11 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     };
 
     let mut ui = ui_with_text(UVec2::new(800, 600));
-    run_at_acked(&mut ui, UVec2::new(800, 600), |ui| record(ui));
-    let cold = encode_cmds(&ui);
+    ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
+    let cold = ui.encode_cmds();
 
-    run_at_acked(&mut ui, UVec2::new(800, 600), |ui| record(ui));
-    let warm = encode_cmds(&ui);
+    ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
+    let warm = ui.encode_cmds();
 
     assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
     assert_eq!(cold.starts, warm.starts, "cmd payload offsets must match");
@@ -340,7 +339,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
     let widths = [800u32, 800, 600, 800, 600, 600, 800, 1000, 600];
     for (i, &w) in widths.iter().enumerate() {
         let mut warm_nodes = Vec::new();
-        run_at_acked(&mut ui, UVec2::new(w, 600), |ui| {
+        ui.run_at_acked(UVec2::new(w, 600), |ui| {
             record(ui, &mut warm_nodes);
         });
         let warm_rects: Vec<_> = warm_nodes
@@ -348,9 +347,9 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .map(|n| ui.layout[Layer::Main].rect[n.index()])
             .collect();
 
-        crate::layout::cache::test_support::clear_measure_cache(&mut ui);
+        ui.clear_measure_cache();
         let mut cold_nodes = Vec::new();
-        run_at_acked(&mut ui, UVec2::new(w, 600), |ui| {
+        ui.run_at_acked(UVec2::new(w, 600), |ui| {
             record(ui, &mut cold_nodes);
         });
         let cold_rects: Vec<_> = cold_nodes

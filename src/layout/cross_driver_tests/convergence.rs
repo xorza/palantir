@@ -15,7 +15,6 @@ use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::sizing::Sizing;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -46,7 +45,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);
-        run_at(&mut ui, UVec2::new(outer_w, 400), |ui| {
+        ui.run_at(UVec2::new(outer_w, 400), |ui| {
             row_node = Panel::hstack()
                 .auto_id()
                 .gap(12.0)
@@ -157,7 +156,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
     let mut ui = new_ui();
     for w in (480u32..=900).step_by(1) {
-        run_at(&mut ui, UVec2::new(w, 600), |ui| {
+        ui.run_at(UVec2::new(w, 600), |ui| {
             Panel::vstack()
                 .auto_id()
                 .padding(12.0)

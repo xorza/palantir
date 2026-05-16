@@ -6,12 +6,10 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
-use crate::layout::scroll::test_support::scroll_state;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -24,7 +22,7 @@ const SURFACE: UVec2 = UVec2::new(400, 300);
 /// the stable observation point — on measure-cache hits the driver
 /// doesn't run, but the persisted row keeps last frame's value.
 fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
-    *scroll_state(ui, WidgetId::from_hash(id_salt).with("__viewport"))
+    *ui.scroll_state(WidgetId::from_hash(id_salt).with("__viewport"))
 }
 
 /// Vertical scroll measures children with INF on Y; content extent is
@@ -32,7 +30,7 @@ fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
 #[test]
 fn vertical_scroll_records_content_extent() {
     let mut ui = new_ui();
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
@@ -52,7 +50,7 @@ fn vertical_scroll_records_content_extent() {
 #[test]
 fn horizontal_scroll_records_content_extent() {
     let mut ui = new_ui();
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
                 .id_salt("scroll")
@@ -80,7 +78,7 @@ fn horizontal_scroll_records_content_extent() {
 #[test]
 fn both_axis_scroll_records_content_extent() {
     let mut ui = new_ui();
-    run_at(&mut ui, SURFACE, |ui| {
+    ui.run_at(SURFACE, |ui| {
         Scroll::both()
             .id_salt("scroll")
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
@@ -117,9 +115,9 @@ fn state_survives_across_frames() {
                 });
         });
     };
-    run_at(&mut ui, SURFACE, build);
+    ui.run_at(SURFACE, build);
     let f1 = state_for(&mut ui, "scroll");
-    run_at(&mut ui, SURFACE, build);
+    ui.run_at(SURFACE, build);
     let f2 = state_for(&mut ui, "scroll");
     assert_eq!(f1.content, f2.content);
     assert_eq!(f1.viewport, f2.viewport);

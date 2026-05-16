@@ -74,7 +74,7 @@ fn caret_blinks_on_and_off_while_focused() {
     // Click focuses; caret jumps to byte 0 (empty buf). Drive a fresh
     // frame at t=0 so handle_input drains the click. caret_changed =
     // true → last_caret_change = 0; elapsed = 0; phase 0; visible.
-    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.click_at(Vec2::new(20.0, 20.0));
     frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf, &mut leaf));
     assert!(
         caret_painted(&ui, leaf.unwrap()),
@@ -173,7 +173,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     // Frame 2 (focus): click lands; caret anim registers with
     // started_at=0. First post-focus frame is structurally dirty
     // (chrome/state change) — we don't assert on it.
-    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.click_at(Vec2::new(20.0, 20.0));
     frame(&mut ui, &mut buf, 0.0);
 
     // Frame 3 mid-half-period (t=0.2 of a 0.5s half-period). Caret
@@ -237,7 +237,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
     // Click to focus on the empty buffer at t=100s. Caret lands at
     // byte 0 (unchanged from default), selection unchanged, text
     // unchanged — only the focus edge fires.
-    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.click_at(Vec2::new(20.0, 20.0));
     let r = frame(&mut ui, &mut buf, 100.0);
 
     // Focus rising edge must reset blink: anim registered → wake
@@ -277,7 +277,7 @@ fn focused_text_edit_schedules_blink_wake() {
 
     // Focus, then drive another frame — now the scheduler should
     // request a wake at the next phase boundary.
-    click_at(&mut ui, Vec2::new(20.0, 20.0));
+    ui.click_at(Vec2::new(20.0, 20.0));
     let report = ui.frame(FrameStamp::new(display, Duration::ZERO), &mut (), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)

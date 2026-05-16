@@ -172,10 +172,8 @@ fn focus_policy_routing() {
     use crate::Ui;
     use crate::forest::element::Configure;
     use crate::input::pointer::PointerButton;
-    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     // (label, policy, expect_focus_after_outside_press).
@@ -197,11 +195,11 @@ fn focus_policy_routing() {
     for (label, policy, expect_focus) in cases {
         let mut ui = new_ui();
         ui.set_focus_policy(*policy);
-        run_at_acked(&mut ui, surface, build);
-        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        ui.run_at_acked(surface, build);
+        ui.click_at(glam::Vec2::new(50.0, 20.0));
         assert_eq!(ui.focused_id(), Some(editable_id), "{label}: initial focus");
 
-        run_at_acked(&mut ui, surface, build);
+        ui.run_at_acked(surface, build);
         ui.on_input(InputEvent::PointerMoved(glam::Vec2::new(180.0, 5.0)));
         ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
         ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -220,10 +218,8 @@ fn focus_policy_routing() {
 fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::Ui;
     use crate::forest::element::Configure;
-    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::widget_id::WidgetId;
-    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = new_ui();
@@ -242,12 +238,12 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
                 .show(ui);
         });
     };
-    run_at_acked(&mut ui, surface, build);
-    click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+    ui.run_at_acked(surface, build);
+    ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert_eq!(ui.focused_id(), Some(WidgetId::from_hash("editable")));
 
-    run_at_acked(&mut ui, surface, build);
-    click_at(&mut ui, glam::Vec2::new(150.0, 20.0));
+    ui.run_at_acked(surface, build);
+    ui.click_at(glam::Vec2::new(150.0, 20.0));
     assert_eq!(
         ui.focused_id(),
         Some(WidgetId::from_hash("editable")),
@@ -258,14 +254,12 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
 #[test]
 fn focus_is_evicted_when_widget_disappears() {
     use crate::forest::element::Configure;
-    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
-    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = new_ui();
     let surface = glam::UVec2::new(200, 80);
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
                 .id_salt("editable")
@@ -274,10 +268,10 @@ fn focus_is_evicted_when_widget_disappears() {
                 .show(ui);
         });
     });
-    click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+    ui.click_at(glam::Vec2::new(50.0, 20.0));
     assert!(ui.focused_id().is_some());
 
-    run_at_acked(&mut ui, surface, |ui| {
+    ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |_ui| {});
     });
     assert_eq!(
@@ -304,9 +298,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 
     use crate::forest::element::Configure;
     use crate::forest::visibility::Visibility;
-    use crate::input::test_support::click_at;
     use crate::layout::types::sizing::Sizing;
-    use crate::ui::test_support::run_at_acked;
     use crate::widgets::{button::Button, panel::Panel};
 
     enum Mode {
@@ -316,7 +308,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
         let mut ui = new_ui();
-        run_at_acked(&mut ui, glam::UVec2::new(200, 80), |ui| {
+        ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()
                     .id_salt("editable")
@@ -328,7 +320,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
                 };
             });
         });
-        click_at(&mut ui, glam::Vec2::new(50.0, 20.0));
+        ui.click_at(glam::Vec2::new(50.0, 20.0));
         assert_eq!(ui.focused_id(), None, "case {label}");
     }
 }

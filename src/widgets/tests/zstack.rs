@@ -5,7 +5,6 @@ use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::S
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -18,7 +17,7 @@ fn zstack_layers_children_without_painting_background() {
     let mut zstack_node = None;
     let mut bg_node = None;
     let mut fg_node = None;
-    run_at(&mut ui, UVec2::new(400, 200), |ui| {
+    ui.run_at(UVec2::new(400, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             zstack_node = Some(
                 Panel::zstack()
@@ -78,7 +77,7 @@ fn zstack_aligns_child_per_axis() {
     for (label, align, expected) in cases {
         let mut ui = new_ui();
         let mut child_node = None;
-        run_at(&mut ui, UVec2::new(400, 400), |ui| {
+        ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("box")

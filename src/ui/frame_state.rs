@@ -30,14 +30,3 @@ impl FrameState {
         self.0.get() == State::Submitted
     }
 }
-
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use crate::Ui;
-
-    /// Simulate a successful submit so the next frame doesn't auto-rewind to `Full`.
-    pub fn mark_frame_submitted(ui: &Ui) {
-        ui.frame_state.mark_submitted();
-    }
-}

@@ -374,21 +374,6 @@ impl MeasureCache {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use crate::Ui;
-
-    /// Drop every measure-cache entry, forcing full re-measure next frame.
-    pub fn clear_measure_cache(ui: &mut Ui) {
-        let cache = &mut ui.layout_engine.cache;
-        cache.nodes.clear();
-        cache.hugs.clear();
-        cache.text_shapes_arena.clear();
-        cache.snapshots.clear();
-    }
-}
-
 #[cfg(test)]
 mod integration_tests;
 #[cfg(test)]

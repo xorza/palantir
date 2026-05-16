@@ -21,7 +21,6 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
-use palantir::ui::frame_state::test_support::mark_frame_submitted;
 use palantir::{Display, FrameStamp, InputEvent, TextShaper, Ui, new_handle};
 use std::hint::black_box;
 use std::time::Duration;
@@ -51,14 +50,14 @@ fn warmed_ui() -> (Ui, Display) {
         &mut (),
         pan_zoom::build,
     );
-    mark_frame_submitted(&ui);
+    ui.mark_frame_submitted();
     ui.on_input(InputEvent::PointerMoved(VIEWPORT_CENTER));
     ui.frame(
         FrameStamp::new(display, Duration::ZERO),
         &mut (),
         pan_zoom::build,
     );
-    mark_frame_submitted(&ui);
+    ui.mark_frame_submitted();
     (ui, display)
 }
 
@@ -68,7 +67,7 @@ fn run_frame(ui: &mut Ui, display: Display) {
         &mut (),
         pan_zoom::build,
     );
-    mark_frame_submitted(ui);
+    ui.mark_frame_submitted();
 }
 
 fn bench_scrollzoom(c: &mut Criterion) {

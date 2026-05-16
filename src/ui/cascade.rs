@@ -437,14 +437,3 @@ fn compute_paint_rect(
     };
     clip_to(parent_transform.apply_rect(paint_tree_local), parent_clip)
 }
-
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use crate::Ui;
-
-    /// Run only the cascade pass against the just-finished frame.
-    pub fn run_cascades(ui: &mut Ui) {
-        ui.cascades_engine.run(&ui.forest, &mut ui.layout);
-    }
-}

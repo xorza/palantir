@@ -407,15 +407,3 @@ impl AnimMap {
         }
     }
 }
-
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use super::*;
-    use crate::Ui;
-
-    /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
-    pub fn row_count<T: Animatable>(ui: &mut Ui) -> usize {
-        ui.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
-    }
-}

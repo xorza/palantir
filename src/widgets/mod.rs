@@ -68,7 +68,6 @@ pub mod test_support {
     use super::*;
     use crate::Ui;
     use crate::forest::tree::NodeId;
-    use crate::forest::tree::test_support::node_for_widget_id;
 
     /// Old `Response.node` field as an extension method.
     pub trait ResponseNodeExt {
@@ -77,7 +76,7 @@ pub mod test_support {
 
     impl ResponseNodeExt for Response {
         fn node(&self, ui: &Ui) -> NodeId {
-            node_for_widget_id(ui, self.id)
+            ui.node_for_widget_id(self.id)
         }
     }
 }

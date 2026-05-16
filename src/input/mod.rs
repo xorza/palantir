@@ -792,35 +792,5 @@ impl InputState {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    #![allow(dead_code)]
-    use crate::Ui;
-    use crate::input::InputEvent;
-    use crate::input::pointer::PointerButton;
-    use glam::Vec2;
-
-    pub fn click_at(ui: &mut Ui, pos: Vec2) {
-        ui.on_input(InputEvent::PointerMoved(pos));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
-
-    pub fn press_at(ui: &mut Ui, pos: Vec2) {
-        ui.on_input(InputEvent::PointerMoved(pos));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
-    }
-
-    pub fn release_left(ui: &mut Ui) {
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
-    }
-
-    pub fn secondary_click_at(ui: &mut Ui, pos: Vec2) {
-        ui.on_input(InputEvent::PointerMoved(pos));
-        ui.on_input(InputEvent::PointerPressed(PointerButton::Right));
-        ui.on_input(InputEvent::PointerReleased(PointerButton::Right));
-    }
-}
-
 #[cfg(test)]
 mod tests;

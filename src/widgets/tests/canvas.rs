@@ -2,7 +2,6 @@ use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::ui::test_support::new_ui;
-use crate::ui::test_support::run_at;
 use crate::widgets::test_support::ResponseNodeExt;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -13,7 +12,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;
-    run_at(&mut ui, UVec2::new(400, 400), |ui| {
+    ui.run_at(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             canvas_node = Some(
                 Panel::canvas()
