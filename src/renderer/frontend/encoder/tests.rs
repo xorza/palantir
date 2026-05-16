@@ -187,15 +187,15 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     );
 }
 
-/// `Shape::Shadow` lowers to a single `DrawRect` cmd (shadow is just
-/// another quad-kind on the same pipeline). The payload's
+/// `Shape::Shadow` lowers to a single `DrawShadow` cmd. The payload's
 /// `fill_kind` is `FillKind::SHADOW_DROP` (4) and the paint bbox is
 /// inflated by `|offset| + 3σ + spread` per side from the source
 /// rect. `fill_axis` carries `(offset.x, offset.y, σ, _)`.
 #[test]
-fn shadow_lowers_to_drawrect_with_inflated_bbox() {
+fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     use crate::Shadow;
     use crate::primitives::corners::Corners;
+    use crate::renderer::frontend::cmd_buffer::DrawShadowPayload;
     use crate::renderer::quad::FillKind;
     use crate::shape::Shape;
 
@@ -217,22 +217,16 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
         });
     });
     let cmds = ui.encode_cmds();
-    let shadow_payloads: Vec<DrawRectPayload> = cmds
+    let shadow_payloads: Vec<DrawShadowPayload> = cmds
         .kinds
         .iter()
         .zip(cmds.starts.iter())
-        .filter_map(|(k, s)| {
-            if matches!(k, CmdKind::DrawRect) {
-                let p: DrawRectPayload = cmds.read(*s);
-                if p.fill_kind == FillKind::SHADOW_DROP {
-                    return Some(p);
-                }
-            }
-            None
-        })
+        .filter(|(k, _)| matches!(k, CmdKind::DrawShadow))
+        .map(|(_, s)| cmds.read::<DrawShadowPayload>(*s))
         .collect();
     assert_eq!(shadow_payloads.len(), 1, "exactly one shadow cmd");
     let p = shadow_payloads[0];
+    assert_eq!(p.fill_kind, FillKind::SHADOW_DROP);
     // Inflation: dx = |2| + 3*8 + 1 = 27, dy = |4| + 3*8 + 1 = 29.
     // Source is (10,20)..(40,60); paint bbox = (-17,-9)..(67,89).
     // Owner rect min comes from Panel layout, which we don't know
@@ -252,11 +246,8 @@ fn shadow_lowers_to_drawrect_with_inflated_bbox() {
     assert_eq!(dx, 2.0);
     assert_eq!(dy, 4.0);
     assert_eq!(t0, 8.0);
-    // Fill is now stored as ColorF16 (8 B linear) in cmd buffer.
-    // f16 quantization is below display precision; compare via the
-    // same pack.
     assert_eq!(
-        p.fill,
+        p.color,
         crate::primitives::color::ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5))
     );
 }
@@ -480,7 +471,11 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(crate::primitives::color
                 };
                 out.push((p.fill, visible));
             }
-            CmdKind::DrawText | CmdKind::DrawMesh | CmdKind::DrawPolyline | CmdKind::DrawImage => {}
+            CmdKind::DrawShadow
+            | CmdKind::DrawText
+            | CmdKind::DrawMesh
+            | CmdKind::DrawPolyline
+            | CmdKind::DrawImage => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");
