@@ -59,7 +59,12 @@ pub(crate) fn two_hug_cols_with_wrap<T>(ui: &mut Ui<T>, paragraph: &'static str)
 /// VStack containing a `(Fill × Hug)` HStack with a Fixed-size avatar
 /// followed by a wrapping `Fill` text. Models the chat-message
 /// pattern. Returns the message text node.
-pub(crate) fn chat_message<T>(ui: &mut Ui<T>, avatar_w: f32, text: &'static str, text_px: f32) -> NodeId {
+pub(crate) fn chat_message<T>(
+    ui: &mut Ui<T>,
+    avatar_w: f32,
+    text: &'static str,
+    text_px: f32,
+) -> NodeId {
     let mut message_node = None;
     Panel::vstack().auto_id().show(ui, |ui| {
         Panel::hstack()

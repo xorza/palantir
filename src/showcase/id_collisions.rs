@@ -3,8 +3,8 @@
 //! framework disambiguates the duplicates (so state stays intact) and
 //! paints a magenta 3px outline over every offender.
 
-use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, Ui};
 use super::app_state::AppState;
+use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui<AppState>) {
     Panel::vstack()

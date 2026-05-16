@@ -4,8 +4,8 @@
 //! every frame. Stop colours stay vivid so spread/interp differences
 //! read at a glance.
 
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
     Panel, RadialGradient, Sizing, Spread, Ui,

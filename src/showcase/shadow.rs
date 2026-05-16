@@ -4,8 +4,8 @@
 //! including the per-corner SDF, the σ → 0 sharp fallback, and
 //! multi-shadow stacking via record order.
 
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 
 fn shadow_shape(s: Shadow) -> Shape<'static> {

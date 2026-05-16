@@ -84,7 +84,13 @@ pub fn build(ui: &mut Ui<AppState>) {
     }
 }
 
-fn bar<T>(ui: &mut Ui<T>, key: &'static str, label: &'static str, spec: AnimSpec, target_width: f32) {
+fn bar<T>(
+    ui: &mut Ui<T>,
+    key: &'static str,
+    label: &'static str,
+    spec: AnimSpec,
+    target_width: f32,
+) {
     let id = WidgetId::from_hash(("anim-bar", key));
     let width = ui.animate(id, "width", target_width, Some(spec));
     Panel::hstack()

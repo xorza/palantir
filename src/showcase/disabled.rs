@@ -1,5 +1,5 @@
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
 use super::app_state::AppState;
+use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui<AppState>) {
     Panel::hstack()

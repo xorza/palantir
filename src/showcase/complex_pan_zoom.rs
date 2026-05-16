@@ -9,8 +9,8 @@
 //! Self-contained: only `palantir::` items, no `crate::` references,
 //! so `#[path]` includes from `benches/` / `examples/` work.
 
-use glam::Vec2;
 use super::app_state::AppState;
+use glam::Vec2;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Color, Configure, Corners, Frame, Grid,
     LineCap, LineJoin, LinearGradient, Panel, PolylineColors, Scroll, Shadow, Shape, Sizing,

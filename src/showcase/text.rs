@@ -1,5 +1,5 @@
-use super::swatch::section;
 use super::app_state::AppState;
+use super::swatch::section;
 use crate::showcase::swatch;
 use palantir::Track;
 use palantir::{

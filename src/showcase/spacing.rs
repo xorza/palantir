@@ -1,5 +1,5 @@
-use super::swatch::swatch_bg;
 use super::app_state::AppState;
+use super::swatch::swatch_bg;
 use crate::showcase::swatch;
 use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 

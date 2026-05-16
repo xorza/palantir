@@ -1,5 +1,5 @@
-use palantir::{Color, Configure, Mesh, Panel, Shape, Sizing, Ui};
 use super::app_state::AppState;
+use palantir::{Color, Configure, Mesh, Panel, Shape, Sizing, Ui};
 
 pub fn build(ui: &mut Ui<AppState>) {
     Panel::hstack()

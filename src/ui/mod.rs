@@ -337,7 +337,11 @@ impl<T> Ui<T> {
         g.ui.frame_inner(stamp, &mut record)
     }
 
-    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui<T>)) -> FrameReport {
+    fn frame_inner(
+        &mut self,
+        stamp: FrameStamp,
+        mut record: impl FnMut(&mut Ui<T>),
+    ) -> FrameReport {
         profiling::scope!("Ui::frame");
         assert!(
             stamp.display.scale_factor >= EPS,
@@ -999,6 +1003,22 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 
+    impl<T> Ui<T> {
+        // ── forest ──────────────────────────────────────────────
+
+        /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
+        pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
+            let tree = self.forest.tree(Layer::Main);
+            let idx = tree
+                .records
+                .widget_id()
+                .iter()
+                .position(|w| *w == id)
+                .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
+            NodeId(idx as u32)
+        }
+    }
+
     impl Ui<()> {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
         pub fn for_test() -> Self {
@@ -1149,20 +1169,6 @@ pub mod test_support {
         /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
         pub fn anim_row_count<T: Animatable>(&mut self) -> usize {
             self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
-        }
-
-        // ── forest ──────────────────────────────────────────────
-
-        /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
-        pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            let tree = self.forest.tree(Layer::Main);
-            let idx = tree
-                .records
-                .widget_id()
-                .iter()
-                .position(|w| *w == id)
-                .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));
-            NodeId(idx as u32)
         }
 
         // ── encoder ─────────────────────────────────────────────

@@ -1,5 +1,5 @@
-use palantir::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
 use super::app_state::AppState;
+use palantir::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Flavor {
