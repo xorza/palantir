@@ -24,8 +24,8 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::{
-    Button, Configure, Display, Frame, FrameStamp, InputEvent, Panel, PointerButton, Scroll, Sense,
-    Sizing, Text, TextShaper, Ui, new_handle,
+    Button, Configure, Display, Frame, FrameArenaHandle, FrameStamp, InputEvent, Panel,
+    PointerButton, Scroll, Sense, Sizing, Text, TextShaper, Ui,
 };
 use std::hint::black_box;
 use std::time::Duration;
@@ -33,7 +33,7 @@ use std::time::Duration;
 /// Local mono-fallback `Ui` constructor; `support::testing::new_ui`
 /// is gated behind `cfg(test)` and not visible from bench targets.
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 const SIZE: UVec2 = UVec2::new(1280, 800);

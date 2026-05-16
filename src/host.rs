@@ -15,7 +15,7 @@
 
 use std::time::Instant;
 
-use crate::common::frame_arena::new_handle;
+use crate::common::frame_arena::FrameArenaHandle;
 use crate::renderer::backend::WgpuBackend;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
@@ -58,7 +58,7 @@ impl Host {
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
         // wiring mistake that would double-borrow.
-        let frame_arena = new_handle();
+        let frame_arena = FrameArenaHandle::default();
         Self {
             ui: Ui::new(shaper.clone(), frame_arena.clone()),
             frontend: Frontend::new(frame_arena.clone()),

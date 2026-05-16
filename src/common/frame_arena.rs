@@ -34,11 +34,6 @@ use std::rc::Rc;
 /// double-borrow would be a wiring bug worth panicking on.
 pub type FrameArenaHandle = Rc<RefCell<FrameArena>>;
 
-/// Construct a fresh handle wrapping a default-empty arena.
-pub fn new_handle() -> FrameArenaHandle {
-    Rc::new(RefCell::new(FrameArena::default()))
-}
-
 /// One arena per frame. All bulk shape-geometry bytes live here for
 /// the duration of a frame and are read by every later phase via
 /// spans recorded on tree shape records and cmd-buffer payloads.

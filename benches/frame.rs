@@ -10,8 +10,8 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use palantir::{
-    Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Text, TextShaper, Track, Ui,
-    new_handle,
+    Align, Button, Configure, Frame, FrameArenaHandle, Grid, Justify, Panel, Sizing, Text,
+    TextShaper, Track, Ui,
 };
 use std::hint::black_box;
 use std::rc::Rc;
@@ -20,7 +20,7 @@ use std::rc::Rc;
 /// helper lives behind the `internals` feature; `frame.rs` doesn't
 /// enable it, so we inline the equivalent here.
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 const SCALE: usize = 32;

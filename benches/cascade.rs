@@ -13,11 +13,13 @@
 //! runs through the mono fallback (same as `frame.rs`/`caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, TextShaper, Ui, new_handle};
+use palantir::{
+    Configure, Display, Frame, FrameArenaHandle, FrameStamp, Panel, Sizing, TextShaper, Ui,
+};
 use std::hint::black_box;
 
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 /// Build a flat tree of `n` leaves under a single VStack root.

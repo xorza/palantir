@@ -3,7 +3,7 @@ use super::super::cmd_buffer::{
 };
 use super::align_text_in;
 use crate::Ui;
-use crate::common::frame_arena::new_handle;
+use crate::common::frame_arena::FrameArenaHandle;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::input::InputEvent;
@@ -692,7 +692,10 @@ fn encoder_text_alignment_respects_leaf_padding() {
     use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
-    let mut ui = Ui::new(TextShaper::with_bundled_fonts(), new_handle());
+    let mut ui = Ui::new(
+        TextShaper::with_bundled_fonts(),
+        FrameArenaHandle::default(),
+    );
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()

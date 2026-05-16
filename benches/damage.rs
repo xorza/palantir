@@ -15,14 +15,14 @@
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::ui::damage::region::test_support::region_after_adds;
 use palantir::{
-    Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, TextShaper, Ui,
-    new_handle,
+    Background, Color, Configure, Display, Frame, FrameArenaHandle, FrameStamp, Panel, Rect,
+    Sizing, TextShaper, Ui,
 };
 use std::hint::black_box;
 use std::time::Duration;
 
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 const SURFACE: glam::UVec2 = glam::UVec2::new(1280, 800);

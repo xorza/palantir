@@ -20,15 +20,15 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Configure, Display, Frame, FrameStamp, Justify, Panel, Sizing, Text, TextShaper,
-    TextStyle, Ui, new_handle,
+    Align, Button, Configure, Display, Frame, FrameArenaHandle, FrameStamp, Justify, Panel, Sizing,
+    Text, TextShaper, TextStyle, Ui,
 };
 use std::hint::black_box;
 
 /// Local mono-fallback `Ui` constructor. `internals::new_ui` is gated
 /// behind the `internals` feature; this bench doesn't enable it.
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 #[global_allocator]
