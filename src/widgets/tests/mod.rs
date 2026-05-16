@@ -1,4 +1,5 @@
 mod canvas;
+mod checkbox;
 mod context_menu;
 mod drag;
 mod frame;

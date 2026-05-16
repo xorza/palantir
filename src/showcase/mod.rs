@@ -3,6 +3,7 @@ pub mod animations;
 pub mod app_state;
 pub mod bezier;
 pub mod buttons;
+pub mod checkbox;
 pub mod clip;
 pub mod complex_pan_zoom;
 pub mod context_menu;

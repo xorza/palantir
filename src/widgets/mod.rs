@@ -1,4 +1,5 @@
 pub(crate) mod button;
+pub(crate) mod checkbox;
 pub(crate) mod context_menu;
 pub(crate) mod frame;
 pub(crate) mod grid;
