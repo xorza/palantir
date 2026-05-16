@@ -25,13 +25,14 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::{
-    Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
-    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui, new_handle,
+    Background, Color, Configure, Corners, Display, Frame, FrameArenaHandle, FrameStamp,
+    InputEvent, Panel, Rect, Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle,
+    Ui,
 };
 use std::hint::black_box;
 
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 const GROUPS: usize = 100;
@@ -431,7 +432,10 @@ fn fresh_heavy_ui() -> Ui {
     // `support::internals::new_ui_mono` helper covers the no-text
     // case; this bench wants real shaping for steady-state text
     // measure work).
-    Ui::new(TextShaper::with_bundled_fonts(), palantir::new_handle())
+    Ui::new(
+        TextShaper::with_bundled_fonts(),
+        palantir::FrameArenaHandle::default(),
+    )
 }
 
 criterion_group!(benches, bench);

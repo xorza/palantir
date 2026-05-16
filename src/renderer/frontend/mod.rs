@@ -74,12 +74,12 @@ impl Frontend {
 pub mod test_support {
     #![allow(dead_code)]
     use super::*;
-    use crate::common::frame_arena::new_handle;
+    use crate::common::frame_arena::FrameArenaHandle;
 
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
-            Self::new(new_handle())
+            Self::new(FrameArenaHandle::default())
         }
     }
 }

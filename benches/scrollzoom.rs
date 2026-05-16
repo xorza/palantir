@@ -21,7 +21,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
-use palantir::{Display, FrameStamp, InputEvent, TextShaper, Ui, new_handle};
+use palantir::{Display, FrameArenaHandle, FrameStamp, InputEvent, TextShaper, Ui};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -29,7 +29,7 @@ use std::time::Duration;
 mod pan_zoom;
 
 fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), new_handle())
+    Ui::new(TextShaper::default(), FrameArenaHandle::default())
 }
 
 const SIZE: UVec2 = UVec2::new(1280, 800);

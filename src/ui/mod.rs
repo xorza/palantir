@@ -967,7 +967,7 @@ pub mod test_support {
     use super::*;
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
-    use crate::common::frame_arena::new_handle;
+    use crate::common::frame_arena::FrameArenaHandle;
     use crate::forest::tree::{Layer, NodeId};
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
@@ -991,7 +991,7 @@ pub mod test_support {
         thread_local! {
             static SHARED: TextShaper = TextShaper::with_bundled_fonts();
         }
-        Ui::new(SHARED.with(|c| c.clone()), new_handle())
+        Ui::new(SHARED.with(|c| c.clone()), FrameArenaHandle::default())
     }
 
     /// `Ui` pre-stamped with display dimensions; no frame driven yet.
