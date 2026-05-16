@@ -7,9 +7,15 @@ struct VsIn {
     // `0..1` floats with no decode. Stored linearly on the CPU
     // (`From<Color> for ColorU8` is a linear quantize), so the
     // rasterizer interpolates linear values directly.
+    //
+    // **Straight alpha in, premultiplied alpha out.** `color` and
+    // `tint` carry straight-alpha values; `fs` premultiplies at
+    // output to match the pipeline's `PREMULTIPLIED_ALPHA_BLENDING`
+    // blend state. See the shared shader contract in
+    // `docs/review-wgsl-shaders.md` A2 and CLAUDE.md "Colour pipeline".
     @location(1) color: vec4<f32>,
     // Per-instance transform + tint. `physical = pos * scale + translate`;
-    // `out_color = color * tint`. Both color lanes are linear premul.
+    // `out_color = color * tint` (straight × straight, premultiplied at fs).
     @location(2) translate: vec2<f32>,
     @location(3) scale: f32,
     @location(4) tint: vec4<f32>,
@@ -35,5 +41,9 @@ fn vs(in: VsIn) -> VsOut {
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
-    return in.color;
+    // `in.color` is straight-alpha linear (vertex.color * tint, both
+    // straight). Premultiply at output so the blend pipeline's
+    // `PREMULTIPLIED_ALPHA_BLENDING` sees `rgb * a`. Without this,
+    // translucent meshes paint too bright (see review A1).
+    return vec4<f32>(in.color.rgb * in.color.a, in.color.a);
 }
