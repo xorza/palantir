@@ -32,6 +32,7 @@ enum DrawOp {
     Quads(usize),
     Text(usize),
     Meshes(usize),
+    Images(usize),
 }
 
 fn collect(
@@ -66,6 +67,9 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
                 buffer.mesh_batches[*batch].last_group as usize,
+            )),
+            RenderStep::ImageBatch { batch } => out.push(DrawOp::Images(
+                buffer.image_batches[*batch].last_group as usize,
             )),
         }
     }
@@ -135,6 +139,19 @@ fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffe
     for (i, &g) in anchors.iter().enumerate() {
         buf.mesh_batches.push(MeshBatch {
             meshes: Span::new(i as u32, 1),
+            last_group: g,
+        });
+    }
+    buf
+}
+
+/// Same shape as [`buf_with_mesh_anchors`] but for image batches.
+fn buf_with_image_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
+    use crate::renderer::render_buffer::ImageBatch;
+    let mut buf = buf_with(groups);
+    for (i, &g) in anchors.iter().enumerate() {
+        buf.image_batches.push(ImageBatch {
+            images: Span::new(i as u32, 1),
             last_group: g,
         });
     }
@@ -738,5 +755,61 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     assert_eq!(
         simplify(&buf, &collect(&buf, damage, &[], false)),
         vec![DrawOp::PreClear, DrawOp::Meshes(1)],
+    );
+}
+
+/// Pin: an image batch anchored at group `j` emits `ImageBatch` after
+/// that group's quads and meshes (image sits at mesh tier in the
+/// kind order). Counter-pin to ensure the new `next_image_batch`
+/// cursor wires through both stencil and non-stencil paths.
+#[test]
+fn image_batch_emits_after_group_quads_in_non_stencil_path() {
+    let buf = buf_with_image_anchors(
+        vec![
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+            DrawGroup {
+                scissor: None,
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+        ],
+        &[0, 1],
+    );
+    assert_eq!(
+        simplify(&buf, &collect(&buf, None, &[], false)),
+        vec![DrawOp::Images(0), DrawOp::Images(1)],
+    );
+}
+
+/// Pin: image batch in a damage-skipped group is silently dropped.
+#[test]
+fn image_batch_in_damage_skipped_group_drops_silently() {
+    let buf = buf_with_image_anchors(
+        vec![
+            DrawGroup {
+                scissor: Some(URect::new(0, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+            DrawGroup {
+                scissor: Some(URect::new(50, 0, 50, 100)),
+                rounded_clip: None,
+                quads: Span::default(),
+                texts: Span::default(),
+            },
+        ],
+        &[0, 1],
+    );
+    let damage = Some(URect::new(50, 0, 50, 100));
+    assert_eq!(
+        simplify(&buf, &collect(&buf, damage, &[], false)),
+        vec![DrawOp::PreClear, DrawOp::Images(1)],
     );
 }
