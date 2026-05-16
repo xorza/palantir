@@ -6,7 +6,7 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
-use palantir::primitives::stroke_tessellate::test_support::{
+use palantir::renderer::stroke_tessellate::test_support::{
     TessColorMode, TessStyle, tessellate_polyline_for_bench,
 };
 use palantir::{Color, ColorU8, LineCap, LineJoin, MeshVertex};

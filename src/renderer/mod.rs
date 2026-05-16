@@ -23,3 +23,9 @@ pub mod frontend;
 pub(crate) mod gradient_atlas;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
+/// Polyline → fringe-AA mesh tessellator consumed by `Composer`.
+/// Renderer-side rather than primitive: it lowers user authoring
+/// (`Shape::Polyline`, stroked rounded rects) into the GPU mesh
+/// vertex layout. Exposed `pub` for the `stroke_tessellate` bench's
+/// `test_support` reach-in path.
+pub mod stroke_tessellate;

@@ -14,7 +14,6 @@ pub(crate) mod size;
 pub(crate) mod spacing;
 pub(crate) mod span;
 pub(crate) mod stroke;
-pub mod stroke_tessellate;
 pub(crate) mod transform;
 pub(crate) mod urect;
 pub(crate) mod widget_id;

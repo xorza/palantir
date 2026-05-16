@@ -50,13 +50,13 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 ## Project layout
 
-- `src/primitives/` — pure geometry + leaf types: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Background/Brush/Shadow/WidgetId/bezier/mesh/num/approx/urect/stroke_tessellate
+- `src/primitives/` — pure geometry + leaf types: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Background/Brush/Shadow/WidgetId/bezier/mesh/num/approx/urect
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Polyline, CubicBezier, QuadraticBezier, Text, Mesh)
 - `src/forest/` — `Forest` (per-layer arenas, `mod.rs`), `tree/` (per-layer `Tree`: SoA + sparse columns + `Shapes` + `GridArena` + `SubtreeRollups`, `NodeId`, `Layer`), `element/` (Element builder, `LayoutCore`/`NodeFlags`/`LayoutMode`, `Configure`), `node.rs` (`NodeRecord`), `rollups.rs` (per-node + subtree hashes + `paints` bitset), `shapes.rs` (`ShapeRecord` + payload arenas), `seen_ids.rs`, `visibility.rs`
 - `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + glyphon rendering glue; mono fallback for headless
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid/scroll), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades)
-- `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer)
+- `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer) + `stroke_tessellate/` (polyline → fringe-AA mesh)
 - `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage, frame state/report
 - `src/widgets/` — Button, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, TextEdit, Scroll, Popup, Tooltip, ContextMenu, Theme
 - `src/animation/` — `Animatable` trait + tween/spring drivers (state-map keyed); `anim-derive/` workspace member provides `#[derive(Animatable)]`

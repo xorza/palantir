@@ -7,7 +7,6 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageHandle;
-use crate::primitives::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
@@ -15,6 +14,7 @@ use crate::renderer::render_buffer::{
     DrawGroup, ImageBatch, ImageDraw, ImageInstance, MeshBatch, MeshDraw, MeshInstance,
     RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
+use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
