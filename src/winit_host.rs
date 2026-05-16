@@ -1,8 +1,8 @@
 //! `WinitHost` — wraps [`Host`] with a winit window, surface, and the
 //! [`ApplicationHandler`] event-loop glue. Owns everything below the
 //! user's frame-builder closure: window creation, swapchain config,
-//! resize / scale / occlusion handling, the `FramePresent` scheduling
-//! state machine, and the debug-overlay function keys.
+//! resize / scale / occlusion handling, and the `FramePresent`
+//! scheduling state machine.
 //!
 //! Usage:
 //!
@@ -15,7 +15,7 @@
 use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
-use winit::event::{StartCause, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
@@ -137,12 +137,15 @@ where
         .expect("request device");
 
         let caps = surface.get_capabilities(&adapter);
+        // Color pipeline assumes an sRGB swapchain target — see the
+        // colour section of CLAUDE.md. Non-sRGB would skip the GPU
+        // linear→sRGB encode and silently darken every paint.
         let format = caps
             .formats
             .iter()
             .copied()
             .find(|f| f.is_srgb())
-            .unwrap_or(caps.formats[0]);
+            .expect("no sRGB-capable surface format");
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format,
@@ -161,7 +164,8 @@ where
         }
         let scale_factor = window.scale_factor() as f32;
 
-        window.request_redraw();
+        // `next: Immediate` below makes `about_to_wait` request the
+        // first redraw — no need to call `request_redraw()` here.
         self.state = Some(RuntimeState {
             window,
             surface,
@@ -173,26 +177,23 @@ where
         });
     }
 
-    fn new_events(&mut self, _event_loop: &ActiveEventLoop, cause: StartCause) {
-        // WaitUntil deadline reached → switch to Immediate so the
-        // next about_to_wait requests a redraw. Without this, the
-        // scheduled wake fires but no frame ever paints.
-        if let StartCause::ResumeTimeReached { .. } = cause
-            && let Some(rt) = self.state.as_mut()
-        {
-            rt.next = FramePresent::Immediate;
-        }
-    }
-
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let Some(rt) = self.state.as_ref() else {
             return;
         };
 
-        match rt.next {
+        // `At(t)` with `t <= now` collapses to `Immediate` — `WaitUntil`
+        // would fire instantly and loop, so just request the redraw.
+        // That fold lets us drop the `new_events` `ResumeTimeReached`
+        // rewrite: a deadline-driven wake naturally lands here next.
+        let next = match rt.next {
+            FramePresent::At(t) if t <= std::time::Instant::now() => FramePresent::Immediate,
+            other => other,
+        };
+        match next {
             FramePresent::Immediate => {
                 rt.window.request_redraw();
-                event_loop.set_control_flow(ControlFlow::Poll);
+                event_loop.set_control_flow(ControlFlow::Wait);
             }
             FramePresent::At(at) => event_loop.set_control_flow(ControlFlow::WaitUntil(at)),
             FramePresent::Idle => event_loop.set_control_flow(ControlFlow::Wait),
@@ -226,7 +227,10 @@ where
                 rt.config.width = new.width.clamp(1, max);
                 rt.config.height = new.height.clamp(1, max);
                 rt.surface.configure(&rt.device, &rt.config);
-                self.draw();
+                // Let `RedrawRequested` drive the actual paint —
+                // most platforms emit one immediately after resize,
+                // and painting inline here would double-draw.
+                rt.next = FramePresent::Immediate;
             }
             WindowEvent::Occluded(occluded) => {
                 rt.host.set_occluded(occluded);
