@@ -23,7 +23,7 @@ user closures ──► [1] Record    (append per-node columns + Shapes; no layo
                   [4] Cascade   (pre-order, top-down)    — flatten disabled/visibility/clip/transform
                                                           + build hit index in same walk
                   [5] Encode + Compose + Paint            — emit RenderCmds, compose to physical-px quads,
-                                                          submit; Option<Damage> (Full / Partial / None)
+                                                          submit; Damage (None / Full / Partial)
                                                           filters which leaves the encoder paints
                   [*] Hit-test next frame's input against last frame's cascade
 ```
@@ -154,7 +154,7 @@ Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The com
 
 **No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. Full investigation lives in `docs/cache-history/encode.md`. The `MeasureCache` (~35% on the same workloads) stays.
 
-**Damage** is `enum Damage { Full, Partial(DamageRegion) }`; `compute`/`filter` return `Option<Damage>`. `Full` re-paints everything, `Partial(region)` lets the encoder filter cmds whose screen rect intersects, and `None` is the "no diff vs prev frame, just present" skip signal. `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
+**Damage** is `enum Damage { None, Full, Partial(DamageRegion) }`. `Full` re-paints everything, `Partial(region)` lets the encoder filter cmds whose screen rect intersects, and `None` is the "no diff vs prev frame, just present" skip signal. `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
 
 **Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
 
