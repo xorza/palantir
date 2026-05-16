@@ -1,4 +1,5 @@
 use super::quad::Quad;
+use crate::primitives::image::ImageHandle;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gradient_atlas::GradientCpuAtlas;
@@ -31,6 +32,14 @@ pub(crate) struct RenderBuffer {
     /// backend treat meshes structurally like text — drained via the
     /// same cursor-walking pattern as `text_batches`.
     pub(crate) mesh_batches: Vec<MeshBatch>,
+    /// Image draws + per-instance state. Structurally mirrors
+    /// [`MeshScene`]; per-frame cleared in `compose`.
+    pub(crate) images: ImageScene,
+    /// One entry per *batch* of image draws (currently one
+    /// `ImageBatch` per group that emitted images). Schedule walks
+    /// these in lockstep with `groups` via a cursor — same pattern as
+    /// `text_batches` / `mesh_batches`.
+    pub(crate) image_batches: Vec<ImageBatch>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
     /// reads this to decide whether to walk the stencil-mask path;
@@ -62,6 +71,8 @@ impl Default for RenderBuffer {
             groups: Vec::new(),
             text_batches: Vec::new(),
             mesh_batches: Vec::new(),
+            images: ImageScene::default(),
+            image_batches: Vec::new(),
             has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -118,6 +129,17 @@ pub(crate) struct MeshBatch {
     pub(crate) last_group: u32,
 }
 
+/// A batch of image draws emitted together. `images` is a contiguous
+/// range into `ImageScene.draws` (and parallel `instances`);
+/// `last_group` is the group whose iteration drains this batch in the
+/// schedule — mirrors `MeshBatch`. Phase 5 emits one batch per group
+/// with images; later slices can coalesce by texture handle.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ImageBatch {
+    pub(crate) images: Span,
+    pub(crate) last_group: u32,
+}
+
 /// Physical-px rounded-clip geometry for stencil masking. `mask_rect`
 /// is the clip's full physical-pixel rect — **not** clamped to viewport
 /// or any ancestor scissor — so the mask SDF's corner curves stay
@@ -148,6 +170,47 @@ impl MeshScene {
         self.draws.clear();
         self.instances.clear();
     }
+}
+
+/// Scene-wide image pool: per-draw handles + per-instance GPU state.
+/// Structurally a mesh-style SoA; the backend's image pipeline binds a
+/// per-handle texture and issues one draw per `ImageDraw` (no shared
+/// vertex/index buffers — every quad is implicit four-corner from the
+/// shader's `vertex_index`).
+#[derive(Default, Clone)]
+pub(crate) struct ImageScene {
+    pub(crate) draws: Vec<ImageDraw>,
+    pub(crate) instances: Vec<ImageInstance>,
+}
+
+impl ImageScene {
+    #[inline]
+    pub(crate) fn clear(&mut self) {
+        self.draws.clear();
+        self.instances.clear();
+    }
+}
+
+/// One image draw within a group. `handle` selects the GPU texture
+/// bind group; the matching `ImageInstance` lives in
+/// [`ImageScene::instances`] at the same index.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct ImageDraw {
+    pub(crate) handle: ImageHandle,
+}
+
+/// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
+/// buffer. The shader generates UVs from the four-corner `vertex_index`,
+/// samples the texture, and multiplies by `tint`. `Pod`-shaped so the
+/// upload is a single `write_buffer`.
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ImageInstance {
+    /// Physical-px paint rect.
+    pub(crate) rect: Rect,
+    /// Linear-RGBA tint, premultiplied in the shader.
+    pub(crate) tint: ColorU8,
 }
 
 /// One mesh draw within a group. Vertex/index slices live in the
