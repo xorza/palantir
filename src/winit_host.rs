@@ -7,7 +7,7 @@
 //! Usage:
 //!
 //! ```ignore
-//! WinitHost::new("title", AppState::default(), |ui| build_ui(ui))
+//! WinitHost::new(WinitHostConfig::new("title"), AppState::default(), |ui| build_ui(ui))
 //!     .with_setup(|host| host.ui.theme.button.anim = Some(AnimSpec::SPRING))
 //!     .run();
 //! ```
@@ -15,6 +15,7 @@
 use std::sync::Arc;
 
 use winit::application::ApplicationHandler;
+use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
@@ -25,11 +26,49 @@ use crate::ui::Ui;
 
 type SetupFn<T> = Box<dyn FnOnce(&mut Ui<T>)>;
 
+/// Tunables forwarded to winit + wgpu at startup. All fields are
+/// optional with sensible defaults; override what you care about.
+pub struct WinitHostConfig {
+    pub title: String,
+    /// Initial window inner size in logical pixels (DPI-independent).
+    /// `None` lets the platform pick.
+    pub inner_size: Option<LogicalSize<u32>>,
+    /// Minimum window inner size in logical pixels. `None` = no floor.
+    pub min_inner_size: Option<LogicalSize<u32>>,
+    pub present_mode: wgpu::PresentMode,
+    pub power_preference: wgpu::PowerPreference,
+    /// 1 = lowest input latency, 2 = more pacing headroom under bursty
+    /// frames. wgpu clamps to the platform's allowed range.
+    pub max_frame_latency: u32,
+}
+
+impl Default for WinitHostConfig {
+    fn default() -> Self {
+        Self {
+            title: String::from("palantir"),
+            inner_size: None,
+            min_inner_size: None,
+            present_mode: wgpu::PresentMode::AutoVsync,
+            power_preference: wgpu::PowerPreference::LowPower,
+            max_frame_latency: 1,
+        }
+    }
+}
+
+impl WinitHostConfig {
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            ..Self::default()
+        }
+    }
+}
+
 /// Top-level winit-driven palantir runtime. Generic over the app state
 /// `T` (installed ambient on the `Ui` every frame) and the
 /// frame-builder closure `F`.
 pub struct WinitHost<T, F> {
-    title: String,
+    config: WinitHostConfig,
     app: T,
     builder: F,
     setup: Option<SetupFn<T>>,
@@ -54,9 +93,9 @@ where
     T: 'static,
     F: FnMut(&mut Ui<T>),
 {
-    pub fn new(title: impl Into<String>, app: T, builder: F) -> Self {
+    pub fn new(config: WinitHostConfig, app: T, builder: F) -> Self {
         Self {
-            title: title.into(),
+            config,
             app,
             builder,
             setup: None,
@@ -107,11 +146,15 @@ where
             return;
         }
 
-        let window = Arc::new(
-            event_loop
-                .create_window(Window::default_attributes().with_title(self.title.clone()))
-                .expect("create window"),
-        );
+        let cfg = &self.config;
+        let mut attrs = Window::default_attributes().with_title(cfg.title.clone());
+        if let Some(size) = cfg.inner_size {
+            attrs = attrs.with_inner_size(size);
+        }
+        if let Some(size) = cfg.min_inner_size {
+            attrs = attrs.with_min_inner_size(size);
+        }
+        let window = Arc::new(event_loop.create_window(attrs).expect("create window"));
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
@@ -120,7 +163,7 @@ where
             .expect("create surface");
 
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::default(),
+            power_preference: cfg.power_preference,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
         }))
@@ -129,9 +172,9 @@ where
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("palantir.device"),
             required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
+            required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
             experimental_features: wgpu::ExperimentalFeatures::default(),
-            memory_hints: wgpu::MemoryHints::default(),
+            memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,
         }))
         .expect("request device");
@@ -151,10 +194,14 @@ where
             format,
             width: size.width.max(1),
             height: size.height.max(1),
-            present_mode: wgpu::PresentMode::AutoNoVsync,
-            alpha_mode: caps.alpha_modes[0],
+            present_mode: cfg.present_mode,
+            alpha_mode: if caps.alpha_modes.contains(&wgpu::CompositeAlphaMode::Opaque) {
+                wgpu::CompositeAlphaMode::Opaque
+            } else {
+                caps.alpha_modes[0]
+            },
             view_formats: vec![],
-            desired_maximum_frame_latency: 2,
+            desired_maximum_frame_latency: cfg.max_frame_latency,
         };
         surface.configure(&device, &config);
 

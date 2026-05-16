@@ -1,6 +1,6 @@
 use palantir::{
     AnimSpec, Background, Button, Color, Configure, Key, Panel, Shadow, Shortcut, Sizing, Ui,
-    WinitHost,
+    WinitHost, WinitHostConfig,
 };
 
 mod showcase;
@@ -64,9 +64,11 @@ fn main() {
         .init();
 
     let mut active = 0usize;
-    WinitHost::new("palantir showcase", AppState { counter: 0 }, move |ui| {
-        build_ui(ui, &mut active)
-    })
+    WinitHost::new(
+        WinitHostConfig::new("palantir showcase"),
+        AppState { counter: 0 },
+        move |ui| build_ui(ui, &mut active),
+    )
     .with_setup(|ui| {
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.

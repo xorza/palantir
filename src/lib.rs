@@ -112,7 +112,7 @@ pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
-pub use winit_host::WinitHost;
+pub use winit_host::{WinitHost, WinitHostConfig};
 
 #[cfg(test)]
 mod hot_struct_sizes {
