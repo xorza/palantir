@@ -212,15 +212,15 @@ impl Color {
     }
 }
 
-/// 4-byte sRGB-packed colour (`r, g, b, a` each 0..=255). Storage form
-/// for places where 8-bit display precision is sufficient and cache
+/// 4-byte **linear-u8** colour (`r, g, b, a` each 0..=255). Storage
+/// form for places where 8-bit linear precision is sufficient and cache
 /// footprint matters — currently `Stop.color` (gradient stops). Not
 /// used for fill / stroke / shape colour where animation lerps demand
 /// `f32` linear-space precision.
 ///
-/// Convert to/from `Color` via `From` impls (cubic Hejl-Burgess-Dawson
-/// pair from this module). Roundtrip is bounded by 1 LSB per channel
-/// (pinned by `color.rs` byte-roundtrip tests).
+/// Default `From<Color>` / `From<ColorU8>` are straight linear quantize
+/// pairs (no sRGB encode). For the sRGB-encoded form (glyphon, hex
+/// constructors), use [`Color::to_srgb_u8`] / [`Self::hex`] explicitly.
 #[repr(C)]
 #[derive(
     Copy,
