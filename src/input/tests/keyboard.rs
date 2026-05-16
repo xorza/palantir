@@ -1,7 +1,7 @@
+use crate::Ui;
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
 use crate::ui::cascade::Cascades;
-use crate::ui::test_support::new_ui;
 use winit::event::WindowEvent;
 use winit::keyboard::{Key as WK, NamedKey};
 
@@ -193,7 +193,7 @@ fn focus_policy_routing() {
         });
     };
     for (label, policy, expect_focus) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.set_focus_policy(*policy);
         ui.run_at_acked(surface, build);
         ui.click_at(glam::Vec2::new(50.0, 20.0));
@@ -211,7 +211,7 @@ fn focus_policy_routing() {
         assert_eq!(ui.focused_id(), expected, "{label}: after outside press");
     }
     // Default policy is ClearOnMiss.
-    assert_eq!(new_ui().focus_policy(), FocusPolicy::ClearOnMiss);
+    assert_eq!(Ui::for_test().focus_policy(), FocusPolicy::ClearOnMiss);
 }
 
 #[test]
@@ -222,7 +222,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::primitives::widget_id::WidgetId;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
     let surface = glam::UVec2::new(400, 80);
     let build = |ui: &mut Ui| {
@@ -257,7 +257,7 @@ fn focus_is_evicted_when_widget_disappears() {
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::{button::Button, panel::Panel};
 
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let surface = glam::UVec2::new(200, 80);
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -283,7 +283,7 @@ fn focus_is_evicted_when_widget_disappears() {
 
 #[test]
 fn request_focus_bypasses_policy() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let id = crate::primitives::widget_id::WidgetId::from_hash("manual");
     ui.request_focus(Some(id));
     assert_eq!(ui.focused_id(), Some(id));
@@ -307,7 +307,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
     }
     let cases: &[(&str, Mode)] = &[("hidden", Mode::Hidden), ("disabled", Mode::Disabled)];
     for (label, mode) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()

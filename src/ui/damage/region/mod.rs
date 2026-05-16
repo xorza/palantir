@@ -198,6 +198,9 @@ pub mod test_support {
     use crate::primitives::rect::Rect;
 
     /// `DamageRegion` rect count after adding `rects` in order (merge policy runs).
+    /// Free fn rather than `impl DamageRegion` because `DamageRegion` is
+    /// `pub(crate)` — external benches can't name the type to invoke an
+    /// associated fn on it. Keep here so benches see a single namespace.
     pub fn region_after_adds(rects: &[Rect]) -> usize {
         let mut region = DamageRegion::default();
         for r in rects {

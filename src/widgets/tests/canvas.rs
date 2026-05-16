@@ -1,13 +1,13 @@
+use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::Layer;
 use crate::layout::types::sizing::Sizing;
-use crate::ui::test_support::new_ui;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
 #[test]
 fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let mut canvas_node = None;
     let mut a_node = None;
     let mut b_node = None;

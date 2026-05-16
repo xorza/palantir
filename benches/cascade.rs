@@ -9,18 +9,12 @@
 //! - cascade > 1 ms on N=2000 → ship the field split.
 //! - in between → judgement call.
 //!
-//! `new_ui()` leaves the cosmic shaper unset, so text measurement
+//! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement
 //! runs through the mono fallback (same as `frame.rs`/`caches.rs`).
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::{
-    Configure, Display, Frame, FrameArenaHandle, FrameStamp, Panel, Sizing, TextShaper, Ui,
-};
+use palantir::{Configure, Display, Frame, FrameStamp, Panel, Sizing, Ui};
 use std::hint::black_box;
-
-fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), FrameArenaHandle::default())
-}
 
 /// Build a flat tree of `n` leaves under a single VStack root.
 /// Approximates a long list of items — the wide-and-shallow shape that
@@ -49,7 +43,7 @@ fn bench_cascade(c: &mut Criterion) {
     for &n in &[100usize, 500, 2000, 10_000] {
         // Build once, post_record once to populate layout.results, then
         // measure cascades.run in isolation.
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),

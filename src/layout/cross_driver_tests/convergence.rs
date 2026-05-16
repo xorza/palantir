@@ -11,10 +11,10 @@
 //!
 //! Sweeps a width range and asserts the frame doesn't panic.
 
+use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::tree::{Layer, NodeId};
 use crate::layout::types::sizing::Sizing;
-use crate::ui::test_support::new_ui;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
@@ -40,7 +40,7 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut ui = crate::ui::test_support::new_ui();
+        let mut ui = crate::Ui::for_test();
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);
@@ -153,7 +153,7 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
     // discrete width tips the toolbar's wrap count past a threshold.
     //
     // Reuse one `Ui` across sweep — recreating it would re-load fonts (~120 ms each).
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     for w in (480u32..=900).step_by(1) {
         ui.run_at(UVec2::new(w, 600), |ui| {
             Panel::vstack()

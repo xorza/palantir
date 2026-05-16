@@ -20,17 +20,13 @@
 
 use glam::UVec2;
 use palantir::{
-    Align, Button, Configure, Display, Frame, FrameArenaHandle, FrameStamp, Justify, Panel, Sizing,
-    Text, TextShaper, TextStyle, Ui,
+    Align, Button, Configure, Display, Frame, FrameStamp, Justify, Panel, Sizing, Text, TextStyle,
+    Ui,
 };
 use std::hint::black_box;
 
 /// Local mono-fallback `Ui` constructor. `internals::new_ui` is gated
 /// behind the `internals` feature; this bench doesn't enable it.
-fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), FrameArenaHandle::default())
-}
-
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
 
@@ -131,7 +127,7 @@ fn main() {
     };
 
     let display = Display::from_physical(PHYSICAL, SCALE);
-    let mut ui = new_ui();
+    let mut ui = Ui::default();
 
     for _ in 0..WARMUP_FRAMES {
         black_box(ui.frame(

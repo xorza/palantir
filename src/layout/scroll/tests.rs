@@ -9,7 +9,6 @@ use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::test_support::new_ui;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
 use crate::widgets::scroll::Scroll;
@@ -29,7 +28,7 @@ fn state_for(ui: &mut Ui, id_salt: &'static str) -> ScrollState {
 /// the children's full height. State is populated post-arrange.
 #[test]
 fn vertical_scroll_records_content_extent() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::vertical()
             .id_salt("scroll")
@@ -49,7 +48,7 @@ fn vertical_scroll_records_content_extent() {
 /// Horizontal scroll measures children with INF on X.
 #[test]
 fn horizontal_scroll_records_content_extent() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::horizontal()
@@ -77,7 +76,7 @@ fn horizontal_scroll_records_content_extent() {
 /// Both-axis scroll measures with both axes unbounded.
 #[test]
 fn both_axis_scroll_records_content_extent() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
             .id_salt("scroll")
@@ -99,7 +98,7 @@ fn both_axis_scroll_records_content_extent() {
 /// offset clamp + reservation guess + bar geometry.
 #[test]
 fn state_survives_across_frames() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack().id_salt("root").show(ui, |ui| {
             Scroll::vertical()

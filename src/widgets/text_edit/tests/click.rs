@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn typing_inserts_text_when_focused() {
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
     let id = WidgetId::from_hash("editor");
 
@@ -25,7 +25,7 @@ fn typing_inserts_text_when_focused() {
 
 #[test]
 fn keystrokes_ignored_when_not_focused() {
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
 
     ui.on_input(InputEvent::KeyDown {
@@ -40,7 +40,7 @@ fn keystrokes_ignored_when_not_focused() {
 
 #[test]
 fn escape_blurs_focus() {
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::from("text");
     let id = WidgetId::from_hash("editor");
 
@@ -60,7 +60,7 @@ fn escape_blurs_focus() {
 fn caret_clamps_after_external_buffer_shrink() {
     // Host can mutate buffer between frames; if new len < cached caret,
     // `show()` must clamp at the top of the next frame instead of OOB.
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::from("hello");
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -87,7 +87,7 @@ fn caret_clamps_after_external_buffer_shrink() {
 fn text_event_inserts_at_caret_when_focused() {
     use crate::input::keyboard::TextChunk;
 
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -102,7 +102,7 @@ fn text_event_inserts_at_caret_when_focused() {
 fn pointer_state_respects_pointer_left() {
     // Sanity: leaving the surface clears the click hit-test path so a
     // subsequent KeyDown to a focused TextEdit still works.
-    let mut ui = ui_with_text(SMALL);
+    let mut ui = Ui::for_test_at_text(SMALL);
     let mut buf = String::new();
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -120,7 +120,7 @@ fn pointer_state_respects_pointer_left() {
 #[test]
 fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     // Default ClearOnMiss: clicking a non-focusable Button drops focus.
-    let mut ui = ui_with_text(WIDE);
+    let mut ui = Ui::for_test_at_text(WIDE);
     let mut buf = String::new();
 
     ui.run_at_acked(WIDE, editor_and_button(&mut buf));
@@ -145,7 +145,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 
 #[test]
 fn pressed_button_under_preserve_policy_keeps_focus() {
-    let mut ui = ui_with_text(WIDE);
+    let mut ui = Ui::for_test_at_text(WIDE);
     ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
@@ -165,7 +165,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
 #[test]
 fn pressed_button_pointer_jitter_does_not_steal_caret() {
     // Regression: pointer movement while NOT pressed shouldn't reset caret.
-    let mut ui = ui_with_text(WIDE);
+    let mut ui = Ui::for_test_at_text(WIDE);
     let mut buf = String::from("ab");
 
     ui.run_at_acked(WIDE, editor_only(&mut buf));
@@ -233,7 +233,7 @@ fn click_uses_overridden_padding() {
 
 #[test]
 fn two_textedits_only_one_focused_at_a_time() {
-    let mut ui = ui_with_text(WIDE);
+    let mut ui = Ui::for_test_at_text(WIDE);
     let mut a = String::new();
     let mut b = String::new();
     let id_a = WidgetId::from_hash("a");

@@ -2,7 +2,6 @@ use super::{
     TextEditState, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
     prev_word_boundary, word_range_at,
 };
-use crate::ui::test_support::new_ui;
 
 /// Test wrapper: routes one keypress through `dispatch_shortcut`
 /// (clipboard / undo / select-all) then falls through to single-line
@@ -26,7 +25,6 @@ use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::FrameStamp;
-use crate::ui::test_support::ui_with_text;
 use crate::widgets::panel::Panel;
 use crate::widgets::text_edit::TextEdit;
 use glam::{UVec2, Vec2};
@@ -128,7 +126,7 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// widths the click-positioning tests rely on.
 fn ui_at_no_cosmic(size: UVec2) -> Ui {
     use crate::layout::types::display::Display;
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.display = Display::from_physical(size, 1.0);
     ui
 }

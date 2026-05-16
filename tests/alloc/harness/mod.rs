@@ -24,9 +24,8 @@ use palantir::{Display, FrameArena, FrameStamp, TextShaper, Ui};
 use std::cell::RefCell;
 use std::rc::Rc;
 
-/// Local mono-fallback Ui constructor — duplicates
-/// `support::internals::new_ui` here because the alloc tests aren't
-/// gated on the `internals` feature, so they can't import from there.
+/// Local mono-fallback Ui constructor. Alloc tests don't enable the
+/// `internals` feature so they can't call `new_ui()`.
 pub(crate) fn new_ui() -> Ui {
     Ui::new(
         TextShaper::default(),

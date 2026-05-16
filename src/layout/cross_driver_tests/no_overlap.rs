@@ -12,7 +12,6 @@ use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
-use crate::ui::test_support::new_ui;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -66,7 +65,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
     let long_text = "The quick brown fox jumps over the lazy dog. Pack my box \
                      with five dozen liquor jugs. How vexingly quick daft zebras jump!";
     for (label_id, grid_main, cols, gap_xy) in cases {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut left = None;
         let mut right = None;
         ui.run_at(UVec2::new(800, 600), |ui| {
@@ -116,7 +115,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
 
 #[test]
 fn text_layouts_two_sections_back_to_back_no_overlap() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
 
     let mut hug_left = None;
     let mut hug_right = None;
@@ -210,7 +209,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = crate::ui::test_support::new_ui_text();
+    let mut ui = crate::Ui::for_test_text();
     ui.run_at(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()
@@ -265,7 +264,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 /// two distinct texts emit `DrawText` at the same (x, y).
 #[test]
 fn text_layouts_full_showcase_drawtext_dump() {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(1620, 980), |ui| {
         Panel::vstack().auto_id()
         .padding(12.0)

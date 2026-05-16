@@ -10,7 +10,6 @@ use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::FrameStamp;
-use crate::ui::test_support::new_ui;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -46,7 +45,7 @@ struct AnimUi {
 }
 
 fn setup_anim_ui(salt: &'static str) -> AnimUi {
-    let mut ui = new_ui();
+    let mut ui = Ui::for_test();
     let id = wid(salt);
     ui.run_at(SURFACE, |ui| {
         Frame::new().id_salt(salt).show(ui);

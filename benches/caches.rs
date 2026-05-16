@@ -19,21 +19,16 @@
 //! only the steady-state aggregate in `frame.rs`. Run with
 //! `cargo bench --features "internals bench-deep"` to exercise these.
 //!
-//! `new_ui()` leaves the cosmic shaper unset, so text measurement runs
+//! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement runs
 //! through the mono fallback — same shaper-free path as `benches/frame.rs`.
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::{
-    Background, Color, Configure, Corners, Display, Frame, FrameArenaHandle, FrameStamp,
-    InputEvent, Panel, Rect, Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle,
-    Ui,
+    Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
+    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
 };
 use std::hint::black_box;
-
-fn new_ui() -> Ui {
-    Ui::new(TextShaper::default(), FrameArenaHandle::default())
-}
 
 const GROUPS: usize = 100;
 const ROWS_PER_GROUP: usize = 10;
@@ -247,7 +242,7 @@ fn bench(c: &mut Criterion) {
     let mut group = c.benchmark_group("caches");
 
     group.bench_function("measure/cached", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -263,7 +258,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("measure/forced_miss", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -293,7 +288,7 @@ fn bench(c: &mut Criterion) {
     //   scroll-driven transform changes don't tax the rest of the
     //   pipeline.
     group.bench_function("scroll/idle", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -309,7 +304,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("scroll/active", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         // Frame 1: register the scroll viewport's rect/content/cascade.
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
@@ -383,7 +378,7 @@ fn bench(c: &mut Criterion) {
     // a high-cmd-density workload (none found; encode cache later
     // deleted). Kept as another baseline for measure.
     group.bench_function("dense/measure/cached", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),
@@ -399,7 +394,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("dense/measure/forced_miss", |b| {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             &mut (),

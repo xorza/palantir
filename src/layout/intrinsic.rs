@@ -203,10 +203,10 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
 mod tests {
     use super::*;
 
+    use crate::Ui;
     use crate::forest::element::Configure;
     use crate::forest::tree::Layer;
     use crate::layout::types::sizing::Sizing;
-    use crate::ui::test_support::new_ui;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
 
@@ -219,7 +219,7 @@ mod tests {
     /// `stack::measure` queries `MinContent` on each Fill child.
     #[test]
     fn intrinsic_cache_populated_after_run() {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut root = crate::forest::tree::NodeId(0);
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
@@ -255,7 +255,7 @@ mod tests {
     /// — a recompute would overwrite the sentinel with the real value.
     #[test]
     fn intrinsic_query_short_circuits_on_cache_hit() {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut root = crate::forest::tree::NodeId(0);
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
@@ -308,7 +308,7 @@ mod tests {
     /// query.
     #[test]
     fn parent_intrinsic_query_populates_descendant_cache() {
-        let mut ui = new_ui();
+        let mut ui = Ui::for_test();
         let mut root = crate::forest::tree::NodeId(0);
         // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can

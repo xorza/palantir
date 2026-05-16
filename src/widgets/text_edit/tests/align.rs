@@ -343,7 +343,7 @@ mod per_line {
     use glam::UVec2;
 
     fn cosmic_ui() -> Ui {
-        ui_with_text(UVec2::new(800, 200))
+        Ui::for_test_at_text(UVec2::new(800, 200))
     }
 
     #[test]

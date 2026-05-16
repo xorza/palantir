@@ -1,6 +1,7 @@
 use super::support;
 use super::support::{chat_message, two_hug_cols_with_wrap};
 use crate::TextStyle;
+use crate::Ui;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::Layer;
@@ -10,7 +11,6 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
-use crate::ui::test_support::ui_with_text;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -19,7 +19,7 @@ const PARAGRAPH: &str = "the quick brown fox jumps over the lazy dog";
 
 #[test]
 fn wrapping_text_grows_height_in_narrow_frame() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut text_node = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::vstack()
@@ -67,7 +67,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 /// shape is multi-line and fits the slot.
 #[test]
 fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
@@ -92,7 +92,7 @@ fn wrapping_text_in_grid_auto_column_wraps_under_constrained_width() {
 /// the API + cache + per-driver functions are wired correctly.
 #[test]
 fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut node = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         node = Some(two_hug_cols_with_wrap(ui, PARAGRAPH));
@@ -153,7 +153,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
 /// cached shape disagrees with arrange's slot.
 #[test]
 fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut msg = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         msg = Some(chat_message(ui, 40.0, PARAGRAPH, 14.0));
@@ -178,7 +178,7 @@ fn hstack_fill_wrap_text_reshapes_at_resolved_share() {
 /// further.
 #[test]
 fn hstack_fill_wrap_text_floors_at_min_content() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut msg = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         msg = Some(chat_message(ui, 180.0, "supercalifragilistic", 14.0));
@@ -199,7 +199,7 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
 /// rule.
 #[test]
 fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
-    let mut ui = ui_with_text(UVec2::new(200, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut msg = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
         msg = Some(chat_message(ui, 180.0, "supercalifragilistic", 14.0));
@@ -286,7 +286,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
     }
 
     fn measure_at(surface_w: u32) -> (f32, f32) {
-        let mut ui = ui_with_text(UVec2::new(surface_w, 400));
+        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
         let mut nodes = None;
         ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
             nodes = Some(build(ui));
@@ -347,7 +347,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
 /// its arranged cell.
 #[test]
 fn nonwrapping_text_minconent_equals_full_width() {
-    let mut ui = ui_with_text(UVec2::new(400, 200));
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 200));
     let mut label_node = None;
     ui.run_at_acked(UVec2::new(400, 200), |ui| {
         label_node = Some(
@@ -425,7 +425,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 
     // Probe label's natural unbroken width at an unconstrained surface.
-    let mut probe = ui_with_text(UVec2::new(2000, 400));
+    let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
     let mut probe_label = None;
     probe.run_at_acked(UVec2::new(2000, 400), |ui| {
         probe_label = Some(build(ui).1);
@@ -447,7 +447,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     // than the grid's intrinsic floor, slack distribution kicks in.
     // The label cell must still get at least its full natural width.
     for surface_w in [400u32, 300, 250, 200] {
-        let mut ui = ui_with_text(UVec2::new(surface_w, 400));
+        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
         let mut label = None;
         ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
             label = Some(build(ui).1);
@@ -504,7 +504,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
 /// old "one ShapeRecord::Text per leaf" hard assert.
 #[test]
 fn multi_shape_text_per_leaf_shapes_each_run_independently() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut leaf = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         leaf = Some(build_multi_text_leaf(ui));
@@ -543,7 +543,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
 /// re-paint the first's shaped buffer or sit on top of the first.
 #[test]
 fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut leaf = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         leaf = Some(build_multi_text_leaf(ui));
@@ -590,7 +590,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
 /// see stale `TextCacheKey`s.
 #[test]
 fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
-    let mut ui = ui_with_text(UVec2::new(400, 400));
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut f1_leaf = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         f1_leaf = Some(build_multi_text_leaf(ui));
