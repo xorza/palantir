@@ -94,6 +94,15 @@ pub(crate) type AvailableKey = IVec2;
 /// scalar — no scratch buffer required.
 pub(crate) struct SubtreeArenas<'a> {
     pub(crate) desired: &'a [Size],
+    /// Per-node leading-edge offset (`bbox.min`, ≤ `(0,0)`) published
+    /// by drivers whose content can extend past origin (today:
+    /// `canvas::measure`). Mirrors `desired`'s lifecycle so a
+    /// measure-cache hit on a canvas-containing subtree still surfaces
+    /// the right negative slack to the enclosing scroll — without
+    /// this, the cache-restore path would zero the scratch column and
+    /// the scroll would clamp at 0 even though last frame's bbox.min
+    /// was negative.
+    pub(crate) content_origin: &'a [glam::Vec2],
     /// Per-node `Span` into the flat `text_shapes` buffer. Spans are
     /// expressed in `text_spans_base`-rooted coordinates: subtract
     /// `text_spans_base` from each `start` to get a subtree-local
@@ -149,6 +158,11 @@ pub(crate) fn quantize_available(s: Size) -> AvailableKey {
 #[derive(Default)]
 pub(crate) struct NodeArenas {
     pub(crate) desired: Vec<Size>,
+    /// Per-node `content_origin` mirror of [`SubtreeArenas::content_origin`].
+    /// Length-locked to `desired` (acquire/release operate on the
+    /// shared `live` counter), so it round-trips through every cache
+    /// path without a separate book.
+    pub(crate) content_origin: Vec<glam::Vec2>,
     /// Per-node `Span` into each snapshot's flat `text_shapes_arena`
     /// range. Stored **subtree-local** (start relative to the snapshot's
     /// `text_shapes` range start) so spans survive flat-range compaction.
@@ -159,6 +173,7 @@ pub(crate) struct NodeArenas {
 impl NodeArenas {
     fn write_in_place(&mut self, range: Range<usize>, src: &SubtreeArenas<'_>) {
         self.desired[range.clone()].copy_from_slice(src.desired);
+        self.content_origin[range.clone()].copy_from_slice(src.content_origin);
         let base = src.text_spans_base;
         for (dst, s) in self.text_spans[range].iter_mut().zip(src.text_spans.iter()) {
             *dst = s.rebased(base);
@@ -168,6 +183,7 @@ impl NodeArenas {
     fn append(&mut self, src: &SubtreeArenas<'_>) -> u32 {
         let start = self.desired.len() as u32;
         self.desired.extend_from_slice(src.desired);
+        self.content_origin.extend_from_slice(src.content_origin);
         let base = src.text_spans_base;
         self.text_spans
             .extend(src.text_spans.iter().map(|s| s.rebased(base)));
@@ -177,6 +193,8 @@ impl NodeArenas {
     fn extend_from_within(&mut self, src: &Self, range: Range<usize>) -> u32 {
         let start = self.desired.len() as u32;
         self.desired.extend_from_slice(&src.desired[range.clone()]);
+        self.content_origin
+            .extend_from_slice(&src.content_origin[range.clone()]);
         self.text_spans.extend_from_slice(&src.text_spans[range]);
         start
     }
@@ -198,6 +216,7 @@ impl NodeArenas {
     fn with_capacity(cap: usize) -> Self {
         Self {
             desired: Vec::with_capacity(cap),
+            content_origin: Vec::with_capacity(cap),
             text_spans: Vec::with_capacity(cap),
             live: 0,
         }
@@ -206,6 +225,7 @@ impl NodeArenas {
     #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
         self.desired.clear();
+        self.content_origin.clear();
         self.text_spans.clear();
         self.live = 0;
     }
@@ -258,6 +278,7 @@ impl MeasureCache {
             root: self.nodes.desired[nodes.start],
             arenas: SubtreeArenas {
                 desired: &self.nodes.desired[nodes.clone()],
+                content_origin: &self.nodes.content_origin[nodes.clone()],
                 text_spans: &self.nodes.text_spans[nodes],
                 text_spans_base: 0,
                 hugs: &self.hugs.items[snap.hugs.range()],
@@ -282,6 +303,7 @@ impl MeasureCache {
         arenas: SubtreeArenas<'_>,
     ) {
         assert_eq!(arenas.desired.len(), arenas.text_spans.len());
+        assert_eq!(arenas.desired.len(), arenas.content_origin.len());
         assert!(!arenas.desired.is_empty(), "snapshot must include the root");
         let new_len = arenas.desired.len() as u32;
         let new_hugs_len = arenas.hugs.len() as u32;

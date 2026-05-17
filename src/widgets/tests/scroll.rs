@@ -39,7 +39,7 @@ fn scroll_state_records_viewport_and_content_after_arrange() {
     ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
     let row = read_state(&mut ui);
     assert_eq!(row.viewport.h, 200.0);
-    assert_eq!(row.content.h, 800.0);
+    assert_eq!(row.content.size.h, 800.0);
     assert_eq!(row.offset, Vec2::ZERO, "no wheel input → offset stays at 0");
 }
 
@@ -70,6 +70,54 @@ fn wheel_delta_advances_offset_with_clamp() {
 
         assert_eq!(read_state(&mut ui).offset.y, *expected, "case: {label}");
     }
+}
+
+/// A canvas child with a negatively-positioned grandchild publishes
+/// its `bbox.min` to the enclosing scroll via
+/// `LayoutScratch::content_origin`, and the scroll's offset clamp
+/// extends on the leading side accordingly — without the canvas
+/// shifting siblings.
+#[test]
+fn negatively_placed_canvas_child_extends_scroll_clamp_on_leading_side() {
+    use crate::widgets::panel::Panel;
+    let mut ui = Ui::for_test();
+    // Overflow setup: viewport 100, canvas content spans
+    // [-120, 200] → bbox 320, slack 220. Natural negative clamp at
+    // bbox.min = -120; natural positive clamp at bbox.max - viewport
+    // = 100.
+    let viewport = 100.0;
+    let build_neg = |ui: &mut Ui| {
+        Scroll::both()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::Fixed(viewport), Sizing::Fixed(viewport)))
+            .hide_bars()
+            .show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("canvas"))
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("neg"))
+                            .position((-120.0, -120.0))
+                            .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                            .show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("pos"))
+                            .position((180.0, 180.0))
+                            .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                            .show(ui);
+                    });
+            });
+    };
+    ui.run_at_acked(SURFACE, build_neg);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    ui.run_at_acked(SURFACE, build_neg);
+    assert_eq!(read_state(&mut ui).offset, Vec2::new(-120.0, -120.0));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    ui.run_at_acked(SURFACE, build_neg);
+    // bbox.max = 200, slack to right = 200 - viewport = 100.
+    assert_eq!(read_state(&mut ui).offset, Vec2::new(100.0, 100.0));
 }
 
 /// `content_margin` shifts the natural offset range away from
@@ -166,7 +214,8 @@ fn both_axis_scroll_pans_both_axes() {
     let id = WidgetId::from_hash("xy").with("__viewport");
     let row = *ui.scroll_state(id);
     assert_eq!(row.offset, Vec2::new(40.0, 60.0));
-    assert_eq!(row.content, Size::new(800.0, 800.0));
+    assert_eq!(row.content.size, Size::new(800.0, 800.0));
+    assert_eq!(row.content.min, Vec2::ZERO);
     // Viewport reserves `theme.width + theme.gap = 12px` per panned
     // axis when content overflows; 200 - 12 = 188.
     assert_eq!(row.viewport, Size::new(188.0, 188.0));
@@ -261,7 +310,8 @@ fn scroll_records_content_extent() {
         });
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
         let state = *ui.scroll_state(scroll_id);
-        assert_eq!(state.content, *expected, "case: {label} content");
+        assert_eq!(state.content.size, *expected, "case: {label} content");
+        assert_eq!(state.content.min, Vec2::ZERO, "case: {label} content.min");
         let rect = ui.layout[Layer::Main].rect[scroll_node.idx()];
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
@@ -307,7 +357,7 @@ fn scroll_state_content_survives_measure_cache_hit() {
     ui.run_at_acked(surface, build);
     let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
     let after_first = *ui.scroll_state(scroll_id);
-    assert_eq!(after_first.content.h, 92.0);
+    assert_eq!(after_first.content.size.h, 92.0);
 
     ui.run_at_acked(surface, build);
     let after_second = *ui.scroll_state(scroll_id);

@@ -80,16 +80,21 @@ pub(crate) struct ScrollLayoutState {
     pub(crate) zoom: f32,
     pub(crate) viewport: Size,
     pub(crate) outer: Size,
-    /// Unscaled content extent. Multiply by `zoom` for the
-    /// user-perceived (post-paint) extent.
-    pub(crate) content: Size,
+    /// Unscaled content rect in scroll-content coords. `content.min`
+    /// (≤ `(0,0)`) is the leading-edge offset rolled up from
+    /// `LayoutScratch::content_origin`; `content.size` is the
+    /// `bbox.max - bbox.min` extent the driver measured. Multiply
+    /// by `zoom` for the user-perceived (post-paint) coordinates.
+    /// Margin lives separately on `content_margin`.
+    pub(crate) content: Rect,
     pub(crate) overflow: (bool, bool),
     pub(crate) seen: bool,
-    /// Extra slack added to the measured content extent — purely
-    /// inflates `content` for overflow/clamp/bar math without touching
-    /// child layout. Set by [`Scroll::content_margin`] each record.
-    /// Used by canvas-style scopes (node graphs, infinite boards) to
-    /// allow scrolling past the children's bounding box.
+    /// Extra slack added around the measured content rect at clamp
+    /// time. Doesn't touch child layout and doesn't show up in
+    /// `content` — bars reflect the real bbox; the margin is invisible
+    /// overscroll the user can pan into. Set by
+    /// [`Scroll::content_margin`] each record. Used by canvas-style
+    /// scopes (node graphs, infinite boards).
     pub(crate) content_margin: Spacing,
     /// Snapshot of `offset` at the frame a thumb-drag latched, paired
     /// with the axis whose thumb is being dragged. `Some` while a drag
@@ -107,7 +112,7 @@ impl Default for ScrollLayoutState {
             zoom: 1.0,
             viewport: Size::ZERO,
             outer: Size::ZERO,
-            content: Size::ZERO,
+            content: Rect::ZERO,
             overflow: (false, false),
             seen: false,
             drag_anchor: None,
@@ -170,12 +175,30 @@ pub(crate) fn measure(
     };
 
     let wid = tree.records.widget_id()[node.idx()];
+    // Roll up leading-edge origin from direct children (typically the
+    // canvas published by `canvas::measure`). Non-canvas children
+    // leave their slot at `(0,0)`, so the min collapses to `(0,0)` in
+    // the common case.
+    // Roll up published bbox.min from direct children. The cache
+    // round-trips `content_origin` alongside `desired`, so a
+    // measure-cache hit at any canvas descendant still surfaces the
+    // right value here — no separate fallback path.
+    let mut bb_min = Vec2::ZERO;
+    for c in tree.active_children(node) {
+        let co = layout.scratch.content_origin[c.idx()];
+        bb_min.x = bb_min.x.min(co.x);
+        bb_min.y = bb_min.y.min(co.y);
+    }
     let entry = layout.scroll_states.entry(wid).or_default();
-    // Inflate by the user-set content margin so overflow/slack/bar
-    // math sees the padded extent without `raw` (and the parent's
-    // measure return below) being affected.
-    let margin = entry.content_margin;
-    entry.content = Size::new(raw.w + margin.horiz(), raw.h + margin.vert());
+    // `content` = full bbox in scroll-content space; `min` is the
+    // leading-edge offset rolled up above, `max = min + raw` is the
+    // trailing-edge corner. Margin lives separately in
+    // `content_margin` and is applied at clamp time only — bars
+    // reflect the real content, not the padded slack region.
+    entry.content = Rect {
+        min: bb_min,
+        size: raw,
+    };
 
     match mode {
         LayoutMode::ScrollVertical => Size::new(raw.w, 0.0),
@@ -226,8 +249,8 @@ pub(crate) fn arrange(
     entry.viewport = viewport;
     entry.outer = outer;
     entry.overflow = (
-        entry.content.w * zoom > viewport.w,
-        entry.content.h * zoom > viewport.h,
+        entry.content.size.w * zoom > viewport.w,
+        entry.content.size.h * zoom > viewport.h,
     );
     entry.seen = true;
     // No offset clamp here. Pivot-anchored zoom (in `Scroll::show`)
