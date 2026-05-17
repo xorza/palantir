@@ -16,7 +16,7 @@ fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
     let mut record = Some(record);
     ui.run_at_acked(size, |ui| {
         Panel::hstack()
-            .id_salt("root")
+            .id(WidgetId::from_hash("root"))
             .show(ui, record.take().unwrap());
     });
 }
@@ -57,7 +57,7 @@ fn leaf_snapshot_populated_after_first_frame() {
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -78,7 +78,7 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -99,7 +99,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -111,7 +111,7 @@ fn changing_leaf_authoring_replaces_snapshot() {
     let h1 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     run_frame(&mut ui, |ui| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.9, 0.4, 0.8).into(),
@@ -130,8 +130,14 @@ fn changing_leaf_authoring_replaces_snapshot() {
 fn removed_widget_is_evicted() {
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
-        Frame::new().id_salt("gone").size(40.0).show(ui);
-        Frame::new().id_salt("kept").size(40.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("gone"))
+            .size(40.0)
+            .show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("kept"))
+            .size(40.0)
+            .show(ui);
     });
     let gone = WidgetId::from_hash("gone");
     let kept = WidgetId::from_hash("kept");
@@ -139,7 +145,10 @@ fn removed_widget_is_evicted() {
     assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
 
     run_frame(&mut ui, |ui| {
-        Frame::new().id_salt("kept").size(40.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("kept"))
+            .size(40.0)
+            .show(ui);
     });
     assert!(
         !ui.layout_engine.cache.snapshots.contains_key(&gone),
@@ -156,7 +165,7 @@ fn cache_hit_replays_same_desired_size() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -180,12 +189,14 @@ fn changing_available_forces_miss_and_remeasure() {
     use crate::layout::types::sizing::Sizing;
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::hstack().id_salt("inner").show(ui, |ui| {
-            Frame::new()
-                .id_salt("fill")
-                .size((Sizing::Fill(1.0), Sizing::Fill(1.0)))
-                .show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("inner"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("fill"))
+                    .size((Sizing::Fill(1.0), Sizing::Fill(1.0)))
+                    .show(ui);
+            });
     };
     run_frame_at(&mut ui, UVec2::new(200, 200), build);
     let wid = WidgetId::from_hash("fill");
@@ -212,11 +223,22 @@ fn subtree_snapshot_covers_every_descendant() {
     // that the snapshot's length matches the tree's `subtree_end`.
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
-        Panel::vstack().id_salt("group").show(ui, |ui| {
-            Frame::new().id_salt("c1").size(10.0).show(ui);
-            Frame::new().id_salt("c2").size(20.0).show(ui);
-            Frame::new().id_salt("c3").size(30.0).show(ui);
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("group"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("c1"))
+                    .size(10.0)
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("c2"))
+                    .size(20.0)
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("c3"))
+                    .size(30.0)
+                    .show(ui);
+            });
     });
     let group_wid = WidgetId::from_hash("group");
     let SnapView { snap, desired, .. } = snap_for(&ui, group_wid).unwrap();
@@ -236,10 +258,18 @@ fn subtree_skip_preserves_descendant_rects() {
     // short-circuited.
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("group").show(ui, |ui| {
-            Frame::new().id_salt("c1").size(10.0).show(ui);
-            Frame::new().id_salt("c2").size(20.0).show(ui);
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("group"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("c1"))
+                    .size(10.0)
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("c2"))
+                    .size(20.0)
+                    .show(ui);
+            });
     };
     run_frame(&mut ui, build);
     let n = ui.forest.tree(Layer::Main).records.len();
@@ -286,7 +316,7 @@ fn in_place_rewrite_preserves_arena_position() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui, c: f32| {
         Frame::new()
-            .id_salt("a")
+            .id(WidgetId::from_hash("a"))
             .size(50.0)
             .background(Background {
                 fill: Color::rgb(c, 0.4, 0.8).into(),
@@ -332,18 +362,29 @@ fn arena_invariant_holds_under_fragmentation() {
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
-            Frame::new().id_salt(("a", i)).size(10.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash(("a", i)))
+                .size(10.0)
+                .show(ui);
         }
     });
     // Drop all but one and add a fresh subtree to force append-path
     // writes; expect compaction to trigger somewhere along the way.
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        Frame::new().id_salt(("a", 0usize)).size(10.0).show(ui);
-        Panel::vstack().id_salt("new-group").show(ui, |ui| {
-            for j in 0..(COMPACT_FLOOR + 4) {
-                Frame::new().id_salt(("inner", j)).size(5.0).show(ui);
-            }
-        });
+        Frame::new()
+            .id(WidgetId::from_hash(("a", 0usize)))
+            .size(10.0)
+            .show(ui);
+        Panel::vstack()
+            .id(WidgetId::from_hash("new-group"))
+            .show(ui, |ui| {
+                for j in 0..(COMPACT_FLOOR + 4) {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("inner", j)))
+                        .size(5.0)
+                        .show(ui);
+                }
+            });
     });
     let cache = &ui.layout_engine.cache;
     if cache.nodes.live > COMPACT_FLOOR {
@@ -372,7 +413,10 @@ fn cache_hits_remain_valid_after_compaction() {
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
-            Frame::new().id_salt(("a", i)).size(11.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash(("a", i)))
+                .size(11.0)
+                .show(ui);
         }
     });
     let kept_wid = WidgetId::from_hash(("a", 0usize));
@@ -380,12 +424,20 @@ fn cache_hits_remain_valid_after_compaction() {
 
     // Frame 2: drop most, add fresh subtree to drive compaction.
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        Frame::new().id_salt(("a", 0usize)).size(11.0).show(ui);
-        Panel::vstack().id_salt("new-group").show(ui, |ui| {
-            for j in 0..(COMPACT_FLOOR + 4) {
-                Frame::new().id_salt(("inner", j)).size(5.0).show(ui);
-            }
-        });
+        Frame::new()
+            .id(WidgetId::from_hash(("a", 0usize)))
+            .size(11.0)
+            .show(ui);
+        Panel::vstack()
+            .id(WidgetId::from_hash("new-group"))
+            .show(ui, |ui| {
+                for j in 0..(COMPACT_FLOOR + 4) {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("inner", j)))
+                        .size(5.0)
+                        .show(ui);
+                }
+            });
     });
     // Whether or not compaction fired, the kept widget's snapshot
     // must still describe the right desired and arena range.
@@ -418,28 +470,34 @@ fn cache_hits_remain_valid_after_compaction() {
 #[test]
 fn partial_invalidation_busts_ancestors_preserves_siblings() {
     let build = |ui: &mut Ui, leaf_color: Color| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Panel::vstack().id_salt("changing-branch").show(ui, |ui| {
-                Frame::new()
-                    .id_salt("changing-leaf")
-                    .size(50.0)
-                    .background(Background {
-                        fill: leaf_color.into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("changing-branch"))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("changing-leaf"))
+                            .size(50.0)
+                            .background(Background {
+                                fill: leaf_color.into(),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("stable-sibling"))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("stable-leaf"))
+                            .size(50.0)
+                            .background(Background {
+                                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
             });
-            Panel::vstack().id_salt("stable-sibling").show(ui, |ui| {
-                Frame::new()
-                    .id_salt("stable-leaf")
-                    .size(50.0)
-                    .background(Background {
-                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
-            });
-        });
     };
 
     let mut ui = Ui::for_test();
@@ -516,19 +574,23 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
 #[test]
 fn cache_handles_widget_reappearance_after_eviction() {
     let with_widget = |ui: &mut Ui| {
-        Panel::vstack().id_salt("inner").show(ui, |ui| {
-            Frame::new()
-                .id_salt("blip")
-                .size(40.0)
-                .background(Background {
-                    fill: Color::rgb(0.5, 0.2, 0.7).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("inner"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("blip"))
+                    .size(40.0)
+                    .background(Background {
+                        fill: Color::rgb(0.5, 0.2, 0.7).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     };
     let without_widget = |ui: &mut Ui| {
-        Panel::vstack().id_salt("inner").show(ui, |_ui| {});
+        Panel::vstack()
+            .id(WidgetId::from_hash("inner"))
+            .show(ui, |_ui| {});
     };
 
     let mut ui = Ui::for_test();

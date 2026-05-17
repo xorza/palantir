@@ -3,6 +3,7 @@ use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -16,7 +17,7 @@ fn input_state_press_release_emits_click() {
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -29,7 +30,7 @@ fn input_state_press_release_emits_click() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -42,7 +43,7 @@ fn input_state_press_release_emits_click() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             still_clicking |= Button::new()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
@@ -88,12 +89,12 @@ fn stack_sense_routing() {
         let surface = UVec2::new(200, 100);
         let build = |ui: &mut Ui| {
             Panel::hstack()
-                .id_salt("stack")
+                .id(WidgetId::from_hash("stack"))
                 .padding(20.0)
                 .sense(*sense)
                 .show(ui, |ui| {
                     Button::new()
-                        .id_salt("inside")
+                        .id(WidgetId::from_hash("inside"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .show(ui);
                 });
@@ -106,12 +107,12 @@ fn stack_sense_routing() {
         let mut stack_hovered = false;
         ui.run_at_acked(surface, |ui| {
             let r = Panel::hstack()
-                .id_salt("stack")
+                .id(WidgetId::from_hash("stack"))
                 .padding(20.0)
                 .sense(*sense)
                 .show(ui, |ui| {
                     child_clicked |= Button::new()
-                        .id_salt("inside")
+                        .id(WidgetId::from_hash("inside"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .show(ui)
                         .clicked();
@@ -141,7 +142,7 @@ fn input_state_release_outside_does_not_click() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -154,7 +155,7 @@ fn input_state_release_outside_does_not_click() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             got_click |= Button::new()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
                 .clicked();
@@ -173,12 +174,12 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
     let build = |ui: &mut Ui, capture: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
-                .id_salt("clipper")
+                .id(WidgetId::from_hash("clipper"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                 .clip_rect()
                 .show(ui, |ui| {
                     *capture |= Button::new()
-                        .id_salt("inner")
+                        .id(WidgetId::from_hash("inner"))
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .show(ui)
                         .clicked();
@@ -216,12 +217,12 @@ fn zoom_panel_routes_clicks_by_world_rect() {
         let build = |ui: &mut Ui, capture: &mut bool| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("zoomer")
+                    .id(WidgetId::from_hash("zoomer"))
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .transform(TranslateScale::from_scale(*scale))
                     .show(ui, |ui| {
                         *capture |= Button::new()
-                            .id_salt("inner")
+                            .id(WidgetId::from_hash("inner"))
                             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                             .show(ui)
                             .clicked();
@@ -245,7 +246,7 @@ fn secondary_click_press_release_emits_secondary_clicked() {
     let build = |ui: &mut Ui, sink: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = Button::new()
-                .id_salt("rc_target")
+                .id(WidgetId::from_hash("rc_target"))
                 .label("rc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -276,7 +277,7 @@ fn left_and_right_click_are_independent() {
     let build = |ui: &mut Ui, lc: &mut bool, rc: &mut bool| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let r = Button::new()
-                .id_salt("indep")
+                .id(WidgetId::from_hash("indep"))
                 .label("x")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);

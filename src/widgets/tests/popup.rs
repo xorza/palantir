@@ -13,6 +13,7 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
 use glam::{UVec2, Vec2};
@@ -27,17 +28,17 @@ const BODY_H: f32 = 60.0;
 // would otherwise overwrite with a fresh false.
 fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
     Panel::vstack()
-        .id_salt("main-bg")
+        .id(WidgetId::from_hash("main-bg"))
         .size((Sizing::FILL, Sizing::FILL))
         .sense(crate::Sense::CLICK)
         .show(ui, |ui| {
             let r = Popup::anchored_to(ANCHOR)
-                .id_salt("test-popup")
+                .id(WidgetId::from_hash("test-popup"))
                 .click_outside(config)
                 .padding(4.0)
                 .show(ui, |ui, _popup| {
                     Panel::vstack()
-                        .id_salt("popup-content")
+                        .id(WidgetId::from_hash("popup-content"))
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                         .show(ui, |_| {});
                 });
@@ -105,16 +106,16 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     let mut open = true;
     let scene = |ui: &mut Ui, open: &mut bool| {
         Panel::vstack()
-            .id_salt("main-bg")
+            .id(WidgetId::from_hash("main-bg"))
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 if *open {
                     let r = Popup::anchored_to(ANCHOR)
-                        .id_salt("test-popup")
+                        .id(WidgetId::from_hash("test-popup"))
                         .click_outside(ClickOutside::Dismiss)
                         .show(ui, |ui, _popup| {
                             Panel::vstack()
-                                .id_salt("popup-content")
+                                .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                                 .show(ui, |_| {});
                         });
@@ -157,16 +158,16 @@ fn popup_body_sizing_matches_sizing_mode() {
         let mut ui = Ui::for_test();
         ui.run_at(SURFACE, |ui| {
             Panel::vstack()
-                .id_salt("main-bg")
+                .id(WidgetId::from_hash("main-bg"))
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Popup::anchored_to(anchor)
-                        .id_salt("sized-popup")
+                        .id(WidgetId::from_hash("sized-popup"))
                         .padding(0.0)
                         .size((sw, sh))
                         .show(ui, |ui, _popup| {
                             Panel::vstack()
-                                .id_salt("popup-content")
+                                .id(WidgetId::from_hash("popup-content"))
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(60.0)))
                                 .show(ui, |_| {});
                         });

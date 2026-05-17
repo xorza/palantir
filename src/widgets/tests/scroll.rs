@@ -14,17 +14,19 @@ use glam::{UVec2, Vec2};
 const SURFACE: UVec2 = UVec2::new(400, 600);
 
 fn build(ui: &mut Ui, viewport_h: f32, content_h: f32) {
-    Panel::vstack().id_salt("root").show(ui, |ui| {
-        Scroll::vertical()
-            .id_salt("scroll")
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(viewport_h)))
-            .show(ui, |ui| {
-                Frame::new()
-                    .id_salt("content")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(content_h)))
-                    .show(ui);
-            });
-    });
+    Panel::vstack()
+        .id(WidgetId::from_hash("root"))
+        .show(ui, |ui| {
+            Scroll::vertical()
+                .id(WidgetId::from_hash("scroll"))
+                .size((Sizing::Fixed(200.0), Sizing::Fixed(viewport_h)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("content"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(content_h)))
+                        .show(ui);
+                });
+        });
 }
 
 fn read_state(ui: &mut Ui) -> ScrollState {
@@ -74,17 +76,19 @@ fn wheel_delta_advances_offset_with_clamp() {
 fn horizontal_scroll_pans_only_x() {
     let mut ui = Ui::for_test();
     let build_h = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::horizontal()
-                .id_salt("hscroll")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("hcontent")
-                        .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
-                        .show(ui);
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::horizontal()
+                    .id(WidgetId::from_hash("hscroll"))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("hcontent"))
+                            .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
+                            .show(ui);
+                    });
+            });
     };
     ui.run_at_acked(SURFACE, build_h);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
@@ -100,17 +104,19 @@ fn horizontal_scroll_pans_only_x() {
 fn both_axis_scroll_pans_both_axes() {
     let mut ui = Ui::for_test();
     let build_xy = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::both()
-                .id_salt("xy")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("xy-content")
-                        .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                        .show(ui);
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::both()
+                    .id(WidgetId::from_hash("xy"))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("xy-content"))
+                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
     };
     ui.run_at_acked(SURFACE, build_xy);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
@@ -168,47 +174,47 @@ fn scroll_records_content_extent() {
         };
         let scroll_node = ui.under_outer(surface, |ui| match axis {
             Axis::V => Scroll::vertical()
-                .id_salt("scroll")
+                .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                 .gap(4.0)
                 .show(ui, |ui| {
                     for i in 0..3u32 {
                         Frame::new()
-                            .id_salt(("row", i))
+                            .id(WidgetId::from_hash(("row", i)))
                             .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
                             .show(ui);
                     }
                 })
                 .node(ui),
             Axis::H => Scroll::horizontal()
-                .id_salt("scroll")
+                .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(60.0)))
                 .gap(8.0)
                 .show(ui, |ui| {
                     for i in 0..2u32 {
                         Frame::new()
-                            .id_salt(("col", i))
+                            .id(WidgetId::from_hash(("col", i)))
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .show(ui);
                     }
                 })
                 .node(ui),
             Axis::XY => Scroll::both()
-                .id_salt("scroll")
+                .id(WidgetId::from_hash("scroll"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("wide")
+                        .id(WidgetId::from_hash("wide"))
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
                         .show(ui);
                     Frame::new()
-                        .id_salt("tall")
+                        .id(WidgetId::from_hash("tall"))
                         .size((Sizing::Fixed(80.0), Sizing::Fixed(250.0)))
                         .show(ui);
                 })
                 .node(ui),
             Axis::Empty => Scroll::vertical()
-                .id_salt("empty")
+                .id(WidgetId::from_hash("empty"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                 .show(ui, |_| {})
                 .node(ui),
@@ -239,20 +245,22 @@ fn scroll_records_content_extent() {
 fn scroll_state_content_survives_measure_cache_hit() {
     let surface = UVec2::new(400, 600);
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::vertical()
-                .id_salt("scroll")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .gap(4.0)
-                .show(ui, |ui| {
-                    for i in 0..3u32 {
-                        Frame::new()
-                            .id_salt(("row", i))
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
-                            .show(ui);
-                    }
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .gap(4.0)
+                    .show(ui, |ui| {
+                        for i in 0..3u32 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("row", i)))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                                .show(ui);
+                        }
+                    });
+            });
     };
 
     let mut ui = Ui::for_test();
@@ -333,15 +341,15 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::vstack()
-                .id_salt("root")
+                .id(WidgetId::from_hash("root"))
                 .padding(OUTER_PAD)
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("topbar")
+                        .id(WidgetId::from_hash("topbar"))
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(TEXT_GAP)))
                         .show(ui);
                     Scroll::both()
-                        .id_salt("xy")
+                        .id(WidgetId::from_hash("xy"))
                         .with_zoom_config(ZoomConfig {
                             pivot: ZoomPivot::Pointer,
                             ..ZoomConfig::default()
@@ -349,7 +357,7 @@ fn pinch_zoom_keeps_point_under_cursor_fixed() {
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .show(ui, |ui| {
                             Frame::new()
-                                .id_salt("content")
+                                .id(WidgetId::from_hash("content"))
                                 .size((Sizing::Fixed(content_size), Sizing::Fixed(content_size)))
                                 .show(ui);
                         });
@@ -438,21 +446,23 @@ fn pan_after_pivot_zoom_does_not_snap_out_of_range_offset() {
 
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::both()
-                .id_salt("xy")
-                .with_zoom_config(ZoomConfig {
-                    pivot: ZoomPivot::Pointer,
-                    ..ZoomConfig::default()
-                })
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("content")
-                        .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
-                        .show(ui);
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::both()
+                    .id(WidgetId::from_hash("xy"))
+                    .with_zoom_config(ZoomConfig {
+                        pivot: ZoomPivot::Pointer,
+                        ..ZoomConfig::default()
+                    })
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("content"))
+                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                            .show(ui);
+                    });
+            });
     };
     ui.run_at_acked(SURFACE, build);
 
@@ -676,17 +686,19 @@ mod bars {
     #[test]
     fn vertical_overflow_emits_thumb_shape_after_settle() {
         let (ui, _node) = record_two_frames(UVec2::new(400, 600), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         });
         assert!(
             !thumb_rects(&ui, "scroll").is_empty(),
@@ -697,17 +709,19 @@ mod bars {
     #[test]
     fn no_bar_when_content_fits_viewport() {
         let (ui, node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("short")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("short"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
+                                .show(ui);
+                        });
+                });
         });
         assert_eq!(
             count_positioned(&ui, node),
@@ -724,19 +738,21 @@ mod bars {
         let surface = UVec2::new(400, 300);
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        for i in 0..30u32 {
-                            Frame::new()
-                                .id_salt(("row", i))
-                                .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
-                                .show(ui);
-                        }
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            for i in 0..30u32 {
+                                Frame::new()
+                                    .id(WidgetId::from_hash(("row", i)))
+                                    .size((Sizing::Fixed(180.0), Sizing::Fixed(28.0)))
+                                    .show(ui);
+                            }
+                        });
+                });
         };
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
@@ -750,13 +766,13 @@ mod bars {
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
             Panel::hstack()
-                .id_salt("root")
+                .id(WidgetId::from_hash("root"))
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     for tag in ["v", "h", "xy"] {
                         Panel::vstack()
-                            .id_salt(("card", tag))
+                            .id(WidgetId::from_hash(("card", tag)))
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
@@ -766,14 +782,17 @@ mod bars {
                             .clip_rect()
                             .show(ui, |ui| {
                                 let s = match tag {
-                                    "v" => Scroll::vertical().id_salt(("scroll", tag)),
-                                    "h" => Scroll::horizontal().id_salt(("scroll", tag)),
-                                    _ => Scroll::both().id_salt(("scroll", tag)),
+                                    "v" => {
+                                        Scroll::vertical().id(WidgetId::from_hash(("scroll", tag)))
+                                    }
+                                    "h" => Scroll::horizontal()
+                                        .id(WidgetId::from_hash(("scroll", tag))),
+                                    _ => Scroll::both().id(WidgetId::from_hash(("scroll", tag))),
                                 };
                                 s.size((Sizing::FILL, Sizing::FILL)).show(ui, |ui| {
                                     for i in 0..40u32 {
                                         Frame::new()
-                                            .id_salt((tag, "item", i))
+                                            .id(WidgetId::from_hash((tag, "item", i)))
                                             .size((Sizing::Fixed(120.0), Sizing::Fixed(28.0)))
                                             .show(ui);
                                     }
@@ -795,17 +814,19 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
@@ -824,18 +845,20 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .padding(16.0)
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .padding(16.0)
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
@@ -849,18 +872,20 @@ mod bars {
     #[test]
     fn vertical_bar_overlay_rect_lands_in_right_padding_strip() {
         let (ui, node) = record_two_frames(UVec2::new(400, 600), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .padding(16.0)
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .padding(16.0)
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(100.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         });
         let _ = node;
         let theme = theme();
@@ -886,17 +911,19 @@ mod bars {
         let read_viewport = |ui: &mut Ui| ui.scroll_state(scroll_id).viewport;
 
         let build = |ui: &mut Ui, content_h: f32| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("body")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(content_h)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("body"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(content_h)))
+                                .show(ui);
+                        });
+                });
         };
 
         let mut ui = Ui::for_test();
@@ -924,18 +951,20 @@ mod bars {
         let surface = UVec2::new(400, 400);
         let mut ui = Ui::for_test();
         let build = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::both()
-                    .id_salt("scroll")
-                    .with_zoom()
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("big")
-                            .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(WidgetId::from_hash("scroll"))
+                        .with_zoom()
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("big"))
+                                .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
@@ -971,17 +1000,19 @@ mod bars {
     #[test]
     fn both_axes_overflow_emits_two_thumbs() {
         let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::both()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("big")
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("big"))
+                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         });
         assert_eq!(
             thumb_rects(&ui, "scroll").len(),
@@ -995,17 +1026,19 @@ mod bars {
     #[test]
     fn both_axes_bars_dont_overlap_at_corner() {
         let (ui, _node) = record_two_frames(UVec2::new(400, 400), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::both()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("big")
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("big"))
+                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         });
         let theme = theme();
         let inner = 200.0 - theme.width - theme.gap;
@@ -1044,17 +1077,19 @@ mod bars {
         let theme = theme();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let scene = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("tall")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(surface, scene);
         let row = *ui.scroll_state(scroll_id);
@@ -1081,17 +1116,19 @@ mod bars {
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
         let scene = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::both()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("big")
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("big"))
+                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         };
         let bar_rects = |ui: &Ui| -> Vec<Rect> {
             let mut rects = thumb_rects(ui, "scroll");
@@ -1128,17 +1165,19 @@ mod bars {
         let mut ui = Ui::for_test();
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
         let scene = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::vertical()
-                    .id_salt("scroll")
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("short")
-                            .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("short"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(50.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(surface, scene);
         let row = *ui.scroll_state(scroll_id);
@@ -1159,17 +1198,19 @@ fn drag_thumb_pans_proportionally() {
     use crate::input::pointer::PointerButton;
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::vertical()
-                .id_salt("scroll")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("tall")
-                        .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
-                        .show(ui);
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("tall"))
+                            .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
     };
     ui.run_at_acked(SURFACE, build);
     ui.run_at_acked(SURFACE, build);
@@ -1222,17 +1263,19 @@ fn click_on_track_before_thumb_pages_back_after_pages_forward() {
         let build_axis = |ui: &mut Ui| match axis {
             AxisCase::V => build(ui, 200.0, 800.0),
             AxisCase::H => {
-                Panel::vstack().id_salt("root").show(ui, |ui| {
-                    Scroll::horizontal()
-                        .id_salt("hscroll")
-                        .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id_salt("hcontent")
-                                .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
-                                .show(ui);
-                        });
-                });
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .show(ui, |ui| {
+                        Scroll::horizontal()
+                            .id(WidgetId::from_hash("hscroll"))
+                            .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                            .show(ui, |ui| {
+                                Frame::new()
+                                    .id(WidgetId::from_hash("hcontent"))
+                                    .size((Sizing::Fixed(800.0), Sizing::Fixed(40.0)))
+                                    .show(ui);
+                            });
+                    });
             }
         };
         ui.run_at_acked(SURFACE, build_axis);
@@ -1290,18 +1333,20 @@ fn ctrl_touchpad_pixel_scroll_zooms_at_same_rate_as_wheel_lines() {
     // 16 × 1.2), 38.4 px of touchpad scroll = 2 virtual notches.
     let mut ui = Ui::for_test();
     let build_zoom = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::both()
-                .id_salt("zoomy")
-                .with_zoom()
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("content")
-                        .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                        .show(ui);
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::both()
+                    .id(WidgetId::from_hash("zoomy"))
+                    .with_zoom()
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("content"))
+                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                            .show(ui);
+                    });
+            });
     };
     ui.run_at_acked(SURFACE, build_zoom);
 
@@ -1338,18 +1383,20 @@ fn wheel_zoom_step_is_font_independent() {
         let mut ui = Ui::for_test();
         ui.theme.text = ui.theme.text.with_font_size(font_size);
         let build_zoom = |ui: &mut Ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                Scroll::both()
-                    .id_salt("fz")
-                    .with_zoom()
-                    .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt("content")
-                            .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
-                            .show(ui);
-                    });
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::both()
+                        .id(WidgetId::from_hash("fz"))
+                        .with_zoom()
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("content"))
+                                .size((Sizing::Fixed(800.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
         };
         ui.run_at_acked(SURFACE, build_zoom);
 

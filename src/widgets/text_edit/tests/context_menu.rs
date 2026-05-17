@@ -18,7 +18,7 @@ fn context_menu_cut_copy_paste_clear() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("ctx-ed")
+                .id(WidgetId::from_hash("ctx-ed"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -281,7 +281,7 @@ fn secondary_click_opens_text_edit_menu() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("ctx-ed-sec")
+                .id(WidgetId::from_hash("ctx-ed-sec"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });

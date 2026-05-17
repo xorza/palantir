@@ -42,7 +42,7 @@ impl Card {
 
     fn record(&mut self, ui: &mut Ui) {
         let r = Frame::new()
-            .id_salt(self.label)
+            .id(WidgetId::from_hash(self.label))
             .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
             .position(self.pos)
             .sense(Sense::DRAG)
@@ -68,7 +68,7 @@ fn frame_with(ui: &mut Ui, mut body: impl FnMut(&mut Ui)) {
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
-                .id_salt("canvas")
+                .id(WidgetId::from_hash("canvas"))
                 .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                 .show(ui, |ui| body(ui));
         });
@@ -173,7 +173,7 @@ fn drag_started_fires_only_on_latch_frame() {
         ui.run_at_acked(SURFACE, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::canvas()
-                    .id_salt("canvas")
+                    .id(WidgetId::from_hash("canvas"))
                     .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                     .show(ui, |ui| {
                         a.record(ui);
@@ -217,11 +217,11 @@ fn canvas_rearranges_with_dragged_child_position() {
     ui.run_at_acked(SURFACE, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
-                .id_salt("canvas")
+                .id(WidgetId::from_hash("canvas"))
                 .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                 .show(ui, |ui| {
                     let r = Frame::new()
-                        .id_salt("a")
+                        .id(WidgetId::from_hash("a"))
                         .size((Sizing::Fixed(CARD_SIZE), Sizing::Fixed(CARD_SIZE)))
                         .position(a.pos)
                         .sense(Sense::DRAG)

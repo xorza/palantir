@@ -7,12 +7,13 @@ use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
 fn build_hover_target(ui: &mut Ui) {
     Panel::hstack()
-        .id_salt("hot")
+        .id(WidgetId::from_hash("hot"))
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
         .sense(Sense::HOVER)
         .show(ui, |_| {});
@@ -20,16 +21,16 @@ fn build_hover_target(ui: &mut Ui) {
 
 fn build_two_hover_targets(ui: &mut Ui) {
     Panel::hstack()
-        .id_salt("outer")
+        .id(WidgetId::from_hash("outer"))
         .size((Sizing::Hug, Sizing::Hug))
         .show(ui, |ui| {
             Panel::hstack()
-                .id_salt("a")
+                .id(WidgetId::from_hash("a"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                 .sense(Sense::HOVER)
                 .show(ui, |_| {});
             Panel::hstack()
-                .id_salt("b")
+                .id(WidgetId::from_hash("b"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                 .sense(Sense::HOVER)
                 .show(ui, |_| {});
@@ -87,7 +88,7 @@ fn move_during_active_capture_requests_repaint() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::hstack()
-            .id_salt("hot")
+            .id(WidgetId::from_hash("hot"))
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .sense(Sense::CLICK)
             .show(ui, |_| {});

@@ -13,7 +13,7 @@ fn caret_blinks_on_and_off_while_focused() {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
-                    .id_salt("blink-ed")
+                    .id(WidgetId::from_hash("blink-ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
                     .node(ui),
@@ -148,7 +148,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
     fn record(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("anim-damage")
+                .id(WidgetId::from_hash("anim-damage"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -212,7 +212,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("refocus-blink")
+                .id(WidgetId::from_hash("refocus-blink"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -259,7 +259,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
-                .id_salt("blink-wake")
+                .id(WidgetId::from_hash("blink-wake"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -276,7 +276,7 @@ fn focused_text_edit_schedules_blink_wake() {
     let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(&mut buf)
-                .id_salt("blink-wake")
+                .id(WidgetId::from_hash("blink-wake"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });

@@ -31,12 +31,12 @@ fn vertical_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::vertical()
-            .id_salt("scroll")
+            .id(WidgetId::from_hash("scroll"))
             .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 for i in 0..5u32 {
                     Frame::new()
-                        .id_salt(("row", i))
+                        .id(WidgetId::from_hash(("row", i)))
                         .size((Sizing::FILL, Sizing::Fixed(50.0)))
                         .show(ui);
                 }
@@ -50,20 +50,22 @@ fn vertical_scroll_records_content_extent() {
 fn horizontal_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::horizontal()
-                .id_salt("scroll")
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
-                .gap(4.0)
-                .show(ui, |ui| {
-                    for i in 0..10u32 {
-                        Frame::new()
-                            .id_salt(("col", i))
-                            .size((Sizing::Fixed(40.0), Sizing::FILL))
-                            .show(ui);
-                    }
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::horizontal()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
+                    .gap(4.0)
+                    .show(ui, |ui| {
+                        for i in 0..10u32 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("col", i)))
+                                .size((Sizing::Fixed(40.0), Sizing::FILL))
+                                .show(ui);
+                        }
+                    });
+            });
     });
     let content_w = state_for(&mut ui, "scroll").content.w;
     assert!(
@@ -79,11 +81,11 @@ fn both_axis_scroll_records_content_extent() {
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
-            .id_salt("scroll")
+            .id(WidgetId::from_hash("scroll"))
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("wide-tall")
+                    .id(WidgetId::from_hash("wide-tall"))
                     .size((Sizing::Fixed(300.0), Sizing::Fixed(250.0)))
                     .show(ui);
             });
@@ -100,19 +102,21 @@ fn both_axis_scroll_records_content_extent() {
 fn state_survives_across_frames() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Scroll::vertical()
-                .id_salt("scroll")
-                .size((Sizing::Fixed(150.0), Sizing::Fixed(100.0)))
-                .show(ui, |ui| {
-                    for i in 0..4u32 {
-                        Frame::new()
-                            .id_salt(("row", i))
-                            .size((Sizing::FILL, Sizing::Fixed(40.0)))
-                            .show(ui);
-                    }
-                });
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Fixed(150.0), Sizing::Fixed(100.0)))
+                    .show(ui, |ui| {
+                        for i in 0..4u32 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("row", i)))
+                                .size((Sizing::FILL, Sizing::Fixed(40.0)))
+                                .show(ui);
+                        }
+                    });
+            });
     };
     ui.run_at(SURFACE, build);
     let f1 = state_for(&mut ui, "scroll");

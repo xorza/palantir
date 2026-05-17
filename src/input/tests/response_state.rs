@@ -12,7 +12,7 @@ fn focusable_id() -> WidgetId {
 
 fn build_focusable_leaf(ui: &mut Ui) {
     Frame::new()
-        .id_salt("focusable")
+        .id(WidgetId::from_hash("focusable"))
         .focusable(true)
         .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
         .show(ui);
@@ -39,11 +39,11 @@ fn disabled_reflects_cascaded_ancestor_flag() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::vstack()
-            .id_salt("parent")
+            .id(WidgetId::from_hash("parent"))
             .disabled(true)
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("child")
+                    .id(WidgetId::from_hash("child"))
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                     .show(ui);
             });
@@ -64,12 +64,14 @@ fn disabled_reflects_cascaded_ancestor_flag() {
 fn disabled_false_when_chain_clean() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("parent").show(ui, |ui| {
-            Frame::new()
-                .id_salt("child")
-                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
-                .show(ui);
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("parent"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("child"))
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui);
+            });
     };
     ui.run_at_acked(UVec2::new(200, 200), build);
     ui.run_at_acked(UVec2::new(200, 200), build);

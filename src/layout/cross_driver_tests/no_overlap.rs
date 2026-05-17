@@ -2,6 +2,7 @@
 //! back-to-back grids inside a vstack) ended up painting on top of
 //! each other. Pinned via arranged-rect order plus a render-pass
 //! check on emitted `DrawText` x positions.
+use crate::primitives::widget_id::WidgetId;
 
 use crate::TextStyle;
 use crate::Ui;
@@ -22,7 +23,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
 
 fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
     Panel::vstack()
-        .id_salt(id)
+        .id(WidgetId::from_hash(id))
         .size((Sizing::FILL, Sizing::Hug))
         .gap(6.0)
         .padding(8.0)
@@ -34,7 +35,7 @@ fn section(ui: &mut Ui, id: &'static str, body: &mut dyn FnMut(&mut Ui)) {
         })
         .show(ui, |ui| {
             Text::new("title")
-                .id_salt(("section-title", id))
+                .id(WidgetId::from_hash(("section-title", id)))
                 .style(TextStyle::default().with_font_size(12.0))
                 .show(ui);
             body(ui);
@@ -130,7 +131,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
             .show(ui, |ui| {
                 section(ui, "two-hug-columns", &mut |ui| {
                     Grid::new()
-                        .id_salt("two-hug-inner")
+                        .id(WidgetId::from_hash("two-hug-inner"))
                         .cols(Rc::from([Track::hug(), Track::hug()]))
                         .rows(Rc::from([Track::hug()]))
                         .gap_xy(0.0, 16.0)
@@ -157,7 +158,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 
                 section(ui, "property-grid", &mut |ui| {
                     Grid::new()
-                        .id_salt("property-grid-inner")
+                        .id(WidgetId::from_hash("property-grid-inner"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
@@ -217,7 +218,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Grid::new()
-                    .id_salt("property-grid-inner")
+                    .id(WidgetId::from_hash("property-grid-inner"))
                     .size((Sizing::FILL, Sizing::Hug))
                     .cols(Rc::from([Track::hug(), Track::fill()]))
                     .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))
@@ -283,7 +284,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
                             section(ui, "two-hug-columns", &mut |ui| {
-                                Grid::new().id_salt("two-hug-inner")
+                                Grid::new().id(WidgetId::from_hash("two-hug-inner"))
                                     .cols(Rc::from([Track::hug(), Track::hug()]))
                                     .rows(Rc::from([Track::hug()]))
                                     .gap_xy(0.0, 16.0)
@@ -300,7 +301,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     });
                             });
                             section(ui, "property-grid", &mut |ui| {
-                                Grid::new().id_salt("property-grid-inner")
+                                Grid::new().id(WidgetId::from_hash("property-grid-inner"))
                                     .size((Sizing::FILL, Sizing::Hug))
                                     .cols(Rc::from([Track::hug(), Track::fill()]))
                                     .rows(Rc::from([Track::hug(), Track::hug(), Track::hug()]))

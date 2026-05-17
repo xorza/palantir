@@ -4,6 +4,7 @@ use crate::forest::element::Configure;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -19,11 +20,11 @@ fn zstack_layers_children_without_painting_background() {
         Panel::hstack().auto_id().show(ui, |ui| {
             zstack_node = Some(
                 Panel::zstack()
-                    .id_salt("layered")
+                    .id(WidgetId::from_hash("layered"))
                     .show(ui, |ui| {
                         bg_node = Some(
                             Frame::new()
-                                .id_salt("bg")
+                                .id(WidgetId::from_hash("bg"))
                                 .size((Sizing::Fixed(120.0), Sizing::Fixed(80.0)))
                                 .background(Background {
                                     fill: Color::rgb(0.1, 0.1, 0.2).into(),
@@ -34,7 +35,7 @@ fn zstack_layers_children_without_painting_background() {
                         );
                         fg_node = Some(
                             Button::new()
-                                .id_salt("fg")
+                                .id(WidgetId::from_hash("fg"))
                                 .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
                                 .show(ui)
                                 .node(ui),
@@ -78,12 +79,12 @@ fn zstack_aligns_child_per_axis() {
         ui.run_at(UVec2::new(400, 400), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("box")
+                    .id(WidgetId::from_hash("box"))
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(100.0)))
                     .show(ui, |ui| {
                         child_node = Some(
                             Frame::new()
-                                .id_salt("c")
+                                .id(WidgetId::from_hash("c"))
                                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                                 .align(*align)
                                 .background(Background {

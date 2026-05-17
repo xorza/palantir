@@ -46,16 +46,18 @@ const BLUE: Color = Color::rgb(0.2, 0.4, 0.8);
 const RED: Color = Color::rgb(0.9, 0.4, 0.8);
 
 fn one_frame(ui: &mut Ui, color: Color) {
-    Panel::hstack().id_salt("root").show(ui, |ui| {
-        Frame::new()
-            .id_salt("a")
-            .size(50.0)
-            .background(Background {
-                fill: color.into(),
-                ..Default::default()
-            })
-            .show(ui);
-    });
+    Panel::hstack()
+        .id(WidgetId::from_hash("root"))
+        .show(ui, |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash("a"))
+                .size(50.0)
+                .background(Background {
+                    fill: color.into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
 }
 
 /// Pin: the very first frame has no `prev_frame` entries, so every
@@ -113,33 +115,35 @@ fn stable_painting_subtree_triggers_skip_jump() {
     // snapshots on the second frame, so the root's Occupied-equal arm
     // is reached with a span > 1 and the skip counter increments.
     let build = |ui: &mut Ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Panel::hstack()
-                .id_salt("painting_parent")
-                .size((Sizing::Fixed(80.0), Sizing::Fixed(60.0)))
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("child_a")
-                        .size(20.0)
-                        .background(Background {
-                            fill: RED.into(),
-                            ..Default::default()
-                        })
-                        .show(ui);
-                    Frame::new()
-                        .id_salt("child_b")
-                        .size(20.0)
-                        .background(Background {
-                            fill: RED.into(),
-                            ..Default::default()
-                        })
-                        .show(ui);
-                });
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("painting_parent"))
+                    .size((Sizing::Fixed(80.0), Sizing::Fixed(60.0)))
+                    .background(Background {
+                        fill: BLUE.into(),
+                        ..Default::default()
+                    })
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("child_a"))
+                            .size(20.0)
+                            .background(Background {
+                                fill: RED.into(),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("child_b"))
+                            .size(20.0)
+                            .background(Background {
+                                fill: RED.into(),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
+            });
     };
     frame(&mut ui, build);
     assert_eq!(
@@ -166,21 +170,28 @@ fn stable_painting_subtree_triggers_skip_jump() {
 fn paints_to_non_paints_transition_evicts_and_clears() {
     let mut ui = Ui::for_test();
     let with_bg = |ui: &mut Ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size(50.0)
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(50.0)
+                    .background(Background {
+                        fill: BLUE.into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     };
     let no_bg = |ui: &mut Ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Frame::new().id_salt("a").size(50.0).show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(50.0)
+                    .show(ui);
+            });
     };
     frame(&mut ui, with_bg);
     let id = WidgetId::from_hash("a");
@@ -211,14 +222,14 @@ fn popup_eater_does_not_force_full_repaint() {
     // Frame 1: popup open. Eater (full-surface) + body (small).
     frame(&mut ui, |ui| {
         Popup::anchored_to(anchor)
-            .id_salt("p")
+            .id(WidgetId::from_hash("p"))
             .background(Background {
                 fill: BLUE.into(),
                 ..Default::default()
             })
             .show(ui, |ui, _popup| {
                 Frame::new()
-                    .id_salt("body-leaf")
+                    .id(WidgetId::from_hash("body-leaf"))
                     .size(60.0)
                     .background(Background {
                         fill: RED.into(),
@@ -232,7 +243,10 @@ fn popup_eater_does_not_force_full_repaint() {
     // paints-gate, the eater's full-surface prev rect would dominate
     // the region.
     let out = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
-        Frame::new().id_salt("placeholder").size(10.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("placeholder"))
+            .size(10.0)
+            .show(ui);
     });
     let Some(RenderPlan::Partial { region, .. }) = out.plan else {
         panic!(
@@ -263,16 +277,18 @@ fn click_on_empty_bg_does_not_force_full() {
     use std::time::Duration;
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size(50.0)
-                .background(Background {
-                    fill: BLUE.into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(50.0)
+                    .background(Background {
+                        fill: BLUE.into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     };
     // Frame 0 (cold): expect Full. Submit.
     ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), build);
@@ -411,24 +427,26 @@ fn fill_change_marks_only_the_changed_leaf() {
 fn sibling_reflow_marks_downstream_neighbor_dirty() {
     let mut ui = Ui::for_test();
     let build = |a_size: f32, ui: &mut Ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Frame::new()
-                .id_salt("a")
-                .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
-                .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-            Frame::new()
-                .id_salt("b")
-                .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
-                .background(Background {
-                    fill: Color::rgb(0.5, 0.5, 0.5).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size((Sizing::Fixed(a_size), Sizing::Fixed(20.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("b"))
+                    .size((Sizing::Fixed(30.0), Sizing::Fixed(20.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     };
     frame(&mut ui, |ui| build(50.0, ui));
     frame(&mut ui, |ui| build(80.0, ui));
@@ -452,14 +470,21 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
 fn removed_widget_contributes_prev_rect_to_damage() {
     let mut ui = Ui::for_test();
     frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Button::new().id_salt("gone").label("X").show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(WidgetId::from_hash("gone"))
+                    .label("X")
+                    .show(ui);
+            });
     });
     let prev_button_rect = ui.damage_engine.prev[&WidgetId::from_hash("gone")].rect;
 
     frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |_| {});
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |_| {});
     });
 
     // Button is gone; root Panel is non-painting (no chrome) so it
@@ -475,19 +500,23 @@ fn removed_widget_contributes_prev_rect_to_damage() {
 fn added_widget_contributes_curr_rect_to_damage() {
     let mut ui = Ui::for_test();
     frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |_| {});
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |_| {});
     });
     frame(&mut ui, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Frame::new()
-                .id_salt("new")
-                .size(50.0)
-                .background(Background {
-                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("new"))
+                    .size(50.0)
+                    .background(Background {
+                        fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     });
 
     let dirty_ids: Vec<WidgetId> = ui
@@ -543,12 +572,12 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     let build = |fill: Color, ui: &mut Ui, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
-                .id_salt("outer")
+                .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(translate))
                 .show(ui, |ui| {
                     *child = Some(
                         Frame::new()
-                            .id_salt("c")
+                            .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
                                 fill: fill.into(),
@@ -597,12 +626,12 @@ fn animated_parent_transform_unions_old_and_new_positions() {
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
-                .id_salt("outer")
+                .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                 .show(ui, |ui| {
                     *child = Some(
                         Frame::new()
-                            .id_salt("c")
+                            .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
                                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -662,12 +691,12 @@ fn transform_animation_keeps_far_positions_split() {
     let build = |dx: f32, ui: &mut Ui, child: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
             Panel::hstack()
-                .id_salt("outer")
+                .id(WidgetId::from_hash("outer"))
                 .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
                 .show(ui, |ui| {
                     *child = Some(
                         Frame::new()
-                            .id_salt("c")
+                            .id(WidgetId::from_hash("c"))
                             .size(40.0)
                             .background(Background {
                                 fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -904,11 +933,11 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     // (3000, 0, 50, 60).
     let mut scene = |ui: &mut Ui| {
         Panel::hstack()
-            .id_salt("root")
+            .id(WidgetId::from_hash("root"))
             .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("big")
+                    .id(WidgetId::from_hash("big"))
                     .size((3000.0, 60.0))
                     .background(Background {
                         fill: BLUE.into(),
@@ -916,7 +945,7 @@ fn small_damage_with_surface_change_forces_full_repaint() {
                     })
                     .show(ui);
                 Frame::new()
-                    .id_salt("small")
+                    .id(WidgetId::from_hash("small"))
                     .size((50.0, 60.0))
                     .background(Background {
                         fill: BLUE.into(),
@@ -1025,22 +1054,24 @@ fn button_hover_damage_covers_only_the_button() {
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                *hot = Some(
-                    Button::new()
-                        .id_salt("hot")
-                        .label("Hover me")
-                        .show(ui)
-                        .node(ui),
-                );
-                *cold = Some(
-                    Button::new()
-                        .id_salt("cold")
-                        .label("Quiet")
-                        .show(ui)
-                        .node(ui),
-                );
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    *hot = Some(
+                        Button::new()
+                            .id(WidgetId::from_hash("hot"))
+                            .label("Hover me")
+                            .show(ui)
+                            .node(ui),
+                    );
+                    *cold = Some(
+                        Button::new()
+                            .id(WidgetId::from_hash("cold"))
+                            .label("Quiet")
+                            .show(ui)
+                            .node(ui),
+                    );
+                });
         });
     };
 
@@ -1100,22 +1131,24 @@ fn button_unhover_damage_covers_only_the_button() {
     let mut cold_node = None;
     let build = |ui: &mut Ui, hot: &mut Option<NodeId>, cold: &mut Option<NodeId>| {
         ui.run_at_acked(UVec2::new(400, 400), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |ui| {
-                *hot = Some(
-                    Button::new()
-                        .id_salt("hot")
-                        .label("Hover me")
-                        .show(ui)
-                        .node(ui),
-                );
-                *cold = Some(
-                    Button::new()
-                        .id_salt("cold")
-                        .label("Quiet")
-                        .show(ui)
-                        .node(ui),
-                );
-            });
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    *hot = Some(
+                        Button::new()
+                            .id(WidgetId::from_hash("hot"))
+                            .label("Hover me")
+                            .show(ui)
+                            .node(ui),
+                    );
+                    *cold = Some(
+                        Button::new()
+                            .id(WidgetId::from_hash("cold"))
+                            .label("Quiet")
+                            .show(ui)
+                            .node(ui),
+                    );
+                });
         });
     };
 
@@ -1161,25 +1194,27 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
             // Root hstack so the inner zstack honors its `Fixed` size
             // (root nodes get stretched to the surface anchor by the
             // layout engine, which would defeat the clip).
-            Panel::hstack().id_salt("clip-host").show(ui, |ui| {
-                Panel::zstack()
-                    .id_salt("clip-root")
-                    .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
-                    .clip_rect()
-                    .show(ui, |ui| {
-                        *child = Some(
-                            Frame::new()
-                                .id_salt("overflow")
-                                .size(child_size)
-                                .background(Background {
-                                    fill: fill.into(),
-                                    ..Default::default()
-                                })
-                                .show(ui)
-                                .node(ui),
-                        );
-                    });
-            });
+            Panel::hstack()
+                .id(WidgetId::from_hash("clip-host"))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("clip-root"))
+                        .size((Sizing::Fixed(viewport_size), Sizing::Fixed(viewport_size)))
+                        .clip_rect()
+                        .show(ui, |ui| {
+                            *child = Some(
+                                Frame::new()
+                                    .id(WidgetId::from_hash("overflow"))
+                                    .size(child_size)
+                                    .background(Background {
+                                        fill: fill.into(),
+                                        ..Default::default()
+                                    })
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        });
+                });
         });
     };
 
@@ -1219,7 +1254,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     let cases: &[(&str, Build)] = &[
         ("shape", |ui| {
             Panel::hstack()
-                .id_salt("card")
+                .id(WidgetId::from_hash("card"))
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
@@ -1241,7 +1276,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         }),
         ("chrome", |ui| {
             Panel::hstack()
-                .id_salt("card")
+                .id(WidgetId::from_hash("card"))
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .background(Background {
                     fill: BLUE.into(),
@@ -1260,7 +1295,9 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
     for (label, build) in cases {
         let mut ui = Ui::for_test();
         frame(&mut ui, |ui| {
-            Panel::hstack().id_salt("root").show(ui, build);
+            Panel::hstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, build);
         });
         let prev_rect = ui.damage_engine.prev[&WidgetId::from_hash("card")].rect;
         assert!(
@@ -1270,7 +1307,9 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
         );
 
         frame(&mut ui, |ui| {
-            Panel::hstack().id_salt("root").show(ui, |_| {});
+            Panel::hstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
         });
         let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
         assert_eq!(rects, vec![prev_rect], "[{label}] damage region");
@@ -1296,34 +1335,36 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
     let mut ui = Ui::for_test();
     let build = |fill: Color, ui: &mut Ui| {
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
-            Panel::hstack().id_salt("host").show(ui, |ui| {
-                Panel::zstack()
-                    .id_salt("viewport")
-                    .size((Sizing::Fixed(viewport), Sizing::Fixed(viewport)))
-                    .clip_rect()
-                    .show(ui, |ui| {
-                        Panel::hstack()
-                            .id_salt("card")
-                            .size((Sizing::Fixed(card), Sizing::Fixed(card)))
-                            .background(Background {
-                                fill: fill.into(),
-                                ..Default::default()
-                            })
-                            .show(ui, |ui| {
-                                ui.add_shape(Shape::Shadow {
-                                    local_rect: None,
-                                    radius: Corners::all(0.0),
-                                    shadow: Shadow {
-                                        color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-                                        offset: Vec2::ZERO,
-                                        blur,
-                                        spread: 0.0,
-                                        inset: false,
-                                    },
+            Panel::hstack()
+                .id(WidgetId::from_hash("host"))
+                .show(ui, |ui| {
+                    Panel::zstack()
+                        .id(WidgetId::from_hash("viewport"))
+                        .size((Sizing::Fixed(viewport), Sizing::Fixed(viewport)))
+                        .clip_rect()
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .id(WidgetId::from_hash("card"))
+                                .size((Sizing::Fixed(card), Sizing::Fixed(card)))
+                                .background(Background {
+                                    fill: fill.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui, |ui| {
+                                    ui.add_shape(Shape::Shadow {
+                                        local_rect: None,
+                                        radius: Corners::all(0.0),
+                                        shadow: Shadow {
+                                            color: Color::rgba(0.0, 0.0, 0.0, 0.5),
+                                            offset: Vec2::ZERO,
+                                            blur,
+                                            spread: 0.0,
+                                            inset: false,
+                                        },
+                                    });
                                 });
-                            });
-                    });
-            });
+                        });
+                });
         });
     };
 

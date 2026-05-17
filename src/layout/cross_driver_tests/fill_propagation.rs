@@ -2,6 +2,7 @@
 //! propagation must not silently switch to `INFINITY` when the
 //! parent has a finite slot — that would make any nested grid fall
 //! back to max-content and break wrapping under constrained widths.
+use crate::primitives::widget_id::WidgetId;
 
 use super::support;
 use super::support::two_hug_cols_with_wrap;
@@ -80,10 +81,10 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
         Panel::hstack().auto_id().show(ui, |ui| {
             zstack_node = Some(
                 Panel::zstack()
-                    .id_salt("hug-z")
+                    .id(WidgetId::from_hash("hug-z"))
                     .show(ui, |ui| {
                         Frame::new()
-                            .id_salt("fill-child")
+                            .id(WidgetId::from_hash("fill-child"))
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
                                 fill: Color::rgb(0.5, 0.5, 0.5).into(),
@@ -91,7 +92,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
                             })
                             .show(ui);
                         Frame::new()
-                            .id_salt("fixed-child")
+                            .id(WidgetId::from_hash("fixed-child"))
                             .size((Sizing::Fixed(60.0), Sizing::Fixed(40.0)))
                             .show(ui);
                     })
@@ -219,7 +220,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
             .show(ui, |ui| {
                 grid_node = Some(
                     Grid::new()
-                        .id_salt("pg")
+                        .id(WidgetId::from_hash("pg"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug(), Track::hug()]))
@@ -277,12 +278,12 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
             .size((Sizing::Fixed(400.0), Sizing::Hug))
             .show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("hug-z")
+                    .id(WidgetId::from_hash("hug-z"))
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
                         grid_node = Some(
                             Grid::new()
-                                .id_salt("nested-grid")
+                                .id(WidgetId::from_hash("nested-grid"))
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .cols(Rc::from([Track::hug(), Track::fill()]))
                                 .rows(Rc::from([Track::hug()]))

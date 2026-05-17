@@ -11,7 +11,7 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("scroll-ed")
+                .id(WidgetId::from_hash("scroll-ed"))
                 .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -55,7 +55,7 @@ fn click_hit_test_compensates_for_scroll() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("hit-ed")
+                .id(WidgetId::from_hash("hit-ed"))
                 .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });

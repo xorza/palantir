@@ -10,7 +10,7 @@ use glam::{UVec2, Vec2};
 
 fn build_clickable(ui: &mut Ui) {
     Panel::hstack()
-        .id_salt("target")
+        .id(WidgetId::from_hash("target"))
         .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
         .sense(Sense::CLICK)
         .show(ui, |_| {});
@@ -106,7 +106,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::hstack()
-                .id_salt("target")
+                .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui, |_| {});

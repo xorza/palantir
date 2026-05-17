@@ -22,7 +22,7 @@ fn measure_calls(ui: &Ui) -> u64 {
 
 fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
     Frame::new()
-        .id_salt(salt)
+        .id(WidgetId::from_hash(salt))
         .size(50.0)
         .background(Background {
             fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -32,7 +32,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
         .node(ui)
 }
 
-/// Two `.id_salt("dup")` calls in one frame would silently corrupt
+/// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently corrupt
 /// every per-id store. Instead of panicking, `SeenIds::record`
 /// disambiguates the second one (same path as auto-id collisions),
 /// `Forest` pairs both colliding nodes via `Forest.collisions`, and
@@ -44,8 +44,8 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let button_node = std::cell::Cell::new(NodeId(0));
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            let a = Button::new().id_salt("dup").show(ui);
-            Button::new().id_salt("dup").show(ui);
+            let a = Button::new().id(WidgetId::from_hash("dup")).show(ui);
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
             button_node.set(a.node(ui));
         });
     });
@@ -94,7 +94,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     );
 }
 
-/// Cross-layer collision: `.id_salt("dup")` in Main and another with
+/// Cross-layer collision: `.id(WidgetId::from_hash("dup"))` in Main and another with
 /// the same key inside a `Ui::layer(Popup, ...)` body. `SeenIds.curr`
 /// is shared across layers, so the second occurrence is detected as a
 /// collision. Each `CollisionRecord` endpoint carries its own `Layer`,
@@ -104,10 +104,10 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let mut ui = Ui::for_test();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
-            Button::new().id_salt("dup").show(ui);
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
         ui.layer(Layer::Popup, glam::Vec2::ZERO, None, |ui| {
-            Button::new().id_salt("dup").show(ui);
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
     });
     assert_eq!(
@@ -169,8 +169,8 @@ fn collisions_do_not_record_into_debug_layer() {
     );
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Button::new().id_salt("dup").show(ui);
-            Button::new().id_salt("dup").show(ui);
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
+            Button::new().id(WidgetId::from_hash("dup")).show(ui);
         });
     });
     assert!(
@@ -221,7 +221,12 @@ fn cascade_visible_to_relayout_pass() {
     ui.run_at(SURFACE, |ui| {
         let probe_resp = std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
-            *probe_resp.borrow_mut() = Some(Frame::new().id_salt(id_salt).size(40.0).show(ui));
+            *probe_resp.borrow_mut() = Some(
+                Frame::new()
+                    .id(WidgetId::from_hash(id_salt))
+                    .size(40.0)
+                    .show(ui),
+            );
         });
         let resp = probe_resp.into_inner().unwrap();
         match pass.get() {
@@ -334,9 +339,11 @@ fn prev_frame_captures_painting_nodes() {
     let mut ui = Ui::for_test();
     let mut frame_node = None;
     ui.run_at(SURFACE, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            frame_node = Some(blue_frame(ui, "a"));
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                frame_node = Some(blue_frame(ui, "a"));
+            });
     });
     let frame_node = frame_node.unwrap();
     let prev = &ui.damage_engine.prev;
@@ -354,9 +361,14 @@ fn prev_frame_captures_painting_nodes() {
 fn prev_frame_drops_disappeared_widgets() {
     let mut ui = Ui::for_test();
     ui.run_at_acked(SURFACE, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |ui| {
-            Button::new().id_salt("gone").label("X").show(ui);
-        });
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Button::new()
+                    .id(WidgetId::from_hash("gone"))
+                    .label("X")
+                    .show(ui);
+            });
     });
     assert!(
         ui.damage_engine
@@ -365,7 +377,9 @@ fn prev_frame_drops_disappeared_widgets() {
     );
 
     ui.run_at_acked(SURFACE, |ui| {
-        Panel::hstack().id_salt("root").show(ui, |_| {});
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |_| {});
     });
     assert!(
         !ui.damage_engine
@@ -380,7 +394,7 @@ fn prev_frame_updates_on_authoring_change() {
     let paint = |fill: Color| {
         move |ui: &mut Ui| {
             Frame::new()
-                .id_salt("a")
+                .id(WidgetId::from_hash("a"))
                 .size(50.0)
                 .background(Background {
                     fill: fill.into(),
@@ -409,7 +423,9 @@ fn text_reshape_skipped_when_unchanged() {
 
     let single: Build = |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
-            Text::new("the quick brown fox").id_salt("hello").show(ui);
+            Text::new("the quick brown fox")
+                .id(WidgetId::from_hash("hello"))
+                .show(ui);
         });
     };
     let wrapped: Build = |ui| {
@@ -418,7 +434,7 @@ fn text_reshape_skipped_when_unchanged() {
             .size((Sizing::Fixed(60.0), Sizing::Hug))
             .show(ui, |ui| {
                 Text::new("the quick brown fox jumps over the lazy dog")
-                    .id_salt("wrapped")
+                    .id(WidgetId::from_hash("wrapped"))
                     .style(TextStyle::default().with_font_size(16.0))
                     .wrapping()
                     .show(ui);
@@ -426,16 +442,16 @@ fn text_reshape_skipped_when_unchanged() {
     };
     let grid_intrinsic: Build = |ui| {
         Grid::new()
-            .id_salt("g")
+            .id(WidgetId::from_hash("g"))
             .size((Sizing::Fixed(200.0), Sizing::Hug))
             .cols(std::rc::Rc::from([Track::hug(), Track::fill()]))
             .show(ui, |ui| {
                 Text::new("label")
-                    .id_salt("hug-col-text")
+                    .id(WidgetId::from_hash("hug-col-text"))
                     .grid_cell((0, 0))
                     .show(ui);
                 Text::new("the quick brown fox jumps over the lazy dog")
-                    .id_salt("fill-col-text")
+                    .id(WidgetId::from_hash("fill-col-text"))
                     .wrapping()
                     .grid_cell((0, 1))
                     .show(ui);
@@ -475,7 +491,9 @@ fn text_reshape_runs_when_content_changes() {
     let render = |content: &'static str| {
         move |ui: &mut Ui| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                Text::new(content).id_salt("changing").show(ui);
+                Text::new(content)
+                    .id(WidgetId::from_hash("changing"))
+                    .show(ui);
             });
         }
     };
@@ -499,7 +517,9 @@ fn text_reuse_evicts_disappeared_widgets() {
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(400, 200), |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
-            Text::new("hello").id_salt("transient").show(ui);
+            Text::new("hello")
+                .id(WidgetId::from_hash("transient"))
+                .show(ui);
         });
     });
     let wid = WidgetId::from_hash("transient");
@@ -532,7 +552,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
                 .size((Sizing::Fixed(slot_w), Sizing::Hug))
                 .show(ui, |ui| {
                     Text::new("the quick brown fox jumps over the lazy dog")
-                        .id_salt("p")
+                        .id(WidgetId::from_hash("p"))
                         .style(TextStyle::default().with_font_size(16.0))
                         .wrapping()
                         .show(ui);
@@ -564,19 +584,19 @@ fn state_map_persists_and_evicts_with_recorded_ids() {
     let id_b = WidgetId::from_hash("b");
 
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Frame::new().id_salt("a").show(ui);
-        Frame::new().id_salt("b").show(ui);
+        Frame::new().id(WidgetId::from_hash("a")).show(ui);
+        Frame::new().id(WidgetId::from_hash("b")).show(ui);
         *ui.state_mut::<u32>(id_a) = 11;
         *ui.state_mut::<u32>(id_b) = 22;
     });
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Frame::new().id_salt("a").show(ui);
+        Frame::new().id(WidgetId::from_hash("a")).show(ui);
         // Reading state during recording so the row is touched while
         // its widget is still seen.
         assert_eq!(*ui.state_mut::<u32>(id_a), 11);
     });
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Frame::new().id_salt("b").show(ui);
+        Frame::new().id(WidgetId::from_hash("b")).show(ui);
         assert_eq!(
             *ui.state_mut::<u32>(id_b),
             0,
@@ -649,7 +669,9 @@ fn frame_pass_count_matches_action_trigger() {
         // Baseline frame so the under-test `frame` diffs against a real
         // prior recording, not the never-painted initial state.
         ui.run_at_acked(UVec2::new(100, 100), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
         });
         prime(&mut ui);
 
@@ -657,7 +679,9 @@ fn frame_pass_count_matches_action_trigger() {
         let frame_id_before = ui.frame_id;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             count.set(count.get() + 1);
-            Panel::vstack().id_salt("root").show(ui, |_| {});
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
         });
         assert_eq!(
             count.get() as usize,
@@ -687,13 +711,17 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Panel::vstack().id_salt("root").show(ui, |_| {});
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |_| {});
     });
 
     // Frame A: idle, no repaint request, now = 16ms.
     let repaint = ui
         .frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
         })
         .repaint_requested();
     assert!(
@@ -711,7 +739,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     // internal flag during recording. The flag must reach `FrameOutput`.
     let repaint = ui
         .frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
             ui.repaint_requested = true;
         })
         .repaint_requested();
@@ -731,7 +761,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
     let _ = ui.frame(
         FrameStamp::new(display, Duration::from_millis(5_032)),
         |ui| {
-            Panel::vstack().id_salt("root").show(ui, |_| {});
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |_| {});
         },
     );
     assert_eq!(ui.time, Duration::from_millis(5_032));
@@ -747,7 +779,9 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         .frame(
             FrameStamp::new(display, Duration::from_millis(5_048)),
             |ui| {
-                Panel::vstack().id_salt("root").show(ui, |_| {});
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .show(ui, |_| {});
             },
         )
         .repaint_requested();
@@ -770,7 +804,10 @@ fn frame_stats_overlay_records_partial_damage() {
     // diff against), but the Debug layer should already carry the
     // readout.
     ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
-        Frame::new().id_salt("body").size(50.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("body"))
+            .size(50.0)
+            .show(ui);
     });
     ui.frame_state.mark_submitted();
     assert_eq!(ui.fps_ema, 0.0);
@@ -784,7 +821,10 @@ fn frame_stats_overlay_records_partial_damage() {
     // and not `None` either. `fps_ema` picks up its first instantaneous
     // reading (~62.5).
     let report = ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
-        Frame::new().id_salt("body").size(50.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("body"))
+            .size(50.0)
+            .show(ui);
     });
     ui.frame_state.mark_submitted();
     assert!(
@@ -802,7 +842,10 @@ fn frame_stats_overlay_records_partial_damage() {
     // frame.
     ui.debug_overlay.frame_stats = false;
     ui.frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
-        Frame::new().id_salt("body").size(50.0).show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("body"))
+            .size(50.0)
+            .show(ui);
     });
     assert!(
         ui.forest.tree(Layer::Debug).records.is_empty(),
@@ -962,7 +1005,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new().id_salt("blinker").size(20.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash("blinker"))
+                .size(20.0)
+                .show(ui);
             ui.add_shape_animated(
                 Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
@@ -1034,7 +1080,10 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Frame::new().id_salt("blinker").size(20.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash("blinker"))
+                .size(20.0)
+                .show(ui);
             ui.add_shape_animated(
                 Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
@@ -1095,21 +1144,26 @@ fn input_policy_routes_paint_only_gate() {
     // frame's wake fires `ANIM`. Pointer-over-inert hits no Sense
     // entry, so OnDelta sees `requests_repaint = false`.
     fn body(ui: &mut Ui, half: Duration) {
-        Panel::vstack().id_salt("root").show(ui, |ui| {
-            Frame::new().id_salt("inert").size(80.0).show(ui);
-            ui.add_shape_animated(
-                Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    radius: Corners::ZERO,
-                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-                    stroke: Stroke::default(),
-                },
-                PaintAnim::BlinkOpacity {
-                    half_period: half,
-                    started_at: Duration::ZERO,
-                },
-            );
-        });
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("inert"))
+                    .size(80.0)
+                    .show(ui);
+                ui.add_shape_animated(
+                    Shape::RoundedRect {
+                        local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+                        radius: Corners::ZERO,
+                        fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+                        stroke: Stroke::default(),
+                    },
+                    PaintAnim::BlinkOpacity {
+                        half_period: half,
+                        started_at: Duration::ZERO,
+                    },
+                );
+            });
     }
 
     // --- OnDelta: inert pointer move keeps the PaintOnly fast path.

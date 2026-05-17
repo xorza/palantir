@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -13,8 +14,14 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
             .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::new().id_salt("a").size((40.0, 20.0)).show(ui);
-                Frame::new().id_salt("b").size((10.0, 80.0)).show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size((40.0, 20.0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("b"))
+                    .size((10.0, 80.0))
+                    .show(ui);
             })
             .node(ui)
     });
@@ -32,8 +39,14 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
             .padding(8.0)
             .show(ui, |ui| {
-                Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
-                Frame::new().id_salt("b").size((30.0, 30.0)).show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size((20.0, 20.0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("b"))
+                    .size((30.0, 30.0))
+                    .show(ui);
             })
             .node(ui)
     });
@@ -94,7 +107,7 @@ fn zstack_per_axis_alignment() {
             p.show(ui, |ui| {
                 for (i, ((w, h), align, _)) in children.iter().enumerate() {
                     Frame::new()
-                        .id_salt(("c", i))
+                        .id(WidgetId::from_hash(("c", i)))
                         .size((*w, *h))
                         .align(*align)
                         .show(ui);
@@ -130,7 +143,7 @@ fn zstack_fill_child_stretches_to_inner() {
             .padding(10.0)
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("filler")
+                    .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
@@ -161,7 +174,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("filler")
+                    .id(WidgetId::from_hash("filler"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
@@ -180,9 +193,12 @@ fn zstack_collapsed_child_does_not_grow_panel() {
             .auto_id()
             .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
                 Frame::new()
-                    .id_salt("hidden")
+                    .id(WidgetId::from_hash("a"))
+                    .size((20.0, 20.0))
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("hidden"))
                     .size((100.0, 100.0))
                     .collapsed()
                     .show(ui);

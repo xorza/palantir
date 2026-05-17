@@ -6,6 +6,14 @@ use std::hash::{Hash, Hasher};
 pub struct WidgetId(pub(crate) u64);
 
 impl WidgetId {
+    /// Stable id for the `Layer::Main` synthetic viewport root.
+    /// Hard-coded (rather than derived from `auto_stable()` at the
+    /// viewport construction site) so refactors to `ui/mod.rs` don't
+    /// shift it. Treated like any other parent by
+    /// `Ui::make_persistent_id` — top-level `id_salt("k")` resolves to
+    /// `VIEWPORT.with(from_hash("k").0)`.
+    pub(crate) const VIEWPORT: Self = Self(u64::MAX);
+
     pub fn from_hash(h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         h.hash(&mut hasher);
