@@ -130,3 +130,30 @@ fn state_survives_across_frames() {
     // Sanity: pinned numbers.
     assert_eq!(f1.content.h, 4.0 * 40.0);
 }
+
+/// `Scroll::content_margin` inflates the recorded `content` extent by
+/// the per-axis totals without touching child layout. Children sum to
+/// 4*40 = 160 high; with `(20, 50)` per-side margin both axes inflate
+/// by `2 * margin` (Spacing's `horiz`/`vert` are `left+right` /
+/// `top+bottom`).
+#[test]
+fn content_margin_inflates_recorded_content_extent() {
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| {
+        Scroll::both()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
+            .content_margin((20.0, 50.0))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("box"))
+                    .size((Sizing::Fixed(80.0), Sizing::Fixed(160.0)))
+                    .show(ui);
+            });
+    });
+    // 80 + 2*20 horizontal, 160 + 2*50 vertical.
+    assert_eq!(
+        state_for(&mut ui, "scroll").content,
+        Size::new(120.0, 260.0)
+    );
+}

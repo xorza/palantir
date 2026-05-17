@@ -72,6 +72,46 @@ fn wheel_delta_advances_offset_with_clamp() {
     }
 }
 
+/// `content_margin` shifts the natural offset range away from
+/// `[0, slack]`: a left/top margin of `m` opens a `[-m, 0)` band so
+/// the user can pan past the children's origin; the right/bottom
+/// margin extends the upper bound by the same amount. Symmetric
+/// margin = symmetric range about the natural `[0, slack]`.
+#[test]
+fn content_margin_allows_negative_pan_into_left_top_band() {
+    let mut ui = Ui::for_test();
+    let m = 100.0;
+    let build_m = |ui: &mut Ui| {
+        Scroll::both()
+            .id(WidgetId::from_hash("scroll"))
+            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+            .hide_bars()
+            .content_margin(m)
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("content"))
+                    .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
+                    .show(ui);
+            });
+    };
+    ui.run_at_acked(SURFACE, build_m);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    // Pan left/up: large negative wheel delta should clamp at `-m` on
+    // both axes (margin is symmetric and zoom is 1.0).
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(-9_999.0, -9_999.0)));
+    ui.run_at_acked(SURFACE, build_m);
+    assert_eq!(read_state(&mut ui).offset, Vec2::new(-m, -m));
+    // Pan back the other way: clamp at `raw_slack + m`. Raw slack =
+    // 400 - 200 = 200; total max = 200 + 100 = 300.
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(9_999.0, 9_999.0)));
+    ui.run_at_acked(SURFACE, build_m);
+    let raw_slack = 400.0 - 200.0;
+    assert_eq!(
+        read_state(&mut ui).offset,
+        Vec2::new(raw_slack + m, raw_slack + m)
+    );
+}
+
 #[test]
 fn horizontal_scroll_pans_only_x() {
     let mut ui = Ui::for_test();
