@@ -45,17 +45,17 @@ fn hstack_arranges_two_buttons_side_by_side() {
     let kids = child_rects(&ui, root);
     assert_eq!(kids.len(), 2);
 
-    // "Hi" → 16w label + 24 padding = 40w; height = 19.2 + 12 = 31.2.
+    // "Hi" → 16w label + 24 padding + 2*1 stroke = 42w; height = 19.2 + 12 + 2 = 33.2.
     let a = kids[0];
     assert_eq!(a.min.x, 0.0);
     assert_eq!(a.min.y, 0.0);
-    assert_eq!(a.size.w, 40.0);
-    assert_eq!(a.size.h, 31.2);
+    assert_eq!(a.size.w, 42.0);
+    assert_eq!(a.size.h, 33.2);
 
     let b = kids[1];
-    assert_eq!(b.min.x, 40.0);
+    assert_eq!(b.min.x, 42.0);
     assert_eq!(b.size.w, 100.0);
-    assert_eq!(b.size.h, 31.2);
+    assert_eq!(b.size.h, 33.2);
 }
 
 #[test]

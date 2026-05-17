@@ -373,13 +373,10 @@ fn encode_node(
     }
 
     if clip {
-        // Clip deflates by `padding` only. Stroke is chrome — a visual
-        // detail of this node's own background — not a layout offset
-        // for its content. Children lay out at `rect - padding`, so
-        // clipping to the same inset keeps a `margin(0)` child flush
-        // with the clip edge. Glyphs / borders that happen to land on
-        // the stroke ring are intentional; the stroke paints over them
-        // in record order.
+        // Clip deflates by `padding`. `Tree::open_node` folds the
+        // chrome's stroke width into padding so the mask automatically
+        // sits inside the painted stroke ring — children clipped here
+        // can't overpaint the stroke.
         let padding = tree.records.layout()[id.index()].padding;
         let mask_rect = rect.deflated_by(padding);
         match mode {

@@ -56,7 +56,7 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let mut ui = Ui::for_test();
     let mut root = None;
     // Hug col 0: max(button widths). Buttons measure label at 8px/char +
-    // default padding 24 → label_w + 24.
+    // default padding 24 + 2*1 chrome stroke → label_w + 26.
     ui.run_at(UVec2::new(400, 200), |ui| {
         root = Some(
             Grid::new()
@@ -88,8 +88,8 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     let short_btn = kids[0];
     let long_btn = kids[1];
     let body = kids[2];
-    assert_eq!(body.min.x, 80.0);
-    assert_eq!(body.size.w, 320.0);
+    assert_eq!(body.min.x, 82.0);
+    assert_eq!(body.size.w, 318.0);
     assert_eq!(short_btn.min.x, 0.0);
     assert_eq!(long_btn.min.x, 0.0);
 }
