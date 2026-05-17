@@ -884,7 +884,14 @@ impl Ui {
         self.forest.close_node();
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId) -> ResponseState {
+    /// Snapshot of input/cascade state for a widget. `rect` and
+    /// `disabled` are from the previous frame's cascade; everything
+    /// else (`pressed`, `hovered`, `drag_started`, `drag_delta`) is
+    /// computed against the current frame's input state and so is
+    /// safe to read before this frame's record runs — useful for
+    /// e.g. baking drag deltas into a widget's position before
+    /// recording it.
+    pub fn response_for(&self, id: WidgetId) -> ResponseState {
         let mut state = self.input.response_for(id, &self.layout.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
