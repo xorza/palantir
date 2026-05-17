@@ -12,6 +12,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
@@ -352,8 +353,8 @@ fn clip_emits_balanced_push_pop() {
 }
 
 /// Rounded-clip emission, plus encoded mask geometry: with zero padding
-/// the mask matches the panel rect and radius verbatim — stroke is chrome
-/// only and doesn't deflate the clip.
+/// the mask is inset by the chrome's stroke width (folded into padding at
+/// `open_node`) so children can't overpaint the stroke ring.
 #[test]
 fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     use crate::primitives::corners::Corners;
@@ -412,8 +413,12 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
     let start = cmds.starts[rounded_idx];
     let payload: PushClipPayload = cmds.read(start);
-    assert_eq!(payload.rect, panel_rect);
-    assert_eq!(payload.radius, Corners::all(8.0));
+    // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
+    // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
+    // every side. Radius reduces by 2 to stay concentric with the
+    // painted stroke's inner edge.
+    assert_eq!(payload.rect, panel_rect.deflated_by(Spacing::all(2.0)));
+    assert_eq!(payload.radius, Corners::all(6.0));
 }
 
 #[test]

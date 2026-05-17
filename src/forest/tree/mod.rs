@@ -456,12 +456,26 @@ impl Tree {
             }
         }
         let ctx = self.open_node_prologue(element.mode, element.mode_payload);
-        let cols = element.into_columns(widget_id);
+        let mut cols = element.into_columns(widget_id);
         self.check_grid_cell(ctx.parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
         self.push_bounds_panel_extras(&cols, &mut ex);
         if let Some((bg, arena, atlas)) = chrome {
+            // Chrome stroke paints fully inside the node's arranged
+            // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
+            // by `stroke.width` on every side so children sit inside
+            // the stroke without the user having to add it by hand.
+            // Done here (not in the layout pass) so the layout columns
+            // already carry the effective padding — zero hot-path cost
+            // and the LayoutCore hash invalidates `MeasureCache`
+            // automatically when the inflated value shifts.
+            if !crate::primitives::approx::noop_f32(bg.stroke.width) {
+                let s = bg.stroke.width;
+                let [l, t, r, b] = cols.layout.padding.as_array();
+                cols.layout.padding =
+                    crate::primitives::spacing::Spacing::new(l + s, t + s, r + s, b + s);
+            }
             // Tree-storage noop gate for chrome — mirrors `Shapes::add`
             // for the shape buffer and `cmd_buffer::draw_*` for emits.
             let needs_chrome_row =
