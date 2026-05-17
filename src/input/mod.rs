@@ -756,15 +756,14 @@ impl InputState {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
-        let entry_idx = cascades.by_id.get(&id).copied();
-        let entry = entry_idx.map(|i| &cascades.entries[i as usize]);
-        let rect = entry.map(|e| e.rect);
-        let layout_rect = entry_idx.map(|i| cascades.entry_layout_rects[i as usize]);
+        let entry_idx = cascades.by_id.get(&id).copied().map(|i| i as usize);
+        let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
+        let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
         // Cascade flattens parent-disabled into each entry, so this is
         // the **effective** ancestor-or-self disabled — one frame stale.
         // Widgets that need lag-free self-toggle response merge their
         // own `element.disabled` on top after calling.
-        let disabled = entry.is_some_and(|e| e.disabled);
+        let disabled = entry_idx.is_some_and(|i| cascades.entries.disabled()[i]);
         let left = self.capture(PointerButton::Left);
         let right = self.capture(PointerButton::Right);
 

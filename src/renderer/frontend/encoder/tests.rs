@@ -672,7 +672,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     });
     let cascades = &ui.layout.cascades;
     let child = child_node.unwrap();
-    assert_eq!(cascades.entries[child.idx()].sense, Sense::NONE);
+    assert_eq!(cascades.entries.sense()[child.idx()], Sense::NONE);
 }
 
 /// `align_text_in` math: glyph bbox positioned inside the leaf's arranged

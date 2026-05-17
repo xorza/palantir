@@ -127,7 +127,7 @@ mod hot_struct_sizes {
         DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
     };
     use crate::renderer::quad::Quad;
-    use crate::ui::cascade::{Cascade, HitEntry};
+    use crate::ui::cascade::{Cascade, EntryRow};
     use crate::ui::damage::region::DamageRegion;
 
     fn row<T>(name: &str) -> (String, usize, usize) {
@@ -152,7 +152,7 @@ mod hot_struct_sizes {
             row::<NodeHash>("rollups::NodeHash"),
             row::<CascadeInputHash>("rollups::CascadeInputHash"),
             row::<Cascade>("cascade::Cascade"),
-            row::<HitEntry>("cascade::HitEntry"),
+            row::<EntryRow>("cascade::EntryRow"),
             row::<DamageRegion>("damage::DamageRegion"),
             row::<DrawRectPayload>("cmd::DrawRectPayload"),
             row::<DrawTextPayload>("cmd::DrawTextPayload"),
