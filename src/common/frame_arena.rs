@@ -148,7 +148,7 @@ impl FrameArena {
     /// `InternedStr::Interned` handle. Backs [`crate::Ui::intern`] for
     /// the format-less case (plain `&str` borrow, no `format_args!`).
     #[must_use]
-    pub(crate) fn intern_str(&self, s: &str) -> InternedStr<'static> {
+    pub(crate) fn intern_str(&self, s: &str) -> InternedStr {
         let mut a = self.0.borrow_mut();
         let start = a.fmt_scratch.len();
         a.fmt_scratch.push_str(s);
@@ -163,7 +163,7 @@ impl FrameArena {
     /// an `InternedStr::Interned` handle that spans the freshly-written
     /// bytes. Backs [`crate::Ui::fmt`].
     #[must_use]
-    pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr<'static> {
+    pub(crate) fn intern_fmt(&self, args: std::fmt::Arguments<'_>) -> InternedStr {
         let mut a = self.0.borrow_mut();
         let start = a.fmt_scratch.len();
         a.fmt_scratch.write_fmt(args).unwrap();

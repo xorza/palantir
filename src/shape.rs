@@ -103,7 +103,7 @@ pub enum Shape<'a> {
         /// `InternedStr::Borrowed` with no allocation. `Shape<'a>`'s
         /// `'a` parameter doesn't constrain this variant; it's used by
         /// `Polyline.points` / `Mesh.mesh` instead.
-        text: InternedStr<'static>,
+        text: InternedStr,
         brush: Brush,
         font_size_px: f32,
         line_height_px: f32,

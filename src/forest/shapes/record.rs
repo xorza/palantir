@@ -298,7 +298,7 @@ pub(crate) enum ShapeRecord {
         /// `Shapes::clear`), `Interned` carries the span+hash from
         /// [`Ui::fmt`](crate::Ui::fmt) unchanged. `text_hash` is the
         /// pre-computed FxHash for context-free `Hash for ShapeRecord`.
-        text: crate::primitives::interned_str::InternedStr<'static>,
+        text: crate::primitives::interned_str::InternedStr,
         text_hash: u64,
         color: ColorF16,
         font_size_px: f32,
