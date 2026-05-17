@@ -79,6 +79,16 @@ pub(crate) struct LayoutScratch {
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) tmp_hugs: Vec<f32>,
+    /// Per-node leading-edge offset published by drivers whose
+    /// content can extend past origin (today: `canvas::measure`'s
+    /// `bbox.min`, ≤ `(0,0)`). Non-publishing drivers leave
+    /// `Vec2::ZERO`. Read by `scroll::measure` to extend its
+    /// offset-clamp range on the negative side so a node-graph user
+    /// can pan into the leading slack opened up by negatively-placed
+    /// children. Round-trips through `MeasureCache` alongside
+    /// `desired` so a measure-cache hit on a content-origin-bearing
+    /// subtree restores the value without re-running the publisher.
+    pub(crate) content_origin: Vec<glam::Vec2>,
 }
 
 impl LayoutScratch {
@@ -88,6 +98,8 @@ impl LayoutScratch {
         self.desired.resize(n, Size::ZERO);
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
+        self.content_origin.clear();
+        self.content_origin.resize(n, glam::Vec2::ZERO);
         self.grid.hugs.reset_for(tree);
     }
 
@@ -336,6 +348,8 @@ impl LayoutEngine {
             // so a length mismatch here would mean the rollup is broken.
             assert_eq!(curr_end, (tree.records.subtree_end()[curr_start]) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
+            self.scratch.content_origin[curr_start..curr_end]
+                .copy_from_slice(hit.arenas.content_origin);
             // Append the snapshot's flat text-shape range to the live
             // per-frame buffer, then rebase its subtree-local spans by
             // `dest_start` into the per-node `text_spans` column.
@@ -448,6 +462,7 @@ impl LayoutEngine {
                 cache_avail,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
+                    content_origin: &self.scratch.content_origin[start..end],
                     text_spans: &out[self.active_layer].text_spans[start..end],
                     text_spans_base: text_shapes_lo,
                     hugs: &self.scratch.tmp_hugs,

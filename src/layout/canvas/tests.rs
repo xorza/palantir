@@ -65,10 +65,14 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 }
 
 #[test]
-fn canvas_negative_position_does_not_extend_bbox() {
-    // Canvas measures `max(pos + desired)` starting at zero, so children
-    // placed at negative coords don't grow the panel — they just bleed past
-    // the inner top-left.
+fn canvas_negative_position_grows_bbox_without_shifting_children() {
+    // Canvas Hug measures the full `[min(0, pos), max(0, pos+d)]`
+    // bbox, so a child at (-5,-5) sized 20 grows the panel on the
+    // leading side (bbox = [-5, 15] per axis → 20 across). Arrange
+    // leaves the child at `inner.min + pos` so it renders 5 px to
+    // the left/above the canvas's outer rect — siblings don't shift.
+    // The enclosing scroll reads `bbox.min` via
+    // `LayoutScratch::content_origin` to extend its clamp.
     let mut ui = Ui::for_test();
     let panel = ui.under_outer(UVec2::new(400, 400), |ui| {
         Panel::canvas()
@@ -84,11 +88,9 @@ fn canvas_negative_position_does_not_extend_bbox() {
             .node(ui)
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
-    // pos + desired = (15, 15) per axis.
-    assert_eq!(r.size.w, 15.0);
-    assert_eq!(r.size.h, 15.0);
+    assert_eq!(r.size.w, 20.0);
+    assert_eq!(r.size.h, 20.0);
 
-    let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
     let kids: Vec<_> = ui
         .forest
         .tree(Layer::Main)
@@ -96,8 +98,13 @@ fn canvas_negative_position_does_not_extend_bbox() {
         .map(|c| c.id)
         .collect();
     let child = ui.layout[Layer::Main].rect[kids[0].idx()];
-    assert_eq!(child.min.x - panel_rect.min.x, -5.0);
-    assert_eq!(child.min.y - panel_rect.min.y, -5.0);
+    assert_eq!(child.min.x - r.min.x, -5.0);
+    assert_eq!(child.min.y - r.min.y, -5.0);
+    // bbox.min is published for scroll's roll-up.
+    assert_eq!(
+        ui.layout_engine.scratch.content_origin[panel.idx()],
+        glam::Vec2::new(-5.0, -5.0)
+    );
 }
 
 /// A constrained Canvas (Fixed) passes its inner to children, so a Fill

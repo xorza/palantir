@@ -144,7 +144,7 @@ fn bar_layout(
     user_padding: Spacing,
     theme: &ScrollbarTheme,
 ) -> BarLayout {
-    let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
+    let scaled_content = Size::new(row.content.size.w * row.zoom, row.content.size.h * row.zoom);
     let reserve_y = bar_reservation(pan.y && row.overflow.1, theme);
     let reserve_x = bar_reservation(pan.x && row.overflow.0, theme);
     let bar_viewport = Size::new(
@@ -531,21 +531,20 @@ impl Scroll {
             //    further out-of-range is blocked but pan toward the
             //    natural range works — the user scrolls back gradually,
             //    never with a one-frame yank.
-            // `content_margin` shifts the natural offset range away
-            // from `[0, slack]`: the left/top margin opens a negative
-            // band so the user can pan past the children's origin; the
-            // right/bottom margin extends the positive band. Margin
-            // bands scale with `zoom` so the visible padding in the
-            // viewport stays the same at any zoom level.
+            // Natural offset range = `[content.min, content.max -
+            // viewport]` in scroll-content coords, scaled by `zoom`
+            // and extended on each side by the user-set
+            // `content_margin`. `content.min` (≤ `(0,0)`) is rolled
+            // up by `scroll::measure` from descendant canvases with
+            // negatively-placed children; with all positive coords
+            // it stays at `(0,0)` and the math collapses to today's
+            // `[0, slack]` semantics.
             let cm = row.content_margin;
-            let neg_x = cm.left() * row.zoom;
-            let neg_y = cm.top() * row.zoom;
-            let slack_x = row.content.w * row.zoom - row.viewport.w;
-            let slack_y = row.content.h * row.zoom - row.viewport.h;
-            let min_x = -neg_x;
-            let max_x = slack_x - neg_x;
-            let min_y = -neg_y;
-            let max_y = slack_y - neg_y;
+            let content = row.content;
+            let min_x = (content.min.x - cm.left()) * row.zoom;
+            let max_x = (content.max().x + cm.right()) * row.zoom - row.viewport.w;
+            let min_y = (content.min.y - cm.top()) * row.zoom;
+            let max_y = (content.max().y + cm.bottom()) * row.zoom - row.viewport.h;
             if pan.x && pan_delta.x != 0.0 {
                 let lo = row.offset.x.min(min_x.min(max_x));
                 let hi = row.offset.x.max(min_x.max(max_x));
