@@ -202,6 +202,12 @@ impl NodeArenas {
     fn acquire(&mut self, len: u32) {
         self.live += len as usize;
         assert!(self.live <= self.desired.len());
+        // Parallel-length invariant: every `append` / `write_in_place`
+        // / `extend_from_within` writes the columns together, so a
+        // mismatch here means someone added a third column and
+        // forgot to wire it into one of those paths.
+        assert_eq!(self.desired.len(), self.content_origin.len());
+        assert_eq!(self.desired.len(), self.text_spans.len());
     }
 
     pub(crate) fn release(&mut self, len: u32) {
