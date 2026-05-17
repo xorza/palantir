@@ -42,7 +42,7 @@ fn vertical_scroll_records_content_extent() {
                 }
             });
     });
-    assert_eq!(state_for(&mut ui, "scroll").content.size.h, 5.0 * 50.0);
+    assert_eq!(state_for(&mut ui, "scroll").content.h, 5.0 * 50.0);
 }
 
 /// Horizontal scroll measures children with INF on X.
@@ -67,7 +67,7 @@ fn horizontal_scroll_records_content_extent() {
                     });
             });
     });
-    let content_w = state_for(&mut ui, "scroll").content.size.w;
+    let content_w = state_for(&mut ui, "scroll").content.w;
     assert!(
         content_w > 200.0,
         "content overflows the 200 viewport on X: got {}",
@@ -92,10 +92,7 @@ fn both_axis_scroll_records_content_extent() {
     });
     assert_eq!(
         state_for(&mut ui, "scroll").content,
-        crate::primitives::rect::Rect {
-            min: glam::Vec2::ZERO,
-            size: Size::new(300.0, 250.0),
-        }
+        Size::new(300.0, 250.0)
     );
 }
 
@@ -131,14 +128,14 @@ fn state_survives_across_frames() {
     assert!(f1.seen, "first frame's relayout populated state");
     assert!(f2.seen);
     // Sanity: pinned numbers.
-    assert_eq!(f1.content.size.h, 4.0 * 40.0);
+    assert_eq!(f1.content.h, 4.0 * 40.0);
 }
 
-/// `Scroll::content_margin` doesn't touch the recorded `content`
-/// rect — margin is applied at clamp time, not folded into `content`.
-/// Bars track real bbox; the margin is invisible overscroll.
+/// `Scroll::content_margin` doesn't fold into the recorded `content`
+/// size — margin is applied at clamp time only. Bars track real
+/// content; the margin acts as invisible overscroll.
 #[test]
-fn content_margin_leaves_content_rect_unchanged() {
+fn content_margin_leaves_content_size_unchanged() {
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
         Scroll::both()
@@ -152,7 +149,5 @@ fn content_margin_leaves_content_rect_unchanged() {
                     .show(ui);
             });
     });
-    let state = state_for(&mut ui, "scroll");
-    assert_eq!(state.content.min, glam::Vec2::ZERO);
-    assert_eq!(state.content.size, Size::new(80.0, 160.0));
+    assert_eq!(state_for(&mut ui, "scroll").content, Size::new(80.0, 160.0));
 }

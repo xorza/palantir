@@ -144,7 +144,7 @@ fn bar_layout(
     user_padding: Spacing,
     theme: &ScrollbarTheme,
 ) -> BarLayout {
-    let scaled_content = Size::new(row.content.size.w * row.zoom, row.content.size.h * row.zoom);
+    let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
     let reserve_y = bar_reservation(pan.y && row.overflow.1, theme);
     let reserve_x = bar_reservation(pan.x && row.overflow.0, theme);
     let bar_viewport = Size::new(
@@ -343,18 +343,57 @@ impl Scroll {
     }
 
     /// Extends the offset clamp on each side without touching the
-    /// recorded `content` rect — bars still reflect the real bbox,
-    /// and child layout is unaffected. Think of it as invisible
-    /// overscroll: the user can wheel/drag past the content edge by
-    /// the per-side amount, but a bar thumb wouldn't show extra
-    /// travel and no padding/gutter is reserved. Use for canvas-style
-    /// scopes (node graphs, infinite boards) that want pan slack
-    /// past the children's bounding box. Per-side values come from
-    /// `Spacing` (`left`/`top` open the negative band; `right`/
-    /// `bottom` extend the positive band).
+    /// recorded `content` size — bars still reflect the real
+    /// content, and child layout is unaffected. Think of it as
+    /// invisible overscroll: the user can wheel/drag past the
+    /// content edge by the per-side amount, but a bar thumb wouldn't
+    /// show extra travel and no padding/gutter is reserved. Use for
+    /// canvas-style scopes (node graphs, infinite boards) that want
+    /// pan slack past the children's bounding box. Per-side values
+    /// come from `Spacing` (`left`/`top` open a negative-offset
+    /// band; `right`/`bottom` extend the positive band).
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.content_margin = m.into();
         self
+    }
+
+    /// Free-canvas anchor helper. Given the scroll's outer
+    /// `WidgetId` and the canvas-local positions the caller is about
+    /// to place children at, returns the per-axis non-negative shift
+    /// `s` that the caller should add to every position so children
+    /// land at coords `>= 0` inside the canvas. Side effect: this
+    /// scroll's `offset` is updated by `Δs * zoom` so the on-screen
+    /// position of every unchanged child is preserved across the
+    /// frame where the leading edge moved — i.e. dragging one node
+    /// past origin doesn't visually shift the others.
+    ///
+    /// Call BEFORE [`Self::show`] so the offset adjustment lands
+    /// before the scroll widget reads it. Internally `scroll_id` is
+    /// the same `WidgetId` you pass to [`Configure::id`] on this
+    /// scroll; the helper appends the inner-viewport key. The shift
+    /// itself persists across frames via [`Ui::state_mut`] keyed off
+    /// the scroll's inner id, so the helper can detect the frame-to-
+    /// frame delta needed for the compensation.
+    ///
+    /// This lets the bbox-min support stay fully userspace —
+    /// palantir's canvas and scroll see only non-negative coords.
+    pub fn anchor_canvas_origin(
+        ui: &mut Ui,
+        scroll_id: WidgetId,
+        positions: impl IntoIterator<Item = Vec2>,
+    ) -> Vec2 {
+        let inner_id = scroll_id.with("__viewport");
+        let mut bb_min = Vec2::ZERO;
+        for p in positions {
+            bb_min = bb_min.min(p);
+        }
+        let new_shift = -bb_min.min(Vec2::ZERO);
+        let prev_shift: &mut Vec2 = ui.state_mut(inner_id.with("__canvas_shift"));
+        let delta = new_shift - *prev_shift;
+        *prev_shift = new_shift;
+        let row = ui.layout_engine.scroll_states.entry(inner_id).or_default();
+        row.offset += delta * row.zoom;
+        new_shift
     }
 
     /// Enable pivot-anchored zoom with a default [`ZoomConfig`]. Asserts
@@ -533,20 +572,20 @@ impl Scroll {
             //    further out-of-range is blocked but pan toward the
             //    natural range works — the user scrolls back gradually,
             //    never with a one-frame yank.
-            // Natural offset range = `[content.min, content.max -
-            // viewport]` in scroll-content coords, scaled by `zoom`
-            // and extended on each side by the user-set
-            // `content_margin`. `content.min` (≤ `(0,0)`) is rolled
-            // up by `scroll::measure` from descendant canvases with
-            // negatively-placed children; with all positive coords
-            // it stays at `(0,0)` and the math collapses to today's
-            // `[0, slack]` semantics.
+            // Natural offset range = `[0, content - viewport]` per
+            // axis (scaled by `zoom`), extended on each side by the
+            // user-set `content_margin`. Margin is invisible
+            // overscroll — doesn't show up in bars, just lets the
+            // user wheel/drag past the natural bounds.
             let cm = row.content_margin;
-            let content = row.content;
-            let min_x = (content.min.x - cm.left()) * row.zoom;
-            let max_x = (content.max().x + cm.right()) * row.zoom - row.viewport.w;
-            let min_y = (content.min.y - cm.top()) * row.zoom;
-            let max_y = (content.max().y + cm.bottom()) * row.zoom - row.viewport.h;
+            let neg_x = cm.left() * row.zoom;
+            let neg_y = cm.top() * row.zoom;
+            let slack_x = row.content.w * row.zoom - row.viewport.w;
+            let slack_y = row.content.h * row.zoom - row.viewport.h;
+            let min_x = -neg_x;
+            let max_x = slack_x + cm.right() * row.zoom;
+            let min_y = -neg_y;
+            let max_y = slack_y + cm.bottom() * row.zoom;
             if pan.x && pan_delta.x != 0.0 {
                 let lo = row.offset.x.min(min_x.min(max_x));
                 let hi = row.offset.x.max(min_x.max(max_x));
