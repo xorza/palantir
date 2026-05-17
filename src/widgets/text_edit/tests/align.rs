@@ -493,7 +493,7 @@ mod per_line {
         // on the leaf; multi-line TextEdit emits a single text shape.
         let node = node.unwrap();
         let main = &ui.layout[Layer::Main];
-        let span = main.text_spans[node.index()];
+        let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
         let shaped = main.text_shapes[span.start as usize];
         // `HAlign::Right as u8 = 3` — pin the discriminant directly
@@ -615,7 +615,7 @@ mod per_line {
         );
         // (b) + (c) cached buffer key.
         let main = &ui.layout[Layer::Main];
-        let span = main.text_spans[node.index()];
+        let span = main.text_spans[node.idx()];
         assert_eq!(span.len, 1, "one Shape::Text expected on the leaf");
         let shaped = main.text_shapes[span.start as usize];
         assert_eq!(

@@ -108,11 +108,11 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
     for record in &ui.forest.collisions {
         for ep in [record.first, record.second] {
             let rects = &ui.layout[ep.layer].rect;
-            if ep.node.index() >= rects.len() {
+            if ep.node.idx() >= rects.len() {
                 continue;
             }
             out.draw_rect(
-                rects[ep.node.index()],
+                rects[ep.node.idx()],
                 Corners::ZERO,
                 BrushSource::Solid(ColorF16::TRANSPARENT),
                 COLLISION_OVERLAY_STROKE.into(),
@@ -171,7 +171,7 @@ fn emit_one_shape(
             align,
             ..
         } => {
-            let span = layout.text_spans[id.index()];
+            let span = layout.text_spans[id.idx()];
             assert!(
                 text_ordinal < span.len,
                 "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
@@ -194,7 +194,7 @@ fn emit_one_shape(
             //   per-line glyph offsets).
             let rect = match local_origin {
                 None => {
-                    let padded = owner_rect.deflated_by(tree.records.layout()[id.index()].padding);
+                    let padded = owner_rect.deflated_by(tree.records.layout()[id.idx()].padding);
                     align_text_in(padded, shaped.measured, *align)
                 }
                 Some(origin) => Rect {
@@ -309,7 +309,7 @@ fn encode_node(
     now: Duration,
     out: &mut RenderCmdBuffer,
 ) {
-    if rows[id.index()].cascade_input.invisible() {
+    if rows[id.idx()].cascade_input.invisible() {
         return;
     }
 
@@ -319,7 +319,7 @@ fn encode_node(
     // bound (or a shape with negative-margin overhang) doesn't get
     // killed when the parent's own rect lies just outside the
     // viewport. The parallel column is owner-local to this layer.
-    let subtree_paint_rect = subtree_paint_rects[id.index()];
+    let subtree_paint_rect = subtree_paint_rects[id.idx()];
     if !subtree_paint_rect.intersects(viewport) {
         return;
     }
@@ -337,7 +337,7 @@ fn encode_node(
         return;
     }
 
-    let rect = layout.rect[id.index()];
+    let rect = layout.rect[id.idx()];
 
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
@@ -352,7 +352,7 @@ fn encode_node(
     // Painting chrome unmasked (it self-clips via the SDF) keeps the
     // stroke visible while children stay clipped to the inset
     // interior.
-    let mode = tree.records.attrs()[id.index()].clip_mode();
+    let mode = tree.records.attrs()[id.idx()].clip_mode();
     let clip = mode.is_clip();
     let chrome = tree.chrome(id).copied();
 
@@ -382,7 +382,7 @@ fn encode_node(
         // chrome's stroke width into padding so the mask automatically
         // sits inside the painted stroke ring — children clipped here
         // can't overpaint the stroke.
-        let padding = tree.records.layout()[id.index()].padding;
+        let padding = tree.records.layout()[id.idx()].padding;
         let mask_rect = rect.deflated_by(padding);
         match mode {
             ClipMode::Rect => out.push_clip(mask_rect),

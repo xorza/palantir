@@ -56,7 +56,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
         1,
         "expected exactly one explicit collision recorded",
     );
-    let button_rect = ui.layout[Layer::Main].rect[button_node.get().index()];
+    let button_rect = ui.layout[Layer::Main].rect[button_node.get().idx()];
     // Drive the encoder and check the emitted quads. The two overlay
     // quads should be stroked, magenta-ish, and rect-equal to the two
     // colliding buttons' arranged rects.
@@ -129,8 +129,8 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
         pair.second.layer,
     );
     // Each endpoint's rect must come from its own layer's `LayerLayout`.
-    let main_rect = ui.layout[Layer::Main].rect[pair.first.node.index()];
-    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.index()];
+    let main_rect = ui.layout[Layer::Main].rect[pair.first.node.idx()];
+    let popup_rect = ui.layout[Layer::Popup].rect[pair.second.node.idx()];
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
@@ -350,10 +350,10 @@ fn prev_frame_captures_painting_nodes() {
     let snap = prev[&WidgetId::from_hash("a")];
 
     assert!(!prev.contains_key(&WidgetId::from_hash("root")));
-    assert_eq!(snap.rect, ui.layout[Layer::Main].rect[frame_node.index()]);
+    assert_eq!(snap.rect, ui.layout[Layer::Main].rect[frame_node.idx()]);
     assert_eq!(
         snap.hash,
-        ui.forest.tree(Layer::Main).rollups.node[frame_node.index()],
+        ui.forest.tree(Layer::Main).rollups.node[frame_node.idx()],
     );
 }
 

@@ -92,7 +92,7 @@ fn interleaved_shapes_record_correct_order() {
         );
     });
     let p = p.unwrap();
-    let pi = p.index();
+    let pi = p.idx();
     let p_shapes = ui.forest.tree(Layer::Main).records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3);
     let children: Vec<_> = ui
@@ -102,8 +102,8 @@ fn interleaved_shapes_record_correct_order() {
         .map(|c| c.id)
         .collect();
     assert_eq!(children.len(), 2);
-    let c0_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[0].index()];
-    let c1_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[1].index()];
+    let c0_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[0].idx()];
+    let c1_shapes = ui.forest.tree(Layer::Main).records.shape_span()[children[1].idx()];
     assert_eq!(c0_shapes.start, p_shapes.start + 1);
     assert_eq!(c1_shapes.start, p_shapes.start + 2);
     assert_eq!(
@@ -177,8 +177,8 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
                 .node(ui),
         );
     });
-    let parent = parent_id.unwrap().index();
-    let child = child_id.unwrap().index();
+    let parent = parent_id.unwrap().idx();
+    let child = child_id.unwrap().idx();
 
     assert_eq!(
         ui.forest.tree(Layer::Main).records.subtree_end()[parent],
@@ -208,7 +208,7 @@ fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     ui.run_at_acked(SURFACE, |ui| {
         target = Some((f.take().unwrap())(ui));
     });
-    ui.forest.tree(Layer::Main).rollups.node[target.unwrap().index()]
+    ui.forest.tree(Layer::Main).rollups.node[target.unwrap().idx()]
 }
 
 #[test]
@@ -450,7 +450,7 @@ fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
     ui.run_at_acked(SURFACE, |ui| {
         target = Some((f.take().unwrap())(ui));
     });
-    ui.forest.tree(Layer::Main).rollups.subtree[target.unwrap().index()]
+    ui.forest.tree(Layer::Main).rollups.subtree[target.unwrap().idx()]
 }
 
 #[test]
@@ -631,8 +631,8 @@ fn grid_per_node_hash_independent_of_arena_slot() {
             });
     });
     assert_eq!(
-        ui1.forest.tree(Layer::Main).rollups.node[g1.unwrap().index()],
-        ui2.forest.tree(Layer::Main).rollups.node[g2.unwrap().index()],
+        ui1.forest.tree(Layer::Main).rollups.node[g1.unwrap().idx()],
+        ui2.forest.tree(Layer::Main).rollups.node[g2.unwrap().idx()],
     );
 }
 
@@ -675,7 +675,7 @@ fn subtree_end_rolls_up_during_recording() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 7);
     let ends = ui.forest.tree(Layer::Main).records.subtree_end();
     assert_eq!(ends[0], 7, "synthetic viewport spans everything");
-    assert_eq!(ends[root.unwrap().index()], 7, "root");
+    assert_eq!(ends[root.unwrap().idx()], 7, "root");
     assert_eq!(ends[2], 3, "leaf a");
     assert_eq!(ends[3], 6, "inner spans b,c");
     assert_eq!(ends[4], 5, "leaf b");
@@ -1043,14 +1043,14 @@ fn mid_recording_popup_keeps_trees_independent() {
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node, 0);
-    assert_eq!(main_tree.records.subtree_end()[parent.index()], 6);
+    assert_eq!(main_tree.records.subtree_end()[parent.idx()], 6);
 
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
     assert_eq!(kids, vec![2, 3, 4, 5]);
 
     let widths: Vec<u32> = main_tree.shapes.records.iter().map(marker_w).collect();
     assert_eq!(widths, vec![1, 2, 3, 4, 5]);
-    let parent_span = main_tree.records.shape_span()[parent.index()];
+    let parent_span = main_tree.records.shape_span()[parent.idx()];
     assert_eq!(parent_span.start, 0);
     assert_eq!(parent_span.len, 5);
     for leaf_idx in [2, 3, 4, 5] {

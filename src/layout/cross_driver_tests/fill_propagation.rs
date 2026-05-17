@@ -100,7 +100,7 @@ fn hug_zstack_does_not_recursively_size_to_fill_child() {
             );
         });
     });
-    let r = ui.layout[Layer::Main].rect[zstack_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[zstack_node.unwrap().idx()];
     assert_eq!(r.size.w, 60.0);
     assert_eq!(r.size.h, 40.0);
 }
@@ -256,9 +256,7 @@ fn vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse() {
                 );
             });
     });
-    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
-        .size
-        .h;
+    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size.h;
     assert!(
         h > 50.0,
         "grid must size to wrapped row heights, not single-line × 2; got h={h}"
@@ -308,9 +306,7 @@ fn hug_zstack_with_nested_grid_wrap_does_not_collapse() {
                     });
             });
     });
-    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
-        .size
-        .h;
+    let h = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size.h;
     assert!(
         h > 30.0,
         "ZStack must pass `INF` on Hug axes so nested grid measures \

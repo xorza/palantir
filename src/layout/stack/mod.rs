@@ -58,7 +58,7 @@ pub(crate) fn measure(
     let mut count = 0usize;
     for c in tree.active_children(node) {
         count += 1;
-        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.index()].size) {
+        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) {
             total_weight += w;
             continue;
         }
@@ -109,7 +109,7 @@ pub(crate) fn measure(
             // exit. Nested stacks reuse the tail capacity.
             let pool_start = layout.scratch.stack_fill.pool.len();
             for c in tree.active_children(node) {
-                let Sizing::Fill(w) = axis.main_sizing(layouts[c.index()].size) else {
+                let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) else {
                     continue;
                 };
                 let cap = axis.main(tree.size_clamps_of(c).max);
@@ -180,7 +180,7 @@ pub(crate) fn measure(
             layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
             for c in tree.active_children(node) {
-                let Sizing::Fill(_) = axis.main_sizing(layouts[c.index()].size) else {
+                let Sizing::Fill(_) = axis.main_sizing(layouts[c.idx()].size) else {
                     continue;
                 };
                 let d = layout.measure(
@@ -223,7 +223,7 @@ pub(crate) fn arrange(
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
     for c in tree.active_children(node) {
-        let i = c.index();
+        let i = c.idx();
         if let Sizing::Fill(weight) = axis.main_sizing(layouts[i].size) {
             total_weight += weight;
         }
@@ -258,7 +258,7 @@ pub(crate) fn arrange(
             zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min), out);
             continue;
         }
-        let i = c.index();
+        let i = c.idx();
         let s = layouts[i];
         let d = layout.scratch.desired[i];
         if !first {

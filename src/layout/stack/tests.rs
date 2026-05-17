@@ -12,7 +12,7 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
     ui.forest
         .tree(Layer::Main)
         .children(root)
-        .map(|c| ui.layout[Layer::Main].rect[c.id.index()])
+        .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()
 }
 
@@ -38,7 +38,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
     });
     let root = root.unwrap();
     assert_eq!(
-        ui.layout[Layer::Main].rect[root.index()],
+        ui.layout[Layer::Main].rect[root.idx()],
         Rect::new(0.0, 0.0, 800.0, 600.0)
     );
 
@@ -287,7 +287,7 @@ fn negative_left_margin_spills_outside_slot() {
             );
         });
     });
-    let r = ui.layout[Layer::Main].rect[button_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[button_node.unwrap().idx()];
     assert_eq!(r.min.x, -10.0, "rendered rect spills 10px left of slot");
     assert_eq!(r.min.y, 0.0);
     assert_eq!(
@@ -319,7 +319,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
         );
     });
     assert_eq!(
-        ui.layout_engine.scratch.desired[root.unwrap().index()].w,
+        ui.layout_engine.scratch.desired[root.unwrap().idx()].w,
         200.0
     );
 }
@@ -390,7 +390,7 @@ fn hstack_fill_max_size_caps_measured_share() {
                 );
             });
     });
-    let desired = ui.layout_engine.scratch.desired[fill_node.unwrap().index()];
+    let desired = ui.layout_engine.scratch.desired[fill_node.unwrap().idx()];
     assert_eq!(
         desired.w, 50.0,
         "Fill measure must clamp to max_size when leftover share > cap"
@@ -422,12 +422,12 @@ fn parent_max_size_clamps_children_available() {
             })
             .node(ui)
     });
-    let parent_rect = ui.layout[Layer::Main].rect[parent_node.index()];
+    let parent_rect = ui.layout[Layer::Main].rect[parent_node.idx()];
     assert_eq!(
         parent_rect.size.w, 200.0,
         "parent must arrange at its own max_size cap",
     );
-    let inner_rect = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
+    let inner_rect = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
     assert_eq!(
         inner_rect.size.w, 200.0,
         "Fill child must not bleed past parent's max_size cap",

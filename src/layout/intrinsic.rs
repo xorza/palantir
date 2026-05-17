@@ -76,7 +76,7 @@ pub(crate) fn compute(
     req: LenReq,
     tc: &TextCtx<'_>,
 ) -> f32 {
-    let style = tree.records.layout()[node.index()];
+    let style = tree.records.layout()[node.idx()];
     if style.visibility().is_collapsed() {
         return 0.0;
     }
@@ -168,8 +168,8 @@ fn content_intrinsic(
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) -> f32 {
-    let wid = tree.records.widget_id()[node.index()];
-    let curr_hash = tree.rollups.node[node.index()];
+    let wid = tree.records.widget_id()[node.idx()];
+    let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
     for (ordinal, ts) in leaf_text_shapes(tree, tc, node).enumerate() {
         let ordinal = ordinal as u16;
@@ -243,7 +243,7 @@ mod tests {
             .next()
             .expect("hstack has child");
         let slot = LenReq::MinContent.slot(Axis::X);
-        let cached = ui.layout_engine.scratch.intrinsics[child.index()][slot];
+        let cached = ui.layout_engine.scratch.intrinsics[child.idx()][slot];
         assert!(
             !cached.is_nan(),
             "MinContent X for the Fill+wrap child must be cached after run"
@@ -281,7 +281,7 @@ mod tests {
         let slot = LenReq::MinContent.slot(Axis::X);
 
         const SENTINEL: f32 = 1234.5;
-        ui.layout_engine.scratch.intrinsics[child.index()][slot] = SENTINEL;
+        ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
         let arena = ui.frame_arena.inner();
         let v = ui.layout_engine.intrinsic(
@@ -342,14 +342,14 @@ mod tests {
         drop(arena);
 
         assert!(
-            !ui.layout_engine.scratch.intrinsics[root.index()][slot].is_nan(),
+            !ui.layout_engine.scratch.intrinsics[root.idx()][slot].is_nan(),
             "root slot must be cached"
         );
         for c in ui.forest.tree(Layer::Main).children(root).map(|c| c.id) {
             assert!(
-                !ui.layout_engine.scratch.intrinsics[c.index()][slot].is_nan(),
+                !ui.layout_engine.scratch.intrinsics[c.idx()][slot].is_nan(),
                 "child {} slot must be cached after parent query",
-                c.index()
+                c.idx()
             );
         }
     }

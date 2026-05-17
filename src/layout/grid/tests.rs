@@ -14,7 +14,7 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
     ui.forest
         .tree(Layer::Main)
         .children(root)
-        .map(|c| ui.layout[Layer::Main].rect[c.id.index()])
+        .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()
 }
 
@@ -250,7 +250,7 @@ fn grid_hug_grid_collapses_fill_tracks() {
                 );
             });
     });
-    let r = ui.layout[Layer::Main].rect[grid_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
     assert_eq!(r.size.w, 80.0, "hug grid collapses Fill col to 0");
     assert_eq!(r.size.h, 40.0);
 }
@@ -372,11 +372,11 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
                 );
             });
     });
-    let r = ui.layout[Layer::Main].rect[grid_node.unwrap().index()];
+    let r = ui.layout[Layer::Main].rect[grid_node.unwrap().idx()];
     assert_eq!(r.size.w, 0.0);
     assert_eq!(r.size.h, 0.0);
 
-    let ghost = ui.layout[Layer::Main].rect[ghost_node.unwrap().index()];
+    let ghost = ui.layout[Layer::Main].rect[ghost_node.unwrap().idx()];
     assert_eq!(ghost.size.w, 0.0);
     assert_eq!(ghost.size.h, 0.0);
 }
@@ -429,13 +429,11 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                 );
             });
     });
-    assert_eq!(ui.layout[Layer::Main].rect[kids[0].index()].size.h, 10.0);
-    assert_eq!(ui.layout[Layer::Main].rect[kids[1].index()].size.h, 80.0);
-    assert_eq!(ui.layout[Layer::Main].rect[kids[2].index()].size.h, 30.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[0].idx()].size.h, 10.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[1].idx()].size.h, 80.0);
+    assert_eq!(ui.layout[Layer::Main].rect[kids[2].idx()].size.h, 30.0);
     assert_eq!(
-        ui.layout[Layer::Main].rect[grid_node.unwrap().index()]
-            .size
-            .h,
+        ui.layout[Layer::Main].rect[grid_node.unwrap().idx()].size.h,
         120.0
     );
 }

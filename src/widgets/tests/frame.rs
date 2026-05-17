@@ -45,7 +45,7 @@ fn frame_paints_a_single_rounded_rect() {
     );
 
     // Default sense is None — frame is not a hit-test target.
-    let r = ui.layout[Layer::Main].rect[frame_node.index()];
+    let r = ui.layout[Layer::Main].rect[frame_node.idx()];
     assert_eq!(r.size.w, 80.0);
     assert_eq!(r.size.h, 40.0);
 }

@@ -161,7 +161,7 @@ pub(crate) fn measure(
         _ => unreachable!("scroll::measure called with non-Scroll mode {mode:?}"),
     };
 
-    let wid = tree.records.widget_id()[node.index()];
+    let wid = tree.records.widget_id()[node.idx()];
     layout.scroll_states.entry(wid).or_default().content = raw;
 
     match mode {
@@ -193,7 +193,7 @@ pub(crate) fn arrange(
         _ => unreachable!("scroll::arrange called with non-Scroll mode {mode:?}"),
     }
 
-    let wid = tree.records.widget_id()[node.index()];
+    let wid = tree.records.widget_id()[node.idx()];
     // `outer` = the scroll widget's outer ZStack rect. `Scroll::show`
     // builds it as a wrapper that owns the bar-gutter reservation
     // padding, so its size is parent-allocated and stable across
@@ -201,9 +201,9 @@ pub(crate) fn arrange(
     // appears). Used at record time to position bars flush with the
     // outer far edge. Falls back to `inner.size` for a root-mounted
     // scroll (no wrapper).
-    let parent = tree.parents[node.index()];
+    let parent = tree.parents[node.idx()];
     let outer = if parent != NodeId::ROOT {
-        out[layout.active_layer].rect[parent.index()].size
+        out[layout.active_layer].rect[parent.idx()].size
     } else {
         inner.size
     };

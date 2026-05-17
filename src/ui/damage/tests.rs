@@ -408,7 +408,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     assert_eq!(ui.damage_engine.dirty.len(), 1);
     let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
+        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
     // DamageEngine rect = Frame's rect (50x50 at (0,0)). Color change
@@ -416,7 +416,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     // single rect.
     assert_eq!(
         ui.damage_region().iter_rects().next(),
-        Some(ui.layout[Layer::Main].rect[dirty_id.index()])
+        Some(ui.layout[Layer::Main].rect[dirty_id.idx()])
     );
 }
 
@@ -457,7 +457,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
+        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -523,7 +523,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
+        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(!ui.damage_region().is_empty());
@@ -597,7 +597,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
     // in this layout). Screen rect after the parent's translate is at
     // (100, 0) — that's where the GPU actually paints. The damage
     // rect must cover *that* position, not the layout one.
-    let child_layout_rect = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
+    let child_layout_rect = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
     let expected_screen_rect = Rect {
         min: child_layout_rect.min + translate,
         size: child_layout_rect.size,
@@ -671,7 +671,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.index()])
+        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert_eq!(dirty_widget_ids, vec![WidgetId::from_hash("c")]);
 }
@@ -1212,7 +1212,7 @@ fn button_hover_damage_covers_only_the_button() {
         "off-button pointer should reach a no-diff steady state"
     );
 
-    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().index()];
+    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
     let target = hot_rect.min + Vec2::new(5.0, 5.0);
 
     // Move pointer onto the hot button. The *next* post_record computes
@@ -1231,7 +1231,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
     let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.index()],
+        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
@@ -1281,7 +1281,7 @@ fn button_unhover_damage_covers_only_the_button() {
 
     // Settle two frames with cursor over the hot button.
     build(&mut ui, &mut hot_node, &mut cold_node);
-    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().index()];
+    let hot_rect = ui.layout[Layer::Main].rect[hot_node.unwrap().idx()];
     ui.on_input(InputEvent::PointerMoved(hot_rect.min + Vec2::new(5.0, 5.0)));
     build(&mut ui, &mut hot_node, &mut cold_node);
     build(&mut ui, &mut hot_node, &mut cold_node);
@@ -1292,7 +1292,7 @@ fn button_unhover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert_eq!(ui.damage_engine.dirty.len(), 1);
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].index()],
+        ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));

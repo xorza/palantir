@@ -410,7 +410,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         .count();
     assert_eq!(rounded_count, 1);
 
-    let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().index()];
+    let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().idx()];
     let start = cmds.starts[rounded_idx];
     let payload: PushClipPayload = cmds.read(start);
     // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
@@ -672,7 +672,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     });
     let cascades = &ui.layout.cascades;
     let child = child_node.unwrap();
-    assert_eq!(cascades.entries[child.index()].sense, Sense::NONE);
+    assert_eq!(cascades.entries[child.idx()].sense, Sense::NONE);
 }
 
 /// `align_text_in` math: glyph bbox positioned inside the leaf's arranged
