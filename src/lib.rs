@@ -90,7 +90,6 @@ pub use text::{FontFamily, TextShaper};
 pub use ui::FrameStamp;
 pub use ui::Ui;
 pub use ui::frame_report::FrameReport;
-pub use widgets::{InnerResponse, Response};
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem};
@@ -112,6 +111,7 @@ pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
+pub use widgets::{InnerResponse, Response};
 pub use winit_host::{App, WinitHost, WinitHostConfig};
 
 #[cfg(test)]
