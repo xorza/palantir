@@ -90,7 +90,7 @@ pub use text::{FontFamily, TextShaper};
 pub use ui::FrameStamp;
 pub use ui::Ui;
 pub use ui::frame_report::FrameReport;
-pub use widgets::Response;
+pub use widgets::{InnerResponse, Response};
 pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem};
