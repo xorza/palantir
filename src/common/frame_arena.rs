@@ -144,6 +144,21 @@ impl FrameArena {
         h.finish()
     }
 
+    /// Copy `s` into the per-frame text arena and return an
+    /// `InternedStr::Interned` handle. Backs [`crate::Ui::intern`] for
+    /// the format-less case (plain `&str` borrow, no `format_args!`).
+    #[must_use]
+    pub(crate) fn intern_str(&self, s: &str) -> InternedStr<'static> {
+        let mut a = self.0.borrow_mut();
+        let start = a.fmt_scratch.len();
+        a.fmt_scratch.push_str(s);
+        let hash = Self::hash_text(s);
+        InternedStr::Interned {
+            span: Span::new(start as u32, s.len() as u32),
+            hash,
+        }
+    }
+
     /// Format `args` directly into the per-frame text arena and return
     /// an `InternedStr::Interned` handle that spans the freshly-written
     /// bytes. Backs [`crate::Ui::fmt`].

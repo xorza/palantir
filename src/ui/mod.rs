@@ -769,6 +769,17 @@ impl Ui {
         self.frame_arena.intern_fmt(args)
     }
 
+    /// Copy `s` into the per-frame text arena and return an
+    /// [`InternedStr::Interned`] handle. Format-less twin of
+    /// [`Self::fmt`] for plain `&str` borrows whose lifetime doesn't
+    /// reach `'static` — turns a per-frame `String` allocation into a
+    /// memcpy into the retained `fmt_scratch` buffer. Same
+    /// frame-scoped invalidation rules as [`Self::fmt`].
+    #[must_use]
+    pub fn intern(&mut self, s: &str) -> crate::InternedStr<'static> {
+        self.frame_arena.intern_str(s)
+    }
+
     /// Append `shape` to the active node and register `anim` against
     /// it. The encoder samples `anim` at paint time and folds the
     /// resulting `PaintMod` into the shape's brush; `post_record`
