@@ -296,6 +296,7 @@ pub struct Scroll {
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
     bars_hidden: bool,
+    content_margin: Spacing,
 }
 
 impl Scroll {
@@ -327,6 +328,7 @@ impl Scroll {
             zoom: None,
             chrome: None,
             bars_hidden: false,
+            content_margin: Spacing::default(),
         }
     }
 
@@ -337,6 +339,19 @@ impl Scroll {
     /// noise.
     pub fn hide_bars(mut self) -> Self {
         self.bars_hidden = true;
+        self
+    }
+
+    /// Extra slack added around the measured content extent, purely
+    /// inflating the scrollable range — children are still arranged
+    /// in the un-padded inner rect, so this does not shift their
+    /// positions or interact with user padding. Use for canvas-style
+    /// scopes (node graphs, infinite boards) where the user wants to
+    /// pan past the children's bounding box. `Spacing` carries
+    /// per-side values; only the per-axis totals (`horiz()` / `vert()`)
+    /// reach the slack math.
+    pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
+        self.content_margin = m.into();
         self
     }
 
@@ -476,6 +491,10 @@ impl Scroll {
 
         let scroll = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
+            // Forward the builder-set content margin to the layout
+            // driver — measure inflates `content` by these totals so
+            // overflow / slack / bar math sees the padded extent.
+            row.content_margin = self.content_margin;
             // 1) Zoom step (pivot-anchored). Clamp `new_zoom` to
             //    `cfg.range`, derive the effective `dz_eff`, then
             //    update `offset` so the pivot point in widget-local
@@ -512,16 +531,29 @@ impl Scroll {
             //    further out-of-range is blocked but pan toward the
             //    natural range works — the user scrolls back gradually,
             //    never with a one-frame yank.
+            // `content_margin` shifts the natural offset range away
+            // from `[0, slack]`: the left/top margin opens a negative
+            // band so the user can pan past the children's origin; the
+            // right/bottom margin extends the positive band. Margin
+            // bands scale with `zoom` so the visible padding in the
+            // viewport stays the same at any zoom level.
+            let cm = row.content_margin;
+            let neg_x = cm.left() * row.zoom;
+            let neg_y = cm.top() * row.zoom;
             let slack_x = row.content.w * row.zoom - row.viewport.w;
             let slack_y = row.content.h * row.zoom - row.viewport.h;
+            let min_x = -neg_x;
+            let max_x = slack_x - neg_x;
+            let min_y = -neg_y;
+            let max_y = slack_y - neg_y;
             if pan.x && pan_delta.x != 0.0 {
-                let lo = row.offset.x.min(slack_x.min(0.0));
-                let hi = row.offset.x.max(slack_x.max(0.0));
+                let lo = row.offset.x.min(min_x.min(max_x));
+                let hi = row.offset.x.max(min_x.max(max_x));
                 row.offset.x = (row.offset.x + pan_delta.x).clamp(lo, hi);
             }
             if pan.y && pan_delta.y != 0.0 {
-                let lo = row.offset.y.min(slack_y.min(0.0));
-                let hi = row.offset.y.max(slack_y.max(0.0));
+                let lo = row.offset.y.min(min_y.min(max_y));
+                let hi = row.offset.y.max(min_y.max(max_y));
                 row.offset.y = (row.offset.y + pan_delta.y).clamp(lo, hi);
             }
 

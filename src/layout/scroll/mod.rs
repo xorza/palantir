@@ -23,6 +23,7 @@ use crate::layout::Layout;
 use crate::layout::axis::Axis;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
@@ -84,6 +85,12 @@ pub(crate) struct ScrollLayoutState {
     pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
     pub(crate) seen: bool,
+    /// Extra slack added to the measured content extent — purely
+    /// inflates `content` for overflow/clamp/bar math without touching
+    /// child layout. Set by [`Scroll::content_margin`] each record.
+    /// Used by canvas-style scopes (node graphs, infinite boards) to
+    /// allow scrolling past the children's bounding box.
+    pub(crate) content_margin: Spacing,
     /// Snapshot of `offset` at the frame a thumb-drag latched, paired
     /// with the axis whose thumb is being dragged. `Some` while a drag
     /// is in flight; cleared when the dragged thumb is no longer the
@@ -104,6 +111,7 @@ impl Default for ScrollLayoutState {
             overflow: (false, false),
             seen: false,
             drag_anchor: None,
+            content_margin: Spacing::default(),
         }
     }
 }
@@ -162,7 +170,12 @@ pub(crate) fn measure(
     };
 
     let wid = tree.records.widget_id()[node.idx()];
-    layout.scroll_states.entry(wid).or_default().content = raw;
+    let entry = layout.scroll_states.entry(wid).or_default();
+    // Inflate by the user-set content margin so overflow/slack/bar
+    // math sees the padded extent without `raw` (and the parent's
+    // measure return below) being affected.
+    let margin = entry.content_margin;
+    entry.content = Size::new(raw.w + margin.horiz(), raw.h + margin.vert());
 
     match mode {
         LayoutMode::ScrollVertical => Size::new(raw.w, 0.0),
