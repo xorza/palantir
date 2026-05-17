@@ -258,8 +258,9 @@ pub(crate) fn arrange(
             zero_subtree(layout, tree, c, axis.compose_point(cursor, cross_min), out);
             continue;
         }
-        let s = tree.records.layout()[c.index()];
-        let d = layout.scratch.desired[c.index()];
+        let i = c.index();
+        let s = layouts[i];
+        let d = layout.scratch.desired[i];
         if !first {
             cursor += effective_gap;
         }

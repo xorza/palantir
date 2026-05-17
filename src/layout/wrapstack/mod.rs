@@ -120,6 +120,7 @@ pub(crate) fn measure(
     // Measure each non-collapsed child once. Pass `INF` on main with the
     // committed cross — same height-given-width pattern as Stack pass-1
     // (so wrap text in a child shapes against `cross_avail`).
+    let layouts = tree.records.layout();
     let mut max_line_main = 0.0f32;
     let mut total_cross = 0.0f32;
     let mut line_main = 0.0f32;
@@ -134,7 +135,7 @@ pub(crate) fn measure(
             tc,
             out,
         );
-        let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
+        let ChildPack { m, x } = child_pack(axis, layouts[c.index()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             max_line_main = max_line_main.max(line_main);
             total_cross += line_cross;
@@ -186,6 +187,7 @@ pub(crate) fn arrange(
     // flush on overflow / end-of-children. Sizes come from
     // `layout.scratch.desired` at flush time, so the buffer is just node
     // IDs.
+    let layouts = tree.records.layout();
     layout.scratch.wrap.enter();
     let line_start = layout.scratch.wrap.start();
     let mut line_main = 0.0f32;
@@ -224,8 +226,9 @@ pub(crate) fn arrange(
             if i > line_start {
                 main_cursor += eff_gap;
             }
-            let d = layout.scratch.desired[c.index()];
-            let s = tree.records.layout()[c.index()];
+            let i = c.index();
+            let d = layout.scratch.desired[i];
+            let s = layouts[i];
             // Cross axis: each child placed within the line's cross
             // extent. Same rule as Stack cross — Fill stretches to
             // line_cross, Hug aligns per child.
@@ -266,8 +269,9 @@ pub(crate) fn arrange(
             continue;
         }
 
-        let d = layout.scratch.desired[c.index()];
-        let ChildPack { m, x } = child_pack(axis, tree.records.layout()[c.index()].size, d);
+        let i = c.index();
+        let d = layout.scratch.desired[i];
+        let ChildPack { m, x } = child_pack(axis, layouts[i].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             place_line(
                 layout,
