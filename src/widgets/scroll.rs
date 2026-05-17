@@ -351,49 +351,12 @@ impl Scroll {
     /// canvas-style scopes (node graphs, infinite boards) that want
     /// pan slack past the children's bounding box. Per-side values
     /// come from `Spacing` (`left`/`top` open a negative-offset
-    /// band; `right`/`bottom` extend the positive band).
+    /// band; `right`/`bottom` extend the positive band) — set them
+    /// dynamically per frame from your own content's bounding box if
+    /// you need the slack to track a moving leading edge.
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.content_margin = m.into();
         self
-    }
-
-    /// Free-canvas anchor helper. Given the scroll's outer
-    /// `WidgetId` and the canvas-local positions the caller is about
-    /// to place children at, returns the per-axis non-negative shift
-    /// `s` that the caller should add to every position so children
-    /// land at coords `>= 0` inside the canvas. Side effect: this
-    /// scroll's `offset` is updated by `Δs * zoom` so the on-screen
-    /// position of every unchanged child is preserved across the
-    /// frame where the leading edge moved — i.e. dragging one node
-    /// past origin doesn't visually shift the others.
-    ///
-    /// Call BEFORE [`Self::show`] so the offset adjustment lands
-    /// before the scroll widget reads it. Internally `scroll_id` is
-    /// the same `WidgetId` you pass to [`Configure::id`] on this
-    /// scroll; the helper appends the inner-viewport key. The shift
-    /// itself persists across frames via [`Ui::state_mut`] keyed off
-    /// the scroll's inner id, so the helper can detect the frame-to-
-    /// frame delta needed for the compensation.
-    ///
-    /// This lets the bbox-min support stay fully userspace —
-    /// palantir's canvas and scroll see only non-negative coords.
-    pub fn anchor_canvas_origin(
-        ui: &mut Ui,
-        scroll_id: WidgetId,
-        positions: impl IntoIterator<Item = Vec2>,
-    ) -> Vec2 {
-        let inner_id = scroll_id.with("__viewport");
-        let mut bb_min = Vec2::ZERO;
-        for p in positions {
-            bb_min = bb_min.min(p);
-        }
-        let new_shift = -bb_min.min(Vec2::ZERO);
-        let prev_shift: &mut Vec2 = ui.state_mut(inner_id.with("__canvas_shift"));
-        let delta = new_shift - *prev_shift;
-        *prev_shift = new_shift;
-        let row = ui.layout_engine.scroll_states.entry(inner_id).or_default();
-        row.offset += delta * row.zoom;
-        new_shift
     }
 
     /// Enable pivot-anchored zoom with a default [`ZoomConfig`]. Asserts
