@@ -50,9 +50,9 @@ pub(crate) struct Endpoint {
 /// queued); the second endpoint is filled in at
 /// [`SeenIds::record_endpoint`] when `second_final_id` is opened.
 #[derive(Clone, Copy, Debug)]
-pub(crate) struct PendingExplicitCollision {
-    pub(crate) first_raw_id: WidgetId,
-    pub(crate) second_final_id: WidgetId,
+struct PendingExplicitCollision {
+    first_raw_id: WidgetId,
+    second_final_id: WidgetId,
 }
 
 /// Outcome of [`SeenIds::record_endpoint`] — either the endpoint
@@ -176,15 +176,19 @@ impl SeenIds {
             return EndpointOutcome::Recorded;
         };
         let pending = self.pending.swap_remove(idx);
-        // First endpoint is filed under the un-disambiguated raw id —
-        // both `Vacant` (queued but never opened) and `Occupied` paths
-        // are possible in theory, but in practice the first occurrence
-        // is always opened before the second resolve-and-open pair
-        // runs (same recording pass, left-to-right). Treat missing as
-        // "no collision pair to report" rather than panic.
-        let Some(first) = self.curr.get(&pending.first_raw_id).copied() else {
-            return EndpointOutcome::Recorded;
-        };
+        // First occurrence's endpoint is filed under the
+        // un-disambiguated raw id and MUST already be present:
+        // `resolve` only queues a pending entry on the *second*
+        // explicit `resolve(X, true)` call this frame, and widgets
+        // pair `make_persistent_id` with an immediate `ui.node` left-
+        // to-right, so the first widget's `record_endpoint(X, ...)`
+        // always runs before the second's. A missing entry means the
+        // recording-order contract was violated — surface loudly.
+        let first = self
+            .curr
+            .get(&pending.first_raw_id)
+            .copied()
+            .expect("pending explicit collision references a raw id whose first endpoint hasn't been recorded — recording order violated");
         EndpointOutcome::ExplicitCollision {
             first,
             second: endpoint,
@@ -289,6 +293,22 @@ mod tests {
             ids.record_endpoint(second, ep(2)),
             EndpointOutcome::Recorded
         ));
+    }
+
+    #[test]
+    #[should_panic(expected = "recording order violated")]
+    fn record_endpoint_panics_if_first_endpoint_missing() {
+        // Construct a pending explicit collision whose first raw id
+        // was never opened (i.e., `record_endpoint` for the first
+        // occurrence wasn't called). The expect in `record_endpoint`
+        // must fire — the alternative is a silent miss that hides a
+        // recording-order bug from the magenta collision overlay.
+        let mut ids = SeenIds::default();
+        let x = WidgetId::from_hash("x");
+        ids.resolve(x, true);
+        let second = ids.resolve(x, true);
+        // Skip recording the first endpoint, jump straight to second.
+        ids.record_endpoint(second, ep(2));
     }
 
     #[test]
