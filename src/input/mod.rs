@@ -246,6 +246,13 @@ fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
 #[derive(Default, Clone, Copy, Debug)]
 pub struct ResponseState {
     pub rect: Option<Rect>,
+    /// Pre-transform, unclipped layout rect in world coords — the
+    /// widget's arranged position before any ancestor `transform`
+    /// (scroll pan/zoom) or `clip` is applied. Use when you need a
+    /// widget's true position regardless of how its parent scrolls
+    /// or clips it; subtract two such rects to get one widget's
+    /// owner-local offset under another.
+    pub layout_rect: Option<Rect>,
     pub hovered: bool,
     pub pressed: bool,
     pub clicked: bool,
@@ -749,11 +756,10 @@ impl InputState {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
-        let entry = cascades
-            .by_id
-            .get(&id)
-            .map(|&i| &cascades.entries[i as usize]);
+        let entry_idx = cascades.by_id.get(&id).copied();
+        let entry = entry_idx.map(|i| &cascades.entries[i as usize]);
         let rect = entry.map(|e| e.rect);
+        let layout_rect = entry_idx.map(|i| cascades.entry_layout_rects[i as usize]);
         // Cascade flattens parent-disabled into each entry, so this is
         // the **effective** ancestor-or-self disabled — one frame stale.
         // Widgets that need lag-free self-toggle response merge their
@@ -780,6 +786,7 @@ impl InputState {
 
         ResponseState {
             rect,
+            layout_rect,
             hovered,
             pressed,
             clicked,

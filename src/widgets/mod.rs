@@ -36,6 +36,11 @@ impl Response {
     pub fn rect(&self) -> Option<Rect> {
         self.state.rect
     }
+    /// Pre-transform layout rect — see
+    /// [`crate::input::ResponseState::layout_rect`].
+    pub fn layout_rect(&self) -> Option<Rect> {
+        self.state.layout_rect
+    }
     pub fn hovered(&self) -> bool {
         self.state.hovered
     }
