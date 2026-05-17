@@ -6,7 +6,7 @@
 use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
-use crate::forest::seen_ids::{Endpoint, SeenIds};
+use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{PendingAnchor, Tree};
 use crate::primitives::background::Background;
@@ -181,7 +181,9 @@ impl Forest {
         let layer = self.current_layer;
         let node = self.current_tree_mut().peek_next_id();
         let endpoint = Endpoint { layer, node };
-        if let Some((first, second)) = self.ids.record_endpoint(widget_id, endpoint) {
+        if let EndpointOutcome::ExplicitCollision { first, second } =
+            self.ids.record_endpoint(widget_id, endpoint)
+        {
             tracing::error!(
                 first_layer = ?first.layer,
                 first_node = ?first.node,

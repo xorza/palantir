@@ -55,6 +55,22 @@ pub(crate) struct PendingExplicitCollision {
     pub(crate) second_final_id: WidgetId,
 }
 
+/// Outcome of [`SeenIds::record_endpoint`] — either the endpoint
+/// recorded cleanly, or it completed a queued explicit-collision
+/// pair (caller pushes a [`crate::forest::CollisionRecord`] from the
+/// two endpoints).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum EndpointOutcome {
+    /// No collision — id was unique this frame (or it was a silent
+    /// auto-collision whose endpoint just got filed away in `curr`).
+    Recorded,
+    /// The endpoint just recorded completed a pending explicit
+    /// collision. `first` is where the un-disambiguated id was
+    /// opened earlier this frame; `second` is the endpoint passed
+    /// to this `record_endpoint` call.
+    ExplicitCollision { first: Endpoint, second: Endpoint },
+}
+
 #[derive(Default)]
 pub(crate) struct SeenIds {
     /// Per-raw-id occurrence counter. Bumped inside [`Self::resolve`]
@@ -146,19 +162,33 @@ impl SeenIds {
         &mut self,
         final_id: WidgetId,
         endpoint: Endpoint,
-    ) -> Option<(Endpoint, Endpoint)> {
+    ) -> EndpointOutcome {
         debug_assert!(
             !self.curr.contains_key(&final_id),
             "record_endpoint called twice for {final_id:?} — caller likely passed an explicit `.id(X.with(N))` that collides with a disambiguated auto/explicit slot",
         );
         self.curr.insert(final_id, endpoint);
-        let idx = self
+        let Some(idx) = self
             .pending
             .iter()
-            .position(|p| p.second_final_id == final_id)?;
+            .position(|p| p.second_final_id == final_id)
+        else {
+            return EndpointOutcome::Recorded;
+        };
         let pending = self.pending.swap_remove(idx);
-        let first = self.curr.get(&pending.first_raw_id).copied()?;
-        Some((first, endpoint))
+        // First endpoint is filed under the un-disambiguated raw id —
+        // both `Vacant` (queued but never opened) and `Occupied` paths
+        // are possible in theory, but in practice the first occurrence
+        // is always opened before the second resolve-and-open pair
+        // runs (same recording pass, left-to-right). Treat missing as
+        // "no collision pair to report" rather than panic.
+        let Some(first) = self.curr.get(&pending.first_raw_id).copied() else {
+            return EndpointOutcome::Recorded;
+        };
+        EndpointOutcome::ExplicitCollision {
+            first,
+            second: endpoint,
+        }
     }
 
     /// Populate `self.removed` with widgets present in `prev` but
@@ -231,11 +261,19 @@ mod tests {
         let x = WidgetId::from_hash("x");
         // First occurrence resolves + opens.
         let first = ids.resolve(x, true);
-        assert_eq!(ids.record_endpoint(first, ep(1)), None);
+        assert!(matches!(
+            ids.record_endpoint(first, ep(1)),
+            EndpointOutcome::Recorded
+        ));
         // Second occurrence resolves + opens — should hand back the pair.
         let second = ids.resolve(x, true);
-        let pair = ids.record_endpoint(second, ep(2)).expect("collision pair");
-        assert_eq!(pair, (ep(1), ep(2)));
+        match ids.record_endpoint(second, ep(2)) {
+            EndpointOutcome::ExplicitCollision { first, second } => {
+                assert_eq!(first, ep(1));
+                assert_eq!(second, ep(2));
+            }
+            EndpointOutcome::Recorded => panic!("expected collision pair"),
+        }
         // Pending drained.
         assert!(ids.pending.is_empty());
     }
@@ -247,7 +285,10 @@ mod tests {
         let first = ids.resolve(x, false);
         ids.record_endpoint(first, ep(1));
         let second = ids.resolve(x, false);
-        assert_eq!(ids.record_endpoint(second, ep(2)), None);
+        assert!(matches!(
+            ids.record_endpoint(second, ep(2)),
+            EndpointOutcome::Recorded
+        ));
     }
 
     #[test]
