@@ -103,6 +103,13 @@ pub(crate) struct Cascades {
     /// to keep the hot reverse-scan struct at 20 B (instead of 32 B
     /// with the `u64` id inline).
     pub(crate) entry_ids: Vec<WidgetId>,
+    /// Parallel to `entries`: the widget's pre-transform layout rect
+    /// (unclipped, in world coords). Surfaced via
+    /// `ResponseState::layout_rect` so callers can read a widget's
+    /// arranged position without the cascade's transform + clip
+    /// applied — useful for drawing connection geometry into a
+    /// scrolling/zoomed parent's coordinate system.
+    pub(crate) entry_layout_rects: Vec<Rect>,
     pub(crate) by_id: FxHashMap<WidgetId, u32>,
 }
 
@@ -113,6 +120,7 @@ impl Default for Cascades {
             shape_rects: array::from_fn(|_| Vec::new()),
             entries: Vec::new(),
             entry_ids: Vec::new(),
+            entry_layout_rects: Vec::new(),
             by_id: FxHashMap::default(),
         }
     }
@@ -205,6 +213,8 @@ impl CascadesEngine {
             r.entries.reserve(total);
             r.entry_ids.clear();
             r.entry_ids.reserve(total);
+            r.entry_layout_rects.clear();
+            r.entry_layout_rects.reserve(total);
             r.by_id.clear();
             r.by_id.reserve(total);
         }
@@ -231,6 +241,7 @@ impl CascadesEngine {
                 shape_rects,
                 &mut r.entries,
                 &mut r.entry_ids,
+                &mut r.entry_layout_rects,
                 &mut r.by_id,
                 &mut self.stack,
             );
@@ -246,6 +257,7 @@ fn run_tree(
     shape_rects: &mut [Rect],
     entries: &mut Vec<HitEntry>,
     entry_ids: &mut Vec<WidgetId>,
+    entry_layout_rects: &mut Vec<Rect>,
     by_id: &mut FxHashMap<WidgetId, u32>,
     stack: &mut Vec<Frame>,
 ) {
@@ -316,6 +328,7 @@ fn run_tree(
         let widget_id = widget_ids[i];
         by_id.insert(widget_id, entries.len() as u32);
         entry_ids.push(widget_id);
+        entry_layout_rects.push(layout_rect);
         entries.push(HitEntry {
             rect: visible_rect,
             sense,
