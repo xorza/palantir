@@ -34,6 +34,12 @@ impl Rect {
     pub const fn max(&self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
+    pub const fn center(&self) -> Vec2 {
+        Vec2::new(
+            self.min.x + self.size.w * 0.5,
+            self.min.y + self.size.h * 0.5,
+        )
+    }
     pub const fn area(&self) -> f32 {
         self.size.w * self.size.h
     }
