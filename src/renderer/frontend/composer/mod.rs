@@ -11,8 +11,8 @@ use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, ImageBatch, ImageDraw, ImageInstance, MeshBatch, MeshDraw, MeshInstance,
-    RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch, MeshDraw, MeshDrawRow,
+    MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
@@ -112,8 +112,8 @@ impl Composer {
     fn flush(&mut self, out: &mut RenderBuffer) {
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
-        let m_end = out.meshes.draws.len() as u32;
-        let i_end = out.images.draws.len() as u32;
+        let m_end = out.meshes.rows.len() as u32;
+        let i_end = out.images.rows.len() as u32;
         if q_end > self.quads_start
             || t_end > self.texts_start
             || m_end > self.meshes_start
@@ -442,16 +442,18 @@ impl Composer {
                     let phys_translate = (current_transform.scale * p.origin
                         + current_transform.translation)
                         * scale;
-                    out.meshes.draws.push(MeshDraw {
-                        vertices: (p.v_start..p.v_start + p.v_len).into(),
-                        indices: (p.i_start..p.i_start + p.i_len).into(),
-                    });
                     let tint_color: Color = p.tint.into();
-                    out.meshes.instances.push(MeshInstance {
-                        translate: phys_translate,
-                        scale: phys_scale,
-                        tint: tint_color.into(),
-                        ..bytemuck::Zeroable::zeroed()
+                    out.meshes.rows.push(MeshDrawRow {
+                        draw: MeshDraw {
+                            vertices: (p.v_start..p.v_start + p.v_len).into(),
+                            indices: (p.i_start..p.i_start + p.i_len).into(),
+                        },
+                        instance: MeshInstance {
+                            translate: phys_translate,
+                            scale: phys_scale,
+                            tint: tint_color.into(),
+                            ..bytemuck::Zeroable::zeroed()
+                        },
                     });
                     if p.v_len > 0 {
                         // Inflate by 0.5 phys-px to match polyline's
@@ -487,7 +489,7 @@ impl Composer {
                     }
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let tint_color: Color = p.tint.into();
-                    out.images.draws.push(ImageDraw {
+                    out.images.rows.push(ImageDrawRow {
                         // Composer doesn't need `size` (the encoder
                         // already resolved fit into `rect`+UV); pass
                         // a size-less handle so paint-side equality
@@ -497,13 +499,13 @@ impl Composer {
                             id: p.handle,
                             size: glam::U16Vec2::ZERO,
                         },
-                    });
-                    out.images.instances.push(ImageInstance {
-                        rect: phys_rect,
-                        uv_min: p.uv_min,
-                        uv_size: p.uv_size,
-                        tint: tint_color.into(),
-                        ..bytemuck::Zeroable::zeroed()
+                        instance: ImageInstance {
+                            rect: phys_rect,
+                            uv_min: p.uv_min,
+                            uv_size: p.uv_size,
+                            tint: tint_color.into(),
+                            ..bytemuck::Zeroable::zeroed()
+                        },
                     });
                     // Track for paint-order overlap with mesh-tier draws.
                     self.above_text_rects.push(image_urect);
@@ -587,19 +589,21 @@ impl Composer {
                     if v_len == 0 {
                         continue;
                     }
-                    out.meshes.draws.push(MeshDraw {
-                        vertices: (phys_v_start..phys_v_start + v_len).into(),
-                        indices: (phys_i_start..phys_i_start + i_len).into(),
-                    });
                     // Polyline points are pre-transformed to physical-px
                     // on CPU (the tessellator needs phys-px width to pick
                     // its AA fringe), so the shader's per-instance state
                     // is identity. Tint is white — colors live per-vertex.
-                    out.meshes.instances.push(MeshInstance {
-                        translate: Vec2::ZERO,
-                        scale: 1.0,
-                        tint: crate::primitives::color::ColorU8::WHITE,
-                        ..bytemuck::Zeroable::zeroed()
+                    out.meshes.rows.push(MeshDrawRow {
+                        draw: MeshDraw {
+                            vertices: (phys_v_start..phys_v_start + v_len).into(),
+                            indices: (phys_i_start..phys_i_start + i_len).into(),
+                        },
+                        instance: MeshInstance {
+                            translate: Vec2::ZERO,
+                            scale: 1.0,
+                            tint: crate::primitives::color::ColorU8::WHITE,
+                            ..bytemuck::Zeroable::zeroed()
+                        },
                     });
                     self.above_text_rects.push(bbox_scissor);
                 }
