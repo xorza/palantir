@@ -37,7 +37,7 @@ fn context_menu_cut_copy_paste_clear() {
             .cascades
             .by_id
             .get(&body_id)
-            .map(|&i| ui.layout.cascades.entries[i as usize].rect)
+            .map(|&i| ui.layout.cascades.entries.rect()[i as usize])
             .expect("context menu body recorded");
         // Theme padding ~4 px + row height ~31 px including row
         // padding. Click well inside the chosen row.
