@@ -156,7 +156,6 @@ impl Shapes {
                 //   text arena, no per-shape allocation).
                 let text_hash = match &text {
                     InternedStr::Interned { hash, .. } => *hash,
-                    InternedStr::Borrowed(s) => FrameArena::hash_text(s),
                     InternedStr::Owned(s) => FrameArena::hash_text(s),
                 };
                 ShapeRecord::Text {

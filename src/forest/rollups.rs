@@ -130,7 +130,7 @@ mod tests {
     fn text_shape(line_height_px: f32, local_origin: Option<glam::Vec2>) -> ShapeRecord {
         ShapeRecord::Text {
             local_origin,
-            text: InternedStr::Borrowed("hi"),
+            text: InternedStr::from("hi"),
             text_hash: FrameArena::hash_text("hi"),
             color: Color::WHITE.into(),
             font_size_px: 16.0,
