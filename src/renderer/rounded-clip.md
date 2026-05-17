@@ -18,6 +18,7 @@ Panel::vstack()
 
 `Surface { paint: Background, clip: ClipMode }` is the chrome primitive.
 Sugar constructors:
+
 - `Surface::scissor()` — clip-only, no paint. Used internally by `Scroll`.
 - `Surface::clipped(bg)` — paint + scissor. Cheap "card with overflow hidden".
 - `Surface::rounded(bg)` — paint + stencil-rounded clip. Lights up the stencil path.
@@ -36,7 +37,7 @@ mismatch in exchange for skipping the stencil pass).
 - `Tree.chrome_idx: Vec<u16>` — index column parallel to
   `layout`/`paint`, `Tree::NO_CHROME` (`u16::MAX`) for nodes without
   chrome. `Tree.chrome_table: Vec<Background>` holds the actual entries.
-  Read via `tree.chrome.get(id.index()) -> Option<&Background>`. Single source
+  Read via `tree.chrome.get(id.idx()) -> Option<&Background>`. Single source
   of truth for:
   - Painted background (encoder emits `DrawRect` from it).
   - Rounded-clip mask radius (from `chrome.radius`).
@@ -55,7 +56,7 @@ methods that mutate `Element`).
 
 ## Encode flow (per node, in `encoder/mod.rs::encode_node`)
 
-1. **Chrome** — if `tree.chrome.get(id.index())` is `Some` and not `is_noop()`, emit a
+1. **Chrome** — if `tree.chrome.get(id.idx())` is `Some` and not `is_noop()`, emit a
    `DrawRect` with the chrome's `radius` / `fill` / `stroke`. Chrome
    paints **before** the clip is pushed: the clip rect is deflated by
    `stroke.width`, so chrome's own stroke pixels would be clipped if it
@@ -73,7 +74,7 @@ methods that mutate `Element`).
 3. **Shapes** — iterate `tree.shapes.slice_of(id)`. `Shape::Text` emits
    `DrawText`. `Shape::RoundedRect { local_rect: None, .. }` emits a
    `DrawRect` covering the owner's full rect. `Shape::RoundedRect {
-   local_rect: Some(r), .. }` emits a `DrawRect` at owner-relative `r`
+local_rect: Some(r), .. }` emits a `DrawRect` at owner-relative `r`
    (used by Scroll for scrollbar tracks/thumbs and by TextEdit for the
    caret). Shapes are interleaved with children via the slot mechanism.
    `Shape::Line` is unsupported and trace-dropped.
@@ -93,6 +94,7 @@ render pass. No stencil texture allocated. No stencil-variant pipelines
 built. Bit-for-bit identical to pre-feature.
 
 **Stencil path** (any rounded group):
+
 - `Backbuffer.stencil: Option<StencilAttachment>` — lazy `Stencil8`
   texture, allocated on first rounded frame, kept warm thereafter.
 - `QuadPipeline::ensure_stencil(device)` — lazy-builds two pipelines:

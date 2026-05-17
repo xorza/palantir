@@ -48,12 +48,12 @@ fn zstack_layers_children_without_painting_background() {
     let z = zstack_node.unwrap();
     assert!(ui.forest.tree(Layer::Main).shapes_of(z).next().is_none());
 
-    let zr = ui.layout[Layer::Main].rect[z.index()];
+    let zr = ui.layout[Layer::Main].rect[z.idx()];
     assert_eq!(zr.size.w, 120.0);
     assert_eq!(zr.size.h, 80.0);
 
-    let bg = ui.layout[Layer::Main].rect[bg_node.unwrap().index()];
-    let fg = ui.layout[Layer::Main].rect[fg_node.unwrap().index()];
+    let bg = ui.layout[Layer::Main].rect[bg_node.unwrap().idx()];
+    let fg = ui.layout[Layer::Main].rect[fg_node.unwrap().idx()];
     assert_eq!((bg.min.x, bg.min.y), (0.0, 0.0));
     assert_eq!((fg.min.x, fg.min.y), (0.0, 0.0));
     assert_eq!((bg.size.w, bg.size.h), (120.0, 80.0));
@@ -97,7 +97,7 @@ fn zstack_aligns_child_per_axis() {
                     });
             });
         });
-        let r = ui.layout[Layer::Main].rect[child_node.unwrap().index()];
+        let r = ui.layout[Layer::Main].rect[child_node.unwrap().idx()];
         assert_eq!((r.min.x, r.min.y), *expected, "case: {label}");
         assert_eq!(
             (r.size.w, r.size.h),

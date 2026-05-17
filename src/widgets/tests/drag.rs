@@ -232,7 +232,7 @@ fn canvas_rearranges_with_dragged_child_position() {
         });
     });
 
-    let rect = ui.layout[Layer::Main].rect[card_node.unwrap().index()];
+    let rect = ui.layout[Layer::Main].rect[card_node.unwrap().idx()];
     assert!(
         (rect.min.x - 130.0).abs() < 0.5,
         "drag lands within the frame: anchor(40) + delta(90) = 130, got {}",

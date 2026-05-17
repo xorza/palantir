@@ -63,11 +63,11 @@ pub(crate) fn leaf_text_shapes<'a>(
     // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
     assert_eq!(
-        tree.records.subtree_end()[node.index()],
+        tree.records.subtree_end()[node.idx()],
         node.0 + 1,
         "leaf_text_shapes called on non-leaf node {node:?}",
     );
-    let span = tree.records.shape_span()[node.index()];
+    let span = tree.records.shape_span()[node.idx()];
     let lo = span.start as usize;
     let hi = lo + span.len as usize;
     tree.shapes.records[lo..hi]
@@ -178,7 +178,7 @@ pub(crate) fn zero_subtree(
         min: anchor,
         size: Size::ZERO,
     };
-    let start = node.index();
+    let start = node.idx();
     let end = (tree.records.subtree_end()[start]) as usize;
     out[layout.active_layer].rect[start..end].fill(zero);
 }
@@ -283,7 +283,7 @@ pub(crate) fn measure_per_axis_hug(
     out: &mut Layout,
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
-    let style = tree.records.layout()[node.index()];
+    let style = tree.records.layout()[node.idx()];
     let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;

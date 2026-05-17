@@ -421,7 +421,7 @@ fn measure_inner(
     // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
     // `inner.w`, so Fill cols at measure time give cells the same
     // width they'll get at arrange — wrap text shapes correctly.
-    let grid_sizing = tree.records.layout()[node.index()].size;
+    let grid_sizing = tree.records.layout()[node.idx()].size;
     let grid_sizing_w = grid_sizing.w();
     let grid_sizing_h = grid_sizing.h();
     {
@@ -587,7 +587,7 @@ fn arrange_inner(
         return;
     }
 
-    let grid_size = tree.records.layout()[node.index()].size;
+    let grid_size = tree.records.layout()[node.idx()].size;
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
     // Arrange ignores `resolved` flags but `resolve_axis` requires
@@ -626,7 +626,7 @@ fn arrange_inner(
             zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
-        let i = c.index();
+        let i = c.idx();
         let s_node = layouts[i];
         let cell = tree.grid_of(c);
         let d = layout.scratch.desired[i];

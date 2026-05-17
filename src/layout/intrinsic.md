@@ -2,7 +2,7 @@
 
 On-demand `intrinsic(node, axis, req: LenReq) -> f32` queries with an
 intra-frame cache, used by `Grid` and `Stack` drivers when a parent
-needs to know how large a child *would* be on one axis without committing
+needs to know how large a child _would_ be on one axis without committing
 to a measure pass at a specific available width.
 
 Two patterns motivate the API:
@@ -39,7 +39,7 @@ For a leaf text shape:
 
 - `intrinsic(text, X, MaxContent)` = natural unbroken width.
 - `intrinsic(text, X, MinContent)` = longest-word width.
-- `intrinsic(text, Y, _)`         = single-line height.
+- `intrinsic(text, Y, _)` = single-line height.
 
 Height-given-width is intentionally absent — neither motivating pattern
 needs it. See "Deferred" below.
@@ -94,7 +94,7 @@ before delegating content sizing to the driver.
 
 ## Cache
 
-`Vec<[f32; 4]>` on `LayoutEngine`, indexed by `node.index()` with one
+`Vec<[f32; 4]>` on `LayoutEngine`, indexed by `node.idx()` with one
 slot per `(axis, req)` pair. NaN means "not yet computed". Resized to
 `node_count` at the top of `run` (capacity retained, same pattern as
 `desired`).
@@ -155,7 +155,7 @@ Implemented in `stack::measure`. Two-pass:
 1. **First pass** — measure every child with `available.main = INFINITY`
    (the WPF intrinsic trick). Children report their natural main size.
 2. **Second pass** — only if the stack itself has a finite main-axis
-   size *and* there are Fill children: re-measure each Fill child at
+   size _and_ there are Fill children: re-measure each Fill child at
    its resolved Fill share, clamped to
    `[intrinsic(MinContent), max_size]`.
 
@@ -237,6 +237,7 @@ Replacing INF-measure with intrinsic causes the parent to commit
 a too-small main slot and inner contents collapse.
 
 Pinned by:
+
 - `vstack_section_with_hug_grid_and_fill_col_wrap_does_not_collapse`
 - `hug_zstack_with_nested_grid_wrap_does_not_collapse`
 

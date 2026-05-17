@@ -38,7 +38,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
             });
     });
     let node = text_node.unwrap();
-    let r = ui.layout[Layer::Main].rect[node.index()];
+    let r = ui.layout[Layer::Main].rect[node.idx()];
     assert!(
         r.size.h > 32.0,
         "wrapped paragraph should span multiple lines, got h={}",
@@ -209,7 +209,7 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
     let shaped_w = support::shaped_text(&ui.layout[Layer::Main], msg)
         .measured
         .w;
-    let rect_w = ui.layout[Layer::Main].rect[msg.index()].size.w;
+    let rect_w = ui.layout[Layer::Main].rect[msg.idx()].size.w;
 
     assert!(
         shaped_w > 50.0,
@@ -293,8 +293,8 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
             nodes = Some(build(ui));
         });
         let (grid, section) = nodes.unwrap();
-        let grid_w = ui.layout[Layer::Main].rect[grid.index()].size.w;
-        let section_w = ui.layout[Layer::Main].rect[section.index()].size.w;
+        let grid_w = ui.layout[Layer::Main].rect[grid.idx()].size.w;
+        let section_w = ui.layout[Layer::Main].rect[section.idx()].size.w;
         (grid_w, section_w)
     }
 
@@ -453,7 +453,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
             label = Some(build(ui).1);
         });
-        let label_rect_w = ui.layout[Layer::Main].rect[label.unwrap().index()].size.w;
+        let label_rect_w = ui.layout[Layer::Main].rect[label.unwrap().idx()].size.w;
         assert!(
             label_rect_w >= label_full - 0.5,
             "label cell shrank below the label's natural width — \
@@ -511,7 +511,7 @@ fn multi_shape_text_per_leaf_shapes_each_run_independently() {
         leaf = Some(build_multi_text_leaf(ui));
     });
     let leaf = leaf.unwrap();
-    let span = ui.layout[Layer::Main].text_spans[leaf.index()];
+    let span = ui.layout[Layer::Main].text_spans[leaf.idx()];
     assert_eq!(
         span.len, 2,
         "leaf with two ShapeRecord::Text should record two text-shape entries"
@@ -550,7 +550,7 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
         leaf = Some(build_multi_text_leaf(ui));
     });
     let leaf = leaf.unwrap();
-    let owner_min = ui.layout[Layer::Main].rect[leaf.index()].min;
+    let owner_min = ui.layout[Layer::Main].rect[leaf.idx()].min;
     let cmds = ui.encode_cmds();
     let mut drawn: Vec<glam::Vec2> = (0..cmds.kinds.len())
         .filter(|&i| cmds.kinds[i] == CmdKind::DrawText)
@@ -597,7 +597,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
         f1_leaf = Some(build_multi_text_leaf(ui));
     });
     let f1_leaf = f1_leaf.unwrap();
-    let f1_span = ui.layout[Layer::Main].text_spans[f1_leaf.index()];
+    let f1_span = ui.layout[Layer::Main].text_spans[f1_leaf.idx()];
     let f1_first = ui.layout[Layer::Main].text_shapes[f1_span.start as usize];
     let f1_second = ui.layout[Layer::Main].text_shapes[(f1_span.start + 1) as usize];
 
@@ -606,7 +606,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
         f2_leaf = Some(build_multi_text_leaf(ui));
     });
     let f2_leaf = f2_leaf.unwrap();
-    let f2_span = ui.layout[Layer::Main].text_spans[f2_leaf.index()];
+    let f2_span = ui.layout[Layer::Main].text_spans[f2_leaf.idx()];
     assert_eq!(f2_span.len, 2, "frame 2 must restore both text-shape slots");
     let f2_first = ui.layout[Layer::Main].text_shapes[f2_span.start as usize];
     let f2_second = ui.layout[Layer::Main].text_shapes[(f2_span.start + 1) as usize];

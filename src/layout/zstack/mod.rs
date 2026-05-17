@@ -70,7 +70,7 @@ pub(crate) fn arrange(
             zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
-        let i = c.index();
+        let i = c.idx();
         let d = layout.scratch.desired[i];
         let s = layouts[i];
 

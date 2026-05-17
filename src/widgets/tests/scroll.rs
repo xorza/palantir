@@ -222,7 +222,7 @@ fn scroll_records_content_extent() {
         let scroll_id = WidgetId::from_hash(scroll_key).with("__viewport");
         let state = *ui.scroll_state(scroll_id);
         assert_eq!(state.content, *expected, "case: {label} content");
-        let rect = ui.layout[Layer::Main].rect[scroll_node.index()];
+        let rect = ui.layout[Layer::Main].rect[scroll_node.idx()];
         let want_view = match axis {
             Axis::V => (200.0, 200.0),
             Axis::H => (200.0, 60.0),

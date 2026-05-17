@@ -135,7 +135,7 @@ pub(crate) fn measure(
             tc,
             out,
         );
-        let ChildPack { m, x } = child_pack(axis, layouts[c.index()].size, d);
+        let ChildPack { m, x } = child_pack(axis, layouts[c.idx()].size, d);
         if would_wrap(line_main, gap, m, main_avail) {
             max_line_main = max_line_main.max(line_main);
             total_cross += line_cross;
@@ -226,7 +226,7 @@ pub(crate) fn arrange(
             if i > line_start {
                 main_cursor += eff_gap;
             }
-            let i = c.index();
+            let i = c.idx();
             let d = layout.scratch.desired[i];
             let s = layouts[i];
             // Cross axis: each child placed within the line's cross
@@ -269,7 +269,7 @@ pub(crate) fn arrange(
             continue;
         }
 
-        let i = c.index();
+        let i = c.idx();
         let d = layout.scratch.desired[i];
         let ChildPack { m, x } = child_pack(axis, layouts[i].size, d);
         if would_wrap(line_main, gap, m, main_avail) {

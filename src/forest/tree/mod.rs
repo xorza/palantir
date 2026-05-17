@@ -57,7 +57,7 @@ impl NodeId {
     pub(crate) const ROOT: Self = Self(u32::MAX);
 
     #[inline]
-    pub(crate) fn index(self) -> usize {
+    pub(crate) fn idx(self) -> usize {
         self.0 as usize
     }
 }
@@ -607,7 +607,7 @@ impl Tree {
             .expect("close_node called with no open node")
             .node;
 
-        let i = closing.index();
+        let i = closing.idx();
         let shapes_len = self.shapes.records.len() as u32;
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
@@ -619,7 +619,7 @@ impl Tree {
         let i_has_grid = self.has_grid.contains(i);
 
         if let Some(parent) = self.open_frames.last().map(|f| f.node) {
-            let pi = parent.index();
+            let pi = parent.idx();
             let ends = self.records.subtree_end_mut();
             if ends[pi] < end {
                 ends[pi] = end;
@@ -661,7 +661,7 @@ impl Tree {
     /// API, so transforms always live alongside panel knobs.
     #[inline]
     pub(crate) fn transform_of(&self, id: NodeId) -> Option<TranslateScale> {
-        self.extras_idx[id.index()]
+        self.extras_idx[id.idx()]
             .panel
             .get()
             .map(|s| self.panel_table[s].transform)
@@ -670,7 +670,7 @@ impl Tree {
 
     #[inline]
     pub(crate) fn position_of(&self, id: NodeId) -> Vec2 {
-        self.extras_idx[id.index()]
+        self.extras_idx[id.idx()]
             .bounds
             .get()
             .map_or(Vec2::ZERO, |s| self.bounds_table[s].position)
@@ -678,7 +678,7 @@ impl Tree {
 
     #[inline]
     pub(crate) fn grid_of(&self, id: NodeId) -> GridCell {
-        self.extras_idx[id.index()]
+        self.extras_idx[id.idx()]
             .bounds
             .get()
             .map_or(BoundsExtras::DEFAULT.grid, |s| self.bounds_table[s].grid)
@@ -688,7 +688,7 @@ impl Tree {
     /// together by `layoutengine` / `intrinsic` / `stack`.
     #[inline]
     pub(crate) fn size_clamps_of(&self, id: NodeId) -> SizeClamp {
-        match self.extras_idx[id.index()].bounds.get() {
+        match self.extras_idx[id.idx()].bounds.get() {
             Some(s) => {
                 let b = &self.bounds_table[s];
                 SizeClamp {
@@ -705,7 +705,7 @@ impl Tree {
 
     #[inline]
     pub(crate) fn panel(&self, id: NodeId) -> &PanelExtras {
-        self.extras_idx[id.index()]
+        self.extras_idx[id.idx()]
             .panel
             .get()
             .map_or(&PanelExtras::DEFAULT, |s| &self.panel_table[s])
@@ -718,7 +718,7 @@ impl Tree {
     /// `cmd_buffer::draw_*` drop the no-paint slices; the radius
     /// always survives.
     pub(crate) fn chrome(&self, id: NodeId) -> Option<&ChromeRow> {
-        self.extras_idx[id.index()]
+        self.extras_idx[id.idx()]
             .chrome
             .get()
             .map(|s| &self.chrome_table[s])
@@ -789,7 +789,7 @@ impl<'a> TreeItems<'a> {
         node: NodeId,
     ) -> Self {
         let shapes_col = records.shape_span();
-        let parent = shapes_col[node.index()];
+        let parent = shapes_col[node.idx()];
         Self {
             shapes_col,
             layouts: records.layout(),
@@ -798,7 +798,7 @@ impl<'a> TreeItems<'a> {
             cursor: parent.start as usize,
             parent_end: (parent.start + parent.len) as usize,
             next_child_id: node.0 + 1,
-            subtree_end: records.subtree_end()[node.index()],
+            subtree_end: records.subtree_end()[node.idx()],
         }
     }
 }

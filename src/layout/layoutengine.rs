@@ -233,12 +233,12 @@ impl LayoutEngine {
         tc: &TextCtx<'_>,
     ) -> f32 {
         let slot = req.slot(axis);
-        let cached = self.scratch.intrinsics[node.index()][slot];
+        let cached = self.scratch.intrinsics[node.idx()][slot];
         if !cached.is_nan() {
             return cached;
         }
         let v = intrinsic::compute(self, tree, node, axis, req, tc);
-        self.scratch.intrinsics[node.index()][slot] = v;
+        self.scratch.intrinsics[node.idx()][slot] = v;
         v
     }
 
@@ -312,9 +312,9 @@ impl LayoutEngine {
         tc: &TextCtx<'_>,
         out: &mut Layout,
     ) -> Size {
-        let style = tree.records.layout()[node.index()];
+        let style = tree.records.layout()[node.idx()];
         if style.visibility().is_collapsed() {
-            self.scratch.desired[node.index()] = Size::ZERO;
+            self.scratch.desired[node.idx()] = Size::ZERO;
             return Size::ZERO;
         }
 
@@ -326,11 +326,11 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        let cache_wid = tree.records.widget_id()[node.index()];
-        let cache_hash = tree.rollups.subtree[node.index()];
+        let cache_wid = tree.records.widget_id()[node.idx()];
+        let cache_hash = tree.rollups.subtree[node.idx()];
         let cache_avail = quantize_available(available);
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
-            let curr_start = node.index();
+            let curr_start = node.idx();
             let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
@@ -415,17 +415,17 @@ impl LayoutEngine {
         let content = self.measure_dispatch(tree, node, style, dispatch_avail, tc, out);
         let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
-        self.scratch.desired[node.index()] = desired;
+        self.scratch.desired[node.idx()] = desired;
 
         // Snapshot the entire subtree we just (re)measured. Pre-order
-        // arena means the subtree is `[node.index() .. subtree_end[i]]`
+        // arena means the subtree is `[node.idx() .. subtree_end[i]]`
         // contiguous in both `desired` and `text_shapes`. Capacity
         // retains across frames via `clear() + extend_from_slice`
         // inside `MeasureCache::write_subtree`. Per-grid hug arrays
         // for descendant Grids land in `scratch.tmp_hugs` first;
         // empty for grid-free subtrees.
         {
-            let start = node.index();
+            let start = node.idx();
             let end = (tree.records.subtree_end()[start]) as usize;
             self.scratch.tmp_hugs.clear();
             if tree.has_grid.contains(start) {
@@ -572,7 +572,7 @@ impl LayoutEngine {
     /// (margin-inclusive). Stores `rect` for each visited node in the
     /// active layer's `Layout`.
     pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut Layout) {
-        let style = tree.records.layout()[node.index()];
+        let style = tree.records.layout()[node.idx()];
         if style.visibility().is_collapsed() {
             zero_subtree(self, tree, node, slot.min, out);
             return;
@@ -580,7 +580,7 @@ impl LayoutEngine {
         let mode = style.mode;
 
         let rendered = slot.deflated_by(style.margin);
-        out[self.active_layer].rect[node.index()] = rendered;
+        out[self.active_layer].rect[node.idx()] = rendered;
         let inner = rendered.deflated_by(style.padding);
 
         match mode {
@@ -636,7 +636,7 @@ impl LayoutEngine {
             );
         }
         let span_len = out[self.active_layer].text_shapes.len() as u32 - span_start;
-        out[self.active_layer].text_spans[node.index()] = Span {
+        out[self.active_layer].text_spans[node.idx()] = Span {
             start: span_start,
             len: span_len,
         };
@@ -659,8 +659,8 @@ impl LayoutEngine {
         text: &TextShaper,
         out: &mut Layout,
     ) -> Size {
-        let wid = tree.records.widget_id()[node.index()];
-        let curr_hash = tree.rollups.node[node.index()];
+        let wid = tree.records.widget_id()[node.idx()];
+        let curr_hash = tree.rollups.node[node.idx()];
 
         // Refresh the unbounded measurement only when the authoring hash
         // has shifted. Crucially, when only the wrap target changed

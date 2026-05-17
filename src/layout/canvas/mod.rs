@@ -53,7 +53,7 @@ pub(crate) fn arrange(
             zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
-        let d = layout.scratch.desired[c.index()];
+        let d = layout.scratch.desired[c.idx()];
         let pos = tree.position_of(c);
         let child_rect = Rect {
             min: inner.min + pos,

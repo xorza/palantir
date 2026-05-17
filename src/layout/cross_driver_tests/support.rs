@@ -19,7 +19,7 @@ use std::rc::Rc;
 /// `result.text_shapes[span.range()]` itself rather than pretend index
 /// 0 is meaningful.
 pub(crate) fn shaped_text(result: &LayerLayout, id: NodeId) -> ShapedText {
-    let span = result.text_spans[id.index()];
+    let span = result.text_spans[id.idx()];
     assert_eq!(
         span.len, 1,
         "shaped_text expects a single-Text leaf; got {} shapes",

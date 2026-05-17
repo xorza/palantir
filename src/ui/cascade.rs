@@ -89,7 +89,7 @@ struct Frame {
 /// `WidgetId`-keyed hit index.
 pub(crate) struct Cascades {
     /// Per-layer per-node cascade rows. Same indexing as
-    /// `Tree::records`: `rows[layer.idx()][node.index()]`.
+    /// `Tree::records`: `rows[layer.idx()][node.idx()]`.
     pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
     /// Per-layer per-node subtree paint rect — `Cascade.paint_rect`
     /// rolled up with every descendant's `subtree_paint_rects[i]`.
@@ -331,7 +331,7 @@ fn run_tree(
         let disabled = parent_dis || attrs.is_disabled();
         let invisible = parent_inv || !layout_col[i].visibility().is_visible();
 
-        let layout_rect = layout.rect[id.index()];
+        let layout_rect = layout.rect[id.idx()];
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
         let paint_rect = compute_paint_rect(
@@ -472,7 +472,7 @@ fn compute_paint_rect(
         size: layout_rect.size,
     };
     let mut paint_local = owner_local;
-    if tree.records.shape_span()[node.index()].len > 0 {
+    if tree.records.shape_span()[node.idx()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
                 let bbox = s.paint_bbox_local(layout_rect.size);
