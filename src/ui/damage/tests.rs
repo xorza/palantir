@@ -723,6 +723,133 @@ fn transform_animation_keeps_far_positions_split() {
     assert!(rects.contains(&prev) && rects.contains(&curr), "{rects:?}");
 }
 
+/// Soundness pin: when an ancestor's transform changes, a node whose
+/// own `paint_rect` is **clipped invariant** (because its direct
+/// shapes extend past the viewport / clip on every frame, so
+/// `clip_to(...)` saturates to the same rect both passes) must still
+/// contribute its `paint_rect` to damage. Otherwise the pixels of
+/// those shapes — which DID move with the parent transform — get
+/// stranded; the old positions never get cleared.
+///
+/// Repro of darkroom's "panning Scroll over a node-graph Canvas
+/// leaves bezier trails": canvas's connection beziers are direct
+/// shapes; canvas is wider than the viewport so its clipped paint
+/// rect saturates; canvas's `node_hash` is stable but its
+/// `cascade_input` shifts every pan frame.
+#[test]
+fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    let mut ui = Ui::for_test();
+    let build = |dx: f32, ui: &mut Ui| {
+        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+            // Outermost clip pins descendants to the surface viewport
+            // — without it, `parent_clip = None` and inner's paint
+            // rect translates freely (the bug then doesn't manifest;
+            // damage catches the rect change via the normal path).
+            Panel::hstack()
+                .id(WidgetId::from_hash("clip"))
+                .clip_rect()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("xform"))
+                        .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .id(WidgetId::from_hash("inner"))
+                                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                                .show(ui, |ui| {
+                                    // Shape wider than the surface so
+                                    // the clipped paint rect
+                                    // saturates and stays invariant
+                                    // under small `dx` translates.
+                                    ui.add_shape(Shape::RoundedRect {
+                                        local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        radius: Corners::ZERO,
+                                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                                        stroke: Stroke::default(),
+                                    });
+                                });
+                        });
+                });
+        });
+    };
+    build(0.0, &mut ui);
+    build(5.0, &mut ui);
+    let region = ui.damage_region();
+    let covered = region.iter_rects().any(|r| {
+        // Damage must cover the inner node's clipped paint area
+        // (0..100 × 0..50) — that's where the shape's pixels live
+        // both before and after the small pan.
+        r.min.x <= 0.5 && r.min.y <= 0.5 && r.max().x >= 50.0 - 0.5 && r.max().y >= 50.0 - 0.5
+    });
+    assert!(
+        covered,
+        "ancestor-transform shift moves a direct-shape leaf's pixels; \
+         damage must still cover the shape area even though the \
+         clipped paint_rect is invariant. region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}
+
+/// Sister test to the soundness pin above: the new "cascade_input
+/// shift on a direct-paint node → push `curr_rect`" branch in the
+/// damage diff must not trip `FULL_REPAINT_THRESHOLD` for a pan of a
+/// modestly-sized clip-saturated node. Same setup as that pin, but
+/// repeated for several pan ticks; each step's damage stays
+/// `Partial` and stays bounded to the inner clipped area.
+#[test]
+fn pan_with_invariant_clipped_paint_rect_stays_partial() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    let mut ui = Ui::for_test();
+    let build = |dx: f32, ui: &mut Ui| {
+        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("clip"))
+                .clip_rect()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("xform"))
+                        .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .id(WidgetId::from_hash("inner"))
+                                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                                .show(ui, |ui| {
+                                    ui.add_shape(Shape::RoundedRect {
+                                        local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
+                                        radius: Corners::ZERO,
+                                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                                        stroke: Stroke::default(),
+                                    });
+                                });
+                        });
+                });
+        });
+    };
+    build(0.0, &mut ui);
+    for dx in [3.0, 6.0, 9.0, 12.0] {
+        build(dx, &mut ui);
+        let region = ui.damage_region();
+        let damage = Damage::new(ui.display.logical_rect(), region);
+        assert!(
+            matches!(damage, Damage::Partial(_)),
+            "pan with clip-saturated direct-paint node must stay Partial \
+             (the new diff branch pushes one paint_rect per shifted node; \
+             that must not blow past FULL_REPAINT_THRESHOLD on a single tick). \
+             dx = {dx}, region = {:?}, damage = {damage:?}",
+            region.iter_rects().collect::<Vec<_>>(),
+        );
+    }
+}
+
 // --- DamageEngine::filter heuristic ---------------------------------------------
 
 const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);

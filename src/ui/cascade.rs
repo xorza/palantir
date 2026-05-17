@@ -34,16 +34,15 @@ use strum::EnumCount as _;
 /// via `cascade_input.invisible()`; damage compares the full u64.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Cascade {
-    /// Layout rect transformed into screen space, inflated by every
-    /// shape's owner-local
-    /// [`Overhang`](crate::forest::shapes::record::Overhang) (drop
-    /// shadows are the only contributor today), then intersected with
-    /// the ancestor clip. Drives both subtree culling (viewport +
-    /// damage region intersection in the encoder) and damage tracking
-    /// — so a tab swap clears the full shadow halo and a halo-only
-    /// dirty patch still reaches the affected subtree. Hit-test uses
-    /// its own `HitEntry.rect` (the un-inflated visible rect) —
-    /// shadows aren't clickable.
+    /// **Own** paint extent: the node's layout rect transformed into
+    /// screen space, unioned with the owner-local
+    /// [`Overhang`](crate::forest::shapes::record::Overhang) of each
+    /// *direct* shape (drop-shadow halos today), then clipped to the
+    /// ancestor clip. Used by [`crate::ui::damage::DamageEngine`] as
+    /// the per-widget paint snapshot — keeping it tight (no
+    /// descendant rollup) lets a leaf colour change produce a leaf-
+    /// sized dirty rect instead of an ancestor-sized one. Hit-test
+    /// uses its own `HitEntry.rect`; shadows aren't clickable.
     pub(crate) paint_rect: Rect,
     /// Fingerprint of the ancestor state + own arranged rect that
     /// flowed into this row, packed with the cascade-resolved
@@ -74,6 +73,15 @@ struct Frame {
     disabled: bool,
     invisible: bool,
     subtree_end: u32,
+    /// Node index this frame represents — used to write back
+    /// `subtree_paint_rect` into `Cascades::subtree_paint_rects` when
+    /// this frame is popped (its subtree has been fully visited).
+    node_idx: usize,
+    /// Running union of this node's own `paint_rect` and the
+    /// `subtree_paint_rect` of every descendant whose subtree has
+    /// already been folded in. Each pop unions this into the new
+    /// top frame so the rollup ripples upward to the root.
+    subtree_paint_rect: Rect,
 }
 
 /// Read-only artifact of `CascadesEngine::run`. Holds the per-tree cascade
@@ -83,6 +91,20 @@ pub(crate) struct Cascades {
     /// Per-layer per-node cascade rows. Same indexing as
     /// `Tree::records`: `rows[layer as usize][node.index()]`.
     pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
+    /// Per-layer per-node subtree paint rect — `Cascade.paint_rect`
+    /// rolled up with every descendant's `subtree_paint_rects[i]`.
+    /// Stored parallel to `rows` (not inline on `Cascade`) so the
+    /// damage diff's hot row scan stays cache-tight (it reads
+    /// `paint_rect` + `cascade_input` only); the encoder is the sole
+    /// reader and pays one indexed load per cull check. Computed
+    /// inline in `run_tree` via a stack-frame accumulator. Read by
+    /// the encoder for the viewport + damage subtree culls where
+    /// "may I skip the whole subtree?" must consider overhanging
+    /// descendants — Canvas-positioned children outside the parent's
+    /// `Fixed` bound, shapes with negative-margin overhang, etc.
+    /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
+    /// hidden subtree doesn't keep the cull from firing at ancestors.
+    pub(crate) subtree_paint_rects: [Vec<Rect>; Layer::COUNT],
     /// One [`Rect`] per shape in `tree.shapes.records`, per layer —
     /// `shape_rects[L][shape_idx]` is the screen-space damage bound
     /// for that shape. Written during the cascade walk in
@@ -117,12 +139,26 @@ impl Default for Cascades {
     fn default() -> Self {
         Self {
             rows: array::from_fn(|_| Vec::new()),
+            subtree_paint_rects: array::from_fn(|_| Vec::new()),
             shape_rects: array::from_fn(|_| Vec::new()),
             entries: Vec::new(),
             entry_ids: Vec::new(),
             entry_layout_rects: Vec::new(),
             by_id: FxHashMap::default(),
         }
+    }
+}
+
+impl Cascades {
+    /// Lockstep push for the three parallel hit-index arrays —
+    /// callers can't forget one and end up with `entries.len() !=
+    /// entry_ids.len()`. Also updates `by_id` so the entry index is
+    /// reachable by `WidgetId` lookup.
+    fn push_entry(&mut self, wid: WidgetId, entry: HitEntry, layout_rect: Rect) {
+        self.by_id.insert(wid, self.entries.len() as u32);
+        self.entry_ids.push(wid);
+        self.entry_layout_rects.push(layout_rect);
+        self.entries.push(entry);
     }
 }
 
@@ -184,6 +220,14 @@ impl Cascades {
     pub(crate) fn rows_for(&self, layer: Layer) -> &[Cascade] {
         &self.rows[layer as usize]
     }
+
+    /// Borrow the per-tree subtree-paint-rect column for `layer`.
+    /// Parallel to [`Self::rows_for`]; indexed by `NodeId.0` the
+    /// same way.
+    #[inline]
+    pub(crate) fn subtree_paint_rects_for(&self, layer: Layer) -> &[Rect] {
+        &self.subtree_paint_rects[layer as usize]
+    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -223,9 +267,11 @@ impl CascadesEngine {
             let i = layer as usize;
             let layer_layout = &layout.layers[i];
             let r = &mut layout.cascades;
-            let rows = &mut r.rows[i];
-            rows.clear();
-            rows.reserve(tree.records.len());
+            let n = tree.records.len();
+            r.rows[i].clear();
+            r.rows[i].reserve(n);
+            r.subtree_paint_rects[i].clear();
+            r.subtree_paint_rects[i].reserve(n);
             let shape_rects = &mut r.shape_rects[i];
             shape_rects.clear();
             // Index-by-`shape_idx`. Resize so collapsed / invisible
@@ -234,33 +280,32 @@ impl CascadesEngine {
             // which damage / culling treat as "contributes nothing".
             shape_rects.resize(tree.shapes.records.len(), Rect::ZERO);
             self.stack.clear();
-            run_tree(
-                tree,
-                layer_layout,
-                rows,
-                shape_rects,
-                &mut r.entries,
-                &mut r.entry_ids,
-                &mut r.entry_layout_rects,
-                &mut r.by_id,
-                &mut self.stack,
-            );
+            run_tree(tree, layer_layout, r, layer, &mut self.stack);
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+/// Finalize one stack frame: write the rolled-up
+/// `subtree_paint_rect` into the parallel `subtree_paint_rects` slot
+/// for the frame's node, then union upward into the now-top frame so
+/// the rollup ripples to the root. Called from both the per-node
+/// pop loop and the end-of-tree drain — identical logic, one source.
+#[inline]
+fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: Frame) {
+    subtree_paint_rects[popped.node_idx] = popped.subtree_paint_rect;
+    if let Some(parent) = stack.last_mut() {
+        parent.subtree_paint_rect = parent.subtree_paint_rect.union(popped.subtree_paint_rect);
+    }
+}
+
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
-    rows: &mut Vec<Cascade>,
-    shape_rects: &mut [Rect],
-    entries: &mut Vec<HitEntry>,
-    entry_ids: &mut Vec<WidgetId>,
-    entry_layout_rects: &mut Vec<Rect>,
-    by_id: &mut FxHashMap<WidgetId, u32>,
+    cascades: &mut Cascades,
+    layer: Layer,
     stack: &mut Vec<Frame>,
 ) {
+    let li = layer as usize;
     let n = tree.records.len();
     let layout_col = tree.records.layout();
     let attrs_col = tree.records.attrs();
@@ -272,7 +317,8 @@ fn run_tree(
             if (i as u32) < top.subtree_end {
                 break;
             }
-            stack.pop();
+            let popped = stack.pop().unwrap();
+            finalize_frame(stack, &mut cascades.subtree_paint_rects[li], popped);
         }
         let (parent_transform, parent_clip, parent_dis, parent_inv) = match stack.last() {
             Some(p) => (p.transform, p.clip, p.disabled, p.invisible),
@@ -294,9 +340,16 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
-            shape_rects,
+            &mut cascades.shape_rects[li],
         );
-        let row = Cascade {
+        // Invisible nodes never paint, so seeding their subtree
+        // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
+        // from inflating the ancestor's `subtree_paint_rect` (and
+        // killing the encoder's viewport / damage cull at that
+        // ancestor). Visibility is in `cascade_input` regardless, so
+        // damage tracking is unaffected.
+        let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
+        cascades.rows[li].push(Cascade {
             paint_rect,
             cascade_input: hash_cascade_input(
                 parent_transform,
@@ -306,7 +359,8 @@ fn run_tree(
                 layout_rect,
                 invisible,
             ),
-        };
+        });
+        cascades.subtree_paint_rects[li].push(subtree_seed);
 
         let node_transform = tree.transform_of(id);
         let desc_transform = match node_transform {
@@ -325,25 +379,31 @@ fn run_tree(
             attrs.sense()
         };
         let focusable = !cascaded_off && attrs.is_focusable();
-        let widget_id = widget_ids[i];
-        by_id.insert(widget_id, entries.len() as u32);
-        entry_ids.push(widget_id);
-        entry_layout_rects.push(layout_rect);
-        entries.push(HitEntry {
-            rect: visible_rect,
-            sense,
-            focusable,
-            disabled,
-        });
+        cascades.push_entry(
+            widget_ids[i],
+            HitEntry {
+                rect: visible_rect,
+                sense,
+                focusable,
+                disabled,
+            },
+            layout_rect,
+        );
 
-        rows.push(row);
         stack.push(Frame {
             transform: desc_transform,
             clip: desc_clip,
             disabled,
             invisible,
             subtree_end: ends[i],
+            node_idx: i,
+            subtree_paint_rect: subtree_seed,
         });
+    }
+    // Drain frames whose subtree extends to the end of the tree —
+    // they never hit the `< top.subtree_end` exit at the loop head.
+    while let Some(popped) = stack.pop() {
+        finalize_frame(stack, &mut cascades.subtree_paint_rects[li], popped);
     }
 }
 
