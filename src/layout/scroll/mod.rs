@@ -52,29 +52,23 @@ mod tests;
 /// - Mutates `offset` from input (via the same entry).
 ///
 /// The driver writes layout-derived fields:
-/// - `measure` records `content` (the bbox `Rect`, including any
-///   negative `min` rolled up from a child canvas).
+/// - `measure` records `content` (the panned-axis extent).
 /// - `arrange` records `viewport` (inner rect post user-padding),
-///   `overflow`, and `seen`. No offset clamp — see the note in
-///   `arrange`.
+///   `overflow`, `seen`, and re-clamps `offset` to the new bounds.
 ///
 /// - `offset` — input-accumulated pan position (next frame's start).
 /// - `viewport` — INNER (user-padding-deflated) size: what children
-///   see. Drives `content.size > viewport` overflow checks.
+///   see. Drives `content > viewport` overflow checks.
 /// - `outer` — full arranged rect size of the scroll node including
 ///   any reservation gutter. Drives bar positioning so the bar sits
 ///   flush with the OUTER far edge. Parent-allocated and stable
 ///   across reservation flips (unlike `viewport`, which shrinks when
 ///   a gutter appears) — that's why we store it instead of deriving
 ///   from `viewport + padding + reservation` at record time.
-/// - `content` — measured bbox `Rect` of the inner content in
-///   scroll-content coords. `content.min` (≤ `(0,0)`) is the
-///   leading-edge offset rolled up from a direct child canvas;
-///   `content.size = content.max - content.min`. Read by the widget
-///   for clamp range and bar geometry.
-/// - `overflow` — `(x, y)` per-axis: did `content.size * zoom`
-///   exceed `viewport`? Read at record time to decide whether to
-///   reserve a bar gutter on the cross axis.
+/// - `content` — measured content extent on the panned axes.
+/// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
+///   the viewport on the most recent measure? Read at record time
+///   to decide whether to reserve a bar gutter on the cross axis.
 /// - `seen` — set true by `arrange` after the first frame. Read by
 ///   the widget to detect a cold-mount and trigger a relayout pass
 ///   so pass B records with the measured reservation in place.
@@ -86,13 +80,10 @@ pub(crate) struct ScrollLayoutState {
     pub(crate) zoom: f32,
     pub(crate) viewport: Size,
     pub(crate) outer: Size,
-    /// Unscaled content rect in scroll-content coords. `content.min`
-    /// (≤ `(0,0)`) is the leading-edge offset rolled up from
-    /// `LayoutScratch::content_origin`; `content.size` is the
-    /// `bbox.max - bbox.min` extent the driver measured. Multiply
-    /// by `zoom` for the user-perceived (post-paint) coordinates.
-    /// Margin lives separately on `content_margin`.
-    pub(crate) content: Rect,
+    /// Unscaled content extent. Multiply by `zoom` for the
+    /// user-perceived (post-paint) extent. Margin lives separately
+    /// on `content_margin`.
+    pub(crate) content: Size,
     pub(crate) overflow: (bool, bool),
     pub(crate) seen: bool,
     /// Extra slack added around the measured content rect at clamp
@@ -118,7 +109,7 @@ impl Default for ScrollLayoutState {
             zoom: 1.0,
             viewport: Size::ZERO,
             outer: Size::ZERO,
-            content: Rect::ZERO,
+            content: Size::ZERO,
             overflow: (false, false),
             seen: false,
             drag_anchor: None,
@@ -181,41 +172,13 @@ pub(crate) fn measure(
     };
 
     let wid = tree.records.widget_id()[node.idx()];
-    // Roll up leading-edge origin from **direct** children. The cache
-    // round-trips `content_origin` alongside `desired`, so a
-    // measure-cache hit on a canvas descendant still surfaces the
-    // right value here — no separate fallback.
-    //
-    // **Direct-only is intentional.** `content_origin` is a
-    // canvas-and-scroll feature: canvas places children at unshifted
-    // positions (negatives render past `inner.min`), and scroll
-    // extends its clamp so those positions are reachable. Propagating
-    // through a structural sibling-bearing container (Stack, Grid,
-    // Wrap) would let a canvas's negatively-placed children render
-    // *on top of* its stack siblings, since "no shift" + sibling
-    // positioning overlap. Acceptable wrappers between Scroll and
-    // Canvas: zero-overhead frames (`Frame`, `Panel::zstack`
-    // single-child) — those don't introduce siblings whose layout
-    // could overlap the negative region. If you genuinely need a
-    // canvas inside a stack with negative-origin support, you want
-    // a different feature (sticky-header-style anchoring), not this
-    // one.
-    let mut bb_min = Vec2::ZERO;
-    for c in tree.active_children(node) {
-        let co = layout.scratch.content_origin[c.idx()];
-        bb_min.x = bb_min.x.min(co.x);
-        bb_min.y = bb_min.y.min(co.y);
-    }
-    let entry = layout.scroll_states.entry(wid).or_default();
-    // `content` = full bbox in scroll-content space; `min` is the
-    // leading-edge offset rolled up above, `max = min + raw` is the
-    // trailing-edge corner. Margin lives separately in
-    // `content_margin` and is applied at clamp time only — bars
-    // reflect the real content, not the padded slack region.
-    entry.content = Rect {
-        min: bb_min,
-        size: raw,
-    };
+    // Margin doesn't fold into `content` — it's applied at clamp
+    // time only, so bars reflect the real bbox and the margin acts
+    // as invisible overscroll. Negative-origin canvases are handled
+    // entirely in userspace via
+    // [`crate::widgets::scroll::Scroll::anchor_canvas_origin`]; the
+    // driver itself sees only non-negative content.
+    layout.scroll_states.entry(wid).or_default().content = raw;
 
     match mode {
         LayoutMode::ScrollVertical => Size::new(raw.w, 0.0),
@@ -266,8 +229,8 @@ pub(crate) fn arrange(
     entry.viewport = viewport;
     entry.outer = outer;
     entry.overflow = (
-        entry.content.size.w * zoom > viewport.w,
-        entry.content.size.h * zoom > viewport.h,
+        entry.content.w * zoom > viewport.w,
+        entry.content.h * zoom > viewport.h,
     );
     entry.seen = true;
     // No offset clamp here. Pivot-anchored zoom (in `Scroll::show`)

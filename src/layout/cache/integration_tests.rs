@@ -348,61 +348,6 @@ fn cache_hit_preserves_per_driver_rects() {
     }
 }
 
-/// Cache × `content_origin` round-trip. A Canvas with a
-/// negatively-placed child publishes its `bbox.min` into
-/// `scratch.content_origin`; an enclosing `Scroll` rolls that up into
-/// `state.content.min` so the offset clamp extends past zero. On a
-/// measure-cache hit the canvas's measure doesn't run — the value has
-/// to come back via `SubtreeArenas::content_origin` (Phase 1 of the
-/// content-rect refactor). If the cache path forgets that column,
-/// the warm frame's `content.min` collapses to `(0,0)` and the user
-/// can no longer pan into the negative region.
-///
-/// Same-`Ui` cold→warm pattern as
-/// [`cache_hit_preserves_per_driver_rects`]; we read `state.content`
-/// directly instead of leaf rects because that's the consumer-visible
-/// projection of the round-tripped value.
-#[test]
-fn cache_hit_preserves_canvas_content_origin() {
-    let surface = UVec2::new(400, 400);
-    let record = |ui: &mut Ui| {
-        Panel::vstack().auto_id().show(ui, |ui| {
-            crate::widgets::scroll::Scroll::both()
-                .id(WidgetId::from_hash("scroll"))
-                .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-                .hide_bars()
-                .show(ui, |ui| {
-                    Panel::canvas()
-                        .id(WidgetId::from_hash("canvas"))
-                        .size((Sizing::Hug, Sizing::Hug))
-                        .show(ui, |ui| {
-                            Frame::new()
-                                .id(WidgetId::from_hash("neg"))
-                                .position((-40.0, -25.0))
-                                .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
-                                .show(ui);
-                        });
-                });
-        });
-    };
-    let mut ui = Ui::for_test_at_text(surface);
-    ui.run_at_acked(surface, record);
-    let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
-    let cold = *ui.scroll_state(scroll_id);
-    assert_eq!(
-        cold.content.min,
-        glam::Vec2::new(-40.0, -25.0),
-        "cold frame: content.min from canvas bbox.min",
-    );
-
-    ui.run_at_acked(surface, record);
-    let warm = *ui.scroll_state(scroll_id);
-    assert_eq!(
-        warm.content, cold.content,
-        "warm (cache-hit) frame: content rect identical to cold",
-    );
-}
-
 /// Cache-correctness generalization: a measure-cache hit must not
 /// perturb ANY downstream consumer of per-frame engine state — so a
 /// fully-encoded `RenderCmdBuffer` from a warm frame must be
