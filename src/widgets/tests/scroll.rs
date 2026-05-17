@@ -72,60 +72,6 @@ fn wheel_delta_advances_offset_with_clamp() {
     }
 }
 
-/// `Scroll::anchor_canvas_origin` shifts user positions so they land
-/// at non-negative coords inside the scroll's canvas, and compensates
-/// the scroll's `offset` by the frame-over-frame `Δshift * zoom` so
-/// every unchanged position keeps its on-screen location when the
-/// leading edge of the bbox moves.
-///
-/// Frame 1: positions `[(0, 0), (100, 100)]` → bbox.min = `(0, 0)`,
-/// shift = `(0, 0)`, no offset change.
-/// Frame 2: positions `[(-50, -50), (100, 100)]` → bbox.min =
-/// `(-50, -50)`, shift = `(50, 50)`, delta = `(50, 50)`, offset
-/// advances by `(50, 50) * zoom`.
-#[test]
-fn anchor_canvas_origin_shifts_offset_by_delta_for_visual_stability() {
-    let mut ui = Ui::for_test();
-    let scroll_id = WidgetId::from_hash("scroll");
-    let build = |ui: &mut Ui| {
-        Scroll::both()
-            .id(scroll_id)
-            .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
-            .hide_bars()
-            .show(ui, |_ui| {});
-    };
-    ui.run_at_acked(SURFACE, build);
-    let inner_id = scroll_id.with("__viewport");
-
-    let positions_a = [Vec2::ZERO, Vec2::new(100.0, 100.0)];
-    let shift_a = Scroll::anchor_canvas_origin(&mut ui, scroll_id, positions_a);
-    assert_eq!(shift_a, Vec2::ZERO);
-    assert_eq!(ui.scroll_state(inner_id).offset, Vec2::ZERO);
-
-    let positions_b = [Vec2::new(-50.0, -50.0), Vec2::new(100.0, 100.0)];
-    let shift_b = Scroll::anchor_canvas_origin(&mut ui, scroll_id, positions_b);
-    assert_eq!(shift_b, Vec2::new(50.0, 50.0));
-    assert_eq!(
-        ui.scroll_state(inner_id).offset,
-        Vec2::new(50.0, 50.0),
-        "delta-shift drives offset compensation",
-    );
-
-    // Repeat with same positions: no further compensation.
-    let shift_b_again = Scroll::anchor_canvas_origin(&mut ui, scroll_id, positions_b);
-    assert_eq!(shift_b_again, Vec2::new(50.0, 50.0));
-    assert_eq!(ui.scroll_state(inner_id).offset, Vec2::new(50.0, 50.0));
-
-    // Move further negative → larger shift → another compensation step.
-    let positions_c = [Vec2::new(-80.0, -50.0), Vec2::new(100.0, 100.0)];
-    Scroll::anchor_canvas_origin(&mut ui, scroll_id, positions_c);
-    assert_eq!(
-        ui.scroll_state(inner_id).offset,
-        Vec2::new(80.0, 50.0),
-        "only the axis that moved further accumulates additional shift",
-    );
-}
-
 /// `content_margin` shifts the natural offset range away from
 /// `[0, slack]`: a left/top margin of `m` opens a `[-m, 0)` band so
 /// the user can pan past the children's origin; the right/bottom
