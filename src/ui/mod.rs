@@ -875,7 +875,7 @@ impl Ui {
         let mut state = self.input.response_for(id, &self.layout.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.disabled |= self.forest.trees[self.forest.current_layer as usize].ancestor_disabled();
+        state.disabled |= self.forest.current_tree().ancestor_disabled();
         state
     }
 
