@@ -4,6 +4,7 @@ use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
+use soa_rs::{Soa, Soars};
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
 /// ready for any rasterizing backend (wgpu, software, headless test capture).
@@ -143,52 +144,52 @@ pub(crate) struct RoundedClip {
     pub(crate) radius: Corners,
 }
 
-/// Scene-wide mesh pool: per-draw spans + per-instance GPU state. The
+/// Scene-wide mesh pool, SoA-stored as `Soa<MeshDrawRow>`. The
 /// underlying vertex/index bytes live in the frame's
 /// [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
-/// `MeshDraw` carries spans into that arena.
-#[derive(Default, Clone)]
+/// each row's `draw` field carries spans into that arena, and the
+/// `instance` field carries the Pod GPU state the backend uploads
+/// verbatim to the instance buffer (read as a contiguous
+/// `&[MeshInstance]` via `rows.instance()` — same memory layout as
+/// the previous parallel-`Vec` form).
+#[derive(Default)]
 pub(crate) struct MeshScene {
-    pub(crate) draws: Vec<MeshDraw>,
-    /// Parallels `draws`: one row per draw, uploaded verbatim to the
-    /// per-instance vertex buffer. Composer pushes both together; the
-    /// backend looks them up by `instance_index`.
-    pub(crate) instances: Vec<MeshInstance>,
+    pub(crate) rows: Soa<MeshDrawRow>,
 }
 
 impl MeshScene {
     #[inline]
     pub(crate) fn clear(&mut self) {
-        self.draws.clear();
-        self.instances.clear();
+        self.rows.clear();
     }
 }
 
-/// Scene-wide image pool: per-draw handles + per-instance GPU state.
-/// Structurally a mesh-style SoA; the backend's image pipeline binds a
-/// per-handle texture and issues one draw per `ImageDraw` (no shared
-/// vertex/index buffers — every quad is implicit four-corner from the
-/// shader's `vertex_index`).
-#[derive(Default, Clone)]
+/// Scene-wide image pool, SoA-stored as `Soa<ImageDrawRow>`. The
+/// backend binds a per-handle texture and issues one draw per row
+/// (no shared vertex/index buffers — every quad is implicit
+/// four-corner from the shader's `vertex_index`).
+#[derive(Default)]
 pub(crate) struct ImageScene {
-    pub(crate) draws: Vec<ImageDraw>,
-    pub(crate) instances: Vec<ImageInstance>,
+    pub(crate) rows: Soa<ImageDrawRow>,
 }
 
 impl ImageScene {
     #[inline]
     pub(crate) fn clear(&mut self) {
-        self.draws.clear();
-        self.instances.clear();
+        self.rows.clear();
     }
 }
 
-/// One image draw within a group. `handle` selects the GPU texture
-/// bind group; the matching `ImageInstance` lives in
-/// [`ImageScene::instances`] at the same index.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ImageDraw {
-    pub(crate) handle: ImageHandle,
+/// One image draw row. Composer pushes one of these per image; the
+/// SoA storage splits `handle` and `instance` into their own
+/// contiguous slices, so the backend uploads `rows.instance()` as a
+/// single `write_buffer` and walks `rows.handle()` for per-draw
+/// texture bindings.
+#[derive(Soars, Clone, Copy, Debug, PartialEq)]
+#[soa_derive(Debug)]
+pub(crate) struct ImageDrawRow {
+    pub handle: ImageHandle,
+    pub instance: ImageInstance,
 }
 
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
@@ -214,12 +215,24 @@ pub(crate) struct ImageInstance {
 
 /// One mesh draw within a group. Vertex/index slices live in the
 /// frame's [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
-/// the per-instance transform + tint live in [`MeshScene::instances`]
-/// at the matching index.
+/// the per-instance transform + tint live alongside as
+/// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct MeshDraw {
     pub(crate) vertices: Span,
     pub(crate) indices: Span,
+}
+
+/// One mesh draw row. SoA split keeps span info (`draw`) and Pod
+/// instance state (`instance`) in their own contiguous columns so
+/// the backend can upload `rows.instance()` as a single
+/// `write_buffer` while still walking `rows.draw()` for per-draw
+/// vertex/index span issue.
+#[derive(Soars, Clone, Copy, Debug, PartialEq)]
+#[soa_derive(Debug)]
+pub(crate) struct MeshDrawRow {
+    pub draw: MeshDraw,
+    pub instance: MeshInstance,
 }
 
 /// Per-mesh GPU state, uploaded to a `step_mode: Instance` vertex

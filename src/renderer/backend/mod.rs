@@ -354,7 +354,7 @@ impl WgpuBackend {
             &self.queue,
             &arena.meshes.vertices,
             &arena.meshes.indices,
-            &buffer.meshes.instances,
+            buffer.meshes.rows.instance(),
         );
 
         // Upload any newly registered images to GPU, then stream the
@@ -364,7 +364,7 @@ impl WgpuBackend {
         self.image
             .drain_registry(&self.device, &self.queue, &self.caches.images);
         self.image
-            .upload_instances(&self.device, &self.queue, &buffer.images.instances);
+            .upload_instances(&self.device, &self.queue, buffer.images.rows.instance());
 
         if !damage_scissors.is_empty() {
             self.quad
@@ -680,7 +680,7 @@ impl WgpuBackend {
                     let range = buffer.mesh_batches[batch].meshes;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for (offset, draw) in buffer.meshes.draws[start..end].iter().enumerate() {
+                    for (offset, draw) in buffer.meshes.rows.draw()[start..end].iter().enumerate() {
                         // `draw_indexed` takes a per-call vertex
                         // offset; pass the mesh's vertex start as
                         // `base_vertex` so indices stay buffer-local.
@@ -704,8 +704,10 @@ impl WgpuBackend {
                     let range = buffer.image_batches[batch].images;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for (offset, draw) in buffer.images.draws[start..end].iter().enumerate() {
-                        self.image.draw(pass, draw.handle, (start + offset) as u32);
+                    for (offset, handle) in
+                        buffer.images.rows.handle()[start..end].iter().enumerate()
+                    {
+                        self.image.draw(pass, *handle, (start + offset) as u32);
                     }
                     pass.pop_debug_group();
                 }
