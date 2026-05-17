@@ -861,27 +861,34 @@ impl Ui {
     /// resolution of `element.salt`. Disambiguation already happened
     /// in `make_persistent_id`, so this is the final id verbatim —
     /// no further `SeenIds` work here.
-    pub(crate) fn node(&mut self, id: WidgetId, element: Element, f: impl FnOnce(&mut Ui)) {
+    pub(crate) fn node<R>(
+        &mut self,
+        id: WidgetId,
+        element: Element,
+        f: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
         self.forest.open_node(id, element, None);
-        f(self);
+        let r = f(self);
         self.forest.close_node();
+        r
     }
 
     /// Chrome variant of [`Self::node`]. Same `id` contract.
-    pub(crate) fn node_with_chrome(
+    pub(crate) fn node_with_chrome<R>(
         &mut self,
         id: WidgetId,
         element: Element,
         chrome: Background,
-        f: impl FnOnce(&mut Ui),
-    ) {
+        f: impl FnOnce(&mut Ui) -> R,
+    ) -> R {
         self.forest.open_node(
             id,
             element,
             Some((chrome, &self.frame_arena, &self.caches.gradients)),
         );
-        f(self);
+        let r = f(self);
         self.forest.close_node();
+        r
     }
 
     /// Snapshot of input/cascade state for a widget. `rect` and

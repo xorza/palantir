@@ -20,6 +20,7 @@ use glam::Vec2;
 #[cfg(test)]
 mod tests;
 
+#[derive(Debug)]
 pub struct Response {
     pub(crate) id: WidgetId,
     pub(crate) state: ResponseState,
@@ -61,6 +62,22 @@ impl Response {
     /// reads.
     pub fn drag_started(&self) -> bool {
         self.state.drag_started
+    }
+}
+
+/// `Response` plus a value returned by the body closure of widgets
+/// that take one (`Panel`/`Grid`/`Scroll`). `Deref`s to `Response` so
+/// callers ignoring the inner value keep working unchanged.
+#[derive(Debug)]
+pub struct InnerResponse<R> {
+    pub response: Response,
+    pub inner: R,
+}
+
+impl<R> std::ops::Deref for InnerResponse<R> {
+    type Target = Response;
+    fn deref(&self) -> &Response {
+        &self.response
     }
 }
 

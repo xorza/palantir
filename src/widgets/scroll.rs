@@ -344,7 +344,11 @@ impl Scroll {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> crate::widgets::InnerResponse<R> {
         let id = ui.make_persistent_id(self.element.salt);
         let mode = self.element.mode;
         assert!(
@@ -715,15 +719,11 @@ impl Scroll {
             &theme,
         );
 
-        ui.node(id, outer, |ui| {
-            match inner_chrome {
-                Some(c) => {
-                    ui.node_with_chrome(scroll_id, inner, c, |ui| body(ui));
-                }
-                None => {
-                    ui.node(scroll_id, inner, |ui| body(ui));
-                }
-            }
+        let inner_value = ui.node(id, outer, |ui| {
+            let inner_value = match inner_chrome {
+                Some(c) => ui.node_with_chrome(scroll_id, inner, c, body),
+                None => ui.node(scroll_id, inner, body),
+            };
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves
@@ -743,12 +743,16 @@ impl Scroll {
                     }
                 });
             }
+            inner_value
         });
 
         let resp_state = ui.response_for(id);
-        Response {
-            id,
-            state: resp_state,
+        crate::widgets::InnerResponse {
+            response: Response {
+                id,
+                state: resp_state,
+            },
+            inner: inner_value,
         }
     }
 }

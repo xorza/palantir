@@ -50,7 +50,11 @@ impl Panel {
         self
     }
 
-    pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
+    pub fn show<R>(
+        self,
+        ui: &mut Ui,
+        body: impl FnOnce(&mut Ui) -> R,
+    ) -> crate::widgets::InnerResponse<R> {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
@@ -60,12 +64,15 @@ impl Panel {
             element.set_clip(ui.theme.panel_clip);
         }
         let id = ui.make_persistent_id(element.salt);
-        match chrome {
+        let inner = match chrome {
             Some(c) => ui.node_with_chrome(id, element, c, body),
             None => ui.node(id, element, body),
-        }
+        };
         let state = ui.response_for(id);
-        Response { id, state }
+        crate::widgets::InnerResponse {
+            response: Response { id, state },
+            inner,
+        }
     }
 
     #[track_caller]
