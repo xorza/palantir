@@ -7,8 +7,8 @@
 //! so the dragged position lands in the same frame as the move event.
 
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::forest::Layer;
+use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;

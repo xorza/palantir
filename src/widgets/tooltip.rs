@@ -1,6 +1,6 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::forest::element::Salt;
 use crate::forest::Layer;
+use crate::forest::element::Salt;
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;

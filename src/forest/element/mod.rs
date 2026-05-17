@@ -28,7 +28,6 @@
 
 use crate::forest::visibility::Visibility;
 use crate::input::sense::Sense;
-use std::hash::Hash;
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sizing::Sizes,
@@ -37,6 +36,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{size::Size, spacing::Spacing, transform::TranslateScale};
 use glam::Vec2;
 use half::f16;
+use std::hash::Hash;
 
 /// `(gap, line_gap)` packed as two `f16` lanes in `[u16; 2]` (4 bytes).
 /// Lane order: `gap | line_gap`. Same f16 contract as

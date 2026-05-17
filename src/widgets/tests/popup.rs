@@ -129,10 +129,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     ui.run_at(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest
-            .tree(crate::forest::Layer::Popup)
-            .records
-            .len(),
+        ui.forest.tree(crate::forest::Layer::Popup).records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );

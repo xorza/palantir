@@ -204,8 +204,8 @@ mod tests {
     use super::*;
 
     use crate::Ui;
-    use crate::forest::element::Configure;
     use crate::forest::Layer;
+    use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;

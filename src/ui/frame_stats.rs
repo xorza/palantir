@@ -7,8 +7,8 @@
 //! damage picks up the small rect — keeps the readout ticking when
 //! the rest of the UI is steady.
 
-use crate::forest::element::Configure;
 use crate::forest::Layer;
+use crate::forest::element::Configure;
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;

@@ -22,7 +22,7 @@
 //!    *painted* frame regardless of how many discard passes ran.
 
 use crate::forest::Layer;
-use crate::forest::tree::{NodeId};
+use crate::forest::tree::NodeId;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 

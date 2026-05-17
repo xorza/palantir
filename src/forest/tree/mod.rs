@@ -46,7 +46,6 @@ use crate::widgets::grid::GridDef;
 use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
-use std::time::Duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) struct NodeId(pub(crate) u32);
@@ -78,23 +77,12 @@ pub(crate) struct OpenFrame {
     pub(crate) ancestor_or_self_disabled: bool,
 }
 
-/// Shared between [`Tree::open_node`] / [`Tree::open_node_with_chrome`].
-/// Threads the parent-frame + slot id from the prologue helper through
-/// the variant-specific body and into the finalize helper. `parent`
-/// (the parent's `NodeId`) is derived from `parent_frame` at the call
-/// site that needs it — kept here as a single pre-computed source so
-/// the prologue / finalize boundary doesn't have to recompute it.
+/// Threads the parent-frame + slot id from [`Tree::open_node_prologue`]
+/// through the body and into [`Tree::open_node_finalize`].
 #[derive(Clone, Copy)]
 struct OpenNodeCtx {
     parent_frame: Option<OpenFrame>,
     new_id: NodeId,
-}
-
-impl OpenNodeCtx {
-    #[inline]
-    fn parent(&self) -> Option<NodeId> {
-        self.parent_frame.map(|f| f.node)
-    }
 }
 
 /// One root within a single layer's [`Tree`]. Multiple roots in the
@@ -173,11 +161,6 @@ impl Slot {
     #[inline]
     pub(crate) fn get(self) -> Option<usize> {
         (self.0 != Self::ABSENT.0).then_some(self.0 as usize)
-    }
-
-    #[inline]
-    pub(crate) fn is_present(self) -> bool {
-        self.0 != Self::ABSENT.0
     }
 }
 
@@ -312,9 +295,9 @@ impl Tree {
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
     /// initialise `paint_anims` entries' `last_quantum`. Capacity
     /// retained across frames. The paint-anim wake fold lives on
-    /// [`Self::min_paint_anim_wake`] — `Ui::frame_inner` calls it at
-    /// the tail of every frame (both record + paint-only paths) so
-    /// the scheduling is centralised.
+    /// [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame_inner`
+    /// calls it at the tail of every frame (both record + paint-only
+    /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
         assert!(
             self.open_frames.is_empty(),
@@ -332,19 +315,6 @@ impl Tree {
         );
         self.rollups.reset_for(self.records.len());
         self.compute_hashes();
-    }
-
-    /// Minimum `next_wake` across this tree's registered paint anims,
-    /// or `Duration::MAX` when none are registered / none want to fire.
-    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Duration {
-        let mut min_wake = Duration::MAX;
-        for entry in &self.paint_anims.entries {
-            let w = entry.anim.next_wake(now);
-            if w < min_wake {
-                min_wake = w;
-            }
-        }
-        min_wake
     }
 
     /// Fused reverse-pre-order pass: computes both `rollups.node[i]`
@@ -407,7 +377,7 @@ impl Tree {
                 shape_buf[cursor].hash(&mut h);
                 cursor += 1;
             }
-            if ex.chrome.is_present() || has_direct_shape {
+            if ex.chrome.get().is_some() || has_direct_shape {
                 paints.set(i, true);
             }
             if layouts[i].mode == LayoutMode::Grid {
@@ -464,63 +434,43 @@ impl Tree {
     /// mints stamp the top of `pending_anchors` onto the new
     /// `RootSlot`; child opens don't read the stack.
     ///
-    /// **No-chrome variant.** `ClipMode::Rounded` always downgrades to
-    /// `Rect` here — without a chrome radius there's nothing to mask.
-    /// See [`Self::open_node_with_chrome`] for the chrome path.
-    pub(crate) fn open_node(&mut self, widget_id: WidgetId, mut element: Element) -> NodeId {
-        if matches!(element.clip_mode(), ClipMode::Rounded) {
-            element.set_clip(ClipMode::Rect);
-        }
-        let ctx = self.open_node_prologue(element.mode, element.mode_payload);
-        let cols = element.into_columns(widget_id);
-        self.check_grid_cell(ctx.parent(), &cols.bounds);
-
-        let mut ex = ExtrasIdx::default();
-        self.push_bounds_panel_extras(&cols, &mut ex);
-        self.extras_idx.push(ex);
-        self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
-    }
-
-    /// Chrome variant of [`Self::open_node`]. Pushes the `Background`
-    /// row into `chrome_table`. Split from the no-chrome path so neither
-    /// call site carries the 232-byte `Option<Background>` parameter,
-    /// and so the `ClipMode::Rounded` zero-radius downgrade can be
-    /// skipped statically when no radius is present.
-    pub(crate) fn open_node_with_chrome(
+    /// `chrome` is `None` for nodes without a background paint;
+    /// `ClipMode::Rounded` always downgrades to `Rect` in that case
+    /// (no radius to mask). With chrome, the row is kept past
+    /// `Background::is_noop` when `ClipMode::Rounded` so the encoder
+    /// can read `bg.radius` for the stencil-mask path — the only time
+    /// a noop chrome survives storage. Partial-noop chrome (e.g.
+    /// shadow-only) survives here and is dropped per-emit by the cmd
+    /// buffer's gates.
+    #[inline]
+    pub(crate) fn open_node(
         &mut self,
         widget_id: WidgetId,
         mut element: Element,
-        bg: Background,
-        arena: &FrameArena,
-        atlas: &GradientAtlas,
+        chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
     ) -> NodeId {
-        // Tree-storage noop gate for chrome — mirrors `Shapes::add` for
-        // the shape buffer and `cmd_buffer::draw_*` for emits. Whole-
-        // `Background::is_noop` drops the entry so chrome iteration /
-        // hashing skips it. Partial-noop chrome (e.g. shadow-only)
-        // survives here and is dropped per-emit by the cmd buffer's
-        // gates. When `ClipMode::Rounded`, the chrome row is also
-        // kept past `Background::is_noop` so the encoder can read
-        // `bg.radius` for the stencil-mask path — that's the only
-        // time a noop chrome ever survives storage.
-        if matches!(element.clip_mode(), ClipMode::Rounded) && bg.radius.approx_zero() {
-            element.set_clip(ClipMode::Rect);
+        if matches!(element.clip_mode(), ClipMode::Rounded) {
+            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.radius.approx_zero());
+            if radius_zero {
+                element.set_clip(ClipMode::Rect);
+            }
         }
         let ctx = self.open_node_prologue(element.mode, element.mode_payload);
         let cols = element.into_columns(widget_id);
-        self.check_grid_cell(ctx.parent(), &cols.bounds);
+        self.check_grid_cell(ctx.parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
         self.push_bounds_panel_extras(&cols, &mut ex);
-        let needs_chrome_row = !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
-        if needs_chrome_row {
-            // Lower to `ChromeRow` here — gradients land in the
-            // shared `FrameArena.gradients` arena alongside any from
-            // `Shapes::add`, so chrome and shape paints share one
-            // frame-scoped gradient pool.
-            let row = arena.lower_background(bg, atlas);
-            ex.chrome = Slot::from_len(self.chrome_table.len());
-            self.chrome_table.push(row);
+        if let Some((bg, arena, atlas)) = chrome {
+            // Tree-storage noop gate for chrome — mirrors `Shapes::add`
+            // for the shape buffer and `cmd_buffer::draw_*` for emits.
+            let needs_chrome_row =
+                !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
+            if needs_chrome_row {
+                let row = arena.lower_background(bg, atlas);
+                ex.chrome = Slot::from_len(self.chrome_table.len());
+                self.chrome_table.push(row);
+            }
         }
         self.extras_idx.push(ex);
         self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
@@ -619,7 +569,8 @@ impl Tree {
             layout,
             attrs,
         });
-        self.parents.push(ctx.parent().unwrap_or(NodeId::ROOT));
+        self.parents
+            .push(ctx.parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + `extras_idx` + `parents`
         // must agree on `len`; a missed push silently shifts every

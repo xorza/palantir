@@ -9,9 +9,9 @@
 
 use crate::common::hash::Hasher;
 use crate::forest::Forest;
+use crate::forest::Layer;
 use crate::forest::rollups::CascadeInputHash;
 use crate::forest::shapes::record::shadow_paint_rect_local;
-use crate::forest::Layer;
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
