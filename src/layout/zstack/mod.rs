@@ -63,14 +63,16 @@ pub(crate) fn arrange(
     out: &mut Layout,
 ) {
     let parent_child_align = tree.panel(node).child_align;
+    let layouts = tree.records.layout();
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
             zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
-        let d = layout.scratch.desired[c.index()];
-        let s = tree.records.layout()[c.index()];
+        let i = c.index();
+        let d = layout.scratch.desired[i];
+        let s = layouts[i];
 
         let AxisAlignPair { h, v } = resolved_axis_align(&s, parent_child_align);
         let x = place_axis(h, s.size.w(), d.w, inner.size.w);

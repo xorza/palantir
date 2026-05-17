@@ -280,8 +280,9 @@ impl GridHugStore {
     /// ancestor can restore it via [`Self::restore_subtree`]. Order is
     /// dictated by [`HUG_ORDER`] per Grid, in pre-order.
     pub(crate) fn snapshot_subtree(&self, tree: &Tree, subtree: Range<usize>, out: &mut Vec<f32>) {
+        let layouts = tree.records.layout();
         for i in subtree {
-            let core = tree.records.layout()[i];
+            let core = layouts[i];
             if core.mode == LayoutMode::Grid {
                 let idx = core.mode_payload;
                 for (axis, kind) in HUG_ORDER {
@@ -297,9 +298,10 @@ impl GridHugStore {
     /// guarantees same Grid count and same `(n_cols, n_rows)` per
     /// Grid in the same order, so the slice and the walk align.
     pub(crate) fn restore_subtree(&mut self, tree: &Tree, subtree: Range<usize>, hugs: &[f32]) {
+        let layouts = tree.records.layout();
         let mut pos = 0usize;
         for i in subtree {
-            let core = tree.records.layout()[i];
+            let core = layouts[i];
             if core.mode == LayoutMode::Grid {
                 let idx = core.mode_payload;
                 for (axis, kind) in HUG_ORDER {
@@ -419,8 +421,9 @@ fn measure_inner(
     // (`Fill` / `Fixed`), measure's `inner_avail.w` matches arrange's
     // `inner.w`, so Fill cols at measure time give cells the same
     // width they'll get at arrange — wrap text shapes correctly.
-    let grid_sizing_w = tree.records.layout()[node.index()].size.w();
-    let grid_sizing_h = tree.records.layout()[node.index()].size.h();
+    let grid_sizing = tree.records.layout()[node.index()].size;
+    let grid_sizing_w = grid_sizing.w();
+    let grid_sizing_h = grid_sizing.h();
     {
         let GridContext {
             depth_stack, hugs, ..
@@ -616,15 +619,17 @@ fn arrange_inner(
     }
 
     let parent_child_align = tree.panel(node).child_align;
+    let layouts = tree.records.layout();
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
             zero_subtree(layout, tree, c, inner.min, out);
             continue;
         }
-        let s_node = tree.records.layout()[c.index()];
+        let i = c.index();
+        let s_node = layouts[i];
         let cell = tree.grid_of(c);
-        let d = layout.scratch.desired[c.index()];
+        let d = layout.scratch.desired[i];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
             let s = layout.scratch.grid.depth_stack.at(depth);
