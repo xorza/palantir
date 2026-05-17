@@ -31,11 +31,11 @@ impl Frame {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         match self.chrome {
-            Some(c) => ui.node_with_chrome(self.element, c, |_| {}),
-            None => ui.node(self.element, |_| {}),
-        };
+            Some(c) => ui.node_with_chrome(id, self.element, c, |_| {}),
+            None => ui.node(id, self.element, |_| {}),
+        }
         let state = ui.response_for(id);
         Response { id, state }
     }

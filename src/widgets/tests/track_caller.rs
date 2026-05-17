@@ -19,7 +19,10 @@ fn assert_distinct(label: &str, a: WidgetId, b: WidgetId) {
 }
 
 fn id_of<W: Configure>(mut w: W) -> WidgetId {
-    w.element_mut().id
+    // No parent context in this micro-test — `Salt::resolve(None)`
+    // yields the bare auto/explicit id without any parent-scoping
+    // mix.
+    w.element_mut().salt.resolve(None)
 }
 
 #[test]

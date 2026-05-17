@@ -494,12 +494,12 @@ impl Tree {
     /// **No-chrome variant.** `ClipMode::Rounded` always downgrades to
     /// `Rect` here — without a chrome radius there's nothing to mask.
     /// See [`Self::open_node_with_chrome`] for the chrome path.
-    pub(crate) fn open_node(&mut self, mut element: Element) -> NodeId {
+    pub(crate) fn open_node(&mut self, widget_id: WidgetId, mut element: Element) -> NodeId {
         if matches!(element.clip_mode(), ClipMode::Rounded) {
             element.set_clip(ClipMode::Rect);
         }
         let ctx = self.open_node_prologue(element.mode, element.mode_payload);
-        let cols = element.into_columns();
+        let cols = element.into_columns(widget_id);
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
@@ -515,6 +515,7 @@ impl Tree {
     /// skipped statically when no radius is present.
     pub(crate) fn open_node_with_chrome(
         &mut self,
+        widget_id: WidgetId,
         mut element: Element,
         bg: Background,
         arena: &FrameArena,
@@ -533,7 +534,7 @@ impl Tree {
             element.set_clip(ClipMode::Rect);
         }
         let ctx = self.open_node_prologue(element.mode, element.mode_payload);
-        let cols = element.into_columns();
+        let cols = element.into_columns(widget_id);
         self.check_grid_cell(ctx.parent(), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();

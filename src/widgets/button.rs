@@ -50,12 +50,16 @@ impl Button {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let mut element = self.element;
+        // Resolve `.id_salt(...)`'s parent-scoping now so per-id
+        // state lookups (response_for, animate) below see the same
+        // `WidgetId` `Forest::open_node` will record.
+        let id = ui.make_persistent_id(element.salt);
         // One `response_for` call covers both theme-picking (with
         // self-disabled merged in) and the returned `Response.state`
         // (without the merge). The button's `ui.node` body doesn't
         // mutate input state, so a re-read after `node` would return
         // the same `ResponseState` minus the merge.
-        let raw_state = ui.response_for(element.id);
+        let raw_state = ui.response_for(id);
         let mut picked_state = raw_state;
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // toggled `.disabled(true)` lands disabled visuals immediately.
@@ -81,12 +85,12 @@ impl Button {
         if element.margin == Spacing::ZERO {
             element.margin = style_margin;
         }
-        let look = look_target.animate(ui, element.id, fallback_text, style_anim);
+        let look = look_target.animate(ui, id, fallback_text, style_anim);
         let chrome = look.background;
         let label = self.label;
         let label_align = self.label_align;
 
-        ui.node_with_chrome(element, chrome, |ui| {
+        ui.node_with_chrome(id, element, chrome, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: None,
@@ -101,7 +105,7 @@ impl Button {
             }
         });
         Response {
-            id: element.id,
+            id,
             state: raw_state,
         }
     }

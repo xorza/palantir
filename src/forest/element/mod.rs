@@ -26,9 +26,9 @@
 //! to the column type and route it in `into_columns`. `Configure`
 //! (trait below) provides one chained setter per field on `Element`.
 
-use crate::forest::seen_ids::IdSource;
 use crate::forest::visibility::Visibility;
 use crate::input::sense::Sense;
+use std::hash::Hash;
 use crate::layout::types::{
     align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode, grid_cell::GridCell,
     justify::Justify, sizing::Sizes,
@@ -65,12 +65,13 @@ impl std::hash::Hash for Gaps {
     }
 }
 
-/// Packed `(justify, align, child_align, id_source)` in `u16`.
+/// Packed `(justify, align, child_align)` in `u16`.
 ///
 /// Lives on `Element` only — fan-out unpacks back into the dense
 /// `LayoutCore.align` + sparse `PanelExtras.{justify, child_align}`
 /// columns. Bit layout: 0-2 justify, 3-8 align (h:3, v:3), 9-14
-/// child_align (h:3, v:3), 15 id_source.
+/// child_align (h:3, v:3). Identity is carried by `Element.salt`
+/// (a separate enum), not packed here.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct ElementSlots {
     pub(crate) bits: u16,
@@ -82,7 +83,6 @@ impl ElementSlots {
     const ALIGN_MASK: u16 = 0b111_111 << Self::ALIGN_SHIFT;
     const CHILD_ALIGN_SHIFT: u16 = 9;
     const CHILD_ALIGN_MASK: u16 = 0b111_111 << Self::CHILD_ALIGN_SHIFT;
-    const ID_SOURCE: u16 = 1 << 15;
 
     #[inline]
     pub(crate) fn justify(self) -> Justify {
@@ -104,15 +104,6 @@ impl ElementSlots {
         Align::from_raw(((self.bits & Self::CHILD_ALIGN_MASK) >> Self::CHILD_ALIGN_SHIFT) as u8)
     }
     #[inline]
-    pub(crate) fn id_source(self) -> IdSource {
-        if self.bits & Self::ID_SOURCE != 0 {
-            IdSource::Explicit
-        } else {
-            IdSource::Auto
-        }
-    }
-
-    #[inline]
     pub(crate) fn set_justify(&mut self, j: Justify) {
         self.bits = (self.bits & !Self::JUSTIFY_MASK) | (j as u16);
     }
@@ -124,14 +115,6 @@ impl ElementSlots {
     pub(crate) fn set_child_align(&mut self, a: Align) {
         self.bits =
             (self.bits & !Self::CHILD_ALIGN_MASK) | ((a.raw() as u16) << Self::CHILD_ALIGN_SHIFT);
-    }
-    #[inline]
-    pub(crate) fn set_id_source(&mut self, s: IdSource) {
-        let bit = match s {
-            IdSource::Auto => 0,
-            IdSource::Explicit => Self::ID_SOURCE,
-        };
-        self.bits = (self.bits & !Self::ID_SOURCE) | bit;
     }
 }
 
@@ -447,6 +430,65 @@ const _: () = assert!(
     "Visibility discriminant exceeds 2 bits",
 );
 
+/// Recipe for an [`Element`]'s `WidgetId`. Mirrors egui's
+/// `Option<Id>` "raw `id_salt`, resolve at `Ui::make_persistent_id`"
+/// pattern: the builder stores the user's intent, resolution happens
+/// at record time when the parent context is known. Three sources:
+///
+/// - [`Salt::Auto`] — `#[track_caller]`-derived. The captured
+///   `(file, line, column)` already encodes call-site identity, so
+///   the resolved id is the stored [`WidgetId`] **as-is** (no
+///   parent-scoping — auto ids stay stable across moves in the tree).
+///   `Ui::node`'s built-in occurrence-counter disambiguation handles
+///   loops / helper closures that resolve to the same call site.
+///
+/// - [`Salt::Hash`] — raw user-supplied hash from `.id_salt(key)`.
+///   At resolve time the hash is **mixed with the user-visible
+///   parent's resolved `WidgetId`** (root salts pass through bare —
+///   the `Layer::Main` synthetic viewport is skipped). Two `.id_salt("row")`
+///   under different parents resolve to distinct ids, so per-widget
+///   `StateMap` / focus / animation entries survive subtree moves
+///   without manual `WidgetId::with` chaining. Matches egui.
+///
+/// - [`Salt::Verbatim`] — precomputed [`WidgetId`] from `.id(id)`,
+///   used as-is. Escape hatch for ids derived elsewhere
+///   (cross-layer popups, sibling pairs sharing a seed). Skips
+///   parent-scoping.
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum Salt {
+    Auto(WidgetId),
+    Hash(WidgetId),
+    Verbatim(WidgetId),
+}
+
+impl Salt {
+    /// Mix `self` with `parent`'s already-resolved `WidgetId` to
+    /// produce the id that will be recorded into the tree. Only
+    /// [`Salt::Hash`] consults `parent`; `Auto` and `Verbatim` pass
+    /// through. `parent == None` covers the "no user-visible parent"
+    /// case (root of a layer, or the first user-recorded widget
+    /// under `Layer::Main`'s synthetic viewport).
+    #[inline]
+    pub(crate) fn resolve(self, parent: Option<WidgetId>) -> WidgetId {
+        match self {
+            Salt::Auto(id) | Salt::Verbatim(id) => id,
+            Salt::Hash(salt) => match parent {
+                Some(p) => p.with(salt.0),
+                None => salt,
+            },
+        }
+    }
+
+    /// `true` for [`Salt::Hash`] / [`Salt::Verbatim`] — caller-supplied
+    /// ids. `SeenIds::record` uses this to flag explicit collisions
+    /// (caller bugs) with the magenta debug overlay while leaving
+    /// auto collisions silent.
+    #[inline]
+    pub(crate) fn is_explicit(self) -> bool {
+        matches!(self, Salt::Hash(_) | Salt::Verbatim(_))
+    }
+}
+
 /// Per-node config: identity + spatial layout + interaction + paint flags.
 /// Every widget builder owns one and forwards it to `Ui::node`. `Configure` (the
 /// trait below) gives chained setters for all fields by impl'ing one method.
@@ -456,7 +498,14 @@ const _: () = assert!(
 #[derive(Clone, Copy, Debug)]
 pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
-    pub(crate) id: WidgetId,
+    /// Recipe for this node's `WidgetId`. Resolution happens inside
+    /// [`crate::Ui::node`] (and the parallel [`crate::Ui::make_persistent_id`]
+    /// callable by widgets that need the recorded id pre-`node` for
+    /// theme picking / focus / animation slots) — `Element` itself
+    /// never carries a resolved id. Mirrors egui's "builder stores
+    /// raw `id_salt`, `Ui::make_persistent_id` mixes in the parent's
+    /// id at `.show()`" pattern.
+    pub(crate) salt: Salt,
     pub(crate) mode: LayoutMode,
     /// `LayoutMode::Grid` arena idx. Set by `Grid::show` once the def is
     /// pushed; ignored for every other `mode`.
@@ -481,7 +530,7 @@ pub struct Element {
     /// bit-layout (`element.gap()` / `element.set_gap(g)`).
     gaps: Gaps,
 
-    /// Packed `(justify, align, child_align, id_source)` in `u16`.
+    /// Packed `(justify, align, child_align)` in `u16`.
     /// Private — read/written via inline accessors.
     slots: ElementSlots,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
@@ -533,7 +582,7 @@ impl Element {
     #[track_caller]
     pub(crate) fn new(mode: LayoutMode) -> Self {
         Self {
-            id: WidgetId::auto_stable(),
+            salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
             mode_payload: 0,
             size: Sizes::default(),
@@ -549,13 +598,6 @@ impl Element {
             visibility: Visibility::Visible,
             transform: TranslateScale::IDENTITY,
         }
-    }
-
-    /// Overwrite the id with a precomputed [`WidgetId`], marking it
-    /// [`IdSource::Explicit`] so `Ui::node` hard-asserts on collision.
-    pub(crate) fn set_id(&mut self, id: WidgetId) {
-        self.id = id;
-        self.slots.set_id_source(IdSource::Explicit);
     }
 
     // ---- Inline accessors over the packed `flags` / `slots` / `gaps` ----
@@ -611,10 +653,6 @@ impl Element {
         self.slots.child_align()
     }
     #[inline]
-    pub(crate) fn id_source(&self) -> IdSource {
-        self.slots.id_source()
-    }
-    #[inline]
     pub(crate) fn set_justify(&mut self, j: Justify) {
         self.slots.set_justify(j);
     }
@@ -638,21 +676,16 @@ impl Element {
         self.gaps = other.gaps;
     }
 
-    /// Overwrite the id while inheriting `id_source` from another element.
-    /// Use when forwarding an outer wrapper's identity to an internal
-    /// sub-element built by the same widget (e.g. `Scroll`'s outer/inner
-    /// split) — the caller's choice of auto vs. explicit propagates.
-    pub(crate) fn set_id_from(&mut self, other: &Element) {
-        self.id = other.id;
-        self.slots.set_id_source(other.slots.id_source());
-    }
-
     /// Fan this `Element` out into the per-NodeId columns `Tree` stores.
     /// Single routing point — adding a field is one edit in the column
+    /// type and one in the routing block. `widget_id` is supplied by
+    /// the caller (resolved from `self.salt` upstream in
+    /// `Forest::open_node`) so `Element` itself never carries a
+    /// resolved id.
     #[inline(always)]
-    pub(crate) fn into_columns(self) -> ElementColumns {
+    pub(crate) fn into_columns(self, widget_id: WidgetId) -> ElementColumns {
         ElementColumns {
-            widget_id: self.id,
+            widget_id,
             layout: LayoutCore {
                 size: self.size,
                 padding: self.padding,
@@ -684,27 +717,33 @@ impl Element {
 pub trait Configure: Sized {
     fn element_mut(&mut self) -> &mut Element;
 
-    /// Override this widget's id with a hash of `key`. Use whenever the
-    /// default call-site-derived id wouldn't survive across frames or across
-    /// loop iterations — e.g. a `for` loop where each iteration must keep
-    /// per-widget state separate. Marks the id as `Explicit`: collisions
-    /// are disambiguated (so state stays well-formed) but flagged with
-    /// a magenta runtime outline because they're caller bugs.
-    fn id_salt(mut self, key: impl std::hash::Hash) -> Self {
-        let e = self.element_mut();
-        e.id = WidgetId::from_hash(key);
-        e.slots.set_id_source(IdSource::Explicit);
+    /// Override this widget's id with a hash of `key`, scoped to the
+    /// parent. The stored hash is mixed with the parent node's
+    /// already-disambiguated [`WidgetId`] at [`crate::forest::Forest::open_node`]
+    /// time, so `.id_salt("row")` resolves to distinct ids under
+    /// different parents — same scoping rule egui uses. At the root
+    /// (no parent) the salt hash is used as-is. Use whenever the
+    /// default call-site-derived id wouldn't survive across frames or
+    /// loop iterations — e.g. a `for` loop where each iteration must
+    /// keep per-widget state separate. Marks the id as
+    /// [`Salt::Hash`]: same-parent sibling collisions are disambiguated
+    /// (so state stays well-formed) but flagged with a magenta runtime
+    /// outline because they're caller bugs. For an unscoped "use this
+    /// exact id" override, see [`Self::id`].
+    fn id_salt(mut self, key: impl Hash) -> Self {
+        self.element_mut().salt = Salt::Hash(WidgetId::from_hash(key));
         self
     }
 
-    /// Override this widget's id with a precomputed [`WidgetId`]. Use when
-    /// the id was derived elsewhere (parent → child via [`WidgetId::with`],
-    /// shared seed for sibling widgets) so [`Self::id_salt`] would re-hash
-    /// a value the caller already constructed. Marks the id as `Explicit`.
+    /// Override this widget's id with a precomputed [`WidgetId`] used
+    /// verbatim — **not** mixed with the parent. Use when the id was
+    /// derived elsewhere and must match exactly (parent → child via
+    /// [`WidgetId::with`], a shared seed for sibling widgets across
+    /// layers, cross-frame state lookups that key off a domain id).
+    /// For the parent-scoped path, prefer [`Self::id_salt`]. Stores
+    /// the id as [`Salt::Verbatim`].
     fn id(mut self, id: WidgetId) -> Self {
-        let e = self.element_mut();
-        e.id = id;
-        e.slots.set_id_source(IdSource::Explicit);
+        self.element_mut().salt = Salt::Verbatim(id);
         self
     }
 
@@ -714,9 +753,7 @@ pub trait Configure: Sized {
     /// `helper().auto_id().show(ui)` reads the caller's `(file, line, col)`.
     #[track_caller]
     fn auto_id(mut self) -> Self {
-        let e = self.element_mut();
-        e.id = WidgetId::auto_stable();
-        e.slots.set_id_source(IdSource::Auto);
+        self.element_mut().salt = Salt::Auto(WidgetId::auto_stable());
         self
     }
 

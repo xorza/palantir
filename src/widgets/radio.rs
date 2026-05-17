@@ -1,4 +1,4 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
@@ -48,7 +48,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         let raw_state = ui.response_for(id);
         let mut state = raw_state;
         state.disabled |= self.element.is_disabled();
@@ -80,11 +80,12 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         element.set_gap(row_gap);
         element.set_child_align(Align::v(VAlign::Center));
 
-        ui.node(element, |ui| {
+        ui.node(id, element, |ui| {
+            let pip_id = id.with("pip");
             let mut pip_elem = Element::new(LayoutMode::Leaf);
-            pip_elem.set_id(id.with("pip"));
+            pip_elem.salt = Salt::Verbatim(pip_id);
             pip_elem.size = (Sizing::Fixed(pip_size), Sizing::Fixed(pip_size)).into();
-            ui.node_with_chrome(pip_elem, chrome, |ui| {
+            ui.node_with_chrome(pip_id, pip_elem, chrome, |ui| {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
@@ -98,9 +99,10 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             });
 
             if !label.is_empty() {
+                let label_id = id.with("label");
                 let mut label_elem = Element::new(LayoutMode::Leaf);
-                label_elem.set_id(id.with("label"));
-                ui.node(label_elem, |ui| {
+                label_elem.salt = Salt::Verbatim(label_id);
+                ui.node(label_id, label_elem, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: label,
