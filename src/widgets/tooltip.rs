@@ -1,6 +1,6 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::element::Salt;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::input::sense::Sense;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -70,7 +70,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
     std::sync::LazyLock::new(|| WidgetId::from_hash("palantir.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
-/// [`crate::forest::tree::Layer::Tooltip`] after the pointer has rested
+/// [`crate::forest::Layer::Tooltip`] after the pointer has rested
 /// on the trigger for [`crate::widgets::theme::tooltip::TooltipTheme::delay`]
 /// seconds. A short warmup window (configured on the theme) keeps
 /// subsequent tooltips instant after one was dismissed, so scanning a

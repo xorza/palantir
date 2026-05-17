@@ -130,7 +130,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
         ui.forest
-            .tree(crate::forest::tree::Layer::Popup)
+            .tree(crate::forest::Layer::Popup)
             .records
             .len(),
         0,
@@ -141,7 +141,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
 /// Pin popup-body sizing under each `Sizing` mode.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
-    use crate::forest::tree::Layer;
+    use crate::forest::Layer;
     let anchor = Vec2::new(20.0, 30.0);
     let cases: &[(Sizing, Sizing, Size)] = &[
         (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0)),

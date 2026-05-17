@@ -5,7 +5,7 @@ use super::align_text_in;
 use crate::Ui;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;

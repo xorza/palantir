@@ -1,7 +1,8 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::Layer;
+use crate::forest::tree::{NodeId};
 use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;

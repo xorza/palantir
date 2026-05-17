@@ -44,7 +44,7 @@ pub use animation::{AnimSlot, AnimSpec};
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use debug_overlay::DebugOverlayConfig;
 pub use forest::element::{Configure, Element, LayoutMode};
-pub use forest::tree::Layer;
+pub use forest::Layer;
 pub use forest::visibility::Visibility;
 pub use host::FramePresent;
 #[cfg(any(test, feature = "internals"))]

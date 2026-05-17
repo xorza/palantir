@@ -1,6 +1,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;

@@ -4,7 +4,7 @@ use crate::TextStyle;
 use crate::Ui;
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
