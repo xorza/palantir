@@ -813,30 +813,16 @@ impl Ui {
     /// (or implicitly via `Ui::node`'s internal resolution)
     /// produces the same `WidgetId`, so no risk of widget-side drift.
     ///
-    /// Parent context: the most-recently-opened user-visible node in
-    /// the current layer. `Layer::Main`'s synthetic viewport (an
-    /// implicit ZStack `Ui::record_pass` opens before user code
-    /// runs) is intentionally skipped so the first user-recorded
-    /// `.id_salt(...)` resolves to the bare salt hash, not to
-    /// `viewport_auto_id.with(salt)` — user code can't see the
-    /// viewport, so it would be surprising to scope through it.
-    /// Popup / modal / tooltip layers have no synthetic root.
+    /// Parent context is the most-recently-opened node in the current
+    /// layer. `Layer::Main`'s synthetic viewport (`Ui::record_pass`'s
+    /// implicit ZStack) shows up here like any other parent — its
+    /// `Salt::Auto` id is stable across frames (one
+    /// `#[track_caller]` site), so root salts resolve to a fixed
+    /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
+    /// stable ids without a Main-vs-other-layer carve-out.
     pub(crate) fn make_persistent_id(&self, salt: Salt) -> WidgetId {
-        salt.resolve(self.user_visible_parent_id())
-    }
-
-    /// Most-recently-opened user-visible parent's resolved `WidgetId`
-    /// in the current layer, or `None` if we're at root depth.
-    /// Skips the `Layer::Main` synthetic viewport — see
-    /// [`Self::make_persistent_id`] for the rationale.
-    fn user_visible_parent_id(&self) -> Option<WidgetId> {
-        let layer = self.forest.current_layer;
-        let tree = self.forest.tree(layer);
-        let frame = match layer {
-            Layer::Main => tree.open_frames.get(1..).and_then(<[_]>::last),
-            _ => tree.open_frames.last(),
-        }?;
-        Some(tree.records.widget_id()[frame.node.index()])
+        let parent = self.forest.current_tree().open_frames.last().map(|f| f.widget_id);
+        salt.resolve(parent)
     }
 
     /// Open a node with no paint chrome — the common path for
