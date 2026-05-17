@@ -277,6 +277,11 @@ pub(crate) struct Tree {
 
 impl Tree {
     pub(crate) fn pre_record(&mut self) {
+        // Pre-size `has_grid` to last frame's node count before
+        // clearing records, so the per-`open_node` `has_grid.grow(...)`
+        // is a no-op in steady state (the bitset's bit-length already
+        // covers the incoming push).
+        let prev_node_count = self.records.len();
         self.records.clear();
         self.extras_idx.clear();
         self.bounds_table.clear();
@@ -287,6 +292,7 @@ impl Tree {
         self.paint_anims.clear();
         self.grid.clear();
         self.has_grid.clear();
+        self.has_grid.grow(prev_node_count);
         self.roots.clear();
         self.open_frames.clear();
         self.pending_anchors.clear();
@@ -657,12 +663,12 @@ impl Tree {
     /// only need non-collapsed children — that's the dominant access
     /// pattern.
     pub(crate) fn children(&self, parent: NodeId) -> ChildIter<'_> {
-        let pi = parent.0 as usize;
+        let ends = self.records.subtree_end();
         ChildIter {
             layouts: self.records.layout(),
-            ends: self.records.subtree_end(),
             next: parent.0 + 1,
-            end: self.records.subtree_end()[pi],
+            end: ends[parent.0 as usize],
+            ends,
         }
     }
 
