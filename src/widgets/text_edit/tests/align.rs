@@ -7,9 +7,9 @@
 
 use super::*;
 use crate::Align;
-use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::Layer;
-use crate::forest::tree::{NodeId};
+use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::tree::NodeId;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -577,8 +577,8 @@ mod per_line {
     /// and render left-aligned regardless of `text_align`.
     #[test]
     fn placeholder_per_line_aligns_under_wrap() {
-        use crate::forest::shapes::record::ShapeRecord;
         use crate::forest::Layer;
+        use crate::forest::shapes::record::ShapeRecord;
         let mut ui = cosmic_ui();
         let mut buf = String::new();
         let mut node = None;

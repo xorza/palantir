@@ -12,9 +12,9 @@
 //! Sweeps a width range and asserts the frame doesn't panic.
 
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::forest::Layer;
-use crate::forest::tree::{NodeId};
+use crate::forest::element::Configure;
+use crate::forest::tree::NodeId;
 use crate::layout::types::sizing::Sizing;
 use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;

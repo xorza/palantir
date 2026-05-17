@@ -17,8 +17,8 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
 }
 use crate::Spacing;
 use crate::Ui;
-use crate::forest::element::Configure;
 use crate::forest::Layer;
+use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
 use crate::input::pointer::PointerButton;

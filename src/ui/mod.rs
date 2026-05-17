@@ -12,8 +12,8 @@ use crate::common::frame_arena::FrameArena;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
-use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::forest::Layer;
+use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::input::keyboard::KeyboardEvent;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
@@ -524,7 +524,7 @@ impl Ui {
         let mut viewport = Element::new(LayoutMode::ZStack);
         viewport.size = Sizing::FILL.into();
         let viewport_id = self.make_persistent_id(viewport.salt);
-        self.forest.open_node(viewport_id, viewport);
+        self.forest.open_node(viewport_id, viewport, None);
         {
             profiling::scope!("Ui::record_user");
             record(self);
@@ -821,7 +821,12 @@ impl Ui {
     /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
     /// stable ids without a Main-vs-other-layer carve-out.
     pub(crate) fn make_persistent_id(&self, salt: Salt) -> WidgetId {
-        let parent = self.forest.current_tree().open_frames.last().map(|f| f.widget_id);
+        let parent = self
+            .forest
+            .current_tree()
+            .open_frames
+            .last()
+            .map(|f| f.widget_id);
         salt.resolve(parent)
     }
 
@@ -833,7 +838,7 @@ impl Ui {
     /// `response_for` / `animate` / derived sub-ids, so we don't
     /// resolve again here — single source of truth).
     pub(crate) fn node(&mut self, id: WidgetId, element: Element, f: impl FnOnce(&mut Ui)) {
-        self.forest.open_node(id, element);
+        self.forest.open_node(id, element, None);
         f(self);
         self.forest.close_node();
     }
@@ -846,12 +851,10 @@ impl Ui {
         chrome: Background,
         f: impl FnOnce(&mut Ui),
     ) {
-        self.forest.open_node_with_chrome(
+        self.forest.open_node(
             id,
             element,
-            chrome,
-            &self.frame_arena,
-            &self.caches.gradients,
+            Some((chrome, &self.frame_arena, &self.caches.gradients)),
         );
         f(self);
         self.forest.close_node();
@@ -972,7 +975,7 @@ pub mod test_support {
     use crate::animation::animatable::Animatable;
     use crate::common::frame_arena::FrameArena;
     use crate::forest::Layer;
-use crate::forest::tree::{NodeId};
+    use crate::forest::tree::NodeId;
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;

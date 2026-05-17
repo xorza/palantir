@@ -43,8 +43,8 @@ pub use animation::{AnimSlot, AnimSpec};
 // the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use debug_overlay::DebugOverlayConfig;
-pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::Layer;
+pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::visibility::Visibility;
 pub use host::FramePresent;
 #[cfg(any(test, feature = "internals"))]
