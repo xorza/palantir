@@ -1,5 +1,5 @@
 use palantir::{
-    AnimSpec, Background, Button, Color, Configure, Key, Panel, Shadow, Shortcut, Sizing, Ui,
+    AnimSpec, App, Background, Button, Color, Configure, Key, Panel, Shadow, Shortcut, Sizing, Ui,
     WinitHost, WinitHostConfig,
 };
 
@@ -80,7 +80,6 @@ fn main() {
             active: 0,
             app: AppState { counter: 0 },
         },
-        build_ui,
     )
     .with_setup(|ui| {
         // Library default is no button animation (`anim = None`).
@@ -88,6 +87,12 @@ fn main() {
         ui.theme.button.anim = Some(AnimSpec::SPRING);
     })
     .run();
+}
+
+impl App for State {
+    fn frame(&mut self, ui: &mut Ui) {
+        build_ui(ui, self);
+    }
 }
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
