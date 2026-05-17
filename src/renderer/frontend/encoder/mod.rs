@@ -75,11 +75,13 @@ pub(crate) fn encode(
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layout = &ui.layout[layer];
         let rows = ui.layout.cascades.rows_for(layer);
+        let subtree_paint_rects = ui.layout.cascades.subtree_paint_rects_for(layer);
         for root in &tree.roots {
             encode_node(
                 tree,
                 layout,
                 rows,
+                subtree_paint_rects,
                 gradients,
                 damage_filter,
                 viewport,
@@ -299,6 +301,7 @@ fn encode_node(
     tree: &Tree,
     layout: &LayerLayout,
     rows: &[Cascade],
+    subtree_paint_rects: &[Rect],
     gradients: &[LoweredGradient],
     damage_filter: Option<&DamageRegion>,
     viewport: Rect,
@@ -310,24 +313,26 @@ fn encode_node(
         return;
     }
 
-    // Off-screen subtree cull. Skips the whole subtree's recursion
-    // when its paint bounds (layout rect inflated by shape overhang —
-    // drop-shadow halos) don't intersect the viewport.
-    if !rows[id.index()].paint_rect.intersects(viewport) {
+    // Off-screen subtree cull. Reads `Cascades::subtree_paint_rects`
+    // — the rolled-up paint bound that includes every descendant —
+    // so a Canvas-positioned child overflowing its parent's `Fixed`
+    // bound (or a shape with negative-margin overhang) doesn't get
+    // killed when the parent's own rect lies just outside the
+    // viewport. The parallel column is owner-local to this layer.
+    let subtree_paint_rect = subtree_paint_rects[id.index()];
+    if !subtree_paint_rect.intersects(viewport) {
         return;
     }
 
-    // DamageEngine-aware subtree cull. Same shape as the viewport cull
-    // above: if no damage rect intersects this subtree's paint bounds,
+    // DamageEngine-aware subtree cull. Same shape as the viewport
+    // cull: if no damage rect intersects the subtree paint bound,
     // the whole subtree contributes nothing this frame — skip
-    // recursion + Push/Pop emission entirely. **Soundness caveat:**
-    // `Cascade.paint_rect` is the node's own paint bounds, not the
-    // subtree bbox; descendants of Canvas / non-clipped / transformed
-    // parents may overflow. The viewport cull already trusts this
-    // assumption "by convention"; damage cull inherits the same. See
-    // `docs/roadmap/damage.md`.
+    // recursion + Push/Pop emission entirely. `subtree_paint_rect`
+    // covers descendants too, so a horizontal pan that translates
+    // an overhanging port circle into the damage region still
+    // recurses through the (potentially own-rect-tight) ancestor.
     if let Some(region) = damage_filter
-        && !region.any_intersects(rows[id.index()].paint_rect)
+        && !region.any_intersects(subtree_paint_rect)
     {
         return;
     }
@@ -451,6 +456,7 @@ fn encode_node(
                     tree,
                     layout,
                     rows,
+                    subtree_paint_rects,
                     gradients,
                     damage_filter,
                     viewport,

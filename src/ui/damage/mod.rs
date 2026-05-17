@@ -331,12 +331,26 @@ impl DamageEngine {
                             }
                             (false, span)
                         } else {
-                            // Own paint unchanged (rect + node_hash
-                            // matched), but a descendant or the
-                            // cascade input shifted. Refresh those
-                            // fields so a later truly-stable frame
-                            // can skip; no rect contribution since
-                            // this node's own pixels are identical.
+                            // Own paint authoring is unchanged
+                            // (`rect` + `node_hash` match) but
+                            // *something else* below or above shifted.
+                            //
+                            // - Cascade input shift (ancestor
+                            //   transform / clip changed) on a node
+                            //   that paints directly: even though our
+                            //   clipped `paint_rect` is the same rect,
+                            //   our direct shapes' tessellated pixels
+                            //   moved with the ancestor transform.
+                            //   Push `curr_rect` so PreClear + repaint
+                            //   covers the new positions. Pinned by
+                            //   `transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_damage`.
+                            // - Subtree-only change (descendant
+                            //   colour, etc.): descendants push their
+                            //   own rects through their own diff
+                            //   entries; this node contributes nothing.
+                            if curr_paints && prev.cascade_input != curr_cascade_input {
+                                self.raw_rects.push(curr_rect);
+                            }
                             let snap = e.get_mut();
                             snap.subtree_hash = curr_subtree_hash;
                             snap.cascade_input = curr_cascade_input;

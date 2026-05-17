@@ -911,6 +911,52 @@ fn viewport_cull_skips_offscreen_subtree() {
     );
 }
 
+/// Soundness repro: `Cascade.paint_rect` is the node's own paint
+/// extent (own layout rect ∪ direct shapes), not the subtree's. When
+/// a descendant overflows the parent — e.g. a Canvas-positioned
+/// child placed outside the parent's `Fixed` bound, or a shape with
+/// negative-margin overhang — the encoder's subtree-cull at the
+/// parent compares parent's *own* `paint_rect` against the damage
+/// region and may skip the whole subtree even though a descendant's
+/// pixels DO lie inside damage. Symptom in real apps: panning a
+/// `Scroll` over a node-graph leaves trails of stale curves because
+/// the cull misses overhanging port-circle children.
+///
+/// This test forces that exact shape:
+///   parent (Canvas, Fixed 50×50) at (0..50, 0..50)
+///   └── child (Frame, Fixed 40×40) `.position(60, 0)` → (60..100, 0..40)
+/// Damage = (60..100, 0..40) — exactly the child's rect, no overlap
+/// with the parent's own rect. The child MUST emit a DrawRect.
+#[test]
+fn damage_filter_includes_descendant_overflowing_parent_rect() {
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("overflow-parent"))
+                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("overflowing-child"))
+                        .position((60.0, 0.0))
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                        .background(Background {
+                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        });
+    });
+    let damage = Rect::new(60.0, 0.0, 40.0, 40.0);
+    let cmds = ui.encode_cmds_filtered(Some(damage));
+    assert_eq!(
+        count_draw_rects(&cmds),
+        1,
+        "the overflowing child paints inside damage and must not be culled by the parent's tight `paint_rect`",
+    );
+}
+
 /// Pin: image `fit` resolution. A 100×50 image painted into a 200×200
 /// rect produces a different paint rect for each fit mode:
 /// - `Fill` keeps the full 200×200 rect (image stretched).
