@@ -1,14 +1,16 @@
 use crate::primitives::span::Span;
 use std::borrow::Cow;
+use std::rc::Rc;
 
 /// Text input to widgets. Three carriers covering the common shapes a
 /// caller hands a string to a widget:
 ///
 /// - [`Borrowed`](Self::Borrowed) — pointer to a `&'static str` literal.
 ///   Stored as a fat pointer at lowering; no memcpy.
-/// - [`Owned`](Self::Owned) — a heap [`String`] (typical of
-///   `format!()` results bound to a local). Bytes stay in the
-///   `String` allocation; dropped when the record drops next frame.
+/// - [`Owned`](Self::Owned) — a heap [`Rc<str>`] (typical of
+///   `format!()` results bound to a local). Clone is a refcount bump,
+///   not an allocation — so storing the same handle in multiple
+///   widgets doesn't multiply allocator pressure.
 /// - [`Interned`](Self::Interned) — bytes already live in the active
 ///   frame's `fmt_scratch` arena (produced by [`crate::Ui::fmt`] /
 ///   [`crate::Ui::intern`]). The `span` + `hash` were captured at write
@@ -20,7 +22,7 @@ use std::borrow::Cow;
 #[derive(Clone, Debug)]
 pub enum InternedStr {
     Borrowed(&'static str),
-    Owned(String),
+    Owned(Rc<str>),
     Interned { span: Span, hash: u64 },
 }
 
@@ -50,6 +52,13 @@ impl InternedStr {
     }
 }
 
+impl From<Rc<str>> for InternedStr {
+    #[inline]
+    fn from(s: Rc<str>) -> Self {
+        Self::Owned(s)
+    }
+}
+
 impl Default for InternedStr {
     #[inline]
     fn default() -> Self {
@@ -67,7 +76,7 @@ impl From<&'static str> for InternedStr {
 impl From<String> for InternedStr {
     #[inline]
     fn from(s: String) -> Self {
-        Self::Owned(s)
+        Self::Owned(Rc::from(s))
     }
 }
 
@@ -76,7 +85,7 @@ impl From<Cow<'static, str>> for InternedStr {
     fn from(c: Cow<'static, str>) -> Self {
         match c {
             Cow::Borrowed(s) => Self::Borrowed(s),
-            Cow::Owned(s) => Self::Owned(s),
+            Cow::Owned(s) => Self::Owned(Rc::from(s)),
         }
     }
 }
