@@ -8,7 +8,7 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::input::InputEvent;
 use crate::input::sense::{DRAG_THRESHOLD, Sense};
 use crate::layout::types::sizing::Sizing;

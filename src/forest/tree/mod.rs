@@ -64,37 +64,6 @@ impl NodeId {
     }
 }
 
-/// Paint / hit-test order across layers. Lower variants paint first
-/// (under) and hit-test last (under). Total order — popups beat the
-/// main tree, modals beat popups, tooltips beat modals, debug beats
-/// everything. See `docs/popups.md`.
-///
-/// `#[repr(u8)]` + the contiguous variant layout means `layer as usize`
-/// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
-/// the forest topology each variant owns its own [`Tree`] arena.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
-pub enum Layer {
-    #[default]
-    Main = 0,
-    Popup = 1,
-    Modal = 2,
-    Tooltip = 3,
-    Debug = 4,
-}
-
-impl Layer {
-    /// Paint order (low → high). Iterate trees in this order so layers
-    /// paint bottom-up; reverse for topmost-first hit-test traversal.
-    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
-        Layer::Main,
-        Layer::Popup,
-        Layer::Modal,
-        Layer::Tooltip,
-        Layer::Debug,
-    ];
-}
-
 /// One entry on `Tree::open_frames`. Carries the open node's
 /// `NodeId`, its resolved `WidgetId` (so `Ui::make_persistent_id`
 /// doesn't have to walk back into `records.widget_id()[..]` on every
@@ -219,15 +188,15 @@ impl Default for Slot {
     }
 }
 
-/// Packed per-node "extras" slot index for the four side tables. One
-/// 8-byte row per node lives in `Tree::extras_idx`; that single
-/// contiguous push replaces what was previously four `Vec<u16>::push`
-/// calls. Each field is a [`Slot`] — niche-encoded `u16::MAX` for
-/// absent, otherwise a dense index into the matching `*_table` `Vec`.
+/// Packed per-node "extras" slot index for the side tables. One 6-byte
+/// row per node lives in `Tree::extras_idx`; that single contiguous
+/// push replaces what was previously three `Vec<u16>::push` calls.
+/// Each field is a [`Slot`] — niche-encoded `u16::MAX` for absent,
+/// otherwise a dense index into the matching `*_table` `Vec`.
 ///
-/// Packing wins on both ends: `Tree::open_node` does one 8-byte store
-/// instead of four 2-byte stores into separate `Vec<u16>`, and the
-/// hash / damage walks read all four slots from the same cache line.
+/// Packing wins on both ends: `Tree::open_node` does one packed store
+/// instead of three 2-byte stores into separate `Vec<u16>`, and the
+/// hash / damage walks read all three slots from the same cache line.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct ExtrasIdx {
@@ -265,10 +234,10 @@ pub(crate) struct Tree {
     pub(crate) parents: Vec<NodeId>,
 
     // -- Shapes ----------------------------------------------------------
-    /// Flat per-frame shape buffer (`shapes.records`) + per-variant
-    /// side-table payloads (`shapes.payloads`). Records are indexed
-    /// via `NodeRecord.shape_span`; payloads back the variable-length
-    /// `Mesh` / `Polyline` variants.
+    /// Flat per-frame shape buffer. Records are indexed via
+    /// `NodeRecord.shape_span`; variable-length payloads (mesh
+    /// verts/indices, polyline points/colors, gradients) live on the
+    /// `FrameArena`.
     pub(crate) shapes: Shapes,
 
     // -- Frame-scoped sub-storage ----------------------------------------
@@ -824,7 +793,7 @@ pub(crate) struct ChildIter<'a> {
 pub(crate) enum TreeItem<'a> {
     /// `u32` is the shape's index into `Tree::shapes.records` — used
     /// by the encoder to look up paint-anim registrations via
-    /// `Tree::paint_anim_by_shape[idx]`. Cascade / testing call sites
+    /// `Tree::paint_anims.by_shape[idx]`. Cascade / testing call sites
     /// that only care about the record itself can ignore it.
     ShapeRecord(u32, &'a ShapeRecord),
     Child(Child),

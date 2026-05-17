@@ -214,10 +214,6 @@ impl LayoutMode {
 /// at zero per-node bytes here.
 ///
 /// Stored as `Vec<BoundsExtras>` — 32 B per row, 2 entries per cache line.
-/// `transform` is split into its own `Tree.transform_table` with a
-/// dedicated `ExtrasIdx::transform` slot, because cascade reads it for
-/// every node every frame and the ~99% "no transform" case becomes a
-/// `Slot::ABSENT` short-circuit instead of an `Option::None` load.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct BoundsExtras {
     pub(crate) position: Vec2,

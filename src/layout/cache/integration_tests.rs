@@ -7,7 +7,7 @@
 use crate::TextStyle;
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;

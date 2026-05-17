@@ -14,7 +14,8 @@ pub(crate) mod zstack;
 #[cfg(test)]
 mod cross_driver_tests;
 
-use crate::forest::tree::{Layer, Tree};
+use crate::forest::Layer;
+use crate::forest::tree::{Tree};
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;

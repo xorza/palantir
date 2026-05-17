@@ -21,7 +21,8 @@
 //!    touch seen-id state, so `prev` stays anchored at the last
 //!    *painted* frame regardless of how many discard passes ran.
 
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::Layer;
+use crate::forest::tree::{NodeId};
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 

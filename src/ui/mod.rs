@@ -13,7 +13,7 @@ use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
 use crate::forest::element::{Element, LayoutMode, Salt};
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::input::keyboard::KeyboardEvent;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
@@ -971,7 +971,8 @@ pub mod test_support {
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
     use crate::common::frame_arena::FrameArena;
-    use crate::forest::tree::{Layer, NodeId};
+    use crate::forest::Layer;
+use crate::forest::tree::{NodeId};
     use crate::input::InputEvent;
     use crate::input::pointer::PointerButton;
     use crate::layout::scroll::ScrollLayoutState;

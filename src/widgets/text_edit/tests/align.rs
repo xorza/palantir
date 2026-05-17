@@ -8,7 +8,8 @@
 use super::*;
 use crate::Align;
 use crate::forest::shapes::record::ShapeRecord;
-use crate::forest::tree::{Layer, NodeId};
+use crate::forest::Layer;
+use crate::forest::tree::{NodeId};
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -466,7 +467,7 @@ mod per_line {
     /// aligned but glyphs sit at x = 0.
     #[test]
     fn rendered_buffer_uses_per_line_align_even_when_content_fits() {
-        use crate::forest::tree::Layer;
+        use crate::forest::Layer;
         let mut ui = cosmic_ui();
         let mut buf = String::from("hi\nyo");
         let mut node = None;
@@ -577,7 +578,7 @@ mod per_line {
     #[test]
     fn placeholder_per_line_aligns_under_wrap() {
         use crate::forest::shapes::record::ShapeRecord;
-        use crate::forest::tree::Layer;
+        use crate::forest::Layer;
         let mut ui = cosmic_ui();
         let mut buf = String::new();
         let mut node = None;

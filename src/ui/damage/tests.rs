@@ -2,7 +2,7 @@ use super::region::DamageRegion;
 use super::{Damage, DamageEngine};
 use crate::Ui;
 use crate::forest::element::Configure;
-use crate::forest::tree::Layer;
+use crate::forest::Layer;
 use crate::forest::tree::NodeId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};

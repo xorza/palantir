@@ -8,7 +8,7 @@ use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{Endpoint, RecordOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
-use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
+use crate::forest::tree::{NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -36,6 +36,37 @@ pub(crate) mod seen_ids;
 pub(crate) mod shapes;
 pub mod tree;
 pub(crate) mod visibility;
+
+/// Paint / hit-test order across layers. Lower variants paint first
+/// (under) and hit-test last (under). Total order — popups beat the
+/// main tree, modals beat popups, tooltips beat modals, debug beats
+/// everything. See `docs/popups.md`.
+///
+/// `#[repr(u8)]` + the contiguous variant layout means `layer as usize`
+/// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
+/// the forest topology each variant owns its own [`tree::Tree`] arena.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash, strum::EnumCount)]
+pub enum Layer {
+    #[default]
+    Main = 0,
+    Popup = 1,
+    Modal = 2,
+    Tooltip = 3,
+    Debug = 4,
+}
+
+impl Layer {
+    /// Paint order (low → high). Iterate trees in this order so layers
+    /// paint bottom-up; reverse for topmost-first hit-test traversal.
+    pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
+        Layer::Main,
+        Layer::Popup,
+        Layer::Modal,
+        Layer::Tooltip,
+        Layer::Debug,
+    ];
+}
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[current_layer as usize]`.
