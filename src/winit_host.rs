@@ -1,13 +1,19 @@
 //! `WinitHost` — wraps [`Host`] with a winit window, surface, and the
 //! [`ApplicationHandler`] event-loop glue. Owns everything below the
-//! user's frame-builder closure: window creation, swapchain config,
-//! resize / scale / occlusion handling, and the `FramePresent`
-//! scheduling state machine.
+//! user's app: window creation, swapchain config, resize / scale /
+//! occlusion handling, and the `FramePresent` scheduling state machine.
+//!
+//! The caller-supplied app implements the [`App`] trait — one method,
+//! `frame(&mut self, ui: &mut Ui)`, called once per frame.
 //!
 //! Usage:
 //!
 //! ```ignore
-//! WinitHost::new(WinitHostConfig::new("title"), AppState::default(), |ui, app| build_ui(ui, app))
+//! struct MyApp;
+//! impl palantir::App for MyApp {
+//!     fn frame(&mut self, ui: &mut Ui) { /* build ui */ }
+//! }
+//! WinitHost::new(WinitHostConfig::new("title"), MyApp)
 //!     .with_setup(|ui| ui.theme.button.anim = Some(AnimSpec::SPRING))
 //!     .run();
 //! ```
@@ -64,14 +70,18 @@ impl WinitHostConfig {
     }
 }
 
+/// Per-frame user hook. `WinitHost` calls `frame` once per redraw with
+/// the recording `Ui`; implementors mutate themselves and emit widgets.
+pub trait App {
+    fn frame(&mut self, ui: &mut Ui);
+}
+
 /// Top-level winit-driven palantir runtime. Owns the caller-supplied
-/// app state `T` for convenience (RAII lifetime, no `Rc<RefCell<>>`
-/// to manage) and threads `&mut T` into the frame-builder closure
-/// alongside `&mut Ui`. Generic over the closure type `F` as well.
-pub struct WinitHost<T, F> {
+/// app `T: App` for convenience (RAII lifetime, no `Rc<RefCell<>>`
+/// to manage) and calls `T::frame` once per redraw with `&mut Ui`.
+pub struct WinitHost<T> {
     config: WinitHostConfig,
     app: T,
-    builder: F,
     setup: Option<SetupFn>,
     state: Option<RuntimeState>,
 }
@@ -89,16 +99,14 @@ struct RuntimeState {
     next: FramePresent,
 }
 
-impl<T, F> WinitHost<T, F>
+impl<T> WinitHost<T>
 where
-    T: 'static,
-    F: FnMut(&mut Ui, &mut T),
+    T: App + 'static,
 {
-    pub fn new(config: WinitHostConfig, app: T, builder: F) -> Self {
+    pub fn new(config: WinitHostConfig, app: T) -> Self {
         Self {
             config,
             app,
-            builder,
             setup: None,
             state: None,
         }
@@ -120,27 +128,19 @@ where
     }
 
     fn draw(&mut self) {
-        let Self {
-            state,
-            app,
-            builder,
-            ..
-        } = self;
+        let Self { state, app, .. } = self;
         let Some(rt) = state.as_mut() else {
             return;
         };
         rt.next = rt
             .host
-            .frame(&rt.surface, &rt.config, rt.scale_factor, |ui| {
-                builder(ui, app)
-            });
+            .frame(&rt.surface, &rt.config, rt.scale_factor, |ui| app.frame(ui));
     }
 }
 
-impl<T, F> ApplicationHandler for WinitHost<T, F>
+impl<T> ApplicationHandler for WinitHost<T>
 where
-    T: 'static,
-    F: FnMut(&mut Ui, &mut T),
+    T: App + 'static,
 {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
