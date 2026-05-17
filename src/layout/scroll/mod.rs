@@ -52,23 +52,29 @@ mod tests;
 /// - Mutates `offset` from input (via the same entry).
 ///
 /// The driver writes layout-derived fields:
-/// - `measure` records `content` (the panned-axis extent).
+/// - `measure` records `content` (the bbox `Rect`, including any
+///   negative `min` rolled up from a child canvas).
 /// - `arrange` records `viewport` (inner rect post user-padding),
-///   `overflow`, `seen`, and re-clamps `offset` to the new bounds.
+///   `overflow`, and `seen`. No offset clamp — see the note in
+///   `arrange`.
 ///
 /// - `offset` — input-accumulated pan position (next frame's start).
 /// - `viewport` — INNER (user-padding-deflated) size: what children
-///   see. Drives `content > viewport` overflow checks.
+///   see. Drives `content.size > viewport` overflow checks.
 /// - `outer` — full arranged rect size of the scroll node including
 ///   any reservation gutter. Drives bar positioning so the bar sits
 ///   flush with the OUTER far edge. Parent-allocated and stable
 ///   across reservation flips (unlike `viewport`, which shrinks when
 ///   a gutter appears) — that's why we store it instead of deriving
 ///   from `viewport + padding + reservation` at record time.
-/// - `content` — measured content extent on the panned axes.
-/// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
-///   the viewport on the most recent measure? Read at record time
-///   to decide whether to reserve a bar gutter on the cross axis.
+/// - `content` — measured bbox `Rect` of the inner content in
+///   scroll-content coords. `content.min` (≤ `(0,0)`) is the
+///   leading-edge offset rolled up from a direct child canvas;
+///   `content.size = content.max - content.min`. Read by the widget
+///   for clamp range and bar geometry.
+/// - `overflow` — `(x, y)` per-axis: did `content.size * zoom`
+///   exceed `viewport`? Read at record time to decide whether to
+///   reserve a bar gutter on the cross axis.
 /// - `seen` — set true by `arrange` after the first frame. Read by
 ///   the widget to detect a cold-mount and trigger a relayout pass
 ///   so pass B records with the measured reservation in place.
@@ -175,14 +181,25 @@ pub(crate) fn measure(
     };
 
     let wid = tree.records.widget_id()[node.idx()];
-    // Roll up leading-edge origin from direct children (typically the
-    // canvas published by `canvas::measure`). Non-canvas children
-    // leave their slot at `(0,0)`, so the min collapses to `(0,0)` in
-    // the common case.
-    // Roll up published bbox.min from direct children. The cache
+    // Roll up leading-edge origin from **direct** children. The cache
     // round-trips `content_origin` alongside `desired`, so a
-    // measure-cache hit at any canvas descendant still surfaces the
-    // right value here — no separate fallback path.
+    // measure-cache hit on a canvas descendant still surfaces the
+    // right value here — no separate fallback.
+    //
+    // **Direct-only is intentional.** `content_origin` is a
+    // canvas-and-scroll feature: canvas places children at unshifted
+    // positions (negatives render past `inner.min`), and scroll
+    // extends its clamp so those positions are reachable. Propagating
+    // through a structural sibling-bearing container (Stack, Grid,
+    // Wrap) would let a canvas's negatively-placed children render
+    // *on top of* its stack siblings, since "no shift" + sibling
+    // positioning overlap. Acceptable wrappers between Scroll and
+    // Canvas: zero-overhead frames (`Frame`, `Panel::zstack`
+    // single-child) — those don't introduce siblings whose layout
+    // could overlap the negative region. If you genuinely need a
+    // canvas inside a stack with negative-origin support, you want
+    // a different feature (sticky-header-style anchoring), not this
+    // one.
     let mut bb_min = Vec2::ZERO;
     for c in tree.active_children(node) {
         let co = layout.scratch.content_origin[c.idx()];

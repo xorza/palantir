@@ -342,14 +342,16 @@ impl Scroll {
         self
     }
 
-    /// Extra slack added around the measured content extent, purely
-    /// inflating the scrollable range — children are still arranged
-    /// in the un-padded inner rect, so this does not shift their
-    /// positions or interact with user padding. Use for canvas-style
-    /// scopes (node graphs, infinite boards) where the user wants to
-    /// pan past the children's bounding box. `Spacing` carries
-    /// per-side values; only the per-axis totals (`horiz()` / `vert()`)
-    /// reach the slack math.
+    /// Extends the offset clamp on each side without touching the
+    /// recorded `content` rect — bars still reflect the real bbox,
+    /// and child layout is unaffected. Think of it as invisible
+    /// overscroll: the user can wheel/drag past the content edge by
+    /// the per-side amount, but a bar thumb wouldn't show extra
+    /// travel and no padding/gutter is reserved. Use for canvas-style
+    /// scopes (node graphs, infinite boards) that want pan slack
+    /// past the children's bounding box. Per-side values come from
+    /// `Spacing` (`left`/`top` open the negative band; `right`/
+    /// `bottom` extend the positive band).
     pub fn content_margin(mut self, m: impl Into<Spacing>) -> Self {
         self.content_margin = m.into();
         self
