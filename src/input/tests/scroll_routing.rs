@@ -13,12 +13,12 @@ fn nested_scroll_panels_route_to_innermost_under_pointer() {
     let surface = UVec2::new(300, 300);
     let build = |ui: &mut Ui| {
         Panel::zstack()
-            .id_salt("outer")
+            .id(WidgetId::from_hash("outer"))
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("inner")
+                    .id(WidgetId::from_hash("inner"))
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(100.0)))
                     .sense(Sense::SCROLL)
                     .show(ui, |_| {});
@@ -48,7 +48,7 @@ fn scroll_delta_zero_for_non_target() {
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()
-            .id_salt("scroller")
+            .id(WidgetId::from_hash("scroller"))
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});
@@ -72,7 +72,7 @@ fn pointer_left_clears_scroll_target() {
     let surface = UVec2::new(200, 200);
     let build = |ui: &mut Ui| {
         Panel::zstack()
-            .id_salt("scroller")
+            .id(WidgetId::from_hash("scroller"))
             .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
             .sense(Sense::SCROLL)
             .show(ui, |_| {});

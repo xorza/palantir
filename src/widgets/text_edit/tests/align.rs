@@ -41,7 +41,7 @@ fn frame(
     let mut record = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let mut e = TextEdit::new(buf)
-                .id_salt("align-ed")
+                .id(WidgetId::from_hash("align-ed"))
                 .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(EDIT_H)));
             if let Some(a) = text_align {
                 e = e.text_align(a);
@@ -475,7 +475,7 @@ mod per_line {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
                     TextEdit::new(&mut buf)
-                        .id_salt("fits-ml")
+                        .id(WidgetId::from_hash("fits-ml"))
                         .multiline(true)
                         .text_align(Align::TOP_RIGHT)
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
@@ -536,7 +536,7 @@ mod per_line {
         let mut record = |ui: &mut Ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
-                    .id_salt("stable-ml")
+                    .id(WidgetId::from_hash("stable-ml"))
                     .multiline(true)
                     .text_align(Align::TOP_RIGHT)
                     .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
@@ -586,7 +586,7 @@ mod per_line {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
                     TextEdit::new(&mut buf)
-                        .id_salt("ph-ml")
+                        .id(WidgetId::from_hash("ph-ml"))
                         .multiline(true)
                         .text_align(Align::TOP_RIGHT)
                         .placeholder("type a paragraph here — long enough to actually wrap")
@@ -715,7 +715,7 @@ mod per_line {
         let mut record = |ui: &mut Ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 TextEdit::new(&mut buf)
-                    .id_salt("ml-right")
+                    .id(WidgetId::from_hash("ml-right"))
                     .multiline(true)
                     .text_align(Align::TOP_RIGHT)
                     .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
@@ -766,7 +766,7 @@ fn multiline_default_is_top_left() {
         Panel::hstack().auto_id().show(ui, |ui| {
             node = Some(
                 TextEdit::new(&mut buf)
-                    .id_salt("align-ed")
+                    .id(WidgetId::from_hash("align-ed"))
                     .multiline(true)
                     .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(80.0)))
                     .show(ui)

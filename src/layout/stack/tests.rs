@@ -4,6 +4,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{align::Align, sizing::Sizing};
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -91,11 +92,11 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                 .auto_id()
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("a")
+                        .id(WidgetId::from_hash("a"))
                         .size((Sizing::Fill(1.0), Sizing::Hug))
                         .show(ui);
                     Frame::new()
-                        .id_salt("b")
+                        .id(WidgetId::from_hash("b"))
                         .size((Sizing::Fill(3.0), Sizing::Hug))
                         .show(ui);
                 })
@@ -119,12 +120,12 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
                 .auto_id()
                 .show(ui, |ui| {
                     Button::new()
-                        .id_salt("wide")
+                        .id(WidgetId::from_hash("wide"))
                         .label("wide button")
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                     Button::new()
-                        .id_salt("narrow")
+                        .id(WidgetId::from_hash("narrow"))
                         .label("x")
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
@@ -162,7 +163,10 @@ fn hstack_justify_distributes_leftover() {
                     .justify(*justify)
                     .show(ui, |ui| {
                         for i in 0..expected_xs.len() {
-                            Frame::new().id_salt(("c", i)).size(40.0).show(ui);
+                            Frame::new()
+                                .id(WidgetId::from_hash(("c", i)))
+                                .size(40.0)
+                                .show(ui);
                         }
                     })
                     .node(ui),
@@ -186,12 +190,18 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
                 .auto_id()
                 .justify(Justify::Center)
                 .show(ui, |ui| {
-                    Frame::new().id_salt("a").size(40.0).show(ui);
                     Frame::new()
-                        .id_salt("filler")
+                        .id(WidgetId::from_hash("a"))
+                        .size(40.0)
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("filler"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
-                    Frame::new().id_salt("c").size(40.0).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size(40.0)
+                        .show(ui);
                 })
                 .node(ui),
         );
@@ -213,9 +223,18 @@ fn hstack_gap_inserts_space_between_children() {
                 .auto_id()
                 .gap(10.0)
                 .show(ui, |ui| {
-                    Frame::new().id_salt("a").size(40.0).show(ui);
-                    Frame::new().id_salt("b").size(40.0).show(ui);
-                    Frame::new().id_salt("c").size(40.0).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("a"))
+                        .size(40.0)
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("b"))
+                        .size(40.0)
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size(40.0)
+                        .show(ui);
                 })
                 .node(ui),
         );
@@ -237,7 +256,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
                 .size((Sizing::FILL, Sizing::Fixed(100.0)))
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("c")
+                        .id(WidgetId::from_hash("c"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .align(Align::CENTER)
                         .show(ui);
@@ -260,7 +279,7 @@ fn negative_left_margin_spills_outside_slot() {
         Panel::hstack().auto_id().show(ui, |ui| {
             button_node = Some(
                 Button::new()
-                    .id_salt("spill")
+                    .id(WidgetId::from_hash("spill"))
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(30.0)))
                     .margin((-10.0, 0.0, 0.0, 0.0))
                     .show(ui)
@@ -292,7 +311,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
                 .show(ui, |ui| {
                     Button::new().auto_id().label("Hi").show(ui);
                     Frame::new()
-                        .id_salt("filler")
+                        .id(WidgetId::from_hash("filler"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
@@ -317,13 +336,19 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
                 .auto_id()
                 .gap(5.0)
                 .show(ui, |ui| {
-                    Frame::new().id_salt("a").size((20.0, 20.0)).show(ui);
                     Frame::new()
-                        .id_salt("hidden")
+                        .id(WidgetId::from_hash("a"))
+                        .size((20.0, 20.0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("hidden"))
                         .size((50.0, 20.0))
                         .collapsed()
                         .show(ui);
-                    Frame::new().id_salt("b").size((30.0, 20.0)).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("b"))
+                        .size((30.0, 20.0))
+                        .show(ui);
                 })
                 .node(ui),
         );
@@ -351,10 +376,13 @@ fn hstack_fill_max_size_caps_measured_share() {
             .auto_id()
             .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
             .show(ui, |ui| {
-                Frame::new().id_salt("fixed").size((20.0, 20.0)).show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("fixed"))
+                    .size((20.0, 20.0))
+                    .show(ui);
                 fill_node = Some(
                     Frame::new()
-                        .id_salt("fill")
+                        .id(WidgetId::from_hash("fill"))
                         .size((Sizing::FILL, 20.0))
                         .max_size(Size::new(50.0, f32::INFINITY))
                         .show(ui)
@@ -380,13 +408,13 @@ fn parent_max_size_clamps_children_available() {
     let mut child_node = None;
     let parent_node = ui.under_outer(UVec2::new(1000, 200), |ui| {
         Panel::vstack()
-            .id_salt("capped-parent")
+            .id(WidgetId::from_hash("capped-parent"))
             .size((Sizing::FILL, Sizing::Fixed(40.0)))
             .max_size(Size::new(200.0, f32::INFINITY))
             .show(ui, |ui| {
                 child_node = Some(
                     Panel::hstack()
-                        .id_salt("inner")
+                        .id(WidgetId::from_hash("inner"))
                         .size((Sizing::FILL, Sizing::Fixed(20.0)))
                         .show(ui, |_| {})
                         .node(ui),

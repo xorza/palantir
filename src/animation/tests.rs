@@ -36,7 +36,7 @@ fn wid(s: &'static str) -> WidgetId {
 /// [`Ui::run_frame`]: spin up a `Ui`, pre-record the widget once so
 /// its state row exists, return the `Ui`, the widget's id, and a
 /// matching `Display`. Per-frame bodies still need to re-record the
-/// widget (`Frame::new().id_salt(salt).show(ui)`) so the persistent
+/// widget (`Frame::new().id(WidgetId::from_hash(salt)).show(ui)`) so the persistent
 /// state survives end-of-frame sweeps.
 struct AnimUi {
     ui: Ui,
@@ -48,7 +48,7 @@ fn setup_anim_ui(salt: &'static str) -> AnimUi {
     let mut ui = Ui::for_test();
     let id = wid(salt);
     ui.run_at(SURFACE, |ui| {
-        Frame::new().id_salt(salt).show(ui);
+        Frame::new().id(WidgetId::from_hash(salt)).show(ui);
     });
     let display = Display::from_physical(SURFACE, 1.0);
     AnimUi { ui, id, display }
@@ -153,7 +153,9 @@ fn instant_duration_is_noop_and_drops_row() {
         .frame(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
             let v = ui.animate(id, SLOT, 1.0_f32, instant);
             assert_eq!(v, 1.0);
-            Frame::new().id_salt("anim-instant").show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash("anim-instant"))
+                .show(ui);
         })
         .repaint_requested();
     assert!(!repaint);
@@ -162,11 +164,15 @@ fn instant_duration_is_noop_and_drops_row() {
     // Mid-flight on FAST: row gets allocated.
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-instant").show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("anim-instant"))
+            .show(ui);
     });
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(50)), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-instant").show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("anim-instant"))
+            .show(ui);
     });
     assert!(ui.anim_row_count::<f32>() > 0);
 
@@ -174,7 +180,9 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(60)), |ui| {
         let v = ui.animate(id, SLOT, 1.0_f32, instant);
         assert_eq!(v, 1.0);
-        Frame::new().id_salt("anim-instant").show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("anim-instant"))
+            .show(ui);
     });
     assert_eq!(
         ui.anim_row_count::<f32>(),
@@ -186,7 +194,9 @@ fn instant_duration_is_noop_and_drops_row() {
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(70)), |ui| {
         let v = ui.animate(id, SLOT, 5.0_f32, Some(AnimSpec::FAST));
         assert_eq!(v, 5.0, "post-instant first-touch snaps to new target");
-        Frame::new().id_salt("anim-instant").show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("anim-instant"))
+            .show(ui);
     });
 }
 
@@ -481,7 +491,7 @@ fn animate_drives_repaint_until_settle() {
     let repaint = ui
         .frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-            Frame::new().id_salt("anim-test").show(ui);
+            Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
         .repaint_requested();
     assert!(
@@ -492,7 +502,7 @@ fn animate_drives_repaint_until_settle() {
     let repaint = ui
         .frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-            Frame::new().id_salt("anim-test").show(ui);
+            Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
         .repaint_requested();
     assert!(repaint, "in-flight animation must request repaint");
@@ -504,7 +514,7 @@ fn animate_drives_repaint_until_settle() {
         let repaint = ui
             .frame(FrameStamp::new(display, now), |ui| {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-                Frame::new().id_salt("anim-test").show(ui);
+                Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
             })
             .repaint_requested();
         if !repaint {
@@ -535,7 +545,9 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
     let mut now = Duration::ZERO;
     let _ = ui.frame(FrameStamp::new(display, now), |ui| {
         let _ = ui.animate(id, SLOT, 80.0_f32, Some(AnimSpec::SPRING));
-        Frame::new().id_salt("anim-novsync").show(ui);
+        Frame::new()
+            .id(WidgetId::from_hash("anim-novsync"))
+            .show(ui);
     });
 
     // Retarget to 400 over a tight loop with 10 µs per frame (NoVsync).
@@ -545,7 +557,9 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
         let repaint = ui
             .frame(FrameStamp::new(display, now), |ui| {
                 let _ = ui.animate(id, SLOT, 400.0_f32, Some(AnimSpec::SPRING));
-                Frame::new().id_salt("anim-novsync").show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("anim-novsync"))
+                    .show(ui);
             })
             .repaint_requested();
         if !repaint {
@@ -678,7 +692,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
             let v2 = ui.animate(id, SLOT, 9.0_f32, None);
             assert_eq!(v1, 7.0);
             assert_eq!(v2, 9.0);
-            Frame::new().id_salt("anim-none").show(ui);
+            Frame::new().id(WidgetId::from_hash("anim-none")).show(ui);
         })
         .repaint_requested();
     assert!(!repaint, "None spec must never request a repaint");
@@ -701,11 +715,11 @@ fn animate_some_then_none_drops_stale_row() {
     // Frame A: animate to 1.0 with FAST (in flight).
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(0)), |ui| {
         let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-toggle").show(ui);
+        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(50)), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
-        Frame::new().id_salt("anim-toggle").show(ui);
+        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     assert!(
         ui.anim_row_count::<f32>() > 0,
@@ -715,7 +729,7 @@ fn animate_some_then_none_drops_stale_row() {
     // Frame B: switch to None — the stale row should drop.
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(60)), |ui| {
         let _ = ui.animate(id, SLOT, 1.0_f32, None);
-        Frame::new().id_salt("anim-toggle").show(ui);
+        Frame::new().id(WidgetId::from_hash("anim-toggle")).show(ui);
     });
     assert!(
         ui.anim_row_count::<f32>() == 0,
@@ -760,7 +774,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
         captured.set(Some(look.animate(ui, id, fallback, None)));
-        Frame::new().id_salt("look-test").show(ui);
+        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     let snap = captured.get().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
@@ -795,7 +809,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     };
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
         let _ = look2.animate(ui, id, fallback, Some(AnimSpec::FAST));
-        Frame::new().id_salt("look-test").show(ui);
+        Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     assert!(
         ui.anim_row_count::<AnimatedLook>() > 0,

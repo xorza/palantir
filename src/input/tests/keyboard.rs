@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
+use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use winit::event::WindowEvent;
 use winit::keyboard::{Key as WK, NamedKey};
@@ -186,7 +187,7 @@ fn focus_policy_routing() {
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("editable")
+                .id(WidgetId::from_hash("editable"))
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -228,12 +229,12 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("editable")
+                .id(WidgetId::from_hash("editable"))
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             Button::new()
-                .id_salt("plain")
+                .id(WidgetId::from_hash("plain"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });
@@ -262,7 +263,7 @@ fn focus_is_evicted_when_widget_disappears() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("editable")
+                .id(WidgetId::from_hash("editable"))
                 .focusable(true)
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
@@ -311,7 +312,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
         ui.run_at_acked(glam::UVec2::new(200, 80), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let b = Button::new()
-                    .id_salt("editable")
+                    .id(WidgetId::from_hash("editable"))
                     .focusable(true)
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)));
                 match mode {

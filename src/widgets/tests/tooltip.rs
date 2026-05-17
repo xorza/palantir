@@ -88,10 +88,13 @@ fn delay_gates_visibility() {
             FrameStamp::new(display, Duration::from_secs_f32(secs)),
             |ui| {
                 Panel::vstack()
-                    .id_salt("root")
+                    .id(WidgetId::from_hash("root"))
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        let r = Button::new().id_salt("trig").label("hi").show(ui);
+                        let r = Button::new()
+                            .id(WidgetId::from_hash("trig"))
+                            .label("hi")
+                            .show(ui);
                         *captured = Some(r.widget_id());
                         Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
                     });

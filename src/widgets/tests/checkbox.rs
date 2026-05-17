@@ -1,5 +1,6 @@
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::checkbox::Checkbox;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
@@ -8,7 +9,10 @@ fn run(value: &mut bool, ui: &mut Ui, surface: UVec2) {
     let mut v = *value;
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            Checkbox::new(&mut v).id_salt("cb").label("label").show(ui);
+            Checkbox::new(&mut v)
+                .id(WidgetId::from_hash("cb"))
+                .label("label")
+                .show(ui);
         });
     });
     *value = v;
@@ -25,7 +29,7 @@ fn clicking_toggles_value() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
-                .id_salt("cb")
+                .id(WidgetId::from_hash("cb"))
                 .label("label")
                 .show(ui);
         });
@@ -53,7 +57,7 @@ fn disabled_checkbox_does_not_toggle() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
-                .id_salt("cb")
+                .id(WidgetId::from_hash("cb"))
                 .label("label")
                 .disabled(true)
                 .show(ui);
@@ -66,7 +70,7 @@ fn disabled_checkbox_does_not_toggle() {
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Checkbox::new(&mut rec)
-                .id_salt("cb")
+                .id(WidgetId::from_hash("cb"))
                 .label("label")
                 .disabled(true)
                 .show(ui);

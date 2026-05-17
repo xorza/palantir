@@ -98,8 +98,8 @@ fn auto_id_propagates_track_caller_through_every_widget() {
 #[test]
 fn id_salt_overrides_auto_id() {
     assert_eq!(
-        id_of(Button::new().id_salt("k")),
-        id_of(Button::new().id_salt("k")),
+        id_of(Button::new().id(WidgetId::from_hash("k"))),
+        id_of(Button::new().id(WidgetId::from_hash("k"))),
     );
 }
 

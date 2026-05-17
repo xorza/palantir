@@ -5,6 +5,7 @@
 //!  * no subscriber → no wake AND no entry in `frame_pointer_events`
 //!    (the `any_mask` short-circuit gates the push);
 //!  * pre-record clear drops stale subscriptions.
+use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
 use crate::input::InputEvent;
@@ -17,7 +18,9 @@ use glam::{UVec2, Vec2};
 fn empty(ui: &mut Ui) {
     use crate::forest::element::Configure;
     use crate::widgets::panel::Panel;
-    Panel::vstack().id_salt("root").show(ui, |_| {});
+    Panel::vstack()
+        .id(WidgetId::from_hash("root"))
+        .show(ui, |_| {});
 }
 
 fn empty_sub_buttons(ui: &mut Ui) {

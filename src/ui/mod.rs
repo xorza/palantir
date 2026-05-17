@@ -523,8 +523,10 @@ impl Ui {
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::new(LayoutMode::ZStack);
         viewport.size = Sizing::FILL.into();
-        let viewport_id = self.make_persistent_id(viewport.salt);
-        self.forest.open_node(viewport_id, viewport, None);
+        // Hard-coded `WidgetId::VIEWPORT` — `make_persistent_id` skips
+        // this id as a parent, so user `id_salt("k")` at the top level
+        // resolves bare instead of `VIEWPORT.with(salt)`.
+        self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
         {
             profiling::scope!("Ui::record_user");
             record(self);

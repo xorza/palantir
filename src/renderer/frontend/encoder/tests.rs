@@ -83,7 +83,7 @@ fn baseline_draw_rect_count_cases() {
                 Scene::Empty => {}
                 Scene::FrameWithFill => {
                     Frame::new()
-                        .id_salt("a")
+                        .id(WidgetId::from_hash("a"))
                         .size(50.0)
                         .background(Background {
                             fill: Color::rgb(1.0, 0.0, 0.0).into(),
@@ -92,11 +92,14 @@ fn baseline_draw_rect_count_cases() {
                         .show(ui);
                 }
                 Scene::InvisibleFrame => {
-                    Frame::new().id_salt("invisible").size(50.0).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("invisible"))
+                        .size(50.0)
+                        .show(ui);
                 }
                 Scene::FrameWithDegenerateBackground => {
                     Frame::new()
-                        .id_salt("degenerate")
+                        .id(WidgetId::from_hash("degenerate"))
                         .size(50.0)
                         .background(Background {
                             fill: Color::TRANSPARENT.into(),
@@ -107,7 +110,7 @@ fn baseline_draw_rect_count_cases() {
                 }
                 Scene::FrameWithClipRectSurface => {
                     Frame::new()
-                        .id_salt("clip_only")
+                        .id(WidgetId::from_hash("clip_only"))
                         .size(50.0)
                         .clip_rect()
                         .show(ui);
@@ -162,7 +165,10 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 cap: LineCap::Butt,
                 join: LineJoin::Miter,
             });
-            Frame::new().id_salt("host").size(50.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash("host"))
+                .size(50.0)
+                .show(ui);
         });
     });
     let cmds = ui.encode_cmds();
@@ -213,7 +219,10 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
                     inset: false,
                 },
             });
-            Frame::new().id_salt("host").size(50.0).show(ui);
+            Frame::new()
+                .id(WidgetId::from_hash("host"))
+                .size(50.0)
+                .show(ui);
         });
     });
     let cmds = ui.encode_cmds();
@@ -277,7 +286,7 @@ fn clip_only_surface_emits_clip_but_no_draw() {
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
-                .id_salt("clip_only")
+                .id(WidgetId::from_hash("clip_only"))
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |_| {});
@@ -296,12 +305,12 @@ fn clip_emits_balanced_push_pop() {
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
-                .id_salt("clip")
+                .id(WidgetId::from_hash("clip"))
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("inner")
+                        .id(WidgetId::from_hash("inner"))
                         .size(40.0)
                         .background(Background {
                             fill: Color::rgb(0.5, 0.5, 0.5).into(),
@@ -354,7 +363,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         Panel::hstack().auto_id().show(ui, |ui| {
             panel_node = Some(
                 Panel::zstack()
-                    .id_salt("rounded")
+                    .id(WidgetId::from_hash("rounded"))
                     .size(80.0)
                     .background(Background {
                         fill: Color::rgb(0.2, 0.2, 0.2).into(),
@@ -364,7 +373,10 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                     })
                     .clip_rounded()
                     .show(ui, |ui| {
-                        Frame::new().id_salt("c").size(40.0).show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("c"))
+                            .size(40.0)
+                            .show(ui);
                     })
                     .node(ui),
             );
@@ -410,11 +422,14 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
-                .id_salt("rounded_no_bg")
+                .id(WidgetId::from_hash("rounded_no_bg"))
                 .size(80.0)
                 .clip_rounded()
                 .show(ui, |ui| {
-                    Frame::new().id_salt("c").size(40.0).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size(40.0)
+                        .show(ui);
                 });
         });
     });
@@ -498,13 +513,13 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
     let build = |ui: &mut Ui, capture: &mut (bool, bool, bool)| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::canvas()
-                .id_salt("mid")
+                .id(WidgetId::from_hash("mid"))
                 .size(200.0)
                 .clip_rect()
                 .transform(xform)
                 .show(ui, |ui| {
                     capture.0 |= Frame::new()
-                        .id_salt("V")
+                        .id(WidgetId::from_hash("V"))
                         .position((0.0, 0.0))
                         .size(30.0)
                         .background(Background {
@@ -515,7 +530,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .show(ui)
                         .clicked();
                     capture.1 |= Frame::new()
-                        .id_salt("D")
+                        .id(WidgetId::from_hash("D"))
                         .position((40.0, 0.0))
                         .size(30.0)
                         .background(Background {
@@ -527,7 +542,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .show(ui)
                         .clicked();
                     capture.2 |= Frame::new()
-                        .id_salt("H")
+                        .id(WidgetId::from_hash("H"))
                         .position((80.0, 0.0))
                         .size(30.0)
                         .background(Background {
@@ -613,12 +628,12 @@ fn nested_clips_each_emit_their_own_pair() {
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Panel::zstack()
-                .id_salt("outer")
+                .id(WidgetId::from_hash("outer"))
                 .size(Sizing::Fixed(100.0))
                 .clip_rect()
                 .show(ui, |ui| {
                     Panel::zstack()
-                        .id_salt("inner")
+                        .id(WidgetId::from_hash("inner"))
                         .size(Sizing::Fixed(50.0))
                         .clip_rect()
                         .show(ui, |_| {});
@@ -693,7 +708,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("padded")
+                .id(WidgetId::from_hash("padded"))
                 .label("ok")
                 .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
                 .padding(20.0)
@@ -738,7 +753,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
         ui.run_at_acked(UVec2::new(200, 200), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 Frame::new()
-                    .id_salt("a")
+                    .id(WidgetId::from_hash("a"))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
@@ -746,7 +761,7 @@ fn damage_filter_partitions_drawrects_by_dirty_region() {
                     })
                     .show(ui);
                 Frame::new()
-                    .id_salt("b")
+                    .id(WidgetId::from_hash("b"))
                     .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(0.0, 1.0, 0.0).into(),
@@ -789,7 +804,7 @@ fn damage_filter_culls_subtree_outside_damage() {
             Panel::hstack().auto_id().show(ui, |ui| {
                 let inner = |ui: &mut Ui| {
                     Frame::new()
-                        .id_salt("inner")
+                        .id(WidgetId::from_hash("inner"))
                         .size(20.0)
                         .background(Background {
                             fill: Color::rgb(1.0, 0.0, 0.0).into(),
@@ -799,12 +814,12 @@ fn damage_filter_culls_subtree_outside_damage() {
                 };
                 match wrap {
                     Wrap::Clipped => Panel::hstack()
-                        .id_salt("clipped")
+                        .id(WidgetId::from_hash("clipped"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .clip_rect()
                         .show(ui, inner),
                     Wrap::Transformed => Panel::hstack()
-                        .id_salt("transformed")
+                        .id(WidgetId::from_hash("transformed"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .transform(TranslateScale::from_translation(Vec2::new(5.0, 5.0)))
                         .show(ui, inner),
@@ -830,7 +845,7 @@ fn damage_filter_paints_leaves_in_any_rect() {
             .show(ui, |ui| {
                 for (key, x, y) in &[("tl", 0.0, 0.0), ("tr", 160.0, 0.0), ("bl", 0.0, 160.0)] {
                     Frame::new()
-                        .id_salt(*key)
+                        .id(WidgetId::from_hash(*key))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .position(Vec2::new(*x, *y))
                         .background(Background {
@@ -864,7 +879,7 @@ fn viewport_cull_skips_offscreen_subtree() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("on")
+                    .id(WidgetId::from_hash("on"))
                     .position((10.0, 10.0))
                     .size(20.0)
                     .background(Background {
@@ -873,7 +888,7 @@ fn viewport_cull_skips_offscreen_subtree() {
                     })
                     .show(ui);
                 Frame::new()
-                    .id_salt("off")
+                    .id(WidgetId::from_hash("off"))
                     .position((500.0, 500.0))
                     .size(20.0)
                     .background(Background {

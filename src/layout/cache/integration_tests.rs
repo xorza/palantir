@@ -3,6 +3,7 @@
 //! reproduces the cold-frame layout (and encoded commands). Catches
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
+use crate::primitives::widget_id::WidgetId;
 
 use crate::TextStyle;
 use crate::Ui;
@@ -63,7 +64,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
-                        .id_salt("g")
+                        .id(WidgetId::from_hash("g"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -95,7 +96,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
-                        .id_salt("outer")
+                        .id(WidgetId::from_hash("outer"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -109,11 +110,11 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .node(ui),
                             );
                             Panel::vstack()
-                                .id_salt("inner-host")
+                                .id(WidgetId::from_hash("inner-host"))
                                 .grid_cell((0, 1))
                                 .show(ui, |ui| {
                                     Grid::new()
-                                        .id_salt("inner")
+                                        .id(WidgetId::from_hash("inner"))
                                         .size((Sizing::FILL, Sizing::Hug))
                                         .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
                                         .rows(Rc::from([Track::hug()]))
@@ -121,7 +122,10 @@ fn cache_hit_preserves_grid_cell_rects() {
                                             for (col, label) in [(0, "a"), (1, "bb"), (2, "end")] {
                                                 capture.push(
                                                     Text::new(label)
-                                                        .id_salt(("inner-cell", col))
+                                                        .id(WidgetId::from_hash((
+                                                            "inner-cell",
+                                                            col,
+                                                        )))
                                                         .style(
                                                             TextStyle::default()
                                                                 .with_font_size(14.0),
@@ -142,7 +146,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Grid::new()
-                        .id_salt("g1")
+                        .id(WidgetId::from_hash("g1"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -165,7 +169,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                             );
                         });
                     Grid::new()
-                        .id_salt("g2")
+                        .id(WidgetId::from_hash("g2"))
                         .size((Sizing::FILL, Sizing::Hug))
                         .cols(Rc::from([Track::hug(), Track::hug(), Track::fill()]))
                         .rows(Rc::from([Track::hug()]))
@@ -222,17 +226,20 @@ fn cache_hit_preserves_per_driver_rects() {
     let cases: &[(&str, Build)] = &[
         ("hstack", |ui, capture| {
             Panel::vstack().auto_id().show(ui, |ui| {
-                Panel::hstack().id_salt("row").gap(6.0).show(ui, |ui| {
-                    for (i, label) in ["alpha", "beta", "gamma"].iter().enumerate() {
-                        capture.push(
-                            Text::new(*label)
-                                .id_salt(("cell", i))
-                                .style(TextStyle::default().with_font_size(14.0))
-                                .show(ui)
-                                .node(ui),
-                        );
-                    }
-                });
+                Panel::hstack()
+                    .id(WidgetId::from_hash("row"))
+                    .gap(6.0)
+                    .show(ui, |ui| {
+                        for (i, label) in ["alpha", "beta", "gamma"].iter().enumerate() {
+                            capture.push(
+                                Text::new(*label)
+                                    .id(WidgetId::from_hash(("cell", i)))
+                                    .style(TextStyle::default().with_font_size(14.0))
+                                    .show(ui)
+                                    .node(ui),
+                            );
+                        }
+                    });
             });
         }),
         ("vstack_fill_freeze", |ui, capture| {
@@ -243,7 +250,7 @@ fn cache_hit_preserves_per_driver_rects() {
             // per-child slots from `desired` alone.
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::vstack()
-                    .id_salt("freeze")
+                    .id(WidgetId::from_hash("freeze"))
                     .size((Sizing::Fixed(200.0), Sizing::Hug))
                     .show(ui, |ui| {
                         for (i, label) in [
@@ -256,7 +263,7 @@ fn cache_hit_preserves_per_driver_rects() {
                         {
                             capture.push(
                                 Text::new(*label)
-                                    .id_salt(("fill", i))
+                                    .id(WidgetId::from_hash(("fill", i)))
                                     .size((Sizing::Fill(1.0), Sizing::Hug))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
@@ -269,7 +276,7 @@ fn cache_hit_preserves_per_driver_rects() {
         ("wrap_hstack", |ui, capture| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::wrap_hstack()
-                    .id_salt("wrap")
+                    .id(WidgetId::from_hash("wrap"))
                     .size((Sizing::Fixed(120.0), Sizing::Hug))
                     .gap(4.0)
                     .line_gap(4.0)
@@ -280,7 +287,7 @@ fn cache_hit_preserves_per_driver_rects() {
                         {
                             capture.push(
                                 Text::new(*label)
-                                    .id_salt(("tag", i))
+                                    .id(WidgetId::from_hash(("tag", i)))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(ui),
@@ -292,13 +299,13 @@ fn cache_hit_preserves_per_driver_rects() {
         ("zstack", |ui, capture| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("z")
+                    .id(WidgetId::from_hash("z"))
                     .size((Sizing::Fixed(160.0), Sizing::Fixed(40.0)))
                     .show(ui, |ui| {
                         for (i, label) in ["under", "over"].iter().enumerate() {
                             capture.push(
                                 Text::new(*label)
-                                    .id_salt(("layer", i))
+                                    .id(WidgetId::from_hash(("layer", i)))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
                                     .node(ui),
@@ -310,7 +317,7 @@ fn cache_hit_preserves_per_driver_rects() {
         ("canvas", |ui, capture| {
             Panel::vstack().auto_id().show(ui, |ui| {
                 Panel::canvas()
-                    .id_salt("c")
+                    .id(WidgetId::from_hash("c"))
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(80.0)))
                     .show(ui, |ui| {
                         for (i, label, pos) in [
@@ -319,7 +326,7 @@ fn cache_hit_preserves_per_driver_rects() {
                         ] {
                             capture.push(
                                 Text::new(label)
-                                    .id_salt(("pin", i))
+                                    .id(WidgetId::from_hash(("pin", i)))
                                     .position(pos)
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
@@ -355,7 +362,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
             .gap(6.0)
             .show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("transformed")
+                    .id(WidgetId::from_hash("transformed"))
                     .transform(TranslateScale::new(glam::Vec2::new(4.0, 2.0), 1.0))
                     .clip_rect()
                     .size((Sizing::FILL, Sizing::Hug))
@@ -368,7 +375,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     })
                     .show(ui, |ui| {
                         Grid::new()
-                            .id_salt("grid")
+                            .id(WidgetId::from_hash("grid"))
                             .size((Sizing::FILL, Sizing::Hug))
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug(), Track::hug()]))
@@ -402,7 +409,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                             });
                     });
                 Frame::new()
-                    .id_salt("under")
+                    .id(WidgetId::from_hash("under"))
                     .size((Sizing::FILL, Sizing::Fixed(20.0)))
                     .background(Background {
                         fill: Color::rgb(0.4, 0.4, 0.5).into(),
@@ -437,12 +444,12 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
                 Panel::zstack()
-                    .id_salt("xform")
+                    .id(WidgetId::from_hash("xform"))
                     .transform(TranslateScale::new(glam::Vec2::new(2.0, 2.0), 1.0))
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui, |ui| {
                         Grid::new()
-                            .id_salt("g")
+                            .id(WidgetId::from_hash("g"))
                             .size((Sizing::FILL, Sizing::Hug))
                             .cols(Rc::from([Track::hug(), Track::fill()]))
                             .rows(Rc::from([Track::hug()]))

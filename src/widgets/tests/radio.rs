@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use crate::widgets::radio::RadioButton;
 use glam::{UVec2, Vec2};
@@ -22,7 +23,7 @@ fn frame_with_rects(ui: &mut Ui, surface: UVec2, sel: &mut Pick) -> [Option<Rect
         Panel::vstack().auto_id().gap(2.0).show(ui, |ui| {
             for (i, value) in [Pick::A, Pick::B, Pick::C].into_iter().enumerate() {
                 let r = RadioButton::new(&mut local, value)
-                    .id_salt(("rb", format!("{value:?}")))
+                    .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
                 rects[i] = r.rect();
@@ -70,7 +71,7 @@ fn disabled_radio_does_not_select() {
     ui.run_at_acked(surface, |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             RadioButton::new(&mut local, Pick::B)
-                .id_salt(("rb", "B"))
+                .id(WidgetId::from_hash(("rb", "B")))
                 .label("B")
                 .disabled(true)
                 .show(ui);
@@ -82,7 +83,7 @@ fn disabled_radio_does_not_select() {
     ui.run_at(surface, |ui| {
         Panel::vstack().auto_id().show(ui, |ui| {
             RadioButton::new(&mut local, Pick::B)
-                .id_salt(("rb", "B"))
+                .id(WidgetId::from_hash(("rb", "B")))
                 .label("B")
                 .disabled(true)
                 .show(ui);

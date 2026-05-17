@@ -5,6 +5,7 @@ use crate::forest::tree::NodeId;
 use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -17,9 +18,19 @@ fn collapsed_child_consumes_no_space_in_hstack() {
             .auto_id()
             .gap(10.0)
             .show(ui, |ui| {
-                Frame::new().id_salt("a").size(40.0).show(ui);
-                Frame::new().id_salt("gone").size(40.0).collapsed().show(ui);
-                Frame::new().id_salt("b").size(40.0).show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("a"))
+                    .size(40.0)
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("gone"))
+                    .size(40.0)
+                    .collapsed()
+                    .show(ui);
+                Frame::new()
+                    .id(WidgetId::from_hash("b"))
+                    .size(40.0)
+                    .show(ui);
             })
             .node(ui);
     });
@@ -52,16 +63,16 @@ fn collapsed_does_not_consume_fill_weight() {
             .auto_id()
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("a")
+                    .id(WidgetId::from_hash("a"))
                     .size((Sizing::Fill(1.0), Sizing::Hug))
                     .show(ui);
                 Frame::new()
-                    .id_salt("gone")
+                    .id(WidgetId::from_hash("gone"))
                     .size((Sizing::Fill(3.0), Sizing::Hug))
                     .collapsed()
                     .show(ui);
                 Frame::new()
-                    .id_salt("b")
+                    .id(WidgetId::from_hash("b"))
                     .size((Sizing::Fill(1.0), Sizing::Hug))
                     .show(ui);
             })
@@ -94,7 +105,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
             .gap(10.0)
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("a")
+                    .id(WidgetId::from_hash("a"))
                     .size(40.0)
                     .background(Background {
                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
@@ -102,7 +113,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     })
                     .show(ui);
                 Frame::new()
-                    .id_salt("hid")
+                    .id(WidgetId::from_hash("hid"))
                     .size(40.0)
                     .background(Background {
                         fill: Color::rgb(0.0, 1.0, 0.0).into(),
@@ -111,7 +122,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     .hidden()
                     .show(ui);
                 Frame::new()
-                    .id_salt("b")
+                    .id(WidgetId::from_hash("b"))
                     .size(40.0)
                     .background(Background {
                         fill: Color::rgb(0.0, 0.0, 1.0).into(),
@@ -154,7 +165,7 @@ fn hidden_button_does_not_click() {
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()
-                .id_salt("invisible")
+                .id(WidgetId::from_hash("invisible"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .hidden()
                 .show(ui);
@@ -167,7 +178,7 @@ fn hidden_button_does_not_click() {
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked = Button::new()
-                .id_salt("invisible")
+                .id(WidgetId::from_hash("invisible"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .hidden()
                 .show(ui)
@@ -202,11 +213,11 @@ fn hstack_child_align_per_axis_with_overrides() {
                 .child_align(Align::v(VAlign::Center))
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("a")
+                        .id(WidgetId::from_hash("a"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                         .show(ui);
                     let mut b = Frame::new()
-                        .id_salt("b")
+                        .id(WidgetId::from_hash("b"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
                     if let Some(a) = *second_override {
                         b = b.align(a);

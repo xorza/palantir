@@ -5,6 +5,7 @@ use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, grid::Grid, panel::Panel};
 use glam::UVec2;
 use std::rc::Rc;
@@ -29,8 +30,14 @@ fn grid_fixed_and_fill_columns_split_remainder() {
                 .rows([Track::fill()])
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    Frame::new().id_salt("left").grid_cell((0, 0)).show(ui);
-                    Frame::new().id_salt("right").grid_cell((0, 1)).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("left"))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("right"))
+                        .grid_cell((0, 1))
+                        .show(ui);
                 })
                 .node(ui),
         );
@@ -59,17 +66,17 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     Button::new()
-                        .id_salt("short")
+                        .id(WidgetId::from_hash("short"))
                         .label("ok")
                         .grid_cell((0, 0))
                         .show(ui);
                     Button::new()
-                        .id_salt("long")
+                        .id(WidgetId::from_hash("long"))
                         .label("hello!!")
                         .grid_cell((1, 0))
                         .show(ui);
                     Frame::new()
-                        .id_salt("body")
+                        .id(WidgetId::from_hash("body"))
                         .grid_cell((0, 1))
                         .grid_span((2, 1))
                         .show(ui);
@@ -130,8 +137,14 @@ fn grid_fill_weights_and_clamps() {
                     .rows([Track::fill()])
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui, |ui| {
-                        Frame::new().id_salt("a").grid_cell((0, 0)).show(ui);
-                        Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("a"))
+                            .grid_cell((0, 0))
+                            .show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("b"))
+                            .grid_cell((0, 1))
+                            .show(ui);
                     })
                     .node(ui),
             );
@@ -173,11 +186,14 @@ fn grid_span_covers_multiple_tracks_with_gap() {
                 g.gap(10.0)
                     .show(ui, |ui| {
                         Frame::new()
-                            .id_salt("header")
+                            .id(WidgetId::from_hash("header"))
                             .grid_cell((0, 0))
                             .grid_span(span)
                             .show(ui);
-                        Frame::new().id_salt("body").grid_cell((1, 1)).show(ui);
+                        Frame::new()
+                            .id(WidgetId::from_hash("body"))
+                            .grid_cell((1, 1))
+                            .show(ui);
                     })
                     .node(ui),
             );
@@ -216,13 +232,19 @@ fn grid_hug_grid_collapses_fill_tracks() {
             .show(ui, |ui| {
                 grid_node = Some(
                     Grid::new()
-                        .id_salt("hug-grid")
+                        .id(WidgetId::from_hash("hug-grid"))
                         .cols([Track::fixed(80.0), Track::fill()])
                         .rows([Track::fixed(40.0)])
                         .size((Sizing::Hug, Sizing::Hug))
                         .show(ui, |ui| {
-                            Frame::new().id_salt("a").grid_cell((0, 0)).show(ui);
-                            Frame::new().id_salt("b").grid_cell((0, 1)).show(ui);
+                            Frame::new()
+                                .id(WidgetId::from_hash("a"))
+                                .grid_cell((0, 0))
+                                .show(ui);
+                            Frame::new()
+                                .id(WidgetId::from_hash("b"))
+                                .grid_cell((0, 1))
+                                .show(ui);
                         })
                         .node(ui),
                 );
@@ -247,7 +269,7 @@ fn grid_cell_alignment_override_pins_child_to_corner() {
                 .rows([Track::fixed(100.0)])
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("pinned")
+                        .id(WidgetId::from_hash("pinned"))
                         .grid_cell((0, 0))
                         .size((20.0, 20.0))
                         .align(Align::new(HAlign::Right, VAlign::Bottom))
@@ -296,11 +318,14 @@ fn grid_cell_with_2d_span_covers_track_union_with_gaps() {
                 .gap(10.0)
                 .show(ui, |ui| {
                     Frame::new()
-                        .id_salt("big")
+                        .id(WidgetId::from_hash("big"))
                         .grid_cell((0, 0))
                         .grid_span((2, 2))
                         .show(ui);
-                    Frame::new().id_salt("corner").grid_cell((2, 2)).show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("corner"))
+                        .grid_cell((2, 2))
+                        .show(ui);
                 })
                 .node(ui),
         );
@@ -330,14 +355,14 @@ fn grid_empty_dim_measures_to_zero_and_zeros_children() {
             .show(ui, |ui| {
                 grid_node = Some(
                     Grid::new()
-                        .id_salt("empty-grid")
+                        .id(WidgetId::from_hash("empty-grid"))
                         .cols([Track::fixed(50.0)])
                         .rows(empty.clone())
                         .size((Sizing::Hug, Sizing::Hug))
                         .show(ui, |ui| {
                             ghost_node = Some(
                                 Frame::new()
-                                    .id_salt("ghost")
+                                    .id(WidgetId::from_hash("ghost"))
                                     .size((20.0, 20.0))
                                     .show(ui)
                                     .node(ui),
@@ -370,14 +395,14 @@ fn grid_multi_row_hug_heights_resolve_independently() {
             .show(ui, |ui| {
                 grid_node = Some(
                     Grid::new()
-                        .id_salt("multi-row")
+                        .id(WidgetId::from_hash("multi-row"))
                         .cols([Track::fixed(50.0)])
                         .rows([Track::hug(), Track::hug(), Track::hug()])
                         .size((Sizing::Hug, Sizing::Hug))
                         .show(ui, |ui| {
                             kids.push(
                                 Frame::new()
-                                    .id_salt("short")
+                                    .id(WidgetId::from_hash("short"))
                                     .size((50.0, 10.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
@@ -385,7 +410,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                             );
                             kids.push(
                                 Frame::new()
-                                    .id_salt("tall")
+                                    .id(WidgetId::from_hash("tall"))
                                     .size((50.0, 80.0))
                                     .grid_cell((1, 0))
                                     .show(ui)
@@ -393,7 +418,7 @@ fn grid_multi_row_hug_heights_resolve_independently() {
                             );
                             kids.push(
                                 Frame::new()
-                                    .id_salt("med")
+                                    .id(WidgetId::from_hash("med"))
                                     .size((50.0, 30.0))
                                     .grid_cell((2, 0))
                                     .show(ui)

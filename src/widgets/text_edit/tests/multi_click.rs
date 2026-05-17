@@ -12,7 +12,7 @@ fn double_and_triple_click_select_word_and_all() {
     fn body(ui: &mut Ui, buf: &mut String) {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(buf)
-                .id_salt("multi-ed")
+                .id(WidgetId::from_hash("multi-ed"))
                 .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });

@@ -9,6 +9,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
+use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
@@ -252,12 +253,12 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                             "two Hug columns: paragraph wraps to fit, \
                                              label stays natural",
                                         )
-                                        .id_salt("section-title")
+                                        .id(WidgetId::from_hash("section-title"))
                                         .style(TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                         grid_node = Some(
                                             Grid::new()
-                                                .id_salt("grid")
+                                                .id(WidgetId::from_hash("grid"))
                                                 .cols(Rc::from([Track::hug(), Track::hug()]))
                                                 .rows(Rc::from([Track::hug()]))
                                                 .show(ui, |ui| {
@@ -398,7 +399,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         let mut paragraph_node = None;
         let mut label_node = None;
         Grid::new()
-            .id_salt("grid")
+            .id(WidgetId::from_hash("grid"))
             .cols(Rc::from([Track::hug(), Track::hug()]))
             .rows(Rc::from([Track::hug()]))
             .size((Sizing::FILL, Sizing::Hug))

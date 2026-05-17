@@ -10,6 +10,7 @@
 //! grown `new_available`, which used to panic.
 //!
 //! Sweeps a width range and asserts the frame doesn't panic.
+use crate::primitives::widget_id::WidgetId;
 
 use crate::Ui;
 use crate::forest::Layer;
@@ -55,12 +56,12 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                     // descendant). intrinsic_min ≈ 0 — fully shrinkable.
                     left_node = Some(
                         Panel::vstack()
-                            .id_salt("left")
+                            .id(WidgetId::from_hash("left"))
                             .size((Sizing::FILL, Sizing::FILL))
                             .padding(12.0)
                             .show(ui, |ui| {
                                 Frame::new()
-                                    .id_salt("left-bg")
+                                    .id(WidgetId::from_hash("left-bg"))
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .show(ui);
                             })
@@ -70,20 +71,20 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                     // intrinsic_min = 180 + 24 padding = 204 — rigid below.
                     right_node = Some(
                         Panel::vstack()
-                            .id_salt("right")
+                            .id(WidgetId::from_hash("right"))
                             .size((Sizing::FILL, Sizing::FILL))
                             .padding(12.0)
                             .show(ui, |ui| {
                                 Panel::zstack()
-                                    .id_salt("right-z")
+                                    .id(WidgetId::from_hash("right-z"))
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .show(ui, |ui| {
                                         Frame::new()
-                                            .id_salt("right-bg")
+                                            .id(WidgetId::from_hash("right-bg"))
                                             .size((Sizing::FILL, Sizing::FILL))
                                             .show(ui);
                                         Frame::new()
-                                            .id_salt("right-fixed")
+                                            .id(WidgetId::from_hash("right-fixed"))
                                             .size((Sizing::Fixed(180.0), Sizing::Fixed(80.0)))
                                             .show(ui);
                                     });
@@ -175,7 +176,10 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui, |ui| {
                             for label in LABELS {
-                                Button::new().id_salt(*label).label(*label).show(ui);
+                                Button::new()
+                                    .id(WidgetId::from_hash(*label))
+                                    .label(*label)
+                                    .show(ui);
                             }
                         });
 
@@ -198,12 +202,12 @@ fn second_pass_grow_then_overshoot_does_not_panic() {
                                         [("c1", 132.0), ("c2", 60.0), ("c3", 80.0), ("c4", 100.0)]
                                     {
                                         Panel::vstack()
-                                            .id_salt(id)
+                                            .id(WidgetId::from_hash(id))
                                             .size((Sizing::FILL, Sizing::FILL))
                                             .padding(12.0)
                                             .show(ui, |ui| {
                                                 Frame::new()
-                                                    .id_salt((id, "swatch"))
+                                                    .id(WidgetId::from_hash((id, "swatch")))
                                                     .size((
                                                         Sizing::Fixed(content_w),
                                                         Sizing::Fixed(40.0),

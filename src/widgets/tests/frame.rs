@@ -6,6 +6,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -17,7 +18,7 @@ fn frame_paints_a_single_rounded_rect() {
         Panel::hstack().auto_id().show(ui, |ui| {
             frame_node = Some(
                 Frame::new()
-                    .id_salt("decoration")
+                    .id(WidgetId::from_hash("decoration"))
                     .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                     .background(Background {
                         fill: Color::rgb(0.2, 0.4, 0.8).into(),
@@ -58,7 +59,7 @@ fn frame_with_sense_click_is_clickable() {
     ui.run_at_acked(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Frame::new()
-                .id_salt("hitbox")
+                .id(WidgetId::from_hash("hitbox"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui);
@@ -70,7 +71,7 @@ fn frame_with_sense_click_is_clickable() {
     ui.run_at(surface, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             clicked |= Frame::new()
-                .id_salt("hitbox")
+                .id(WidgetId::from_hash("hitbox"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui)

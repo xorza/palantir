@@ -242,11 +242,11 @@ fn two_textedits_only_one_focused_at_a_time() {
     let body = |ui: &mut Ui, a: &mut String, b: &mut String| {
         Panel::hstack().auto_id().show(ui, |ui| {
             TextEdit::new(a)
-                .id_salt("a")
+                .id(WidgetId::from_hash("a"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
             TextEdit::new(b)
-                .id_salt("b")
+                .id(WidgetId::from_hash("b"))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
         });

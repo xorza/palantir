@@ -2,6 +2,7 @@ use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -15,11 +16,11 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
         Panel::hstack().auto_id().show(ui, |ui| {
             canvas_node = Some(
                 Panel::canvas()
-                    .id_salt("c")
+                    .id(WidgetId::from_hash("c"))
                     .show(ui, |ui| {
                         a_node = Some(
                             Frame::new()
-                                .id_salt("a")
+                                .id(WidgetId::from_hash("a"))
                                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                                 .position(Vec2::new(10.0, 5.0))
                                 .show(ui)
@@ -27,7 +28,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                         );
                         b_node = Some(
                             Frame::new()
-                                .id_salt("b")
+                                .id(WidgetId::from_hash("b"))
                                 .size((Sizing::Fixed(30.0), Sizing::Fixed(60.0)))
                                 .position(Vec2::new(80.0, 40.0))
                                 .show(ui)

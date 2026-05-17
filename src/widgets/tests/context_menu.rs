@@ -20,12 +20,12 @@ fn trigger_id() -> WidgetId {
 
 fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
     Panel::vstack()
-        .id_salt("root")
+        .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
         .sense(crate::Sense::CLICK)
         .show(ui, |ui| {
             let trigger = Button::new()
-                .id_salt("trigger")
+                .id(WidgetId::from_hash("trigger"))
                 .label("right click me")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
                 .show(ui);

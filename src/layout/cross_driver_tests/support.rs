@@ -2,6 +2,7 @@
 //! tests in this directory: chat-message HStacks, two-column grids with
 //! wrapping text. Local helpers — keep narrow, only generalize when a
 //! third caller appears.
+use crate::primitives::widget_id::WidgetId;
 
 use crate::TextStyle;
 use crate::Ui;
@@ -67,7 +68,7 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
             .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
-                    .id_salt("avatar")
+                    .id(WidgetId::from_hash("avatar"))
                     .size((Sizing::Fixed(avatar_w), Sizing::Fixed(40.0)))
                     .show(ui);
                 message_node = Some(
