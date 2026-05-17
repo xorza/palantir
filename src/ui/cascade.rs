@@ -89,7 +89,7 @@ struct Frame {
 /// `WidgetId`-keyed hit index.
 pub(crate) struct Cascades {
     /// Per-layer per-node cascade rows. Same indexing as
-    /// `Tree::records`: `rows[layer as usize][node.index()]`.
+    /// `Tree::records`: `rows[layer.idx()][node.index()]`.
     pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
     /// Per-layer per-node subtree paint rect — `Cascade.paint_rect`
     /// rolled up with every descendant's `subtree_paint_rects[i]`.
@@ -218,7 +218,7 @@ impl Cascades {
     /// Borrow the per-tree cascade rows for `layer`.
     #[inline]
     pub(crate) fn rows_for(&self, layer: Layer) -> &[Cascade] {
-        &self.rows[layer as usize]
+        &self.rows[layer.idx()]
     }
 
     /// Borrow the per-tree subtree-paint-rect column for `layer`.
@@ -226,7 +226,7 @@ impl Cascades {
     /// same way.
     #[inline]
     pub(crate) fn subtree_paint_rects_for(&self, layer: Layer) -> &[Rect] {
-        &self.subtree_paint_rects[layer as usize]
+        &self.subtree_paint_rects[layer.idx()]
     }
 }
 
@@ -264,7 +264,7 @@ impl CascadesEngine {
         }
 
         for (layer, tree) in forest.iter_paint_order() {
-            let i = layer as usize;
+            let i = layer.idx();
             let layer_layout = &layout.layers[i];
             let r = &mut layout.cascades;
             let n = tree.records.len();
@@ -305,7 +305,7 @@ fn run_tree(
     layer: Layer,
     stack: &mut Vec<Frame>,
 ) {
-    let li = layer as usize;
+    let li = layer.idx();
     let n = tree.records.len();
     let layout_col = tree.records.layout();
     let attrs_col = tree.records.attrs();

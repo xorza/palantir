@@ -59,14 +59,14 @@ impl Index<Layer> for Layout {
     type Output = LayerLayout;
     #[inline]
     fn index(&self, layer: Layer) -> &LayerLayout {
-        &self.layers[layer as usize]
+        &self.layers[layer.idx()]
     }
 }
 
 impl IndexMut<Layer> for Layout {
     #[inline]
     fn index_mut(&mut self, layer: Layer) -> &mut LayerLayout {
-        &mut self.layers[layer as usize]
+        &mut self.layers[layer.idx()]
     }
 }
 
