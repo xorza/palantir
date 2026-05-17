@@ -96,12 +96,16 @@ impl Layer {
 }
 
 /// One entry on `Tree::open_frames`. Carries the open node's
-/// `NodeId` plus a `disabled` cascade bit propagated at push time
-/// (`parent.ancestor_or_self_disabled || new_node.disabled`) so
-/// `Tree::ancestor_disabled` is an O(1) read.
+/// `NodeId`, its resolved `WidgetId` (so `Ui::make_persistent_id`
+/// doesn't have to walk back into `records.widget_id()[..]` on every
+/// widget show — read once at push, used many times during the
+/// child's record pass), plus a `disabled` cascade bit propagated at
+/// push time (`parent.ancestor_or_self_disabled || new_node.disabled`)
+/// so `Tree::ancestor_disabled` is an O(1) read.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
+    pub(crate) widget_id: WidgetId,
     pub(crate) ancestor_or_self_disabled: bool,
 }
 
@@ -664,6 +668,7 @@ impl Tree {
             || attrs.is_disabled();
         self.open_frames.push(OpenFrame {
             node: ctx.new_id,
+            widget_id,
             ancestor_or_self_disabled,
         });
         ctx.new_id
