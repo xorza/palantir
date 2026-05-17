@@ -258,20 +258,21 @@ pub(crate) struct Tree {
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 
-    /// Per-NodeId bit: `true` iff the subtree rooted at node `i`
-    /// contains any `LayoutMode::Grid` node. Fast-path skip for
-    /// `MeasureCache`'s grid-hug snapshot/restore walk. Recording-time
-    /// lifecycle — cleared by `pre_record`, pushed by `open_node`, and
-    /// propagated up by `close_node` (so finished by the time
-    /// `post_record` runs). Plain `Vec<bool>` rather than a bitset:
-    /// `push(false)` per open is one byte write, no explicit `grow`
-    /// call, and the column reads index-equal to every other per-node
-    /// column.
-    pub(crate) has_grid: Vec<bool>,
+    /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
+    /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
+    /// grid-hug snapshot/restore walk. Recording-time lifecycle —
+    /// cleared by `pre_record`, grown by `open_node`, and propagated
+    /// up by `close_node` (so finished by the time `post_record` runs).
+    pub(crate) has_grid: fixedbitset::FixedBitSet,
 }
 
 impl Tree {
     pub(crate) fn pre_record(&mut self) {
+        // Pre-size `has_grid` to last frame's node count before
+        // clearing records, so the per-`open_node` `has_grid.grow(...)`
+        // is a no-op in steady state (the bitset's bit-length already
+        // covers the incoming push).
+        let prev_node_count = self.records.len();
         self.records.clear();
         self.extras_idx.clear();
         self.bounds_table.clear();
@@ -282,6 +283,7 @@ impl Tree {
         self.paint_anims.clear();
         self.grid.clear();
         self.has_grid.clear();
+        self.has_grid.grow(prev_node_count);
         self.roots.clear();
         self.open_frames.clear();
         self.pending_anchors.clear();
@@ -531,7 +533,7 @@ impl Tree {
         });
         self.parents
             .push(parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
-        self.has_grid.push(false);
+        self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + `extras_idx` + `parents`
         // must agree on `len`; a missed push silently shifts every
         // later node's index. Invariant is structurally guarded by the
@@ -612,9 +614,9 @@ impl Tree {
         let end = self.records.subtree_end()[i];
 
         if self.records.layout()[i].mode == LayoutMode::Grid {
-            self.has_grid[i] = true;
+            self.has_grid.insert(i);
         }
-        let i_has_grid = self.has_grid[i];
+        let i_has_grid = self.has_grid.contains(i);
 
         if let Some(parent) = self.open_frames.last().map(|f| f.node) {
             let pi = parent.index();
@@ -623,7 +625,7 @@ impl Tree {
                 ends[pi] = end;
             }
             if i_has_grid {
-                self.has_grid[pi] = true;
+                self.has_grid.insert(pi);
             }
         }
     }
