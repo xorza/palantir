@@ -149,7 +149,7 @@ fn delay_gates_visibility() {
 
     // The tooltip subtree should have been recorded into the Tooltip
     // layer (non-empty NodeRecords beyond the root).
-    let tooltip_tree = &ui.forest.trees[Layer::Tooltip as usize];
+    let tooltip_tree = &ui.forest.trees[Layer::Tooltip.idx()];
     assert!(
         tooltip_tree.records.len() > 1,
         "Tooltip layer must contain at least one recorded node",

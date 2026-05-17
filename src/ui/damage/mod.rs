@@ -447,7 +447,7 @@ fn extend_predamaged(
     // is always a sub-rect of its owner — nothing new to add.
     let Some(prev) = prev_time else { return };
     for (layer, tree) in forest.iter_paint_order() {
-        let shape_rects = &cascades.shape_rects[layer as usize];
+        let shape_rects = &cascades.shape_rects[layer.idx()];
         for e in &tree.paint_anims.entries {
             if e.anim.next_wake(prev) <= now {
                 out.push(shape_rects[e.shape_idx as usize]);

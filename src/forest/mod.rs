@@ -42,7 +42,7 @@ pub(crate) mod visibility;
 /// main tree, modals beat popups, tooltips beat modals, debug beats
 /// everything. See `docs/popups.md`.
 ///
-/// `#[repr(u8)]` + the contiguous variant layout means `layer as usize`
+/// `#[repr(u8)]` + the contiguous variant layout means `layer.idx()`
 /// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
 /// the forest topology each variant owns its own [`tree::Tree`] arena.
 #[repr(u8)]
@@ -66,10 +66,20 @@ impl Layer {
         Layer::Tooltip,
         Layer::Debug,
     ];
+
+    /// Discriminant as a `usize` — the canonical key into per-layer
+    /// `[T; Layer::COUNT]` arrays. Repeats the `repr(u8)` discriminant
+    /// in `usize` form so call sites don't sprinkle `as usize` casts
+    /// (each of which reads like a fallible narrowing even though
+    /// it's branchless).
+    #[inline]
+    pub(crate) const fn idx(self) -> usize {
+        self as usize
+    }
 }
 
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
-/// `add_shape`, `close_node` to `trees[current_layer as usize]`.
+/// `add_shape`, `close_node` to `trees[current_layer.idx()]`.
 /// Pipeline passes iterate trees via [`Forest::iter_paint_order`].
 ///
 /// **Access convention**: prefer [`Forest::tree`] / [`Forest::tree_mut`]
@@ -140,7 +150,7 @@ impl Forest {
             self.current_layer,
         );
         for layer in Layer::PAINT_ORDER {
-            self.trees[layer as usize].post_record();
+            self.trees[layer.idx()].post_record();
         }
     }
 
@@ -253,7 +263,7 @@ impl Forest {
             "Ui::layer must be called from the Main scope (current: {:?})",
             self.current_layer,
         );
-        let tree = &mut self.trees[layer as usize];
+        let tree = &mut self.trees[layer.idx()];
         assert!(
             tree.open_frames.is_empty(),
             "Ui::layer({:?}) called while a node is still open in that layer",
@@ -266,7 +276,7 @@ impl Forest {
 
     pub(crate) fn pop_layer(&mut self) {
         let layer = self.current_layer;
-        let tree = &mut self.trees[layer as usize];
+        let tree = &mut self.trees[layer.idx()];
         assert!(
             tree.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
@@ -283,13 +293,13 @@ impl Forest {
     /// Borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree(&self, layer: Layer) -> &Tree {
-        &self.trees[layer as usize]
+        &self.trees[layer.idx()]
     }
 
     /// Mutably borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
-        &mut self.trees[layer as usize]
+        &mut self.trees[layer.idx()]
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one
@@ -297,13 +307,13 @@ impl Forest {
     /// `tree(current_layer)` for the very common case.
     #[inline]
     pub(crate) fn current_tree(&self) -> &Tree {
-        &self.trees[self.current_layer as usize]
+        &self.trees[self.current_layer.idx()]
     }
 
     /// Mutably borrow the tree for the [`Self::current_layer`].
     #[inline]
     pub(crate) fn current_tree_mut(&mut self) -> &mut Tree {
-        &mut self.trees[self.current_layer as usize]
+        &mut self.trees[self.current_layer.idx()]
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
@@ -313,6 +323,6 @@ impl Forest {
         Layer::PAINT_ORDER
             .iter()
             .copied()
-            .map(move |layer| (layer, &self.trees[layer as usize]))
+            .map(move |layer| (layer, &self.trees[layer.idx()]))
     }
 }
