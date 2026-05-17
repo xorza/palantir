@@ -443,9 +443,10 @@ const _: () = assert!(
 ///   loops / helper closures that resolve to the same call site.
 ///
 /// - [`Salt::Hash`] — raw user-supplied hash from `.id_salt(key)`.
-///   At resolve time the hash is **mixed with the user-visible
-///   parent's resolved `WidgetId`** (root salts pass through bare —
-///   the `Layer::Main` synthetic viewport is skipped). Two `.id_salt("row")`
+///   At resolve time the hash is **mixed with the most-recently-
+///   opened parent's resolved `WidgetId`** in the current layer
+///   (`Layer::Main`'s synthetic viewport counts as a parent — its
+///   `Salt::Auto` id is stable across frames). Two `.id_salt("row")`
 ///   under different parents resolve to distinct ids, so per-widget
 ///   `StateMap` / focus / animation entries survive subtree moves
 ///   without manual `WidgetId::with` chaining. Matches egui.

@@ -137,9 +137,9 @@ impl Forest {
     pub(crate) fn open_node(&mut self, widget_id: WidgetId, element: Element) -> WidgetId {
         let layer = self.current_layer;
         let is_explicit = element.salt.is_explicit();
-        let node = self.trees[layer as usize].peek_next_id();
+        let node = self.current_tree_mut().peek_next_id();
         let (final_id, outcome) = self.ids.record(widget_id, is_explicit, layer, node);
-        let opened = self.trees[layer as usize].open_node(final_id, element);
+        let opened = self.current_tree_mut().open_node(final_id, element);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
         final_id
@@ -157,9 +157,10 @@ impl Forest {
     ) -> WidgetId {
         let layer = self.current_layer;
         let is_explicit = element.salt.is_explicit();
-        let node = self.trees[layer as usize].peek_next_id();
+        let node = self.current_tree_mut().peek_next_id();
         let (final_id, outcome) = self.ids.record(widget_id, is_explicit, layer, node);
-        let opened = self.trees[layer as usize]
+        let opened = self
+            .current_tree_mut()
             .open_node_with_chrome(final_id, element, chrome, arena, atlas);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
@@ -184,7 +185,7 @@ impl Forest {
     }
 
     pub(crate) fn close_node(&mut self) {
-        self.trees[self.current_layer as usize].close_node();
+        self.current_tree_mut().close_node();
     }
 
     /// Lower a user-facing [`Shape`] (curve flattening, span
@@ -197,7 +198,7 @@ impl Forest {
         arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
-        let tree = &mut self.trees[self.current_layer as usize];
+        let tree = self.current_tree_mut();
         assert!(
             !tree.open_frames.is_empty(),
             "add_shape called with no open node",
@@ -219,7 +220,7 @@ impl Forest {
         arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
-        let tree = &mut self.trees[self.current_layer as usize];
+        let tree = self.current_tree_mut();
         assert!(
             !tree.open_frames.is_empty(),
             "add_shape_animated called with no open node",
@@ -275,6 +276,20 @@ impl Forest {
     #[inline]
     pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
         &mut self.trees[layer as usize]
+    }
+
+    /// Borrow the tree for the [`Self::current_layer`] — the one
+    /// `open_node` / `add_shape` dispatch to. Convenience over
+    /// `tree(current_layer)` for the very common case.
+    #[inline]
+    pub(crate) fn current_tree(&self) -> &Tree {
+        &self.trees[self.current_layer as usize]
+    }
+
+    /// Mutably borrow the tree for the [`Self::current_layer`].
+    #[inline]
+    pub(crate) fn current_tree_mut(&mut self) -> &mut Tree {
+        &mut self.trees[self.current_layer as usize]
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
