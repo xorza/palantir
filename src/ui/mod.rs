@@ -801,19 +801,29 @@ impl Ui {
         self.forest.pop_layer();
     }
 
-    /// Resolve a [`Salt`] into the `WidgetId` that would be recorded
-    /// if a widget carrying that salt were opened **right now**. The
-    /// egui-equivalent — same name, same role: `ui.make_persistent_id(salt)`
-    /// returns `parent.with(salt)` so persistent state keys stay
-    /// stable across frames.
+    /// Resolve a [`Salt`] into the `WidgetId` that will be recorded
+    /// into the tree by the matching `ui.node` / `ui.node_with_chrome`
+    /// call. The egui-equivalent — same name, same role:
+    /// `ui.make_persistent_id(salt)` returns `parent.with(salt)` (or
+    /// just the salt for `Salt::Auto`/`Salt::Verbatim`) so persistent
+    /// state keys stay stable across frames.
     ///
-    /// Widgets call this at the top of their `show()` when they
-    /// need the recorded id **before** `ui.node` — e.g. theme picking
-    /// off last frame's `response_for(id)`, focus checks, animation
-    /// slots, or to derive sub-ids (`id.with("__thumb")`). Pure
-    /// function of `(salt, currently-open-parent)`; calling it again
-    /// (or implicitly via `Ui::node`'s internal resolution)
-    /// produces the same `WidgetId`, so no risk of widget-side drift.
+    /// **Eagerly disambiguates** via `SeenIds::resolve` — if the salt
+    /// collides with a sibling already recorded this frame, the id
+    /// gets bumped to a fresh occurrence slot. Same contract as
+    /// `Forest::open_node` used to apply: the returned id matches
+    /// what the tree, cascade, and `response_for` will see. Widgets
+    /// can use the returned id for **everything** — pre-node
+    /// `response_for` (theme picking off prior frame), sub-id
+    /// derivation, animation slots, `state_mut`, and post-node
+    /// `response_for`.
+    ///
+    /// **Contract**: must be followed by exactly one `ui.node` /
+    /// `ui.node_with_chrome` opening a node with this id (carried via
+    /// `element.salt`). The `SeenIds` slot reserved here is paired
+    /// with the next opened node; calling `make_persistent_id` twice
+    /// without an intervening `ui.node` will drift the occurrence
+    /// counter from the actual node-record list.
     ///
     /// Parent context is the most-recently-opened node in the current
     /// layer. `Layer::Main`'s synthetic viewport (`Ui::record_pass`'s
@@ -822,23 +832,24 @@ impl Ui {
     /// `#[track_caller]` site), so root salts resolve to a fixed
     /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
     /// stable ids without a Main-vs-other-layer carve-out.
-    pub(crate) fn make_persistent_id(&self, salt: Salt) -> WidgetId {
+    pub(crate) fn make_persistent_id(&mut self, salt: Salt) -> WidgetId {
         let parent = self
             .forest
             .current_tree()
             .open_frames
             .last()
             .map(|f| f.widget_id);
-        salt.resolve(parent)
+        let raw_id = salt.resolve(parent);
+        self.forest.ids.resolve(raw_id, salt.is_explicit())
     }
 
     /// Open a node with no paint chrome — the common path for
     /// layout-only containers, text leaves, and chrome-less Frames.
     /// Avoids passing a 232-byte `Option<Background>` through the
     /// call chain. `id` must be the [`Self::make_persistent_id`]
-    /// resolution of `element.salt` (call sites already need it for
-    /// `response_for` / `animate` / derived sub-ids, so we don't
-    /// resolve again here — single source of truth).
+    /// resolution of `element.salt`. Disambiguation already happened
+    /// in `make_persistent_id`, so this is the final id verbatim —
+    /// no further `SeenIds` work here.
     pub(crate) fn node(&mut self, id: WidgetId, element: Element, f: impl FnOnce(&mut Ui)) {
         self.forest.open_node(id, element, None);
         f(self);

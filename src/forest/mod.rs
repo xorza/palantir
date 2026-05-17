@@ -6,9 +6,9 @@
 use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::element::Element;
-use crate::forest::seen_ids::{Endpoint, RecordOutcome, SeenIds};
+use crate::forest::seen_ids::{Endpoint, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
-use crate::forest::tree::{NodeId, PendingAnchor, Tree};
+use crate::forest::tree::{PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -161,12 +161,13 @@ impl Forest {
         min_wake
     }
 
-    /// Open a node whose id has already been resolved from
-    /// `element.salt` upstream (typically by [`crate::Ui::node`] via
-    /// [`crate::Ui::make_persistent_id`]). Returns the `WidgetId`
-    /// actually written into the tree — equal to `widget_id`
-    /// except on a sibling collision, where the occurrence-counter
-    /// disambiguation in [`SeenIds::record`] kicks in.
+    /// Open a node whose id has already been resolved + disambiguated
+    /// upstream by [`crate::Ui::make_persistent_id`] (which calls
+    /// `SeenIds::resolve` eagerly so the returned id matches what the
+    /// tree, cascade, and `response_for` see). This function takes
+    /// `widget_id` verbatim, records the endpoint via
+    /// `SeenIds::record_endpoint` (also emitting any pending explicit
+    /// collision pair), and opens the node in the active tree.
     ///
     /// `chrome` is `Some((bg, arena, atlas))` for nodes with a
     /// background paint and `None` otherwise.
@@ -176,23 +177,11 @@ impl Forest {
         widget_id: WidgetId,
         element: Element,
         chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
-    ) -> WidgetId {
+    ) {
         let layer = self.current_layer;
-        let is_explicit = element.salt.is_explicit();
         let node = self.current_tree_mut().peek_next_id();
-        let (final_id, outcome) = self.ids.record(widget_id, is_explicit, layer, node);
-        let opened = self.current_tree_mut().open_node(final_id, element, chrome);
-        debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
-        self.record_collision(outcome, layer, node);
-        final_id
-    }
-
-    /// Shared between [`Self::open_node`] / [`Self::open_node_with_chrome`].
-    /// Logs + records an explicit-id collision (auto collisions are
-    /// silent — the disambiguation already ran inside `SeenIds::record`).
-    fn record_collision(&mut self, outcome: RecordOutcome, layer: Layer, node: NodeId) {
-        if let RecordOutcome::DisambiguatedExplicit { first } = outcome {
-            let second = Endpoint { layer, node };
+        let endpoint = Endpoint { layer, node };
+        if let Some((first, second)) = self.ids.record_endpoint(widget_id, endpoint) {
             tracing::error!(
                 first_layer = ?first.layer,
                 first_node = ?first.node,
@@ -202,6 +191,8 @@ impl Forest {
             );
             self.collisions.push(CollisionRecord { first, second });
         }
+        self.current_tree_mut()
+            .open_node(widget_id, element, chrome);
     }
 
     pub(crate) fn close_node(&mut self) {
