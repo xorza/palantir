@@ -11,7 +11,7 @@ use crate::widgets::theme::button::ButtonTheme;
 pub struct Button {
     element: Element,
     style: Option<ButtonTheme>,
-    label: InternedStr<'static>,
+    label: InternedStr,
     label_align: Align,
 }
 
@@ -35,7 +35,7 @@ impl Button {
         self.style = Some(s);
         self
     }
-    pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
+    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
         self
     }

@@ -23,7 +23,7 @@ use glam::Vec2;
 pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
-    label: InternedStr<'static>,
+    label: InternedStr,
 }
 
 impl<'a> Checkbox<'a> {
@@ -38,7 +38,7 @@ impl<'a> Checkbox<'a> {
         }
     }
 
-    pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
+    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
         self
     }

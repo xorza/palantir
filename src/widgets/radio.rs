@@ -26,7 +26,7 @@ pub struct RadioButton<'a, T: PartialEq> {
     element: Element,
     current: &'a mut T,
     value: T,
-    label: InternedStr<'static>,
+    label: InternedStr,
 }
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
@@ -42,7 +42,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
     }
 
-    pub fn label(mut self, s: impl Into<InternedStr<'static>>) -> Self {
+    pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
         self
     }

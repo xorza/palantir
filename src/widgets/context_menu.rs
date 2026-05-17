@@ -205,13 +205,13 @@ pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2
 /// don't intercept.
 pub struct MenuItem {
     element: Element,
-    label: InternedStr<'static>,
+    label: InternedStr,
     shortcut: Option<Shortcut>,
 }
 
 impl MenuItem {
     #[track_caller]
-    pub fn new(label: impl Into<InternedStr<'static>>) -> Self {
+    pub fn new(label: impl Into<InternedStr>) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
         element.set_sense(Sense::CLICK);
         Self {

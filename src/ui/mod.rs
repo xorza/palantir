@@ -750,7 +750,7 @@ impl Ui {
 
     /// Format `args` directly into the per-frame text arena and return
     /// an [`InternedStr::Interned`] handle. Pass the returned value to
-    /// any widget that takes `impl Into<InternedStr<'static>>`
+    /// any widget that takes `impl Into<InternedStr>`
     /// (Text/Button/MenuItem) — the bytes are already in the destination
     /// buffer, so lowering is zero-copy and steady-state authoring of
     /// dynamic labels skips per-call `String` allocations.
@@ -765,7 +765,7 @@ impl Ui {
     /// won't catch a misuse — `#[must_use]` is a hint that the result
     /// is meant to be consumed in the same frame.
     #[must_use]
-    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr<'static> {
+    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr {
         self.frame_arena.intern_fmt(args)
     }
 
@@ -776,7 +776,7 @@ impl Ui {
     /// memcpy into the retained `fmt_scratch` buffer. Same
     /// frame-scoped invalidation rules as [`Self::fmt`].
     #[must_use]
-    pub fn intern(&mut self, s: &str) -> crate::InternedStr<'static> {
+    pub fn intern(&mut self, s: &str) -> crate::InternedStr {
         self.frame_arena.intern_str(s)
     }
 

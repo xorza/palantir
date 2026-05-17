@@ -22,7 +22,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// ```
 pub struct Text {
     element: Element,
-    text: InternedStr<'static>,
+    text: InternedStr,
     style: Option<TextStyle>,
     wrap: TextWrap,
     align: Align,
@@ -30,7 +30,7 @@ pub struct Text {
 
 impl Text {
     #[track_caller]
-    pub fn new(text: impl Into<InternedStr<'static>>) -> Self {
+    pub fn new(text: impl Into<InternedStr>) -> Self {
         Self {
             element: Element::new(LayoutMode::Leaf),
             text: text.into(),
