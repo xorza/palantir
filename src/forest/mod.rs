@@ -194,7 +194,7 @@ impl Forest {
             self.collisions.push(CollisionRecord { first, second });
         }
         self.current_tree_mut()
-            .open_node(widget_id, element, chrome);
+            .open_node(node, widget_id, element, chrome);
     }
 
     pub(crate) fn close_node(&mut self) {
@@ -216,9 +216,10 @@ impl Forest {
             !tree.open_frames.is_empty(),
             "add_shape called with no open node",
         );
-        if tree.shapes.add(shape, arena, atlas).is_some() {
-            tree.paint_anims.push_unanimated();
-        }
+        // No `paint_anims.by_shape` bookkeeping on the unanimated path —
+        // `PaintAnims` lazily grows the column only when a real anim
+        // shows up. Saves one `Vec::push` per shape every frame.
+        let _ = tree.shapes.add(shape, arena, atlas);
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the

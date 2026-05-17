@@ -26,8 +26,7 @@ use crate::ClipMode;
 use crate::common::frame_arena::FrameArena;
 use crate::common::hash::Hasher;
 use crate::forest::element::{
-    BoundsExtras, Element, ElementColumns, LayoutCore, LayoutMode, NodeFlags, PanelExtras,
-    SizeClamp,
+    BoundsExtras, Element, LayoutCore, LayoutMode, PanelExtras, SizeClamp,
 };
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
@@ -75,14 +74,6 @@ pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
     pub(crate) widget_id: WidgetId,
     pub(crate) ancestor_or_self_disabled: bool,
-}
-
-/// Threads the parent-frame + slot id from [`Tree::open_node_prologue`]
-/// through the body and into [`Tree::open_node_finalize`].
-#[derive(Clone, Copy)]
-struct OpenNodeCtx {
-    parent_frame: Option<OpenFrame>,
-    new_id: NodeId,
 }
 
 /// One root within a single layer's [`Tree`]. Multiple roots in the
@@ -267,21 +258,20 @@ pub(crate) struct Tree {
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
 
-    /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
-    /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
-    /// grid-hug snapshot/restore walk. Recording-time lifecycle —
-    /// cleared by `pre_record`, grown by `open_node`, and propagated
-    /// up by `close_node` (so finished by the time `post_record` runs).
-    pub(crate) has_grid: fixedbitset::FixedBitSet,
+    /// Per-NodeId bit: `true` iff the subtree rooted at node `i`
+    /// contains any `LayoutMode::Grid` node. Fast-path skip for
+    /// `MeasureCache`'s grid-hug snapshot/restore walk. Recording-time
+    /// lifecycle — cleared by `pre_record`, pushed by `open_node`, and
+    /// propagated up by `close_node` (so finished by the time
+    /// `post_record` runs). Plain `Vec<bool>` rather than a bitset:
+    /// `push(false)` per open is one byte write, no explicit `grow`
+    /// call, and the column reads index-equal to every other per-node
+    /// column.
+    pub(crate) has_grid: Vec<bool>,
 }
 
 impl Tree {
     pub(crate) fn pre_record(&mut self) {
-        // Pre-size `has_grid` to last frame's node count before
-        // clearing records, so the per-`open_node` `has_grid.grow(...)`
-        // is a no-op in steady state (the bitset's bit-length already
-        // covers the incoming push).
-        let prev_node_count = self.records.len();
         self.records.clear();
         self.extras_idx.clear();
         self.bounds_table.clear();
@@ -292,7 +282,6 @@ impl Tree {
         self.paint_anims.clear();
         self.grid.clear();
         self.has_grid.clear();
-        self.has_grid.grow(prev_node_count);
         self.roots.clear();
         self.open_frames.clear();
         self.pending_anchors.clear();
@@ -310,14 +299,14 @@ impl Tree {
             "post_record called with {} node(s) still open — a widget builder forgot close_node",
             self.open_frames.len(),
         );
-        // Encoder indexes `paint_anims.by_shape[shape_idx]` directly,
-        // so `by_shape` must stay in lockstep with `shapes.records`.
-        // `Forest::add_shape` / `add_shape_animated` push to both in
-        // pairs; this guards against a future refactor desyncing them.
-        assert_eq!(
-            self.paint_anims.by_shape.len(),
-            self.shapes.records.len(),
-            "paint_anims.by_shape desynced from shapes.records",
+        // `by_shape` is lazy — empty in frames with no animated
+        // shapes, otherwise sized to `last_animated_shape_idx + 1`.
+        // Encoder treats `idx >= by_shape.len()` as "no anim". Sanity
+        // check: the table can never legitimately exceed the shape
+        // buffer.
+        assert!(
+            self.paint_anims.by_shape.len() <= self.shapes.records.len(),
+            "paint_anims.by_shape exceeds shapes.records",
         );
         self.rollups.reset_for(self.records.len());
         self.compute_hashes();
@@ -442,6 +431,11 @@ impl Tree {
     /// mints stamp the top of `pending_anchors` onto the new
     /// `RootSlot`; child opens don't read the stack.
     ///
+    /// `new_id` is the pre-reserved id `Forest::open_node` already
+    /// computed via [`Self::peek_next_id`] to build the `SeenIds`
+    /// endpoint. Threading it through avoids recomputing
+    /// `records.len()` twice per node.
+    ///
     /// `chrome` is `None` for nodes without a background paint;
     /// `ClipMode::Rounded` always downgrades to `Rect` in that case
     /// (no radius to mask). With chrome, the row is kept past
@@ -453,22 +447,54 @@ impl Tree {
     #[inline]
     pub(crate) fn open_node(
         &mut self,
+        new_id: NodeId,
         widget_id: WidgetId,
         mut element: Element,
         chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
     ) -> NodeId {
+        debug_assert_eq!(
+            new_id.0 as usize,
+            self.records.len(),
+            "Tree::open_node received a NodeId that doesn't match the next slot",
+        );
+
         if matches!(element.clip_mode(), ClipMode::Rounded) {
             let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.radius.approx_zero());
             if radius_zero {
                 element.set_clip(ClipMode::Rect);
             }
         }
-        let ctx = self.open_node_prologue(element.mode, element.mode_payload);
+
+        let parent_frame = self.open_frames.last().copied();
+
+        if parent_frame.is_none() {
+            let pending = self.pending_anchors.last().copied().unwrap_or_default();
+            self.roots.push(RootSlot {
+                first_node: new_id.0,
+                anchor: pending.anchor,
+                size: pending.size,
+            });
+        }
+        if matches!(element.mode, LayoutMode::Grid) {
+            assert!(
+                (element.mode_payload as usize) < self.grid.defs.len(),
+                "LayoutMode::Grid idx {} references no grid_def — only Grid::show should push grid nodes",
+                element.mode_payload,
+            );
+        }
+
         let mut cols = element.into_columns(widget_id);
-        self.check_grid_cell(ctx.parent_frame.map(|f| f.node), &cols.bounds);
+        self.check_grid_cell(parent_frame.map(|f| f.node), &cols.bounds);
 
         let mut ex = ExtrasIdx::default();
-        self.push_bounds_panel_extras(&cols, &mut ex);
+        if !cols.bounds.is_default() {
+            ex.bounds = Slot::from_len(self.bounds_table.len());
+            self.bounds_table.push(cols.bounds);
+        }
+        if !cols.panel.is_default() {
+            ex.panel = Slot::from_len(self.panel_table.len());
+            self.panel_table.push(cols.panel);
+        }
         if let Some((bg, arena, atlas)) = chrome {
             // Chrome stroke paints fully inside the node's arranged
             // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
@@ -495,51 +521,35 @@ impl Tree {
             }
         }
         self.extras_idx.push(ex);
-        self.open_node_finalize(ctx, cols.widget_id, cols.layout, cols.attrs)
-    }
 
-    /// Push the non-default `bounds` / `panel` rows for one node into
-    /// their sparse columns and stamp the resulting slots into `ex`.
-    /// Shared between `open_node` and `open_node_with_chrome`; the
-    /// chrome path layers its own `chrome` slot on top.
-    #[inline(always)]
-    fn push_bounds_panel_extras(&mut self, cols: &ElementColumns, ex: &mut ExtrasIdx) {
-        if !cols.bounds.is_default() {
-            ex.bounds = Slot::from_len(self.bounds_table.len());
-            self.bounds_table.push(cols.bounds);
+        self.records.push(NodeRecord {
+            widget_id: cols.widget_id,
+            shape_span: Span::new(self.shapes.records.len() as u32, 0),
+            subtree_end: new_id.0 + 1,
+            layout: cols.layout,
+            attrs: cols.attrs,
+        });
+        self.parents
+            .push(parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
+        self.has_grid.push(false);
+        // Column length-equality. `records` + `extras_idx` + `parents`
+        // must agree on `len`; a missed push silently shifts every
+        // later node's index. Invariant is structurally guarded by the
+        // unconditional pushes above — debug-only check.
+        #[cfg(debug_assertions)]
+        {
+            let n = self.records.len();
+            assert_eq!(self.extras_idx.len(), n);
+            assert_eq!(self.parents.len(), n);
         }
-        if !cols.panel.is_default() {
-            ex.panel = Slot::from_len(self.panel_table.len());
-            self.panel_table.push(cols.panel);
-        }
-    }
-
-    /// Roots/parent bookkeeping shared by both `open_node` variants.
-    /// Captures the parent frame + slot id so the body can drive the
-    /// chrome-specific table writes, then returns to
-    /// [`Self::open_node_finalize`].
-    #[inline(always)]
-    fn open_node_prologue(&mut self, mode: LayoutMode, mode_payload: u16) -> OpenNodeCtx {
-        let parent_frame = self.open_frames.last().copied();
-        let new_id = self.peek_next_id();
-        if parent_frame.is_none() {
-            let pending = self.pending_anchors.last().copied().unwrap_or_default();
-            self.roots.push(RootSlot {
-                first_node: new_id.0,
-                anchor: pending.anchor,
-                size: pending.size,
-            });
-        }
-        if matches!(mode, LayoutMode::Grid) {
-            assert!(
-                (mode_payload as usize) < self.grid.defs.len(),
-                "LayoutMode::Grid idx {mode_payload} references no grid_def — only Grid::show should push grid nodes",
-            );
-        }
-        OpenNodeCtx {
-            parent_frame,
-            new_id,
-        }
+        let ancestor_or_self_disabled =
+            parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
+        self.open_frames.push(OpenFrame {
+            node: new_id,
+            widget_id: cols.widget_id,
+            ancestor_or_self_disabled,
+        });
+        new_id
     }
 
     /// Range-check a child's `grid` cell against its parent's
@@ -574,48 +584,6 @@ impl Tree {
         }
     }
 
-    /// Records-column push + `open_frames` push. Returns the new node
-    /// id so the caller's `?`-style flow stays linear.
-    #[inline(always)]
-    fn open_node_finalize(
-        &mut self,
-        ctx: OpenNodeCtx,
-        widget_id: WidgetId,
-        layout: LayoutCore,
-        attrs: NodeFlags,
-    ) -> NodeId {
-        self.records.push(NodeRecord {
-            widget_id,
-            shape_span: Span::new(self.shapes.records.len() as u32, 0),
-            subtree_end: ctx.new_id.0 + 1,
-            layout,
-            attrs,
-        });
-        self.parents
-            .push(ctx.parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
-        self.has_grid.grow(self.records.len());
-        // Column length-equality. `records` + `extras_idx` + `parents`
-        // must agree on `len`; a missed push silently shifts every
-        // later node's index. Invariant is structurally guarded by the
-        // unconditional pushes above — debug-only check.
-        #[cfg(debug_assertions)]
-        {
-            let n = self.records.len();
-            assert_eq!(self.extras_idx.len(), n);
-            assert_eq!(self.parents.len(), n);
-        }
-        let ancestor_or_self_disabled = ctx
-            .parent_frame
-            .is_some_and(|f| f.ancestor_or_self_disabled)
-            || attrs.is_disabled();
-        self.open_frames.push(OpenFrame {
-            node: ctx.new_id,
-            widget_id,
-            ancestor_or_self_disabled,
-        });
-        ctx.new_id
-    }
-
     /// True when any currently-open ancestor in this tree's recording
     /// scope has `disabled=true`. Lets widgets see inherited-disabled
     /// at record time, in the *same* frame the ancestor was opened —
@@ -644,9 +612,9 @@ impl Tree {
         let end = self.records.subtree_end()[i];
 
         if self.records.layout()[i].mode == LayoutMode::Grid {
-            self.has_grid.insert(i);
+            self.has_grid[i] = true;
         }
-        let i_has_grid = self.has_grid.contains(i);
+        let i_has_grid = self.has_grid[i];
 
         if let Some(parent) = self.open_frames.last().map(|f| f.node) {
             let pi = parent.index();
@@ -655,7 +623,7 @@ impl Tree {
                 ends[pi] = end;
             }
             if i_has_grid {
-                self.has_grid.insert(pi);
+                self.has_grid[pi] = true;
             }
         }
     }
