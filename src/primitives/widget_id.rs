@@ -54,7 +54,7 @@ impl WidgetId {
     /// [`crate::forest::element::Configure::id_salt`] when call order isn't
     /// stable across frames.
     #[track_caller]
-    pub(crate) const fn auto_stable() -> Self {
+    pub const fn auto_stable() -> Self {
         let l = std::panic::Location::caller();
         let mut h: u64 = FNV_OFFSET;
         h = fnv1a_extend_str(h, l.file());
