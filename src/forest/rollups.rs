@@ -105,10 +105,12 @@ impl SubtreeRollups {
     /// `Tree::compute_hashes`. `paints` is resized to `n` and cleared
     /// (filled by indexed `set` during the same pass).
     pub(crate) fn reset_for(&mut self, n: usize) {
-        self.node.clear();
-        self.node.resize_with(n, NodeHash::default);
-        self.subtree.clear();
-        self.subtree.resize_with(n, NodeHash::default);
+        // Single-pass resize: `compute_hashes` overwrites every slot
+        // via indexed assignment, so the fill value is irrelevant —
+        // `resize` is preferred over `clear()+resize_with` because it
+        // avoids the truncate-then-grow round trip when `n` is steady.
+        self.node.resize(n, NodeHash::default());
+        self.subtree.resize(n, NodeHash::default());
         self.paints.clear();
         self.paints.grow(n);
     }
