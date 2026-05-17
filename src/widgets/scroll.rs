@@ -295,6 +295,7 @@ pub struct Scroll {
     element: Element,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
+    bars_hidden: bool,
 }
 
 impl Scroll {
@@ -325,7 +326,18 @@ impl Scroll {
             element,
             zoom: None,
             chrome: None,
+            bars_hidden: false,
         }
+    }
+
+    /// Suppress the scrollbar overlay entirely — no track, no thumb,
+    /// no cross-axis reservation. Pan/wheel/zoom input still work; the
+    /// viewport just doesn't paint indicators. Useful for canvas-style
+    /// scopes (node graphs, infinite boards) where the bars would be
+    /// noise.
+    pub fn hide_bars(mut self) -> Self {
+        self.bars_hidden = true;
+        self
     }
 
     /// Enable pivot-anchored zoom with a default [`ZoomConfig`]. Asserts
@@ -445,7 +457,13 @@ impl Scroll {
         // were recorded, the cascade doesn't see them yet → all
         // fields default. Same one-frame settle as other scroll
         // bookkeeping.
-        let theme = ui.theme.scrollbar.clone();
+        let mut theme = ui.theme.scrollbar.clone();
+        if self.bars_hidden {
+            // Zero the reservation so the inner viewport gets the full
+            // outer rect; bar nodes are skipped below.
+            theme.width = 0.0;
+            theme.gap = 0.0;
+        }
         let thumb_id_v = scroll_id.with("__vthumb");
         let thumb_id_h = scroll_id.with("__hthumb");
         let track_id_v = scroll_id.with("__vtrack");
@@ -729,7 +747,7 @@ impl Scroll {
             // the overlay (paint first); thumbs are Sense::DRAG leaves
             // positioned absolutely on top. Painted after inner via
             // record order, hit-tested above inner via cascade order.
-            if plan_v.is_some() || plan_h.is_some() {
+            if !self.bars_hidden && (plan_v.is_some() || plan_h.is_some()) {
                 let bars_id = scroll_id.with("__bars");
                 let mut overlay = Element::new(LayoutMode::Canvas);
                 overlay.salt = Salt::Verbatim(bars_id);
