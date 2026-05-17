@@ -51,14 +51,14 @@ pub(crate) fn measure(
     // would return the unbounded answer, ignoring the cross — wrong
     // for any child whose main depends on cross (Grid with wrapping
     // cells, VStack of wrapping leaves, etc.).
+    let layouts = tree.records.layout();
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
     let mut count = 0usize;
     for c in tree.active_children(node) {
         count += 1;
-        let l = tree.records.layout()[c.index()];
-        if let Sizing::Fill(w) = axis.main_sizing(l.size) {
+        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.index()].size) {
             total_weight += w;
             continue;
         }
@@ -109,8 +109,7 @@ pub(crate) fn measure(
             // exit. Nested stacks reuse the tail capacity.
             let pool_start = layout.scratch.stack_fill.pool.len();
             for c in tree.active_children(node) {
-                let Sizing::Fill(w) = axis.main_sizing(tree.records.layout()[c.index()].size)
-                else {
+                let Sizing::Fill(w) = axis.main_sizing(layouts[c.index()].size) else {
                     continue;
                 };
                 let cap = axis.main(tree.size_clamps_of(c).max);
@@ -181,8 +180,7 @@ pub(crate) fn measure(
             layout.scratch.stack_fill.pool.truncate(pool_start);
         } else {
             for c in tree.active_children(node) {
-                let Sizing::Fill(_) = axis.main_sizing(tree.records.layout()[c.index()].size)
-                else {
+                let Sizing::Fill(_) = axis.main_sizing(layouts[c.index()].size) else {
                     continue;
                 };
                 let d = layout.measure(
@@ -219,15 +217,17 @@ pub(crate) fn arrange(
     // `leftover * weight / total_weight`, which ignored min-content
     // floors and let Fixed descendants overflow when one Fill sibling
     // had rigid content.)
+    let layouts = tree.records.layout();
+    let desired = &layout.scratch.desired;
     let mut sum_main_desired = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
     for c in tree.active_children(node) {
-        let l = tree.records.layout()[c.index()];
-        if let Sizing::Fill(weight) = axis.main_sizing(l.size) {
+        let i = c.index();
+        if let Sizing::Fill(weight) = axis.main_sizing(layouts[i].size) {
             total_weight += weight;
         }
-        sum_main_desired += axis.main(layout.scratch.desired[c.index()]);
+        sum_main_desired += axis.main(desired[i]);
         count += 1;
     }
     let total_gap = gap * count.saturating_sub(1) as f32;

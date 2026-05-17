@@ -383,21 +383,27 @@ fn measure_inner(
     // `&mut depth_stack[depth]` borrow is released before the
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
-    for c in tree.active_children(node) {
-        let cell = tree.grid_of(c);
-        if cell.col_span != 1 {
-            continue;
+    // Skip the span-1 child walk entirely when no column is Hug-sized
+    // — Fixed/Fill columns don't read the hug arrays, so the per-cell
+    // intrinsic queries would all reject at the `Sizing::Hug` filter.
+    let any_hug_col = col_tracks.iter().any(|t| matches!(t.size, Sizing::Hug));
+    if any_hug_col {
+        for c in tree.active_children(node) {
+            let cell = tree.grid_of(c);
+            if cell.col_span != 1 {
+                continue;
+            }
+            let t = &col_tracks[cell.col as usize];
+            if !matches!(t.size, Sizing::Hug) {
+                continue;
+            }
+            let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+            let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
+            let i = cell.col as usize;
+            let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
+            cols_min[i] = cols_min[i].max(min);
+            cols_max[i] = cols_max[i].max(max);
         }
-        let t = &col_tracks[cell.col as usize];
-        if !matches!(t.size, Sizing::Hug) {
-            continue;
-        }
-        let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
-        let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
-        let i = cell.col as usize;
-        let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
-        cols_min[i] = cols_min[i].max(min);
-        cols_max[i] = cols_max[i].max(max);
     }
 
     // Resolve column widths now (Fixed + Hug + Fill). Gives every cell a

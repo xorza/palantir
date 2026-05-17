@@ -428,9 +428,11 @@ impl Tree {
         let id = self.records.len() as u32;
         // `NodeId::ROOT = u32::MAX` is the sentinel `Tree::parents`
         // uses for root slots; a real node landing on that value
-        // would silently look up its own row as the parent. The
-        // sparse-column caps trip far sooner in practice — this guard
-        // exists so a runaway record path fails loudly instead.
+        // would silently look up its own row as the parent. Sparse-
+        // column `Slot` caps at `u16::MAX` trip far sooner in
+        // practice — `debug_assert` because in release, the
+        // `Slot::from_len` assert is what actually fires on runaway
+        // record paths, ~65 535 nodes before this ceiling.
         assert!(id < u32::MAX, "Tree record cap reached: {id} nodes");
         NodeId(id)
     }
