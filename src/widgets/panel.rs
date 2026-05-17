@@ -51,7 +51,6 @@ impl Panel {
     }
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
-        let id = self.element.id;
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
@@ -60,10 +59,11 @@ impl Panel {
         if matches!(element.clip_mode(), ClipMode::None) {
             element.set_clip(ui.theme.panel_clip);
         }
+        let id = ui.make_persistent_id(element.salt);
         match chrome {
-            Some(c) => ui.node_with_chrome(element, c, body),
-            None => ui.node(element, body),
-        };
+            Some(c) => ui.node_with_chrome(id, element, c, body),
+            None => ui.node(id, element, body),
+        }
         let state = ui.response_for(id);
         Response { id, state }
     }

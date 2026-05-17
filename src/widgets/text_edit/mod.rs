@@ -440,7 +440,7 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
         // Apply theme padding/margin when the builder hasn't set
@@ -622,7 +622,7 @@ impl<'a> TextEdit<'a> {
         let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        ui.node_with_chrome(element, chrome, |ui| {
+        ui.node_with_chrome(id, element, chrome, |ui| {
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
             // actually live (anchor != caret — collapsed selections are

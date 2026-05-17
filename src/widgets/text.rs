@@ -72,10 +72,10 @@ impl Text {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
         let style = self.style.unwrap_or(ui.theme.text);
         let line_height_px = style.line_height_for(style.font_size_px);
-        ui.node(self.element, |ui| {
+        let id = ui.make_persistent_id(self.element.salt);
+        ui.node(id, self.element, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: None,
                 text: self.text,

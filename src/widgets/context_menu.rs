@@ -1,4 +1,4 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
@@ -118,7 +118,7 @@ impl ContextMenu {
         let first_open = prev_size.is_none();
 
         let mut e = self.element;
-        e.set_id(body_id);
+        e.salt = Salt::Verbatim(body_id);
         if e.padding == Spacing::ZERO {
             e.padding = theme.padding;
         }
@@ -252,14 +252,14 @@ impl MenuItem {
             radius: Corners::ZERO,
             shadow: Shadow::NONE,
         };
-        let id = element.id;
-        ui.node_with_chrome(element, chrome, |_| {});
+        let id = ui.make_persistent_id(element.salt);
+        ui.node_with_chrome(id, element, chrome, |_| {});
         let state = ui.response_for(id);
         Response { id, state }
     }
 
     pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         let disabled = self.element.is_disabled();
         let mut raw_state = ui.response_for(id);
         raw_state.disabled = disabled;
@@ -293,10 +293,11 @@ impl MenuItem {
 
         let family = text_style.family;
         let body = |ui: &mut Ui| {
+            let label_id = id.with("label");
             let mut label_el = Element::new(LayoutMode::Leaf);
-            label_el.set_id(id.with("label"));
+            label_el.salt = Salt::Verbatim(label_id);
             label_el.size = (Sizing::Hug, Sizing::Hug).into();
-            ui.node(label_el, |ui| {
+            ui.node(label_id, label_el, |ui| {
                 ui.add_shape(Shape::Text {
                     local_origin: None,
                     text: label,
@@ -309,10 +310,11 @@ impl MenuItem {
                 });
             });
             if let Some(s) = shortcut_label {
+                let sh_id = id.with("shortcut");
                 let mut sh_el = Element::new(LayoutMode::Leaf);
-                sh_el.set_id(id.with("shortcut"));
+                sh_el.salt = Salt::Verbatim(sh_id);
                 sh_el.size = (Sizing::Hug, Sizing::Hug).into();
-                ui.node(sh_el, |ui| {
+                ui.node(sh_id, sh_el, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: s.into(),
@@ -327,9 +329,9 @@ impl MenuItem {
             }
         };
         match look_bg {
-            Some(c) => ui.node_with_chrome(element, c, body),
-            None => ui.node(element, body),
-        };
+            Some(c) => ui.node_with_chrome(id, element, c, body),
+            None => ui.node(id, element, body),
+        }
 
         let mut state = ui.response_for(id);
         if shortcut_fired {

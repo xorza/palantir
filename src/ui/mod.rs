@@ -12,7 +12,7 @@ use crate::common::frame_arena::FrameArena;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Forest;
-use crate::forest::element::{Element, LayoutMode};
+use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::forest::tree::Layer;
 use crate::input::keyboard::KeyboardEvent;
 use crate::input::pointer::PointerEvent;
@@ -523,7 +523,8 @@ impl Ui {
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::new(LayoutMode::ZStack);
         viewport.size = Sizing::FILL.into();
-        self.forest.open_node(viewport);
+        let viewport_id = self.make_persistent_id(viewport.salt);
+        self.forest.open_node(viewport_id, viewport);
         {
             profiling::scope!("Ui::record_user");
             record(self);
@@ -798,26 +799,69 @@ impl Ui {
         self.forest.pop_layer();
     }
 
-    /// Open a node with no paint chrome — the common path for layout-only
-    /// containers, text leaves, and chrome-less Frames. Avoids passing
-    /// a 232-byte `Option<Background>` through the call chain.
-    pub(crate) fn node(&mut self, element: Element, f: impl FnOnce(&mut Ui)) {
-        self.forest.open_node(element);
+    /// Resolve a [`Salt`] into the `WidgetId` that would be recorded
+    /// if a widget carrying that salt were opened **right now**. The
+    /// egui-equivalent — same name, same role: `ui.make_persistent_id(salt)`
+    /// returns `parent.with(salt)` so persistent state keys stay
+    /// stable across frames.
+    ///
+    /// Widgets call this at the top of their `show()` when they
+    /// need the recorded id **before** `ui.node` — e.g. theme picking
+    /// off last frame's `response_for(id)`, focus checks, animation
+    /// slots, or to derive sub-ids (`id.with("__thumb")`). Pure
+    /// function of `(salt, currently-open-parent)`; calling it again
+    /// (or implicitly via `Ui::node`'s internal resolution)
+    /// produces the same `WidgetId`, so no risk of widget-side drift.
+    ///
+    /// Parent context: the most-recently-opened user-visible node in
+    /// the current layer. `Layer::Main`'s synthetic viewport (an
+    /// implicit ZStack `Ui::record_pass` opens before user code
+    /// runs) is intentionally skipped so the first user-recorded
+    /// `.id_salt(...)` resolves to the bare salt hash, not to
+    /// `viewport_auto_id.with(salt)` — user code can't see the
+    /// viewport, so it would be surprising to scope through it.
+    /// Popup / modal / tooltip layers have no synthetic root.
+    pub(crate) fn make_persistent_id(&self, salt: Salt) -> WidgetId {
+        salt.resolve(self.user_visible_parent_id())
+    }
+
+    /// Most-recently-opened user-visible parent's resolved `WidgetId`
+    /// in the current layer, or `None` if we're at root depth.
+    /// Skips the `Layer::Main` synthetic viewport — see
+    /// [`Self::make_persistent_id`] for the rationale.
+    fn user_visible_parent_id(&self) -> Option<WidgetId> {
+        let layer = self.forest.current_layer;
+        let tree = self.forest.tree(layer);
+        let frame = match layer {
+            Layer::Main => tree.open_frames.get(1..).and_then(<[_]>::last),
+            _ => tree.open_frames.last(),
+        }?;
+        Some(tree.records.widget_id()[frame.node.index()])
+    }
+
+    /// Open a node with no paint chrome — the common path for
+    /// layout-only containers, text leaves, and chrome-less Frames.
+    /// Avoids passing a 232-byte `Option<Background>` through the
+    /// call chain. `id` must be the [`Self::make_persistent_id`]
+    /// resolution of `element.salt` (call sites already need it for
+    /// `response_for` / `animate` / derived sub-ids, so we don't
+    /// resolve again here — single source of truth).
+    pub(crate) fn node(&mut self, id: WidgetId, element: Element, f: impl FnOnce(&mut Ui)) {
+        self.forest.open_node(id, element);
         f(self);
         self.forest.close_node();
     }
 
-    /// Open a node with a paint chrome. Widgets that always set chrome
-    /// (`Button`, `MenuItem`) or that resolved a theme fallback to
-    /// `Some(_)` call this; others use [`Self::node`] to skip the
-    /// 232-byte chrome arg.
+    /// Chrome variant of [`Self::node`]. Same `id` contract.
     pub(crate) fn node_with_chrome(
         &mut self,
+        id: WidgetId,
         element: Element,
         chrome: Background,
         f: impl FnOnce(&mut Ui),
     ) {
         self.forest.open_node_with_chrome(
+            id,
             element,
             chrome,
             &self.frame_arena,

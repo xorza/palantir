@@ -126,7 +126,6 @@ impl Grid {
     }
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
-        let id = self.element.id;
         let active_layer = ui.forest.current_layer;
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
         let mut element = self.element;
@@ -137,10 +136,11 @@ impl Grid {
         if matches!(element.clip_mode(), ClipMode::None) {
             element.set_clip(ui.theme.panel_clip);
         }
+        let id = ui.make_persistent_id(element.salt);
         match chrome {
-            Some(c) => ui.node_with_chrome(element, c, body),
-            None => ui.node(element, body),
-        };
+            Some(c) => ui.node_with_chrome(id, element, c, body),
+            None => ui.node(id, element, body),
+        }
         let state = ui.response_for(id);
         Response { id, state }
     }

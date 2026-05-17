@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::forest::seen_ids::IdSource;
+use crate::forest::element::Salt;
 use crate::forest::tree::Layer;
 use crate::input::sense::Sense;
 use crate::primitives::background::Background;
@@ -159,7 +159,7 @@ impl<'r> Tooltip<'r> {
         // `.id_salt(...)` would silently be overwritten — hard-assert
         // instead of swallowing the bug.
         assert!(
-            matches!(self.element.id_source(), IdSource::Auto),
+            matches!(self.element.salt, Salt::Auto(_)),
             "Tooltip does not honor `.id(...)` / `.id_salt(...)` — the id is \
              derived from the trigger's response so per-trigger state stays \
              paired. Drop the override.",
@@ -208,7 +208,7 @@ impl<'r> Tooltip<'r> {
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
             let mut element = self.element;
-            element.set_id(bubble_id);
+            element.salt = Salt::Verbatim(bubble_id);
             let text_style = ui.theme.tooltip.text;
             let chrome = self.chrome.unwrap_or(ui.theme.tooltip.panel);
             if element.padding == Spacing::ZERO {
@@ -218,7 +218,7 @@ impl<'r> Tooltip<'r> {
                 element.max_size = ui.theme.tooltip.max_size;
             }
             ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
-                ui.node_with_chrome(element, chrome, |ui| {
+                ui.node_with_chrome(bubble_id, element, chrome, |ui| {
                     Text::new(text).style(text_style).wrapping().show(ui);
                 });
             });

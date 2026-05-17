@@ -11,6 +11,7 @@ use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{Layer, NodeId, PendingAnchor, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
+use crate::primitives::widget_id::WidgetId;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
@@ -127,34 +128,42 @@ impl Forest {
         min_wake
     }
 
-    pub(crate) fn open_node(&mut self, mut element: Element) {
-        // `record` runs before `open_node` so a disambiguated
-        // `element.id` is what the tree stores — siblings sharing a
-        // `widget_id` would corrupt every per-id store. `peek_next_id`
-        // hands us the slot `open_node` will fill so `record` can
-        // stash it for first-collision lookup.
+    /// Open a node whose id has already been resolved from
+    /// `element.salt` upstream (typically by [`crate::Ui::node`] via
+    /// [`crate::Ui::make_persistent_id`]). Returns the `WidgetId`
+    /// actually written into the tree — equal to `resolved_id`
+    /// except on a sibling collision, where the occurrence-counter
+    /// disambiguation in [`SeenIds::record`] kicks in.
+    pub(crate) fn open_node(&mut self, widget_id: WidgetId, element: Element) -> WidgetId {
         let layer = self.current_layer;
+        let is_explicit = element.salt.is_explicit();
         let node = self.trees[layer as usize].peek_next_id();
-        let outcome = self.ids.record(&mut element, layer, node);
-        let opened = self.trees[layer as usize].open_node(element);
+        let (final_id, outcome) = self.ids.record(widget_id, is_explicit, layer, node);
+        let opened = self.trees[layer as usize].open_node(final_id, element);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
+        final_id
     }
 
+    /// Chrome variant of [`Self::open_node`]; same `resolved_id` /
+    /// return-value contract.
     pub(crate) fn open_node_with_chrome(
         &mut self,
-        mut element: Element,
+        widget_id: WidgetId,
+        element: Element,
         chrome: Background,
         arena: &FrameArena,
         atlas: &GradientAtlas,
-    ) {
+    ) -> WidgetId {
         let layer = self.current_layer;
+        let is_explicit = element.salt.is_explicit();
         let node = self.trees[layer as usize].peek_next_id();
-        let outcome = self.ids.record(&mut element, layer, node);
-        let opened =
-            self.trees[layer as usize].open_node_with_chrome(element, chrome, arena, atlas);
+        let (final_id, outcome) = self.ids.record(widget_id, is_explicit, layer, node);
+        let opened = self.trees[layer as usize]
+            .open_node_with_chrome(final_id, element, chrome, arena, atlas);
         debug_assert_eq!(opened, node, "Tree::peek_next_id contract violated");
         self.record_collision(outcome, layer, node);
+        final_id
     }
 
     /// Shared between [`Self::open_node`] / [`Self::open_node_with_chrome`].

@@ -1,4 +1,4 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
@@ -212,7 +212,7 @@ fn push_bar_nodes(
 ) {
     let radius = Corners::all(theme.radius);
     let mut track = Element::new(LayoutMode::Leaf);
-    track.set_id(track_id);
+    track.salt = Salt::Verbatim(track_id);
     track.size = (
         Sizing::Fixed(plan.track_rect.size.w),
         Sizing::Fixed(plan.track_rect.size.h),
@@ -222,6 +222,7 @@ fn push_bar_nodes(
     track.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
         ui.node_with_chrome(
+            track_id,
             track,
             Background {
                 fill: theme.track.into(),
@@ -232,7 +233,7 @@ fn push_bar_nodes(
             |_| {},
         );
     } else {
-        ui.node(track, |_| {});
+        ui.node(track_id, track, |_| {});
     }
 
     let fill = if resp.drag_delta.is_some() || resp.pressed {
@@ -243,7 +244,7 @@ fn push_bar_nodes(
         theme.thumb
     };
     let mut thumb = Element::new(LayoutMode::Leaf);
-    thumb.set_id(thumb_id);
+    thumb.salt = Salt::Verbatim(thumb_id);
     thumb.size = (
         Sizing::Fixed(plan.thumb_rect.size.w),
         Sizing::Fixed(plan.thumb_rect.size.h),
@@ -252,6 +253,7 @@ fn push_bar_nodes(
     thumb.position = plan.thumb_rect.min;
     thumb.set_sense(Sense::DRAG);
     ui.node_with_chrome(
+        thumb_id,
         thumb,
         Background {
             fill: fill.into(),
@@ -343,7 +345,7 @@ impl Scroll {
     }
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         let mode = self.element.mode;
         assert!(
             matches!(
@@ -635,7 +637,7 @@ impl Scroll {
         // inner under the same ZStack) can reach into the gutter
         // strip with absolute positions.
         let mut outer = Element::new(LayoutMode::ZStack);
-        outer.set_id_from(&self.element);
+        outer.salt = self.element.salt;
         outer.size = self.element.size;
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;
@@ -658,7 +660,7 @@ impl Scroll {
         // margin, so inner's rendered rect = outer.rect minus the
         // reserved strip on the cross axes.
         let mut inner = Element::new(self.element.mode);
-        inner.set_id(scroll_id);
+        inner.salt = Salt::Verbatim(scroll_id);
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
@@ -713,13 +715,13 @@ impl Scroll {
             &theme,
         );
 
-        ui.node(outer, |ui| {
+        ui.node(id, outer, |ui| {
             match inner_chrome {
                 Some(c) => {
-                    ui.node_with_chrome(inner, c, |ui| body(ui));
+                    ui.node_with_chrome(scroll_id, inner, c, |ui| body(ui));
                 }
                 None => {
-                    ui.node(inner, |ui| body(ui));
+                    ui.node(scroll_id, inner, |ui| body(ui));
                 }
             }
             // Bar overlay: Canvas sibling of inner, Fill on both axes
@@ -728,10 +730,11 @@ impl Scroll {
             // positioned absolutely on top. Painted after inner via
             // record order, hit-tested above inner via cascade order.
             if plan_v.is_some() || plan_h.is_some() {
+                let bars_id = scroll_id.with("__bars");
                 let mut overlay = Element::new(LayoutMode::Canvas);
-                overlay.set_id(scroll_id.with("__bars"));
+                overlay.salt = Salt::Verbatim(bars_id);
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
-                ui.node(overlay, |ui| {
+                ui.node(bars_id, overlay, |ui| {
                     if let Some(p) = plan_v {
                         push_bar_nodes(ui, p, track_id_v, thumb_id_v, resp_v, &theme);
                     }

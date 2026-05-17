@@ -1,4 +1,4 @@
-use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
@@ -44,7 +44,7 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response {
-        let id = self.element.id;
+        let id = ui.make_persistent_id(self.element.salt);
         let raw_state = ui.response_for(id);
         let mut state = raw_state;
         // Cascade lags by a frame; OR self-disabled in so a freshly
@@ -73,11 +73,12 @@ impl<'a> Checkbox<'a> {
         element.set_gap(row_gap);
         element.set_child_align(Align::v(VAlign::Center));
 
-        ui.node(element, |ui| {
+        ui.node(id, element, |ui| {
+            let box_id = id.with("box");
             let mut box_elem = Element::new(LayoutMode::Leaf);
-            box_elem.set_id(id.with("box"));
+            box_elem.salt = Salt::Verbatim(box_id);
             box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
-            ui.node_with_chrome(box_elem, chrome, |ui| {
+            ui.node_with_chrome(box_id, box_elem, chrome, |ui| {
                 if checked {
                     let pts = check_pts(box_size);
                     ui.add_shape(Shape::Polyline {
@@ -91,9 +92,10 @@ impl<'a> Checkbox<'a> {
             });
 
             if !label.is_empty() {
+                let label_id = id.with("label");
                 let mut label_elem = Element::new(LayoutMode::Leaf);
-                label_elem.set_id(id.with("label"));
-                ui.node(label_elem, |ui| {
+                label_elem.salt = Salt::Verbatim(label_id);
+                ui.node(label_id, label_elem, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: None,
                         text: label,

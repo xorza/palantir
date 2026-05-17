@@ -21,26 +21,9 @@
 //!    touch seen-id state, so `prev` stays anchored at the last
 //!    *painted* frame regardless of how many discard passes ran.
 
-use crate::forest::element::Element;
 use crate::forest::tree::{Layer, NodeId};
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
-
-/// How a `WidgetId` was produced. Both sources share the same
-/// occurrence-counter disambiguation when they collide; the variant
-/// is preserved so [`SeenIds::record`] can flag explicit collisions
-/// (caller bug) for the always-on magenta debug overlay while
-/// leaving auto collisions silent (expected from loops / helpers).
-#[derive(Clone, Copy, Debug)]
-pub(crate) enum IdSource {
-    /// Caller passed an explicit key via `.id_salt(...)`. Collisions
-    /// are caller bugs — the disambiguated node gets a magenta outline.
-    Explicit,
-    /// Id minted by `WidgetId::auto_stable()` (track-caller). Collisions
-    /// are expected in loops / helper closures and get disambiguated
-    /// silently.
-    Auto,
-}
 
 /// One collision endpoint — a node together with its originating
 /// layer. Both halves of a `CollisionRecord` (and the `first`
@@ -111,24 +94,27 @@ impl SeenIds {
         self.dup.clear();
     }
 
-    /// Record `element` (about to be opened as `node`) for this
-    /// frame, rewriting `element.id` if it collided. Both auto and
-    /// explicit collisions disambiguate via an occurrence counter;
-    /// explicit collisions additionally return the first-occurrence
-    /// `NodeId` so the caller can pair the two colliding nodes for
-    /// the debug overlay.
+    /// Record the about-to-be-opened `node`'s `id` for this frame.
+    /// Returns `(final_id, outcome)` — `final_id` differs from `id`
+    /// only on collision, where the occurrence counter is mixed in
+    /// until a free slot is found. `is_explicit` distinguishes
+    /// caller-supplied ids (`.id(...)` / `.id_salt(...)`) from
+    /// auto ids: explicit collisions are caller bugs and the
+    /// returned `RecordOutcome::DisambiguatedExplicit` carries the
+    /// first-occurrence `Endpoint` so the encoder can paint the
+    /// magenta overlay; auto collisions are silent.
     pub(crate) fn record(
         &mut self,
-        element: &mut Element,
+        id: WidgetId,
+        is_explicit: bool,
         layer: Layer,
         node: NodeId,
-    ) -> RecordOutcome {
+    ) -> (WidgetId, RecordOutcome) {
         use std::collections::hash_map::Entry;
-        let id = element.id;
         match self.curr.entry(id) {
             Entry::Vacant(v) => {
                 v.insert((layer, node));
-                RecordOutcome::Inserted
+                (id, RecordOutcome::Inserted)
             }
             Entry::Occupied(o) => {
                 let (first_layer, first_node) = *o.get();
@@ -136,7 +122,6 @@ impl SeenIds {
                     layer: first_layer,
                     node: first_node,
                 };
-                let explicit = matches!(element.id_source(), IdSource::Explicit);
                 let counter = self.dup.entry(id).or_insert(0);
                 let disambiguated = loop {
                     *counter += 1;
@@ -146,12 +131,12 @@ impl SeenIds {
                         break candidate;
                     }
                 };
-                element.id = disambiguated;
-                if explicit {
+                let outcome = if is_explicit {
                     RecordOutcome::DisambiguatedExplicit { first }
                 } else {
                     RecordOutcome::DisambiguatedAuto
-                }
+                };
+                (disambiguated, outcome)
             }
         }
     }

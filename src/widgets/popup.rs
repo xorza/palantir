@@ -115,7 +115,13 @@ impl Popup {
     }
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
-        let body_id = self.element.id;
+        // Popup body resolves at the root of `Layer::Popup` (no
+        // open frames in that layer), so `make_persistent_id`'s
+        // parent-scoping is a no-op — `body_id` equals the bare
+        // salt hash. That keeps the eater id (and any persistent
+        // popup-side state) stable regardless of where in `Main`
+        // the trigger lives.
+        let body_id = ui.make_persistent_id(self.element.salt);
         let eater_id = body_id.with("eater");
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
@@ -134,10 +140,10 @@ impl Popup {
         let handle = PopupHandle::new();
         ui.layer(Layer::Popup, self.anchor, None, |ui| match chrome {
             Some(c) => {
-                ui.node_with_chrome(element, c, |ui| body(ui, &handle));
+                ui.node_with_chrome(body_id, element, c, |ui| body(ui, &handle));
             }
             None => {
-                ui.node(element, |ui| body(ui, &handle));
+                ui.node(body_id, element, |ui| body(ui, &handle));
             }
         });
         let eater_clicked = ui.response_for(eater_id).clicked;
