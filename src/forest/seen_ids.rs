@@ -122,23 +122,35 @@ impl SeenIds {
         self.pending.clear();
     }
 
-    /// Eagerly resolve a raw id to its disambiguated final id. Bumps
-    /// the per-raw-id counter so the next call with the same raw id
-    /// returns the next occurrence slot. If the salt was explicit
-    /// and this is a collision (counter was already > 0), queues a
-    /// [`PendingExplicitCollision`] so [`Self::record_endpoint`] can
-    /// emit a [`crate::forest::CollisionRecord`] once both endpoints
-    /// are known.
+    /// Eagerly resolve a raw id to its disambiguated final id.
+    /// Common case (first occurrence of `raw_id` this frame) hits a
+    /// single `curr.contains_key` probe and returns `raw_id`
+    /// unchanged — `counters` stays untouched. Collision case bumps
+    /// the per-raw-id counter and returns `raw_id.with(count)`.
+    /// Explicit collisions queue a [`PendingExplicitCollision`] so
+    /// [`Self::record_endpoint`] can emit the magenta-overlay
+    /// [`crate::forest::CollisionRecord`] once both endpoints exist.
+    ///
+    /// **Contract**: the matching [`Self::record_endpoint`] for an
+    /// earlier `resolve(raw_id)` must run before the next
+    /// `resolve(raw_id)` — otherwise this routine can't see the
+    /// first occurrence in `curr` and would incorrectly report
+    /// "first time". Widget call sites pair them immediately
+    /// (`ui::make_persistent_id` → `ui::node` → `forest::open_node`),
+    /// so the contract holds for production code.
+    #[inline]
     pub(crate) fn resolve(&mut self, raw_id: WidgetId, is_explicit: bool) -> WidgetId {
+        if !self.curr.contains_key(&raw_id) {
+            // Fast path — first occurrence. `counters` only tracks
+            // raw ids that actually collided, so its size is
+            // `collisions / frame` (typically 0), not
+            // `widgets / frame`.
+            return raw_id;
+        }
         let count = self.counters.entry(raw_id).or_insert(0);
-        let final_id = if *count == 0 {
-            raw_id
-        } else {
-            raw_id.with(*count)
-        };
-        let was_collision = *count > 0;
         *count += 1;
-        if was_collision && is_explicit {
+        let final_id = raw_id.with(*count);
+        if is_explicit {
             self.pending.push(PendingExplicitCollision {
                 first_raw_id: raw_id,
                 second_final_id: final_id,
@@ -153,21 +165,23 @@ impl SeenIds {
     /// endpoint, so the caller can push a `CollisionRecord` —
     /// emitted to `Forest.collisions` for the magenta overlay.
     ///
-    /// Debug-asserts the `curr` slot is vacant. Pathological inputs
-    /// like `.id(X)`, `.id(X)`, `.id(X.with(1))` would otherwise let
-    /// the third widget overwrite the second's endpoint; the assert
-    /// catches it loudly in dev builds without the cost of a
-    /// disambiguation loop here on the hot path.
+    /// Debug-asserts the `curr` slot is vacant via the `insert`
+    /// return — no separate `contains_key` probe needed.
+    /// Pathological inputs like `.id(X)`, `.id(X)`, `.id(X.with(1))`
+    /// would otherwise let the third widget overwrite the second's
+    /// endpoint; the assert catches it loudly in dev builds without
+    /// the cost of a disambiguation loop here on the hot path.
+    #[inline]
     pub(crate) fn record_endpoint(
         &mut self,
         final_id: WidgetId,
         endpoint: Endpoint,
     ) -> EndpointOutcome {
+        let prior = self.curr.insert(final_id, endpoint);
         debug_assert!(
-            !self.curr.contains_key(&final_id),
+            prior.is_none(),
             "record_endpoint called twice for {final_id:?} — caller likely passed an explicit `.id(X.with(N))` that collides with a disambiguated auto/explicit slot",
         );
-        self.curr.insert(final_id, endpoint);
         let Some(idx) = self
             .pending
             .iter()
@@ -226,37 +240,53 @@ mod tests {
         }
     }
 
+    /// Stand-in for the production `resolve → record_endpoint`
+    /// pairing every widget does (`make_persistent_id` →
+    /// `forest::open_node`). The lazy-counter fast path in `resolve`
+    /// depends on `curr` being populated between consecutive resolves
+    /// of the same raw id, so tests interleave them the same way.
+    fn open(ids: &mut SeenIds, raw_id: WidgetId, is_explicit: bool, node: u32) -> WidgetId {
+        let final_id = ids.resolve(raw_id, is_explicit);
+        ids.record_endpoint(final_id, ep(node));
+        final_id
+    }
+
     #[test]
     fn resolve_returns_raw_id_on_first_call() {
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
-        assert_eq!(ids.resolve(x, false), x);
-        assert_eq!(ids.counters[&x], 1);
+        assert_eq!(open(&mut ids, x, false, 1), x);
+        // Fast path didn't touch `counters` — only collisions populate it.
+        assert!(ids.counters.is_empty());
     }
 
     #[test]
     fn resolve_disambiguates_collisions_by_occurrence() {
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
-        assert_eq!(ids.resolve(x, false), x);
-        assert_eq!(ids.resolve(x, false), x.with(1));
-        assert_eq!(ids.resolve(x, false), x.with(2));
+        assert_eq!(open(&mut ids, x, false, 1), x);
+        assert_eq!(open(&mut ids, x, false, 2), x.with(1));
+        assert_eq!(open(&mut ids, x, false, 3), x.with(2));
     }
 
     #[test]
     fn resolve_queues_pending_only_for_explicit_collisions() {
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
-        ids.resolve(x, false);
-        ids.resolve(x, false); // auto collision — silent
+        open(&mut ids, x, false, 1);
+        open(&mut ids, x, false, 2); // auto collision — silent
         assert!(ids.pending.is_empty());
 
         let y = WidgetId::from_hash("y");
+        // First explicit — fast path, no pending.
         ids.resolve(y, true);
-        ids.resolve(y, true); // explicit collision — queued
+        ids.record_endpoint(y, ep(3));
+        // Second explicit — collision, queued. record_endpoint will
+        // drain it; check it was queued first.
+        let second = ids.resolve(y, true);
         assert_eq!(ids.pending.len(), 1);
         assert_eq!(ids.pending[0].first_raw_id, y);
-        assert_eq!(ids.pending[0].second_final_id, y.with(1));
+        assert_eq!(ids.pending[0].second_final_id, second);
     }
 
     #[test]
@@ -298,16 +328,19 @@ mod tests {
     #[test]
     #[should_panic(expected = "recording order violated")]
     fn record_endpoint_panics_if_first_endpoint_missing() {
-        // Construct a pending explicit collision whose first raw id
-        // was never opened (i.e., `record_endpoint` for the first
-        // occurrence wasn't called). The expect in `record_endpoint`
-        // must fire — the alternative is a silent miss that hides a
-        // recording-order bug from the magenta collision overlay.
+        // Manually queue a pending collision whose first raw id was
+        // never recorded — bypasses the production resolve+record
+        // pairing to simulate the contract violation. The expect in
+        // `record_endpoint` must fire — the alternative is a silent
+        // miss that hides a recording-order bug from the magenta
+        // collision overlay.
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
-        ids.resolve(x, true);
-        let second = ids.resolve(x, true);
-        // Skip recording the first endpoint, jump straight to second.
+        let second = x.with(1);
+        ids.pending.push(PendingExplicitCollision {
+            first_raw_id: x,
+            second_final_id: second,
+        });
         ids.record_endpoint(second, ep(2));
     }
 
@@ -315,21 +348,23 @@ mod tests {
     fn pre_record_clears_per_frame_state_but_keeps_prev() {
         let mut ids = SeenIds::default();
         let x = WidgetId::from_hash("x");
-        ids.resolve(x, false);
-        ids.record_endpoint(x, ep(1));
+        // Force `counters` to be non-empty by opening the same id
+        // twice (collision path populates it).
+        open(&mut ids, x, false, 1);
+        open(&mut ids, x, false, 2);
+        assert!(!ids.counters.is_empty());
+
         ids.rollover();
         assert!(ids.curr.is_empty());
-        assert_eq!(ids.prev.len(), 1);
-
-        // Counters and pending persist across rollover (intentionally —
-        // rollover is the painted-frame swap, not the frame boundary).
-        // `pre_record` is what clears per-frame disambiguation state at
-        // the start of the next record cycle.
-        assert_eq!(ids.counters[&x], 1);
+        assert_eq!(ids.prev.len(), 2);
+        // Counters persist across rollover (rollover is the painted-
+        // frame swap; `pre_record` clears per-frame disambiguation
+        // state at the next record cycle).
+        assert!(!ids.counters.is_empty());
 
         ids.pre_record();
         assert!(ids.counters.is_empty());
         assert!(ids.curr.is_empty());
-        assert_eq!(ids.prev.len(), 1, "prev must survive pre_record");
+        assert_eq!(ids.prev.len(), 2, "prev must survive pre_record");
     }
 }
