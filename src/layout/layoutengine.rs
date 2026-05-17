@@ -109,11 +109,11 @@ impl LayoutScratch {
         arenas: &SubtreeArenas<'_>,
     ) {
         // `grid.hugs` is the only retained category-(2) field today.
-        // The `has_grid` bitset gates the dispatch so grid-free
-        // subtrees pay one bit-test instead of walking the subtree
+        // The `has_grid` column gates the dispatch so grid-free
+        // subtrees pay one bool load instead of walking the subtree
         // looking for grids — keeps the hot path cold for the common
         // case.
-        if tree.has_grid.contains(subtree.start) {
+        if tree.has_grid[subtree.start] {
             self.grid.hugs.restore_subtree(tree, subtree, arenas.hugs);
         }
     }
@@ -428,7 +428,7 @@ impl LayoutEngine {
             let start = node.index();
             let end = (tree.records.subtree_end()[start]) as usize;
             self.scratch.tmp_hugs.clear();
-            if tree.has_grid.contains(start) {
+            if tree.has_grid[start] {
                 self.scratch.grid.hugs.snapshot_subtree(
                     tree,
                     start..end,
