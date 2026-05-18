@@ -1243,7 +1243,11 @@ pub mod test_support {
         /// Rebuild the post-collapse damage region from `DamageEngine`'s
         /// last-frame pass-1 buffer. Doesn't mutate state.
         pub fn damage_region(&self) -> DamageRegion {
-            DamageRegion::collapse_from(&self.damage_engine.raw_rects, self.damage_engine.budget_px)
+            DamageRegion::collapse_from(
+                &self.damage_engine.raw_rects,
+                self.damage_engine.budget_px,
+                self.display.logical_rect(),
+            )
         }
 
         /// Damage rects produced by the most recent `post_record`.

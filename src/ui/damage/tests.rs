@@ -923,7 +923,7 @@ fn no_damage_means_skip() {
     assert_eq!(
         Damage::new(
             TEST_SURFACE,
-            DamageRegion::collapse_from(&d.raw_rects, d.budget_px)
+            DamageRegion::collapse_from(&d.raw_rects, d.budget_px, TEST_SURFACE)
         ),
         Damage::None,
     );
@@ -1498,7 +1498,18 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |_| {});
         });
         let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
-        assert_eq!(rects, vec![prev_rect], "[{label}] damage region");
+        // `damage_engine.prev` stores the raw paint_rect including
+        // the shadow halo, which extends off the top-left of the
+        // 200×200 surface for a 50×50 frame at origin. The damage
+        // region, however, clips each rect to the surface in
+        // `collapse_from` (off-surface pixels can never be painted
+        // and would bias the Full-repaint threshold), so the emitted
+        // damage is the visible portion of `prev_rect`.
+        assert_eq!(
+            rects,
+            vec![prev_rect.intersect(TEST_SURFACE)],
+            "[{label}] damage region",
+        );
     }
 }
 
@@ -1563,4 +1574,74 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
             "shadow halo damage must stay inside the {viewport}px clip; got {r:?}",
         );
     }
+}
+
+/// `DamageRegion::collapse_from` intersects each input rect with the
+/// surface before folding it into the region. Without this, a
+/// paint_rect whose bounds extend past the viewport (root-level
+/// transformed canvas with no clip ancestor, plus high zoom —
+/// `parent_clip` stays `None` so `cascade::compute_paint_rect` never
+/// clips down) would inflate `total_area` past the threshold despite
+/// only a tiny visible fraction. Reproduces the darkroom graph
+/// pan/zoom regression where a few zoomed-up node panels off-screen
+/// would force `Damage::Full` each pan tick.
+#[test]
+fn partial_when_oversized_rect_lies_mostly_off_surface() {
+    let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
+    // 1000×1000 paint_rect anchored at (90, 90): only a 10×10 corner
+    // pokes into the surface, the rest sticks off-screen. Pre-fix:
+    // rect.area() = 1e6, ratio = 1e6 / 1e4 = 100 ⇒ Full. Post-fix:
+    // collapse_from clips to (90,90,10,10), area = 100, ratio = 0.01
+    // ≪ 0.7 ⇒ Partial.
+    let oversized = Rect::new(90.0, 90.0, 1000.0, 1000.0);
+    assert_eq!(
+        oversized.intersect(surface),
+        Rect::new(90.0, 90.0, 10.0, 10.0),
+        "sanity: 1000×1000 rect at (90,90) intersects surface in a 10×10 corner",
+    );
+    let region = DamageRegion::collapse_from(&[oversized], f32::INFINITY, surface);
+    // Region stores the clipped rect, not the raw input.
+    let stored: Vec<_> = region.iter_rects().collect();
+    assert_eq!(
+        stored,
+        vec![Rect::new(90.0, 90.0, 10.0, 10.0)],
+        "collapse_from must store the surface-clipped rect, not the raw input",
+    );
+    let damage = Damage::new(surface, region);
+    assert!(
+        matches!(damage, Damage::Partial(_)),
+        "off-surface inflation must not trip FULL_REPAINT_THRESHOLD; got {damage:?}",
+    );
+}
+
+/// Sister to the above: a rect that *fully* covers the surface
+/// (regardless of how much extends past) still trips Full. The intent
+/// of the surface-clamp is "don't count pixels that can't be painted,"
+/// not "don't ever Full" — when the visible portion is the whole
+/// viewport, Full is still the right call.
+#[test]
+fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
+    let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let covers_all_plus_overflow = Rect::new(-50.0, -50.0, 1000.0, 1000.0);
+    let region = DamageRegion::collapse_from(&[covers_all_plus_overflow], f32::INFINITY, surface);
+    let damage = Damage::new(surface, region);
+    assert_eq!(
+        damage,
+        Damage::Full,
+        "rect that covers entire surface (plus overflow) must still trip Full",
+    );
+}
+
+/// A rect that lies entirely off the surface contributes nothing to
+/// the region (zero-area after clipping, dropped). Pins the "early-out
+/// on degenerate clip" branch in `collapse_from`.
+#[test]
+fn fully_off_surface_rect_is_dropped_from_region() {
+    let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
+    let off_screen = Rect::new(500.0, 500.0, 50.0, 50.0);
+    let region = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
+    assert!(
+        region.is_empty(),
+        "wholly-off-surface rect must produce an empty region (no Damage::None vs Partial drift)",
+    );
 }

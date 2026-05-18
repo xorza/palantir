@@ -86,10 +86,25 @@ impl DamageRegion {
         }
     }
 
-    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32) -> Self {
+    /// Build a region from `rects`, clipping each to `surface` before
+    /// folding it through `add`. Off-surface pixels can never be
+    /// painted, so storing them in the region biases every downstream
+    /// consumer wrong: the `FULL_REPAINT_THRESHOLD` check in
+    /// `Damage::new` would count them against the budget, the
+    /// encoder's `any_intersects` filter would compare against a
+    /// rect bigger than the viewport, and the GPU scissor would be
+    /// asked to paint pixels off-screen. Source rects (paint_rects on
+    /// root-level transformed canvases with no clip ancestor — see
+    /// `cascade::compute_paint_rect`) routinely overflow at high zoom,
+    /// so the clip is mandatory at the chokepoint, not optional at
+    /// individual callsites.
+    pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> Self {
         let mut region = Self::with_budget(budget_px);
         for r in rects {
-            region.add(*r);
+            let clipped = r.intersect(surface);
+            if clipped.area() > 0.0 {
+                region.add(clipped);
+            }
         }
         region
     }
@@ -113,7 +128,10 @@ impl DamageRegion {
     /// reach this sum, so the only way to over-count is the
     /// diagonal-overlap path where the budget rejects the merge —
     /// rare and conservative (biases toward `Full` repaint at the
-    /// boundary). Drives the full-repaint coverage check.
+    /// boundary). Drives the full-repaint coverage check in
+    /// `Damage::new`. Region rects are surface-clipped at
+    /// `collapse_from`, so this is already "visible area" — no extra
+    /// intersect needed at the threshold site.
     pub(crate) fn total_area(&self) -> f32 {
         self.rects.iter().map(|r| r.area()).sum()
     }
