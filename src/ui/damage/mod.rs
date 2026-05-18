@@ -318,7 +318,18 @@ impl DamageEngine {
                 // rect to damage — bloating the damage region from the
                 // child's leaf rect to the whole parent's rect.
                 let (dirty, advance) = match self.prev.entry(wid) {
-                    Entry::Vacant(_) if !curr_paints => (false, 1),
+                    // First-seen non-painter or first-seen painter
+                    // whose entire `paint_rect` lies off the surface:
+                    // nothing visible to push, no value in seeding
+                    // `prev` (the next-frame diff would just see it
+                    // vanish without anyone caring). The surface-clip
+                    // at `DamageRegion::collapse_from` would drop the
+                    // pushed `curr_rect` anyway — this just sidesteps
+                    // the hashmap insert + Vec push for nodes that
+                    // pan/zoom landed outside the viewport.
+                    Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => {
+                        (false, 1)
+                    }
                     Entry::Vacant(e) => {
                         e.insert(curr);
                         self.raw_rects.push(curr_rect);

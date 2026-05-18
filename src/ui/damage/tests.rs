@@ -1110,21 +1110,22 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         physical: UVec2::new(2000, 2000),
         ..DISPLAY
     };
-    // Root: Fixed-size HStack (3050×60) containing two Fixed children
-    // — bigger than the 2000×2000 surface so children that overflow
-    // surface drive damage union past the surface bounds. Root rect is
-    // stable across surface changes (Fixed never reads `available`),
-    // so any damage rect change must come from the descendant nudge,
-    // not the root re-resolving. Frame "small" ends up at
-    // (3000, 0, 50, 60).
+    // Root: Fixed-size VStack containing two Fixed children. Stacked
+    // vertically so both children's `paint_rect`s land inside the
+    // 2000×2000 surface — required since the Vacant arm in the diff
+    // skips inserting an off-surface widget into `prev` (no visible
+    // pixels to track). Root rect is stable across surface changes
+    // (Fixed never reads `available`), so any damage-rect change
+    // must come from the descendant nudge, not the root re-resolving.
+    // Frame "small" ends up at (0, 60, 50, 60).
     let mut scene = |ui: &mut Ui| {
-        Panel::hstack()
+        Panel::vstack()
             .id(WidgetId::from_hash("root"))
-            .size((Sizing::Fixed(3050.0), Sizing::Fixed(60.0)))
+            .size((Sizing::Fixed(60.0), Sizing::Fixed(120.0)))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("big"))
-                    .size((3000.0, 60.0))
+                    .size((60.0, 60.0))
                     .background(Background {
                         fill: BLUE.into(),
                         ..Default::default()
@@ -1643,5 +1644,52 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     assert!(
         region.is_empty(),
         "wholly-off-surface rect must produce an empty region (no Damage::None vs Partial drift)",
+    );
+}
+
+/// First-seen Vacant arm short-circuits when `curr_rect` lies entirely
+/// off the surface. The hashmap insert and rect push would both be
+/// wasted: the rect is dropped by `collapse_from`'s surface-clip
+/// downstream, and the prev entry would just describe an invisible
+/// snapshot that the next frame's diff would have to evict. Pins the
+/// pan/zoom workload where a node panned past the viewport edge
+/// contributes nothing useful to damage bookkeeping.
+#[test]
+fn off_surface_first_seen_node_skips_prev_insert() {
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| {
+        // Wrap in a transformed parent: `Panel::transform` applies to
+        // the body (children), so the inner panel's chrome paint_rect
+        // = parent_transform.apply_rect(inner.layout_rect). With a
+        // (+500,+500) parent translate over a 200×200 surface, the
+        // inner panel's chrome lands at (500,500,50,50) — wholly off.
+        Panel::canvas()
+            .id(WidgetId::from_hash("outer"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .transform(TranslateScale::from_translation(Vec2::new(500.0, 500.0)))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("off"))
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .background(Background {
+                        fill: BLUE.into(),
+                        ..Default::default()
+                    })
+                    .show(ui, |_| {});
+            });
+    });
+
+    assert!(
+        !ui.damage_engine
+            .prev
+            .contains_key(&WidgetId::from_hash("off")),
+        "Vacant + off-surface paint_rect must not seed a prev entry — \
+         hashmap insert + raw_rects push are both wasted work for a \
+         node that contributes nothing visible",
+    );
+    assert!(
+        ui.damage_region().is_empty(),
+        "no visible widgets means no damage rects on the second-frame \
+         diff (first frame is Full and walks differently)",
     );
 }
