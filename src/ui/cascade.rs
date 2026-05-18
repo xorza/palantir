@@ -134,6 +134,18 @@ pub(crate) struct Cascades {
     /// visited by the cascade walk (collapsed / invisible subtrees),
     /// keeping the column dense without a sentinel.
     pub(crate) shape_rects: [Vec<Rect>; Layer::COUNT],
+    /// Per-layer per-node chrome rect — the screen-space, ancestor-
+    /// clipped paint bound of just the node's chrome (panel
+    /// background + shadow halo), with shapes excluded. `Rect::ZERO`
+    /// when the node has no chrome. Sister column to `shape_rects`:
+    /// together they decompose what `Cascade.paint_rect` stores as a
+    /// single union, so the damage diff can push the changed half
+    /// (chrome OR a single shape) without inflating the rect to the
+    /// node's whole paint footprint. Filled in `compute_paint_rect`
+    /// alongside the union write into `Cascade.paint_rect`. Encoder
+    /// doesn't read this — keeps `Cascade` row at 24 B for the hot
+    /// paint walk.
+    pub(crate) chrome_rects: [Vec<Rect>; Layer::COUNT],
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
     /// `entries.widget_id()`, …) so the hot reverse-scan in
@@ -151,6 +163,7 @@ impl Default for Cascades {
             rows: array::from_fn(|_| Vec::new()),
             subtree_paint_rects: array::from_fn(|_| Vec::new()),
             shape_rects: array::from_fn(|_| Vec::new()),
+            chrome_rects: array::from_fn(|_| Vec::new()),
             entries: Soa::new(),
             by_id: FxHashMap::default(),
         }
@@ -294,6 +307,11 @@ impl CascadesEngine {
             r.rows[i].reserve(n);
             r.subtree_paint_rects[i].clear();
             r.subtree_paint_rects[i].reserve(n);
+            // Chrome-only per-node rect column, parallel to `rows[i]`.
+            // Sized + zeroed up front so `compute_paint_rect` can
+            // index-assign without per-call growth.
+            r.chrome_rects[i].clear();
+            r.chrome_rects[i].resize(n, Rect::ZERO);
             let shape_rects = &mut r.shape_rects[i];
             shape_rects.clear();
             // Index-by-`shape_idx`. Resize so collapsed / invisible
@@ -363,6 +381,7 @@ fn run_tree(
             parent_transform,
             parent_clip,
             &mut cascades.shape_rects[li],
+            &mut cascades.chrome_rects[li],
         );
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -492,6 +511,7 @@ fn compute_paint_rect(
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_rects: &mut [Rect],
+    chrome_rects: &mut [Rect],
 ) -> Rect {
     // Two transforms apply to this node's paint:
     // - `parent_transform` for chrome (encoder emits chrome before the
@@ -581,6 +601,19 @@ fn compute_paint_rect(
         };
         clip_to(parent_transform.apply_rect(tree_local), parent_clip)
     });
+    // Chrome-only screen rect for damage's per-shape decomposition.
+    // Written whenever the node has chrome authoring so the column
+    // aligns with the `chrome_hash != default` chromedness predicate
+    // — a chromed node that's fully clipped to nothing this frame
+    // stores `Rect::ZERO` here, harmless because `DamageRegion::
+    // collapse_from` drops empty rects. The `has_clip` lift in
+    // `chrome_local → Some(owner_local)` (encoder cull, no paint)
+    // leaves `chrome_screen == Some(owner_local)` not `None`, so
+    // this still writes the cull rect — the diff would only push it
+    // pair-wise when hash/rect changed.
+    if chrome.is_some() {
+        chrome_rects[node.idx()] = chrome_screen.unwrap_or(Rect::ZERO);
+    }
     let shapes_screen = shapes_local.map(|local| {
         let tree_local = Rect {
             min: layout_rect.min + local.min,
@@ -720,6 +753,69 @@ mod tests {
             (shape_rect.size.w - 20.0).abs() < eps && (shape_rect.size.h - 20.0).abs() < eps,
             "expected size = (20, 20) (panel-local * zoom); got {:?}",
             shape_rect.size,
+        );
+    }
+
+    /// `chrome_rects[i]` carries the chrome-only paint rect for the
+    /// damage diff's per-shape decomposition. A panel with a
+    /// `background` populates the slot; a chromeless panel leaves
+    /// `Rect::ZERO`.
+    #[test]
+    fn chrome_rects_populated_for_chrome_panels_only() {
+        use crate::primitives::background::Background;
+
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("chrome"))
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .background(Background {
+                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                        ..Default::default()
+                    })
+                    .show(ui, |_| {});
+                Panel::hstack()
+                    .id(WidgetId::from_hash("bare"))
+                    .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                    .show(ui, |_| {});
+            });
+        });
+
+        let li = Layer::Main.idx();
+        let by_id = &ui.layout.cascades.by_id;
+        let chrome_idx = by_id[&WidgetId::from_hash("chrome")] as usize;
+        let bare_idx = by_id[&WidgetId::from_hash("bare")] as usize;
+        let chrome_rect = ui.layout.cascades.chrome_rects[li][chrome_idx];
+        let bare_rect = ui.layout.cascades.chrome_rects[li][bare_idx];
+
+        assert!(
+            chrome_rect.area() > 0.0,
+            "chromed panel must have a non-zero chrome_rect; got {chrome_rect:?}",
+        );
+        assert_eq!(
+            bare_rect,
+            Rect::ZERO,
+            "chromeless panel must leave chrome_rect at the resize default (ZERO); got {bare_rect:?}",
+        );
+    }
+
+    /// `chrome_rects` length matches the layer's node count so the
+    /// damage diff can index by `NodeId.0` without a bounds-cap.
+    #[test]
+    fn chrome_rects_sized_to_node_count() {
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::hstack().auto_id().show(ui, |_| {});
+            });
+        });
+        let li = Layer::Main.idx();
+        let nodes = ui.forest.tree(Layer::Main).records.len();
+        assert_eq!(
+            ui.layout.cascades.chrome_rects[li].len(),
+            nodes,
+            "chrome_rects column must be sized to the layer's node count",
         );
     }
 }

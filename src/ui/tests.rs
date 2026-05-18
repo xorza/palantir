@@ -348,7 +348,7 @@ fn prev_frame_captures_painting_nodes() {
     });
     let frame_node = frame_node.unwrap();
     let prev = &ui.damage_engine.prev;
-    let snap = prev[&WidgetId::from_hash("a")];
+    let snap = &prev[&WidgetId::from_hash("a")];
 
     assert!(!prev.contains_key(&WidgetId::from_hash("root")));
     assert_eq!(snap.rect, ui.layout[Layer::Main].rect[frame_node.idx()]);

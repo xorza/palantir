@@ -324,7 +324,10 @@ impl Tree {
         let attrs = self.records.attrs();
         let shape_spans = self.records.shape_span();
         let ends = self.records.subtree_end();
-        let shape_buf = self.shapes.records.as_slice();
+        // Per-shape hashes are canonical — populated by `Shapes::add`
+        // at lowering time. compute_hashes just folds them into the
+        // owner's node hasher in record order.
+        let shape_hashes = self.shapes.hashes.as_slice();
         let extras = self.extras_idx.as_slice();
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
@@ -332,6 +335,7 @@ impl Tree {
         let grid_defs = &self.grid.defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
+        let chrome_out = self.rollups.chrome.as_mut_slice();
         let paints = &mut self.rollups.paints;
 
         for i in (0..n).rev() {
@@ -350,11 +354,31 @@ impl Tree {
                 // `self_transform_change_flips_node_hash`.
                 panel_tab[s].hash(&mut h);
             }
-            let chrome = ex.chrome.get().map(|s| &chrome_tab[s]);
-            chrome.hash(&mut h);
+            let has_chrome = ex.chrome.get().is_some();
+            // Chrome's authoring hash, isolated from the rest of the
+            // node's inputs so the damage diff can decide
+            // "chrome flipped vs. shape flipped" without re-walking
+            // the chrome at diff time. Both arms write a 1-byte
+            // discriminant before any payload so a chromeless node's
+            // stream can't collide with a chromed node whose hash
+            // happens to start `0x00`. Chromeless nodes leave the
+            // slot at `NodeHash::default()`.
+            if has_chrome {
+                let chrome = &chrome_tab[ex.chrome.get().unwrap()];
+                let mut ch = Hasher::new();
+                chrome.hash(&mut ch);
+                let chrome_hash = NodeHash(ch.finish());
+                chrome_out[i] = chrome_hash;
+                h.write_u8(1);
+                h.write_u64(chrome_hash.0);
+            } else {
+                h.write_u8(0);
+            }
 
             // Walk this node's direct shapes + immediate-child position
-            // markers in record order.
+            // markers in record order. Each shape's canonical hash was
+            // computed at `Shapes::add` time — fold it in as a u64 so
+            // we don't re-hash the record fields here.
             let mut has_direct_shape = false;
             let parent_span = shape_spans[i];
             let parent_end = (parent_span.start + parent_span.len) as usize;
@@ -366,7 +390,7 @@ impl Tree {
                 let cs_start = cs.start as usize;
                 while cursor < cs_start {
                     has_direct_shape = true;
-                    shape_buf[cursor].hash(&mut h);
+                    h.write_u64(shape_hashes[cursor].0);
                     cursor += 1;
                 }
                 h.write_u8(0xFF);
@@ -375,10 +399,10 @@ impl Tree {
             }
             while cursor < parent_end {
                 has_direct_shape = true;
-                shape_buf[cursor].hash(&mut h);
+                h.write_u64(shape_hashes[cursor].0);
                 cursor += 1;
             }
-            if ex.chrome.get().is_some() || has_direct_shape {
+            if has_chrome || has_direct_shape {
                 paints.set(i, true);
             }
             if layouts[i].mode == LayoutMode::Grid {

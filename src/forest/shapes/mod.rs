@@ -1,6 +1,9 @@
 pub(crate) mod record;
 
+use rustc_hash::FxHasher;
+
 use crate::common::frame_arena::FrameArena;
+use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
@@ -24,11 +27,21 @@ use crate::shape::{PolylineColors, Shape};
 #[derive(Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
+    /// Per-shape authoring hash, parallel to `records`. Populated
+    /// during `Tree::compute_hashes` alongside the per-node hash —
+    /// the existing walk visits every record exactly once. Keys the
+    /// per-shape damage diff (`(WidgetId, ordinal)` identity) in
+    /// `DamageEngine::compute`, letting a single moved shape on a
+    /// multi-shape owner push only its own rect pair instead of the
+    /// owner's whole `paint_rect` union. Cleared per frame, capacity
+    /// retained.
+    pub(crate) hashes: Vec<NodeHash>,
 }
 
 impl Shapes {
     pub(crate) fn clear(&mut self) {
         self.records.clear();
+        self.hashes.clear();
     }
 
     /// Lower a user-facing [`Shape`] and append it to `records`:
@@ -213,7 +226,20 @@ impl Shapes {
             }
         };
         let idx = self.records.len() as u32;
+        // Canonical per-shape hash: computed once at lowering time
+        // where the record's authoring inputs are immutable and the
+        // heavy per-payload sub-hashes (`Polyline::content_hash`,
+        // `Mesh::content_hash`, `Text::text_hash`) are already in
+        // hand. `Tree::compute_hashes` reads this back and folds it
+        // into the owner's node hash as a u64 — no second per-shape
+        // hash sweep. Damage diff keys on this for the per-shape
+        // contribution path.
+        use std::hash::{Hash, Hasher as _};
+        let mut sh = FxHasher::default();
+        record.hash(&mut sh);
+        let hash = NodeHash(sh.finish());
         self.records.push(record);
+        self.hashes.push(hash);
         Some(idx)
     }
 }
