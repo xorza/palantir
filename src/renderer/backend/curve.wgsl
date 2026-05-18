@@ -29,6 +29,7 @@ struct Viewport { size: vec2<f32> };
 // from the Rust const of the same name (see `curve_pipeline.rs`). Don't
 // change the placeholder syntax without updating the substitution.
 const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/16u;
+const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
 const HALF_FRINGE: f32 = 0.5;
 
 const CAP_BUTT: u32 = 0u;
@@ -115,8 +116,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let c = CORNERS[corner];
     let t_off = c.x;
     let side = c.y;
-    let inv_n = 1.0 / f32(SEGMENTS_PER_INSTANCE);
-    let local_t = (f32(seg) + t_off) * inv_n;
+    let local_t = (f32(seg) + t_off) * INV_N;
     let t = mix(in.t_range.x, in.t_range.y, local_t);
     let pt = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, t);
     let pos = pt.pos;
