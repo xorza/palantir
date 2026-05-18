@@ -1693,3 +1693,312 @@ fn off_surface_first_seen_node_skips_prev_insert() {
          diff (first frame is Full and walks differently)",
     );
 }
+
+/// `NodeSnapshot.chrome_rect` mirrors `Cascades.chrome_rects` and
+/// `NodeSnapshot.shapes` contains one entry per direct shape with
+/// matching rect and canonical hash. Verifies slice 3's
+/// decomposition is populated correctly without yet driving the
+/// per-shape damage push.
+#[test]
+fn node_snapshot_decomposition_matches_cascade() {
+    use crate::Shape;
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("multi"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: Vec2::new(0.0, 0.0),
+                    b: Vec2::new(10.0, 10.0),
+                    width: 1.0,
+                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+                ui.add_shape(Shape::Line {
+                    a: Vec2::new(20.0, 20.0),
+                    b: Vec2::new(30.0, 30.0),
+                    width: 1.0,
+                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+            });
+    });
+
+    let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
+    let li = Layer::Main.idx();
+    let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")] as usize;
+
+    // chrome_rect mirrors `Cascades.chrome_rects` (the chrome-only,
+    // pre-shapes-union screen rect).
+    assert_eq!(
+        snap.chrome_rect, ui.layout.cascades.chrome_rects[li][node_idx],
+        "snapshot chrome_rect must match cascade column",
+    );
+    assert!(
+        snap.chrome_rect.area() > 0.0,
+        "chrome panel must have non-zero chrome_rect",
+    );
+
+    // One entry per direct shape in the engine's shape arena.
+    let snap_shapes = &ui.damage_engine.shape_snaps[snap.shape_span.range()];
+    assert_eq!(snap_shapes.len(), 2, "two direct shapes ⇒ two snaps");
+    let shape_rects = &ui.layout.cascades.shape_rects[li];
+    let shape_hashes = &ui.forest.tree(Layer::Main).shapes.hashes;
+    for (ord, s) in snap_shapes.iter().enumerate() {
+        assert_eq!(
+            s.rect, shape_rects[ord],
+            "shape #{ord} rect must match cascade column",
+        );
+        assert_eq!(
+            s.hash, shape_hashes[ord],
+            "shape #{ord} hash must match the canonical per-shape hash",
+        );
+    }
+
+    // Slice 4 contract: Vacant pushes chrome + each shape rect
+    // separately, never the union. With chrome + 2 shapes ⇒ 3
+    // entries in `raw_rects`. Order: chrome first, then shapes in
+    // record order.
+    assert_eq!(
+        ui.damage_engine.raw_rects.len(),
+        3,
+        "Vacant insert pushes chrome + one entry per shape (slice 4)",
+    );
+    assert_eq!(ui.damage_engine.raw_rects[0], snap.chrome_rect);
+    assert_eq!(ui.damage_engine.raw_rects[1], snap_shapes[0].rect);
+    assert_eq!(ui.damage_engine.raw_rects[2], snap_shapes[1].rect);
+}
+
+/// Slice 4 headline: a multi-shape owner whose shapes are spatially
+/// disjoint pushes only the *changed* shape's rect pair on a frame
+/// where one endpoint moved. Reproduces the darkroom graph pattern
+/// (canvas owns N bezier connections; drag one node, only the
+/// connections actually touching it should enter damage). Pre-slice-4
+/// the Occupied-changed arm pushed `prev_rect ∪ curr_rect = union of
+/// all shapes`; slice 4 pushes only the moved shape's prev + curr.
+#[test]
+fn per_shape_damage_only_pushes_changed_shapes() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    // Two stable shapes (drawn at fixed coords) + one shape whose
+    // endpoint shifts between frames. Frame N records all three;
+    // frame N+1 shifts only the third — the diff must push exactly
+    // that shape's pair of rects.
+    let mut ui = Ui::for_test();
+    let build = |moving_y: f32, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(180.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 20.0, 10.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(60.0, 0.0, 20.0, 10.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+                // The moving shape, far from the other two, so its
+                // bbox doesn't merge with theirs in the damage region.
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, moving_y, 20.0, 10.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+            });
+    };
+
+    // Frame 1 (cold) and frame 2 (steady — no diff).
+    frame(&mut ui, |ui| build(120.0, ui));
+    frame(&mut ui, |ui| build(120.0, ui));
+    assert!(
+        ui.damage_engine.dirty.is_empty(),
+        "steady frame must produce no diff"
+    );
+
+    // Frame 3 nudges shape 2's y endpoint. Slice 4 contract: only
+    // shape 2's prev rect (at y=120) and curr rect (at y=140) enter
+    // the damage region. Chrome (canvas background) is unchanged in
+    // geometry AND authoring → no chrome push. Shapes 0 and 1 are
+    // bit-identical → no push.
+    let prev_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_shape2_rect = ui.damage_engine.shape_snaps[prev_snap.shape_span.range()][2].rect;
+    frame(&mut ui, |ui| build(140.0, ui));
+
+    let canvas_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let curr_shape2_rect = ui.damage_engine.shape_snaps[canvas_snap.shape_span.range()][2].rect;
+
+    // The damage region must intersect both old and new positions of
+    // shape 2 (so the pixels-at-old-position get cleared and
+    // pixels-at-new-position get painted). It must NOT intersect the
+    // disjoint regions occupied by shapes 0 and 1 — those didn't move.
+    let region = ui.damage_region();
+    let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
+    assert!(
+        intersects(prev_shape2_rect),
+        "old position of moved shape must be in damage region; \
+         prev_rect = {prev_shape2_rect:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+    assert!(
+        intersects(curr_shape2_rect),
+        "new position of moved shape must be in damage region; \
+         curr_rect = {curr_shape2_rect:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+
+    // Sentinel: a rect on the chrome's top edge between shapes 0/1
+    // (y < 120) must NOT be in the region — chrome didn't change,
+    // shapes 0/1 are unchanged, only the moving shape's y-band gets
+    // damaged. Pre-slice-4 the whole `paint_rect` union (covering
+    // the entire 180×180 canvas) would have hit. This is the
+    // tight-damage win.
+    let stale_chrome_band = Rect::new(40.0, 40.0, 20.0, 20.0); // inside chrome, away from moved shape
+    assert!(
+        !intersects(stale_chrome_band),
+        "unchanged chrome interior must not enter damage; \
+         stale_band = {stale_chrome_band:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}
+
+/// Chrome authoring change (hover fill flip, no rect change) must
+/// push the chrome rect even though the geometric rect is identical.
+/// Pins the `chrome_hash` half of the chrome leg — without it, a
+/// hover-color flip would fall through the rect-only guard and emit
+/// no damage at all.
+#[test]
+fn chrome_authoring_change_pushes_chrome_rect() {
+    let mut ui = Ui::for_test();
+    let build = |fill: Color, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("c"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: fill.into(),
+                ..Default::default()
+            })
+            .show(ui, |_| {});
+    };
+    frame(&mut ui, |ui| build(BLUE, ui));
+    frame(&mut ui, |ui| build(BLUE, ui)); // settle
+    let snap_rect = ui.damage_engine.prev[&WidgetId::from_hash("c")].chrome_rect;
+
+    frame(&mut ui, |ui| build(RED, ui));
+    let region = ui.damage_region();
+    let rects: Vec<_> = region.iter_rects().collect();
+    assert!(
+        rects.iter().any(|r| r.intersects(snap_rect)),
+        "chrome authoring change must push chrome_rect even when rect \
+         geometry is unchanged; region = {rects:?}",
+    );
+}
+
+/// Ordinal shift: when the user removes a shape from the middle of a
+/// widget's authoring (e.g., deletes a connection in the middle of a
+/// connection list), the per-shape diff sees the trailing ordinals as
+/// "different" because they now align with a *different* prev shape.
+/// The contract: damage stays correct (the removed shape's pixels +
+/// the shifted shapes' old+new positions all enter the region), and
+/// the snapshot tail is trimmed via the `drain(ord..)` branch in the
+/// Occupied-changed arm.
+///
+/// This is the degraded-coarsening behaviour mentioned in the design
+/// doc — frame stays correct, one frame of over-paint, settles next.
+#[test]
+fn shape_removed_from_middle_evicts_trailing_ordinals() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+
+    let mut ui = Ui::for_test();
+    let build = |include_middle: bool, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(60.0)))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+                if include_middle {
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(Rect::new(60.0, 0.0, 20.0, 20.0)),
+                        radius: Corners::ZERO,
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                }
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(120.0, 0.0, 20.0, 20.0)),
+                    radius: Corners::ZERO,
+                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+            });
+    };
+
+    frame(&mut ui, |ui| build(true, ui));
+    frame(&mut ui, |ui| build(true, ui)); // settle
+
+    // Snapshot the prev rects for shapes 0/1/2 so we can verify the
+    // post-delete damage region.
+    let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_shapes = &ui.damage_engine.shape_snaps[prev.shape_span.range()];
+    assert_eq!(prev_shapes.len(), 3);
+    let prev_middle_rect = prev_shapes[1].rect;
+    let prev_blue_rect = prev_shapes[2].rect;
+
+    // Delete the middle shape. Now ord 0 still maps to red, but
+    // ord 1 — previously green — is now blue. The diff sees:
+    //   ord 0: red == red          → no push.
+    //   ord 1: green (prev) vs blue (curr) → push both.
+    //   ord 2: blue (prev) vs none → push prev (trailing tail).
+    // Net: union of all three "moved" rects in damage.
+    frame(&mut ui, |ui| build(false, ui));
+
+    let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    assert_eq!(
+        post.shape_span.len, 2,
+        "snapshot tail must be trimmed to the new shape count",
+    );
+
+    let region = ui.damage_region();
+    let rects: Vec<_> = region.iter_rects().collect();
+    let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
+
+    // The deleted shape's pixels must be in damage (cleared this frame).
+    assert!(
+        intersects(prev_middle_rect),
+        "deleted shape's prev rect must enter damage; \
+         prev_middle = {prev_middle_rect:?}, region = {rects:?}",
+    );
+    // The blue shape's old position must be in damage (mismatch push).
+    assert!(
+        intersects(prev_blue_rect),
+        "shifted shape's prev rect must enter damage; \
+         prev_blue = {prev_blue_rect:?}, region = {rects:?}",
+    );
+    // ord 0 (red) stayed put — its rect doesn't have to be in damage.
+    // We don't assert absence (region merging may absorb it); we only
+    // pin that the *deleted* and *shifted* rects are present.
+}

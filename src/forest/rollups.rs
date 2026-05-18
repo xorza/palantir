@@ -95,13 +95,21 @@ impl CascadeInputHash {
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
+    /// Per-node chrome authoring hash, `NodeHash::default()` for
+    /// chromeless nodes. Decomposed from `node` so the damage diff
+    /// can tell "chrome authoring flipped" (e.g. hover fill change)
+    /// from "a direct shape flipped" — both move `node[i]`
+    /// identically, but only the first should push the chrome rect.
+    /// Populated in `compute_hashes` from the same chrome hashing
+    /// pass that folds into `node[i]`.
+    pub(crate) chrome: Vec<NodeHash>,
     pub(crate) paints: fixedbitset::FixedBitSet,
 }
 
 impl SubtreeRollups {
-    /// Reset and size every column for `n` records. Both `node` and
-    /// `subtree` are resized with default values — filled by indexed
-    /// assignment during the fused reverse-pre-order pass in
+    /// Reset and size every column for `n` records. `node`, `subtree`,
+    /// and `chrome` are resized with default values — filled by
+    /// indexed assignment during the fused reverse-pre-order pass in
     /// `Tree::compute_hashes`. `paints` is resized to `n` and cleared
     /// (filled by indexed `set` during the same pass).
     pub(crate) fn reset_for(&mut self, n: usize) {
@@ -111,6 +119,7 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, NodeHash::default());
         self.subtree.resize(n, NodeHash::default());
+        self.chrome.resize(n, NodeHash::default());
         self.paints.clear();
         self.paints.grow(n);
     }

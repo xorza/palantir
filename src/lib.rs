@@ -129,6 +129,7 @@ mod hot_struct_sizes {
     use crate::renderer::quad::Quad;
     use crate::ui::cascade::{Cascade, EntryRow};
     use crate::ui::damage::region::DamageRegion;
+    use crate::ui::damage::{NodeSnapshot, ShapeSnap};
 
     fn row<T>(name: &str) -> (String, usize, usize) {
         (name.to_string(), size_of::<T>(), align_of::<T>())
@@ -154,6 +155,8 @@ mod hot_struct_sizes {
             row::<Cascade>("cascade::Cascade"),
             row::<EntryRow>("cascade::EntryRow"),
             row::<DamageRegion>("damage::DamageRegion"),
+            row::<NodeSnapshot>("damage::NodeSnapshot"),
+            row::<ShapeSnap>("damage::ShapeSnap"),
             row::<DrawRectPayload>("cmd::DrawRectPayload"),
             row::<DrawTextPayload>("cmd::DrawTextPayload"),
             row::<DrawPolylinePayload>("cmd::DrawPolylinePayload"),

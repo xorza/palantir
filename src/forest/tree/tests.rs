@@ -1142,3 +1142,140 @@ fn child_iter_traverses_correctly_after_finalize() {
         .collect();
     assert_eq!(inner_kids, vec![4], "inner's direct child: b");
 }
+
+// --- Per-shape hash column ---------------------------------------
+
+/// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after
+/// `post_record`: one slot per shape, populated by the existing
+/// `compute_hashes` walk so we don't pay a second per-shape sweep.
+#[test]
+fn shape_hashes_column_sized_to_shape_records() {
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("f"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: glam::Vec2::new(0.0, 0.0),
+                    b: glam::Vec2::new(10.0, 10.0),
+                    width: 1.0,
+                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+                ui.add_shape(Shape::Line {
+                    a: glam::Vec2::new(10.0, 10.0),
+                    b: glam::Vec2::new(20.0, 20.0),
+                    width: 1.0,
+                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+            });
+    });
+    let tree = ui.forest.tree(Layer::Main);
+    assert_eq!(
+        tree.shapes.hashes.len(),
+        tree.shapes.records.len(),
+        "shape_hashes column must be parallel to records",
+    );
+    // Two distinct shapes ⇒ two distinct hashes. (Different endpoints,
+    // different fills.)
+    assert_ne!(
+        tree.shapes.hashes[0], tree.shapes.hashes[1],
+        "distinct shapes must produce distinct per-shape hashes",
+    );
+    // No shape hash should be the zero default — populated for every
+    // record, never skipped.
+    for (i, h) in tree.shapes.hashes.iter().enumerate() {
+        assert_ne!(
+            *h,
+            NodeHash::default(),
+            "shape_hashes[{i}] left at default — compute_hashes missed a record",
+        );
+    }
+}
+
+/// Per-shape hashes are deterministic across identical-authoring
+/// frames. The shape buffer's slot for the same n-th shape on the
+/// same widget must hash to the same value frame N and frame N+1
+/// — that's the invariant the damage diff depends on.
+#[test]
+fn shape_hash_stable_across_frames() {
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("f"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: glam::Vec2::new(0.0, 0.0),
+                    b: glam::Vec2::new(10.0, 10.0),
+                    width: 1.0,
+                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+            });
+    };
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, build);
+    let h0 = ui.forest.tree(Layer::Main).shapes.hashes[0];
+    ui.run_at_acked(SURFACE, build);
+    let h1 = ui.forest.tree(Layer::Main).shapes.hashes[0];
+    assert_eq!(
+        h0, h1,
+        "same shape authoring must hash identically across frames",
+    );
+}
+
+/// Changing one shape's authoring inputs flips that shape's hash
+/// alone — other shapes on the same owner stay stable. This is the
+/// per-shape damage diff's key precondition.
+#[test]
+fn one_shape_change_only_flips_its_own_hash() {
+    let build = |b_endpoint: glam::Vec2, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("f"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: glam::Vec2::new(0.0, 0.0),
+                    b: glam::Vec2::new(10.0, 10.0),
+                    width: 1.0,
+                    brush: Color::rgb(1.0, 0.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+                ui.add_shape(Shape::Line {
+                    a: glam::Vec2::new(5.0, 5.0),
+                    b: b_endpoint,
+                    width: 1.0,
+                    brush: Color::rgb(0.0, 1.0, 0.0).into(),
+                    cap: crate::shape::LineCap::Butt,
+                    join: crate::shape::LineJoin::Miter,
+                });
+            });
+    };
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| build(glam::Vec2::new(20.0, 20.0), ui));
+    let h0_a = ui.forest.tree(Layer::Main).shapes.hashes[0];
+    let h0_b = ui.forest.tree(Layer::Main).shapes.hashes[1];
+    ui.run_at_acked(SURFACE, |ui| build(glam::Vec2::new(30.0, 30.0), ui));
+    let h1_a = ui.forest.tree(Layer::Main).shapes.hashes[0];
+    let h1_b = ui.forest.tree(Layer::Main).shapes.hashes[1];
+    assert_eq!(h0_a, h1_a, "unchanged shape 0 must keep its hash");
+    assert_ne!(h0_b, h1_b, "changed shape 1 must flip its hash");
+}
