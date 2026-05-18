@@ -42,7 +42,24 @@ impl Panel {
     /// paints in the *parent's* space, anchored under any ancestor
     /// clip/transform. That's deliberate: a transformed panel acts as
     /// a pan/zoom viewport over its body, and the background frames
-    /// the viewport rather than panning with it.
+    /// the viewport rather than panning with it. To get a background
+    /// that scales/pans *with* the body, nest one panel deep: put the
+    /// transform on the outer panel and the chrome on its child.
+    ///
+    /// **Origin-anchor footgun.** Body emission applies `self.compose
+    /// (child_local_rect)` at paint time, where `child_local_rect.min`
+    /// is in *absolute parent-frame coords* (post-arrange). A bare
+    /// `TranslateScale::new(-offset, zoom)` therefore scales the
+    /// panel's own `layout_rect.min` along with its descendants —
+    /// visible drift at non-1.0 zoom unless `layout_rect.min` happens
+    /// to be `(0, 0)`. When the transformed panel sits anywhere other
+    /// than the surface origin, compose an origin compensation into
+    /// the translation:
+    ///   `TranslateScale::new(origin * (1.0 - zoom) - offset, zoom)`
+    /// where `origin = previous_frame.layout_rect.min`. See
+    /// `widgets/scroll.rs::set_extras` (around the comment that
+    /// expands to `inner_local * zoom + origin - offset`) for the
+    /// canonical example and the one-frame-stale source of `origin`.
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = t;
         self
