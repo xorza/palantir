@@ -32,11 +32,17 @@ impl Panel {
         }
     }
 
-    /// Apply a pan/zoom transform to descendants (post-layout). Layout runs
-    /// in untransformed space; the transform only affects paint and hit-test.
-    /// Composes with any ancestor transform. The panel's *own* background
-    /// paints in the parent's space (untransformed) — only children are
-    /// transformed.
+    /// Apply a pan/zoom transform to the panel's body — both child
+    /// subtrees AND shapes recorded directly on the panel via
+    /// `Ui::add_shape`. Layout runs in untransformed space; the
+    /// transform only affects paint and hit-test. Composes with any
+    /// ancestor transform.
+    ///
+    /// Chrome ([`Configure::background`]) is the one exception — it
+    /// paints in the *parent's* space, anchored under any ancestor
+    /// clip/transform. That's deliberate: a transformed panel acts as
+    /// a pan/zoom viewport over its body, and the background frames
+    /// the viewport rather than panning with it.
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = t;
         self

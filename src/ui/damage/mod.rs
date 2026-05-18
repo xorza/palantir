@@ -348,6 +348,14 @@ impl DamageEngine {
                             //   colour, etc.): descendants push their
                             //   own rects through their own diff
                             //   entries; this node contributes nothing.
+                            //   (The node's *own* transform shifting
+                            //   is folded into `node_hash` via
+                            //   `compute_hashes`, so a self-transform
+                            //   change flips the outer
+                            //   `e.get().hash == curr_node_hash` guard
+                            //   and goes through the generic Occupied
+                            //   arm instead — covering its direct
+                            //   shapes' new positions.)
                             if curr_paints && prev.cascade_input != curr_cascade_input {
                                 self.raw_rects.push(curr_rect);
                             }

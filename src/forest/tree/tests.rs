@@ -544,11 +544,14 @@ fn subtree_hash_changes_on_sibling_reorder() {
     assert_ne!(h_ab, h_ba);
 }
 
-/// Transform changes fold into `subtree_hash` only — encode cache
-/// (subtree-keyed) invalidates while damage rect-diffing handles paint
-/// position drift.
+/// A panel's own `Panel::transform` changing flips both its
+/// `node_hash` and its `subtree_hash`. The `node_hash` change is
+/// load-bearing: under the new `Panel::transform` contract, a
+/// transform applies to the panel's direct shapes, so a self-transform
+/// shift moves the node's *own* painted output. `DamageEngine::compute`
+/// keys self-paint damage off `node_hash`, so the bit must live there.
 #[test]
-fn transform_change_affects_subtree_but_not_node_hash() {
+fn self_transform_change_flips_node_hash() {
     use crate::primitives::transform::TranslateScale;
     use glam::Vec2;
     fn build(ui: &mut Ui, t: TranslateScale) -> NodeId {
@@ -566,13 +569,10 @@ fn transform_change_affects_subtree_but_not_node_hash() {
     let t_b = TranslateScale::from_translation(Vec2::new(10.0, 0.0));
     let h_node_a = record_hash(|ui| build(ui, t_a));
     let h_node_b = record_hash(|ui| build(ui, t_b));
-    assert_eq!(
-        h_node_a, h_node_b,
-        "transform must NOT change per-node hash"
-    );
+    assert_ne!(h_node_a, h_node_b, "self transform MUST change node hash");
     let h_sub_a = record_subtree_hash(|ui| build(ui, t_a));
     let h_sub_b = record_subtree_hash(|ui| build(ui, t_b));
-    assert_ne!(h_sub_a, h_sub_b, "transform MUST change subtree hash");
+    assert_ne!(h_sub_a, h_sub_b, "self transform MUST change subtree hash");
 }
 
 /// `LayoutMode::Grid(idx)` carries a frame-local arena slot. Per-node

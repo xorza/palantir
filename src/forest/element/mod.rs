@@ -252,12 +252,15 @@ pub(crate) struct PanelExtras {
     pub(crate) justify: Justify,
     /// Default alignment applied to children with `Auto` axis (panels only).
     pub(crate) child_align: Align,
-    /// Pan/zoom transform applied to descendants (post-layout). Layout
-    /// runs in untransformed space; cascade composes this with the
-    /// ancestor transform for paint/hit-test. `TranslateScale::IDENTITY`
-    /// is the no-op sentinel — same convention as `Stroke::ZERO` /
-    /// `Shadow::NONE` / `Background::is_noop`; cascade filters identity
-    /// at read time rather than carrying an `Option` discriminant.
+    /// Pan/zoom transform applied to the node's body — child subtrees
+    /// AND any shape recorded on the node via `Ui::add_shape`. Chrome
+    /// (background) is unaffected; it paints in parent space, above
+    /// any clip pushed by this node. Layout runs in untransformed
+    /// space; cascade composes this with the ancestor transform for
+    /// paint/hit-test. `TranslateScale::IDENTITY` is the no-op
+    /// sentinel — same convention as `Stroke::ZERO` / `Shadow::NONE` /
+    /// `Background::is_noop`; cascade filters identity at read time
+    /// rather than carrying an `Option` discriminant.
     pub(crate) transform: TranslateScale,
 }
 
