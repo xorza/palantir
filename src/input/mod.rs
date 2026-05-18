@@ -324,16 +324,16 @@ impl Default for ResponseState {
 pub struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
-    hovered: Option<WidgetId>,
+    pub(crate) hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
     /// whenever the pointer moves and at `post_record`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_pixels`].
-    scroll_target: Option<WidgetId>,
+    pub(crate) scroll_target: Option<WidgetId>,
     /// Topmost `Sense::PINCH` widget under the pointer, recomputed
     /// alongside `scroll_target`. Pinch zoom factors route to this id
     /// instead of `scroll_target` so a widget can opt into pan-via-
     /// scroll *without* committing to pinch zoom (and vice versa).
-    pinch_target: Option<WidgetId>,
+    pub(crate) pinch_target: Option<WidgetId>,
     /// Per-button press capture (active widget, press pos, drag latch,
     /// frame edges for `drag_started` and `clicked`). Indexed by
     /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
@@ -781,16 +781,7 @@ impl InputState {
         {
             self.focused = None;
         }
-        if let Some(p) = self.pointer_pos {
-            let hits = cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
-            self.hovered = hits.hover;
-            self.scroll_target = hits.scroll;
-            self.pinch_target = hits.pinch;
-        } else {
-            self.hovered = None;
-            self.scroll_target = None;
-            self.pinch_target = None;
-        }
+        self.refresh_pointer_targets(cascades);
     }
 
     /// Returns this frame's combined scroll delta if `id` is the
