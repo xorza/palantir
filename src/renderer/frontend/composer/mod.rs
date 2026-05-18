@@ -671,37 +671,30 @@ impl Composer {
     }
 }
 
-/// Rungs per octave on the text-scale ladder. `2^(k/N)` quantizes the
-/// scale into log-uniform steps so a continuous zoom crosses a constant
-/// number of cache keys per *percent* of zoom, instead of per *unit* of
-/// zoom (additive over-quantizes at 4× → 0.625% steps = constant
-/// rasterize, and under-quantizes at 0.1× → 25% steps). Anchored on
-/// powers of two so 0.5×, 1×, 2×, 4× snap exactly. 28 rungs/octave ≈
-/// 2.5% per step — sub-visible (matches the old additive ladder at
-/// scale=1, but uniform across the full zoom range).
+/// Additive step on the text-scale ladder. Same step in *scale units*
+/// across the range, so the step in *percent of current size* shrinks
+/// as zoom grows (0.025/4 ≈ 0.6% at 4×, 0.025/1 = 2.5% at 1×, 0.025/0.5
+/// = 5% at 0.5×). The user-perceptual case for this layout: at high
+/// zoom every percent of size change is visible, so we want fine steps;
+/// at low zoom text is small and crispness stepping doesn't matter, so
+/// coarse steps + fewer atlas keys is the right trade.
 ///
 /// **Geometric note.** Measurement uses the unscaled `font_size_px`
-/// (`TextShaper::measure`) — only the paint-time scale is snapped here.
-/// At a non-rung zoom level the rendered glyph block is therefore up to
-/// `STEP/2` (≈1.25%) wider/narrower than the layout-space rect it
-/// nominally fills; the extra width is clipped at `TextRun.bounds`.
-/// Smaller step ⇒ smaller mismatch, larger atlas churn — pick by
-/// visible-stepping budget.
-const TEXT_SCALE_RUNGS_PER_OCTAVE: f32 = 28.0;
+/// (`TextShaper::measure`) — only the paint-time scale is snapped. At a
+/// non-rung zoom level the rendered glyph block is up to `STEP/2`
+/// wider/narrower than the layout-space rect it nominally fills; the
+/// extra width is clipped at `TextRun.bounds`.
+const TEXT_SCALE_STEP: f32 = 0.025;
 
 /// Snap the ancestor-transform component of a text run's scale to the
-/// log-octave ladder. Identity is preserved exactly so non-zoom UIs
-/// stay on the trivial path. Non-finite / non-positive inputs pass
-/// through untouched. See call-site comment in `DrawText` for rationale.
+/// additive 2.5% ladder. Identity is preserved exactly so non-zoom UIs
+/// stay on the trivial path. See call-site comment in `DrawText` for
+/// rationale.
 fn snap_text_scale(s: f32) -> f32 {
     if (s - 1.0).abs() < EPS {
         return 1.0;
     }
-    if !s.is_finite() || s <= 0.0 {
-        return s;
-    }
-    let k = (s.log2() * TEXT_SCALE_RUNGS_PER_OCTAVE).round();
-    (k / TEXT_SCALE_RUNGS_PER_OCTAVE).exp2()
+    (s / TEXT_SCALE_STEP).round() * TEXT_SCALE_STEP
 }
 
 /// Conservative overlap test: any non-empty intersection counts.
