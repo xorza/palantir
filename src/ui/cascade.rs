@@ -477,21 +477,36 @@ fn compute_paint_rect(
     parent_clip: Option<Rect>,
     shape_rects: &mut [Rect],
 ) -> Rect {
+    // Shapes recorded on this node paint *inside* the node's own
+    // transform (matching the encoder body push/pop), so their
+    // screen-space rects compose `parent_transform` with self's
+    // transform. Chrome stays on `parent_transform` — it paints
+    // before the body push, anchored in parent space.
+    let self_transform = tree.transform_of(node).unwrap_or(TranslateScale::IDENTITY);
+    let shape_transform = parent_transform.compose(self_transform);
+
     let owner_local = Rect {
         min: Vec2::ZERO,
         size: layout_rect.size,
     };
     let mut paint_local = owner_local;
+    let mut shapes_local = Rect::ZERO;
+    let mut have_shapes = false;
     if tree.records.shape_span()[node.idx()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
                 let bbox = s.paint_bbox_local(layout_rect.size);
-                paint_local = paint_local.union(bbox);
+                if have_shapes {
+                    shapes_local = shapes_local.union(bbox);
+                } else {
+                    shapes_local = bbox;
+                    have_shapes = true;
+                }
                 let tree_local = Rect {
                     min: layout_rect.min + bbox.min,
                     size: bbox.size,
                 };
-                let screen = clip_to(parent_transform.apply_rect(tree_local), parent_clip);
+                let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
                 shape_rects[idx as usize] = screen;
             }
         }
@@ -515,9 +530,23 @@ fn compute_paint_rect(
         );
         paint_local = paint_local.union(shadow_local);
     }
-    let paint_tree_local = Rect {
+    // Combine the chrome/owner extent (parent-space) with the shape
+    // extent (self-transformed): map each into screen space and
+    // union the screen rects. Avoids losing the shape's transform by
+    // pulling shape-local back into chrome-local.
+    let chrome_tree_local = Rect {
         min: layout_rect.min + paint_local.min,
         size: paint_local.size,
     };
-    clip_to(parent_transform.apply_rect(paint_tree_local), parent_clip)
+    let chrome_screen = clip_to(parent_transform.apply_rect(chrome_tree_local), parent_clip);
+    if have_shapes {
+        let shapes_tree_local = Rect {
+            min: layout_rect.min + shapes_local.min,
+            size: shapes_local.size,
+        };
+        let shapes_screen = clip_to(shape_transform.apply_rect(shapes_tree_local), parent_clip);
+        chrome_screen.union(shapes_screen)
+    } else {
+        chrome_screen
+    }
 }

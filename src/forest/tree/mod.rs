@@ -339,8 +339,11 @@ impl Tree {
             layouts[i].hash_with_flags(attrs[i], &mut h);
             let ex = extras[i];
             if let Some(s) = ex.bounds.get() {
-                // `BoundsExtras::hash` excludes transform — transform
-                // is folded into the subtree hash below.
+                // `BoundsExtras::hash` excludes transform — own transform
+                // is folded into `node_hash` separately below so the
+                // hash captures everything that determines this node's
+                // *own* painted output (including direct shapes inside
+                // its `Panel::transform` per the new contract).
                 bounds_tab[s].hash(&mut h);
             }
             if let Some(s) = ex.panel.get() {
@@ -348,6 +351,25 @@ impl Tree {
             }
             let chrome = ex.chrome.get().map(|s| &chrome_tab[s]);
             chrome.hash(&mut h);
+
+            // Fold this node's own transform into `node_hash`. Under
+            // the `Panel::transform` contract, the transform applies
+            // to direct shapes too, so a self-transform change shifts
+            // this node's own painted output — damage diff must see
+            // it. Filter identity so the dominant no-transform case
+            // costs zero hash bytes. Pinned by
+            // `self_transform_change_flips_node_hash`.
+            let own_xf = ex
+                .panel
+                .get()
+                .map(|s| panel_tab[s].transform)
+                .filter(|t| !t.is_noop());
+            if let Some(t) = own_xf {
+                h.write_u8(1);
+                h.pod(&t);
+            } else {
+                h.write_u8(0);
+            }
 
             // Walk this node's direct shapes + immediate-child position
             // markers in record order.
@@ -384,23 +406,11 @@ impl Tree {
             let node_hash = h.finish();
             node_out[i] = NodeHash(node_hash);
 
-            // Subtree hash: seeded from `node_hash`, then folds the
-            // transform (kept out of `BoundsExtras::hash` so a parent
-            // moving doesn't dirty-flag children's node hashes) and
-            // each direct child's already-computed `subtree[child]`.
+            // Subtree hash: seeded from `node_hash` (which now already
+            // includes own transform) and each direct child's
+            // already-computed `subtree[child]`.
             let mut sh = Hasher::new();
             sh.write_u64(node_hash);
-            let xf = ex
-                .panel
-                .get()
-                .map(|s| panel_tab[s].transform)
-                .filter(|t| !t.is_noop());
-            if let Some(t) = xf {
-                sh.write_u8(1);
-                sh.pod(&t);
-            } else {
-                sh.write_u8(0);
-            }
             let mut next = (i as u32) + 1;
             while next < subtree_end {
                 sh.write_u64(subtree_out[next as usize].0);

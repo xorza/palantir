@@ -850,6 +850,65 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     }
 }
 
+/// Reproduces the darkroom graph-canvas regression: a panel with
+/// `Panel::transform` and direct shapes (bezier connections) shifts
+/// its own transform every pan frame. Under the `Panel::transform`
+/// contract those shapes paint *inside* the self-transform, so their
+/// tessellated pixels move — but `cascade_input` only tracks
+/// ancestor state and stays put. The fix is at the source: own
+/// transform now folds into `node_hash`, so the diff's
+/// `e.get().hash == curr_node_hash` guard fails and the generic
+/// Occupied arm pushes both prev and curr rects, sweeping where the
+/// shapes were and are.
+#[test]
+fn self_transform_shift_damages_direct_shapes() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    let mut ui = Ui::for_test();
+    let build = |dx: f32, ui: &mut Ui| {
+        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("root"))
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Panel::canvas()
+                        .id(WidgetId::from_hash("xpanel"))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                        .show(ui, |ui| {
+                            // Direct shape on the transformed panel —
+                            // mirrors how darkroom adds connection
+                            // beziers on the inner canvas.
+                            ui.add_shape(Shape::RoundedRect {
+                                local_rect: Some(Rect::new(40.0, 40.0, 30.0, 30.0)),
+                                radius: Corners::ZERO,
+                                fill: Color::rgb(0.2, 0.6, 0.9).into(),
+                                stroke: Stroke::default(),
+                            });
+                        });
+                });
+        });
+    };
+    build(0.0, &mut ui);
+    build(20.0, &mut ui);
+    let region = ui.damage_region();
+
+    // After translating self by dx=20, the shape's prev pixels lived
+    // at [40, 70] × [40, 70] (translation 0) and the new pixels live
+    // at [60, 90] × [40, 70]. Damage must cover both — i.e. at least
+    // [40, 90] × [40, 70].
+    let covered = region.iter_rects().any(|r| {
+        r.min.x <= 40.5 && r.min.y <= 40.5 && r.max().x >= 90.0 - 0.5 && r.max().y >= 70.0 - 0.5
+    });
+    assert!(
+        covered,
+        "self-transform shift on a panel with direct shapes must \
+         damage both old and new shape positions. region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}
+
 // --- DamageEngine::filter heuristic ---------------------------------------------
 
 const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);

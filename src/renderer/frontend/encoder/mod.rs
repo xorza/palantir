@@ -424,10 +424,15 @@ fn encode_node(
     // composer.
     let transform = tree.transform_of(id).filter(|t| !t.is_noop());
 
-    // Interleave direct shapes with child recursion in record order.
-    // Shapes paint *outside* the owner's pan transform so they stay
-    // anchored to the owner regardless of scroll offset; transform is
-    // pushed/popped per child accordingly.
+    // Body (direct shapes + child subtrees) paints inside the node's
+    // own transform — chrome (drawn above this point) is the only
+    // thing that stays in parent space, so a panel's `transform` acts
+    // as a pure inner-content pan/zoom while its background remains
+    // anchored. Single push/pop wraps the whole body; the composer
+    // handles per-cmd transform composition.
+    if let Some(t) = transform {
+        out.push_transform(t);
+    }
     let mut text_ordinal: u32 = 0;
     for item in tree.tree_items(id) {
         match item {
@@ -449,9 +454,6 @@ fn encode_node(
                 }
             }
             TreeItem::Child(child) => {
-                if let Some(t) = transform {
-                    out.push_transform(t);
-                }
                 encode_node(
                     tree,
                     layout,
@@ -464,11 +466,11 @@ fn encode_node(
                     now,
                     out,
                 );
-                if transform.is_some() {
-                    out.pop_transform();
-                }
             }
         }
+    }
+    if transform.is_some() {
+        out.pop_transform();
     }
 
     if clip {

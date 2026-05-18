@@ -120,6 +120,8 @@ impl Grid {
         self
     }
 
+    /// See [`crate::widgets::Panel::transform`] — same contract:
+    /// applies to body (children + direct shapes), not to chrome.
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = t;
         self
