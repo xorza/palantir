@@ -11,7 +11,7 @@ use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::CascadeInputHash;
-use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
+use crate::forest::shapes::record::shadow_paint_rect_local;
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
@@ -197,7 +197,7 @@ impl Cascades {
         hover_filter: impl Fn(Sense) -> bool,
         scroll_filter: impl Fn(Sense) -> bool,
         pinch_filter: impl Fn(Sense) -> bool,
-    ) -> HitPair {
+    ) -> HitTargets {
         let rects = self.entries.rect();
         let senses = self.entries.sense();
         let ids = self.entries.widget_id();
@@ -221,7 +221,7 @@ impl Cascades {
                 break;
             }
         }
-        HitPair {
+        HitTargets {
             hover,
             scroll,
             pinch,
@@ -256,7 +256,7 @@ impl Cascades {
 }
 
 #[derive(Default, Clone, Copy, Debug)]
-pub(crate) struct HitPair {
+pub(crate) struct HitTargets {
     pub(crate) hover: Option<WidgetId>,
     pub(crate) scroll: Option<WidgetId>,
     pub(crate) pinch: Option<WidgetId>,
@@ -522,35 +522,19 @@ fn compute_paint_rect(
     if tree.records.shape_span()[node.idx()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
-                let bbox = s.paint_bbox_local(layout_rect.size);
-                // `ShapeRecord::Text { local_origin: Some(_), .. }`
-                // returns a zero-size bbox because the glyph extent
-                // isn't known until cosmic-text shapes the run.
-                // Conservatively fall back to the owner rect for the
-                // paint-extent accumulator so the encoder's
-                // subtree-paint-rect cull doesn't drop the text; the
-                // per-shape `shape_rects[idx]` still stores the
-                // origin-only rect (callers that key off the
-                // per-shape rect, e.g. paint anims, get the precise
-                // origin). Pinned by
-                // `multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect`.
-                let extent_bbox = match s {
-                    ShapeRecord::Text {
-                        local_origin: Some(_),
-                        ..
-                    } => Rect {
-                        min: Vec2::ZERO,
-                        size: layout_rect.size,
-                    },
-                    _ => bbox,
-                };
+                // `precise` for the per-shape rect column (paint anims,
+                // per-shape damage), `extent` for the node-level
+                // paint_rect accumulator — wider when the precise
+                // bbox is degenerate (e.g. Text-with-origin before
+                // shaping). See `ShapeRecord::paint_extents_local`.
+                let (precise, extent) = s.paint_extents_local(layout_rect.size);
                 shapes_local = Some(match shapes_local {
-                    Some(acc) => acc.union(extent_bbox),
-                    None => extent_bbox,
+                    Some(acc) => acc.union(extent),
+                    None => extent,
                 });
                 let tree_local = Rect {
-                    min: layout_rect.min + bbox.min,
-                    size: bbox.size,
+                    min: layout_rect.min + precise.min,
+                    size: precise.size,
                 };
                 let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
                 shape_rects[idx as usize] = screen;

@@ -294,30 +294,27 @@ pub struct ResponseState {
     pub pointer_local: Option<Vec2>,
 }
 
-impl ResponseState {
-    /// Sane defaults that distinguish "no scroll routed" from a real
-    /// `Vec2::ZERO` scroll. `zoom_factor` defaults to identity so
-    /// `(factor - 1.0).abs() > eps` is a safe presence check.
-    pub(crate) const ZEROED: Self = Self {
-        rect: None,
-        layout_rect: None,
-        hovered: false,
-        pressed: false,
-        clicked: false,
-        secondary_clicked: false,
-        disabled: false,
-        focused: false,
-        drag_delta: None,
-        drag_started: false,
-        scroll_delta: Vec2::ZERO,
-        zoom_factor: 1.0,
-        pointer_local: None,
-    };
-}
-
+/// Hand-rolled because `zoom_factor`'s identity is `1.0`, not the
+/// `0.0` that `#[derive(Default)]` would produce — `(factor - 1.0)
+/// .abs() > eps` is a safe presence check for routed pinch on a
+/// `Default`-constructed instance.
 impl Default for ResponseState {
     fn default() -> Self {
-        Self::ZEROED
+        Self {
+            rect: None,
+            layout_rect: None,
+            hovered: false,
+            pressed: false,
+            clicked: false,
+            secondary_clicked: false,
+            disabled: false,
+            focused: false,
+            drag_delta: None,
+            drag_started: false,
+            scroll_delta: Vec2::ZERO,
+            zoom_factor: 1.0,
+            pointer_local: None,
+        }
     }
 }
 
@@ -361,6 +358,15 @@ pub struct InputState {
     /// at the widget from [`Self::frame_scroll_pixels`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
+    /// Frame-snapshot of the theme's default font line height in
+    /// logical px. Filled by [`crate::Ui::frame_inner`] before any
+    /// `response_for` calls; read here to convert
+    /// `frame_scroll_lines` into pixels for `ResponseState::scroll_delta`
+    /// without each response_for call dereffing `theme.text` again.
+    /// Cached on `InputState` (not on `Ui`) because the consumers —
+    /// `scroll_delta_for` / `response_for` — already take `&self.input`,
+    /// so the snapshot lives in the same borrow.
+    pub(crate) frame_line_px: f32,
     /// Unified keyboard event stream this frame:
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
@@ -445,6 +451,11 @@ impl InputState {
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
+            // Populated by `Ui::frame_inner` before record runs;
+            // 16.0 is a safe pre-frame fallback (matches the default
+            // theme's body line height) so the rare "response_for
+            // before first frame" path doesn't divide by zero.
+            frame_line_px: 16.0,
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
@@ -816,12 +827,7 @@ impl InputState {
         Some(self.pointer_pos? - cap.press_pos?)
     }
 
-    pub(crate) fn response_for(
-        &self,
-        id: WidgetId,
-        cascades: &Cascades,
-        line_px: f32,
-    ) -> ResponseState {
+    pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
         let entry_idx = cascades.by_id.get(&id).copied().map(|i| i as usize);
         let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
         let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
@@ -853,7 +859,7 @@ impl InputState {
         // Both gates fire even when the routed delta is `Vec2::ZERO`
         // / `1.0` — the caller checks against the identity value to
         // distinguish "not routed" from "routed but quiet".
-        let scroll_delta = self.scroll_delta_for(id, line_px);
+        let scroll_delta = self.scroll_delta_for(id, self.frame_line_px);
         let zoom_factor = self.zoom_delta_for(id);
         let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
 

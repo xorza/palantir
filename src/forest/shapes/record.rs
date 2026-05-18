@@ -402,6 +402,43 @@ impl ShapeRecord {
     /// the world-space form for damage culling. Drop shadows extend
     /// beyond the owner via [`shadow_paint_rect_local`]; other variants
     /// paint into `local_rect` (when set) or the owner's full rect at
+    /// Returns `(precise, extent)`:
+    ///
+    /// - `precise` = the tight per-shape paint bbox in owner-local
+    ///   coords. Stored in `Cascades::shape_rects[idx]` and consumed
+    ///   by per-shape consumers (paint anims, predmaged routing) that
+    ///   need exact rects.
+    /// - `extent` = the **conservative** bbox that should feed the
+    ///   node-level `paint_rect` accumulator for damage purposes.
+    ///   Wider than `precise` when the shape's true extent isn't
+    ///   known at record time (`Text` with `local_origin: Some(_)`
+    ///   reports zero glyph width because cosmic-text hasn't shaped
+    ///   yet); same as `precise` for everything else.
+    ///
+    /// One call site reads both halves, avoiding a per-variant
+    /// special case at the cascade.
+    #[inline]
+    pub(crate) fn paint_extents_local(&self, owner_size: Size) -> (Rect, Rect) {
+        let precise = self.paint_bbox_local(owner_size);
+        let extent = match self {
+            // Glyph extent isn't known until shaping runs, so the
+            // precise bbox is degenerate (`size = ZERO`, anchored at
+            // `origin`). Inflate to the owner rect for the damage
+            // union — chrome and shapes both depend on cascade picking
+            // up a non-empty paint extent here, otherwise the
+            // encoder's subtree-cull skips the leaf entirely.
+            ShapeRecord::Text {
+                local_origin: Some(_),
+                ..
+            } => Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            },
+            _ => precise,
+        };
+        (precise, extent)
+    }
+
     /// `(0, 0)`. `Polyline` carries a pre-computed owner-relative bbox
     /// from `lower_polyline`.
     #[inline]
