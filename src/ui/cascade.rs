@@ -374,9 +374,15 @@ fn run_tree(
         });
         cascades.subtree_paint_rects[li].push(subtree_seed);
 
+        // `Panel::transform` semantics: scale pivots about the node's
+        // own `layout_rect.min`, not the cascade's (0, 0). The
+        // anchoring cancels the `panel.min * (1 - scale)` drift that
+        // a raw `self.compose` against absolute-coord layout rects
+        // would introduce. Identity-preserving — no-op when
+        // `scale == 1`. See `TranslateScale::anchored_at`.
         let node_transform = tree.transform_of(id);
         let desc_transform = match node_transform {
-            Some(t) => parent_transform.compose(t),
+            Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
             None => parent_transform,
         };
         let desc_clip = if attrs.clip_mode().is_clip() {
@@ -480,13 +486,19 @@ fn compute_paint_rect(
     // Two transforms apply to this node's paint:
     // - `parent_transform` for chrome (encoder emits chrome before the
     //   body push) and the chrome's drop shadow.
-    // - `shape_transform = parent.compose(self)` for direct shapes
-    //   (encoder emits shapes inside the body push, per the
-    //   `Panel::transform` contract).
+    // - `shape_transform = parent.compose(self.anchored_at(layout.min))`
+    //   for direct shapes (encoder emits shapes inside the body push,
+    //   per the `Panel::transform` contract). Anchoring at
+    //   `layout.min` matches the cascade's descendant transform and
+    //   gives "scale my body about my own origin" semantics — see
+    //   `TranslateScale::anchored_at`.
     // Chrome and shapes are unioned in screen space so each side
     // carries its own transform — folding them in owner-local would
     // lose `self.transform` for shapes.
-    let self_transform = tree.transform_of(node).unwrap_or(TranslateScale::IDENTITY);
+    let self_transform = tree
+        .transform_of(node)
+        .map(|t| t.anchored_at(layout_rect.min))
+        .unwrap_or(TranslateScale::IDENTITY);
     let shape_transform = parent_transform.compose(self_transform);
 
     // Each accumulator is `Option<Rect>` rather than seeded to
@@ -651,6 +663,69 @@ mod tests {
                 && (shape_rect.size.w - 90.0).abs() < eps
                 && (shape_rect.size.h - 90.0).abs() < eps,
             "expected shape_rect = (10, 20, 90, 90); got {shape_rect:?}",
+        );
+    }
+
+    /// `.transform(zoom=S)` on an off-origin panel must anchor the
+    /// scale at the panel's own `layout_rect.min`, not at the
+    /// cascade's (0, 0). A child at panel-local (0, 0) should land
+    /// at the panel's origin regardless of `S` — without anchoring it
+    /// would slide off by `panel.min * (S - 1)`. Pins the cascade-
+    /// level half of the "scale my body about my own origin"
+    /// `Panel::transform` contract.
+    #[test]
+    fn self_transform_anchors_scale_at_panel_origin() {
+        let zoom = 2.0;
+        let xform = TranslateScale::from_scale(zoom);
+
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            // Push the transformed panel off the surface origin with a
+            // leading sibling — Spacer-style placeholder so the panel
+            // sits at (sibling_width, 0) instead of (0, 0).
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("spacer"))
+                    .size(Sizing::Fixed(50.0))
+                    .show(ui, |_| {});
+                Panel::canvas()
+                    .id(WidgetId::from_hash("xpanel"))
+                    .size(Sizing::Fixed(200.0))
+                    .transform(xform)
+                    .show(ui, |ui| {
+                        ui.add_shape(Shape::RoundedRect {
+                            // Panel-local (0, 0) — the natural top-left
+                            // of the panel's body.
+                            local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
+                            radius: Corners::ZERO,
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                            stroke: Stroke::ZERO,
+                        });
+                    });
+            });
+        });
+
+        let layer_idx = Layer::Main.idx();
+        let shape_rect = ui.layout.cascades.shape_rects[layer_idx][0];
+        // Panel sits at (50, 0). Shape's panel-local (0, 0) should
+        // map to screen (50, 0) under the anchor — the panel's own
+        // top-left is the fixed point of its scale. Size is
+        // `panel-local size * zoom = 10 * 2 = 20`.
+        //
+        // Without anchoring, the raw `parent.compose(self).apply(panel.min)`
+        // would give `(50, 0) * 2 = (100, 0)` — content slides 50px
+        // right of where it belongs.
+        let eps = 1e-3;
+        assert!(
+            (shape_rect.min.x - 50.0).abs() < eps && (shape_rect.min.y - 0.0).abs() < eps,
+            "expected shape min = (50, 0); got {:?} — scale should anchor at panel.min, \
+             not at cascade origin",
+            shape_rect.min,
+        );
+        assert!(
+            (shape_rect.size.w - 20.0).abs() < eps && (shape_rect.size.h - 20.0).abs() < eps,
+            "expected size = (20, 20) (panel-local * zoom); got {:?}",
+            shape_rect.size,
         );
     }
 }

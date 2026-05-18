@@ -734,23 +734,13 @@ impl Scroll {
         } else {
             user_clip
         });
-        // Children's layout rects are in *absolute* screen coords
-        // (e.g. a cell at inner-local (x,y) has `child.rect.min =
-        // inner.rect.min + (x,y)`). A bare `TranslateScale(-offset,
-        // zoom)` would scale around (0,0), shifting the entire
-        // content by `inner.rect.min * (zoom - 1)` — visible drift
-        // from the cursor anchor. Compensate by translating so the
-        // scale anchors at `inner.rect.min`:
-        //   screen = child.abs * zoom + (origin*(1-zoom) - offset)
-        // which expands to `inner_local * zoom + origin - offset` —
-        // top-left fixed at zoom=any, offset=0; offset translates
-        // the scaled content. Origin is sourced from the previous
-        // frame's response rect (one-frame stale, fine for stable
-        // layouts; the first frame has zoom=1 + offset=0 so the
-        // compensation is 0 either way).
+        // Raw pan/zoom — cascade anchors the scale at the inner's own
+        // `layout_rect.min` (`TranslateScale::anchored_at`), so we
+        // don't pre-bake the origin compensation. Translation is just
+        // the user's scroll offset, negated (scroll right shifts
+        // content left).
         if offset != Vec2::ZERO || (zoom - 1.0).abs() > f32::EPSILON {
-            let origin = widget_origin.unwrap_or(Vec2::ZERO);
-            inner.transform = TranslateScale::new(origin * (1.0 - zoom) - offset, zoom);
+            inner.transform = TranslateScale::new(-offset, zoom);
         }
 
         let plan_v = bar_plan(
