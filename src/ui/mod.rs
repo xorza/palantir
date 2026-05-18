@@ -899,7 +899,16 @@ impl Ui {
     /// e.g. baking drag deltas into a widget's position before
     /// recording it.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
-        let mut state = self.input.response_for(id, &self.layout.cascades);
+        // Wheel-line → pixels conversion uses the theme's default
+        // line height, matching what `Scroll` reads when it routes
+        // pan deltas. A widget that wants a different step (e.g.
+        // a list with its own row height) can read
+        // `frame_scroll_pixels` / `frame_scroll_lines` directly.
+        let line_px = self
+            .theme
+            .text
+            .line_height_for(self.theme.text.font_size_px);
+        let mut state = self.input.response_for(id, &self.layout.cascades, line_px);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.current_tree().ancestor_disabled();

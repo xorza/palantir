@@ -68,6 +68,31 @@ impl Response {
     pub fn drag_started(&self) -> bool {
         self.state.drag_started
     }
+    /// Combined wheel + touchpad scroll delta this frame, in logical
+    /// pixels. Routes only to widgets with [`crate::Sense::SCROLL`]
+    /// that were the topmost scroll target under the pointer.
+    /// `Vec2::ZERO` otherwise — and also when the widget *is* the
+    /// target but no scroll event arrived this frame. Sign matches
+    /// "advance offset forward" (positive = scroll down/right); see
+    /// `widgets/scroll.rs` for the canonical `offset += delta`
+    /// consumer.
+    pub fn scroll_delta(&self) -> Vec2 {
+        self.state.scroll_delta
+    }
+    /// Multiplicative pinch zoom factor this frame (`1.0` = no
+    /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
+    /// Independent of `scroll_delta` so a list can pan-via-scroll
+    /// without committing to pinch-to-zoom, and vice versa.
+    pub fn zoom_factor(&self) -> f32 {
+        self.state.zoom_factor
+    }
+    /// Cursor position relative to this widget's `rect.min`. `None`
+    /// when the pointer is off-surface or the widget didn't arrange.
+    /// Useful as a pivot for zoom-about-cursor without recomputing
+    /// the rect origin from `rect()`.
+    pub fn pointer_local(&self) -> Option<Vec2> {
+        self.state.pointer_local
+    }
 }
 
 /// `Response` plus a value returned by the body closure of widgets

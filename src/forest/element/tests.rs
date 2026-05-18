@@ -40,8 +40,12 @@ fn flag_setters_round_trip_each_field_independently() {
 }
 
 #[test]
-fn fits_in_one_byte() {
-    assert_eq!(std::mem::size_of::<NodeFlags>(), 1);
+fn fits_in_two_bytes() {
+    // Grew from 1 byte to 2 when `Sense::PINCH` claimed bit 4,
+    // pushing `DISABLED`/`CLIP`/`FOCUSABLE` past the u8 ceiling.
+    // Still packed — sense (5 bits) + disabled (1) + clip (2) +
+    // focusable (1) = 9 bits, fitting in a u16 with 7 spare.
+    assert_eq!(std::mem::size_of::<NodeFlags>(), 2);
 }
 
 #[test]
