@@ -671,20 +671,37 @@ impl Composer {
     }
 }
 
-/// Step size of the text-scale ladder. 2.5% additive — empirically
-/// fine-grained enough that crispness "stepping" isn't visible during
-/// typical zoom gestures, coarse enough that consecutive zoom frames
-/// hash to the same glyph cache key and reuse rasterized atlas slots.
-const TEXT_SCALE_STEP: f32 = 0.025;
+/// Rungs per octave on the text-scale ladder. `2^(k/N)` quantizes the
+/// scale into log-uniform steps so a continuous zoom crosses a constant
+/// number of cache keys per *percent* of zoom, instead of per *unit* of
+/// zoom (additive over-quantizes at 4× → 0.625% steps = constant
+/// rasterize, and under-quantizes at 0.1× → 25% steps). Anchored on
+/// powers of two so 0.5×, 1×, 2×, 4× snap exactly. 28 rungs/octave ≈
+/// 2.5% per step — sub-visible (matches the old additive ladder at
+/// scale=1, but uniform across the full zoom range).
+///
+/// **Geometric note.** Measurement uses the unscaled `font_size_px`
+/// (`TextShaper::measure`) — only the paint-time scale is snapped here.
+/// At a non-rung zoom level the rendered glyph block is therefore up to
+/// `STEP/2` (≈1.25%) wider/narrower than the layout-space rect it
+/// nominally fills; the extra width is clipped at `TextRun.bounds`.
+/// Smaller step ⇒ smaller mismatch, larger atlas churn — pick by
+/// visible-stepping budget.
+const TEXT_SCALE_RUNGS_PER_OCTAVE: f32 = 28.0;
 
 /// Snap the ancestor-transform component of a text run's scale to the
-/// 2.5% ladder. Identity is preserved exactly so non-zoom UIs stay on
-/// the trivial path. See call-site comment in `DrawText` for rationale.
+/// log-octave ladder. Identity is preserved exactly so non-zoom UIs
+/// stay on the trivial path. Non-finite / non-positive inputs pass
+/// through untouched. See call-site comment in `DrawText` for rationale.
 fn snap_text_scale(s: f32) -> f32 {
     if (s - 1.0).abs() < EPS {
         return 1.0;
     }
-    (s / TEXT_SCALE_STEP).round() * TEXT_SCALE_STEP
+    if !s.is_finite() || s <= 0.0 {
+        return s;
+    }
+    let k = (s.log2() * TEXT_SCALE_RUNGS_PER_OCTAVE).round();
+    (k / TEXT_SCALE_RUNGS_PER_OCTAVE).exp2()
 }
 
 /// Conservative overlap test: any non-empty intersection counts.
