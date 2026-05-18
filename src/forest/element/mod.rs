@@ -412,7 +412,8 @@ impl LayoutCore {
         h.write_u64(self.size.as_u64());
         h.write_u64(self.padding.as_u64());
         h.write_u64(self.margin.as_u64());
-        let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags.bits, 0]);
+        let [flags_lo, flags_hi] = flags.bits.to_ne_bytes();
+        let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags_lo, flags_hi]);
         h.write_u32(tail);
     }
 }
@@ -905,26 +906,27 @@ pub trait Configure: Sized {
     }
 }
 
-/// Packed paint/input flags. One byte.
+/// Packed paint/input flags. Two bytes (was one before
+/// `Sense::PINCH` claimed bit 4).
 ///
-/// `bits`: 0-3=sense bitflags (HOVER|CLICK|DRAG|SCROLL), 4=disabled,
-/// 5-6=clip mode, 7=focusable. `Element` uses the same packed form
-/// during recording; fan-out is a single byte copy.
+/// `bits`: 0-4=sense bitflags (HOVER|CLICK|DRAG|SCROLL|PINCH),
+/// 5=disabled, 6-7=clip mode, 8=focusable. `Element` uses the same
+/// packed form during recording; fan-out is a single `u16` copy.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub(crate) struct NodeFlags {
-    pub(crate) bits: u8,
+    pub(crate) bits: u16,
 }
 
 impl NodeFlags {
-    const SENSE_MASK: u8 = 0b1111;
-    const DISABLED: u8 = 1 << 4;
-    const CLIP_SHIFT: u8 = 5;
-    const CLIP_MASK: u8 = 0b11 << Self::CLIP_SHIFT;
-    const FOCUSABLE: u8 = 1 << 7;
+    const SENSE_MASK: u16 = 0b1_1111;
+    const DISABLED: u16 = 1 << 5;
+    const CLIP_SHIFT: u16 = 6;
+    const CLIP_MASK: u16 = 0b11 << Self::CLIP_SHIFT;
+    const FOCUSABLE: u16 = 1 << 8;
 
     #[inline]
     pub(crate) fn sense(self) -> Sense {
-        Sense::from_bits_truncate(self.bits & Self::SENSE_MASK)
+        Sense::from_bits_truncate((self.bits & Self::SENSE_MASK) as u8)
     }
     #[inline]
     pub(crate) fn is_disabled(self) -> bool {
@@ -946,7 +948,7 @@ impl NodeFlags {
 
     #[inline]
     pub(crate) fn set_sense(&mut self, s: Sense) {
-        self.bits = (self.bits & !Self::SENSE_MASK) | (s.bits() & Self::SENSE_MASK);
+        self.bits = (self.bits & !Self::SENSE_MASK) | ((s.bits() as u16) & Self::SENSE_MASK);
     }
     #[inline]
     pub(crate) fn set_disabled(&mut self, v: bool) {
@@ -954,7 +956,7 @@ impl NodeFlags {
     }
     #[inline]
     pub(crate) fn set_clip(&mut self, c: ClipMode) {
-        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u8) << Self::CLIP_SHIFT);
+        self.bits = (self.bits & !Self::CLIP_MASK) | ((c as u16) << Self::CLIP_SHIFT);
     }
     #[inline]
     pub(crate) fn set_focusable(&mut self, v: bool) {
@@ -963,12 +965,12 @@ impl NodeFlags {
 }
 
 const _: () = assert!(
-    (ClipMode::Rounded as u8) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
+    (ClipMode::Rounded as u16) <= (NodeFlags::CLIP_MASK >> NodeFlags::CLIP_SHIFT),
     "ClipMode discriminant exceeds 2 bits",
 );
 const _: () = assert!(
-    Sense::all().bits() <= NodeFlags::SENSE_MASK,
-    "Sense uses more than 4 bits",
+    Sense::all().bits() as u16 <= NodeFlags::SENSE_MASK,
+    "Sense uses more than 5 bits",
 );
 
 #[cfg(test)]

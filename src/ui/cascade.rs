@@ -185,37 +185,46 @@ impl Cascades {
         None
     }
 
-    /// One reverse walk that finds the topmost match for both filters
-    /// at once. Used on `PointerMoved` to recompute hover + scroll
-    /// target without a second pass over `entries`.
-    pub(crate) fn hit_test_pair(
+    /// One reverse walk that finds the topmost match for each of
+    /// three filters at once. Used on `PointerMoved` and at
+    /// `post_record` to recompute hover + scroll + pinch targets in a
+    /// single pass over `entries`. Independent filters: a `Sense::DRAG
+    /// | Sense::SCROLL` widget sits in both hover and scroll target
+    /// slots if it's the topmost match for each.
+    pub(crate) fn hit_test_targets(
         &self,
         pos: Vec2,
-        a_filter: impl Fn(Sense) -> bool,
-        b_filter: impl Fn(Sense) -> bool,
+        hover_filter: impl Fn(Sense) -> bool,
+        scroll_filter: impl Fn(Sense) -> bool,
+        pinch_filter: impl Fn(Sense) -> bool,
     ) -> HitPair {
         let rects = self.entries.rect();
         let senses = self.entries.sense();
         let ids = self.entries.widget_id();
-        let mut a = None;
-        let mut b = None;
+        let mut hover = None;
+        let mut scroll = None;
+        let mut pinch = None;
         for i in (0..rects.len()).rev() {
             if !rects[i].contains(pos) {
                 continue;
             }
-            if a.is_none() && a_filter(senses[i]) {
-                a = Some(ids[i]);
+            if hover.is_none() && hover_filter(senses[i]) {
+                hover = Some(ids[i]);
             }
-            if b.is_none() && b_filter(senses[i]) {
-                b = Some(ids[i]);
+            if scroll.is_none() && scroll_filter(senses[i]) {
+                scroll = Some(ids[i]);
             }
-            if a.is_some() && b.is_some() {
+            if pinch.is_none() && pinch_filter(senses[i]) {
+                pinch = Some(ids[i]);
+            }
+            if hover.is_some() && scroll.is_some() && pinch.is_some() {
                 break;
             }
         }
         HitPair {
-            hover: a,
-            scroll: b,
+            hover,
+            scroll,
+            pinch,
         }
     }
 
@@ -250,6 +259,7 @@ impl Cascades {
 pub(crate) struct HitPair {
     pub(crate) hover: Option<WidgetId>,
     pub(crate) scroll: Option<WidgetId>,
+    pub(crate) pinch: Option<WidgetId>,
 }
 
 #[derive(Default)]

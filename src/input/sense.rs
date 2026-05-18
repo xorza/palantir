@@ -29,7 +29,15 @@ bitflags! {
         /// Captures wheel/touchpad scroll deltas. Hit-tested
         /// independently of hover/click so a scrollable container
         /// under a clickable child still receives wheel events.
+        /// Pinch gestures route on the separate [`Self::PINCH`] bit
+        /// so a widget can opt into one without the other.
         const SCROLL = 1 << 3;
+        /// Captures touchpad pinch zoom factors. Independent of
+        /// `SCROLL` — a graph canvas wanting pan-via-scroll *and*
+        /// zoom-via-pinch sets both; a list that scrolls without
+        /// reacting to pinch sets only `SCROLL`. Hit-tested in the
+        /// same `PointerSense::SCROLL` wake category as scroll.
+        const PINCH = 1 << 4;
     }
 }
 
@@ -60,6 +68,11 @@ impl Sense {
     /// True if this sense captures scroll deltas.
     pub const fn scrolls(self) -> bool {
         self.contains(Self::SCROLL)
+    }
+
+    /// True if this sense captures pinch zoom factors.
+    pub const fn pinches(self) -> bool {
+        self.contains(Self::PINCH)
     }
 }
 

@@ -318,7 +318,12 @@ impl Scroll {
     #[track_caller]
     fn with_axes(mode: LayoutMode) -> Self {
         let mut element = Element::new(mode);
-        element.set_sense(Sense::SCROLL);
+        // Both bits: `SCROLL` for pan, `PINCH` for touchpad zoom.
+        // Zoom is gated again at consumption time by
+        // `self.zoom.is_some()`, but the routing has to be on
+        // regardless so the pinch factor reaches us in the first
+        // place. Cheap — one bit on the sense flags.
+        element.set_sense(Sense::SCROLL | Sense::PINCH);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.

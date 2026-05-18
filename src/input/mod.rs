@@ -243,7 +243,7 @@ fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
 /// changes, so unlike `hovered`/`pressed` it isn't one-frame stale —
 /// a widget that just called `ui.request_focus(id)` reads `true` on
 /// the same frame.
-#[derive(Default, Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub struct ResponseState {
     pub rect: Option<Rect>,
     /// Pre-transform, unclipped layout rect in world coords — the
@@ -272,6 +272,53 @@ pub struct ResponseState {
     /// Snapshot the position here so subsequent `drag_delta` reads
     /// compose against a stable anchor.
     pub drag_started: bool,
+    /// Combined wheel + touchpad scroll delta this frame, in logical
+    /// pixels. Already negated at ingest so `+y` means "advance the
+    /// scroll offset forward" (canonical use: `offset += delta`).
+    /// Only non-zero when the widget has [`Sense::SCROLL`] AND was
+    /// the topmost scroll target under the pointer this frame. Wheel
+    /// lines are converted to pixels via a font-derived line step
+    /// chosen at [`crate::Ui::response_for`] time.
+    pub scroll_delta: Vec2,
+    /// Multiplicative pinch zoom factor this frame (`1.0` = no
+    /// pinch). Same routing as `scroll_delta` (widget must have
+    /// [`Sense::SCROLL`] and be the topmost target). Pinch always
+    /// reports — no modifier gating, unlike wheel zoom which the
+    /// caller derives manually from `scroll_delta` + modifiers.
+    pub zoom_factor: f32,
+    /// Cursor position relative to this widget's `rect.min`. `None`
+    /// when the pointer is off-surface or the widget didn't arrange
+    /// (no `rect`). Useful as a pivot for zoom-about-cursor or any
+    /// custom local-space hit math without recomputing the rect
+    /// origin at every call site.
+    pub pointer_local: Option<Vec2>,
+}
+
+impl ResponseState {
+    /// Sane defaults that distinguish "no scroll routed" from a real
+    /// `Vec2::ZERO` scroll. `zoom_factor` defaults to identity so
+    /// `(factor - 1.0).abs() > eps` is a safe presence check.
+    pub(crate) const ZEROED: Self = Self {
+        rect: None,
+        layout_rect: None,
+        hovered: false,
+        pressed: false,
+        clicked: false,
+        secondary_clicked: false,
+        disabled: false,
+        focused: false,
+        drag_delta: None,
+        drag_started: false,
+        scroll_delta: Vec2::ZERO,
+        zoom_factor: 1.0,
+        pointer_local: None,
+    };
+}
+
+impl Default for ResponseState {
+    fn default() -> Self {
+        Self::ZEROED
+    }
 }
 
 /// Live input state machine: the things that survive across input events
@@ -285,6 +332,11 @@ pub struct InputState {
     /// whenever the pointer moves and at `post_record`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_pixels`].
     scroll_target: Option<WidgetId>,
+    /// Topmost `Sense::PINCH` widget under the pointer, recomputed
+    /// alongside `scroll_target`. Pinch zoom factors route to this id
+    /// instead of `scroll_target` so a widget can opt into pan-via-
+    /// scroll *without* committing to pinch zoom (and vice versa).
+    pinch_target: Option<WidgetId>,
     /// Per-button press capture (active widget, press pos, drag latch,
     /// frame edges for `drag_started` and `clicked`). Indexed by
     /// [`PointerButton`] via [`PointerButton::idx`]. Independent per
@@ -388,6 +440,7 @@ impl InputState {
             pointer_pos: None,
             hovered: None,
             scroll_target: None,
+            pinch_target: None,
             captures: [Capture::default(); PointerButton::COUNT],
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
@@ -499,15 +552,19 @@ impl InputState {
                     lc.frame_drag_started = lc.active;
                     self.frame_had_action = true;
                 }
-                let hits = cascades.hit_test_pair(p, Sense::hovers, Sense::scrolls);
+                let prev_pinch = self.pinch_target;
+                let hits =
+                    cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
                 self.hovered = hits.hover;
                 self.scroll_target = hits.scroll;
+                self.pinch_target = hits.pinch;
                 let move_subbed = self.subs.pointer_mask.contains(PointerSense::MOVE);
                 if move_subbed {
                     self.frame_pointer_events.push(PointerEvent::Move(p));
                 }
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
+                    || self.pinch_target != prev_pinch
                     || self.captures.iter().any(|c| c.active.is_some())
                     || move_subbed
             }
@@ -602,7 +659,7 @@ impl InputState {
                 } else {
                     false
                 };
-                self.scroll_target.is_some() || subbed
+                self.pinch_target.is_some() || subbed
             }
             InputEvent::KeyDown { key, repeat } => {
                 let mods = self.modifiers;
@@ -692,12 +749,14 @@ impl InputState {
             self.focused = None;
         }
         if let Some(p) = self.pointer_pos {
-            let hits = cascades.hit_test_pair(p, Sense::hovers, Sense::scrolls);
+            let hits = cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
             self.hovered = hits.hover;
             self.scroll_target = hits.scroll;
+            self.pinch_target = hits.pinch;
         } else {
             self.hovered = None;
             self.scroll_target = None;
+            self.pinch_target = None;
         }
     }
 
@@ -731,11 +790,13 @@ impl InputState {
     }
 
     /// Returns this frame's pinch-zoom factor if `id` is the current
-    /// scroll hit-target; otherwise `1.0`. Pinch ingest is unconditional
-    /// (touch already disambiguates intent), so widgets get the raw
-    /// multiplicative factor regardless of `ZoomConfig::modifier`.
+    /// pinch hit-target (separate from `scroll_target` since
+    /// `Sense::PINCH` and `Sense::SCROLL` are independent bits);
+    /// otherwise `1.0`. Pinch ingest is unconditional (touch already
+    /// disambiguates intent), so widgets get the raw multiplicative
+    /// factor regardless of `ZoomConfig::modifier`.
     pub(crate) fn zoom_delta_for(&self, id: WidgetId) -> f32 {
-        if self.scroll_target == Some(id) {
+        if self.pinch_target == Some(id) {
             self.frame_zoom_delta
         } else {
             1.0
@@ -755,7 +816,12 @@ impl InputState {
         Some(self.pointer_pos? - cap.press_pos?)
     }
 
-    pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
+    pub(crate) fn response_for(
+        &self,
+        id: WidgetId,
+        cascades: &Cascades,
+        line_px: f32,
+    ) -> ResponseState {
         let entry_idx = cascades.by_id.get(&id).copied().map(|i| i as usize);
         let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
         let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
@@ -783,6 +849,14 @@ impl InputState {
         };
         let drag_started = left.frame_drag_started == Some(id);
 
+        // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
+        // Both gates fire even when the routed delta is `Vec2::ZERO`
+        // / `1.0` — the caller checks against the identity value to
+        // distinguish "not routed" from "routed but quiet".
+        let scroll_delta = self.scroll_delta_for(id, line_px);
+        let zoom_factor = self.zoom_delta_for(id);
+        let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
+
         ResponseState {
             rect,
             layout_rect,
@@ -794,6 +868,9 @@ impl InputState {
             focused,
             drag_delta,
             drag_started,
+            scroll_delta,
+            zoom_factor,
+            pointer_local,
         }
     }
 }
