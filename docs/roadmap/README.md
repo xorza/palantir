@@ -21,3 +21,4 @@ priority (Now / Next / Later / Speculative).
 - [Speculative](speculative.md) — profile-gated micro-optimizations
 - [Brushes](brushes.md) — gradients, images, brush slots
 - [Spinner](spinner.md) — perpetual-repaint widget on line shapes
+- [Polyline retirement](polyline-retirement.md) — fold `Shape::Line` / `Shape::Polyline` onto the curve pipeline, delete `stroke_tessellate`

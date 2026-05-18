@@ -950,3 +950,85 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
         glam::Vec2::new(0.5, 1.0)
     );
 }
+
+#[test]
+fn compose_emits_one_curve_batch_per_scissor_group() {
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    let buf = run(
+        |b, _arena| {
+            // Two curves under one (implicit) scissor group → must
+            // batch into a single `CurveBatch`. That's the load-bearing
+            // promise: one draw call per scissor group, no matter how
+            // many curves the group contains.
+            for offset in [0.0_f32, 50.0] {
+                b.draw_curve(DrawCurvePayload {
+                    bbox: rect(0.0, 0.0, 100.0, 100.0),
+                    origin: Vec2::ZERO,
+                    p0: Vec2::new(offset, 0.0),
+                    p1: Vec2::new(offset + 10.0, 50.0),
+                    p2: Vec2::new(offset + 90.0, 50.0),
+                    p3: Vec2::new(offset + 100.0, 0.0),
+                    color: Color::WHITE.into(),
+                    width: 2.0,
+                    ..bytemuck::Zeroable::zeroed()
+                });
+            }
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.curve_batches.len(), 1, "one batch per group");
+    let batch = buf.curve_batches[0];
+    assert_eq!(batch.last_group, 0);
+    // Sub-instance count depends on adaptive subdivision, but both
+    // curves contribute the *same* per-curve count (identical shape),
+    // so the total must be ≥ 2 and even.
+    assert!(batch.instances.len >= 2 && batch.instances.len.is_multiple_of(2));
+    assert_eq!(
+        buf.curves.len() as u32,
+        batch.instances.len,
+        "batch covers every emitted instance",
+    );
+}
+
+#[test]
+fn compose_splits_curve_batches_across_scissor_groups() {
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    let buf = run(
+        |b, _arena| {
+            b.draw_curve(DrawCurvePayload {
+                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                p0: Vec2::new(0.0, 0.0),
+                p1: Vec2::new(10.0, 50.0),
+                p2: Vec2::new(90.0, 50.0),
+                p3: Vec2::new(100.0, 0.0),
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+            b.push_clip(rect(0.0, 0.0, 50.0, 200.0));
+            b.draw_curve(DrawCurvePayload {
+                bbox: rect(0.0, 0.0, 50.0, 50.0),
+                origin: Vec2::ZERO,
+                p0: Vec2::new(0.0, 0.0),
+                p1: Vec2::new(5.0, 25.0),
+                p2: Vec2::new(45.0, 25.0),
+                p3: Vec2::new(50.0, 0.0),
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(
+        buf.curve_batches.len(),
+        2,
+        "scissor change closes the open batch and opens a new one",
+    );
+    assert!(
+        buf.curve_batches[0].last_group < buf.curve_batches[1].last_group,
+        "batches anchor to monotonically increasing groups",
+    );
+}

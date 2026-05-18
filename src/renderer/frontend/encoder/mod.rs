@@ -1,5 +1,6 @@
 use super::cmd_buffer::{
-    BrushSource, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
+    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    RenderCmdBuffer,
 };
 use crate::common::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
@@ -260,6 +261,32 @@ fn emit_one_shape(
                 v_len: vertices.len,
                 i_start: indices.start,
                 i_len: indices.len,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
+        ShapeRecord::Curve {
+            p0,
+            p1,
+            p2,
+            p3,
+            width,
+            color,
+            cap,
+            bbox,
+            content_hash: _,
+        } => {
+            // Curves are owner-local; composer adds `origin` + active
+            // transform before scaling to physical px.
+            out.draw_curve(DrawCurvePayload {
+                bbox: *bbox,
+                origin: owner_rect.min,
+                p0: *p0,
+                p1: *p1,
+                p2: *p2,
+                p3: *p3,
+                color: *color,
+                width: *width,
+                cap: *cap as u32,
                 ..bytemuck::Zeroable::zeroed()
             });
         }

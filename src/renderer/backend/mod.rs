@@ -1,3 +1,4 @@
+mod curve_pipeline;
 mod debug_overlay;
 mod image_pipeline;
 mod mesh_pipeline;
@@ -9,6 +10,7 @@ mod viewport;
 
 use self::stencil::STENCIL_FORMAT;
 
+use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
@@ -70,6 +72,7 @@ pub(crate) struct WgpuBackend {
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
+    curve: CurvePipeline,
     text: TextRenderer,
     debug: DebugOverlay,
     /// Color format the quad pipeline + text atlas were built for.
@@ -127,6 +130,7 @@ impl WgpuBackend {
             &viewport_uniform.buffer,
             image_budget_bytes,
         );
+        let curve = CurvePipeline::new(&device, format, &viewport_uniform.buffer);
         let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {
@@ -136,6 +140,7 @@ impl WgpuBackend {
             quad,
             mesh,
             image,
+            curve,
             text,
             debug,
             color_format: format,
@@ -341,6 +346,7 @@ impl WgpuBackend {
             self.quad.ensure_stencil(&self.device);
             self.mesh.ensure_stencil(&self.device);
             self.image.ensure_stencil(&self.device);
+            self.curve.ensure_stencil(&self.device);
             self.quad
                 .stage_masks(&self.device, &self.queue, &buffer.groups);
         }
@@ -365,6 +371,8 @@ impl WgpuBackend {
             .drain_registry(&self.device, &self.queue, &self.caches.images);
         self.image
             .upload_instances(&self.device, &self.queue, buffer.images.rows.instance());
+
+        self.curve.upload(&self.device, &self.queue, &buffer.curves);
 
         if !damage_scissors.is_empty() {
             self.quad
@@ -617,6 +625,7 @@ impl WgpuBackend {
             QuadInstance,
             Mesh,
             Image,
+            Curve,
             MaskWrite,
         }
         let mut bound = Bound::None;
@@ -709,6 +718,16 @@ impl WgpuBackend {
                     {
                         self.image.draw(pass, *handle, (start + offset) as u32);
                     }
+                    pass.pop_debug_group();
+                }
+                RenderStep::CurveBatch { batch } => {
+                    pass.push_debug_group("curves");
+                    if bound != Bound::Curve {
+                        self.curve.bind(pass, use_stencil);
+                        bound = Bound::Curve;
+                    }
+                    let range = buffer.curve_batches[batch].instances;
+                    self.curve.draw(pass, range.start..range.start + range.len);
                     pass.pop_debug_group();
                 }
             },

@@ -13,7 +13,7 @@ use crate::forest::shapes::record::{
     ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
-use crate::primitives::bezier::{FlatPoint, flatten_cubic, flatten_quadratic};
+use crate::primitives::bezier::quadratic_to_cubic;
 use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::interned_str::InternedStr;
@@ -64,10 +64,6 @@ pub struct FrameArenaInner {
     /// the tessellator's destination `MeshVertex.color` uses) —
     /// quantization happens once at lowering, not per-emitted-vertex.
     pub(crate) polyline_colors: Vec<ColorU8>,
-    /// Scratch for bezier flattening. Cleared (length only) at the
-    /// top of every bezier lowering; the flattened points are copied
-    /// into `polyline_points` immediately after.
-    pub(crate) bezier_scratch: Vec<FlatPoint>,
     /// Frame-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
     /// by `lower_brush`) indexes into this vec. Cross-tree — keeping
     /// it on the frame arena means chrome lowering on one tree and
@@ -83,16 +79,6 @@ pub struct FrameArenaInner {
     /// per frame, capacity retained — steady-state `ui.fmt(...)` flows
     /// skip the `format!() → String` allocation entirely.
     pub(crate) fmt_scratch: String,
-}
-
-/// Control points for the unified bezier lowering — quadratic carries
-/// three, cubic four. Just enough variant info to hash the right bytes
-/// and tag the degree; flattening already happened before we get here
-/// (different `flatten_*` per variant), so `lower_bezier_inner` itself
-/// is degree-agnostic past hashing.
-enum BezierInputs {
-    Quadratic([Vec2; 3]),
-    Cubic([Vec2; 4]),
 }
 
 /// Stable content hash for a gradient variant: discriminant byte
@@ -131,7 +117,6 @@ impl FrameArena {
         a.meshes.clear();
         a.polyline_points.clear();
         a.polyline_colors.clear();
-        a.bezier_scratch.clear();
         a.gradients.clear();
         a.fmt_scratch.clear();
     }
@@ -222,60 +207,88 @@ impl FrameArena {
             .lower_polyline_inner(points, colors, width, cap, join)
     }
 
-    /// Flatten a cubic bezier into the per-frame scratch and lower it
-    /// to a `ShapeRecord::Polyline`. Combined so the scratch borrow
-    /// doesn't escape the call.
-    #[allow(clippy::too_many_arguments)]
+    /// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
+    /// happens GPU-side at draw time — no CPU flattening, no per-curve
+    /// vertex/index allocation. The composer derives sub-instance count
+    /// from the post-transform control-polygon length.
     pub(crate) fn lower_cubic_bezier(
         &self,
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
-        p3: Vec2,
+        ctrl: [Vec2; 4],
         width: f32,
         color: Color,
         cap: LineCap,
-        join: LineJoin,
-        tolerance: f32,
     ) -> ShapeRecord {
-        let mut a = self.0.borrow_mut();
-        a.bezier_scratch.clear();
-        flatten_cubic(p0, p1, p2, p3, tolerance, &mut a.bezier_scratch);
-        a.lower_bezier_inner(
-            BezierInputs::Cubic([p0, p1, p2, p3]),
-            width,
-            color,
-            cap,
-            join,
-            tolerance,
-        )
+        lower_curve_inner(ctrl, width, color, cap, 0)
     }
 
-    /// Flatten a quadratic bezier into the per-frame scratch and lower
-    /// it to a `ShapeRecord::Polyline`.
-    #[allow(clippy::too_many_arguments)]
+    /// Lower a quadratic bezier by promoting it to a cubic and going
+    /// through `lower_cubic_bezier`. Exact reparameterization:
+    /// `q1' = q0 + 2/3·(c - q0)`, `q2' = q2 + 2/3·(c - q2)`.
     pub(crate) fn lower_quadratic_bezier(
         &self,
-        p0: Vec2,
-        p1: Vec2,
-        p2: Vec2,
+        ctrl: [Vec2; 3],
         width: f32,
         color: Color,
         cap: LineCap,
-        join: LineJoin,
-        tolerance: f32,
     ) -> ShapeRecord {
-        let mut a = self.0.borrow_mut();
-        a.bezier_scratch.clear();
-        flatten_quadratic(p0, p1, p2, tolerance, &mut a.bezier_scratch);
-        a.lower_bezier_inner(
-            BezierInputs::Quadratic([p0, p1, p2]),
-            width,
-            color,
-            cap,
-            join,
-            tolerance,
-        )
+        let [p0, c, p2] = ctrl;
+        let (q1, q2) = quadratic_to_cubic(p0, c, p2);
+        lower_curve_inner([p0, q1, q2, p2], width, color, cap, 1)
+    }
+}
+
+/// Build a `ShapeRecord::Curve` from cubic control points. `degree_tag`
+/// is folded into the content hash so quadratic-derived and natively-
+/// cubic curves with bit-identical post-promotion CPs still hash
+/// distinctly (matches the old bezier-hash discipline).
+fn lower_curve_inner(
+    ctrl: [Vec2; 4],
+    width: f32,
+    color: Color,
+    cap: LineCap,
+    degree_tag: u8,
+) -> ShapeRecord {
+    use crate::renderer::stroke_tessellate::HALF_FRINGE;
+    let [p0, p1, p2, p3] = ctrl;
+
+    let lo = p0.min(p1).min(p2).min(p3);
+    let hi = p0.max(p1).max(p2).max(p3);
+    let half = (width * 0.5).max(0.0);
+    // Round/Square caps extend the strip by `half_w` past each
+    // endpoint along the local tangent. Since the bbox is axis-
+    // aligned and the tangent direction varies, the conservative
+    // padding is `half_w` more on every side — matches the
+    // polyline path's `cap_extent` shape.
+    let cap_extent = match cap {
+        LineCap::Butt => 0.0,
+        LineCap::Square | LineCap::Round => half,
+    };
+    let pad = half + cap_extent + HALF_FRINGE;
+    let bbox = Rect {
+        min: Vec2::new(lo.x - pad, lo.y - pad),
+        size: crate::primitives::size::Size {
+            w: (hi.x - lo.x) + 2.0 * pad,
+            h: (hi.y - lo.y) + 2.0 * pad,
+        },
+    };
+    let mut h = FxHasher::new();
+    h.write_u16(0xCB00 | u16::from(degree_tag));
+    h.write(bytemuck::bytes_of(&ctrl));
+    // Pack width bits + cap tag into one 64-bit hasher write — single
+    // dispatch instead of two.
+    h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(cap as u8));
+    h.write(bytemuck::bytes_of(&color));
+    let content_hash = h.finish();
+    ShapeRecord::Curve {
+        p0,
+        p1,
+        p2,
+        p3,
+        width,
+        color: color.into(),
+        cap,
+        bbox,
+        content_hash,
     }
 }
 
@@ -384,64 +397,6 @@ impl FrameArenaInner {
             join,
             points: Span::new(p_start, points.len() as u32),
             colors: Span::new(c_start, color_slice.len() as u32),
-            bbox,
-            content_hash,
-        }
-    }
-
-    fn lower_bezier_inner(
-        &mut self,
-        ctrl: BezierInputs,
-        width: f32,
-        color: Color,
-        cap: LineCap,
-        join: LineJoin,
-        tolerance: f32,
-    ) -> ShapeRecord {
-        let Some((first, rest)) = self.bezier_scratch.split_first() else {
-            unreachable!("flatten_{{cubic,quadratic}} always emits >= 2 points")
-        };
-
-        let p_start = self.polyline_points.len() as u32;
-        let c_start = self.polyline_colors.len() as u32;
-        let n = 1 + rest.len();
-
-        let mut lo = first.p;
-        let mut hi = first.p;
-        self.polyline_points.reserve(n);
-        self.polyline_points.push(first.p);
-        for fp in rest {
-            self.polyline_points.push(fp.p);
-            lo = lo.min(fp.p);
-            hi = hi.max(fp.p);
-        }
-        self.polyline_colors.push(color.into());
-
-        let mut h = FxHasher::new();
-        let degree = match ctrl {
-            BezierInputs::Cubic(_) => 0x01_u16,
-            BezierInputs::Quadratic(_) => 0x02_u16,
-        };
-        h.write_u16(0xCB00 | degree);
-        match ctrl {
-            BezierInputs::Cubic(ps) => h.write(bytemuck::bytes_of(&ps)),
-            BezierInputs::Quadratic(ps) => h.write(bytemuck::bytes_of(&ps)),
-        }
-        let dims = ((width.to_bits() as u64) << 32) | tolerance.to_bits() as u64;
-        h.write_u64(dims);
-        h.write_u16(((cap as u16) << 8) | join as u16);
-        h.write(bytemuck::bytes_of(&color));
-        let content_hash = h.finish();
-
-        let bbox = inflate_stroke_bbox(lo, hi, width, cap, join);
-
-        ShapeRecord::Polyline {
-            width,
-            color_mode: ColorMode::Single,
-            cap,
-            join,
-            points: Span::new(p_start, n as u32),
-            colors: Span::new(c_start, 1),
             bbox,
             content_hash,
         }

@@ -33,6 +33,7 @@ enum DrawOp {
     Text(usize),
     Meshes(usize),
     Images(usize),
+    Curves(usize),
 }
 
 fn collect(
@@ -70,6 +71,9 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
             )),
             RenderStep::ImageBatch { batch } => out.push(DrawOp::Images(
                 buffer.image_batches[*batch].last_group as usize,
+            )),
+            RenderStep::CurveBatch { batch } => out.push(DrawOp::Curves(
+                buffer.curve_batches[*batch].last_group as usize,
             )),
         }
     }

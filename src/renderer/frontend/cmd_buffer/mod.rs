@@ -41,6 +41,7 @@
 //! boundary, which is the only practical gate.
 
 use crate::forest::shapes::record::{LoweredGradient, ShapeStroke};
+use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
 use crate::renderer::gradient_atlas::LutRow;
@@ -109,6 +110,13 @@ pub(crate) enum CmdKind {
     /// registered against `handle` in the shared
     /// [`ImageRegistry`](crate::ImageRegistry).
     DrawImage,
+    /// Native GPU cubic-bezier curve. Payload: [`DrawCurvePayload`].
+    /// The composer transforms the four control points to physical-px,
+    /// derives an adaptive sub-instance count from the control-polygon
+    /// length, and appends one or more `CurveInstance`s into
+    /// `RenderBuffer.curves`. A single `draw` per scissor group covers
+    /// every instance in the group's `CurveBatch`.
+    DrawCurve,
 }
 
 /// Scissor clip payload. `radius` is all-zero for plain rect clips
@@ -299,6 +307,40 @@ impl DrawImagePayload {
     }
 }
 
+/// Native GPU bezier-curve payload. Four cubic control points are
+/// stored owner-local; the composer adds `origin` and the active
+/// push-transform stack before scaling to physical px and pushing the
+/// resulting `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is
+/// the owner-local stroked-AABB (already inflated by `width/2 + AA
+/// fringe` at lowering) used for clip culling and paint-order overlap.
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawCurvePayload {
+    pub(crate) bbox: Rect,
+    pub(crate) origin: glam::Vec2,
+    pub(crate) p0: glam::Vec2,
+    pub(crate) p1: glam::Vec2,
+    pub(crate) p2: glam::Vec2,
+    pub(crate) p3: glam::Vec2,
+    pub(crate) color: ColorF16,
+    pub(crate) width: f32,
+    /// Cap kind packed as `u32` (Pod-safe; the variant tag from
+    /// `LineCap as u8` widened). Composer threads it into the
+    /// `CurveInstance.cap` lane verbatim.
+    pub(crate) cap: u32,
+}
+
+impl DrawCurvePayload {
+    /// Canonical noop predicate — zero/negative stroke width or fully
+    /// transparent fill. Degenerate control-point coincidence is
+    /// already filtered at `Shape::CubicBezier::is_noop`.
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        noop_f32(self.width) || self.color.is_noop()
+    }
+}
+
 /// Append-only command buffer. See module docs.
 #[derive(Default)]
 pub(crate) struct RenderCmdBuffer {
@@ -445,6 +487,18 @@ impl RenderCmdBuffer {
             return;
         }
         self.record_start(CmdKind::DrawImage);
+        write_pod(&mut self.data, payload);
+    }
+
+    /// Record a `DrawCurve` cmd. Composer transforms the control
+    /// points to physical-px and pushes per-sub-instance entries onto
+    /// `RenderBuffer.curves` — one GPU draw per scissor group covers
+    /// every instance the group emitted.
+    pub(crate) fn draw_curve(&mut self, payload: DrawCurvePayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.record_start(CmdKind::DrawCurve);
         write_pod(&mut self.data, payload);
     }
 
