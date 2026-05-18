@@ -177,6 +177,13 @@ impl Damage {
         let surface_area = surface.area();
         assert!(surface_area > EPS);
 
+        // Region rects are surface-clipped at `collapse_from` (see
+        // the doc on `DamageRegion::collapse_from`), so `total_area`
+        // is already the *visible* footprint — counting off-surface
+        // pixels here would be wrong by definition (a paint_rect on
+        // a root-level transformed canvas with no clip ancestor can
+        // extend far past the viewport at high zoom). Pinned by
+        // `partial_when_oversized_rect_lies_mostly_off_surface`.
         if region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
             return Damage::Full;
         }
@@ -415,7 +422,7 @@ impl DamageEngine {
         }
 
         // ── Pass 2: collapse to the bounded region ────────────────
-        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
         Damage::new(surface, region)
     }
 
@@ -438,7 +445,7 @@ impl DamageEngine {
         }
         self.raw_rects.clear();
         extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
-        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px);
+        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
         Damage::new(surface, region)
     }
 }
