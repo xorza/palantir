@@ -1,6 +1,6 @@
 use super::cmd_buffer::{
-    CmdKind, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
-    DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
+    CmdKind, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    DrawRectPayload, DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use crate::common::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
@@ -11,8 +11,8 @@ use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch, MeshDraw, MeshDrawRow,
-    MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    CurveBatch, CurveInstance, DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch,
+    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
@@ -70,6 +70,7 @@ pub(crate) struct Composer {
     texts_start: u32,
     meshes_start: u32,
     images_start: u32,
+    curves_start: u32,
     /// Bundled state for the currently-open text batch — `Some` while
     /// the composer is accumulating runs into a batch, `None`
     /// between batches. The rect scratch lives outside in
@@ -114,10 +115,12 @@ impl Composer {
         let t_end = out.texts.len() as u32;
         let m_end = out.meshes.rows.len() as u32;
         let i_end = out.images.rows.len() as u32;
+        let c_end = out.curves.len() as u32;
         if q_end > self.quads_start
             || t_end > self.texts_start
             || m_end > self.meshes_start
             || i_end > self.images_start
+            || c_end > self.curves_start
         {
             // Push the mesh/image batches BEFORE the group itself so
             // their `last_group` matches the in-flight group's
@@ -134,6 +137,12 @@ impl Composer {
                     last_group: out.groups.len() as u32,
                 });
             }
+            if c_end > self.curves_start {
+                out.curve_batches.push(CurveBatch {
+                    instances: (self.curves_start..c_end).into(),
+                    last_group: out.groups.len() as u32,
+                });
+            }
             out.groups.push(DrawGroup {
                 scissor: self.current_scissor,
                 rounded_clip: self.current_rounded,
@@ -145,6 +154,7 @@ impl Composer {
         self.texts_start = t_end;
         self.meshes_start = m_end;
         self.images_start = i_end;
+        self.curves_start = c_end;
         self.above_text_rects.clear();
     }
 
@@ -281,6 +291,8 @@ impl Composer {
         out.text_batches.clear();
         out.mesh_batches.clear();
         out.image_batches.clear();
+        out.curves.clear();
+        out.curve_batches.clear();
         out.has_rounded_clip = false;
         out.viewport_phys = viewport_phys;
         out.viewport_phys_f = viewport_phys_f;
@@ -296,6 +308,7 @@ impl Composer {
         self.texts_start = 0;
         self.meshes_start = 0;
         self.images_start = 0;
+        self.curves_start = 0;
         self.open_batch = None;
         let mut current_transform = TranslateScale::IDENTITY;
 
@@ -510,6 +523,81 @@ impl Composer {
                     // Track for paint-order overlap with mesh-tier draws.
                     self.above_text_rects.push(image_urect);
                 }
+                CmdKind::DrawCurve => {
+                    // Curve sits above text in the kind order (same as
+                    // mesh/image): close any open text batch so batched
+                    // text emits before this group's curves.
+                    self.close_batch(out);
+                    let p: DrawCurvePayload = cmds.read(start);
+                    let width_phys = p.width * current_transform.scale * scale;
+                    // Inflate the owner-local bbox by the AA fringe in
+                    // *logical* px, then transform & cull. Same shape
+                    // as the polyline path.
+                    let world_bbox = current_transform.apply_rect(Rect {
+                        min: p.bbox.min + p.origin,
+                        size: p.bbox.size,
+                    });
+                    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
+                    let inflate_logical = inflate_phys / scale;
+                    let inflated = Rect {
+                        min: world_bbox.min - Vec2::splat(inflate_logical),
+                        size: crate::primitives::size::Size {
+                            w: world_bbox.size.w + 2.0 * inflate_logical,
+                            h: world_bbox.size.h + 2.0 * inflate_logical,
+                        },
+                    };
+                    let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
+                    if self.cull_against_active_clip(bbox_scissor) {
+                        continue;
+                    }
+                    // Transform control points to physical px. Owner
+                    // origin folds in here so the record stays
+                    // owner-local (cross-frame stable). No pixel
+                    // snapping — snapping control points would warp
+                    // the curve shape; AA fringe lives in the shader.
+                    let xform = |q: Vec2| current_transform.apply_point(q + p.origin) * scale;
+                    let p0 = xform(p.p0);
+                    let p1 = xform(p.p1);
+                    let p2 = xform(p.p2);
+                    let p3 = xform(p.p3);
+                    // Adaptive sub-instance count from post-transform
+                    // control-polygon length. Polygon length bounds
+                    // arc length from above — slight overshoot, but
+                    // never undershoots → no faceting from too-coarse
+                    // sampling. Shader bakes `SEGMENTS_PER_INSTANCE`
+                    // chord-subdivisions per instance; aim for ~1.5 px
+                    // chord per segment so AA fringe (0.5 px) fully
+                    // covers any sub-pixel kink.
+                    let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
+                    let target_chord_px = 1.5_f32;
+                    let total_segments = (l / target_chord_px).ceil().max(1.0) as u32;
+                    let n = total_segments
+                        .div_ceil(SEGMENTS_PER_INSTANCE)
+                        .clamp(1, MAX_SUB_INSTANCES);
+                    let color = crate::primitives::color::Color::from(p.color).into();
+                    let inv_n = 1.0 / n as f32;
+                    for i in 0..n {
+                        let t0 = i as f32 * inv_n;
+                        let t1 = if i + 1 == n {
+                            1.0
+                        } else {
+                            (i + 1) as f32 * inv_n
+                        };
+                        out.curves.push(CurveInstance {
+                            p0,
+                            p1,
+                            p2,
+                            p3,
+                            t0,
+                            t1,
+                            width: width_phys,
+                            color,
+                            cap: p.cap,
+                            ..bytemuck::Zeroable::zeroed()
+                        });
+                    }
+                    self.above_text_rects.push(bbox_scissor);
+                }
                 CmdKind::DrawPolyline => {
                     // Polyline tessellates to a mesh — same paint-order
                     // rule as DrawMesh. Close any open text batch
@@ -670,6 +758,19 @@ impl Composer {
         self.flush(out);
     }
 }
+
+/// Chord-subdivisions per curve sub-instance. The shader expands one
+/// instance into this many quads (= 2× this many triangles = 6× this
+/// many indices). Has to stay in lockstep with the `SEGMENTS_PER_INSTANCE`
+/// constant in `curve.wgsl`.
+pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
+
+/// Upper bound on sub-instances per curve. Long, fast-curving strokes
+/// (think a 4k-px-long swooping bezier at 200% zoom) hit this cap;
+/// beyond it the chord error rises but stays well under a pixel for
+/// any realistic UI workload. Cap is a sanity belt — far above the
+/// 1–4 sub-instance steady state.
+const MAX_SUB_INSTANCES: u32 = 256;
 
 /// Additive step on the text-scale ladder. Same step in *scale units*
 /// across the range, so the step in *percent of current size* shrinks

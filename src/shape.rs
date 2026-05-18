@@ -53,14 +53,13 @@ pub enum Shape<'a> {
         cap: LineCap,
         join: LineJoin,
     },
-    /// Cubic Bezier curve, stroked. Flattened to a polyline at
-    /// authoring time (adaptive subdivision in
-    /// [`crate::primitives::bezier`]) and lowered to
-    /// `ShapeRecord::Polyline` — no dedicated record/cmd path.
-    /// `tolerance` is the chord-deviation budget in logical px
-    /// (tighter = more segments); values `<= EPS` clamp to `EPS`.
-    /// Color is solid for now — parametric-t gradient evaluation
-    /// (see `FlatPoint.t`) is reserved for a follow-up.
+    /// Cubic Bezier curve, stroked. Rendered natively on the GPU —
+    /// lowered to `ShapeRecord::Curve` at authoring time, batched per
+    /// scissor group, expanded to a thickened triangle strip in the
+    /// vertex shader. The composer derives an adaptive sub-instance
+    /// count from the post-transform control-polygon length. Solid
+    /// stroke only; no `join` (single-curve primitive — no interior
+    /// joins). `cap` ships `Butt`, `Square`, and `Round`.
     CubicBezier {
         p0: Vec2,
         p1: Vec2,
@@ -69,8 +68,6 @@ pub enum Shape<'a> {
         width: f32,
         brush: Brush,
         cap: LineCap,
-        join: LineJoin,
-        tolerance: f32,
     },
     /// Quadratic Bezier curve, stroked. See [`Shape::CubicBezier`].
     QuadraticBezier {
@@ -80,8 +77,6 @@ pub enum Shape<'a> {
         width: f32,
         brush: Brush,
         cap: LineCap,
-        join: LineJoin,
-        tolerance: f32,
     },
     Text {
         /// `None` → encoder owns positioning: the glyph bbox is
@@ -402,7 +397,7 @@ impl Shape<'_> {
                 p1,
                 p2,
                 p3,
-                ..
+                cap: _,
             } => {
                 noop_f32(*width)
                     || brush.is_noop()
@@ -416,7 +411,7 @@ impl Shape<'_> {
                 p0,
                 p1,
                 p2,
-                ..
+                cap: _,
             } => {
                 noop_f32(*width)
                     || brush.is_noop()

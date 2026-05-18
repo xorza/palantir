@@ -55,6 +55,12 @@ pub(crate) enum RenderStep {
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },
+    /// Bind the curve pipeline + issue a single indexed-instanced draw
+    /// covering every `CurveInstance` in the referenced batch. One
+    /// `CurveBatch { batch }` step → one bind → one `draw_indexed`.
+    /// This is the "one draw call per scissor group" the architecture
+    /// targets for native GPU curves.
+    CurveBatch { batch: usize },
 }
 
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
@@ -128,6 +134,10 @@ pub(crate) fn for_each_step(
     // Same shape as `next_mesh_batch`. Image batches anchor per group;
     // structurally Phase 2 emits one per group with images.
     let mut next_image_batch: usize = 0;
+    // Same shape as the other batch cursors. One curve batch per
+    // group with curves; stale entries pointing at damage-skipped
+    // groups silently advance.
+    let mut next_curve_batch: usize = 0;
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
     // (ref=1 inside the SDF, 0 outside). `None` means stencil is
@@ -149,6 +159,11 @@ pub(crate) fn for_each_step(
             && (buffer.image_batches[next_image_batch].last_group as usize) < i
         {
             next_image_batch += 1;
+        }
+        while next_curve_batch < buffer.curve_batches.len()
+            && (buffer.curve_batches[next_curve_batch].last_group as usize) < i
+        {
+            next_curve_batch += 1;
         }
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
@@ -232,6 +247,15 @@ pub(crate) fn for_each_step(
                 });
                 next_image_batch += 1;
             }
+            while next_curve_batch < buffer.curve_batches.len()
+                && buffer.curve_batches[next_curve_batch].last_group as usize == i
+            {
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::CurveBatch {
+                    batch: next_curve_batch,
+                });
+                next_curve_batch += 1;
+            }
             active_mask = mask_idx;
         } else if g.quads.len != 0
             || (next_batch < buffer.text_batches.len()
@@ -240,6 +264,8 @@ pub(crate) fn for_each_step(
                 && buffer.mesh_batches[next_mesh_batch].last_group as usize == i)
             || (next_image_batch < buffer.image_batches.len()
                 && buffer.image_batches[next_image_batch].last_group as usize == i)
+            || (next_curve_batch < buffer.curve_batches.len()
+                && buffer.curve_batches[next_curve_batch].last_group as usize == i)
         {
             if g.quads.len != 0 {
                 emit(RenderStep::Quads {
@@ -274,6 +300,15 @@ pub(crate) fn for_each_step(
                     batch: next_image_batch,
                 });
                 next_image_batch += 1;
+            }
+            while next_curve_batch < buffer.curve_batches.len()
+                && buffer.curve_batches[next_curve_batch].last_group as usize == i
+            {
+                emit(RenderStep::SetScissor(effective));
+                emit(RenderStep::CurveBatch {
+                    batch: next_curve_batch,
+                });
+                next_curve_batch += 1;
             }
         }
     }

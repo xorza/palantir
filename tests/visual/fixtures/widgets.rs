@@ -715,3 +715,55 @@ fn polyline_translucent_premultiplies_in_mesh_shader() {
          premultiply (see docs/review-wgsl-shaders.md A1)."
     );
 }
+
+/// Pin the native GPU curve pipeline end-to-end: encoder lowers
+/// `Shape::CubicBezier` to `ShapeRecord::Curve`, composer batches into
+/// one `CurveBatch`, `CurvePipeline` issues a single
+/// `pass.draw(0..96, ..)` per scissor group. Three cubic curves with
+/// Butt / Square / Round caps, identical shape and width — the only
+/// visual difference is the endpoint geometry, so the golden pins both
+/// the strip and the cap-SDF code path. A fourth quadratic curve below
+/// pins the quadratic→cubic promotion at lowering.
+#[test]
+fn curve_caps_match_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 240), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                // Three identical "hill" cubics, one per cap kind.
+                // Symmetric so the cap effect is the only delta.
+                for (i, (cap, color)) in [
+                    (LineCap::Butt, Color::rgb(1.0, 0.4, 0.4)),
+                    (LineCap::Square, Color::rgb(0.4, 1.0, 0.4)),
+                    (LineCap::Round, Color::rgb(0.4, 0.6, 1.0)),
+                ]
+                .iter()
+                .enumerate()
+                {
+                    let dy = 20.0 + i as f32 * 55.0;
+                    ui.add_shape(Shape::CubicBezier {
+                        p0: Vec2::new(30.0, dy + 40.0),
+                        p1: Vec2::new(60.0, dy - 10.0),
+                        p2: Vec2::new(140.0, dy - 10.0),
+                        p3: Vec2::new(170.0, dy + 40.0),
+                        width: 8.0,
+                        brush: (*color).into(),
+                        cap: *cap,
+                    });
+                }
+                // Quadratic curve at the bottom — exercises the
+                // q→cubic promotion path.
+                ui.add_shape(Shape::QuadraticBezier {
+                    p0: Vec2::new(30.0, 215.0),
+                    p1: Vec2::new(100.0, 170.0),
+                    p2: Vec2::new(170.0, 215.0),
+                    width: 4.0,
+                    brush: Color::rgb(1.0, 0.85, 0.2).into(),
+                    cap: LineCap::Round,
+                });
+            });
+    });
+    assert_matches_golden("curve_caps", &img, Tolerance::default());
+}

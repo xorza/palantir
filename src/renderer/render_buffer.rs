@@ -40,6 +40,16 @@ pub(crate) struct RenderBuffer {
     /// these in lockstep with `groups` via a cursor — same pattern as
     /// `text_batches` / `mesh_batches`.
     pub(crate) image_batches: Vec<ImageBatch>,
+    /// Native GPU curve instances + per-scissor-group batches. One
+    /// `CurveBatch` per group that emitted curves; the schedule walks
+    /// them in lockstep with `mesh_batches` / `image_batches` via a
+    /// cursor. Each instance is a sub-range `[t0, t1]` of one cubic
+    /// bezier — adaptive count: long / fast-curving inputs emit
+    /// multiple instances at lowering time, smooth ones emit a single
+    /// instance. The pipeline draws all instances in a batch with one
+    /// non-indexed instanced draw.
+    pub(crate) curves: Vec<CurveInstance>,
+    pub(crate) curve_batches: Vec<CurveBatch>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
     /// reads this to decide whether to walk the stencil-mask path;
@@ -67,6 +77,8 @@ impl Default for RenderBuffer {
             mesh_batches: Vec::new(),
             images: ImageScene::default(),
             image_batches: Vec::new(),
+            curves: Vec::new(),
+            curve_batches: Vec::new(),
             has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -286,4 +298,48 @@ impl std::hash::Hash for TextRun {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(bytemuck::bytes_of(self));
     }
+}
+
+/// A batch of curve sub-instances emitted together. `instances` is a
+/// contiguous range into [`CurveScene::instances`]; `last_group` is the
+/// group whose iteration drains this batch in the schedule — mirrors
+/// `MeshBatch.last_group` / `ImageBatch.last_group`. One batch per
+/// scissor group with curves (no cross-group spanning — curves must
+/// clip to the active scissor same as meshes).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct CurveBatch {
+    pub(crate) instances: Span,
+    pub(crate) last_group: u32,
+}
+
+/// Per-curve-sub-instance GPU state, uploaded to a
+/// `step_mode: Instance` vertex buffer. The shader evaluates the cubic
+/// at parameter `t = mix(t0, t1, segment / SEGMENTS_PER_INSTANCE)` for
+/// `segment ∈ [0, SEGMENTS_PER_INSTANCE]`, derives the tangent's
+/// perpendicular, and offsets by ±(width/2 + AA fringe) to build the
+/// stroked strip. All control points are pre-transformed to
+/// physical-px; `width` is also physical px. Color is linear-RGBA
+/// straight-alpha (same convention as `MeshVertex.color`); the
+/// fragment shader premultiplies at output.
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct CurveInstance {
+    pub(crate) p0: Vec2,
+    pub(crate) p1: Vec2,
+    pub(crate) p2: Vec2,
+    pub(crate) p3: Vec2,
+    /// `[t0, t1]` — the sub-range of the parent curve this instance
+    /// covers. The vertex shader subdivides this range into
+    /// `SEGMENTS_PER_INSTANCE` chords; one curve emits ⌈N/16⌉
+    /// sub-instances where `N` is the adaptive segment count.
+    pub(crate) t0: f32,
+    pub(crate) t1: f32,
+    pub(crate) width: f32,
+    pub(crate) color: ColorU8,
+    /// Cap kind tag — 0 = Butt, 1 = Square, 2 = Round. Only the
+    /// leading sub-instance (`t0 ≈ 0`) and trailing sub-instance
+    /// (`t1 ≈ 1`) actually extend their geometry; interior
+    /// sub-instances see this lane and skip cap extension.
+    pub(crate) cap: u32,
 }

@@ -361,6 +361,29 @@ pub(crate) enum ShapeRecord {
         handle: ImageHandle,
         fit: ImageFit,
     } = 5,
+    /// Native GPU bezier curve. Four control points (quadratic curves
+    /// promote to cubic at lowering — `p1 = p0 + 2/3(c - p0)`,
+    /// `p2 = p2 + 2/3(c - p2)`). Stored owner-local; the composer adds
+    /// the owner origin + active transform at compose time and uploads
+    /// to a per-instance buffer. Solid stroke colour, butt caps, no
+    /// joins for v1 (single-segment primitive). `bbox` is the
+    /// owner-local stroked-AABB inflated by `width/2 + AA fringe` so
+    /// damage / clip cull match the painted extent.
+    Curve {
+        p0: Vec2,
+        p1: Vec2,
+        p2: Vec2,
+        p3: Vec2,
+        width: f32,
+        color: ColorF16,
+        /// End-cap style. Joins are absent (single-curve primitive,
+        /// no interior). `Round`/`Square` extend the painted strip by
+        /// `width/2` past each endpoint along the local tangent; the
+        /// composer-time bbox already includes that slack.
+        cap: LineCap,
+        bbox: Rect,
+        content_hash: u64,
+    } = 6,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
@@ -461,7 +484,7 @@ impl ShapeRecord {
                     shadow.inset(),
                 )
             }
-            ShapeRecord::Polyline { bbox, .. } => *bbox,
+            ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
             ShapeRecord::RoundedRect { local_rect, .. }
             | ShapeRecord::Mesh { local_rect, .. }
             | ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
@@ -498,6 +521,7 @@ impl ShapeRecord {
             ShapeRecord::Mesh { .. } => 3,
             ShapeRecord::Shadow { .. } => 4,
             ShapeRecord::Image { .. } => 5,
+            ShapeRecord::Curve { .. } => 6,
         }
     }
 }
@@ -605,6 +629,11 @@ impl Hash for ShapeRecord {
                 }
                 radius.hash(h);
                 shadow.hash(h);
+            }
+            ShapeRecord::Curve { content_hash, .. } => {
+                // `content_hash` summarizes p0..p3 + width + color + cap.
+                // bbox is derived; no need to fold separately.
+                h.write_u64(*content_hash);
             }
             ShapeRecord::Image {
                 local_rect,
