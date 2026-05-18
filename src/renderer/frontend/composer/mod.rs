@@ -575,6 +575,8 @@ impl Composer {
                         .div_ceil(SEGMENTS_PER_INSTANCE)
                         .clamp(1, MAX_SUB_INSTANCES);
                     let color = crate::primitives::color::Color::from(p.color).into();
+                    let fill_kind = p.fill_kind;
+                    let fill_lut_row = p.fill_lut_row;
                     let inv_n = 1.0 / n as f32;
                     for i in 0..n {
                         let t0 = i as f32 * inv_n;
@@ -593,6 +595,8 @@ impl Composer {
                             width: width_phys,
                             color,
                             cap: p.cap,
+                            fill_kind,
+                            fill_lut_row,
                             ..bytemuck::Zeroable::zeroed()
                         });
                     }

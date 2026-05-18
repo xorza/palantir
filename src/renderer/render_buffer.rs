@@ -1,4 +1,5 @@
-use super::quad::Quad;
+use super::gradient_atlas::LutRow;
+use super::quad::{FillKind, Quad};
 use crate::primitives::image::ImageHandle;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
@@ -336,10 +337,20 @@ pub(crate) struct CurveInstance {
     pub(crate) t0: f32,
     pub(crate) t1: f32,
     pub(crate) width: f32,
+    /// Solid stroke colour. Zeroed when `fill_kind != 0`; the shader
+    /// samples the LUT row instead.
     pub(crate) color: ColorU8,
     /// Cap kind tag — 0 = Butt, 1 = Square, 2 = Round. Only the
     /// leading sub-instance (`t0 ≈ 0`) and trailing sub-instance
     /// (`t1 ≈ 1`) actually extend their geometry; interior
     /// sub-instances see this lane and skip cap extension.
     pub(crate) cap: u32,
+    /// Brush kind tag. Low byte 0 = solid, 1 = linear. Spread mode
+    /// would ride in bits 8..16 like the quad pipeline, but a curve's
+    /// `t` is already clamped to [0, 1] by construction, so spread is
+    /// a no-op here. `#[repr(transparent)]` over `u32`, so the GPU
+    /// sees the same bytes the `Uint32` vertex attribute expects.
+    pub(crate) fill_kind: FillKind,
+    /// Atlas row when `fill_kind` is a gradient, else ignored.
+    pub(crate) fill_lut_row: LutRow,
 }

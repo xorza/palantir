@@ -25,7 +25,7 @@ use bytemuck::{Pod, Zeroable};
 /// catch it.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Pod, Zeroable)]
-pub(crate) struct FillKind(u32);
+pub(crate) struct FillKind(pub(crate) u32);
 
 impl FillKind {
     /// Solid-fill marker; `Quad.fill: Color` carries the colour, the

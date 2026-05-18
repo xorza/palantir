@@ -210,15 +210,22 @@ impl FrameArena {
     /// Lower a cubic bezier into a `ShapeRecord::Curve`. Tessellation
     /// happens GPU-side at draw time — no CPU flattening, no per-curve
     /// vertex/index allocation. The composer derives sub-instance count
-    /// from the post-transform control-polygon length.
+    /// from the post-transform control-polygon length. `brush` may be
+    /// `Brush::Solid` or `Brush::Linear` — the linear gradient samples
+    /// along the curve parameter `t` and its `angle` is ignored;
+    /// `Radial`/`Conic` panic at lowering (no meaningful axis on a
+    /// 1-D stroke).
     pub(crate) fn lower_cubic_bezier(
         &self,
         ctrl: [Vec2; 4],
         width: f32,
-        color: Color,
+        brush: Brush,
         cap: LineCap,
+        atlas: &GradientAtlas,
     ) -> ShapeRecord {
-        lower_curve_inner(ctrl, width, color, cap, 0)
+        assert_curve_brush(&brush);
+        let lowered = self.0.borrow_mut().lower_brush_inner(brush, atlas);
+        lower_curve_inner(ctrl, width, lowered, cap, 0)
     }
 
     /// Lower a quadratic bezier by promoting it to a cubic and going
@@ -228,23 +235,46 @@ impl FrameArena {
         &self,
         ctrl: [Vec2; 3],
         width: f32,
-        color: Color,
+        brush: Brush,
         cap: LineCap,
+        atlas: &GradientAtlas,
     ) -> ShapeRecord {
+        assert_curve_brush(&brush);
         let [p0, c, p2] = ctrl;
         let (q1, q2) = quadratic_to_cubic(p0, c, p2);
-        lower_curve_inner([p0, q1, q2, p2], width, color, cap, 1)
+        let lowered = self.0.borrow_mut().lower_brush_inner(brush, atlas);
+        lower_curve_inner([p0, q1, q2, p2], width, lowered, cap, 1)
+    }
+}
+
+/// Bezier strokes accept `Brush::Solid` or `Brush::Linear`. Radial and
+/// conic gradients project onto a 2-D shape; there is no obvious
+/// projection onto a 1-D stroke (the chord and the curve's bounding
+/// rect are both poor proxies), so we reject at lowering rather than
+/// silently pick one. If a curve-friendly radial/conic interpretation
+/// shows up, lift this gate.
+fn assert_curve_brush(brush: &Brush) {
+    match brush {
+        Brush::Solid(_) | Brush::Linear(_) => {}
+        Brush::Radial(_) | Brush::Conic(_) => {
+            panic!(
+                "Shape::CubicBezier/QuadraticBezier: only Brush::Solid and Brush::Linear are supported"
+            )
+        }
     }
 }
 
 /// Build a `ShapeRecord::Curve` from cubic control points. `degree_tag`
 /// is folded into the content hash so quadratic-derived and natively-
 /// cubic curves with bit-identical post-promotion CPs still hash
-/// distinctly (matches the old bezier-hash discipline).
+/// distinctly (matches the old bezier-hash discipline). The brush
+/// variant (solid colour or gradient hash) is folded into the record
+/// hash separately by `ShapeRecord::Hash`, so this function's hash
+/// only covers geometry + cap.
 fn lower_curve_inner(
     ctrl: [Vec2; 4],
     width: f32,
-    color: Color,
+    fill: LoweredBrush,
     cap: LineCap,
     degree_tag: u8,
 ) -> ShapeRecord {
@@ -276,7 +306,6 @@ fn lower_curve_inner(
     // Pack width bits + cap tag into one 64-bit hasher write — single
     // dispatch instead of two.
     h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(cap as u8));
-    h.write(bytemuck::bytes_of(&color));
     let content_hash = h.finish();
     ShapeRecord::Curve {
         p0,
@@ -284,7 +313,8 @@ fn lower_curve_inner(
         p2,
         p3,
         width,
-        color: color.into(),
+        fill: fill.brush,
+        fill_grad_hash: fill.hash,
         cap,
         bbox,
         content_hash,

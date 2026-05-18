@@ -1,5 +1,5 @@
 use glam::Vec2;
-use palantir::{Color, Configure, LineCap, Panel, Shape, Sizing, Ui};
+use palantir::{Brush, Color, Configure, LineCap, LinearGradient, Panel, Shape, Sizing, Stop, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -16,6 +16,14 @@ pub fn build(ui: &mut Ui) {
                     cell(ui, "cubic", cubic);
                     cell(ui, "quadratic", quadratic);
                     cell(ui, "caps", cap_variants);
+                });
+            Panel::hstack()
+                .id_salt("row2")
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    cell(ui, "gradient_cubic", gradient_cubic);
+                    cell(ui, "gradient_multi", gradient_multistop);
                 });
         });
 }
@@ -57,6 +65,46 @@ fn quadratic(ui: &mut Ui) {
         width: 4.0,
         brush: Color::rgb(0.4, 1.0, 0.5).into(),
         cap: LineCap::Butt,
+    });
+}
+
+fn gradient_cubic(ui: &mut Ui) {
+    // Two-stop gradient along the curve's t parameter (p0 → p3). The
+    // `angle` field of LinearGradient is unused on curves.
+    let brush = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        Color::rgb(1.0, 0.2, 0.4),
+        Color::rgb(0.2, 0.6, 1.0),
+    ));
+    ui.add_shape(Shape::CubicBezier {
+        p0: P0,
+        p1: P1,
+        p2: P2,
+        p3: P3,
+        width: 8.0,
+        brush,
+        cap: LineCap::Round,
+    });
+}
+
+fn gradient_multistop(ui: &mut Ui) {
+    // Three-stop rainbow gradient. Same atlas + bake path as
+    // RoundedRect linear fills.
+    let brush = Brush::Linear(LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, Color::rgb(1.0, 0.2, 0.2)),
+            Stop::new(0.5, Color::rgb(1.0, 0.9, 0.2)),
+            Stop::new(1.0, Color::rgb(0.2, 0.6, 1.0)),
+        ],
+    ));
+    ui.add_shape(Shape::QuadraticBezier {
+        p0: Q0,
+        p1: Q1,
+        p2: Q2,
+        width: 10.0,
+        brush,
+        cap: LineCap::Round,
     });
 }
 

@@ -119,7 +119,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => arena.lower_cubic_bezier([p0, p1, p2, p3], width, brush.expect_solid(), cap),
+            } => arena.lower_cubic_bezier([p0, p1, p2, p3], width, brush, cap, atlas),
             Shape::QuadraticBezier {
                 p0,
                 p1,
@@ -127,7 +127,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => arena.lower_quadratic_bezier([p0, p1, p2], width, brush.expect_solid(), cap),
+            } => arena.lower_quadratic_bezier([p0, p1, p2], width, brush, cap, atlas),
             Shape::Text {
                 local_origin,
                 text,

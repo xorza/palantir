@@ -24,6 +24,13 @@
 
 struct Viewport { size: vec2<f32> };
 @group(0) @binding(0) var<uniform> vp: Viewport;
+// Gradient LUT atlas, shared with the quad pipeline. Sampled per
+// fragment when `fill_kind != 0`. Same `Rgba8Unorm` (linear) format
+// + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
+// `t` is already in [0, 1] by construction, so spread is a no-op.
+@group(0) @binding(1) var gradient_tex:     texture_2d<f32>;
+@group(0) @binding(2) var gradient_sampler: sampler;
+const ATLAS_ROWS_F: f32 = 256.0;
 
 // `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction
 // from the Rust const of the same name (see `curve_pipeline.rs`). Don't
@@ -35,6 +42,9 @@ const HALF_FRINGE: f32 = 0.5;
 const CAP_BUTT: u32 = 0u;
 const CAP_SQUARE: u32 = 1u;
 const CAP_ROUND: u32 = 2u;
+
+const BRUSH_KIND_SOLID:  u32 = 0u;
+const BRUSH_KIND_LINEAR: u32 = 1u;
 
 // Epsilon for the "is this the curve's leading / trailing endpoint?"
 // test against `t_range`. Sub-instance boundaries are exactly
@@ -54,6 +64,8 @@ struct VsIn {
     @location(5) width: f32,
     @location(6) color: vec4<f32>,
     @location(7) cap: u32,
+    @location(8) fill_kind: u32,
+    @location(9) fill_lut_row: u32,
 };
 
 struct VsOut {
@@ -71,6 +83,16 @@ struct VsOut {
     @location(2) @interpolate(flat) half_w: f32,
     @location(3) @interpolate(flat) color: vec4<f32>,
     @location(4) @interpolate(flat) cap_kind: u32,
+    // Brush kind low byte (0 = solid, 1 = linear) — flat: constant
+    // per instance, fragment branches on it.
+    @location(5) @interpolate(flat) fill_kind: u32,
+    // Gradient LUT row, ignored when `fill_kind == 0`.
+    @location(6) @interpolate(flat) fill_lut_row: u32,
+    // Per-vertex curve parameter `t` ∈ [0, 1] for LUT sampling. The
+    // hardware lerps it across the strip cross-section, which is
+    // correct: each strip cross-section corresponds to a single `t`,
+    // so the lerp is constant along the cross-section.
+    @location(7) curve_t: f32,
 };
 
 struct PosTan { pos: vec2<f32>, tan: vec2<f32> };
@@ -166,6 +188,9 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.color = in.color;
     out.cap_t = abs(cap_shift);
     out.cap_kind = in.cap;
+    out.fill_kind = in.fill_kind;
+    out.fill_lut_row = in.fill_lut_row;
+    out.curve_t = t;
     return out;
 }
 
@@ -185,6 +210,14 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
         // the vertex shader doesn't extend for Butt.
         coverage = clamp(in.half_w - dist + HALF_FRINGE, 0.0, 1.0);
     }
-    let a = in.color.a * coverage;
-    return vec4<f32>(in.color.rgb * a, a);
+    var rgba: vec4<f32>;
+    if ((in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR) {
+        let t = clamp(in.curve_t, 0.0, 1.0);
+        let v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
+        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
+    } else {
+        rgba = in.color;
+    }
+    let a = rgba.a * coverage;
+    return vec4<f32>(rgba.rgb * a, a);
 }
