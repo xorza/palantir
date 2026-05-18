@@ -264,13 +264,9 @@ pub(crate) struct PanelExtras {
     pub(crate) transform: TranslateScale,
 }
 
-/// `transform` is intentionally omitted: it doesn't affect this node's own
-/// paint (the encoder draws the node at its layout rect *before*
-/// `PushTransform`; the transform composes into descendants' screen rects via
-/// `CascadesEngine`). A parent transform change shows up as descendant screen-rect
-/// diffs in `DamageEngine::compute`, the right granularity. Transform IS folded
-/// into `subtree_hash` separately (in the tree's rollup loop) so the encode
-/// cache invalidates on transform-only changes.
+/// Straight field-by-field hash. `BoundsExtras` carries no transform —
+/// the per-panel `transform` lives on [`PanelExtras`], which folds it
+/// into its own `Hash` impl.
 impl std::hash::Hash for BoundsExtras {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
@@ -281,14 +277,18 @@ impl std::hash::Hash for BoundsExtras {
     }
 }
 
-/// `transform` is intentionally omitted here — same rationale as
-/// `BoundsExtras::hash`: a parent moving its descendants shouldn't
-/// dirty-flag its own node hash. Transform is folded into the
-/// subtree hash separately in `Tree::compute_hashes`.
+/// Includes `transform`: under the [`crate::widgets::Panel::transform`]
+/// contract a self-transform shift moves this node's direct shapes,
+/// so it has to dirty the node's hash. Identity is filtered out so a
+/// panel that never touched `.transform()` still hashes to the
+/// transform-less byte pattern (and dominantly no-transform layouts
+/// pay zero bytes here).
 impl std::hash::Hash for PanelExtras {
     /// Pack `(gaps, child_align, justify)` into one `u64` write —
     /// gaps occupies the low 32 bits (already a packed `[u16; 2]`),
-    /// child_align byte at bit 32, justify byte at bit 40.
+    /// child_align byte at bit 32, justify byte at bit 40. Transform
+    /// folds in separately because `TranslateScale` doesn't pack into
+    /// the same `u64`.
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         let gaps_u32 = u32::from_ne_bytes(bytemuck::cast(self.gaps.0));
@@ -296,6 +296,12 @@ impl std::hash::Hash for PanelExtras {
             | ((self.child_align.raw() as u64) << 32)
             | ((self.justify as u64) << 40);
         h.write_u64(packed);
+        if !self.transform.is_noop() {
+            h.write_u8(1);
+            h.write(bytemuck::bytes_of(&self.transform));
+        } else {
+            h.write_u8(0);
+        }
     }
 }
 

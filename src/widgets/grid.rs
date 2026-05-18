@@ -122,6 +122,9 @@ impl Grid {
 
     /// See [`crate::widgets::Panel::transform`] — same contract:
     /// applies to body (children + direct shapes), not to chrome.
+    /// Same origin-anchor footgun applies — when the grid sits off
+    /// the surface origin, compose `origin * (1 - zoom)` into the
+    /// translation.
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = t;
         self

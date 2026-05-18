@@ -11,7 +11,7 @@ use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::CascadeInputHash;
-use crate::forest::shapes::record::shadow_paint_rect_local;
+use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
@@ -477,31 +477,55 @@ fn compute_paint_rect(
     parent_clip: Option<Rect>,
     shape_rects: &mut [Rect],
 ) -> Rect {
-    // Shapes recorded on this node paint *inside* the node's own
-    // transform (matching the encoder body push/pop), so their
-    // screen-space rects compose `parent_transform` with self's
-    // transform. Chrome stays on `parent_transform` — it paints
-    // before the body push, anchored in parent space.
+    // Two transforms apply to this node's paint:
+    // - `parent_transform` for chrome (encoder emits chrome before the
+    //   body push) and the chrome's drop shadow.
+    // - `shape_transform = parent.compose(self)` for direct shapes
+    //   (encoder emits shapes inside the body push, per the
+    //   `Panel::transform` contract).
+    // Chrome and shapes are unioned in screen space so each side
+    // carries its own transform — folding them in owner-local would
+    // lose `self.transform` for shapes.
     let self_transform = tree.transform_of(node).unwrap_or(TranslateScale::IDENTITY);
     let shape_transform = parent_transform.compose(self_transform);
 
-    let owner_local = Rect {
-        min: Vec2::ZERO,
-        size: layout_rect.size,
-    };
-    let mut paint_local = owner_local;
-    let mut shapes_local = Rect::ZERO;
-    let mut have_shapes = false;
+    // Each accumulator is `Option<Rect>` rather than seeded to
+    // `owner_local` / `Rect::ZERO`, because `Rect::union` is not
+    // sound under either sentinel: zero-sized rects bias toward
+    // the origin (see `Rect::union` doc), and seeding to the owner
+    // rect would inflate paint-rect for non-painting containers and
+    // for chromeless shape hosts — defeating tight damage on pan.
+    let mut chrome_local: Option<Rect> = None;
+    let mut shapes_local: Option<Rect> = None;
     if tree.records.shape_span()[node.idx()].len > 0 {
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
                 let bbox = s.paint_bbox_local(layout_rect.size);
-                if have_shapes {
-                    shapes_local = shapes_local.union(bbox);
-                } else {
-                    shapes_local = bbox;
-                    have_shapes = true;
-                }
+                // `ShapeRecord::Text { local_origin: Some(_), .. }`
+                // returns a zero-size bbox because the glyph extent
+                // isn't known until cosmic-text shapes the run.
+                // Conservatively fall back to the owner rect for the
+                // paint-extent accumulator so the encoder's
+                // subtree-paint-rect cull doesn't drop the text; the
+                // per-shape `shape_rects[idx]` still stores the
+                // origin-only rect (callers that key off the
+                // per-shape rect, e.g. paint anims, get the precise
+                // origin). Pinned by
+                // `multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect`.
+                let extent_bbox = match s {
+                    ShapeRecord::Text {
+                        local_origin: Some(_),
+                        ..
+                    } => Rect {
+                        min: Vec2::ZERO,
+                        size: layout_rect.size,
+                    },
+                    _ => bbox,
+                };
+                shapes_local = Some(match shapes_local {
+                    Some(acc) => acc.union(extent_bbox),
+                    None => extent_bbox,
+                });
                 let tree_local = Rect {
                     min: layout_rect.min + bbox.min,
                     size: bbox.size,
@@ -511,42 +535,122 @@ fn compute_paint_rect(
             }
         }
     }
-    // Chrome-attached drop shadow inflates the same way a
-    // `ShapeRecord::Shadow` would; encoder mirrors this via
-    // `shadow_paint_rect_local` so paint extent and damage extent
-    // stay in lockstep.
-    if let Some(bg) = tree.chrome(node)
-        && !bg.shadow.is_noop()
-    {
-        let s = &bg.shadow;
-        let g = s.geom();
-        let shadow_local = shadow_paint_rect_local(
-            None,
-            layout_rect.size,
-            g.offset,
-            g.blur,
-            g.spread,
-            s.inset(),
-        );
-        paint_local = paint_local.union(shadow_local);
-    }
-    // Combine the chrome/owner extent (parent-space) with the shape
-    // extent (self-transformed): map each into screen space and
-    // union the screen rects. Avoids losing the shape's transform by
-    // pulling shape-local back into chrome-local.
-    let chrome_tree_local = Rect {
-        min: layout_rect.min + paint_local.min,
-        size: paint_local.size,
-    };
-    let chrome_screen = clip_to(parent_transform.apply_rect(chrome_tree_local), parent_clip);
-    if have_shapes {
-        let shapes_tree_local = Rect {
-            min: layout_rect.min + shapes_local.min,
-            size: shapes_local.size,
+    // Owner rect: contributed when this node paints chrome (so the
+    // chrome rect and its shadow show up in damage / paint extent)
+    // OR when it has a clip mode set (so the encoder's
+    // subtree-paint-rect cull doesn't skip the node before its
+    // PushClip/PopClip pair fires). Chromeless, clipless nodes
+    // contribute only their direct shapes — that's the fix that
+    // collapses pan-damage on a transformed shape host from
+    // "full surface" to "swept shape band".
+    let has_clip = tree.records.attrs()[node.idx()].clip_mode().is_clip();
+    let chrome = tree.chrome(node);
+    if chrome.is_some() || has_clip {
+        let owner_local = Rect {
+            min: Vec2::ZERO,
+            size: layout_rect.size,
         };
-        let shapes_screen = clip_to(shape_transform.apply_rect(shapes_tree_local), parent_clip);
-        chrome_screen.union(shapes_screen)
-    } else {
-        chrome_screen
+        let mut local = owner_local;
+        if let Some(bg) = chrome
+            && !bg.shadow.is_noop()
+        {
+            let s = &bg.shadow;
+            let g = s.geom();
+            local = local.union(shadow_paint_rect_local(
+                None,
+                layout_rect.size,
+                g.offset,
+                g.blur,
+                g.spread,
+                s.inset(),
+            ));
+        }
+        chrome_local = Some(local);
+    }
+
+    let chrome_screen = chrome_local.map(|local| {
+        let tree_local = Rect {
+            min: layout_rect.min + local.min,
+            size: local.size,
+        };
+        clip_to(parent_transform.apply_rect(tree_local), parent_clip)
+    });
+    let shapes_screen = shapes_local.map(|local| {
+        let tree_local = Rect {
+            min: layout_rect.min + local.min,
+            size: local.size,
+        };
+        clip_to(shape_transform.apply_rect(tree_local), parent_clip)
+    });
+    match (chrome_screen, shapes_screen) {
+        (Some(c), Some(s)) => c.union(s),
+        (Some(c), None) => c,
+        (None, Some(s)) => s,
+        (None, None) => Rect::ZERO,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::Ui;
+    use crate::forest::Layer;
+    use crate::forest::element::Configure;
+    use crate::layout::types::sizing::Sizing;
+    use crate::primitives::color::Color;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::rect::Rect;
+    use crate::primitives::stroke::Stroke;
+    use crate::primitives::transform::TranslateScale;
+    use crate::primitives::widget_id::WidgetId;
+    use crate::shape::Shape;
+    use crate::widgets::panel::Panel;
+    use glam::{UVec2, Vec2};
+
+    /// A direct shape recorded on a panel with `.transform(...)` must
+    /// land in `Cascades::shape_rects` at the *composed* transform
+    /// (parent ∘ self), not just `parent_transform`. Pins the cascade
+    /// half of the `Panel::transform`-applies-to-body contract — the
+    /// encoder half is already pinned by
+    /// `transformed_panel_applies_transform_to_direct_shapes`.
+    #[test]
+    fn shape_rect_composes_self_transform() {
+        let scale = 3.0;
+        let translate = Vec2::new(10.0, 20.0);
+        let xform = TranslateScale::new(translate, scale);
+
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Panel::canvas()
+                    .id(WidgetId::from_hash("xpanel"))
+                    .size(Sizing::Fixed(300.0))
+                    .transform(xform)
+                    .show(ui, |ui| {
+                        ui.add_shape(Shape::RoundedRect {
+                            local_rect: Some(Rect::new(0.0, 0.0, 30.0, 30.0)),
+                            radius: Corners::ZERO,
+                            fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                            stroke: Stroke::ZERO,
+                        });
+                    });
+            });
+        });
+
+        // Shape is the first (and only) recorded shape; its rect lives
+        // at `cascades.shape_rects[layer][0]`.
+        let layer_idx = Layer::Main.idx();
+        let shape_rect = ui.layout.cascades.shape_rects[layer_idx][0];
+        // The Panel sits at the hstack origin (0, 0). Owner-local
+        // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
+        //   min = (0, 0) * 3 + (10, 20) = (10, 20)
+        //   size = (30, 30) * 3 = (90, 90)
+        let eps = 1e-3;
+        assert!(
+            (shape_rect.min.x - 10.0).abs() < eps
+                && (shape_rect.min.y - 20.0).abs() < eps
+                && (shape_rect.size.w - 90.0).abs() < eps
+                && (shape_rect.size.h - 90.0).abs() < eps,
+            "expected shape_rect = (10, 20, 90, 90); got {shape_rect:?}",
+        );
     }
 }
