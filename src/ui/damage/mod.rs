@@ -180,6 +180,12 @@ pub(crate) struct DamageEngine {
     /// span goes unreferenced), or when a widget is evicted. Drives
     /// the compaction trigger. Counted in entries, not bytes.
     pub(crate) shape_snaps_orphaned: u32,
+    /// Compaction-event counter — bumped each time
+    /// `compact_shape_snaps` runs. Gated behind `internals` so
+    /// benches can verify the path is actually exercised; production
+    /// builds skip the field entirely.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) compactions_run: u32,
     /// Pass-1 scratch buffer. `compute` walks every damage source
     /// (structural diff, predamaged anim rects, removed-widget evict)
     /// and appends each contribution here without applying the merge
@@ -207,6 +213,8 @@ impl Default for DamageEngine {
             shape_snaps: Vec::new(),
             shape_snaps_scratch: Vec::new(),
             shape_snaps_orphaned: 0,
+            #[cfg(any(test, feature = "internals"))]
+            compactions_run: 0,
             raw_rects: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
@@ -284,36 +292,56 @@ impl DamageEngine {
         self.shape_snaps_orphaned = 0;
     }
 
-    /// Walk live `NodeSnapshot::shape_span`s and reseat them into
-    /// `shape_snaps_scratch` in pre-iteration order, then swap. Bytes
-    /// orphaned by shape-count churn and widget eviction get reclaimed.
-    /// Caller gates this on `shape_snaps_orphaned` exceeding a
-    /// threshold so steady-state frames don't pay the walk.
-    fn compact_shape_snaps(&mut self) {
+    /// Walk live `NodeSnapshot::shape_span`s in pre-order paint
+    /// order — same order the next frame's diff body visits them —
+    /// and reseat into `shape_snaps_scratch`, then swap. Subsequent
+    /// per-shape comparisons hit sequential cache lines instead of
+    /// the scattered HashMap-order layout that
+    /// `prev.values_mut()` would produce.
+    ///
+    /// Walks `forest` rather than the prev map directly: visiting
+    /// every node is O(N), but typical N is the same order as the
+    /// painting-widget count, and the locality win on next-frame
+    /// reads more than pays the bookkeeping. The diff and the
+    /// compaction sweep share one canonical order.
+    fn compact_shape_snaps(&mut self, forest: &Forest) {
         self.shape_snaps_scratch.clear();
-        for snap in self.prev.values_mut() {
-            if snap.shape_span.len == 0 {
-                continue;
+        for (_layer, tree) in forest.iter_paint_order() {
+            for wid in tree.records.widget_id() {
+                let Some(snap) = self.prev.get_mut(wid) else {
+                    continue;
+                };
+                if snap.shape_span.len == 0 {
+                    continue;
+                }
+                let new_start = self.shape_snaps_scratch.len() as u32;
+                self.shape_snaps_scratch
+                    .extend_from_slice(&self.shape_snaps[snap.shape_span.range()]);
+                snap.shape_span = Span::new(new_start, snap.shape_span.len);
             }
-            let new_start = self.shape_snaps_scratch.len() as u32;
-            self.shape_snaps_scratch
-                .extend_from_slice(&self.shape_snaps[snap.shape_span.range()]);
-            snap.shape_span = Span::new(new_start, snap.shape_span.len);
         }
         std::mem::swap(&mut self.shape_snaps, &mut self.shape_snaps_scratch);
         self.shape_snaps_orphaned = 0;
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.compactions_run = self.compactions_run.saturating_add(1);
+        }
     }
 
-    /// Trigger compaction when orphaned slots exceed half the buffer.
-    /// 50 % is a wash between "too eager" (compact every shape change)
-    /// and "too lax" (buffer balloons before reclamation). Cheap walk:
-    /// O(live snapshots) — typically much smaller than the buffer
-    /// itself because each snapshot's `shape_span` can cover many
-    /// entries.
-    fn maybe_compact_shape_snaps(&mut self) {
+    /// Trigger compaction when:
+    /// 1. the arena is large enough that the O(N) reseat walk is
+    ///    cheaper than letting the buffer drift (`MIN_TOTAL`), and
+    /// 2. orphaned entries are ≥ 75 % of the buffer
+    ///    (`orphaned * 4 >= total * 3`). Up from the previous 50 %.
+    ///    Halves compaction frequency at the cost of letting the
+    ///    buffer drift ~2× larger before reclamation — net win on
+    ///    `shape_churn_full` where every frame produced compaction
+    ///    pressure under the old threshold.
+    fn maybe_compact_shape_snaps(&mut self, forest: &Forest) {
+        const MIN_TOTAL: u32 = 256;
         let total = self.shape_snaps.len() as u32;
-        if total > 0 && self.shape_snaps_orphaned * 2 >= total {
-            self.compact_shape_snaps();
+        if total >= MIN_TOTAL && self.shape_snaps_orphaned.saturating_mul(4) >= total * 3 {
+            self.compact_shape_snaps(forest);
         }
     }
 
@@ -594,7 +622,7 @@ impl DamageEngine {
 
         // Reclaim the arena once orphaned slots exceed half the
         // buffer. Cheap walk amortised against the bytes saved.
-        self.maybe_compact_shape_snaps();
+        self.maybe_compact_shape_snaps(forest);
 
         // ── Pass 2: collapse to the bounded region ────────────────
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
