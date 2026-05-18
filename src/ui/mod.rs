@@ -1260,6 +1260,26 @@ pub mod test_support {
             self.damage_engine.subtree_skips
         }
 
+        /// Live entries in the `shape_snaps` arena (sum of every
+        /// `NodeSnapshot::shape_span.len`, including orphaned tail).
+        pub fn damage_shape_snaps_len(&self) -> usize {
+            self.damage_engine.shape_snaps.len()
+        }
+
+        /// Count of orphaned `ShapeSnap` entries in the arena —
+        /// drives the compaction trigger.
+        pub fn damage_shape_snaps_orphaned(&self) -> u32 {
+            self.damage_engine.shape_snaps_orphaned
+        }
+
+        /// Times `compact_shape_snaps` has run on this engine.
+        /// Used by benches to verify the compaction path was actually
+        /// exercised and to count compactions over a measurement
+        /// window.
+        pub fn damage_compactions_run(&self) -> u32 {
+            self.damage_engine.compactions_run
+        }
+
         /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
         pub fn damage_paint_kind(&self) -> &'static str {
             match Damage::new(self.display.logical_rect(), self.damage_region()) {

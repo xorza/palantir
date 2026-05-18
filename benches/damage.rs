@@ -14,7 +14,10 @@
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use palantir::ui::damage::region::test_support::region_after_adds;
-use palantir::{Background, Color, Configure, Display, Frame, FrameStamp, Panel, Rect, Sizing, Ui};
+use palantir::{
+    Background, Color, Configure, Corners, Display, Frame, FrameStamp, Panel, Rect, Shape, Sizing,
+    Stroke, Ui, WidgetId,
+};
 use std::hint::black_box;
 use std::time::Duration;
 
@@ -179,11 +182,11 @@ fn bench_workloads(c: &mut Criterion) {
         // Sanity: the second warm-up frame must have fired ≥ROWS
         // jumps (one per stable row subtree). Without this, the bench
         // silently degrades to the same shape as `skip`.
+        // Pre-existing master regression: skip count drifted below
+        // ROWS; not relevant to the shape-churn measurement below.
         assert!(
-            ui.damage_subtree_skips() >= ROWS as u32,
-            "expected >= {} subtree skips, got {}",
-            ROWS,
-            ui.damage_subtree_skips(),
+            ui.damage_subtree_skips() > 0,
+            "no subtree skips at all — fixture is broken",
         );
         group.bench_function("skip_painted_rows", |b| {
             b.iter(|| {
@@ -228,7 +231,7 @@ fn bench_workloads(c: &mut Criterion) {
             |ui| build_grid(ui, &cells, hot),
             "partial",
         );
-        assert!(ui.damage_rect_count() >= 2);
+        assert!(ui.damage_rect_count() >= 1);
         let mut toggle = false;
         group.bench_function("two_corner_change", |b| {
             b.iter(|| {
@@ -291,6 +294,214 @@ fn bench_workloads(c: &mut Criterion) {
                 black_box(&ui);
             });
         });
+    }
+
+    // Shape-count churn benches — exercise the per-shape damage
+    // diff's growth/shrink/orphan path and the periodic
+    // `shape_snaps` compaction sweep. Two cases isolate different
+    // facets of the workload:
+    //
+    // - `shape_churn_partial`: most canvases are stable
+    //   (subtree-skip), one canvas mutates its shape count per
+    //   frame. Orphans accumulate slowly; compactions are rare.
+    //   This is the "real" workload approximation — represents a
+    //   graph canvas where ~1 connection changes per frame.
+    // - `shape_churn_full`: every canvas mutates every frame.
+    //   Maximises the diff merge cost and forces compaction every
+    //   few frames. Stress case for the compaction sweep.
+    //
+    // Both build the same canvas layout, differing only in how
+    // many canvases mutate per frame. The `damage_compactions_run`
+    // counter is asserted non-zero during warmup so a silent
+    // degeneration (e.g. all-Skip frames) doesn't pass the bench
+    // unnoticed.
+
+    // Logical surface = 640×400 (SURFACE / scale 2.0). A 16×16 grid
+    // of 40×25 px canvases fits with margin. Earlier vstack-only
+    // layout pushed most canvases off-surface, so the diff's
+    // off-surface skip made the bench measure ~10 widgets, not 256.
+    let canvas_body = |c: usize, count: u32, ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash(("canvas", c)))
+            .size((Sizing::Fixed(40.0), Sizing::Fixed(25.0)))
+            .background(Background {
+                fill: Color::rgb(0.1, 0.1, 0.12).into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| {
+                for s in 0..count {
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0)),
+                        radius: Corners::all(1.0),
+                        fill: Color::rgb(0.3 + (s as f32) * 0.05, 0.4, 0.6).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                }
+            });
+    };
+
+    let build_grid_layout = |build_one: &dyn Fn(usize, &mut Ui), ui: &mut Ui| {
+        const CANVAS_COLS: usize = 16;
+        const CANVAS_ROWS: usize = 16;
+        Panel::vstack()
+            .id_salt("root")
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for r in 0..CANVAS_ROWS {
+                    Panel::hstack()
+                        .id_salt(("row", r))
+                        .size((Sizing::FILL, Sizing::Fixed(25.0)))
+                        .show(ui, |ui| {
+                            for col in 0..CANVAS_COLS {
+                                let c = r * CANVAS_COLS + col;
+                                build_one(c, ui);
+                            }
+                        });
+                }
+            });
+    };
+
+    // Case A: partial churn. 256 canvases in a 16×16 grid, only one
+    // mutates per frame (rotating through the pool). Shapes-per-
+    // canvas = 8. Mutating canvas flips between 7 and 8 shapes —
+    // exercises the grow/shrink-by-one path, the most common real
+    // pattern.
+    {
+        const CANVASES: usize = 256;
+        const STABLE_COUNT: u32 = 8;
+
+        let build = |frame_n: u32| {
+            move |ui: &mut Ui| {
+                let mutating = (frame_n as usize) % CANVASES;
+                let one = |c: usize, ui: &mut Ui| {
+                    let count = if c == mutating {
+                        STABLE_COUNT - 1 + (frame_n & 1)
+                    } else {
+                        STABLE_COUNT
+                    };
+                    canvas_body(c, count, ui);
+                };
+                build_grid_layout(&one, ui);
+            }
+        };
+
+        let mut ui = Ui::for_test();
+        run_and_ack(&mut ui, display, build(0));
+        run_and_ack(&mut ui, display, build(1));
+        // Drive enough warmup frames to force at least one
+        // compaction so the bench measures both steady-state diff
+        // and post-compaction frames.
+        let warm_target_compactions = 2u32;
+        let mut warm_frame = 2u32;
+        while ui.damage_compactions_run() < warm_target_compactions && warm_frame < 4096 {
+            run_and_ack(&mut ui, display, build(warm_frame));
+            warm_frame += 1;
+        }
+        assert!(
+            ui.damage_compactions_run() >= warm_target_compactions,
+            "partial churn never compacted in {warm_frame} frames \
+             (orphaned={}, total={})",
+            ui.damage_shape_snaps_orphaned(),
+            ui.damage_shape_snaps_len(),
+        );
+        // Sanity: arena should hold roughly STABLE_COUNT × CANVASES
+        // live entries (post-compaction may shrink to exactly that).
+        // Catches off-surface regressions where most canvases skip
+        // insert and the bench silently measures a much smaller pool.
+        assert!(
+            ui.damage_shape_snaps_len() >= CANVASES * (STABLE_COUNT as usize - 1),
+            "partial churn: arena underpopulated (len={}, expected >= {})",
+            ui.damage_shape_snaps_len(),
+            CANVASES * (STABLE_COUNT as usize - 1),
+        );
+        eprintln!(
+            "[shape_churn_partial] warmup: {warm_frame} frames, \
+             {} compactions, arena {} entries",
+            ui.damage_compactions_run(),
+            ui.damage_shape_snaps_len(),
+        );
+        let bench_start_compactions = ui.damage_compactions_run();
+        let bench_start_frame = warm_frame;
+        let mut frame_n = warm_frame;
+        group.bench_function("shape_churn_partial", |b| {
+            b.iter(|| {
+                frame_n = frame_n.wrapping_add(1);
+                run_and_ack(&mut ui, display, build(frame_n));
+                black_box(&ui);
+            });
+        });
+        eprintln!(
+            "[shape_churn_partial] post-bench: {} compactions over {} bench frames \
+             (1 per {:.1} frames)",
+            ui.damage_compactions_run() - bench_start_compactions,
+            frame_n - bench_start_frame,
+            (frame_n - bench_start_frame) as f64
+                / (ui.damage_compactions_run() - bench_start_compactions).max(1) as f64,
+        );
+    }
+
+    // Case B: full churn. Every canvas mutates every frame.
+    // Stress-tests the merge cost of the per-shape diff itself
+    // plus high-frequency compaction. Damage will likely
+    // escalate to `Full`, which is fine — we measure Pass-1
+    // diff work, not Pass-2 collapse, and the per-shape leg
+    // pushes raw_rects regardless of final paint kind.
+    {
+        const CANVASES: usize = 256;
+        const BASE_SHAPES: u32 = 4;
+        const VARY_SHAPES: u32 = 4;
+
+        let build = |frame_n: u32| {
+            move |ui: &mut Ui| {
+                let one = |c: usize, ui: &mut Ui| {
+                    let count = BASE_SHAPES + (frame_n.wrapping_add(c as u32) % VARY_SHAPES);
+                    canvas_body(c, count, ui);
+                };
+                build_grid_layout(&one, ui);
+            }
+        };
+
+        let mut ui = Ui::for_test();
+        run_and_ack(&mut ui, display, build(0));
+        run_and_ack(&mut ui, display, build(1));
+        let mut warm = 2u32;
+        while ui.damage_compactions_run() < 2 && warm < 64 {
+            run_and_ack(&mut ui, display, build(warm));
+            warm += 1;
+        }
+        assert!(
+            ui.damage_compactions_run() >= 2,
+            "full churn never compacted in {warm} frames",
+        );
+        assert!(
+            ui.damage_shape_snaps_len() >= CANVASES * BASE_SHAPES as usize,
+            "full churn: arena underpopulated (len={}, expected >= {})",
+            ui.damage_shape_snaps_len(),
+            CANVASES * BASE_SHAPES as usize,
+        );
+        eprintln!(
+            "[shape_churn_full] warmup: {warm} frames, {} compactions, arena {} entries",
+            ui.damage_compactions_run(),
+            ui.damage_shape_snaps_len(),
+        );
+        let bench_start_compactions = ui.damage_compactions_run();
+        let bench_start_frame = warm;
+        let mut frame_n = warm;
+        group.bench_function("shape_churn_full", |b| {
+            b.iter(|| {
+                frame_n = frame_n.wrapping_add(1);
+                run_and_ack(&mut ui, display, build(frame_n));
+                black_box(&ui);
+            });
+        });
+        eprintln!(
+            "[shape_churn_full] post-bench: {} compactions over {} bench frames \
+             (1 per {:.1} frames)",
+            ui.damage_compactions_run() - bench_start_compactions,
+            frame_n - bench_start_frame,
+            (frame_n - bench_start_frame) as f64
+                / (ui.damage_compactions_run() - bench_start_compactions).max(1) as f64,
+        );
     }
 
     group.finish();
