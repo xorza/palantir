@@ -35,6 +35,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::hash_map::Entry;
 use std::time::Duration;
 
 pub mod region;
@@ -381,11 +382,9 @@ impl DamageEngine {
         // into the bounded region.
         self.raw_rects.clear();
 
-        // Split borrows: the per-widget diff body simultaneously
-        // reads/writes `self.prev`, `self.shape_snaps`,
-        // `self.shape_snaps_orphaned`, and `self.raw_rects`. Aliasing
-        // the fields up front lets each arm name them independently
-        // without Entry-borrow contortions.
+        // Alias each mutated field once so the diff body can name
+        // them independently — Entry holds the borrow on `prev` only,
+        // leaving `shape_snaps` / `raw_rects` / `orphaned` free.
         let prev_map = &mut self.prev;
         let shape_snaps = &mut self.shape_snaps;
         let orphaned = &mut self.shape_snaps_orphaned;
@@ -406,16 +405,6 @@ impl DamageEngine {
             let chrome_hashes = tree.rollups.chrome.as_slice();
             let mut i = 0;
             while i < n {
-                let wid = widget_ids[i];
-                let row = rows[i];
-                let curr_rect = row.paint_rect;
-                let curr_paints = tree.rollups.paints.contains(i);
-                let curr_node_hash = tree.rollups.node[i];
-                let curr_subtree_hash = tree.rollups.subtree[i];
-                let curr_cascade_input = row.cascade_input;
-                let curr_chrome_rect = layer_chrome_rects[i];
-                let curr_chrome_hash = chrome_hashes[i];
-
                 // Invariant: `self.prev` only holds entries for widgets
                 // that painted last frame. Non-painting nodes contribute
                 // zero rect, so a never-painted widget needs no snapshot
@@ -429,66 +418,63 @@ impl DamageEngine {
                 //   the next node — descendants may still have changed.
                 // - **Subtree-skip** (additionally `subtree_hash` +
                 //   `cascade_input` match): the whole subtree is
-                //   bit-identical. `subtree_hash` covers every
-                //   descendant's `node_hash`; `cascade_input` covers the
-                //   ancestor state flowing into this node, so descendant
-                //   cascade rows are identical by induction; combined,
-                //   every descendant's `(paint_rect, node_hash)` matches
-                //   prev. Their prev entries already hold the right
-                //   state — no update, no rect contribution, jump to
-                //   `subtree_end[i]`.
+                //   bit-identical. Every descendant's `(paint_rect,
+                //   node_hash)` matches prev by induction — no update,
+                //   no rect contribution, jump to `subtree_end[i]`.
                 //
-                // The split matters: if we merged them, an internal node
-                // with a stable `(rect, node_hash)` but a child that
-                // changed colour would fail the merged predicate (its
+                // The split matters: if merged, an internal node with
+                // a stable `(rect, node_hash)` but a child that changed
+                // colour would fail the merged predicate (its
                 // `subtree_hash` rolled the child's new hash), fall into
                 // the "changed" arm, and contribute its own (unchanged)
-                // rect to damage — bloating the damage region from the
-                // child's leaf rect to the whole parent's rect.
-                let curr_node = NodeId(i as u32);
-                let prev_snapshot = prev_map.get(&wid).copied();
-                let (dirty, advance) = match prev_snapshot {
+                // rect — bloating damage from the child's leaf rect to
+                // the whole parent's rect.
+                let curr = CurrNode {
+                    node: NodeId(i as u32),
+                    rect: rows[i].paint_rect,
+                    paints: tree.rollups.paints.contains(i),
+                    node_hash: tree.rollups.node[i],
+                    subtree_hash: tree.rollups.subtree[i],
+                    cascade_input: rows[i].cascade_input,
+                    chrome_rect: layer_chrome_rects[i],
+                    chrome_hash: chrome_hashes[i],
+                };
+                let advance = match prev_map.entry(widget_ids[i]) {
                     // First-seen non-painter or first-seen painter
                     // whose entire `paint_rect` lies off the surface:
                     // nothing visible to push, no value in seeding
-                    // `prev` (the next-frame diff would just see it
-                    // vanish without anyone caring). The surface-clip
-                    // at `DamageRegion::collapse_from` would drop the
-                    // pushed `curr_rect` anyway — this just sidesteps
-                    // the hashmap insert for nodes that pan/zoom
-                    // landed outside the viewport.
-                    None if !curr_paints || !curr_rect.intersects(surface) => (false, 1),
-                    None => {
+                    // `prev` (next-frame diff would just see it vanish
+                    // without anyone caring). The surface-clip at
+                    // `DamageRegion::collapse_from` would drop
+                    // `curr.rect` anyway — this just sidesteps the
+                    // hashmap insert for nodes that pan/zoom landed
+                    // outside the viewport.
+                    Entry::Vacant(_) if !curr.paints || !curr.rect.intersects(surface) => 1,
+                    Entry::Vacant(e) => {
                         let shape_span = append_curr_shape_snaps(
                             shape_snaps,
                             tree,
-                            curr_node,
+                            curr.node,
                             layer_shape_rects,
                             shape_hashes,
                         );
                         push_decomposed_paint(
                             raw_rects,
-                            curr_chrome_hash,
-                            curr_chrome_rect,
+                            curr.chrome_hash,
+                            curr.chrome_rect,
                             &shape_snaps[shape_span.range()],
                         );
-                        prev_map.insert(
-                            wid,
-                            NodeSnapshot {
-                                rect: curr_rect,
-                                chrome_rect: curr_chrome_rect,
-                                chrome_hash: curr_chrome_hash,
-                                shape_span,
-                                hash: curr_node_hash,
-                                subtree_hash: curr_subtree_hash,
-                                cascade_input: curr_cascade_input,
-                            },
-                        );
-                        (true, 1)
+                        e.insert(curr.to_snapshot(shape_span));
+                        #[cfg(any(test, feature = "internals"))]
+                        dirty_out.push(curr.node);
+                        1
                     }
-                    Some(prev) if prev.rect == curr_rect && prev.hash == curr_node_hash => {
-                        if prev.subtree_hash == curr_subtree_hash
-                            && prev.cascade_input == curr_cascade_input
+                    Entry::Occupied(mut e)
+                        if e.get().rect == curr.rect && e.get().hash == curr.node_hash =>
+                    {
+                        let prev = *e.get();
+                        if prev.subtree_hash == curr.subtree_hash
+                            && prev.cascade_input == curr.cascade_input
                         {
                             // Subtree-skip: the whole subtree is
                             // bit-identical. Spans into `shape_snaps`
@@ -498,7 +484,7 @@ impl DamageEngine {
                             if span > 1 {
                                 *subtree_skips_out += 1;
                             }
-                            (false, span)
+                            span
                         } else {
                             // Own paint authoring unchanged (`rect` +
                             // `node_hash` match) but cascade input or
@@ -506,152 +492,63 @@ impl DamageEngine {
                             // tessellated pixels moved with the
                             // ancestor transform even though our
                             // clipped union didn't — push the union
-                            // (matches the pre-decomposition contract
-                            // for this arm: clipped paint_rect is
-                            // already covered, but new positions need
-                            // a repaint). Refresh per-shape rects in
-                            // place: count unchanged because
-                            // node_hash matched (shape set identical
-                            // by induction); only rects shifted.
-                            if curr_paints && prev.cascade_input != curr_cascade_input {
-                                raw_rects.push(curr_rect);
+                            // (matches the pre-decomposition contract:
+                            // clipped paint_rect is already covered,
+                            // but new positions need a repaint). Then
+                            // refresh per-shape rects in place — count
+                            // unchanged because node_hash matched
+                            // (shape set identical by induction).
+                            if curr.paints && prev.cascade_input != curr.cascade_input {
+                                raw_rects.push(curr.rect);
                             }
                             refresh_shape_rects_in_arena(
                                 shape_snaps,
                                 prev.shape_span,
                                 tree,
-                                curr_node,
+                                curr.node,
                                 layer_shape_rects,
                             );
-                            let snap = prev_map.get_mut(&wid).expect("just looked up");
-                            snap.subtree_hash = curr_subtree_hash;
-                            snap.cascade_input = curr_cascade_input;
-                            snap.chrome_rect = curr_chrome_rect;
-                            snap.chrome_hash = curr_chrome_hash;
-                            (false, 1)
+                            *e.get_mut() = curr.to_snapshot(prev.shape_span);
+                            1
                         }
                     }
-                    Some(prev) => {
-                        if curr_paints {
-                            // Chrome leg: push pair when rect moved
-                            // OR authoring hash flipped (hover fill
-                            // is the canonical case where geometry
-                            // is identical but pixels need a
-                            // repaint). Chromedness is keyed on
-                            // `chrome_hash != default` — chromeless
-                            // nodes leave the slot at `NodeHash::
-                            // default()` and have `chrome_rect ==
-                            // Rect::ZERO`.
-                            if prev.chrome_rect != curr_chrome_rect
-                                || prev.chrome_hash != curr_chrome_hash
-                            {
-                                if prev.chrome_hash != NodeHash::default() {
-                                    raw_rects.push(prev.chrome_rect);
-                                }
-                                if curr_chrome_hash != NodeHash::default() {
-                                    raw_rects.push(curr_chrome_rect);
-                                }
-                            }
-                            // Per-shape leg. In-place compare against
-                            // the prev span; only spill to the tail
-                            // (and orphan) when the shape count grew
-                            // past prev_len. Shrink updates `len` in
-                            // place. Same-count common case writes
-                            // straight back into the existing span
-                            // with no buffer manipulation.
-                            let prev_start = prev.shape_span.start as usize;
-                            let prev_len = prev.shape_span.len as usize;
-                            let mut ord = 0usize;
-                            let mut spilled_start: Option<u32> = None;
-                            for item in
-                                TreeItems::new(&tree.records, &tree.shapes.records, curr_node)
-                            {
-                                let TreeItem::ShapeRecord(idx, _) = item else {
-                                    continue;
-                                };
-                                let curr_shape = ShapeSnap {
-                                    rect: layer_shape_rects[idx as usize],
-                                    hash: shape_hashes[idx as usize],
-                                };
-                                if spilled_start.is_some() {
-                                    shape_snaps.push(curr_shape);
-                                    raw_rects.push(curr_shape.rect);
-                                } else if ord < prev_len {
-                                    let slot = &mut shape_snaps[prev_start + ord];
-                                    if *slot != curr_shape {
-                                        raw_rects.push(slot.rect);
-                                        raw_rects.push(curr_shape.rect);
-                                        *slot = curr_shape;
-                                    }
-                                } else {
-                                    // Growth: lift the in-place-updated
-                                    // prev_len entries to the tail
-                                    // (they're the canonical prefix
-                                    // of the new span), append curr,
-                                    // and switch to push-mode.
-                                    let start = shape_snaps.len() as u32;
-                                    shape_snaps
-                                        .extend_from_within(prev_start..prev_start + prev_len);
-                                    shape_snaps.push(curr_shape);
-                                    raw_rects.push(curr_shape.rect);
-                                    spilled_start = Some(start);
-                                }
-                                ord += 1;
-                            }
-                            let snap = prev_map.get_mut(&wid).expect("just looked up");
-                            match spilled_start {
-                                Some(start) => {
-                                    snap.shape_span = Span::new(start, ord as u32);
-                                    *orphaned = orphaned.saturating_add(prev_len as u32);
-                                }
-                                None if ord < prev_len => {
-                                    // Vanished tail: push prev rects
-                                    // so their pixels get repainted,
-                                    // shrink span in place. Slots
-                                    // ord..prev_len become orphans
-                                    // inside the live buffer.
-                                    for o in ord..prev_len {
-                                        raw_rects.push(shape_snaps[prev_start + o].rect);
-                                    }
-                                    snap.shape_span = Span::new(prev.shape_span.start, ord as u32);
-                                    *orphaned = orphaned.saturating_add((prev_len - ord) as u32);
-                                }
-                                None => {
-                                    // Same count ⇒ span unchanged,
-                                    // entries already written in
-                                    // place.
-                                }
-                            }
-                            snap.rect = curr_rect;
-                            snap.chrome_rect = curr_chrome_rect;
-                            snap.chrome_hash = curr_chrome_hash;
-                            snap.hash = curr_node_hash;
-                            snap.subtree_hash = curr_subtree_hash;
-                            snap.cascade_input = curr_cascade_input;
-                        } else {
-                            // Painting → non-painting transition:
-                            // push everything the node *was* painting
-                            // so the backbuffer at those pixels gets
-                            // cleared, then evict. The evicted span
-                            // becomes orphaned in `shape_snaps`.
-                            push_decomposed_paint(
-                                raw_rects,
-                                prev.chrome_hash,
-                                prev.chrome_rect,
-                                &shape_snaps[prev.shape_span.range()],
-                            );
-                            *orphaned = orphaned.saturating_add(prev.shape_span.len);
-                            prev_map.remove(&wid);
-                        }
-                        (true, 1)
+                    Entry::Occupied(mut e) if curr.paints => {
+                        let prev = *e.get();
+                        push_changed_chrome(raw_rects, &prev, &curr);
+                        let new_span = diff_changed_shape_leg(
+                            shape_snaps,
+                            raw_rects,
+                            orphaned,
+                            prev.shape_span,
+                            tree,
+                            curr.node,
+                            layer_shape_rects,
+                            shape_hashes,
+                        );
+                        *e.get_mut() = curr.to_snapshot(new_span);
+                        #[cfg(any(test, feature = "internals"))]
+                        dirty_out.push(curr.node);
+                        1
+                    }
+                    Entry::Occupied(e) => {
+                        // Painting → non-painting transition: push
+                        // everything the node *was* painting so the
+                        // backbuffer at those pixels gets cleared,
+                        // then evict.
+                        let prev = *e.get();
+                        push_decomposed_paint(
+                            raw_rects,
+                            prev.chrome_hash,
+                            prev.chrome_rect,
+                            &shape_snaps[prev.shape_span.range()],
+                        );
+                        *orphaned = orphaned.saturating_add(prev.shape_span.len);
+                        e.remove();
+                        #[cfg(any(test, feature = "internals"))]
+                        dirty_out.push(curr.node);
+                        1
                     }
                 };
-                #[cfg(any(test, feature = "internals"))]
-                if dirty {
-                    dirty_out.push(NodeId(i as u32));
-                }
-                #[cfg(not(any(test, feature = "internals")))]
-                let _ = dirty;
                 i += advance;
             }
         }
@@ -725,6 +622,131 @@ impl DamageEngine {
         extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
         Damage::new(surface, region)
+    }
+}
+
+/// Per-node inputs to the diff body, packed at the top of each
+/// iteration so the four match arms can name a single value instead
+/// of seven loose locals. All fields are `Copy` and small; the struct
+/// is build-and-drop per iteration with no heap traffic.
+struct CurrNode {
+    node: NodeId,
+    rect: Rect,
+    paints: bool,
+    node_hash: NodeHash,
+    subtree_hash: NodeHash,
+    cascade_input: CascadeInputHash,
+    chrome_rect: Rect,
+    chrome_hash: NodeHash,
+}
+
+impl CurrNode {
+    /// Build a `NodeSnapshot` by copying out fields and attaching
+    /// the shape arena span. Used at every commit site (Vacant
+    /// insert, refresh, changed arm) so the snapshot is constructed
+    /// from one named value rather than six scattered field assigns
+    /// through `get_mut`. Borrows `&self` — callers continue to use
+    /// `curr.node` etc. afterwards without an explicit clone.
+    fn to_snapshot(&self, shape_span: Span) -> NodeSnapshot {
+        NodeSnapshot {
+            rect: self.rect,
+            chrome_rect: self.chrome_rect,
+            chrome_hash: self.chrome_hash,
+            shape_span,
+            hash: self.node_hash,
+            subtree_hash: self.subtree_hash,
+            cascade_input: self.cascade_input,
+        }
+    }
+}
+
+/// Chrome leg of the Occupied-changed arm. Pushes the prev+curr
+/// chrome rect pair when the rect moved OR the authoring hash flipped
+/// (hover-fill is the canonical case: identical geometry, different
+/// pixels). Chromedness is keyed on `chrome_hash != NodeHash::
+/// default()` — chromeless nodes leave the slot at the default hash
+/// and have `chrome_rect == Rect::ZERO`.
+fn push_changed_chrome(out: &mut Vec<Rect>, prev: &NodeSnapshot, curr: &CurrNode) {
+    if prev.chrome_rect == curr.chrome_rect && prev.chrome_hash == curr.chrome_hash {
+        return;
+    }
+    if prev.chrome_hash != NodeHash::default() {
+        out.push(prev.chrome_rect);
+    }
+    if curr.chrome_hash != NodeHash::default() {
+        out.push(curr.chrome_rect);
+    }
+}
+
+/// Per-shape diff leg of the Occupied-changed arm. In-place compare
+/// against the prev span; only spill to the tail (and orphan the
+/// prev slots) when shape count grew past `prev_len`. Shrink shortens
+/// the span in place. Same-count common case writes straight back
+/// into the existing span with no buffer manipulation.
+///
+/// Returns the new shape span. Bumps `orphaned` for prev slots that
+/// no live snapshot references after the diff.
+#[allow(clippy::too_many_arguments)]
+fn diff_changed_shape_leg(
+    arena: &mut Vec<ShapeSnap>,
+    out: &mut Vec<Rect>,
+    orphaned: &mut u32,
+    prev_span: Span,
+    tree: &Tree,
+    node: NodeId,
+    shape_rects: &[Rect],
+    shape_hashes: &[NodeHash],
+) -> Span {
+    let prev_start = prev_span.start as usize;
+    let prev_len = prev_span.len as usize;
+    let mut ord = 0usize;
+    let mut spilled_start: Option<u32> = None;
+    for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
+        let TreeItem::ShapeRecord(idx, _) = item else {
+            continue;
+        };
+        let curr_shape = ShapeSnap {
+            rect: shape_rects[idx as usize],
+            hash: shape_hashes[idx as usize],
+        };
+        if spilled_start.is_some() {
+            arena.push(curr_shape);
+            out.push(curr_shape.rect);
+        } else if ord < prev_len {
+            let slot = &mut arena[prev_start + ord];
+            if *slot != curr_shape {
+                out.push(slot.rect);
+                out.push(curr_shape.rect);
+                *slot = curr_shape;
+            }
+        } else {
+            // Growth: lift the in-place-updated prev_len entries to
+            // the tail (canonical prefix of the new span), append
+            // curr, switch to push-mode.
+            let start = arena.len() as u32;
+            arena.extend_from_within(prev_start..prev_start + prev_len);
+            arena.push(curr_shape);
+            out.push(curr_shape.rect);
+            spilled_start = Some(start);
+        }
+        ord += 1;
+    }
+    match spilled_start {
+        Some(start) => {
+            *orphaned = orphaned.saturating_add(prev_len as u32);
+            Span::new(start, ord as u32)
+        }
+        None if ord < prev_len => {
+            // Vanished tail: push prev rects so their pixels get
+            // repainted; shrink span in place. Slots `ord..prev_len`
+            // become orphans inside the live buffer.
+            for o in ord..prev_len {
+                out.push(arena[prev_start + o].rect);
+            }
+            *orphaned = orphaned.saturating_add((prev_len - ord) as u32);
+            Span::new(prev_span.start, ord as u32)
+        }
+        None => prev_span,
     }
 }
 
