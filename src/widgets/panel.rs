@@ -38,6 +38,16 @@ impl Panel {
     /// transform only affects paint and hit-test. Composes with any
     /// ancestor transform.
     ///
+    /// **Scale anchors at the panel's own origin** (its
+    /// `layout_rect.min`), not at the cascade's (0, 0). The
+    /// `TranslateScale::translation` is then applied in
+    /// post-scale, panel-local space — `TranslateScale::new(pan,
+    /// zoom)` means "scale my body 2× about my top-left, then shift
+    /// by `pan`" regardless of where the panel sits on the surface.
+    /// See [`TranslateScale::anchored_at`] for the math. Translation
+    /// is identity-preserving (when `scale == 1`, the anchor is a
+    /// no-op).
+    ///
     /// Chrome ([`Configure::background`]) is the one exception — it
     /// paints in the *parent's* space, anchored under any ancestor
     /// clip/transform. That's deliberate: a transformed panel acts as
@@ -45,21 +55,6 @@ impl Panel {
     /// the viewport rather than panning with it. To get a background
     /// that scales/pans *with* the body, nest one panel deep: put the
     /// transform on the outer panel and the chrome on its child.
-    ///
-    /// **Origin-anchor footgun.** Body emission applies `self.compose
-    /// (child_local_rect)` at paint time, where `child_local_rect.min`
-    /// is in *absolute parent-frame coords* (post-arrange). A bare
-    /// `TranslateScale::new(-offset, zoom)` therefore scales the
-    /// panel's own `layout_rect.min` along with its descendants —
-    /// visible drift at non-1.0 zoom unless `layout_rect.min` happens
-    /// to be `(0, 0)`. When the transformed panel sits anywhere other
-    /// than the surface origin, compose an origin compensation into
-    /// the translation:
-    ///   `TranslateScale::new(origin * (1.0 - zoom) - offset, zoom)`
-    /// where `origin = previous_frame.layout_rect.min`. See
-    /// `widgets/scroll.rs::set_extras` (around the comment that
-    /// expands to `inner_local * zoom + origin - offset`) for the
-    /// canonical example and the one-frame-stale source of `origin`.
     pub fn transform(mut self, t: TranslateScale) -> Self {
         self.element.transform = t;
         self

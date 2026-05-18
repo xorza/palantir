@@ -422,7 +422,16 @@ fn encode_node(
     // composing identity is a no-op, so emitting the pair just
     // wastes two cmd slots and a `transform_stack` push/pop in the
     // composer.
-    let transform = tree.transform_of(id).filter(|t| !t.is_noop());
+    //
+    // Anchor the raw transform at the node's own `layout_rect.min`
+    // so its scale pivots about the panel's origin (see
+    // `TranslateScale::anchored_at`). Cascade and `compute_paint_rect`
+    // apply the same anchoring; pushing the un-anchored form here
+    // would visibly shift the body relative to its damage rect.
+    let transform = tree
+        .transform_of(id)
+        .map(|t| t.anchored_at(rect.min))
+        .filter(|t| !t.is_noop());
 
     // Body (direct shapes + child subtrees) paints inside the node's
     // own transform — chrome (drawn above this point) is the only

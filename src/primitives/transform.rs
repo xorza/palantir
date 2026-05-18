@@ -104,6 +104,29 @@ impl TranslateScale {
         }
     }
 
+    /// Re-anchor `self` so its scale pivots about `origin` instead of
+    /// the cascade's (0, 0). Returns:
+    ///
+    /// ```text
+    /// p ↦ (p - origin) * scale + origin + translation
+    ///   = p * scale + (origin * (1 - scale) + translation)
+    /// ```
+    ///
+    /// Used by the cascade/encoder when applying a node's own
+    /// `Panel::transform` to its descendants and direct shapes:
+    /// `child.layout_rect.min` is in *absolute parent-frame coords*
+    /// (post-arrange), so a raw `self` would multiply the transformed
+    /// node's own origin too — visible content drift at non-1.0
+    /// scale. Anchoring at the node's `layout_rect.min` cancels that
+    /// drift, matching the intuitive "scale my body about my own
+    /// origin" intent.
+    ///
+    /// Identity-preserving: when `scale == 1`, `origin * (1 - scale)
+    /// == 0` so the translation is unchanged.
+    pub const fn anchored_at(self, origin: Vec2) -> Self {
+        Self::from_translate_scale_about(self.translation, origin, self.scale)
+    }
+
     /// Apply `self` after `other`: `result(p) == self.apply_point(other.apply_point(p))`.
     /// Matches matrix multiplication conventions — descend the tree by composing
     /// `parent_cumulative.compose(child_local)`.
