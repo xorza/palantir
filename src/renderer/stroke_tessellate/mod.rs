@@ -4,10 +4,10 @@ use crate::primitives::mesh::MeshVertex;
 use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::Vec2;
 
-const HALF_FRINGE: f32 = 0.5;
+pub(crate) const HALF_FRINGE: f32 = 0.5;
 /// SVG default. Beyond this the miter would project a long spike,
 /// so we fall back to bevel geometry at the join instead.
-const MITER_LIMIT: f32 = 4.0;
+pub(crate) const MITER_LIMIT: f32 = 4.0;
 const MIN_ROUND_FAN_SEGS: u16 = 4;
 const MAX_ROUND_FAN_SEGS: u16 = 16;
 /// Threshold on `(normal_prev + normal_next).length_squared()`

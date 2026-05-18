@@ -23,6 +23,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::quad::FillKind;
+use crate::renderer::stroke_tessellate::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::cell::{Ref, RefCell, RefMut};
@@ -355,13 +356,7 @@ impl FrameArenaInner {
                 }
                 self.polyline_colors
                     .extend(color_slice.iter().map(|&c| ColorU8::from(c)));
-                Rect {
-                    min: lo,
-                    size: Size {
-                        w: hi.x - lo.x,
-                        h: hi.y - lo.y,
-                    },
-                }
+                inflate_stroke_bbox(lo, hi, width, cap, join)
             }
         };
 
@@ -438,13 +433,7 @@ impl FrameArenaInner {
         h.write(bytemuck::bytes_of(&color));
         let content_hash = h.finish();
 
-        let bbox = Rect {
-            min: lo,
-            size: Size {
-                w: hi.x - lo.x,
-                h: hi.y - lo.y,
-            },
-        };
+        let bbox = inflate_stroke_bbox(lo, hi, width, cap, join);
 
         ShapeRecord::Polyline {
             width,
@@ -456,5 +445,33 @@ impl FrameArenaInner {
             bbox,
             content_hash,
         }
+    }
+}
+
+/// Inflate the centerline AABB `[lo, hi]` of a stroked polyline so it
+/// conservatively covers the painted extent: stroke half-width on every
+/// side, miter-limit slack at sharp joins (matches the bevel fallback
+/// in `stroke_tessellate`), `Square` cap projection past endpoints, and
+/// the AA fringe. Damage and per-shape clipping key on this — undersizing
+/// here leaves miter spikes / square caps unclipped/undamaged.
+fn inflate_stroke_bbox(lo: Vec2, hi: Vec2, width: f32, cap: LineCap, join: LineJoin) -> Rect {
+    let half = width * 0.5;
+    let join_extent = if matches!(join, LineJoin::Miter) {
+        half * MITER_LIMIT
+    } else {
+        half
+    };
+    let cap_extent = if matches!(cap, LineCap::Square) {
+        half
+    } else {
+        0.0
+    };
+    let pad = join_extent.max(cap_extent) + HALF_FRINGE;
+    Rect {
+        min: Vec2::new(lo.x - pad, lo.y - pad),
+        size: Size {
+            w: (hi.x - lo.x) + 2.0 * pad,
+            h: (hi.y - lo.y) + 2.0 * pad,
+        },
     }
 }
