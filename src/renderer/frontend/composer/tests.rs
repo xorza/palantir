@@ -511,15 +511,18 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     assert!(rows[0].0 >= 1);
 }
 
-/// Pin: text-run scale snaps to the 2.5% ladder so continuous zoom
-/// produces stable glyphon cache keys across adjacent frames. Quads
-/// (next test) intentionally do not snap — only text quantizes.
+/// Pin: text-run scale snaps to the log-octave ladder (14 rungs per
+/// octave) so a continuous zoom produces stable glyphon cache keys
+/// across adjacent frames. Quads (next test) intentionally do not snap
+/// — only text quantizes. Integer powers of two snap exactly; values
+/// between rungs round to the nearest one.
 #[test]
 fn compose_snaps_text_scale_to_discrete_steps() {
-    // 1.013 is between 1.000 and 1.025; rounds to 1.025.
+    // log2(1.45) * 28 ≈ 15.01, rounds to 15 → 2^(15/28) ≈ 1.448.
+    let expected = (15.0_f32 / 28.0).exp2();
     let buf = run(
         |b, _arena| {
-            b.push_transform(TranslateScale::from_scale(1.013));
+            b.push_transform(TranslateScale::from_scale(1.45));
             text(b, rect(0.0, 0.0, 50.0, 20.0));
             b.pop_transform();
         },
@@ -528,8 +531,8 @@ fn compose_snaps_text_scale_to_discrete_steps() {
     assert_eq!(buf.texts.len(), 1);
     let s = buf.texts[0].scale;
     assert!(
-        (s - 1.025).abs() < 1e-5,
-        "1.013 must snap to 1.025, got {s}",
+        (s - expected).abs() < 1e-5,
+        "1.45 must snap to {expected}, got {s}",
     );
 }
 
