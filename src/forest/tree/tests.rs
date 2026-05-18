@@ -201,12 +201,11 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
 
 // --- Authoring-hash tests ---------------------------------------------
 
-fn record_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
+fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> NodeHash {
     let mut ui = Ui::for_test();
     let mut target = None;
-    let mut f = Some(f);
     ui.run_at_acked(SURFACE, |ui| {
-        target = Some((f.take().unwrap())(ui));
+        target = Some(f(ui));
     });
     ui.forest.tree(Layer::Main).rollups.node[target.unwrap().idx()]
 }
@@ -443,12 +442,11 @@ fn child_hash_does_not_affect_parent_hash() {
 
 // --- Subtree-hash rollup --------------------------------------------
 
-fn record_subtree_hash<F: FnOnce(&mut Ui) -> NodeId>(f: F) -> NodeHash {
+fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> NodeHash {
     let mut ui = Ui::for_test();
     let mut target = None;
-    let mut f = Some(f);
     ui.run_at_acked(SURFACE, |ui| {
-        target = Some((f.take().unwrap())(ui));
+        target = Some(f(ui));
     });
     ui.forest.tree(Layer::Main).rollups.subtree[target.unwrap().idx()]
 }

@@ -300,6 +300,7 @@ impl Ui {
             stamp.display.scale_factor,
         );
 
+        let first_frame = self.prev_stamp.is_none();
         self.advance_clock(stamp.time);
         let plan = self.classify_frame(stamp.display);
 
@@ -335,6 +336,27 @@ impl Ui {
                 FrameProcessing::PaintOnly
             }
             FramePlan::FullRecord { .. } => {
+                // Cold-start warmup: on the very first frame, cascades
+                // is empty, so any `on_input` events delivered between
+                // window-open and now hit-tested against nothing
+                // (`hovered`/`scroll_target`/etc. stayed None). Run a
+                // blackout record pass — input swapped out for an
+                // empty `InputState` so widgets see no pointer, no
+                // keys, no queued events — purely to build the cascade.
+                // Then restore the real input and re-route the held
+                // `pointer_pos` against the just-built cascade so the
+                // user-visible pass below records against correct
+                // hover targets. Without this, frame 1 widgets see
+                // None response_rects (one-frame stale on `text_edit`,
+                // `scroll`, `radio`, …) and a pointer hovering a
+                // button doesn't actually hover it until frame 2.
+                if first_frame {
+                    profiling::scope!("Ui::record_pass.warmup");
+                    let saved_input = std::mem::take(&mut self.input);
+                    let _ = self.record_pass(&mut record);
+                    self.input = saved_input;
+                    self.input.refresh_pointer_targets(&self.layout.cascades);
+                }
                 let action_flag = {
                     profiling::scope!("Ui::record_pass.A");
                     self.record_pass(&mut record)
@@ -388,6 +410,16 @@ impl Ui {
                 self.time,
             ),
         };
+
+        // First-frame contract: no prev snapshot to diff against, so
+        // every painting widget is "new" — `damage_engine.compute`
+        // must return `Damage::Full`. The walk itself is still
+        // load-bearing (seeds `prev` for frame 2's incremental diff)
+        // so we keep the call; the assert just pins the invariant.
+        assert!(
+            !first_frame || matches!(damage, crate::ui::damage::Damage::Full),
+            "first frame must produce Damage::Full; got {damage:?}",
+        );
 
         // Skip frames have nothing for the host to submit, so ack
         // here — otherwise `frame_state` stays `Pending` and the next
@@ -1057,8 +1089,23 @@ pub mod test_support {
 
     impl Ui {
         /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
+        ///
+        /// The cold-start warmup in `Ui::frame_inner` runs the user
+        /// record closure twice on the first frame after construction
+        /// (once with input blacked out to prime the cascade, then the
+        /// real pass). Most tests want single-record semantics — they
+        /// assert against the result of one frame's worth of widget
+        /// declarations, not against the closure firing twice. So the
+        /// test constructors burn the warmup here with an empty user
+        /// closure: `prev_stamp` becomes `Some(_)`, and the test's
+        /// first `run_at` lands as a normal warm frame. Tests that
+        /// specifically need to exercise true cold-start behavior
+        /// (the input-blackout pass, frame-1 damage = Full) should
+        /// build their own `Ui::default()` and drive it directly.
         pub fn for_test() -> Self {
-            Self::default()
+            let mut ui = Self::default();
+            ui.burn_warmup_frame();
+            ui
         }
 
         /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).
@@ -1066,18 +1113,35 @@ pub mod test_support {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
-            Self::new(
+            let mut ui = Self::new(
                 SHARED.with(|c| c.clone()),
                 FrameArena::default(),
                 RenderCaches::default(),
-            )
+            );
+            ui.burn_warmup_frame();
+            ui
         }
 
-        /// `Ui` pre-stamped with display dimensions; no frame driven yet.
+        /// `Ui` pre-stamped with display dimensions; no user frame driven yet.
+        /// Warmup frame has already been burned at the given size so
+        /// `prev_stamp` is `Some(_)`.
         pub fn for_test_at(size: UVec2) -> Self {
-            let mut ui = Self::for_test();
-            ui.display = Display::from_physical(size, 1.0);
+            let mut ui = Self {
+                display: Display::from_physical(size, 1.0),
+                ..Self::default()
+            };
+            ui.burn_warmup_frame_at(size);
             ui
+        }
+
+        fn burn_warmup_frame(&mut self) {
+            self.burn_warmup_frame_at(UVec2::new(1, 1));
+        }
+
+        fn burn_warmup_frame_at(&mut self, size: UVec2) {
+            let display = Display::from_physical(size, 1.0);
+            self.frame(FrameStamp::new(display, Duration::ZERO), |_| {});
+            self.frame_state.mark_submitted();
         }
 
         /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
