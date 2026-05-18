@@ -64,6 +64,53 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
     assert_eq!(r.size.h, 80.0);
 }
 
+/// Sister pin to `canvas_negative_position_does_not_extend_bbox`: a FILL
+/// canvas with a child positioned past its available width does NOT
+/// grow to wrap the child. Without this gate, `Fill = available floored
+/// at intrinsic_min` floors above `available` and the canvas overflows
+/// its parent — and the resulting per-frame `chrome_rect` shift drives
+/// `Damage::Full` flicker on every drag-the-node-past-the-edge tick
+/// (the darkroom graph-view bug). Hug canvas behavior is unchanged
+/// (verified by `canvas_places_child_at_position_within_inner_rect` and
+/// `canvas_two_children_take_bbox_max_position_plus_size`).
+#[test]
+fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
+    let mut ui = Ui::for_test();
+    let panel = ui.under_outer(UVec2::new(200, 200), |ui| {
+        Panel::canvas()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash("overhang"))
+                    .position((700.0, 100.0))
+                    .size((160.0, 80.0))
+                    .show(ui);
+            })
+            .node(ui)
+    });
+    let r = ui.layout[Layer::Main].rect[panel.idx()];
+    // FILL canvas in a 200×200 outer: stays at 200×200 regardless of
+    // the child's position. Pre-fix this was 860×200 (700 + 160).
+    assert_eq!(
+        r.size.w, 200.0,
+        "FILL canvas width must not grow past available"
+    );
+    assert_eq!(r.size.h, 200.0);
+    let kids: Vec<_> = ui
+        .forest
+        .tree(Layer::Main)
+        .children(panel)
+        .map(|c| c.id)
+        .collect();
+    let child = ui.layout[Layer::Main].rect[kids[0].idx()];
+    // Child still arranges at its declared position — it just overflows
+    // the canvas (and would be clipped by any ancestor with
+    // `.clip_rect()`).
+    assert_eq!(child.min.x - r.min.x, 700.0);
+    assert_eq!(child.min.y - r.min.y, 100.0);
+}
+
 #[test]
 fn canvas_negative_position_does_not_extend_bbox() {
     // Canvas measures `max(pos + desired)` starting at zero, so children
