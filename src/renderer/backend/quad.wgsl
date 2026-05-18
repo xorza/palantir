@@ -63,7 +63,17 @@ struct VertexOut {
     @location(6) @interpolate(flat) fill_kind:    u32,
     @location(7) @interpolate(flat) fill_lut_row: u32,
     @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
+    // Precomputed `1.0 / max(size, ZERO_EPS)` so `eval_fill` and the
+    // shadow paths can multiply per-fragment instead of dividing.
+    @location(9) @interpolate(flat) inv_size:     vec2<f32>,
 };
+
+const CORNERS = array<vec2<f32>, 4>(
+    vec2<f32>(0.0, 0.0),
+    vec2<f32>(1.0, 0.0),
+    vec2<f32>(0.0, 1.0),
+    vec2<f32>(1.0, 1.0),
+);
 
 @vertex
 fn vs(
@@ -94,22 +104,18 @@ fn vs(
     let s_lo = unpack2x16float(stroke_color_packed.x);
     let s_hi = unpack2x16float(stroke_color_packed.y);
     let stroke_color = vec4<f32>(s_lo.x, s_lo.y, s_hi.x, s_hi.y);
-    var corners = array<vec2<f32>, 4>(
-        vec2<f32>(0.0, 0.0),
-        vec2<f32>(1.0, 0.0),
-        vec2<f32>(0.0, 1.0),
-        vec2<f32>(1.0, 1.0),
-    );
-    let c = corners[vi];
-    let pixel = pos + c * size;
+    let c = CORNERS[vi];
+    let local = c * size;
+    let pixel = pos + local;
+    let inv_vp_2 = 2.0 / viewport.size;
     let clip = vec2<f32>(
-        pixel.x / viewport.size.x * 2.0 - 1.0,
-        1.0 - pixel.y / viewport.size.y * 2.0,
+        pixel.x * inv_vp_2.x - 1.0,
+        1.0 - pixel.y * inv_vp_2.y,
     );
 
     var out: VertexOut;
     out.clip         = vec4<f32>(clip, 0.0, 1.0);
-    out.local        = c * size;
+    out.local        = local;
     out.size         = size;
     out.fill         = fill;
     out.radius       = radius;
@@ -118,6 +124,7 @@ fn vs(
     out.fill_kind    = fill_kind;
     out.fill_lut_row = fill_lut_row;
     out.fill_axis    = fill_axis;
+    out.inv_size     = 1.0 / max(size, vec2<f32>(ZERO_EPS));
     return out;
 }
 
@@ -163,7 +170,7 @@ fn eval_fill(in: VertexOut) -> vec4<f32> {
         return in.fill;
     }
     let spread  = (in.fill_kind >> 8u) & 0xFFu;
-    let local01 = in.local / max(in.size, vec2<f32>(ZERO_EPS));
+    let local01 = in.local * in.inv_size;
     var t01: f32 = 0.0;
     if (kind == BRUSH_KIND_LINEAR) {
         // Linear: project local01 onto the gradient direction, remap
