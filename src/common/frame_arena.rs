@@ -13,7 +13,7 @@ use crate::forest::shapes::record::{
     ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
-use crate::primitives::bezier::quadratic_to_cubic;
+use crate::primitives::bezier::{cubic_bezier_bbox, quadratic_to_cubic};
 use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::interned_str::InternedStr;
@@ -251,8 +251,7 @@ fn lower_curve_inner(
     use crate::renderer::stroke_tessellate::HALF_FRINGE;
     let [p0, p1, p2, p3] = ctrl;
 
-    let lo = p0.min(p1).min(p2).min(p3);
-    let hi = p0.max(p1).max(p2).max(p3);
+    let (lo, hi) = cubic_bezier_bbox(p0, p1, p2, p3);
     let half = (width * 0.5).max(0.0);
     // Round/Square caps extend the strip by `half_w` past each
     // endpoint along the local tangent. Since the bbox is axis-
