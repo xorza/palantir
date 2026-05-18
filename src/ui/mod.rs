@@ -32,7 +32,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
-use crate::ui::damage::DamageEngine;
+use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::frame_stats::record_frame_stats;
@@ -356,6 +356,16 @@ impl Ui {
                     let _ = self.record_pass(&mut record);
                     self.input = saved_input;
                     self.input.refresh_pointer_targets(&self.layout.cascades);
+                    // Discard any relayout/repaint requests issued
+                    // during the blackout pass — the warmup is
+                    // "pretend it didn't happen" from the gate's
+                    // perspective. Without this, a widget that asks
+                    // for relayout in its first record (legitimate)
+                    // would trigger the existing `double_layout` arm
+                    // *on top of* the warmup, giving three record
+                    // passes on frame 1 instead of two.
+                    self.relayout_requested = false;
+                    self.repaint_requested = false;
                 }
                 let action_flag = {
                     profiling::scope!("Ui::record_pass.A");
@@ -417,7 +427,7 @@ impl Ui {
         // load-bearing (seeds `prev` for frame 2's incremental diff)
         // so we keep the call; the assert just pins the invariant.
         assert!(
-            !first_frame || matches!(damage, crate::ui::damage::Damage::Full),
+            !first_frame || matches!(damage, Damage::Full),
             "first frame must produce Damage::Full; got {damage:?}",
         );
 
@@ -1088,27 +1098,17 @@ pub mod test_support {
     }
 
     impl Ui {
-        /// `Ui` with the mono-fallback shaper — predictable 8 px/char widths.
-        ///
-        /// The cold-start warmup in `Ui::frame_inner` runs the user
-        /// record closure twice on the first frame after construction
-        /// (once with input blacked out to prime the cascade, then the
-        /// real pass). Most tests want single-record semantics — they
-        /// assert against the result of one frame's worth of widget
-        /// declarations, not against the closure firing twice. So the
-        /// test constructors burn the warmup here with an empty user
-        /// closure: `prev_stamp` becomes `Some(_)`, and the test's
-        /// first `run_at` lands as a normal warm frame. Tests that
-        /// specifically need to exercise true cold-start behavior
-        /// (the input-blackout pass, frame-1 damage = Full) should
-        /// build their own `Ui::default()` and drive it directly.
+        /// `Ui` with the mono-fallback shaper — predictable 8 px/char
+        /// widths. Pre-marked as warm: see [`Self::mark_warm_for_test`].
         pub fn for_test() -> Self {
             let mut ui = Self::default();
-            ui.burn_warmup_frame();
+            ui.mark_warm_for_test();
             ui
         }
 
-        /// `Ui` with a thread-shared cosmic shaper (font DB built once per thread).
+        /// `Ui` with a thread-shared cosmic shaper (font DB built once
+        /// per thread). Pre-marked as warm: see
+        /// [`Self::mark_warm_for_test`].
         pub fn for_test_text() -> Self {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
@@ -1118,37 +1118,45 @@ pub mod test_support {
                 FrameArena::default(),
                 RenderCaches::default(),
             );
-            ui.burn_warmup_frame();
+            ui.mark_warm_for_test();
             ui
         }
 
-        /// `Ui` pre-stamped with display dimensions; no user frame driven yet.
-        /// Warmup frame has already been burned at the given size so
-        /// `prev_stamp` is `Some(_)`.
+        /// `Ui` pre-stamped with display dimensions; no user frame
+        /// driven yet. Pre-marked as warm.
         pub fn for_test_at(size: UVec2) -> Self {
             let mut ui = Self {
                 display: Display::from_physical(size, 1.0),
                 ..Self::default()
             };
-            ui.burn_warmup_frame_at(size);
+            ui.mark_warm_for_test();
             ui
-        }
-
-        fn burn_warmup_frame(&mut self) {
-            self.burn_warmup_frame_at(UVec2::new(1, 1));
-        }
-
-        fn burn_warmup_frame_at(&mut self, size: UVec2) {
-            let display = Display::from_physical(size, 1.0);
-            self.frame(FrameStamp::new(display, Duration::ZERO), |_| {});
-            self.frame_state.mark_submitted();
         }
 
         /// `Ui` with cosmic shaper, pre-stamped with display dimensions.
         pub fn for_test_at_text(size: UVec2) -> Self {
             let mut ui = Self::for_test_text();
             ui.display = Display::from_physical(size, 1.0);
+            ui.mark_warm_for_test();
             ui
+        }
+
+        /// Synthesize a "previous submitted frame" sentinel so the
+        /// cold-start warmup record pass in `Ui::frame_inner` doesn't
+        /// fire on the first user `run_at`. The warmup runs the user
+        /// closure twice (blackout pass + real pass); most tests assert
+        /// against one record pass worth of work, so they want the
+        /// warm-state behavior. Tests that need to exercise true
+        /// cold-start behavior should construct `Ui::default()`
+        /// directly and skip this. No real frame is run here —
+        /// `frame_id`, `time`, the per-`StateMap`, cascades, and damage
+        /// snapshot all stay at fresh-construction defaults. The
+        /// damage engine still treats the first user frame as fully
+        /// dirty (`prev` map is empty), so `Damage::Full` is still the
+        /// observed first-user-frame outcome.
+        fn mark_warm_for_test(&mut self) {
+            self.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
+            self.frame_state.mark_submitted();
         }
 
         /// One frame at `size`, time frozen at zero.

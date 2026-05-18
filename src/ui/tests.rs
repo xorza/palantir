@@ -3,6 +3,7 @@ use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
+use crate::input::InputEvent;
 use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
@@ -11,7 +12,7 @@ use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
 use crate::ui::frame_report::RenderPlan;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(200, 200);
@@ -1243,4 +1244,164 @@ fn input_policy_routes_paint_only_gate() {
             "OnDelta must not pick PaintOnly on action input",
         );
     }
+}
+
+// --- Cold-start warmup record -----------------------------------------
+//
+// Pin the first-frame behavior added to `Ui::frame_inner`: when the
+// recorder has never run before, do a blackout record pass (input
+// swapped for `InputState::default()`) to build the cascade, then
+// re-route the held `pointer_pos` against it before the user-visible
+// pass. Tests below intentionally use `Ui::default()` to exercise true
+// cold-start; `Ui::for_test()` pre-marks the recorder warm to keep the
+// rest of the test suite on single-record semantics.
+
+const COLD: UVec2 = UVec2::new(200, 200);
+
+fn cold_ui() -> Ui {
+    Ui::default()
+}
+
+fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
+    let display = Display::from_physical(COLD, 1.0);
+    let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), record);
+    ui.frame_state.mark_submitted();
+}
+
+/// On a true first frame the user closure runs **twice** — once for the
+/// blackout warmup pass, once for the real pass. The second frame runs
+/// it once. The existing `double_layout` arm fires when an input action
+/// or a `request_relayout` lands; warmup is the only third trigger.
+#[test]
+fn cold_start_runs_record_closure_twice_on_first_frame() {
+    let mut ui = cold_ui();
+    let mut calls = 0_u32;
+    cold_frame(&mut ui, |_| calls += 1);
+    assert_eq!(calls, 2, "first frame: warmup pass + real pass");
+
+    let snapshot = calls;
+    cold_frame(&mut ui, |_| calls += 1);
+    assert_eq!(
+        calls - snapshot,
+        1,
+        "second frame: single record pass (no warmup, no action)",
+    );
+}
+
+/// The warmup pass must see an empty `InputState`. A `PointerMoved`
+/// delivered before frame 1 must be invisible to widgets recording
+/// during warmup, then visible during the real pass.
+#[test]
+fn cold_start_blacks_out_input_during_warmup_pass() {
+    let mut ui = cold_ui();
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
+
+    let observed: std::cell::RefCell<Vec<Option<Vec2>>> = Default::default();
+    cold_frame(&mut ui, |ui| {
+        observed.borrow_mut().push(ui.input.pointer_pos);
+    });
+    let observed = observed.into_inner();
+    assert_eq!(observed.len(), 2, "warmup + real");
+    assert_eq!(
+        observed[0], None,
+        "warmup pass must see InputState::default() — no pointer",
+    );
+    assert_eq!(
+        observed[1],
+        Some(Vec2::new(40.0, 40.0)),
+        "real pass must see the held pointer_pos that arrived pre-frame",
+    );
+}
+
+/// Hover routing on frame 1: pointer is over a clickable widget when
+/// the window first opens. Before this fix, `Ui::on_input` would
+/// hit-test against an empty cascade so `hovered` would stay `None`
+/// until the second frame. The warmup builds the cascade and
+/// `refresh_pointer_targets` routes the held pointer against it.
+#[test]
+fn cold_start_routes_held_pointer_against_warmup_cascade() {
+    let mut ui = cold_ui();
+    // Cursor lands inside the future button rect (button is anchored at
+    // (0,0) with 60×30 size below). Delivered before any frame ran;
+    // cascades is empty so on_input can't resolve a target.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(20.0, 10.0)));
+    assert_eq!(ui.input.hovered, None, "pre-frame: no cascade, no hit");
+
+    let button_id = WidgetId::from_hash("btn");
+    cold_frame(&mut ui, |ui| {
+        Button::new()
+            .id(button_id)
+            .label("hi")
+            .size((60.0, 30.0))
+            .show(ui);
+    });
+
+    assert_eq!(
+        ui.input.hovered,
+        Some(button_id),
+        "warmup builds cascade; refresh_pointer_targets routes held \
+         pointer onto the button before the real record pass",
+    );
+}
+
+/// First frame, no input — assert the contract pinned by the in-engine
+/// `assert!(!first_frame || matches!(damage, Damage::Full))`.
+#[test]
+fn cold_start_first_frame_damage_is_full() {
+    let mut ui = cold_ui();
+    let display = Display::from_physical(COLD, 1.0);
+    let report = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        Frame::new()
+            .auto_id()
+            .size(50.0)
+            .background(Background {
+                fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                ..Default::default()
+            })
+            .show(ui);
+    });
+    assert!(
+        matches!(report.plan, Some(RenderPlan::Full { .. })),
+        "first frame: prev snapshot empty, every painting node is new ⇒ Full",
+    );
+}
+
+/// Relayout / repaint requests issued during the blackout pass must
+/// not bias the real-pass `double_layout` gate — otherwise a widget
+/// whose first record legitimately asks for relayout would force a
+/// third record pass on frame 1 (warmup + pass-A + pass-B).
+#[test]
+fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
+    let mut ui = cold_ui();
+    let mut calls = 0_u32;
+    cold_frame(&mut ui, |ui| {
+        calls += 1;
+        if calls == 1 {
+            // Simulate a widget whose first-frame measure depends on
+            // state that wasn't seeded yet — fires once during warmup,
+            // then is satisfied. Without the reset in `frame_inner`,
+            // this leaks into the real pass's `double_layout` arm and
+            // we'd see calls == 3 below.
+            ui.request_relayout();
+        }
+    });
+    assert_eq!(
+        calls, 2,
+        "warmup pass + real pass; warmup's relayout request must be discarded",
+    );
+}
+
+/// `Ui::for_test*` constructors mark the recorder as warm by
+/// synthesizing a `prev_stamp`. Tests must observe single-record
+/// semantics on their first `run_at` so they don't have to reason
+/// about the double-call contract for every assertion.
+#[test]
+fn for_test_constructors_skip_warmup() {
+    let mut ui = Ui::for_test();
+    let mut calls = 0_u32;
+    ui.run_at_acked(COLD, |_| calls += 1);
+    assert_eq!(
+        calls, 1,
+        "for_test() ctor pre-marks warm; first user frame is single-pass",
+    );
 }
