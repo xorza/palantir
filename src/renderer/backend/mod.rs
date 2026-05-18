@@ -130,7 +130,13 @@ impl WgpuBackend {
             &viewport_uniform.buffer,
             image_budget_bytes,
         );
-        let curve = CurvePipeline::new(&device, format, &viewport_uniform.buffer);
+        let curve = CurvePipeline::new(
+            &device,
+            format,
+            &viewport_uniform.buffer,
+            &quad.gradient_texture_view,
+            &quad.gradient_sampler,
+        );
         let text = TextRenderer::new(&device, &queue, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {

@@ -15,6 +15,7 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageFit;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
+use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
@@ -270,13 +271,18 @@ fn emit_one_shape(
             p2,
             p3,
             width,
-            color,
+            fill,
+            fill_grad_hash: _,
             cap,
             bbox,
             content_hash: _,
         } => {
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px.
+            let (color, fill_kind, fill_lut_row) = match shape_brush_source(gradients, *fill) {
+                BrushSource::Solid(c) => (c, FillKind::SOLID, LutRow::FALLBACK),
+                BrushSource::Gradient(g) => (ColorF16::TRANSPARENT, g.kind, g.row),
+            };
             out.draw_curve(DrawCurvePayload {
                 bbox: *bbox,
                 origin: owner_rect.min,
@@ -284,9 +290,11 @@ fn emit_one_shape(
                 p1: *p1,
                 p2: *p2,
                 p3: *p3,
-                color: *color,
+                color,
                 width: *width,
                 cap: *cap as u32,
+                fill_kind,
+                fill_lut_row,
                 ..bytemuck::Zeroable::zeroed()
             });
         }

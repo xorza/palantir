@@ -323,21 +323,33 @@ pub(crate) struct DrawCurvePayload {
     pub(crate) p1: glam::Vec2,
     pub(crate) p2: glam::Vec2,
     pub(crate) p3: glam::Vec2,
+    /// Solid stroke colour. Zeroed when `fill_kind` is a gradient —
+    /// the LUT row at `fill_lut_row` supplies the colour in that case.
     pub(crate) color: ColorF16,
     pub(crate) width: f32,
     /// Cap kind packed as `u32` (Pod-safe; the variant tag from
     /// `LineCap as u8` widened). Composer threads it into the
     /// `CurveInstance.cap` lane verbatim.
     pub(crate) cap: u32,
+    /// Brush kind tag (low byte: 0 = solid, 1 = linear). Only solid +
+    /// linear are valid on curves; the lowering hard-asserts.
+    pub(crate) fill_kind: FillKind,
+    /// Gradient atlas row when `fill_kind` is a gradient, else
+    /// [`LutRow::FALLBACK`].
+    pub(crate) fill_lut_row: LutRow,
 }
 
 impl DrawCurvePayload {
-    /// Canonical noop predicate — zero/negative stroke width or fully
-    /// transparent fill. Degenerate control-point coincidence is
-    /// already filtered at `Shape::CubicBezier::is_noop`.
+    /// Canonical noop predicate — zero/negative stroke width or a
+    /// solid fill that's fully transparent. Gradient fills always
+    /// paint (the all-transparent-stops case is caught by
+    /// `Brush::is_noop` before lowering).
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        noop_f32(self.width) || self.color.is_noop()
+        if noop_f32(self.width) {
+            return true;
+        }
+        self.fill_kind == FillKind::SOLID && self.color.is_noop()
     }
 }
 

@@ -375,7 +375,19 @@ pub(crate) enum ShapeRecord {
         p2: Vec2,
         p3: Vec2,
         width: f32,
-        color: ColorF16,
+        /// Lowered stroke fill. Solid colour stays inline; `Linear`
+        /// gradient stops have been registered with the gradient atlas
+        /// at lowering and ride as a `LoweredGradient` indexed by
+        /// `ShapeBrush::Gradient`. The gradient is sampled along the
+        /// curve parameter `t` (p0 → p3) in the shader — the
+        /// `LinearGradient::angle` from authoring is intentionally
+        /// ignored, because the curve carries its own 1-D parameter.
+        /// `Radial`/`Conic` brushes are rejected at lowering.
+        fill: ShapeBrush,
+        /// Pre-computed content hash of `fill` when it's a gradient,
+        /// `0` for solid — same context-free-hash trick as
+        /// [`ShapeRecord::RoundedRect.fill_grad_hash`].
+        fill_grad_hash: u64,
         /// End-cap style. Joins are absent (single-curve primitive,
         /// no interior). `Round`/`Square` extend the painted strip by
         /// `width/2` past each endpoint along the local tangent; the
@@ -630,10 +642,28 @@ impl Hash for ShapeRecord {
                 radius.hash(h);
                 shadow.hash(h);
             }
-            ShapeRecord::Curve { content_hash, .. } => {
-                // `content_hash` summarizes p0..p3 + width + color + cap.
-                // bbox is derived; no need to fold separately.
+            ShapeRecord::Curve {
+                content_hash,
+                fill,
+                fill_grad_hash,
+                ..
+            } => {
+                // `content_hash` summarizes p0..p3 + width + cap +
+                // (for solid) inline colour. The brush variant is
+                // folded in separately so curves with the same
+                // geometry but different fills (solid vs gradient
+                // pointing at the same colours) don't collide.
                 h.write_u64(*content_hash);
+                match fill {
+                    ShapeBrush::Solid(c) => {
+                        h.write_u8(0);
+                        c.hash(h);
+                    }
+                    ShapeBrush::Gradient(_) => {
+                        h.write_u8(1);
+                        h.write_u64(*fill_grad_hash);
+                    }
+                }
             }
             ShapeRecord::Image {
                 local_rect,

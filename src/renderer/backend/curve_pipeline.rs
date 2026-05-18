@@ -49,6 +49,8 @@ impl CurvePipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         viewport_buffer: &wgpu::Buffer,
+        gradient_texture_view: &wgpu::TextureView,
+        gradient_sampler: &wgpu::Sampler,
     ) -> Self {
         // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
         // source so the shader can't drift out of lockstep with the
@@ -65,25 +67,53 @@ impl CurvePipeline {
 
         let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.curve.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
                 },
-                count: None,
-            }],
+                wgpu::BindGroupLayoutEntry {
+                    binding: 1,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Texture {
+                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                        view_dimension: wgpu::TextureViewDimension::D2,
+                        multisampled: false,
+                    },
+                    count: None,
+                },
+                wgpu::BindGroupLayoutEntry {
+                    binding: 2,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                    count: None,
+                },
+            ],
         });
 
         let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("palantir.curve.bg"),
             layout: &bind_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: viewport_buffer.as_entire_binding(),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: viewport_buffer.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(gradient_texture_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::Sampler(gradient_sampler),
+                },
+            ],
         });
 
         let pipeline_layout =
@@ -203,8 +233,10 @@ impl CurvePipeline {
 
 // `p0/p1/p2/p3 : Float32x2`, `t_range : Float32x2`, `width : Float32`,
 // `color : Unorm8x4` (linear-u8, same convention as `MeshVertex.color`),
-// `cap : Uint32` (0 = Butt, 1 = Square, 2 = Round).
-const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array![
+// `cap : Uint32` (0 = Butt, 1 = Square, 2 = Round),
+// `fill_kind : Uint32` (0 = solid, 1 = linear),
+// `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0).
+const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,
     2 => Float32x2,
@@ -213,6 +245,8 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 8] = wgpu::vertex_attr_array
     5 => Float32,
     6 => Unorm8x4,
     7 => Uint32,
+    8 => Uint32,
+    9 => Uint32,
 ];
 
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {

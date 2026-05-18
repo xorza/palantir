@@ -65,15 +65,12 @@ pub(crate) struct QuadPipeline {
     /// (see `CLAUDE.md` "Colour pipeline"). Uploaded each frame by
     /// `upload_gradients`, bound via the pipeline's bind group entry 1.
     gradient_texture: wgpu::Texture,
-    /// Kept alive alongside `gradient_texture`: the bind group holds a
-    /// borrow that has to stay valid as long as the pipeline can be
-    /// drawn against. Not read directly — accessed via the bind group
-    /// the GPU sees at draw time.
-    #[allow(dead_code)]
-    gradient_texture_view: wgpu::TextureView,
-    /// Same: held by the bind group, not read directly.
-    #[allow(dead_code)]
-    gradient_sampler: wgpu::Sampler,
+    /// Held by the quad pipeline's bind group, and also re-bound into
+    /// the curve pipeline's bind group so curves and quads share one
+    /// atlas upload. `gradient_texture` owns the underlying storage;
+    /// `upload_gradients` writes through it for both consumers.
+    pub(crate) gradient_texture_view: wgpu::TextureView,
+    pub(crate) gradient_sampler: wgpu::Sampler,
 }
 
 /// Side of the gradient LUT atlas texture (square: 256 × 256).

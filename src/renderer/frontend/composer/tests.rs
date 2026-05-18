@@ -1032,3 +1032,43 @@ fn compose_splits_curve_batches_across_scissor_groups() {
         "batches anchor to monotonically increasing groups",
     );
 }
+
+#[test]
+fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
+    use crate::primitives::brush::Spread;
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::gradient_atlas::LutRow;
+    use crate::renderer::quad::FillKind;
+    let buf = run(
+        |b, _arena| {
+            // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
+            // Every sub-instance must carry the same fill_kind and row.
+            b.draw_curve(DrawCurvePayload {
+                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                p0: Vec2::new(0.0, 0.0),
+                p1: Vec2::new(10.0, 50.0),
+                p2: Vec2::new(90.0, 50.0),
+                p3: Vec2::new(100.0, 0.0),
+                color: Color::TRANSPARENT.into(),
+                width: 4.0,
+                fill_kind: FillKind::linear(Spread::Pad),
+                fill_lut_row: LutRow(7),
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(
+        !buf.curves.is_empty(),
+        "must emit at least one sub-instance"
+    );
+    for ci in &buf.curves {
+        assert_eq!(ci.fill_kind.0 & 0xFF, 1, "linear brush low byte");
+        assert_eq!(
+            ci.fill_lut_row,
+            LutRow(7),
+            "row threaded through to instance"
+        );
+    }
+}
