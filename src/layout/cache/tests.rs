@@ -8,16 +8,15 @@ use crate::primitives::{color::Color, size::Size};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
-fn run_frame(ui: &mut Ui, record: impl FnOnce(&mut Ui)) {
+fn run_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
     run_frame_at(ui, UVec2::new(200, 200), record);
 }
 
-fn run_frame_at(ui: &mut Ui, size: UVec2, record: impl FnOnce(&mut Ui)) {
-    let mut record = Some(record);
+fn run_frame_at(ui: &mut Ui, size: UVec2, mut record: impl FnMut(&mut Ui)) {
     ui.run_at_acked(size, |ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("root"))
-            .show(ui, record.take().unwrap());
+            .show(ui, &mut record);
     });
 }
 

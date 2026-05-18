@@ -734,6 +734,28 @@ impl InputState {
         self.frame_keyboard_events.clear();
     }
 
+    /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
+    /// `cascades` using the current `pointer_pos`. Used by the
+    /// cold-start warmup path in `Ui::frame_inner`: pre-frame-1 input
+    /// events arrived with an empty cascade so their hit-tests
+    /// resolved to nothing. After the warmup record pass has built
+    /// a real cascade, this routes the held pointer position onto the
+    /// right widgets before the user-visible record pass runs — so
+    /// hover styling on frame 1 reflects the actual content under
+    /// the cursor instead of None.
+    pub(crate) fn refresh_pointer_targets(&mut self, cascades: &Cascades) {
+        if let Some(p) = self.pointer_pos {
+            let hits = cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
+            self.hovered = hits.hover;
+            self.scroll_target = hits.scroll;
+            self.pinch_target = hits.pinch;
+        } else {
+            self.hovered = None;
+            self.scroll_target = None;
+            self.pinch_target = None;
+        }
+    }
+
     /// Recompute hover, drop transient per-frame flags, evict captured
     /// widgets that disappeared from the tree. Call after
     /// `CascadesEngine::run` (whose result `cascades` is passed here).
