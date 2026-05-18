@@ -58,56 +58,69 @@ struct VsIn {
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     // Signed perpendicular offset across the strip in physical px.
-    // Fragment uses |offset| for the AA fringe alpha.
+    // Fragment uses |offset| for the AA fringe alpha. Per-vertex.
     @location(0) offset: f32,
-    @location(1) half_w: f32,
-    @location(2) color: vec4<f32>,
     // Tangential distance past the nearest endpoint (>= 0 inside the
     // cap zone, 0 inside the body). Round/Square caps key on this;
     // Butt never sees a non-zero value because Butt doesn't extend.
-    @location(3) cap_t: f32,
+    // Per-vertex (only the cap-zone corners carry a non-zero value).
+    @location(1) cap_t: f32,
+    // Per-instance: constant across all 96 verts of an instance, so
+    // flat-interpolate to skip per-fragment varying evaluation.
+    @location(2) @interpolate(flat) half_w: f32,
+    @location(3) @interpolate(flat) color: vec4<f32>,
     @location(4) @interpolate(flat) cap_kind: u32,
 };
 
-fn cubic(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: f32) -> vec2<f32> {
+struct PosTan { pos: vec2<f32>, tan: vec2<f32> };
+
+// Fused cubic position + tangent at `t`. Shares `u*u`, `u*t`, `t*t`
+// across both expressions — the standalone `cubic` / `cubic_tangent`
+// pair recomputed them independently and relied on the compiler to
+// CSE, which isn't guaranteed through the WGSL→SPIR-V→native chain.
+fn cubic_pos_tan(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: f32) -> PosTan {
     let u = 1.0 - t;
-    return u * u * u * p0
-         + 3.0 * u * u * t * p1
-         + 3.0 * u * t * t * p2
-         + t * t * t * p3;
+    let uu = u * u;
+    let tt = t * t;
+    let ut = u * t;
+    var out: PosTan;
+    out.pos = (uu * u) * p0
+            + (3.0 * uu * t) * p1
+            + (3.0 * u * tt) * p2
+            + (tt * t) * p3;
+    out.tan = (3.0 * uu) * (p1 - p0)
+            + (6.0 * ut) * (p2 - p1)
+            + (3.0 * tt) * (p3 - p2);
+    return out;
 }
 
-fn cubic_tangent(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: f32) -> vec2<f32> {
-    let u = 1.0 - t;
-    return 3.0 * u * u * (p1 - p0)
-         + 6.0 * u * t * (p2 - p1)
-         + 3.0 * t * t * (p3 - p2);
-}
+// (corner_t, side) lookup for the two-triangle quad. Replaces a 6-way
+// switch — branchless on every backend.
+const CORNERS = array<vec2<f32>, 6>(
+    vec2<f32>(0.0, -1.0),
+    vec2<f32>(1.0, -1.0),
+    vec2<f32>(0.0,  1.0),
+    vec2<f32>(0.0,  1.0),
+    vec2<f32>(1.0, -1.0),
+    vec2<f32>(1.0,  1.0),
+);
 
 @vertex
 fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let seg = vid / 6u;
     let corner = vid % 6u;
     // Triangle layout per quad (two triangles, CCW after the Y-flip
-    // in NDC): (0, -1), (1, -1), (0, +1) and (0, +1), (1, -1), (1, +1).
-    // `t_off` is the segment-local parameter (0 at the start edge,
-    // 1 at the end edge); `side` is the strip-half marker (-1/+1).
-    var t_off: f32;
-    var side: f32;
-    switch corner {
-        case 0u: { t_off = 0.0; side = -1.0; }
-        case 1u: { t_off = 1.0; side = -1.0; }
-        case 2u: { t_off = 0.0; side =  1.0; }
-        case 3u: { t_off = 0.0; side =  1.0; }
-        case 4u: { t_off = 1.0; side = -1.0; }
-        case 5u: { t_off = 1.0; side =  1.0; }
-        default: { t_off = 0.0; side =  0.0; }
-    }
+    // in NDC). `t_off` is the segment-local parameter (0 at the start
+    // edge, 1 at the end edge); `side` is the strip-half marker (-1/+1).
+    let c = CORNERS[corner];
+    let t_off = c.x;
+    let side = c.y;
     let inv_n = 1.0 / f32(SEGMENTS_PER_INSTANCE);
     let local_t = (f32(seg) + t_off) * inv_n;
     let t = mix(in.t_range.x, in.t_range.y, local_t);
-    let pos = cubic(in.p0, in.p1, in.p2, in.p3, t);
-    var tan = cubic_tangent(in.p0, in.p1, in.p2, in.p3, t);
+    let pt = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, t);
+    let pos = pt.pos;
+    var tan = pt.tan;
     let len_sq = dot(tan, tan);
     if (len_sq < 1.0e-8) {
         // Degenerate tangent (coincident control points around `t`).
@@ -123,7 +136,8 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     // Right-hand perpendicular (rotate +90°). Sign matches the cap
     // convention used by stroke_tessellate.
     let normal = vec2<f32>(-tan_n.y, tan_n.x);
-    let half_w = max(in.width * 0.5, 0.0) + HALF_FRINGE;
+    let core_hw = max(in.width * 0.5, 0.0);
+    let half_w = core_hw + HALF_FRINGE;
 
     // Cap extension. Only the leading edge of segment 0 of the first
     // sub-instance (and the trailing edge of the last segment of the
@@ -140,14 +154,15 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
     let offset = side * half_w;
     let phys = pos + normal * offset + tan_n * cap_shift;
+    let inv_size_2 = 2.0 / vp.size;
     let ndc = vec2<f32>(
-        phys.x / vp.size.x * 2.0 - 1.0,
-        1.0 - phys.y / vp.size.y * 2.0,
+        phys.x * inv_size_2.x - 1.0,
+        1.0 - phys.y * inv_size_2.y,
     );
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
     out.offset = offset;
-    out.half_w = max(in.width * 0.5, 0.0);
+    out.half_w = core_hw;
     out.color = in.color;
     out.cap_t = abs(cap_shift);
     out.cap_kind = in.cap;
