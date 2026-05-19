@@ -362,8 +362,7 @@ impl DamageEngine {
         let subtree_skips_out = &mut self.subtree_skips;
 
         for (layer, tree) in forest.iter_paint_order() {
-            let li = layer.idx();
-            let layer_cascades = &cascades.layers[li];
+            let layer_cascades = &cascades.layers[layer];
             let rows = layer_cascades.rows.as_slice();
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();
@@ -640,8 +639,7 @@ fn extend_predamaged(
     // is always a sub-rect of its owner — nothing new to add.
     let Some(prev) = prev_time else { return };
     for (layer, tree) in forest.iter_paint_order() {
-        let li = layer.idx();
-        let arena = &cascades.layers[li].paint_arena;
+        let arena = &cascades.layers[layer].paint_arena;
         let paints = &arena.rows;
         let shape_to_paint = &arena.shape_to_paint;
         for e in &tree.paint_anims.entries {

@@ -5,6 +5,7 @@
 
 use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
+use crate::common::per_layer::PerLayer;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
@@ -15,9 +16,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
-use std::array;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 /// One explicit-id collision recorded this frame. Both endpoints
 /// carry their own `Layer` because the colliding ids can straddle a
@@ -87,7 +86,7 @@ impl Layer {
 /// cross-layer aggregation that doesn't care about layer order
 /// (e.g. summing record counts).
 pub(crate) struct Forest {
-    pub(crate) trees: [Tree; Layer::COUNT],
+    pub(crate) trees: PerLayer<Tree>,
     /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
     /// detection + auto-id disambiguation), reset by `pre_record`, and
     /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
@@ -114,7 +113,7 @@ pub(crate) struct Forest {
 impl Default for Forest {
     fn default() -> Self {
         Self {
-            trees: array::from_fn(|_| Tree::default()),
+            trees: PerLayer::default(),
             ids: SeenIds::default(),
             collisions: Vec::new(),
             layer_stack: vec![Layer::Main],
@@ -158,7 +157,7 @@ impl Forest {
             "post_record called with active layer {active:?} — Ui::layer body forgot to return",
         );
         for layer in Layer::PAINT_ORDER {
-            self.trees[layer.idx()].post_record();
+            self.trees[layer].post_record();
         }
     }
 
@@ -271,7 +270,7 @@ impl Forest {
             Layer::Main,
             "Ui::layer must be called from the Main scope (current: {active:?})",
         );
-        let tree = &mut self.trees[layer.idx()];
+        let tree = &mut self.trees[layer];
         assert!(
             tree.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
@@ -286,7 +285,7 @@ impl Forest {
             "pop_layer without matching push_layer",
         );
         let layer = self.current_layer();
-        let tree = &mut self.trees[layer.idx()];
+        let tree = &mut self.trees[layer];
         assert!(
             tree.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
@@ -300,13 +299,13 @@ impl Forest {
     /// Borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree(&self, layer: Layer) -> &Tree {
-        &self.trees[layer.idx()]
+        &self.trees[layer]
     }
 
     /// Mutably borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
-        &mut self.trees[layer.idx()]
+        &mut self.trees[layer]
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one
@@ -314,22 +313,20 @@ impl Forest {
     /// `tree(current_layer())` for the very common case.
     #[inline]
     pub(crate) fn current_tree(&self) -> &Tree {
-        &self.trees[self.current_layer().idx()]
+        &self.trees[self.current_layer()]
     }
 
     /// Mutably borrow the tree for the [`Self::current_layer`].
     #[inline]
     pub(crate) fn current_tree_mut(&mut self) -> &mut Tree {
-        &mut self.trees[self.current_layer().idx()]
+        let layer = self.current_layer();
+        &mut self.trees[layer]
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
     /// each with its layer tag. Pipeline passes consume this to
     /// process layers bottom-up.
     pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &Tree)> {
-        Layer::PAINT_ORDER
-            .iter()
-            .copied()
-            .map(move |layer| (layer, &self.trees[layer.idx()]))
+        self.trees.iter_paint_order()
     }
 }

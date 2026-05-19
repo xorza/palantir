@@ -8,6 +8,7 @@
 //! take `&Cascades` as their single frozen-state handle.
 
 use crate::common::hash::Hasher;
+use crate::common::per_layer::PerLayer;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
@@ -21,9 +22,7 @@ use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use soa_rs::{Soa, Soars};
-use std::array;
 use std::hash::Hasher as _;
-use strum::EnumCount as _;
 
 /// One paintable contribution from a single node — either chrome (row 0
 /// of the node's paint span when the node has chrome) or one direct
@@ -200,7 +199,7 @@ impl LayerCascades {
 /// cascade state (per-node rows, subtree rollups, paint arena — see
 /// [`LayerCascades`]) and a global `WidgetId`-keyed hit index.
 pub(crate) struct Cascades {
-    pub(crate) layers: [LayerCascades; Layer::COUNT],
+    pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
     /// `entries.widget_id()`, …) so the hot reverse-scan in
@@ -215,7 +214,7 @@ pub(crate) struct Cascades {
 impl Default for Cascades {
     fn default() -> Self {
         Self {
-            layers: array::from_fn(|_| LayerCascades::default()),
+            layers: PerLayer::default(),
             entries: Soa::new(),
             by_id: FxHashMap::default(),
         }
@@ -337,11 +336,10 @@ impl CascadesEngine {
         }
 
         for (layer, tree) in forest.iter_paint_order() {
-            let i = layer.idx();
-            let layer_layout = &layout.layers[i];
+            let layer_layout = &layout.layers[layer];
             let r = &mut layout.cascades;
             let n = tree.records.len();
-            r.layers[i].reset_for(n, tree.shapes.records.len());
+            r.layers[layer].reset_for(n, tree.shapes.records.len());
             self.stack.clear();
             run_tree(tree, layer_layout, r, layer, &mut self.stack);
         }
@@ -368,7 +366,6 @@ fn run_tree(
     layer: Layer,
     stack: &mut Vec<Frame>,
 ) {
-    let li = layer.idx();
     let n = tree.records.len();
     let layout_col = tree.records.layout();
     let attrs_col = tree.records.attrs();
@@ -381,7 +378,11 @@ fn run_tree(
                 break;
             }
             let popped = stack.pop().unwrap();
-            finalize_frame(stack, &mut cascades.layers[li].subtree_paint_rects, popped);
+            finalize_frame(
+                stack,
+                &mut cascades.layers[layer].subtree_paint_rects,
+                popped,
+            );
         }
         let (parent_transform, parent_clip, parent_dis, parent_inv) = match stack.last() {
             Some(p) => (p.transform, p.clip, p.disabled, p.invisible),
@@ -404,7 +405,7 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
-            &mut cascades.layers[li].paint_arena,
+            &mut cascades.layers[layer].paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -413,7 +414,7 @@ fn run_tree(
         // ancestor). Visibility is in `cascade_input` regardless, so
         // damage tracking is unaffected.
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        cascades.layers[li].rows.push(Cascade {
+        cascades.layers[layer].rows.push(Cascade {
             paint_rect,
             cascade_input: hash_cascade_input(
                 parent_transform,
@@ -424,7 +425,9 @@ fn run_tree(
                 invisible,
             ),
         });
-        cascades.layers[li].subtree_paint_rects.push(subtree_seed);
+        cascades.layers[layer]
+            .subtree_paint_rects
+            .push(subtree_seed);
 
         // `Panel::transform` semantics: scale pivots about the node's
         // own `layout_rect.min`, not the cascade's (0, 0). The
@@ -471,7 +474,11 @@ fn run_tree(
     // Drain frames whose subtree extends to the end of the tree —
     // they never hit the `< top.subtree_end` exit at the loop head.
     while let Some(popped) = stack.pop() {
-        finalize_frame(stack, &mut cascades.layers[li].subtree_paint_rects, popped);
+        finalize_frame(
+            stack,
+            &mut cascades.layers[layer].subtree_paint_rects,
+            popped,
+        );
     }
 }
 

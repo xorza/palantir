@@ -14,6 +14,7 @@ pub(crate) mod zstack;
 #[cfg(test)]
 mod cross_driver_tests;
 
+use crate::common::per_layer::PerLayer;
 use crate::forest::Layer;
 use crate::forest::tree::Tree;
 use crate::primitives::span::Span;
@@ -21,7 +22,6 @@ use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
 use crate::ui::cascade::Cascades;
 use std::ops::{Index, IndexMut};
-use strum::EnumCount as _;
 
 /// Per-layer layout output — the SoA columns the encoder + hit-index
 /// read after the layout pass. Intermediate scratch (desired sizes,
@@ -41,14 +41,13 @@ pub(crate) struct LayerLayout {
     pub(crate) text_spans: Vec<Span>,
 }
 
-/// Per-frame layout output across all layers. Wraps a fixed-size
-/// `[LayerLayout; Layer::COUNT]` so callers index by `Layer` directly
-/// (`result[Layer::Main]`) instead of casting through `usize`. Returned
-/// by `LayoutEngine::run`; the encoder, cascade, hit-index, and tests
-/// all read it.
+/// Per-frame layout output across all layers. Callers index by
+/// `Layer` directly (`result[Layer::Main]`) — see [`PerLayer`].
+/// Returned by `LayoutEngine::run`; the encoder, cascade, hit-index,
+/// and tests all read it.
 #[derive(Default)]
 pub(crate) struct Layout {
-    pub(crate) layers: [LayerLayout; Layer::COUNT],
+    pub(crate) layers: PerLayer<LayerLayout>,
     /// Cascaded clip/disabled/invisible/transform per node + global
     /// hit index. Written by `CascadesEngine::run` in the paint phase
     /// and read by the encoder, input dispatch, and damage compute.
@@ -59,14 +58,14 @@ impl Index<Layer> for Layout {
     type Output = LayerLayout;
     #[inline]
     fn index(&self, layer: Layer) -> &LayerLayout {
-        &self.layers[layer.idx()]
+        &self.layers[layer]
     }
 }
 
 impl IndexMut<Layer> for Layout {
     #[inline]
     fn index_mut(&mut self, layer: Layer) -> &mut LayerLayout {
-        &mut self.layers[layer.idx()]
+        &mut self.layers[layer]
     }
 }
 
