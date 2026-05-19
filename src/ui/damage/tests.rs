@@ -70,7 +70,8 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = ui.layout.cascades.paint_arenas[Layer::Main.idx()]
+    let painting = ui.layout.cascades.layers[Layer::Main.idx()]
+        .paint_arena
         .node_spans
         .iter()
         .filter(|s| s.len > 0)
@@ -1736,8 +1737,8 @@ fn node_snapshot_decomposition_matches_cascade() {
     let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
     let li = Layer::Main.idx();
     let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")] as usize;
-    let node_span = ui.layout.cascades.paint_arenas[li].node_spans[node_idx];
-    let layer_paints = &ui.layout.cascades.paint_arenas[li].rows;
+    let node_span = ui.layout.cascades.layers[li].paint_arena.node_spans[node_idx];
+    let layer_paints = &ui.layout.cascades.layers[li].paint_arena.rows;
 
     // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];

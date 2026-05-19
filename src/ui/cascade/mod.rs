@@ -39,10 +39,10 @@ pub(crate) struct Paint {
 }
 
 /// Per-layer paint state: the unified [`Paint`] arena plus the two
-/// index columns into it. Grouped because the three vectors are
-/// produced + cleared in lockstep by [`compute_paint_rect`]; keeping
-/// them on one struct means there's exactly one place to call
-/// `reset_for` from and the columns can't drift in length.
+/// index columns into it. The three vectors have different lengths
+/// (per-row, per-node, per-shape) but share a lifecycle — written
+/// during [`compute_paint_rect`], reset together each frame in
+/// [`Self::reset_for`].
 #[derive(Default)]
 pub(crate) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
@@ -152,31 +152,55 @@ struct Frame {
     subtree_paint_rect: Rect,
 }
 
-/// Read-only artifact of `CascadesEngine::run`. Holds the per-tree cascade
-/// rows (indexed by `NodeId.0` within the matching tree) and a global
-/// `WidgetId`-keyed hit index.
-pub(crate) struct Cascades {
-    /// Per-layer per-node cascade rows. Same indexing as
-    /// `Tree::records`: `rows[layer.idx()][node.idx()]`.
-    pub(crate) rows: [Vec<Cascade>; Layer::COUNT],
-    /// Per-layer per-node subtree paint rect — `Cascade.paint_rect`
-    /// rolled up with every descendant's `subtree_paint_rects[i]`.
-    /// Stored parallel to `rows` (not inline on `Cascade`) so the
-    /// damage diff's hot row scan stays cache-tight (it reads
-    /// `paint_rect` + `cascade_input` only); the encoder is the sole
+/// All per-layer cascade state grouped on one struct. `rows` +
+/// `subtree_paint_rects` + `paint_arena` are produced together in a
+/// single [`run_tree`] pass, reset together at frame start, and read
+/// together by the damage diff and encoder — keeping them on one
+/// struct means there's exactly one indexing point per layer and no
+/// chance of resetting one column but not another.
+#[derive(Default)]
+pub(crate) struct LayerCascades {
+    /// Per-node cascade rows, indexed the same way as
+    /// `Tree::records`: `rows[node.idx()]`.
+    pub(crate) rows: Vec<Cascade>,
+    /// Per-node subtree paint rect — [`Cascade::paint_rect`] rolled up
+    /// with every descendant's `subtree_paint_rects[i]`. Stored
+    /// alongside `rows` (not inline on `Cascade`) so the damage
+    /// diff's hot row scan stays cache-tight (reads `paint_rect` +
+    /// `cascade_input` only — 24 B/node); the encoder is the sole
     /// reader and pays one indexed load per cull check. Computed
-    /// inline in `run_tree` via a stack-frame accumulator. Read by
+    /// inline in [`run_tree`] via a stack-frame accumulator. Read by
     /// the encoder for the viewport + damage subtree culls where
     /// "may I skip the whole subtree?" must consider overhanging
     /// descendants — Canvas-positioned children outside the parent's
     /// `Fixed` bound, shapes with negative-margin overhang, etc.
     /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
     /// hidden subtree doesn't keep the cull from firing at ancestors.
-    pub(crate) subtree_paint_rects: [Vec<Rect>; Layer::COUNT],
-    /// Per-layer unified paint arena (rows + per-node spans + shape→paint
-    /// translation). Three columns travel together — written in
-    /// lockstep by `compute_paint_rect`, cleared together each frame.
-    pub(crate) paint_arenas: [PaintArena; Layer::COUNT],
+    pub(crate) subtree_paint_rects: Vec<Rect>,
+    /// Unified paint arena (rows + per-node spans + shape→paint
+    /// translation).
+    pub(crate) paint_arena: PaintArena,
+}
+
+impl LayerCascades {
+    /// Reset all per-node columns for `n_nodes` and `n_shapes`.
+    /// `rows` and `subtree_paint_rects` are cleared and reserved
+    /// (filled by per-node pushes during the walk); `paint_arena`
+    /// columns reset according to their own sizing rules.
+    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize) {
+        self.rows.clear();
+        self.rows.reserve(n_nodes);
+        self.subtree_paint_rects.clear();
+        self.subtree_paint_rects.reserve(n_nodes);
+        self.paint_arena.reset_for(n_nodes, n_shapes);
+    }
+}
+
+/// Read-only artifact of `CascadesEngine::run`. Holds per-layer
+/// cascade state (per-node rows, subtree rollups, paint arena — see
+/// [`LayerCascades`]) and a global `WidgetId`-keyed hit index.
+pub(crate) struct Cascades {
+    pub(crate) layers: [LayerCascades; Layer::COUNT],
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
     /// `entries.widget_id()`, …) so the hot reverse-scan in
@@ -191,9 +215,7 @@ pub(crate) struct Cascades {
 impl Default for Cascades {
     fn default() -> Self {
         Self {
-            rows: array::from_fn(|_| Vec::new()),
-            subtree_paint_rects: array::from_fn(|_| Vec::new()),
-            paint_arenas: array::from_fn(|_| PaintArena::default()),
+            layers: array::from_fn(|_| LayerCascades::default()),
             entries: Soa::new(),
             by_id: FxHashMap::default(),
         }
@@ -282,20 +304,6 @@ impl Cascades {
         }
         None
     }
-
-    /// Borrow the per-tree cascade rows for `layer`.
-    #[inline]
-    pub(crate) fn rows_for(&self, layer: Layer) -> &[Cascade] {
-        &self.rows[layer.idx()]
-    }
-
-    /// Borrow the per-tree subtree-paint-rect column for `layer`.
-    /// Parallel to [`Self::rows_for`]; indexed by `NodeId.0` the
-    /// same way.
-    #[inline]
-    pub(crate) fn subtree_paint_rects_for(&self, layer: Layer) -> &[Rect] {
-        &self.subtree_paint_rects[layer.idx()]
-    }
 }
 
 #[derive(Default, Clone, Copy, Debug)]
@@ -333,11 +341,7 @@ impl CascadesEngine {
             let layer_layout = &layout.layers[i];
             let r = &mut layout.cascades;
             let n = tree.records.len();
-            r.rows[i].clear();
-            r.rows[i].reserve(n);
-            r.subtree_paint_rects[i].clear();
-            r.subtree_paint_rects[i].reserve(n);
-            r.paint_arenas[i].reset_for(n, tree.shapes.records.len());
+            r.layers[i].reset_for(n, tree.shapes.records.len());
             self.stack.clear();
             run_tree(tree, layer_layout, r, layer, &mut self.stack);
         }
@@ -377,7 +381,7 @@ fn run_tree(
                 break;
             }
             let popped = stack.pop().unwrap();
-            finalize_frame(stack, &mut cascades.subtree_paint_rects[li], popped);
+            finalize_frame(stack, &mut cascades.layers[li].subtree_paint_rects, popped);
         }
         let (parent_transform, parent_clip, parent_dis, parent_inv) = match stack.last() {
             Some(p) => (p.transform, p.clip, p.disabled, p.invisible),
@@ -400,7 +404,7 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
-            &mut cascades.paint_arenas[li],
+            &mut cascades.layers[li].paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -409,7 +413,7 @@ fn run_tree(
         // ancestor). Visibility is in `cascade_input` regardless, so
         // damage tracking is unaffected.
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        cascades.rows[li].push(Cascade {
+        cascades.layers[li].rows.push(Cascade {
             paint_rect,
             cascade_input: hash_cascade_input(
                 parent_transform,
@@ -420,7 +424,7 @@ fn run_tree(
                 invisible,
             ),
         });
-        cascades.subtree_paint_rects[li].push(subtree_seed);
+        cascades.layers[li].subtree_paint_rects.push(subtree_seed);
 
         // `Panel::transform` semantics: scale pivots about the node's
         // own `layout_rect.min`, not the cascade's (0, 0). The
@@ -467,7 +471,7 @@ fn run_tree(
     // Drain frames whose subtree extends to the end of the tree —
     // they never hit the `< top.subtree_end` exit at the loop head.
     while let Some(popped) = stack.pop() {
-        finalize_frame(stack, &mut cascades.subtree_paint_rects[li], popped);
+        finalize_frame(stack, &mut cascades.layers[li].subtree_paint_rects, popped);
     }
 }
 

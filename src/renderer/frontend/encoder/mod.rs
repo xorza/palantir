@@ -77,8 +77,9 @@ pub(crate) fn encode(
     let gradients = arena.gradients.as_slice();
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layout = &ui.layout[layer];
-        let rows = ui.layout.cascades.rows_for(layer);
-        let subtree_paint_rects = ui.layout.cascades.subtree_paint_rects_for(layer);
+        let layer_cascades = &ui.layout.cascades.layers[layer.idx()];
+        let rows = layer_cascades.rows.as_slice();
+        let subtree_paint_rects = layer_cascades.subtree_paint_rects.as_slice();
         for root in &tree.roots {
             encode_node(
                 tree,
