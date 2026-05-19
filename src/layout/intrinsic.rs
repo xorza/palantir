@@ -148,17 +148,23 @@ fn content_intrinsic(
         LayoutMode::Grid => grid::intrinsic(engine, tree, node, mode_payload, axis, req, tc),
         // Scroll viewports "want" zero on every panned axis — sizing
         // comes from the viewport's own `Sizing`, never from content.
-        // The non-panned axis falls back to the corresponding stack /
-        // zstack intrinsic.
-        LayoutMode::ScrollVertical => match axis {
-            Axis::Y => 0.0,
-            Axis::X => stack::intrinsic(engine, tree, node, Axis::Y, axis, req, tc),
-        },
-        LayoutMode::ScrollHorizontal => match axis {
-            Axis::X => 0.0,
-            Axis::Y => stack::intrinsic(engine, tree, node, Axis::X, axis, req, tc),
-        },
-        LayoutMode::ScrollBoth => 0.0,
+        // The non-panned axis falls back to a stack intrinsic on the
+        // panned axis (ScrollVertical → stack on Y, ScrollHorizontal →
+        // stack on X). `ScrollBoth` pans both axes, so the answer is
+        // unconditionally zero.
+        LayoutMode::ScrollVertical | LayoutMode::ScrollHorizontal | LayoutMode::ScrollBoth => {
+            let pan = mode.pan_mask();
+            let pan_axis = match axis {
+                Axis::X => pan.x,
+                Axis::Y => pan.y,
+            };
+            if pan_axis {
+                0.0
+            } else {
+                let main = if pan.y { Axis::Y } else { Axis::X };
+                stack::intrinsic(engine, tree, node, main, axis, req, tc)
+            }
+        }
     }
 }
 

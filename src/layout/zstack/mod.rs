@@ -24,7 +24,7 @@ pub(crate) fn intrinsic(
     req: LenReq,
     tc: &TextCtx<'_>,
 ) -> f32 {
-    children_max_intrinsic(layout, tree, node, axis, req, tc)
+    children_max_intrinsic(layout, tree, node, axis, req, tc, |_, _| 0.0)
 }
 
 /// ZStack: children all at the same position (top-left of inner rect).

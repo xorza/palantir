@@ -148,27 +148,17 @@ pub(crate) fn measure(
     tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
-    let raw = match mode {
-        LayoutMode::ScrollVertical => stack::measure(
-            layout,
-            tree,
-            node,
-            Size::new(inner_avail.w, f32::INFINITY),
-            Axis::Y,
-            tc,
-            out,
-        ),
-        LayoutMode::ScrollHorizontal => stack::measure(
-            layout,
-            tree,
-            node,
-            Size::new(f32::INFINITY, inner_avail.h),
-            Axis::X,
-            tc,
-            out,
-        ),
-        LayoutMode::ScrollBoth => zstack::measure(layout, tree, node, Size::INF, tc, out),
-        _ => unreachable!("scroll::measure called with non-Scroll mode {mode:?}"),
+    let pan = mode.pan_mask();
+    let child_avail = Size::new(
+        if pan.x { f32::INFINITY } else { inner_avail.w },
+        if pan.y { f32::INFINITY } else { inner_avail.h },
+    );
+    let raw = if pan.x && pan.y {
+        zstack::measure(layout, tree, node, child_avail, tc, out)
+    } else if pan.y {
+        stack::measure(layout, tree, node, child_avail, Axis::Y, tc, out)
+    } else {
+        stack::measure(layout, tree, node, child_avail, Axis::X, tc, out)
     };
 
     let wid = tree.records.widget_id()[node.idx()];
@@ -180,12 +170,13 @@ pub(crate) fn measure(
     // driver itself sees only non-negative content.
     layout.scroll_states.entry(wid).or_default().content = raw;
 
-    match mode {
-        LayoutMode::ScrollVertical => Size::new(raw.w, 0.0),
-        LayoutMode::ScrollHorizontal => Size::new(0.0, raw.h),
-        LayoutMode::ScrollBoth => Size::ZERO,
-        _ => unreachable!(),
-    }
+    // Panned axes contribute zero to the viewport's own desired size
+    // (content extent doesn't grow the viewport); non-panned axes pass
+    // the measured size through.
+    Size::new(
+        if pan.x { 0.0 } else { raw.w },
+        if pan.y { 0.0 } else { raw.h },
+    )
 }
 
 /// Arrange dispatch arm for [`LayoutMode::Scroll`]. Delegates to
@@ -203,11 +194,13 @@ pub(crate) fn arrange(
     mode: LayoutMode,
     out: &mut Layout,
 ) {
-    match mode {
-        LayoutMode::ScrollVertical => stack::arrange(layout, tree, node, inner, Axis::Y, out),
-        LayoutMode::ScrollHorizontal => stack::arrange(layout, tree, node, inner, Axis::X, out),
-        LayoutMode::ScrollBoth => zstack::arrange(layout, tree, node, inner, out),
-        _ => unreachable!("scroll::arrange called with non-Scroll mode {mode:?}"),
+    let pan = mode.pan_mask();
+    if pan.x && pan.y {
+        zstack::arrange(layout, tree, node, inner, out);
+    } else if pan.y {
+        stack::arrange(layout, tree, node, inner, Axis::Y, out);
+    } else {
+        stack::arrange(layout, tree, node, inner, Axis::X, out);
     }
 
     let wid = tree.records.widget_id()[node.idx()];

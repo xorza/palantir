@@ -299,7 +299,7 @@ pub(crate) fn intrinsic(
         }
         total + gap * count.saturating_sub(1) as f32
     } else {
-        children_max_intrinsic(layout, tree, node, query_axis, req, tc)
+        children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
     }
 }
 
