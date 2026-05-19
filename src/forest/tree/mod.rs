@@ -336,7 +336,6 @@ impl Tree {
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
         let chrome_out = self.rollups.chrome.as_mut_slice();
-        let paints = &mut self.rollups.paints;
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
@@ -379,7 +378,6 @@ impl Tree {
             // markers in record order. Each shape's canonical hash was
             // computed at `Shapes::add` time — fold it in as a u64 so
             // we don't re-hash the record fields here.
-            let mut has_direct_shape = false;
             let parent_span = shape_spans[i];
             let parent_end = (parent_span.start + parent_span.len) as usize;
             let mut cursor = parent_span.start as usize;
@@ -389,7 +387,6 @@ impl Tree {
                 let cs = shape_spans[next_child as usize];
                 let cs_start = cs.start as usize;
                 while cursor < cs_start {
-                    has_direct_shape = true;
                     h.write_u64(shape_hashes[cursor].0);
                     cursor += 1;
                 }
@@ -398,12 +395,8 @@ impl Tree {
                 next_child = ends[next_child as usize];
             }
             while cursor < parent_end {
-                has_direct_shape = true;
                 h.write_u64(shape_hashes[cursor].0);
                 cursor += 1;
-            }
-            if has_chrome || has_direct_shape {
-                paints.set(i, true);
             }
             if layouts[i].mode == LayoutMode::Grid {
                 let idx = layouts[i].mode_payload;

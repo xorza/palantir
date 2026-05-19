@@ -51,13 +51,14 @@ Key moves:
 
 ## Migration steps
 
-1. **Cascade gains a text-ordinal counter; reads `shaped.measured` from `LayerLayout` to compute text's true rect once.** Pure refactor — same data flowing into the same columns, no observable behavior change yet. Establishes that cascade can compute the tight text rect.
-2. Rewrite `compute_paint_rect` to emit `Vec<Paint>` per-node span; chrome = row 0; drop the `(precise, extent)` tuple.
-3. Replace `shape_rects` + `chrome_rects` with `paints[layer]` + `node_paint_spans[layer]`. Re-key `tree.paint_anims.by_shape` to paint-idx (or thread a translation table for one PR).
-4. Collapse the four damage diff functions into one `diff_paint_spans`.
-5. Encoder reads `paints[span.start].screen` for text instead of recomputing via `align_text_in`.
-6. Delete `paint_extents_local`, `chrome_rects`, `shape_rects`, `chrome_hash` snap field, `rollups.paints` bitset, chrome predicate logic.
+1. ✅ **Cascade computes tight text rects.** Extracted `align_text_in` to `forest/shapes/record.rs`, added `text_paint_bbox_local` helper. Cascade threads a text ordinal through its shape loop, looks up `ShapedText.measured` from `LayerLayout`, writes the tight rect into `shape_rects` + per-node paint-rect union. Deleted `paint_extents_local`'s `(precise, extent)` tuple — the text fudge is gone.
+2. ✅ **Unified `Paint` column.** Added `Paint { screen, hash }` and replaced `Cascades::shape_rects` + `chrome_rects` with `paints: [Vec<Paint>; COUNT]` + `node_paints: [Vec<Span>; COUNT]`. Rewrote `compute_paint_rect` to emit ordered Paint rows (chrome at span row 0 when present, then shapes). Added `shape_to_paint` translation column for `paint_anims`.
+3. ✅ **Old columns deleted.** `shape_rects`, `chrome_rects`, and `Tree.rollups.paints` bitset removed. Per-node `node_paints[i].len > 0` answers the "paints?" predicate.
+4. ✅ **Damage diff collapsed.** `NodeSnapshot` collapsed from `{chrome_rect, chrome_hash, shape_span}` to one `paint_span`. `ShapeSnap` deleted (replaced by `Paint`). Renamed `shape_snaps*` → `paint_snaps*`. Replaced `push_decomposed_paint` / `push_changed_chrome` / `append_curr_shape_snaps` / `diff_changed_shape_leg` / `refresh_shape_rects_in_arena` with `append_curr_paints` / `diff_changed_paint_leg` / `refresh_paint_rects_in_arena`. The `chrome_hash != NodeHash::default()` chromedness predicate is gone — chrome is just paint row 0.
 
-Critical files: `src/forest/shapes/record.rs`, `src/ui/cascade.rs`, `src/ui/damage/mod.rs`, `src/renderer/frontend/encoder/mod.rs`, `src/layout/mod.rs`.
+## Possible follow-ups (not yet done)
 
-Each step compiles standalone, so this can land in 2–3 PRs with the old and new columns coexisting briefly.
+- **Encoder reads cascade's text rect** instead of recomputing via `align_text_in` in `emit_one_shape`. The cascade now writes the same rect — encoder can read it from `paints[span.start + paint_idx].screen` rather than recomputing `owner_rect.deflated_by(padding)` + `align_text_in(...)`. Eliminates the last duplicate formula site.
+- **AoSoA-split `paints`** into `screen / hash` parallel `Vec`s if the per-shape memory bump (16 → ~40 B per row) shows up in profiling.
+
+Critical files: `src/forest/shapes/record.rs`, `src/ui/cascade.rs`, `src/ui/damage/mod.rs`, `src/forest/rollups.rs`, `src/forest/tree/paint_anims.rs`, `src/renderer/frontend/encoder/mod.rs`.
