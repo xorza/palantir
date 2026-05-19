@@ -30,7 +30,7 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
             ..Default::default()
         })
         .show(ui)
-        .node(ui)
+        .node()
 }
 
 /// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently corrupt
@@ -45,9 +45,9 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let button_node = std::cell::Cell::new(NodeId(0));
     ui.run_at(UVec2::new(100, 100), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            let a = Button::new().id(WidgetId::from_hash("dup")).show(ui);
+            let a_node = Button::new().id(WidgetId::from_hash("dup")).show(ui).node();
             Button::new().id(WidgetId::from_hash("dup")).show(ui);
-            button_node.set(a.node(ui));
+            button_node.set(a_node);
         });
     });
     // One collision pair should be recorded, survives until the next
@@ -220,13 +220,15 @@ fn cascade_visible_to_relayout_pass() {
 
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
-        let probe_resp = std::cell::RefCell::new(None);
+        let probe_resp: std::cell::RefCell<Option<crate::widgets::ResponseSnapshot>> =
+            std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
                 Frame::new()
                     .id(WidgetId::from_hash(id_salt))
                     .size(40.0)
-                    .show(ui),
+                    .show(ui)
+                    .snapshot(),
             );
         });
         let resp = probe_resp.into_inner().unwrap();

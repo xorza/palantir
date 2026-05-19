@@ -76,7 +76,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             capture.push(
                                 Text::new("value column")
@@ -85,7 +85,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                 });
@@ -107,7 +107,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             Panel::vstack()
                                 .id(WidgetId::from_hash("inner-host"))
@@ -132,7 +132,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                                         )
                                                         .grid_cell((0, col))
                                                         .show(ui)
-                                                        .node(ui),
+                                                        .node(),
                                                 );
                                             }
                                         });
@@ -157,7 +157,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             capture.push(
                                 Text::new("v1")
@@ -165,7 +165,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                     Grid::new()
@@ -180,7 +180,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             capture.push(
                                 Text::new("end")
@@ -188,7 +188,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 2))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                 });
@@ -236,7 +236,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                     .id(WidgetId::from_hash(("cell", i)))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         }
                     });
@@ -267,7 +267,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                     .size((Sizing::Fill(1.0), Sizing::Hug))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         }
                     });
@@ -290,7 +290,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                     .id(WidgetId::from_hash(("tag", i)))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         }
                     });
@@ -308,7 +308,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                     .id(WidgetId::from_hash(("layer", i)))
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         }
                     });
@@ -330,7 +330,7 @@ fn cache_hit_preserves_per_driver_rects() {
                                     .position(pos)
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         }
                     });
@@ -460,7 +460,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                         .style(TextStyle::default().with_font_size(14.0))
                                         .grid_cell((0, 0))
                                         .show(ui)
-                                        .node(ui),
+                                        .node(),
                                 );
                                 capture.push(
                                     Text::new(
@@ -472,7 +472,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                     .wrapping()
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                                 );
                             });
                     });

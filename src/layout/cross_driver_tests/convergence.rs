@@ -65,7 +65,7 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                     .size((Sizing::FILL, Sizing::FILL))
                                     .show(ui);
                             })
-                            .node(ui),
+                            .node(),
                     );
                     // Right: FILL/FILL with a Fixed(180×80) descendant.
                     // intrinsic_min = 180 + 24 padding = 204 — rigid below.
@@ -89,10 +89,10 @@ fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
                                             .show(ui);
                                     });
                             })
-                            .node(ui),
+                            .node(),
                     );
                 })
-                .node(ui);
+                .node();
         });
 
         let row = ui.layout[Layer::Main].rect[row_node.idx()];

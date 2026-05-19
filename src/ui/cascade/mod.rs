@@ -550,8 +550,9 @@ fn run_tree(
         // `self_transform` already incorporates the anchoring above;
         // for descendants we compose it onto the parent's transform.
         // When `node_transform` is `None`, `self_transform` is
-        // `IDENTITY`, so `compose` is a no-op but we'd still pay a
-        // branch — skip explicitly.
+        // `IDENTITY` and `compose` would yield the same result,
+        // but skip the 3×mul + 3×add anyway — most nodes have no
+        // transform, so the early-out is the steady-state path.
         let desc_transform = match node_transform {
             Some(_) => parent_transform.compose(self_transform),
             None => parent_transform,

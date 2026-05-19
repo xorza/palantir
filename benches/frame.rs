@@ -90,7 +90,11 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                         .show(ui);
                     for i in 0..5 {
                         let label = ui.fmt(format_args!("Action {i}"));
-                        let btn = Button::new().id_salt(("hdr", i)).label(label).show(ui);
+                        let btn = Button::new()
+                            .id_salt(("hdr", i))
+                            .label(label)
+                            .show(ui)
+                            .snapshot();
                         // Tooltip layer: anchored to the button's response.
                         // Exercises `Layer::Tooltip` recording.
                         Tooltip::for_(&btn)

@@ -72,7 +72,7 @@ impl Panel {
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> crate::widgets::InnerResponse<R> {
+    ) -> crate::widgets::InnerResponse<'_, R> {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
@@ -89,9 +89,9 @@ impl Panel {
             Some(c) => ui.node_with_chrome(id, element, &c, body),
             None => ui.node(id, element, body),
         };
-        let state = ui.response_for(id);
         crate::widgets::InnerResponse {
-            response: Response { id, state },
+            // Decorative: skip eager `response_for`.
+            response: Response::lazy(id, ui),
             inner,
         }
     }

@@ -43,7 +43,7 @@ impl<'a> Checkbox<'a> {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let id = ui.make_persistent_id(self.element.salt);
         let raw_state = ui.response_for(id);
         let mut state = raw_state;
@@ -110,10 +110,7 @@ impl<'a> Checkbox<'a> {
             }
         });
 
-        Response {
-            id,
-            state: raw_state,
-        }
+        Response::eager(id, ui, raw_state)
     }
 }
 

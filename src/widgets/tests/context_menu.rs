@@ -29,7 +29,8 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 .id(WidgetId::from_hash("trigger"))
                 .label("right click me")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
-                .show(ui);
+                .show(ui)
+                .snapshot();
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
                 if MenuItem::new("Copy")
                     .shortcut(Shortcut::cmd('C'))

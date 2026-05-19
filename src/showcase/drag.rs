@@ -71,7 +71,8 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
             corners: Corners::all(6.0),
             shadow: Shadow::NONE,
         })
-        .show(ui);
+        .show(ui)
+        .snapshot();
 
     let st: &mut CardState = ui.state_mut(id);
     if r.drag_started() {

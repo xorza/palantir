@@ -89,7 +89,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                                     .wrapping()
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             right = Some(
                                 Text::new("right column")
@@ -97,7 +97,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                 });
@@ -143,7 +143,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .wrapping()
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             hug_right = Some(
                                 Text::new("right column")
@@ -151,7 +151,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 1))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                 });
@@ -170,7 +170,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                     .style(TextStyle::default().with_font_size(14.0))
                                     .grid_cell((0, 0))
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                             prop_value = Some(
                                 Text::new(
@@ -181,7 +181,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                 .wrapping()
                                 .grid_cell((0, 1))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                             );
                         });
                 });

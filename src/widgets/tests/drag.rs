@@ -226,7 +226,7 @@ fn canvas_rearranges_with_dragged_child_position() {
                         .position(a.pos)
                         .sense(Sense::DRAG)
                         .show(ui);
-                    card_node = Some(r.node(ui));
+                    card_node = Some(r.node());
                     a.fold(&r);
                 });
         });

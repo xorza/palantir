@@ -14,8 +14,8 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
+use crate::widgets::{Response, ResponseSnapshot};
 
 use crate::primitives::interned_str::InternedStr;
 use glam::Vec2;
@@ -79,16 +79,18 @@ impl ContextMenu {
         self
     }
 
-    /// Derive `for_id` from a trigger widget's response, and auto-open
-    /// at the current pointer position if the trigger reported
-    /// `secondary_clicked` this frame.
-    pub fn attach(ui: &mut Ui, resp: &Response) -> Self {
-        if resp.secondary_clicked()
+    /// Derive `for_id` from a trigger widget's response snapshot, and
+    /// auto-open at the current pointer position if the trigger
+    /// reported `secondary_clicked` this frame. Pass via
+    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
+    /// borrow before attaching the menu.
+    pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
+        if snapshot.secondary_clicked()
             && let Some(p) = ui.pointer_pos()
         {
-            ContextMenu::open(ui, resp.widget_id(), p);
+            ContextMenu::open(ui, snapshot.widget_id(), p);
         }
-        ContextMenu::for_id(resp.widget_id())
+        ContextMenu::for_id(snapshot.widget_id())
     }
 
     /// Record the menu and return per-frame outcome. The body closure
@@ -239,7 +241,7 @@ impl MenuItem {
     /// Thin horizontal divider — no label, no input. Free function in
     /// disguise: chain `.show(ui)` and ignore the response.
     #[track_caller]
-    pub fn separator(ui: &mut Ui) -> Response {
+    pub fn separator(ui: &mut Ui) -> Response<'_> {
         let mut element = Element::new(LayoutMode::Leaf);
         element.flags.set_sense(Sense::NONE);
         // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
@@ -254,11 +256,11 @@ impl MenuItem {
         };
         let id = ui.make_persistent_id(element.salt);
         ui.node_with_chrome(id, element, &chrome, |_| {});
-        let state = ui.response_for(id);
-        Response { id, state }
+        // Decorative separator: response is almost always discarded.
+        Response::lazy(id, ui)
     }
 
-    pub fn show(self, ui: &mut Ui, popup: &PopupHandle) -> Response {
+    pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         let id = ui.make_persistent_id(self.element.salt);
         let disabled = self.element.flags.is_disabled();
         let mut raw_state = ui.response_for(id);
@@ -337,7 +339,9 @@ impl MenuItem {
         if shortcut_fired {
             state.clicked = true;
         }
-        let resp = Response { id, state };
+        // Eager: state was mutated above to fold in `shortcut_fired`;
+        // a lazy re-probe would lose the override.
+        let resp = Response::eager(id, ui, state);
         if resp.clicked() {
             popup.close();
         }

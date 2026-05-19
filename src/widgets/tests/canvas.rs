@@ -24,7 +24,7 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                                 .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
                                 .position(Vec2::new(10.0, 5.0))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                         b_node = Some(
                             Frame::new()
@@ -32,10 +32,10 @@ fn canvas_places_children_at_absolute_positions_and_hugs_bbox() {
                                 .size((Sizing::Fixed(30.0), Sizing::Fixed(60.0)))
                                 .position(Vec2::new(80.0, 40.0))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                     })
-                    .node(ui),
+                    .node(),
             );
         });
     });

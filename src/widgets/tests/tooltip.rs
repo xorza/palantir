@@ -94,7 +94,8 @@ fn delay_gates_visibility() {
                         let r = Button::new()
                             .id(WidgetId::from_hash("trig"))
                             .label("hi")
-                            .show(ui);
+                            .show(ui)
+                            .snapshot();
                         *captured = Some(r.widget_id());
                         Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
                     });

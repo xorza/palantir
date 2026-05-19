@@ -31,17 +31,17 @@ fn zstack_layers_children_without_painting_background() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                         fg_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("fg"))
                                 .size((Sizing::Fixed(60.0), Sizing::Fixed(30.0)))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                     })
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -92,7 +92,7 @@ fn zstack_aligns_child_per_axis() {
                                     ..Default::default()
                                 })
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                     });
             });
