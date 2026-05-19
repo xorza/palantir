@@ -890,8 +890,9 @@ impl Ui {
     /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
     /// stable ids without a Main-vs-other-layer carve-out.
     pub(crate) fn make_persistent_id(&mut self, salt: Salt) -> WidgetId {
+        let scratch = self.forest.current_scratch();
         let tree = self.forest.current_tree();
-        let parent = tree
+        let parent = scratch
             .open_frames
             .last()
             .map(|f| tree.records.widget_id()[f.node.idx()]);
@@ -952,7 +953,7 @@ impl Ui {
         let mut state = self.input.response_for(id, &self.layout.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
-        state.disabled |= self.forest.current_tree().ancestor_disabled();
+        state.disabled |= self.forest.current_scratch().ancestor_disabled();
         state
     }
 
