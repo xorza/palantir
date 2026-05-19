@@ -1,8 +1,7 @@
 pub(crate) mod record;
 
-use rustc_hash::FxHasher;
-
 use crate::common::frame_arena::FrameArena;
+use crate::common::hash::Hasher;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
@@ -212,7 +211,7 @@ impl Shapes {
         // hash sweep. Damage diff keys on this for the per-shape
         // contribution path.
         use std::hash::{Hash, Hasher as _};
-        let mut sh = FxHasher::default();
+        let mut sh = Hasher::new();
         record.hash(&mut sh);
         let hash = NodeHash(sh.finish());
         self.records.push(record);

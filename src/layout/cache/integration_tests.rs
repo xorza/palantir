@@ -370,7 +370,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                     .background(Background {
                         fill: Color::rgb(0.16, 0.18, 0.22).into(),
                         stroke: Stroke::solid(Color::rgb(0.3, 0.34, 0.42), 1.0),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         shadow: Shadow::NONE,
                     })
                     .show(ui, |ui| {

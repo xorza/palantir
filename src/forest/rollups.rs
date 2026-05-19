@@ -11,6 +11,31 @@
 //! marking, fine for our use). NaN handling is consistent for the same
 //! NaN bit pattern; UI authoring shouldn't produce NaN anyway (asserts
 //! in builders enforce non-negative sizes etc.).
+//!
+//! # Producer catalogue
+//!
+//! Every authoring hash that feeds a cross-frame cache is produced
+//! once, where its inputs become immutable. Consumers read precomputed
+//! `u64`s rather than re-walking fields. Sites:
+//!
+//! | What                                  | Producer site                                   | Consumer                                |
+//! | ------------------------------------- | ----------------------------------------------- | --------------------------------------- |
+//! | Per-shape canonical hash              | `forest::shapes::Shapes::add`                   | `Tree::compute_hashes`, damage diff     |
+//! | Per-chrome canonical hash             | `common::frame_arena::FrameArena::lower_background` | `Tree::compute_hashes`, damage diff |
+//! | Per-text bytes hash                   | `common::frame_arena::FrameArena::hash_text`    | `ShapeRecord::Text.text_hash`           |
+//! | Per-gradient content hash             | `common::frame_arena::grad_hash`                | `ShapeRecord::*.fill_grad_hash`         |
+//! | Per-polyline content hash             | `common::frame_arena::FrameArenaInner::lower_polyline_inner` | `ShapeRecord::Polyline.content_hash` |
+//! | Per-bezier content hash               | `common::frame_arena::lower_curve_inner`        | `ShapeRecord::Curve.content_hash`       |
+//! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
+//! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
+//! | Per-cascade input hash                | `ui::cascade::hash_cascade_input`               | damage subtree-skip predicate           |
+//!
+//! Adding an authoring field that should invalidate caches: pick the
+//! producer above whose output the field belongs to, and extend its
+//! fold. The downstream `Hash` impls (`ChromeRow`, `ShapeRecord`,
+//! `BoundsExtras`, `PanelExtras`, `LayoutCore::hash_with_flags`,
+//! `GridDef`) only walk fields that aren't already covered by a
+//! pre-baked sub-hash.
 
 /// Authoring-hash newtype. A 64-bit `FxHash` over the inputs that
 /// affect rendering output for one node — *not* the derived layout
@@ -62,9 +87,9 @@ impl CascadeInputHash {
     }
 }
 
-/// Subtree-wide rollup data populated by [`super::Tree::post_record`].
-/// All three slices/sets index by `NodeId.0` and are length
-/// `records.len()` after `post_record`. Capacity retained across frames.
+/// Per-node hash columns populated by [`super::Tree::post_record`].
+/// Both slices index by `NodeId.0` and are length `records.len()`
+/// after `post_record`. Capacity retained across frames.
 ///
 /// - `node[i]` — authoring hash of node `i` alone (layout / paint /
 ///   extras / shapes / grid def). Read by damage diff and the leaf
@@ -75,6 +100,10 @@ impl CascadeInputHash {
 ///   cross-frame measure cache keys on this. See
 ///   `src/layout/measure-cache.md`.
 ///
+/// Per-chrome authoring hash lives inline on `ChromeRow.hash` (only
+/// chromed nodes pay storage); per-shape canonical hash lives on
+/// `Tree.shapes.hashes`.
+///
 /// "Does this node directly contribute pixels?" used to live here as
 /// a `paints: FixedBitSet`; the unified
 /// `Cascades::paint_arenas[].node_spans` answers the same question
@@ -83,20 +112,12 @@ impl CascadeInputHash {
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
     pub(crate) subtree: Vec<NodeHash>,
-    /// Per-node chrome authoring hash, `NodeHash::default()` for
-    /// chromeless nodes. Decomposed from `node` so the damage diff
-    /// can tell "chrome authoring flipped" (e.g. hover fill change)
-    /// from "a direct shape flipped" — both move `node[i]`
-    /// identically, but only the first should push the chrome rect.
-    /// Populated in `compute_hashes` from the same chrome hashing
-    /// pass that folds into `node[i]`.
-    pub(crate) chrome: Vec<NodeHash>,
 }
 
 impl SubtreeRollups {
-    /// Reset and size every column for `n` records. `node`, `subtree`,
-    /// and `chrome` are resized with default values — filled by
-    /// indexed assignment during the fused reverse-pre-order pass in
+    /// Reset and size every column for `n` records. Both columns are
+    /// resized with default values — filled by indexed assignment
+    /// during the fused reverse-pre-order pass in
     /// `Tree::compute_hashes`.
     pub(crate) fn reset_for(&mut self, n: usize) {
         // Single-pass resize: `compute_hashes` overwrites every slot
@@ -105,7 +126,6 @@ impl SubtreeRollups {
         // avoids the truncate-then-grow round trip when `n` is steady.
         self.node.resize(n, NodeHash::default());
         self.subtree.resize(n, NodeHash::default());
-        self.chrome.resize(n, NodeHash::default());
     }
 }
 

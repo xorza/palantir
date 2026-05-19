@@ -355,7 +355,7 @@ impl DamageEngine {
         let paint_snaps = &mut self.paint_snaps;
         let orphaned = &mut self.paint_snaps_orphaned;
         let raw_rects = &mut self.raw_rects;
-        
+
         #[cfg(any(test, feature = "internals"))]
         let dirty_out = &mut self.dirty;
         #[cfg(any(test, feature = "internals"))]

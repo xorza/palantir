@@ -72,7 +72,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // re-themed `theme.radio.checked.normal.background.radius`
         // can't accidentally square-corner the pip.
         let mut look = look_target.animate(ui, id, fallback_text, anim);
-        look.background.radius = Corners::all(pip_size * 0.5);
+        look.background.corners = Corners::all(pip_size * 0.5);
         let chrome = look.background;
         let label = self.label;
 

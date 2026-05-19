@@ -27,7 +27,7 @@ pub struct Background {
     pub fill: Brush,
     pub stroke: Stroke,
     #[animate(snap)]
-    pub radius: Corners,
+    pub corners: Corners,
     /// Single drop / inset shadow. `Shadow::NONE` (the `Default`) is
     /// the "no shadow" sentinel — matches the `Stroke::ZERO`
     /// convention so the field stays plain `Shadow` and animates
@@ -55,7 +55,7 @@ impl Background {
         Self {
             fill: brush.into(),
             stroke: Stroke::ZERO,
-            radius: Corners::ZERO,
+            corners: Corners::ZERO,
             shadow: Shadow::NONE,
         }
     }

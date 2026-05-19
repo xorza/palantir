@@ -72,7 +72,7 @@ impl ToggleTheme {
             Some(Background {
                 fill: fill.into(),
                 stroke,
-                radius,
+                corners: radius,
                 shadow: Shadow::NONE,
             })
         };

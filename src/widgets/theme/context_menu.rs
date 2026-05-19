@@ -61,7 +61,7 @@ impl Default for ContextMenuTheme {
         let panel = Background {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
-            radius: Corners::all(6.0),
+            corners: Corners::all(6.0),
             shadow: Shadow::NONE,
         };
         let separator = m.with_alpha(0.18);
@@ -81,7 +81,7 @@ impl Default for MenuItemTheme {
         let hover_bg = Background {
             fill: palette::ELEM_ACTIVE.into(),
             stroke: Stroke::ZERO,
-            radius: Corners::all(4.0),
+            corners: Corners::all(4.0),
             shadow: Shadow::NONE,
         };
         Self {
