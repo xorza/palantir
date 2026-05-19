@@ -48,7 +48,7 @@ pub mod region;
 /// full-repaint coverage threshold on add or remove.
 ///
 /// **Storage shape.** Per-paint snapshots don't live inline here —
-/// they live in [`DamageEngine::paint_snaps`], a single contiguous
+/// they live in [`DamageEngine::arena`], a single contiguous
 /// arena shared by every painting widget, and this struct just holds
 /// a `Span` into it. Each row is either chrome (row 0 when present)
 /// or one direct shape, mirroring `Cascades::paint_arenas`.
@@ -64,9 +64,9 @@ pub(crate) struct NodeSnapshot {
     /// Kept as the union (chrome ∪ shapes) so the Occupied-equal arm's
     /// fast check stays `e.rect == curr_paint_rect`. The per-row
     /// decomposition is recovered via `paint_span` indexing into
-    /// `DamageEngine::paint_snaps`.
+    /// `DamageEngine::arena`.
     pub(crate) rect: Rect,
-    /// Slice into [`DamageEngine::paint_snaps`] describing this
+    /// Slice into [`DamageEngine::arena`] describing this
     /// widget's per-paint snapshots in record order (chrome at row 0
     /// when present, then shapes). Empty span for non-painting nodes
     /// — though the painting-only invariant means they don't get an
@@ -86,23 +86,46 @@ pub(crate) struct NodeSnapshot {
     pub(crate) cascade_input: CascadeInputHash,
 }
 
+/// Per-painting-widget paint snapshots packed contiguously, plus the
+/// scratch buffer + orphan counter that drive double-buffered
+/// compaction. Each [`NodeSnapshot::paint_span`] is a slice into
+/// `snaps`; chrome lives at row 0 of the owner's span when present,
+/// followed by direct shapes in record order.
+///
+/// Lifecycle: append-only on count-change paths (new span at end,
+/// old slice orphaned); in-place on same-count refreshes;
+/// [`Self::maybe_compact`] reseats live spans into `scratch` once
+/// orphans exceed the threshold, then swaps. Retained capacity —
+/// steady-state alloc-free even under paint-count churn.
+#[derive(Default)]
+pub(crate) struct PaintSnapArena {
+    pub(crate) snaps: Vec<Paint>,
+    /// Reusable destination for compaction (and a swap target). Same
+    /// invariants as `snaps` after a `swap`.
+    scratch: Vec<Paint>,
+    /// Count of `Paint` entries in `snaps` that no live
+    /// `NodeSnapshot::paint_span` points into. Drives the compaction
+    /// trigger.
+    orphaned: u32,
+    /// Compaction-event counter — bumped each time [`Self::compact`]
+    /// runs. Gated behind `internals` so benches can verify the path
+    /// was actually exercised.
+    #[cfg(any(test, feature = "internals"))]
+    compactions_run: u32,
+}
+
 /// Output of one frame's damage pass plus the cross-frame state it
 /// reads to produce that output.
 ///
-/// `dirty` lists every added / hash-changed / rect-changed node in
-/// pre-order paint order (test-only). `region` accumulates the
-/// per-rect contributions (added node's curr rect, changed node's
-/// prev + curr, removed widget's prev rect) through
-/// [`region::DamageRegion::add`]'s merge policy — empty region ⇒
-/// nothing changed, so the host-requested redraw maps to
-/// [`Damage::Skip`].
-///
 /// `prev` is the per-`WidgetId` snapshot map carried over from last
 /// frame; it's mutated in place during `compute` (read old, write
-/// new) so steady-state frames don't allocate.
+/// new) so steady-state frames don't allocate. `arena` holds the
+/// per-paint backing storage for those snapshots — see
+/// [`PaintSnapArena`].
 ///
-/// Capacities on `dirty` and `prev` are retained across frames;
-/// `region` is inline (`DamageRegion` is `Copy`).
+/// Capacities on `prev` are retained across frames; the returned
+/// [`Damage`] / [`DamageRegion`] is `Copy` and threads through
+/// `FrameOutput` by value.
 pub(crate) struct DamageEngine {
     /// Per-pass merge budget (extra-overdraw px) used when
     /// `compute` builds the next frame's region. Defaults to
@@ -117,23 +140,9 @@ pub(crate) struct DamageEngine {
     /// already enforced by `SeenIds::record` at recording time, so
     /// the bare `WidgetId` key is safe.
     pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
-    /// Per-painting-widget paint snapshots (chrome row 0 when present,
-    /// then shapes), packed contiguously. Each `NodeSnapshot` holds a
-    /// `paint_span` slice into this buffer. Append-only writes for
-    /// count-change paths (new span at end, old slice orphaned);
-    /// in-place writes for same-count refreshes.
-    /// [`Self::maybe_compact_paint_snaps`] reseats live spans into
-    /// `paint_snaps_scratch` once orphaned entries exceed the
-    /// threshold, then swaps. Retained capacity — steady-state alloc-
-    /// free even under paint-count churn.
-    pub(crate) paint_snaps: Vec<Paint>,
-    /// Reusable destination for compaction (and a swap target). Same
-    /// invariants as `paint_snaps` after a `swap`.
-    pub(crate) paint_snaps_scratch: Vec<Paint>,
-    /// Number of `Paint` entries in `paint_snaps` that no live
-    /// `NodeSnapshot::paint_span` points into. Drives the compaction
-    /// trigger. Counted in entries, not bytes.
-    pub(crate) paint_snaps_orphaned: u32,
+    /// Paint-snap arena referenced by every `NodeSnapshot.paint_span`.
+    /// See [`PaintSnapArena`] for the lifecycle.
+    pub(crate) arena: PaintSnapArena,
     /// Pass-1 scratch buffer. `compute` walks every damage source
     /// (structural diff, predamaged anim rects, removed-widget evict)
     /// and appends each contribution here without applying the merge
@@ -150,11 +159,6 @@ pub(crate) struct DamageEngine {
     /// `dirty` — production builds don't pay the increment.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) subtree_skips: u32,
-    /// Compaction-event counter — bumped each time
-    /// `compact_paint_snaps` runs. Gated behind `internals` so
-    /// benches can verify the path is actually exercised.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) compactions_run: u32,
     #[cfg(any(test, feature = "internals"))]
     pub(crate) dirty: Vec<NodeId>,
 }
@@ -166,16 +170,33 @@ impl Default for DamageEngine {
             dirty: Vec::new(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
             prev: FxHashMap::default(),
-            paint_snaps: Vec::new(),
-            paint_snaps_scratch: Vec::new(),
-            paint_snaps_orphaned: 0,
-            #[cfg(any(test, feature = "internals"))]
-            compactions_run: 0,
+            arena: PaintSnapArena::default(),
             raw_rects: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
     }
+}
+
+/// Per-frame inputs shared by [`DamageEngine::compute`] and
+/// [`DamageEngine::compute_paint_only`]. The fields that differ
+/// between the two entry points (`removed`, `force_full`) stay as
+/// dedicated args on `compute` — passing them through this struct
+/// would force `compute_paint_only` to fabricate dummies.
+///
+/// `time.prev` is `None` on the first frame (no prior `now` to anim
+/// against); both compute paths short-circuit predamage in that case.
+#[derive(Clone, Copy)]
+pub(crate) struct DamageInput<'a> {
+    pub(crate) forest: &'a Forest,
+    pub(crate) cascades: &'a Cascades,
+    /// Host-arranged surface rect for this frame. A degenerate
+    /// zero-area surface short-circuits to full repaint; it shouldn't
+    /// happen in practice (host filters resize-to-zero), but cheap to
+    /// handle.
+    pub(crate) surface: Rect,
+    pub(crate) prev_time: Option<Duration>,
+    pub(crate) now: Duration,
 }
 
 /// Coverage ratio above which the renderer should skip the per-node
@@ -191,7 +212,7 @@ impl Default for DamageEngine {
 /// below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
-/// Minimum `paint_snaps` length before [`DamageEngine::maybe_compact_paint_snaps`]
+/// Minimum [`PaintSnapArena::snaps`] length before [`PaintSnapArena::maybe_compact`]
 /// considers running. Below this the arena is small enough that the
 /// reseat walk costs more than the orphaned-slot memory it would
 /// reclaim — capacity is `Vec`-amortised and these entries stay hot
@@ -219,6 +240,10 @@ const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 pub(crate) enum Damage {
     None,
     Full,
+    /// **Invariant:** the wrapped region is non-empty. [`Damage::new`]
+    /// is the only constructor and returns [`Damage::None`] when the
+    /// region is empty, so consumers can iterate `region.iter_rects()`
+    /// without checking `is_empty` first.
     Partial(DamageRegion),
 }
 
@@ -251,26 +276,107 @@ impl Damage {
     }
 }
 
-impl DamageEngine {
-    /// Drop the per-widget previous-frame snapshot map. Pairs with
-    /// the caller passing `force_full = true` into the next
-    /// `compute` so the diff repopulates the map from scratch but
-    /// still returns `Damage::Full`. Called by `Ui::pre_record` when
-    /// the surface changed, the previous frame wasn't acked, or
-    /// it's the first frame.
-    pub(crate) fn invalidate_prev(&mut self) {
-        self.prev.clear();
-        self.paint_snaps.clear();
-        self.paint_snaps_orphaned = 0;
+impl PaintSnapArena {
+    /// Reset to empty — caller's next `compute` will repopulate.
+    pub(crate) fn clear(&mut self) {
+        self.snaps.clear();
+        self.orphaned = 0;
+    }
+
+    /// Append `paints` to the tail and return the covering [`Span`].
+    /// Used by the Vacant-insert arm of `compute`.
+    pub(crate) fn append(&mut self, paints: &[Paint]) -> Span {
+        let start = self.snaps.len() as u32;
+        self.snaps.extend_from_slice(paints);
+        Span::new(start, paints.len() as u32)
+    }
+
+    /// Same-count refresh: overwrite the slots `prev_span` points to
+    /// with `paints[..prev_span.len]`. Caller has already verified
+    /// counts are equal and no per-paint hash changed; only screens
+    /// shifted with the ancestor transform.
+    pub(crate) fn refresh_screens(&mut self, prev_span: Span, paints: &[Paint]) {
+        let start = prev_span.start as usize;
+        let n = (prev_span.len as usize).min(paints.len());
+        for (ord, p) in paints.iter().take(n).enumerate() {
+            self.snaps[start + ord].screen = p.screen;
+        }
+    }
+
+    /// Per-paint diff leg for the changed-paints arm. In-place
+    /// compare against `prev_span`; spill to the tail (orphaning the
+    /// prev slots) when the paint count grew. Shrink shortens the
+    /// span in place. Returns the new paint span. Pushes prev+curr
+    /// screen rects into `out` for every changed paint and bumps
+    /// `self.orphaned` for prev slots no live snapshot references
+    /// after the diff.
+    pub(crate) fn diff_changed_leg(
+        &mut self,
+        out: &mut Vec<Rect>,
+        prev_span: Span,
+        curr_paints: &[Paint],
+    ) -> Span {
+        let prev_start = prev_span.start as usize;
+        let prev_len = prev_span.len as usize;
+        let mut spilled_start: Option<u32> = None;
+        for (ord, &curr_paint) in curr_paints.iter().enumerate() {
+            if spilled_start.is_some() {
+                self.snaps.push(curr_paint);
+                out.push(curr_paint.screen);
+            } else if ord < prev_len {
+                let slot = &mut self.snaps[prev_start + ord];
+                if *slot != curr_paint {
+                    out.push(slot.screen);
+                    out.push(curr_paint.screen);
+                    *slot = curr_paint;
+                }
+            } else {
+                // Growth: lift the in-place-updated prev_len entries to
+                // the tail, append curr, switch to push-mode.
+                let start = self.snaps.len() as u32;
+                self.snaps
+                    .extend_from_within(prev_start..prev_start + prev_len);
+                self.snaps.push(curr_paint);
+                out.push(curr_paint.screen);
+                spilled_start = Some(start);
+            }
+        }
+        let ord = curr_paints.len();
+        match spilled_start {
+            Some(start) => {
+                self.orphaned = self.orphaned.saturating_add(prev_len as u32);
+                Span::new(start, ord as u32)
+            }
+            None if ord < prev_len => {
+                for o in ord..prev_len {
+                    out.push(self.snaps[prev_start + o].screen);
+                }
+                self.orphaned = self.orphaned.saturating_add((prev_len - ord) as u32);
+                Span::new(prev_span.start, ord as u32)
+            }
+            None => prev_span,
+        }
+    }
+
+    /// Mark `n` paint entries as orphaned (their owning snapshot was
+    /// evicted or its span was relocated). Saturating to avoid wrap
+    /// in the unlikely 4-billion-orphan edge case.
+    #[inline]
+    pub(crate) fn mark_orphaned(&mut self, n: u32) {
+        self.orphaned = self.orphaned.saturating_add(n);
     }
 
     /// Walk live `NodeSnapshot::paint_span`s in pre-order paint
-    /// order and reseat into `paint_snaps_scratch`, then swap.
-    fn compact_paint_snaps(&mut self, forest: &Forest) {
-        self.paint_snaps_scratch.clear();
+    /// order and reseat into `scratch`, then swap.
+    pub(crate) fn compact(
+        &mut self,
+        forest: &Forest,
+        prev: &mut FxHashMap<WidgetId, NodeSnapshot>,
+    ) {
+        self.scratch.clear();
         for (_layer, tree) in forest.iter_paint_order() {
             for wid in tree.records.widget_id() {
-                let Some(snap) = self.prev.get_mut(wid) else {
+                let Some(snap) = prev.get_mut(wid) else {
                     continue;
                 };
                 // Painting-only invariant: every entry in `prev`
@@ -282,17 +388,17 @@ impl DamageEngine {
                 // the swap below — assert rather than silently skip.
                 assert!(
                     snap.paint_span.len > 0,
-                    "compact_paint_snaps: prev entry for {wid:?} has zero-len paint_span, \
+                    "PaintSnapArena::compact: prev entry for {wid:?} has zero-len paint_span, \
                      violating the painting-only invariant",
                 );
-                let new_start = self.paint_snaps_scratch.len() as u32;
-                self.paint_snaps_scratch
-                    .extend_from_slice(&self.paint_snaps[snap.paint_span.range()]);
+                let new_start = self.scratch.len() as u32;
+                self.scratch
+                    .extend_from_slice(&self.snaps[snap.paint_span.range()]);
                 snap.paint_span = Span::new(new_start, snap.paint_span.len);
             }
         }
-        std::mem::swap(&mut self.paint_snaps, &mut self.paint_snaps_scratch);
-        self.paint_snaps_orphaned = 0;
+        std::mem::swap(&mut self.snaps, &mut self.scratch);
+        self.orphaned = 0;
         #[cfg(any(test, feature = "internals"))]
         {
             self.compactions_run = self.compactions_run.saturating_add(1);
@@ -302,13 +408,30 @@ impl DamageEngine {
     /// Trigger compaction when the arena is large enough
     /// ([`COMPACT_MIN_TOTAL`]) and orphaned entries are ≥ 75 % of the
     /// buffer ([`COMPACT_ORPHAN_RATIO_NUM`]/4).
-    fn maybe_compact_paint_snaps(&mut self, forest: &Forest) {
-        let total = self.paint_snaps.len() as u32;
+    pub(crate) fn maybe_compact(
+        &mut self,
+        forest: &Forest,
+        prev: &mut FxHashMap<WidgetId, NodeSnapshot>,
+    ) {
+        let total = self.snaps.len() as u32;
         if total >= COMPACT_MIN_TOTAL
-            && self.paint_snaps_orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
+            && self.orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
         {
-            self.compact_paint_snaps(forest);
+            self.compact(forest, prev);
         }
+    }
+}
+
+impl DamageEngine {
+    /// Drop the per-widget previous-frame snapshot map. Pairs with
+    /// the caller passing `force_full = true` into the next
+    /// `compute` so the diff repopulates the map from scratch but
+    /// still returns `Damage::Full`. Called by `Ui::pre_record` when
+    /// the surface changed, the previous frame wasn't acked, or
+    /// it's the first frame.
+    pub(crate) fn invalidate_prev(&mut self) {
+        self.prev.clear();
+        self.arena.clear();
     }
 
     /// Diff against the just-finished frame and return a
@@ -341,17 +464,19 @@ impl DamageEngine {
     /// repaint; it shouldn't happen in practice (host filters
     /// resize-to-zero), but cheap to handle.
     #[profiling::function]
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn compute(
         &mut self,
-        forest: &Forest,
-        cascades: &Cascades,
+        input: DamageInput<'_>,
         removed: &FxHashSet<WidgetId>,
-        surface: Rect,
         force_full: bool,
-        prev_time: Option<Duration>,
-        now: Duration,
     ) -> Damage {
+        let DamageInput {
+            forest,
+            cascades,
+            surface,
+            prev_time,
+            now,
+        } = input;
         // `force_full` is the "treat as a fresh frame" signal — set
         // by the caller when `Ui::classify_frame` decided
         // this frame must repaint everything (surface changed, last
@@ -378,10 +503,9 @@ impl DamageEngine {
 
         // Alias each mutated field once so the diff body can name
         // them independently — Entry holds the borrow on `prev` only,
-        // leaving `paint_snaps` / `raw_rects` / `orphaned` free.
+        // leaving `arena` / `raw_rects` free.
         let prev_map = &mut self.prev;
-        let paint_snaps = &mut self.paint_snaps;
-        let orphaned = &mut self.paint_snaps_orphaned;
+        let arena = &mut self.arena;
         let raw_rects = &mut self.raw_rects;
 
         #[cfg(any(test, feature = "internals"))]
@@ -409,8 +533,8 @@ impl DamageEngine {
                 let advance = match prev_map.entry(widget_ids[i]) {
                     Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => 1,
                     Entry::Vacant(e) => {
-                        let paint_span = append_curr_paints(paint_snaps, curr_paints_slice);
-                        push_screens(raw_rects, &paint_snaps[paint_span.range()]);
+                        let paint_span = arena.append(curr_paints_slice);
+                        push_screens(raw_rects, &arena.snaps[paint_span.range()]);
                         e.insert(NodeSnapshot {
                             rect: curr_rect,
                             paint_span,
@@ -439,11 +563,7 @@ impl DamageEngine {
                             if curr_paints && prev.cascade_input != curr_cascade_input {
                                 raw_rects.push(curr_rect);
                             }
-                            refresh_paint_rects_in_arena(
-                                paint_snaps,
-                                prev.paint_span,
-                                curr_paints_slice,
-                            );
+                            arena.refresh_screens(prev.paint_span, curr_paints_slice);
                             *e.get_mut() = NodeSnapshot {
                                 rect: curr_rect,
                                 paint_span: prev.paint_span,
@@ -456,13 +576,8 @@ impl DamageEngine {
                     }
                     Entry::Occupied(mut e) if curr_paints => {
                         let prev = *e.get();
-                        let new_span = diff_changed_paint_leg(
-                            paint_snaps,
-                            raw_rects,
-                            orphaned,
-                            prev.paint_span,
-                            curr_paints_slice,
-                        );
+                        let new_span =
+                            arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
                         *e.get_mut() = NodeSnapshot {
                             rect: curr_rect,
                             paint_span: new_span,
@@ -479,8 +594,8 @@ impl DamageEngine {
                         // everything the node *was* painting, then
                         // evict.
                         let prev = *e.get();
-                        push_screens(raw_rects, &paint_snaps[prev.paint_span.range()]);
-                        *orphaned = orphaned.saturating_add(prev.paint_span.len);
+                        push_screens(raw_rects, &arena.snaps[prev.paint_span.range()]);
+                        arena.mark_orphaned(prev.paint_span.len);
                         e.remove();
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(i as u32));
@@ -520,16 +635,14 @@ impl DamageEngine {
             if let Some(snap) = self.prev.remove(wid) {
                 push_screens(
                     &mut self.raw_rects,
-                    &self.paint_snaps[snap.paint_span.range()],
+                    &self.arena.snaps[snap.paint_span.range()],
                 );
-                self.paint_snaps_orphaned = self
-                    .paint_snaps_orphaned
-                    .saturating_add(snap.paint_span.len);
+                self.arena.mark_orphaned(snap.paint_span.len);
             }
         }
 
         // Reclaim the arena once orphaned slots exceed the threshold.
-        self.maybe_compact_paint_snaps(forest);
+        self.arena.maybe_compact(forest, &mut self.prev);
 
         // ── Pass 2: collapse to the bounded region ────────────────
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
@@ -540,87 +653,28 @@ impl DamageEngine {
     /// every node would match its prev snapshot and contribute nothing
     /// to the structural diff — skip Pass 1 entirely. Only the
     /// caller-supplied predamaged anim rects matter.
-    pub(crate) fn compute_paint_only(
-        &mut self,
-        forest: &Forest,
-        cascades: &Cascades,
-        surface: Rect,
-        prev_time: Option<Duration>,
-        now: Duration,
-    ) -> Damage {
+    pub(crate) fn compute_paint_only(&mut self, input: DamageInput<'_>) -> Damage {
         #[cfg(any(test, feature = "internals"))]
         {
             self.dirty.clear();
             self.subtree_skips = 0;
         }
         self.raw_rects.clear();
-        extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
-        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
-        Damage::new(surface, region)
+        extend_predamaged(
+            &mut self.raw_rects,
+            input.forest,
+            input.cascades,
+            input.prev_time,
+            input.now,
+        );
+        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, input.surface);
+        Damage::new(input.surface, region)
     }
 }
 
 /// Unified per-paint diff leg. In-place compare against the prev
 /// span; spill to the tail (and orphan the prev slots) when the paint
 /// count grew. Shrink shortens the span in place. Returns the new
-/// paint span. Bumps `orphaned` for prev slots no live snapshot
-/// references after the diff.
-fn diff_changed_paint_leg(
-    arena: &mut Vec<Paint>,
-    out: &mut Vec<Rect>,
-    orphaned: &mut u32,
-    prev_span: Span,
-    curr_paints: &[Paint],
-) -> Span {
-    let prev_start = prev_span.start as usize;
-    let prev_len = prev_span.len as usize;
-    let mut spilled_start: Option<u32> = None;
-    for (ord, &curr_paint) in curr_paints.iter().enumerate() {
-        if spilled_start.is_some() {
-            arena.push(curr_paint);
-            out.push(curr_paint.screen);
-        } else if ord < prev_len {
-            let slot = &mut arena[prev_start + ord];
-            if *slot != curr_paint {
-                out.push(slot.screen);
-                out.push(curr_paint.screen);
-                *slot = curr_paint;
-            }
-        } else {
-            // Growth: lift the in-place-updated prev_len entries to
-            // the tail, append curr, switch to push-mode.
-            let start = arena.len() as u32;
-            arena.extend_from_within(prev_start..prev_start + prev_len);
-            arena.push(curr_paint);
-            out.push(curr_paint.screen);
-            spilled_start = Some(start);
-        }
-    }
-    let ord = curr_paints.len();
-    match spilled_start {
-        Some(start) => {
-            *orphaned = orphaned.saturating_add(prev_len as u32);
-            Span::new(start, ord as u32)
-        }
-        None if ord < prev_len => {
-            for o in ord..prev_len {
-                out.push(arena[prev_start + o].screen);
-            }
-            *orphaned = orphaned.saturating_add((prev_len - ord) as u32);
-            Span::new(prev_span.start, ord as u32)
-        }
-        None => prev_span,
-    }
-}
-
-/// Append one [`Paint`] per row in `curr_paints` to the arena,
-/// returning the [`Span`] that covers them.
-fn append_curr_paints(arena: &mut Vec<Paint>, curr_paints: &[Paint]) -> Span {
-    let start = arena.len() as u32;
-    arena.extend_from_slice(curr_paints);
-    Span::new(start, curr_paints.len() as u32)
-}
-
 /// Drain every paint's screen rect into the raw-rect buffer. Used by
 /// the Vacant-insert arm (everything's new), the eviction arm
 /// (everything's going), and the removed-widget tail.
@@ -628,19 +682,6 @@ fn append_curr_paints(arena: &mut Vec<Paint>, curr_paints: &[Paint]) -> Span {
 fn push_screens(out: &mut Vec<Rect>, paints: &[Paint]) {
     for p in paints {
         out.push(p.screen);
-    }
-}
-
-/// Cascade-input-shift refresh: rects moved with the ancestor
-/// transform but authoring hashes didn't (the arm's outer guard
-/// required `node_hash` to match, which folds every paint's hash).
-/// Update in place at the existing span; count is guaranteed to
-/// match prev because the paint set is bit-identical by induction.
-fn refresh_paint_rects_in_arena(arena: &mut [Paint], span: Span, curr_paints: &[Paint]) {
-    let start = span.start as usize;
-    let n = (span.len as usize).min(curr_paints.len());
-    for ord in 0..n {
-        arena[start + ord].screen = curr_paints[ord].screen;
     }
 }
 
@@ -666,6 +707,44 @@ fn extend_predamaged(
                     out.push(paints[paint_idx as usize].screen);
                 }
             }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    use super::{DamageEngine, PaintSnapArena};
+    use crate::forest::Forest;
+
+    impl PaintSnapArena {
+        /// Live entries in the arena (sum of every live
+        /// `paint_span.len`, plus orphaned tail). Introspection only.
+        #[inline]
+        pub(crate) fn len(&self) -> usize {
+            self.snaps.len()
+        }
+
+        /// Orphan count — drives the compaction trigger.
+        #[inline]
+        pub(crate) fn orphaned(&self) -> u32 {
+            self.orphaned
+        }
+
+        /// How many times [`Self::compact`] has run since
+        /// construction.
+        #[inline]
+        pub(crate) fn compactions_run(&self) -> u32 {
+            self.compactions_run
+        }
+    }
+
+    impl DamageEngine {
+        /// Force a compaction pass. Production frames go through
+        /// `compute`, which calls `arena.maybe_compact` after the
+        /// eviction tail; this is the entry point for tests / benches
+        /// that want to drive the compaction directly.
+        pub(crate) fn compact_paint_snaps(&mut self, forest: &Forest) {
+            self.arena.compact(forest, &mut self.prev);
         }
     }
 }
