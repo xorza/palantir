@@ -819,34 +819,44 @@ fn resolve_axis(
         }
     }
 
-    'outer: while !a.flexible.is_empty() && flexible_weight > 0.0 {
-        let mut k = 0;
-        while k < a.flexible.len() {
-            let i = a.flexible[k];
+    // Clamp-and-rebalance loop. Each iteration looks for one Fill whose
+    // proportional share violates `[Track.min, Track.max]`; if it
+    // exists, clamp it, remove it from the pool, and rerun. When every
+    // remaining Fill's share is in-range, commit them at that share and
+    // exit. Converges in ≤ N iterations (each clamp removes one).
+    while !a.flexible.is_empty() && flexible_weight > 0.0 {
+        let clamp_idx = a.flexible.iter().position(|&i| {
             let t = &a.tracks[i];
-            let w = match t.size {
-                Sizing::Fill(w) => w,
-                _ => unreachable!(),
+            let Sizing::Fill(w) = t.size else {
+                unreachable!()
             };
             let candidate = remaining * w / flexible_weight;
-            if candidate < t.min || candidate > t.max {
+            candidate < t.min || candidate > t.max
+        });
+        match clamp_idx {
+            Some(k) => {
+                let i = a.flexible[k];
+                let t = &a.tracks[i];
+                let Sizing::Fill(w) = t.size else {
+                    unreachable!()
+                };
+                let candidate = remaining * w / flexible_weight;
                 let clamped = candidate.clamp(t.min, t.max);
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
                 flexible_weight -= w;
                 a.flexible.swap_remove(k);
-                continue 'outer;
             }
-            k += 1;
+            None => {
+                for &i in a.flexible.iter() {
+                    let Sizing::Fill(w) = a.tracks[i].size else {
+                        unreachable!()
+                    };
+                    a.sizes[i] = remaining * w / flexible_weight;
+                }
+                break;
+            }
         }
-        for &i in a.flexible.iter() {
-            let w = match a.tracks[i].size {
-                Sizing::Fill(w) => w,
-                _ => unreachable!(),
-            };
-            a.sizes[i] = remaining * w / flexible_weight;
-        }
-        break;
     }
 
     // Phase 4: commit Fill tracks as resolved when the grid's own axis

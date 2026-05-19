@@ -86,14 +86,6 @@ impl WrapScratch {
             .expect("WrapScratch::exit called outside enter()");
         self.pool.truncate(start as usize);
     }
-
-    /// Start offset of the current depth's line buffer in `pool`.
-    fn start(&self) -> u32 {
-        *self
-            .starts
-            .last()
-            .expect("WrapScratch::start called outside enter()")
-    }
 }
 
 /// Pack children into lines; return content size (max-line-main, sum
@@ -188,8 +180,8 @@ pub(crate) fn arrange(
     // `layout.scratch.desired` at flush time, so the buffer is just node
     // IDs.
     let layouts = tree.records.layout();
+    let line_start = layout.scratch.wrap.pool.len() as u32;
     layout.scratch.wrap.enter();
-    let line_start = layout.scratch.wrap.start();
     let mut line_main = 0.0f32;
     let mut line_cross = 0.0f32;
     let mut cross_cursor = axis.cross_v(inner.min);
