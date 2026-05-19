@@ -1,9 +1,10 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
 use crate::Ui;
+use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
-use crate::input::keyboard::Key;
+use crate::input::keyboard::{Key, Modifiers};
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -124,16 +125,15 @@ fn shortcut_press_fires_item_and_dismisses() {
 
     // Inject the platform-primary modifier + 'C' — matches
     // `Shortcut::cmd('C')` on the Copy item.
-    let primary_mods = if cfg!(target_os = "macos") {
-        crate::input::keyboard::Modifiers {
+    let primary_mods = match PLATFORM {
+        Platform::Mac => Modifiers {
             meta: true,
-            ..crate::input::keyboard::Modifiers::NONE
-        }
-    } else {
-        crate::input::keyboard::Modifiers {
+            ..Modifiers::NONE
+        },
+        _ => Modifiers {
             ctrl: true,
-            ..crate::input::keyboard::Modifiers::NONE
-        }
+            ..Modifiers::NONE
+        },
     };
     ui.on_input(InputEvent::ModifiersChanged(primary_mods));
     ui.on_input(InputEvent::KeyDown {

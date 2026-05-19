@@ -1,8 +1,11 @@
 //! Tests for `TextEdit::text_align` and the default alignment per
 //! mode. Mono fallback (`ui_at_no_cosmic`): 8 px / char @ 16 px font,
 //! `LINE_HEIGHT_MULT = 1.2` → line height 19.2 px. Editor is 280×40
-//! with theme padding (5, 3), so the inner rect is 270×34, leaving
-//! 270 − measured.w of horizontal slack and 34 − line_height = 14.8
+//! with theme padding (5, 3) plus the 1 px chrome stroke that
+//! `Tree::open_node` folds into padding (mirrored by TextEdit so
+//! glyph/caret coords land on the encoder's clip rect). Effective
+//! padding is (6, 4), so the inner rect is 268×32, leaving
+//! 268 − measured.w of horizontal slack and 32 − line_height = 12.8
 //! of vertical slack to align inside.
 
 use super::*;
@@ -13,15 +16,28 @@ use crate::forest::tree::NodeId;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
-const PAD_L: f32 = 5.0;
-const PAD_T: f32 = 3.0;
+/// Theme padding (5, 3) + normal-state chrome stroke width (1.0),
+/// folded together because the encoder's clip mask is
+/// `rect.deflated_by(post-fold padding)` and TextEdit mirrors the
+/// fold so its glyph + caret coords match the clip. Focused tests
+/// use [`PAD_L_F`] / [`PAD_T_F`] (stroke 1.5).
+const PAD_L: f32 = 6.0;
+const PAD_T: f32 = 4.0;
+/// Focused-state effective padding — theme padding + focused stroke
+/// width (1.5). Used by tests that click into the editor before
+/// reading shape origins back.
+const PAD_L_F: f32 = 6.5;
+const PAD_T_F: f32 = 4.5;
+const INNER_W_F: f32 = EDIT_W - 2.0 * PAD_L_F; // 267
+const INNER_H_F: f32 = EDIT_H - 2.0 * PAD_T_F; // 31
+const ALIGN_W_F: f32 = INNER_W_F - CARET_W; // 265.5
 /// Default `TextEditTheme::caret_width` — the widget reserves this much
 /// room at every line's trailing edge so a caret on right/center-aligned
 /// text stays inside the clip.
 const CARET_W: f32 = 1.5;
-const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 270
-const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 34
-const ALIGN_W: f32 = INNER_W - CARET_W; // 268.5
+const INNER_W: f32 = EDIT_W - 2.0 * PAD_L; // 268
+const INNER_H: f32 = EDIT_H - 2.0 * PAD_T; // 32
+const ALIGN_W: f32 = INNER_W - CARET_W; // 266.5
 const LINE_H: f32 = 19.2; // 16 px font × 1.2 LINE_HEIGHT_MULT
 const TEXT_W_4CH: f32 = 32.0; // mono "abcd" width
 
@@ -192,22 +208,22 @@ fn caret_tracks_aligned_text() {
     let (text_origin, caret_origin) = shape_origins(&ui, node);
     let t = text_origin.expect("text shape");
     let c = caret_origin.expect("caret rect emitted while focused");
-    let dx = ALIGN_W - TEXT_W_4CH; // 236.5
-    let dy = (INNER_H - LINE_H) * 0.5; // 7.4
-    assert!((t.x - (PAD_L + dx)).abs() < 1e-3, "text.x = {}", t.x);
+    let dx = ALIGN_W_F - TEXT_W_4CH; // 233.5
+    let dy = (INNER_H_F - LINE_H) * 0.5; // 5.9
+    assert!((t.x - (PAD_L_F + dx)).abs() < 1e-3, "text.x = {}", t.x);
     assert!(
-        (c.x - (PAD_L + dx + TEXT_W_4CH)).abs() < 1e-3,
+        (c.x - (PAD_L_F + dx + TEXT_W_4CH)).abs() < 1e-3,
         "caret.x = {} (expected {})",
         c.x,
-        PAD_L + dx + TEXT_W_4CH,
+        PAD_L_F + dx + TEXT_W_4CH,
     );
     // Caret right edge sits exactly at the clip's right edge.
     assert!(
-        (c.x + CARET_W - (PAD_L + INNER_W)).abs() < 1e-3,
+        (c.x + CARET_W - (PAD_L_F + INNER_W_F)).abs() < 1e-3,
         "caret should reserve CARET_W before clip edge: caret.x + CARET_W = {}",
         c.x + CARET_W,
     );
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    assert!((c.y - (PAD_T_F + dy)).abs() < 1e-3, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -224,9 +240,9 @@ fn empty_focused_caret_vcenters_against_one_line() {
     let node = frame(&mut ui, &mut buf, None, None);
     let (_, caret_origin) = shape_origins(&ui, node);
     let c = caret_origin.expect("focused empty editor still paints caret");
-    let dy = (INNER_H - LINE_H) * 0.5;
-    assert!((c.x - PAD_L).abs() < 1e-3, "caret.x = {}", c.x);
-    assert!((c.y - (PAD_T + dy)).abs() < 1e-3, "caret.y = {}", c.y);
+    let dy = (INNER_H_F - LINE_H) * 0.5;
+    assert!((c.x - PAD_L_F).abs() < 1e-3, "caret.x = {}", c.x);
+    assert!((c.y - (PAD_T_F + dy)).abs() < 1e-3, "caret.y = {}", c.y);
 }
 
 #[test]
@@ -323,9 +339,9 @@ fn selection_rects_offset_matches_text() {
             _ => None,
         });
     let r = first_rounded.expect("selection wash rect present");
-    let dx = ALIGN_W - TEXT_W_4CH;
+    let dx = ALIGN_W_F - TEXT_W_4CH;
     assert!(
-        (r.min.x - (PAD_L + dx)).abs() < 1e-3,
+        (r.min.x - (PAD_L_F + dx)).abs() < 1e-3,
         "selection wash must align with right-aligned text: x = {}",
         r.min.x,
     );

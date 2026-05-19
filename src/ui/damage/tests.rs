@@ -2003,3 +2003,234 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // We don't assert absence (region merging may absorb it); we only
     // pin that the *deleted* and *shifted* rects are present.
 }
+
+/// Painting-only invariant: every `DamageEngine.prev` entry covers
+/// at least one Paint row. A chrome-only owner used to land in `prev`
+/// with `shape_span.len == 0` (chrome was tracked in a separate
+/// column); under the unified `paint_arena`, chrome is row 0 of the
+/// node's span, so the same owner now has `paint_span.len == 1`.
+/// `compact_paint_snaps` asserts on zero-len entries — this test
+/// pins the producer side of that contract.
+#[test]
+fn chrome_only_owner_has_nonzero_paint_span() {
+    let mut ui = Ui::for_test();
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("chrome_only"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |_| {});
+    };
+    frame(&mut ui, build);
+    frame(&mut ui, build); // settle prev
+
+    let wid = WidgetId::from_hash("chrome_only");
+    let snap = ui.damage_engine.prev[&wid];
+    assert_eq!(
+        snap.paint_span.len, 1,
+        "chrome-only owner must contribute exactly one Paint row (chrome)",
+    );
+
+    // Every entry in `prev` covers at least one row.
+    for (k, s) in &ui.damage_engine.prev {
+        assert!(
+            s.paint_span.len > 0,
+            "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
+        );
+    }
+
+    // Compaction must accept the live state without tripping the
+    // invariant assert.
+    ui.damage_engine.compact_paint_snaps(&ui.forest);
+}
+
+/// Pin: changing the *content* of a `Shape::Text` with
+/// `local_origin: Some(_)` damages the shaped-text bbox, not just the
+/// origin point.
+///
+/// Before the fix, `paint_bbox_local` for `Text { local_origin: Some(_) }`
+/// returned `{ min: origin, size: ZERO }` — a degenerate point, because
+/// the glyph extent isn't known to the record. Cascade dutifully stored
+/// that point in `Cascades::shape_rects[idx]`; the diff's
+/// `diff_changed_shape_leg` then pushed two zero-size rects when text
+/// changed → effectively no damage from the text shape. The
+/// user-visible symptom: type a character in a `TextEdit`, and only the
+/// caret-sized strip got repainted while the rest of the text went
+/// stale.
+///
+/// Post-fix, cascade looks up the shaped extent from
+/// `LayerLayout::text_shapes` (already computed by the measure pass)
+/// and stores the tight `(origin, measured)` rect. The diff pushes
+/// prev + curr extents, so the damage region covers the union of both
+/// strings' bboxes.
+#[test]
+fn text_content_change_damages_shaped_extent_not_just_origin() {
+    use crate::forest::element::{Element, LayoutMode, Salt};
+    use crate::primitives::size::Size;
+    use crate::shape::{Shape, TextWrap};
+    use crate::text::FontFamily;
+
+    let mut ui = Ui::for_test();
+    // Mono fallback geometry: glyph width = font_size_px * 0.5, line
+    // height = font_size_px. With font_size_px = 14, "abc" measures
+    // 21×14 and "abcdef" measures 42×14.
+    const FONT: f32 = 14.0;
+    const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
+    let leaf_id = WidgetId::from_hash("text-host");
+    let build = |text: &'static str, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+            .show(ui, |ui| {
+                let mut element = Element::new(LayoutMode::Leaf);
+                element.salt = Salt::Verbatim(leaf_id);
+                ui.node(leaf_id, element, |ui| {
+                    ui.add_shape(Shape::Text {
+                        local_origin: Some(ORIGIN),
+                        text: text.into(),
+                        brush: Color::WHITE.into(),
+                        font_size_px: FONT,
+                        line_height_px: FONT,
+                        wrap: TextWrap::Single,
+                        align: Default::default(),
+                        family: FontFamily::Sans,
+                    });
+                });
+            });
+    };
+
+    frame(&mut ui, |ui| build("abc", ui));
+    frame(&mut ui, |ui| build("abc", ui));
+    assert!(
+        ui.damage_engine.dirty.is_empty(),
+        "steady frame must produce no diff"
+    );
+
+    // Cache prev shaped rect (size of "abc") off the previous snapshot
+    // so the assertion below can reason from the actual measured
+    // values rather than hand-recomputing mono geometry.
+    let prev_snap = ui.damage_engine.prev[&leaf_id];
+    let prev_text_rect = ui.damage_engine.paint_snaps[prev_snap.paint_span.range()][0].screen;
+    let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0, FONT);
+    assert!(
+        (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
+            && (prev_text_rect.size.h - prev_size_short.h).abs() < 0.5,
+        "prev text rect should have shaped size ≈ {prev_size_short:?}, got {prev_text_rect:?}",
+    );
+
+    frame(&mut ui, |ui| build("abcdef", ui));
+
+    let curr_snap = ui.damage_engine.prev[&leaf_id];
+    let curr_text_rect = ui.damage_engine.paint_snaps[curr_snap.paint_span.range()][0].screen;
+    let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0, FONT);
+    assert!(
+        (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
+            && (curr_text_rect.size.h - curr_size_long.h).abs() < 0.5,
+        "curr text rect should have shaped size ≈ {curr_size_long:?}, got {curr_text_rect:?}",
+    );
+
+    let region = ui.damage_region();
+    let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
+
+    // Probe deep inside the new "abcdef" rect but past where the old
+    // "abc" rect ended (x = origin.x + 30 ≈ middle of "abcdef", past
+    // the 21-px width of "abc"). Pre-fix this point is *not* in damage
+    // (per-shape rect was a zero-size point at origin); post-fix it is
+    // (curr rect spans origin..origin+42px).
+    let inside_new_only = Rect::new(ORIGIN.x + 30.0, ORIGIN.y + 5.0, 1.0, 1.0);
+    assert!(
+        intersects(inside_new_only),
+        "probe inside new text but past old text must be in damage; \
+         probe = {inside_new_only:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+
+    // Also assert prev's middle gets damaged (so the old glyph
+    // pixels actually clear).
+    let inside_old = Rect::new(ORIGIN.x + 10.0, ORIGIN.y + 5.0, 1.0, 1.0);
+    assert!(
+        intersects(inside_old),
+        "probe inside old text must be in damage; \
+         probe = {inside_old:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}
+
+/// Pin: a direct shape on a clipped node has its per-shape rect (the
+/// column the damage diff reads from) clipped to the node's own clip
+/// mask — not just the ancestor clip.
+///
+/// Before the fix, `compute_paint_rect` clipped each shape's screen
+/// rect to `parent_clip` only. A `Shape::Text` with `local_origin`
+/// expressing a scroll offset reported its **full** shaped extent as
+/// the per-shape rect (cosmic-text's measured `Size` for the whole
+/// buffer). For a multi-line `TextEdit` taller than its visible rect,
+/// scrolling produced damage rects spanning the entire text — way
+/// past the editor's own `ClipMode::Rect`. The encoder's GPU scissor
+/// clips the actual pixels, so the user *saw* tight repaints, but
+/// the damage region driving the scissor pass was over-large,
+/// inflating the partial-redraw quad to the unclipped text bbox.
+///
+/// This test fakes the scenario with a `RoundedRect` shape extending
+/// past the host's clip on the right edge; pre-fix the per-shape rect
+/// captures the full 400-px-wide shape, post-fix it's clipped to the
+/// host's deflated mask.
+#[test]
+fn direct_shape_on_clipped_node_clips_to_own_mask() {
+    use crate::Shape;
+    use crate::forest::Layer;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    // Host panel: 80×40, padding 4 each side via background. The
+    // direct shape extends to x=400 (well past 80). After the cascade
+    // walk, `shape_rects[idx]` must be clipped to the host's deflated
+    // mask, not span the full 400 px.
+    let mut ui = Ui::for_test();
+    let host_id = WidgetId::from_hash("clip-host");
+    let build = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::hstack()
+                .id(host_id)
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .background(Background {
+                    fill: BLUE.into(),
+                    ..Default::default()
+                })
+                .clip_rect()
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(Rect::new(0.0, 0.0, 400.0, 20.0)),
+                        radius: Corners::ZERO,
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                });
+        });
+    };
+    frame(&mut ui, build);
+    frame(&mut ui, build);
+
+    // Locate the host node by widget id and read its first shape's
+    // cascaded screen rect. Pre-fix the rect spans the full 400 px;
+    // post-fix it's clamped to (host_width − padding-fold).
+    let cascades = &ui.layout.cascades;
+    let host_idx = *cascades.by_id.get(&host_id).expect("host node recorded") as usize;
+    let host_rect = cascades.entries.rect()[host_idx];
+    let tree = ui.forest.tree(Layer::Main);
+    let shape_span = tree.records.shape_span()[host_idx];
+    assert!(shape_span.len >= 1, "host should have at least one shape");
+    // First Paint row for the host node — chrome row 0 if present,
+    // otherwise the first shape. The host here has no chrome, so
+    // `node_spans[host_idx].start` indexes the first shape's `Paint`.
+    let paint_arena = &cascades.layers[Layer::Main].paint_arena;
+    let paints_start = paint_arena.node_spans[host_idx].start as usize;
+    let shape_rect = paint_arena.rows[paints_start].screen;
+    assert!(
+        shape_rect.size.w <= host_rect.size.w + 0.5,
+        "direct shape rect must be clipped to the host's own mask; \
+         host_rect = {host_rect:?}, shape_rect = {shape_rect:?}",
+    );
+}

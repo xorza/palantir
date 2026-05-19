@@ -43,6 +43,15 @@ pub struct Host {
     /// forward by the elapsed hidden duration so anim drivers don't
     /// see a giant `dt` for the gap.
     occluded_at: Option<Instant>,
+    /// Last physical size we actually called `surface.configure` for.
+    /// Resize handlers mutate `SurfaceConfiguration` directly; the
+    /// next `frame()` notices the mismatch and reconfigures once.
+    /// Coalesces compositor configure bursts (Wayland repeats the
+    /// configure on focus/output changes, and identical events
+    /// otherwise back-to-back) into a single GPU reallocation — see
+    /// wgpu #7447 for the 100ms+ stalls `surface.configure` triggers.
+    /// `None` until the first paint forces a baseline.
+    configured: Option<glam::UVec2>,
 }
 
 impl Host {
@@ -98,6 +107,7 @@ impl Host {
             start: Instant::now(),
             occluded: false,
             occluded_at: None,
+            configured: None,
         }
     }
 
@@ -132,6 +142,7 @@ impl Host {
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
         record: impl FnMut(&mut Ui),
+        pre_present: impl FnOnce(),
     ) -> FramePresent {
         // Bracket the body with a Tracy *discontinuous* frame so the
         // frame strip shows actual work duration, not the gap between
@@ -145,10 +156,20 @@ impl Host {
             return FramePresent::Idle;
         }
 
-        let display =
-            Display::from_physical(glam::UVec2::new(config.width, config.height), scale_factor);
+        // Reconfigure-on-demand: callers update `config.width/height`
+        // freely (resize events) without paying for a `surface.configure`
+        // per event. We notice the mismatch here, reallocate once, and
+        // record the new size. First-paint takes the same path because
+        // `configured` starts `None`.
+        let size = glam::UVec2::new(config.width, config.height);
+        if self.configured != Some(size) {
+            self.backend.configure_surface(surface, config);
+            self.configured = Some(size);
+        }
+
+        let display = Display::from_physical(size, scale_factor);
         let report = self.cpu_frame(display, record);
-        self.present(surface, config, report)
+        self.present(surface, config, report, pre_present)
     }
 
     /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
@@ -202,6 +223,7 @@ impl Host {
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         report: FrameReport,
+        pre_present: impl FnOnce(),
     ) -> FramePresent {
         let repaint = if report.skip_render() {
             report.repaint_requested()
@@ -210,6 +232,13 @@ impl Host {
             match surface.get_current_texture() {
                 Success(frame) => {
                     self.render_to_texture(&frame.texture, &report);
+                    // Compositor hook (winit's `Window::pre_present_notify`)
+                    // — required on Wayland to schedule the next frame
+                    // callback. Without it, `RedrawRequested` throttling
+                    // breaks and interactive resize / animation lag
+                    // behind the compositor's configure cadence. See
+                    // winit #2609, slint #4200.
+                    pre_present();
                     frame.present();
                     report.repaint_requested()
                 }

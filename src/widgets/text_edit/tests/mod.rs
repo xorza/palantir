@@ -17,6 +17,7 @@ fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool
 }
 use crate::Spacing;
 use crate::Ui;
+use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
@@ -67,16 +68,15 @@ fn shift(key: Key) -> KeyPress {
 /// modifier under which shortcuts like select-all / copy / cut /
 /// paste fire.
 fn cmd_press(key: Key) -> KeyPress {
-    let mods = if cfg!(target_os = "macos") {
-        Modifiers {
+    let mods = match PLATFORM {
+        Platform::Mac => Modifiers {
             meta: true,
             ..Modifiers::NONE
-        }
-    } else {
-        Modifiers {
+        },
+        _ => Modifiers {
             ctrl: true,
             ..Modifiers::NONE
-        }
+        },
     };
     KeyPress {
         key,
