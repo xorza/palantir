@@ -26,9 +26,11 @@ tests/visual/
 ├── golden.rs            assert_matches_golden + auto-create + UPDATE_GOLDEN
 ├── fixtures.rs          mod decls + shared DARK_BG const
 ├── fixtures/
-│   ├── widgets.rs       per-widget minimal scenes
+│   ├── widgets.rs       per-widget minimal scenes + shape/curve fixtures
 │   ├── layout.rs        vstack/grid/zstack drivers
-│   ├── text.rs          text rendering
+│   ├── text.rs          text rendering + partial-damage smoke
+│   ├── scroll.rs        scrollbar visuals + warm-cache parity
+│   ├── damage.rs        DamageEngine visualization fixtures
 │   └── hidpi.rs         scale > 1.0 scenes
 ├── golden/              committed PNG references
 ├── output/              gitignored — written on failure
@@ -44,17 +46,33 @@ Single test binary (`cargo test --test visual`); Cargo auto-discovers
 
 ### Infrastructure ✅
 - **Dev-deps** — `image` (PNG-only features). `pollster` reused from regular deps.
-- **Harness** (`harness.rs`) — `LowPower` adapter, no surface, `Rgba8UnormSrgb`. `Harness::new()` clones a process-global `OnceLock<Gpu>` (device + queue) and a per-thread `SharedCosmic` (fonts loaded once per worker thread). `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`. Private `readback()` honors the 256-byte row alignment via `RgbaImage::from_raw`.
+- **Harness** (`harness.rs`) — `LowPower` adapter, no surface, `Rgba8UnormSrgb`. `Harness::new()` clones a process-global `OnceLock<Gpu>` (device + queue) and a per-thread `COSMIC` `TextShaper` (fonts loaded once per worker thread). `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)` for fixtures that need warmup frames before capture (scroll bars reading populated state), `render_with_overlay(cfg, …)` for the damage-vis tests. Private `readback()` honors the 256-byte row alignment via `RgbaImage::from_raw`.
 - **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }` defaults `(2, 0.001)`. `diff(actual, expected, tol)` is row-parallel via rayon; reduces to a `RowStats { max_delta, differing }`. Diff image dims passing pixels to 25%, marks failing pixels solid red. 6 unit tests pin the contract (identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch).
 - **Golden workflow** (`golden.rs`) — `assert_matches_golden(name, &actual, tol)`. Missing golden → auto-write + pass with `NEW GOLDEN (no prior image)` notice. `UPDATE_GOLDEN=1` force-rewrites. On failure dumps `actual.png`, `expected.png`, `diff.png` into `tests/visual/output/<name>/`.
 
-### Fixtures ✅ (12 + 1 sanity)
-- `widgets`: `button_hello`, `frame_filled_with_stroke`.
-- `layout`: `vstack_fill_weights`, `grid_mixed_tracks`, `zstack_centered_button`.
-- `text`: `text_paragraph` (looser tolerance for glyph AA).
-- `hidpi`: `dashboard` — complex multi-region scene at scale 2.0 (header / sidebar / 2×2 cards / footer).
-- `scroll`: `scroll_vertical_overflow`, `scroll_horizontal_overflow`,
-  `scroll_xy_overflow` (corner avoidance), `scroll_no_bar_when_fits`,
+### Fixtures ✅ (26 goldens, 35 test fns + 1 sanity)
+- `widgets` (17 tests): `button_hello`, `frame_filled_with_stroke`,
+  `frame_linear_gradient`, `add_shape_rounded_rect_linear_gradient`,
+  `showcase_gradients_tab`, `radial_and_conic_gradient`,
+  `surface_rounded_clips_full_fill_child`,
+  `rounded_clip_partially_offscreen`,
+  `rounded_clip_survives_surface_resize` (smoke, no golden),
+  `interleaved_shapes_paint_in_record_order`, `line_diagonal_aa`,
+  `polyline_gradient`, `polyline_bevel_join`,
+  `polyline_round_caps`, `polyline_round_join`,
+  `polyline_translucent_premultiplies_in_mesh_shader` (assert-only,
+  no golden), `curve_caps`.
+- `layout` (3 tests): `vstack_fill_weights`, `grid_mixed_tracks`,
+  `zstack_centered_button`.
+- `text` (3 tests): `text_paragraph` and `text_row_list_batched`
+  (looser tolerance for glyph AA), plus
+  `text_row_list_survives_partial_damage_smoke` (glyph-ink heuristic,
+  no golden).
+- `hidpi` (1 test): `dashboard_hidpi` — complex multi-region scene
+  at scale 2.0 (header / sidebar / 2×2 cards / footer).
+- `scroll` (6 tests): `scroll_vertical_overflow`,
+  `scroll_horizontal_overflow`, `scroll_xy_overflow` (corner
+  avoidance), `scroll_no_bar_when_fits`,
   `scroll_with_user_padding` (bar lands in reserved strip, not user
   padding). Each renders the scene twice from the same `Harness` so
   frame 2 sees the populated `ScrollState` and emits the bar — the
@@ -63,7 +81,16 @@ Single test binary (`cargo test --test visual`); Cargo auto-discovers
   renders, asserts frame 3 is byte-identical to frame 2 (catches
   encoder-cache-replay corruption like the `exit_idx` bug we hit;
   no golden, pure intra-test invariant).
-- `main`: `readback_returns_clear_color_for_empty_scene` — sRGB round-trip sanity, no golden.
+- `damage` (5 tests): `static_scene_repeats_clean` (Skip path),
+  `single_button_change_repaints_something`,
+  `damage_rect_overlay_strokes_dirty_region`,
+  `corner_pair_change_keeps_center_unpainted` (multi-rect
+  centre-stays-unpainted invariant),
+  `corner_pair_overlay_strokes_each_rect`. All assertion-based, no
+  golden — they use `DebugOverlayConfig::{dim_undamaged, damage_rect}`
+  + a magenta clear to expose the dirty region as pixel patterns.
+- `main`: `readback_returns_clear_color_for_empty_scene` — sRGB
+  round-trip sanity, no golden.
 
 ### CI ⏳
 Local-only. No GitHub Actions job yet. Once we have a second hidpi fixture or any flake reports, gate the suite behind `#[ignore]` and wire one pinned-runner job that runs `cargo test --test visual -- --ignored`.
