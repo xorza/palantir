@@ -321,7 +321,11 @@ impl BoundsExtras {
     /// True when nothing has been customized — push_node skips the side-table
     /// allocation in this case. Exact equality against `DEFAULT` so adding a
     /// field only requires updating `DEFAULT`; no separate predicate to keep
-    /// in sync.
+    /// in sync. `#[inline]` is load-bearing: `Tree::open_node` calls this
+    /// every node, and without it rustc emits a PLT indirect call that
+    /// dominated the function's self-time (was ~5% of frame combined with
+    /// `PanelExtras::is_default`).
+    #[inline]
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
     }
@@ -335,6 +339,7 @@ impl PanelExtras {
         transform: TranslateScale::IDENTITY,
     };
 
+    #[inline]
     pub(crate) fn is_default(&self) -> bool {
         self == &Self::DEFAULT
     }

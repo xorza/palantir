@@ -49,8 +49,8 @@ fn sample_floats() -> [f32; 4] {
 
 #[cfg(all(target_arch = "aarch64", target_feature = "fp16"))]
 mod aarch64_direct {
-    use core::arch::asm;
     use core::arch::aarch64::{float32x4_t, uint16x4_t};
+    use core::arch::asm;
 
     // `target_feature = "fp16"` is already enabled by default on
     // aarch64-apple-darwin (the only target this `cfg` block matches
