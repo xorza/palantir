@@ -12,6 +12,7 @@ mod widgets;
 
 use palantir::Color;
 
-/// Default scene background — matches `helloworld.rs` so fixtures look
-/// roughly like the real shell at a glance.
+/// Default scene background — a dark surrogate so fixtures look
+/// roughly like a real shell at a glance. Not tied to any specific
+/// demo; override per-fixture if a brighter contrast is needed.
 pub(crate) const DARK_BG: Color = Color::rgb(0.08, 0.08, 0.10);
