@@ -2,6 +2,16 @@ use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 use super::num::Num;
 use half::f16;
 
+/// Runtime f32→f16 pack — single F16C / fp16 instruction on supported
+/// targets, scalar fallback elsewhere. Used by every public constructor
+/// so widget builders and per-frame padding adjustments never hit the
+/// 4-call scalar `from_f32_const` path that showed up at 2.5% self-time
+/// in the `frame` bench.
+#[inline]
+fn pack(left: f32, top: f32, right: f32, bottom: f32) -> [u16; 4] {
+    f16x4_from_f32x4([left, top, right, bottom])
+}
+
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
 ///
@@ -40,15 +50,6 @@ impl std::fmt::Debug for Spacing {
             .field("bottom", &self.bottom())
             .finish()
     }
-}
-
-const fn pack(left: f32, top: f32, right: f32, bottom: f32) -> [u16; 4] {
-    [
-        f16::from_f32_const(left).to_bits(),
-        f16::from_f32_const(top).to_bits(),
-        f16::from_f32_const(right).to_bits(),
-        f16::from_f32_const(bottom).to_bits(),
-    ]
 }
 
 #[inline]
@@ -160,15 +161,18 @@ impl<'de> serde::Deserialize<'de> for Spacing {
 impl Spacing {
     pub const ZERO: Self = Self([0; 4]);
 
-    pub const fn all(v: f32) -> Self {
+    #[inline]
+    pub fn all(v: f32) -> Self {
         Self(pack(v, v, v, v))
     }
 
-    pub const fn xy(x: f32, y: f32) -> Self {
+    #[inline]
+    pub fn xy(x: f32, y: f32) -> Self {
         Self(pack(x, y, x, y))
     }
 
-    pub const fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
+    #[inline]
+    pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
         Self(pack(left, top, right, bottom))
     }
 
