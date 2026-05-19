@@ -13,6 +13,7 @@ pub(crate) mod theme;
 pub(crate) mod tooltip;
 
 use crate::input::ResponseState;
+use crate::input::pointer::PointerButton;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -133,18 +134,32 @@ impl<'a> Response<'a> {
     pub fn secondary_clicked(&self) -> bool {
         self.state().secondary_clicked
     }
-    /// Cumulative pointer travel since press while this widget holds
-    /// the active, threshold-crossed drag. Compose against an anchor
-    /// captured on `drag_started()`: `pos = anchor + delta`. `None`
-    /// outside drag and for sub-threshold wiggle.
-    pub fn drag_delta(&self) -> Option<Vec2> {
-        self.state().drag_delta
+    /// Any button is currently dragging this widget.
+    pub fn dragged(&self) -> bool {
+        self.state().dragged()
     }
-    /// One-frame edge: fires on exactly the frame the drag latches.
-    /// Snapshot the position here to anchor subsequent `drag_delta`
-    /// reads.
+    /// `button` is currently dragging this widget.
+    pub fn dragged_by(&self, button: PointerButton) -> bool {
+        self.state().dragged_by(button)
+    }
+    /// One-frame edge: the active drag latched this frame. Snapshot
+    /// the position here to anchor subsequent `drag_delta()` reads.
     pub fn drag_started(&self) -> bool {
-        self.state().drag_started
+        self.state().drag_started()
+    }
+    /// One-frame edge for `button`-drag specifically.
+    pub fn drag_started_by(&self, button: PointerButton) -> bool {
+        self.state().drag_started_by(button)
+    }
+    /// Cumulative pointer travel of the active drag (any button).
+    /// `None` outside drag and for sub-threshold wiggle.
+    pub fn drag_delta(&self) -> Option<Vec2> {
+        self.state().drag_delta()
+    }
+    /// Cumulative pointer travel, filtered to `button`. `None` when
+    /// a different button (or none) is dragging.
+    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
+        self.state().drag_delta_by(button)
     }
     /// Combined wheel + touchpad scroll delta this frame, in logical
     /// pixels. Routes only to widgets with [`crate::Sense::SCROLL`]
@@ -215,11 +230,23 @@ impl ResponseSnapshot {
     pub fn secondary_clicked(&self) -> bool {
         self.state.secondary_clicked
     }
-    pub fn drag_delta(&self) -> Option<Vec2> {
-        self.state.drag_delta
+    pub fn dragged(&self) -> bool {
+        self.state.dragged()
+    }
+    pub fn dragged_by(&self, button: PointerButton) -> bool {
+        self.state.dragged_by(button)
     }
     pub fn drag_started(&self) -> bool {
-        self.state.drag_started
+        self.state.drag_started()
+    }
+    pub fn drag_started_by(&self, button: PointerButton) -> bool {
+        self.state.drag_started_by(button)
+    }
+    pub fn drag_delta(&self) -> Option<Vec2> {
+        self.state.drag_delta()
+    }
+    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
+        self.state.drag_delta_by(button)
     }
     pub fn scroll_delta(&self) -> Vec2 {
         self.state.scroll_delta

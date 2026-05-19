@@ -15,6 +15,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
+use strum::EnumCount as _;
 
 /// Per-button press/drag/click capture. One slot per [`PointerButton`].
 /// Cleared on release, on cascade-eviction of the captured widget, and
@@ -229,6 +230,24 @@ fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
     }
 }
 
+/// One widget's active drag. Carried on
+/// [`ResponseState::drag`]. Only one drag exists per widget at a
+/// time — when multiple buttons are simultaneously latched on the
+/// same widget, the priority-first in
+/// [`crate::input::pointer::PointerButton::all`] wins.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct DragState {
+    /// Which pointer button is doing the dragging.
+    pub button: PointerButton,
+    /// Cumulative pointer travel since press. Rect-independent; the
+    /// pointer may leave the widget's rect mid-drag and the delta
+    /// keeps tracking.
+    pub delta: Vec2,
+    /// One-frame edge: `true` on exactly the frame the drag latched
+    /// (the threshold-crossing pointer move). Snapshot anchors here.
+    pub started: bool,
+}
+
 /// Snapshot of one widget's interaction state for the current frame.
 /// `rect` is the widget's last-frame logical-pixel rect (`None` on first frame).
 ///
@@ -261,17 +280,13 @@ pub struct ResponseState {
     pub secondary_clicked: bool,
     pub disabled: bool,
     pub focused: bool,
-    /// Cumulative pointer travel since press while `id` holds the
-    /// active, threshold-crossed drag. `None` outside drag and for
-    /// sub-threshold wiggle — never `Some(Vec2::ZERO)`. Callers
-    /// compose `pos = anchor + delta`, capturing `anchor` on the
-    /// `drag_started` frame.
-    pub drag_delta: Option<Vec2>,
-    /// One-frame edge: `true` on the frame the drag latches (the
-    /// threshold-crossing pointer move). `false` everywhere else.
-    /// Snapshot the position here so subsequent `drag_delta` reads
-    /// compose against a stable anchor.
-    pub drag_started: bool,
+    /// Active drag on this widget — `None` outside drag and for
+    /// sub-threshold wiggle. Only one button can drag a given widget
+    /// at a time; when more than one button is captured + latched,
+    /// the priority-first in `PointerButton::all()` wins. Callers go
+    /// through [`Self::drag_delta`] / [`Self::drag_started`] /
+    /// [`Self::dragged_by`] etc. rather than reading this field.
+    pub drag: Option<DragState>,
     /// Combined wheel + touchpad scroll delta this frame, in logical
     /// pixels. Already negated at ingest so `+y` means "advance the
     /// scroll offset forward" (canonical use: `offset += delta`).
@@ -309,12 +324,57 @@ impl Default for ResponseState {
             secondary_clicked: false,
             disabled: false,
             focused: false,
-            drag_delta: None,
-            drag_started: false,
+            drag: None,
             scroll_delta: Vec2::ZERO,
             zoom_factor: 1.0,
             pointer_local: None,
         }
+    }
+}
+
+impl ResponseState {
+    /// Any pointer button currently dragging this widget. Sugar for
+    /// `self.drag.is_some()`.
+    #[inline]
+    pub fn dragged(&self) -> bool {
+        self.drag.is_some()
+    }
+
+    /// `true` when `button` is the one dragging this widget. For "is
+    /// anything dragging?" use [`Self::dragged`].
+    #[inline]
+    pub fn dragged_by(&self, button: PointerButton) -> bool {
+        self.drag.is_some_and(|d| d.button == button)
+    }
+
+    /// One-frame edge: `true` on the frame the active drag latches.
+    /// Snapshot anchors here.
+    #[inline]
+    pub fn drag_started(&self) -> bool {
+        self.drag.is_some_and(|d| d.started)
+    }
+
+    /// One-frame edge filtered by button. `drag_started_by(Middle)`
+    /// is `true` only on the frame a middle-button drag latches.
+    #[inline]
+    pub fn drag_started_by(&self, button: PointerButton) -> bool {
+        self.drag
+            .is_some_and(|d| d.button == button && d.started)
+    }
+
+    /// Cumulative pointer travel of the active drag, regardless of
+    /// which button is dragging.
+    #[inline]
+    pub fn drag_delta(&self) -> Option<Vec2> {
+        self.drag.map(|d| d.delta)
+    }
+
+    /// Cumulative pointer travel, but only if the dragging button is
+    /// `button`. `None` outside drag or when a different button is
+    /// dragging.
+    #[inline]
+    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
+        self.drag.filter(|d| d.button == button).map(|d| d.delta)
     }
 }
 
@@ -550,18 +610,26 @@ impl InputState {
                 let prev_hover = self.hovered;
                 let prev_scroll = self.scroll_target;
                 self.pointer_pos = Some(p);
-                // Drag-latch check, left button only today. When middle/
-                // right drag widgets land, gate by `Capture::drags_when_latched`
-                // or similar; until then, only left flips `drag_latched`.
-                let lc = self.capture_mut(PointerButton::Left);
-                if !lc.drag_latched
-                    && lc.active.is_some()
-                    && let Some(press) = lc.press_pos
-                    && (p - press).length() >= DRAG_THRESHOLD
-                {
-                    lc.drag_latched = true;
-                    lc.frame_drag_started = lc.active;
-                    self.frame_had_action = true;
+                // Drag-latch check per button. Every captured button
+                // independently latches once travel crosses
+                // `DRAG_THRESHOLD`. `ResponseState::drag_delta` reports
+                // the left button; other buttons go through
+                // [`crate::Ui::drag_delta_by`] /
+                // [`crate::Ui::drag_started_by`]. Right-drag latching
+                // just suppresses the click (same as left), so a slow
+                // right-press that wiggles no longer pops a context
+                // menu — consistent with click-suppression semantics.
+                for btn in PointerButton::all() {
+                    let cap = self.capture_mut(btn);
+                    if !cap.drag_latched
+                        && cap.active.is_some()
+                        && let Some(press) = cap.press_pos
+                        && (p - press).length() >= DRAG_THRESHOLD
+                    {
+                        cap.drag_latched = true;
+                        cap.frame_drag_started = cap.active;
+                        self.frame_had_action = true;
+                    }
                 }
                 let prev_pinch = self.pinch_target;
                 let hits =
@@ -827,17 +895,27 @@ impl InputState {
         }
     }
 
-    /// Returns the cumulative drag delta (pointer pos minus press pos)
-    /// when `id` is the actively-captured widget and both positions are
-    /// known. Rect-independent — the pointer can leave the widget's
-    /// rect mid-drag and the delta keeps tracking. `None` when `id`
-    /// isn't active or the pointer has left the surface.
-    pub(crate) fn drag_delta(&self, id: WidgetId) -> Option<Vec2> {
-        let cap = self.capture(PointerButton::Left);
-        if cap.active != Some(id) {
-            return None;
+    /// The active drag on `id`, or `None` outside a threshold-crossed
+    /// drag. When multiple buttons are simultaneously latched on the
+    /// same widget, the priority-first in [`PointerButton::all`]
+    /// wins. Rect-independent: the pointer can leave `id`'s rect
+    /// mid-drag and the delta keeps tracking.
+    pub(crate) fn active_drag(&self, id: WidgetId) -> Option<DragState> {
+        let pointer = self.pointer_pos?;
+        for button in PointerButton::all() {
+            let cap = self.capture(button);
+            if cap.active == Some(id)
+                && cap.drag_latched
+                && let Some(press) = cap.press_pos
+            {
+                return Some(DragState {
+                    button,
+                    delta: pointer - press,
+                    started: cap.frame_drag_started == Some(id),
+                });
+            }
         }
-        Some(self.pointer_pos? - cap.press_pos?)
+        None
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
@@ -861,12 +939,7 @@ impl InputState {
         let clicked = left.frame_click == Some(id);
         let secondary_clicked = right.frame_click == Some(id);
         let focused = self.focused == Some(id);
-        let drag_delta = if me_left_captured && left.drag_latched {
-            self.drag_delta(id)
-        } else {
-            None
-        };
-        let drag_started = left.frame_drag_started == Some(id);
+        let drag = self.active_drag(id);
 
         // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
         // Both gates fire even when the routed delta is `Vec2::ZERO`
@@ -885,8 +958,7 @@ impl InputState {
             secondary_clicked,
             disabled,
             focused,
-            drag_delta,
-            drag_started,
+            drag,
             scroll_delta,
             zoom_factor,
             pointer_local,
