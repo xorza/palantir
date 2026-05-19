@@ -391,7 +391,7 @@ fn measure_inner(
     let any_hug_col = col_tracks.iter().any(|t| matches!(t.size, Sizing::Hug));
     if any_hug_col {
         for c in tree.active_children(node) {
-            let cell = tree.grid_of(c);
+            let cell = tree.bounds(c).grid;
             if cell.col_span != 1 {
                 continue;
             }
@@ -454,7 +454,7 @@ fn measure_inner(
             layout.measure(tree, c, Size::ZERO, tc, out);
             continue;
         }
-        let cell = tree.grid_of(c);
+        let cell = tree.bounds(c).grid;
 
         let avail = {
             let s = layout.scratch.grid.depth_stack.at(depth);
@@ -628,7 +628,7 @@ fn arrange_inner(
         }
         let i = c.idx();
         let s_node = layouts[i];
-        let cell = tree.grid_of(c);
+        let cell = tree.bounds(c).grid;
         let d = layout.scratch.desired[i];
 
         let (slot_x, slot_y, slot_w, slot_h) = {
@@ -920,7 +920,7 @@ pub(crate) fn intrinsic(
     }
 
     for c in tree.active_children(node) {
-        let cell = tree.grid_of(c);
+        let cell = tree.bounds(c).grid;
         let span = match axis {
             Axis::X => cell.col_span,
             Axis::Y => cell.row_span,

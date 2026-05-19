@@ -890,12 +890,11 @@ impl Ui {
     /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
     /// stable ids without a Main-vs-other-layer carve-out.
     pub(crate) fn make_persistent_id(&mut self, salt: Salt) -> WidgetId {
-        let parent = self
-            .forest
-            .current_tree()
+        let tree = self.forest.current_tree();
+        let parent = tree
             .open_frames
             .last()
-            .map(|f| f.widget_id);
+            .map(|f| tree.records.widget_id()[f.node.idx()]);
         let raw_id = salt.resolve(parent);
         self.forest.ids.resolve(raw_id, salt.is_explicit())
     }

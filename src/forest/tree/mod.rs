@@ -25,16 +25,13 @@
 use crate::ClipMode;
 use crate::common::frame_arena::FrameArena;
 use crate::common::hash::Hasher;
-use crate::forest::element::{
-    BoundsExtras, Element, LayoutCore, LayoutMode, PanelExtras, SizeClamp,
-};
+use crate::forest::element::{BoundsExtras, Element, LayoutCore, LayoutMode, PanelExtras};
 use crate::forest::node::NodeRecord;
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
 use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
 use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::visibility::Visibility;
-use crate::layout::types::grid_cell::GridCell;
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -57,16 +54,14 @@ impl NodeId {
 }
 
 /// One entry on `Tree::open_frames`. Carries the open node's
-/// `NodeId`, its resolved `WidgetId` (so `Ui::make_persistent_id`
-/// doesn't have to walk back into `records.widget_id()[..]` on every
-/// widget show — read once at push, used many times during the
-/// child's record pass), plus a `disabled` cascade bit propagated at
-/// push time (`parent.ancestor_or_self_disabled || new_node.disabled`)
-/// so `Tree::ancestor_disabled` is an O(1) read.
+/// `NodeId` and a precomputed `disabled` cascade bit
+/// (`parent.ancestor_or_self_disabled || new_node.disabled`) so
+/// `Tree::ancestor_disabled` is an O(1) read. The node's resolved
+/// `WidgetId` is read on demand via `records.widget_id()[node.idx()]`
+/// at the one site that needs it (`Ui::make_persistent_id`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
-    pub(crate) widget_id: WidgetId,
     pub(crate) ancestor_or_self_disabled: bool,
 }
 
@@ -307,7 +302,6 @@ impl Tree {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
-        let shape_spans = self.records.shape_span();
         let ends = self.records.subtree_end();
         // Per-shape hashes are canonical — populated by `Shapes::add`
         // at lowering time. compute_hashes just folds them into the
@@ -351,28 +345,19 @@ impl Tree {
             }
 
             // Walk this node's direct shapes + immediate-child position
-            // markers in record order. Each shape's canonical hash was
-            // computed at `Shapes::add` time — fold it in as a u64 so
-            // we don't re-hash the record fields here.
-            let parent_span = shape_spans[i];
-            let parent_end = (parent_span.start + parent_span.len) as usize;
-            let mut cursor = parent_span.start as usize;
-            let mut next_child = (i as u32) + 1;
+            // markers in record order via the shared `TreeItems`
+            // traversal — single source of truth for the parent/child
+            // interleave cursor logic (encoder uses the same iterator).
+            // Each shape's canonical hash was computed at `Shapes::add`
+            // time; fold it in as a u64 so we don't re-hash the record
+            // fields here. The `0xFF` child marker is a domain
+            // separator between adjacent shape-hash u64 writes.
             let subtree_end = ends[i];
-            while next_child < subtree_end {
-                let cs = shape_spans[next_child as usize];
-                let cs_start = cs.start as usize;
-                while cursor < cs_start {
-                    h.write_u64(shape_hashes[cursor].0);
-                    cursor += 1;
+            for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
+                match item {
+                    TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
+                    TreeItem::Child(_) => h.write_u8(0xFF),
                 }
-                h.write_u8(0xFF);
-                cursor = cs_start + cs.len as usize;
-                next_child = ends[next_child as usize];
-            }
-            while cursor < parent_end {
-                h.write_u64(shape_hashes[cursor].0);
-                cursor += 1;
             }
             if layouts[i].mode == LayoutMode::Grid {
                 let idx = layouts[i].mode_payload;
@@ -526,7 +511,6 @@ impl Tree {
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         self.open_frames.push(OpenFrame {
             node: new_id,
-            widget_id: cols.widget_id,
             ancestor_or_self_disabled,
         });
         new_id
@@ -646,39 +630,16 @@ impl Tree {
             .filter(|t| !t.is_noop())
     }
 
+    /// This node's bounds extras row (position / grid cell / min_size /
+    /// max_size). Falls back to `&BoundsExtras::DEFAULT` for nodes that
+    /// didn't customize any field. Mirrors `Tree::panel` — callers pull
+    /// the field they want.
     #[inline]
-    pub(crate) fn position_of(&self, id: NodeId) -> Vec2 {
+    pub(crate) fn bounds(&self, id: NodeId) -> &BoundsExtras {
         self.extras_idx[id.idx()]
             .bounds
             .get()
-            .map_or(Vec2::ZERO, |s| self.bounds_table[s].position)
-    }
-
-    #[inline]
-    pub(crate) fn grid_of(&self, id: NodeId) -> GridCell {
-        self.extras_idx[id.idx()]
-            .bounds
-            .get()
-            .map_or(BoundsExtras::DEFAULT.grid, |s| self.bounds_table[s].grid)
-    }
-
-    /// Paired read of `(min_size, max_size)` — they're always read
-    /// together by `layoutengine` / `intrinsic` / `stack`.
-    #[inline]
-    pub(crate) fn size_clamps_of(&self, id: NodeId) -> SizeClamp {
-        match self.extras_idx[id.idx()].bounds.get() {
-            Some(s) => {
-                let b = &self.bounds_table[s];
-                SizeClamp {
-                    min: b.min_size,
-                    max: b.max_size,
-                }
-            }
-            None => SizeClamp {
-                min: BoundsExtras::DEFAULT.min_size,
-                max: BoundsExtras::DEFAULT.max_size,
-            },
-        }
+            .map_or(&BoundsExtras::DEFAULT, |s| &self.bounds_table[s])
     }
 
     #[inline]
@@ -768,15 +729,16 @@ impl<'a> TreeItems<'a> {
     ) -> Self {
         let shapes_col = records.shape_span();
         let parent = shapes_col[node.idx()];
+        let ends = records.subtree_end();
         Self {
             shapes_col,
             layouts: records.layout(),
-            ends: records.subtree_end(),
+            ends,
             shapes,
             cursor: parent.start as usize,
             parent_end: (parent.start + parent.len) as usize,
             next_child_id: node.0 + 1,
-            subtree_end: records.subtree_end()[node.idx()],
+            subtree_end: ends[node.idx()],
         }
     }
 }

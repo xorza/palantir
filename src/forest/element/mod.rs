@@ -224,16 +224,6 @@ pub(crate) struct BoundsExtras {
     pub(crate) max_size: Size,
 }
 
-/// Paired `(min, max)` clamp on the resolved outer size — always read
-/// together by `layoutengine` / `intrinsic` / `stack`. Returned by
-/// `Tree::size_clamps_of` to avoid 2 separate column lookups at each
-/// caller.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct SizeClamp {
-    pub(crate) min: Size,
-    pub(crate) max: Size,
-}
-
 /// Panel-only knobs. Read by stack/wrap/grid/zstack drivers on the parent
 /// node — leaves never touch them. Sparse so leaves don't allocate.
 ///

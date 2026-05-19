@@ -112,7 +112,7 @@ pub(crate) fn measure(
                 let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) else {
                     continue;
                 };
-                let cap = axis.main(tree.size_clamps_of(c).max);
+                let cap = axis.main(tree.bounds(c).max_size);
                 let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, tc);
                 layout.scratch.stack_fill.pool.push(FillEntry {
                     node: c,
