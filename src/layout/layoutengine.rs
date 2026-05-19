@@ -1,6 +1,5 @@
 use crate::forest::Forest;
 use crate::forest::Layer;
-use crate::forest::element::SizeClamp;
 use crate::forest::element::{LayoutCore, LayoutMode};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::axis::Axis;
@@ -164,11 +163,11 @@ fn quantize_wrap_target(v: f32) -> u32 {
 
 /// Derive the driver-facing `inner_avail` size: outer = Fixed(v) for any
 /// `Sizing::Fixed` axis else `available - margin` (floored at 0), clamped
-/// to `[bounds.min, bounds.max]`, then deflated by padding. The outer
+/// to `[min_size, max_size]`, then deflated by padding. The outer
 /// clamp matches `resolve_axis_size` so children's `available` tracks the
 /// parent's eventual arranged width even when `max_size` caps it.
 #[inline]
-fn compute_inner_avail(style: LayoutCore, available: Size, bounds: SizeClamp) -> Size {
+fn compute_inner_avail(style: LayoutCore, available: Size, min_size: Size, max_size: Size) -> Size {
     let [pl, pt, pr, pb] = style.padding.as_array();
     let [ml, mt, mr, mb] = style.margin.as_array();
     let (p_horiz, p_vert) = (pl + pr, pt + pb);
@@ -177,12 +176,12 @@ fn compute_inner_avail(style: LayoutCore, available: Size, bounds: SizeClamp) ->
         Sizing::Fixed(v) => v,
         _ => (available.w - m_horiz).max(0.0),
     }
-    .clamp(bounds.min.w, bounds.max.w);
+    .clamp(min_size.w, max_size.w);
     let outer_h = match style.size.h() {
         Sizing::Fixed(v) => v,
         _ => (available.h - m_vert).max(0.0),
     }
-    .clamp(bounds.min.h, bounds.max.h);
+    .clamp(min_size.h, max_size.h);
     Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0))
 }
 
@@ -197,7 +196,8 @@ fn resolve_desired(
     content: Size,
     available: Size,
     intrinsic_min: Size,
-    bounds: SizeClamp,
+    min_size: Size,
+    max_size: Size,
 ) -> Size {
     let [pl, pt, pr, pb] = style.padding.as_array();
     let [ml, mt, mr, mb] = style.margin.as_array();
@@ -210,8 +210,8 @@ fn resolve_desired(
             available: available.w,
             intrinsic_min: intrinsic_min.w,
             margin: m_horiz,
-            min: bounds.min.w,
-            max: bounds.max.w,
+            min: min_size.w,
+            max: max_size.w,
         }),
         resolve_axis_size(AxisCtx {
             sizing: style.size.h(),
@@ -219,8 +219,8 @@ fn resolve_desired(
             available: available.h,
             intrinsic_min: intrinsic_min.h,
             margin: m_vert,
-            min: bounds.min.h,
-            max: bounds.max.h,
+            min: min_size.h,
+            max: max_size.h,
         }),
     )
 }
@@ -396,7 +396,8 @@ impl LayoutEngine {
         // when snapshotting below.
         let text_shapes_lo = out[self.active_layer].text_shapes.len() as u32;
 
-        let bounds = tree.size_clamps_of(node);
+        let bounds = tree.bounds(node);
+        let (min_size, max_size) = (bounds.min_size, bounds.max_size);
 
         // Min-content intrinsic — the smallest this node can shrink
         // to without breaking a rigid descendant (Fixed widget,
@@ -452,7 +453,7 @@ impl LayoutEngine {
         // grant children more room than it can later arrange (matches
         // the clamp in `resolve_axis_size` so the child's `available`
         // tracks the parent's eventual arranged width).
-        let inner_avail = compute_inner_avail(style, dispatch_avail, bounds);
+        let inner_avail = compute_inner_avail(style, dispatch_avail, min_size, max_size);
 
         // Single dispatch. When `desired` exceeds `available` on a
         // non-Fixed axis it's because a rigid descendant pinned the
@@ -462,7 +463,7 @@ impl LayoutEngine {
         // in `available` and pass-1 already saturated at the floor.
         // Pinned by `cross_driver_tests::convergence`.
         let content = self.measure_dispatch(tree, node, style, inner_avail, tc, out);
-        let desired = resolve_desired(style, content, available, intrinsic_min, bounds);
+        let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
         self.scratch.desired[node.idx()] = desired;
 
