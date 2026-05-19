@@ -206,6 +206,7 @@ impl LayoutMode {
             _ => glam::BVec2::FALSE,
         }
     }
+
 }
 
 /// Per-node bounds + parent-relative placement. Set on any

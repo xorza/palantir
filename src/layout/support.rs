@@ -196,10 +196,12 @@ pub(crate) fn zero_subtree(
     out[layout.active_layer].rect[start..end].fill(zero);
 }
 
-/// Max over non-collapsed children's outer intrinsic on `axis`. Used by
-/// drivers whose own size on an axis is "the largest child wants this much"
-/// (ZStack on either axis, Stack on the cross axis). Canvas can't use it
-/// because it adds child position to the contribution.
+/// Max over non-collapsed children's outer intrinsic on `axis`, plus an
+/// optional per-child positional offset on the same axis. Used by drivers
+/// whose own size on an axis is "the largest child wants this much"
+/// (ZStack, Stack cross-axis) and by Canvas (which adds the child's
+/// declared position to the contribution on Hug axes). Pass `|_, _| 0.0`
+/// when there's no positional contribution.
 pub(crate) fn children_max_intrinsic(
     layout: &mut LayoutEngine,
     tree: &Tree,
@@ -207,10 +209,12 @@ pub(crate) fn children_max_intrinsic(
     axis: Axis,
     req: LenReq,
     tc: &TextCtx<'_>,
+    mut offset: impl FnMut(&Tree, NodeId) -> f32,
 ) -> f32 {
     let mut m = 0.0f32;
     for c in tree.active_children(node) {
-        m = m.max(layout.intrinsic(tree, c, axis, req, tc));
+        let v = layout.intrinsic(tree, c, axis, req, tc) + offset(tree, c);
+        m = m.max(v);
     }
     m
 }

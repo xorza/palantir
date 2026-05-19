@@ -1,5 +1,6 @@
 use crate::forest::Forest;
 use crate::forest::Layer;
+use crate::forest::element::SizeClamp;
 use crate::forest::element::{LayoutCore, LayoutMode};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::axis::Axis;
@@ -158,6 +159,30 @@ fn quantize_wrap_target(v: f32) -> u32 {
     (v.max(0.0) * 10.0).round() as u32
 }
 
+/// Derive the driver-facing `inner_avail` size: outer = Fixed(v) for any
+/// `Sizing::Fixed` axis else `available - margin` (floored at 0), clamped
+/// to `[bounds.min, bounds.max]`, then deflated by padding. The outer
+/// clamp matches `resolve_axis_size` so children's `available` tracks the
+/// parent's eventual arranged width even when `max_size` caps it.
+#[inline]
+fn compute_inner_avail(style: LayoutCore, available: Size, bounds: SizeClamp) -> Size {
+    let [pl, pt, pr, pb] = style.padding.as_array();
+    let [ml, mt, mr, mb] = style.margin.as_array();
+    let (p_horiz, p_vert) = (pl + pr, pt + pb);
+    let (m_horiz, m_vert) = (ml + mr, mt + mb);
+    let outer_w = match style.size.w() {
+        Sizing::Fixed(v) => v,
+        _ => (available.w - m_horiz).max(0.0),
+    }
+    .clamp(bounds.min.w, bounds.max.w);
+    let outer_h = match style.size.h() {
+        Sizing::Fixed(v) => v,
+        _ => (available.h - m_vert).max(0.0),
+    }
+    .clamp(bounds.min.h, bounds.max.h);
+    Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0))
+}
+
 /// Fold a driver's raw `content` size into a margin-inclusive `desired`,
 /// applying `style.size` (Fixed/Hug/Fill), padding, margin, and the
 /// node's `[min, max]` clamp. Pulled out of `measure_dispatch` so the
@@ -169,8 +194,7 @@ fn resolve_desired(
     content: Size,
     available: Size,
     intrinsic_min: Size,
-    min_size: Size,
-    max_size: Size,
+    bounds: SizeClamp,
 ) -> Size {
     let [pl, pt, pr, pb] = style.padding.as_array();
     let [ml, mt, mr, mb] = style.margin.as_array();
@@ -183,8 +207,8 @@ fn resolve_desired(
             available: available.w,
             intrinsic_min: intrinsic_min.w,
             margin: m_horiz,
-            min: min_size.w,
-            max: max_size.w,
+            min: bounds.min.w,
+            max: bounds.max.w,
         }),
         resolve_axis_size(AxisCtx {
             sizing: style.size.h(),
@@ -192,8 +216,8 @@ fn resolve_desired(
             available: available.h,
             intrinsic_min: intrinsic_min.h,
             margin: m_vert,
-            min: min_size.h,
-            max: max_size.h,
+            min: bounds.min.h,
+            max: bounds.max.h,
         }),
     )
 }
@@ -370,7 +394,6 @@ impl LayoutEngine {
         let text_shapes_lo = out[self.active_layer].text_shapes.len() as u32;
 
         let bounds = tree.size_clamps_of(node);
-        let (min_size, max_size) = (bounds.min, bounds.max);
 
         // Min-content intrinsic — the smallest this node can shrink
         // to without breaking a rigid descendant (Fixed widget,
@@ -379,9 +402,22 @@ impl LayoutEngine {
         // Hug/Fill clamp down to `available` but never below
         // `intrinsic_min`. Cached per (node, axis, slot) so repeat
         // queries during the same `run` are O(1).
+        //
+        // Per-axis gate: `Sizing::Fixed` ignores `intrinsic_min` in
+        // both `resolve_axis_size` (Fixed branch returns `v` verbatim)
+        // and the `dispatch_avail.max(intrinsic_min)` floor below
+        // (Fixed reads neither side). Skip the query on Fixed axes so
+        // a Fixed leaf doesn't trigger a subtree intrinsic walk every
+        // frame.
         let intrinsic_min = Size::new(
-            self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc),
-            self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc),
+            match style.size.w() {
+                Sizing::Fixed(_) => 0.0,
+                _ => self.intrinsic(tree, node, Axis::X, LenReq::MinContent, tc),
+            },
+            match style.size.h() {
+                Sizing::Fixed(_) => 0.0,
+                _ => self.intrinsic(tree, node, Axis::Y, LenReq::MinContent, tc),
+            },
         );
 
         // Floor `available` at `intrinsic_min` before dispatch: the
@@ -405,6 +441,16 @@ impl LayoutEngine {
             available.h.max(intrinsic_min.h),
         );
 
+        // Derive the driver-facing `inner_avail` from the same `style`/
+        // `bounds`/`dispatch_avail` set we already have on hand. Fixed
+        // axes commit to the declared size; Hug/Fill propagate
+        // `dispatch_avail - margin`. The outer is clamped to
+        // `[min_size, max_size]` so a `max_size`-capped parent doesn't
+        // grant children more room than it can later arrange (matches
+        // the clamp in `resolve_axis_size` so the child's `available`
+        // tracks the parent's eventual arranged width).
+        let inner_avail = compute_inner_avail(style, dispatch_avail, bounds);
+
         // Single dispatch. When `desired` exceeds `available` on a
         // non-Fixed axis it's because a rigid descendant pinned the
         // floor (`intrinsic_min` / `min_size` / `Sizing::Fixed`); a
@@ -412,8 +458,8 @@ impl LayoutEngine {
         // same value because every driver's content size is monotone
         // in `available` and pass-1 already saturated at the floor.
         // Pinned by `cross_driver_tests::convergence`.
-        let content = self.measure_dispatch(tree, node, style, dispatch_avail, tc, out);
-        let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
+        let content = self.measure_dispatch(tree, node, style, inner_avail, tc, out);
+        let desired = resolve_desired(style, content, available, intrinsic_min, bounds);
 
         self.scratch.desired[node.idx()] = desired;
 
@@ -500,47 +546,15 @@ impl LayoutEngine {
     /// `arrange`, and `intrinsic::content_intrinsic`. The compiler
     /// flags the missing arms because `LayoutMode` matches are
     /// exhaustive.
-    #[allow(clippy::too_many_arguments)]
     fn measure_dispatch(
         &mut self,
         tree: &Tree,
         node: NodeId,
         style: LayoutCore,
-        available: Size,
+        inner_avail: Size,
         tc: &TextCtx<'_>,
         out: &mut Layout,
     ) -> Size {
-        // For each axis: if this node has a declared `Fixed` size, that's the
-        // outer width children see — `inner = fixed - padding`. Otherwise
-        // (Hug / Fill) we propagate whatever the parent gave us. Without
-        // this, a fixed-width parent above a wrapping child wouldn't
-        // constrain the child's available width during measure, so wrapping
-        // text would never reshape.
-        //
-        // Also clamp by this node's own `min_size`/`max_size` so a
-        // capped parent doesn't grant children more room than it can
-        // arrange. `resolve_axis_size` applies the same clamp to the
-        // outer size; doing it here too keeps children's `available`
-        // consistent with the parent's eventual arranged width — Fill
-        // children inside a `max_size`-capped parent see the capped
-        // budget instead of bleeding past the parent's edge.
-        let bounds = tree.size_clamps_of(node);
-        let [pl, pt, pr, pb] = style.padding.as_array();
-        let [ml, mt, mr, mb] = style.margin.as_array();
-        let (p_horiz, p_vert) = (pl + pr, pt + pb);
-        let (m_horiz, m_vert) = (ml + mr, mt + mb);
-        let outer_w = match style.size.w() {
-            Sizing::Fixed(v) => v,
-            _ => (available.w - m_horiz).max(0.0),
-        }
-        .clamp(bounds.min.w, bounds.max.w);
-        let outer_h = match style.size.h() {
-            Sizing::Fixed(v) => v,
-            _ => (available.h - m_vert).max(0.0),
-        }
-        .clamp(bounds.min.h, bounds.max.h);
-        let inner_avail = Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0));
-
         match style.mode {
             LayoutMode::Leaf => self.leaf_content_size(tree, node, inner_avail.w, tc, out),
             LayoutMode::HStack => stack::measure(self, tree, node, inner_avail, Axis::X, tc, out),
