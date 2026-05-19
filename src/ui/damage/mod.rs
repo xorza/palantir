@@ -312,6 +312,13 @@ impl DamageEngine {
                     continue;
                 };
                 if snap.shape_span.len == 0 {
+                    // Chrome-only / shape-less owner: nothing to copy,
+                    // but the stale `start` still points into the
+                    // pre-swap buffer. Normalize so the post-swap
+                    // `shape_snaps[span.range()]` (in the removed-
+                    // eviction loop, etc.) stays in bounds even though
+                    // the slice it yields is empty.
+                    snap.shape_span = Span::new(0, 0);
                     continue;
                 }
                 let new_start = self.shape_snaps_scratch.len() as u32;

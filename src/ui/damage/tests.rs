@@ -2002,3 +2002,59 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // We don't assert absence (region merging may absorb it); we only
     // pin that the *deleted* and *shifted* rects are present.
 }
+
+/// Regression: a chrome-only owner (background but zero direct shapes)
+/// records a `Span` with `len == 0` whose `start` is whatever
+/// `shape_snaps.len()` happened to be at insert time. When a later
+/// compaction shrinks the arena, the `len == 0` continue arm in
+/// `compact_shape_snaps` used to leave the stale `start` alone — so
+/// any subsequent `shape_snaps[snap.shape_span.range()]` slice (the
+/// removed-eviction tail at the bottom of `compute`, the per-frame
+/// chrome-only `push_decomposed_paint` paths) tripped a bounds panic
+/// like "range start index 245 out of range for slice of length 83".
+#[test]
+fn compaction_normalises_zero_len_spans_to_in_bounds_start() {
+    use crate::ui::damage::Span;
+
+    let mut ui = Ui::for_test();
+    let build = |ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("chrome_only"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |_| {});
+    };
+
+    frame(&mut ui, build);
+    frame(&mut ui, build); // settle
+
+    // The chrome-only panel paints (chrome), but contributes zero
+    // direct shapes, so its snapshot's span has len == 0.
+    let wid = WidgetId::from_hash("chrome_only");
+    assert_eq!(ui.damage_engine.prev[&wid].shape_span.len, 0);
+
+    // Simulate the state left by a previous compaction cycle: the
+    // arena is small (compaction copied only the entries it actually
+    // reseated) and our zero-len snap still references the pre-swap
+    // tail.
+    ui.damage_engine.prev.get_mut(&wid).unwrap().shape_span = Span::new(999, 0);
+
+    // Run another compaction. Pre-fix, the zero-len `continue` left
+    // start=999 untouched; post-fix, it is normalised so the range
+    // stays in bounds.
+    ui.damage_engine.compact_shape_snaps(&ui.forest);
+
+    let snap = ui.damage_engine.prev[&wid];
+    let len = ui.damage_engine.shape_snaps.len() as u32;
+    assert!(
+        snap.shape_span.start <= len,
+        "zero-len span start {} must be <= shape_snaps.len() {}",
+        snap.shape_span.start,
+        len,
+    );
+    // And the slice itself must not panic.
+    let _ = &ui.damage_engine.shape_snaps[snap.shape_span.range()];
+}
