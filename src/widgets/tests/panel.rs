@@ -69,7 +69,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .size(50.0)
                 .background(Background {
                     fill: Color::rgb(0.2, 0.2, 0.2).into(),
-                    radius: Corners::all(4.0),
+                    corners: Corners::all(4.0),
                     ..Default::default()
                 })
                 .clip_rounded()
@@ -117,7 +117,7 @@ fn panel_hugs_largest_child_and_layers_them() {
                     .padding(10.0)
                     .background(Background {
                         fill: Color::rgb(0.1, 0.1, 0.15).into(),
-                        radius: Corners::all(8.0),
+                        corners: Corners::all(8.0),
                         ..Default::default()
                     })
                     .show(ui, |ui| {

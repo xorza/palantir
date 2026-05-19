@@ -181,12 +181,37 @@ impl FrameArena {
             brush: fill,
             hash: fill_grad_hash,
         } = a.lower_brush_inner(bg.fill, atlas);
+        let stroke = ShapeStroke::from(bg.stroke);
+        let corners = bg.corners;
+        let shadow: crate::forest::shapes::record::LoweredShadow = bg.shadow.into();
+        // Canonical authoring hash: fold `fill` (variant tag + colour
+        // or pre-baked gradient hash) + packed `stroke` bytes + radius
+        // + shadow. Single producer site so downstream consumers read
+        // `row.hash` without re-walking the fields. Matches the prior
+        // `ChromeRow::Hash` impl byte-for-byte.
+        let mut h = FxHasher::new();
+        match fill {
+            ShapeBrush::Solid(c) => {
+                h.write_u8(0);
+                use std::hash::Hash;
+                c.hash(&mut h);
+            }
+            ShapeBrush::Gradient(_) => {
+                h.write_u8(1);
+                h.write_u64(fill_grad_hash);
+            }
+        }
+        h.write(bytemuck::bytes_of(&stroke));
+        use std::hash::Hash;
+        corners.hash(&mut h);
+        shadow.hash(&mut h);
+        let hash = crate::forest::rollups::NodeHash(h.finish());
         ChromeRow {
             fill,
-            stroke: ShapeStroke::from(bg.stroke),
-            radius: bg.radius,
-            shadow: bg.shadow.into(),
-            fill_grad_hash,
+            stroke,
+            corners,
+            shadow,
+            hash,
         }
     }
 

@@ -5,5 +5,6 @@
 pub(crate) mod cache_arena;
 pub(crate) mod frame_arena;
 pub(crate) mod hash;
+pub(crate) mod per_layer;
 pub(crate) mod platform;
 pub(crate) mod time;

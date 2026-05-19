@@ -272,7 +272,7 @@ pub(crate) fn arrange(
 
         let child_rect =
             axis.compose_rect(cursor, cross_min + cross_p.offset, main_size, cross_p.size);
-        layout.arrange(tree, c, child_rect, out);
+        layout.arrange(tree, c, Some(node), child_rect, out);
         cursor += main_size;
     }
 }

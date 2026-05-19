@@ -661,7 +661,7 @@ fn arrange_inner(
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect, out);
+        layout.arrange(tree, c, Some(node), child_rect, out);
     }
 }
 

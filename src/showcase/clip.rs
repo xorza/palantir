@@ -10,7 +10,7 @@ fn card() -> Background {
     Background {
         fill: Color::hex(0x252525).into(),
         stroke: Stroke::solid(Color::hex(0x4d5663), 1.5),
-        radius: Corners::all(28.0),
+        corners: Corners::all(28.0),
         shadow: Shadow::NONE,
     }
 }
@@ -103,7 +103,7 @@ fn spiller(ui: &mut Ui, id: impl std::hash::Hash) {
         .margin((-24.0, -24.0, -24.0, -24.0))
         .background(Background {
             fill: swatch::B.into(),
-            radius: Corners::all(0.0),
+            corners: Corners::all(0.0),
             ..Default::default()
         })
         .show(ui);

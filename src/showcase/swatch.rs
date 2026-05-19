@@ -22,7 +22,7 @@ pub const D: Color = Color::hex(0xd897ff);
 pub fn swatch_bg(c: Color) -> Background {
     Background {
         fill: c.into(),
-        radius: Corners::all(4.0),
+        corners: Corners::all(4.0),
         ..Default::default()
     }
 }

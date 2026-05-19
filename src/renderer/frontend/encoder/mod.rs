@@ -77,8 +77,9 @@ pub(crate) fn encode(
     let gradients = arena.gradients.as_slice();
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layout = &ui.layout[layer];
-        let rows = ui.layout.cascades.rows_for(layer);
-        let subtree_paint_rects = ui.layout.cascades.subtree_paint_rects_for(layer);
+        let layer_cascades = &ui.layout.cascades.layers[layer];
+        let rows = layer_cascades.rows.as_slice();
+        let subtree_paint_rects = layer_cascades.subtree_paint_rects.as_slice();
         for root in &tree.roots {
             encode_node(
                 tree,
@@ -408,9 +409,9 @@ fn encode_node(
         // `local_rect = None` means the shadow follows the owner's
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
-        emit_shadow(out, rect, None, bg.radius, &bg.shadow);
+        emit_shadow(out, rect, None, bg.corners, &bg.shadow);
         let src = shape_brush_source(gradients, bg.fill);
-        out.draw_rect(rect, bg.radius, src, bg.stroke);
+        out.draw_rect(rect, bg.corners, src, bg.stroke);
     }
 
     if clip {
@@ -430,7 +431,7 @@ fn encode_node(
                 // asymmetric.
                 let painted = tree
                     .chrome(id)
-                    .map(|bg| bg.radius)
+                    .map(|bg| bg.corners)
                     .expect("ClipMode::Rounded without chrome row — open_node invariant violated");
                 let [ptl, ptr_, pbr, pbl] = painted.as_array();
                 let [pl, pt, pr, pb] = padding.as_array();

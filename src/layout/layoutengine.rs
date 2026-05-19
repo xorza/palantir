@@ -292,7 +292,7 @@ impl LayoutEngine {
                 } else {
                     desired
                 };
-                self.arrange(tree, root, Rect { min: origin, size }, out);
+                self.arrange(tree, root, None, Rect { min: origin, size }, out);
             }
         }
         assert_eq!(
@@ -571,7 +571,14 @@ impl LayoutEngine {
     /// Top-down arrange dispatcher. `slot` is the rect the parent reserved
     /// (margin-inclusive). Stores `rect` for each visited node in the
     /// active layer's `Layout`.
-    pub(crate) fn arrange(&mut self, tree: &Tree, node: NodeId, slot: Rect, out: &mut Layout) {
+    pub(crate) fn arrange(
+        &mut self,
+        tree: &Tree,
+        node: NodeId,
+        parent: Option<NodeId>,
+        slot: Rect,
+        out: &mut Layout,
+    ) {
         let style = tree.records.layout()[node.idx()];
         if style.visibility().is_collapsed() {
             zero_subtree(self, tree, node, slot.min, out);
@@ -594,7 +601,9 @@ impl LayoutEngine {
             LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.mode_payload, out),
             mode @ (LayoutMode::ScrollVertical
             | LayoutMode::ScrollHorizontal
-            | LayoutMode::ScrollBoth) => scroll::arrange(self, tree, node, inner, mode, out),
+            | LayoutMode::ScrollBoth) => {
+                scroll::arrange(self, tree, node, parent, inner, mode, out)
+            }
         }
     }
 

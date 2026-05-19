@@ -198,6 +198,7 @@ pub(crate) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
+    parent: Option<NodeId>,
     inner: Rect,
     mode: LayoutMode,
     out: &mut Layout,
@@ -217,11 +218,9 @@ pub(crate) fn arrange(
     // appears). Used at record time to position bars flush with the
     // outer far edge. Falls back to `inner.size` for a root-mounted
     // scroll (no wrapper).
-    let parent = tree.parents[node.idx()];
-    let outer = if parent != NodeId::ROOT {
-        out[layout.active_layer].rect[parent.idx()].size
-    } else {
-        inner.size
+    let outer = match parent {
+        Some(p) => out[layout.active_layer].rect[p.idx()].size,
+        None => inner.size,
     };
     let entry = layout.scroll_states.entry(wid).or_default();
     let viewport = inner.size;

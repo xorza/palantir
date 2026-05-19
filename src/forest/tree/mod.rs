@@ -50,12 +50,6 @@ use std::hash::{Hash, Hasher as _};
 pub(crate) struct NodeId(pub(crate) u32);
 
 impl NodeId {
-    /// Sentinel "no parent" value used in [`Tree::parents`] for root
-    /// slots. `u32::MAX` is unreachable as a real `NodeId` (record cap
-    /// is `u32::MAX - 1` in practice; sparse column caps trip far
-    /// sooner).
-    pub(crate) const ROOT: Self = Self(u32::MAX);
-
     #[inline]
     pub(crate) fn idx(self) -> usize {
         self.0 as usize
@@ -199,14 +193,6 @@ pub(crate) struct Tree {
     /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<ChromeRow>,
 
-    /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
-    /// at `open_node` from `open_frames.last()`; lets any post-recording
-    /// pass (arrange, cascade, encode, debug) ask "who's my parent?" in
-    /// O(1) without a backwards `subtree_end` walk. Same lifecycle as
-    /// `records`: cleared in `pre_record`, pushed in `open_node`,
-    /// length-asserted at the end of `open_node`.
-    pub(crate) parents: Vec<NodeId>,
-
     // -- Shapes ----------------------------------------------------------
     /// Flat per-frame shape buffer. Records are indexed via
     /// `NodeRecord.shape_span`; variable-length payloads (mesh
@@ -278,7 +264,6 @@ impl Tree {
         self.bounds_table.clear();
         self.panel_table.clear();
         self.chrome_table.clear();
-        self.parents.clear();
         self.shapes.clear();
         self.paint_anims.clear();
         self.grid.clear();
@@ -335,8 +320,6 @@ impl Tree {
         let grid_defs = &self.grid.defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
-        let chrome_out = self.rollups.chrome.as_mut_slice();
-        let paints = &mut self.rollups.paints;
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
@@ -354,23 +337,15 @@ impl Tree {
                 // `self_transform_change_flips_node_hash`.
                 panel_tab[s].hash(&mut h);
             }
-            let has_chrome = ex.chrome.get().is_some();
-            // Chrome's authoring hash, isolated from the rest of the
-            // node's inputs so the damage diff can decide
-            // "chrome flipped vs. shape flipped" without re-walking
-            // the chrome at diff time. Both arms write a 1-byte
-            // discriminant before any payload so a chromeless node's
-            // stream can't collide with a chromed node whose hash
-            // happens to start `0x00`. Chromeless nodes leave the
-            // slot at `NodeHash::default()`.
-            if has_chrome {
-                let chrome = &chrome_tab[ex.chrome.get().unwrap()];
-                let mut ch = Hasher::new();
-                chrome.hash(&mut ch);
-                let chrome_hash = NodeHash(ch.finish());
-                chrome_out[i] = chrome_hash;
+            // Chrome authoring hash is pre-computed at lowering time
+            // (`FrameArena::lower_background`) and stored inline on
+            // `ChromeRow.hash`. Both arms write a 1-byte discriminant
+            // before any payload so a chromeless node's stream can't
+            // collide with a chromed node whose hash happens to start
+            // `0x00`.
+            if let Some(s) = ex.chrome.get() {
                 h.write_u8(1);
-                h.write_u64(chrome_hash.0);
+                h.write_u64(chrome_tab[s].hash.0);
             } else {
                 h.write_u8(0);
             }
@@ -379,7 +354,6 @@ impl Tree {
             // markers in record order. Each shape's canonical hash was
             // computed at `Shapes::add` time — fold it in as a u64 so
             // we don't re-hash the record fields here.
-            let mut has_direct_shape = false;
             let parent_span = shape_spans[i];
             let parent_end = (parent_span.start + parent_span.len) as usize;
             let mut cursor = parent_span.start as usize;
@@ -389,7 +363,6 @@ impl Tree {
                 let cs = shape_spans[next_child as usize];
                 let cs_start = cs.start as usize;
                 while cursor < cs_start {
-                    has_direct_shape = true;
                     h.write_u64(shape_hashes[cursor].0);
                     cursor += 1;
                 }
@@ -398,12 +371,8 @@ impl Tree {
                 next_child = ends[next_child as usize];
             }
             while cursor < parent_end {
-                has_direct_shape = true;
                 h.write_u64(shape_hashes[cursor].0);
                 cursor += 1;
-            }
-            if has_chrome || has_direct_shape {
-                paints.set(i, true);
             }
             if layouts[i].mode == LayoutMode::Grid {
                 let idx = layouts[i].mode_payload;
@@ -433,13 +402,9 @@ impl Tree {
     /// `element` is moved into the tree.
     pub(crate) fn peek_next_id(&self) -> NodeId {
         let id = self.records.len() as u32;
-        // `NodeId::ROOT = u32::MAX` is the sentinel `Tree::parents`
-        // uses for root slots; a real node landing on that value
-        // would silently look up its own row as the parent. Sparse-
-        // column `Slot` caps at `u16::MAX` trip far sooner in
-        // practice — `debug_assert` because in release, the
-        // `Slot::from_len` assert is what actually fires on runaway
-        // record paths, ~65 535 nodes before this ceiling.
+        // Sparse-column `Slot` caps at `u16::MAX` trip far sooner in
+        // practice (~65 535 nodes) than this `u32` ceiling — this
+        // assert is a final guardrail against silent wraparound.
         assert!(id < u32::MAX, "Tree record cap reached: {id} nodes");
         NodeId(id)
     }
@@ -477,7 +442,7 @@ impl Tree {
         );
 
         if matches!(element.clip_mode(), ClipMode::Rounded) {
-            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.radius.approx_zero());
+            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.corners.approx_zero());
             if radius_zero {
                 element.set_clip(ClipMode::Rect);
             }
@@ -547,18 +512,15 @@ impl Tree {
             layout: cols.layout,
             attrs: cols.attrs,
         });
-        self.parents
-            .push(parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
-        // Column length-equality. `records` + `extras_idx` + `parents`
-        // must agree on `len`; a missed push silently shifts every
-        // later node's index. Invariant is structurally guarded by the
-        // unconditional pushes above — debug-only check.
+        // Column length-equality. `records` + `extras_idx` must agree
+        // on `len`; a missed push silently shifts every later node's
+        // index. Invariant is structurally guarded by the unconditional
+        // pushes above — debug-only check.
         #[cfg(debug_assertions)]
         {
             let n = self.records.len();
             assert_eq!(self.extras_idx.len(), n);
-            assert_eq!(self.parents.len(), n);
         }
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();

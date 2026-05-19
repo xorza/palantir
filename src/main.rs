@@ -136,7 +136,7 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                 .background(Background {
                     fill: Color::hex(0x343434).into(),
                     stroke: palantir::Stroke::solid(Color::hex(0x363636), 1.0),
-                    radius: palantir::Corners::all(8.0),
+                    corners: palantir::Corners::all(8.0),
                     shadow: Shadow::NONE,
                 })
                 .show(ui, |ui| {

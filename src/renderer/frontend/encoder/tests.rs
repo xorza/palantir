@@ -369,7 +369,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                     .background(Background {
                         fill: Color::rgb(0.2, 0.2, 0.2).into(),
                         stroke: Stroke::solid(Color::rgb(1.0, 1.0, 1.0), 2.0),
-                        radius: Corners::all(8.0),
+                        corners: Corners::all(8.0),
                         shadow: Shadow::NONE,
                     })
                     .clip_rounded()
@@ -676,11 +676,11 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
     assert_eq!(cascades.entries.sense()[child.idx()], Sense::NONE);
 }
 
-/// `align_text_in` math: glyph bbox positioned inside the leaf's arranged
+/// `text_in_rect` math: glyph bbox positioned inside the leaf's arranged
 /// rect. Auto/center/right-bottom shift the origin; oversize content
 /// clamps to top-left so it doesn't clip on the wrong side.
 #[test]
-fn align_text_in_cases() {
+fn text_in_rect_cases() {
     let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
     let measured = Size::new(80.0, 16.0);
 

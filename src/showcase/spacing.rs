@@ -10,7 +10,7 @@ use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizi
 fn panel_bg() -> Background {
     Background {
         fill: Color::hex(0x252525).into(),
-        radius: Corners::all(4.0),
+        corners: Corners::all(4.0),
         ..Default::default()
     }
 }
@@ -89,7 +89,7 @@ pub fn build(ui: &mut Ui) {
                             .background(Background {
                                 fill: swatch::B.into(),
                                 stroke: Stroke::solid(swatch::B, 1.0),
-                                radius: Corners::all(4.0),
+                                corners: Corners::all(4.0),
                                 shadow: Shadow::NONE,
                             })
                             .show(ui);
