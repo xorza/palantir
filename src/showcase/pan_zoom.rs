@@ -77,14 +77,14 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
     let bg = |fill: Color| -> Background {
         Background {
             fill: fill.into(),
-            radius: Corners::all(3.0),
+            corners: Corners::all(3.0),
             ..Default::default()
         }
     };
     let pressed_bg = Background {
         fill: brighten(base, 0.3).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 1.0),
-        radius: Corners::all(3.0),
+        corners: Corners::all(3.0),
         shadow: Shadow::NONE,
     };
     let label_text = TextStyle::default()

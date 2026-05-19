@@ -66,7 +66,7 @@ fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
 fn filled(brush: Brush) -> Background {
     Background {
         fill: brush,
-        radius: Corners::all(8.0),
+        corners: Corners::all(8.0),
         ..Default::default()
     }
 }

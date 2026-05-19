@@ -249,7 +249,7 @@ impl MenuItem {
         let chrome = Background {
             fill: ui.theme.context_menu.separator.into(),
             stroke: Stroke::ZERO,
-            radius: Corners::ZERO,
+            corners: Corners::ZERO,
             shadow: Shadow::NONE,
         };
         let id = ui.make_persistent_id(element.salt);

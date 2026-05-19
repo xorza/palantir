@@ -5,6 +5,7 @@
 
 use crate::animation::paint::PaintAnim;
 use crate::common::frame_arena::FrameArena;
+use crate::common::per_layer::PerLayer;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
@@ -15,9 +16,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
-use std::array;
 use std::time::Duration;
-use strum::EnumCount as _;
 
 /// One explicit-id collision recorded this frame. Both endpoints
 /// carry their own `Layer` because the colliding ids can straddle a
@@ -87,7 +86,7 @@ impl Layer {
 /// cross-layer aggregation that doesn't care about layer order
 /// (e.g. summing record counts).
 pub(crate) struct Forest {
-    pub(crate) trees: [Tree; Layer::COUNT],
+    pub(crate) trees: PerLayer<Tree>,
     /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
     /// detection + auto-id disambiguation), reset by `pre_record`, and
     /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
@@ -101,13 +100,12 @@ pub(crate) struct Forest {
     /// paint walk; cleared by the next `pre_record`. Public-in-crate
     /// so tests can introspect.
     pub(crate) collisions: Vec<CollisionRecord>,
-    /// Active layer for the next `open_node`. `Main` between/outside
-    /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
-    pub(crate) current_layer: Layer,
-    /// Save-stack: one entry per open `push_layer` — the outer layer
-    /// is restored on `pop_layer`. Empty outside any layer scope.
-    /// Anchors save and restore on the per-`Tree` `pending_anchors`
-    /// stack, so nested same-layer pushes (currently forbidden by the
+    /// Layer scope stack. Top is the active layer for the next
+    /// `open_node`; the entry below (when any) is the layer
+    /// `pop_layer` will restore. Seeded with `[Layer::Main]` and never
+    /// drained below that baseline — `pop_layer` asserts. Anchors save
+    /// and restore on the per-`Tree` `pending_anchors` stack, so
+    /// nested same-layer pushes (currently forbidden by the
     /// `Forest::push_layer` assert) would also be safe.
     layer_stack: Vec<Layer>,
 }
@@ -115,19 +113,28 @@ pub(crate) struct Forest {
 impl Default for Forest {
     fn default() -> Self {
         Self {
-            trees: array::from_fn(|_| Tree::default()),
+            trees: PerLayer::default(),
             ids: SeenIds::default(),
             collisions: Vec::new(),
-            current_layer: Layer::Main,
-            layer_stack: Vec::new(),
+            layer_stack: vec![Layer::Main],
         }
     }
 }
 
 impl Forest {
+    /// Active layer for the next `open_node`. `Main` between/outside
+    /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
+    #[inline]
+    pub(crate) fn current_layer(&self) -> Layer {
+        *self
+            .layer_stack
+            .last()
+            .expect("layer_stack drained below Main baseline")
+    }
+
     pub(crate) fn pre_record(&mut self) {
-        self.current_layer = Layer::Main;
         self.layer_stack.clear();
+        self.layer_stack.push(Layer::Main);
         self.ids.pre_record();
         self.collisions.clear();
         for t in &mut self.trees {
@@ -143,14 +150,14 @@ impl Forest {
     /// `Ui::frame_inner` for both record + paint-only paths.
     #[profiling::function]
     pub(crate) fn post_record(&mut self) {
+        let active = self.current_layer();
         assert_eq!(
-            self.current_layer,
+            active,
             Layer::Main,
-            "post_record called with active layer {:?} — Ui::layer body forgot to return",
-            self.current_layer,
+            "post_record called with active layer {active:?} — Ui::layer body forgot to return",
         );
         for layer in Layer::PAINT_ORDER {
-            self.trees[layer.idx()].post_record();
+            self.trees[layer].post_record();
         }
     }
 
@@ -188,7 +195,7 @@ impl Forest {
         element: Element,
         chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
     ) {
-        let layer = self.current_layer;
+        let layer = self.current_layer();
         let node = self.current_tree_mut().peek_next_id();
         let endpoint = Endpoint { layer, node };
         if let EndpointOutcome::ExplicitCollision { first, second } =
@@ -257,26 +264,28 @@ impl Forest {
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
+        let active = self.current_layer();
         assert_eq!(
-            self.current_layer,
+            active,
             Layer::Main,
-            "Ui::layer must be called from the Main scope (current: {:?})",
-            self.current_layer,
+            "Ui::layer must be called from the Main scope (current: {active:?})",
         );
-        let tree = &mut self.trees[layer.idx()];
+        let tree = &mut self.trees[layer];
         assert!(
             tree.open_frames.is_empty(),
-            "Ui::layer({:?}) called while a node is still open in that layer",
-            layer,
+            "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
         tree.pending_anchors.push(PendingAnchor { anchor, size });
-        self.layer_stack.push(self.current_layer);
-        self.current_layer = layer;
+        self.layer_stack.push(layer);
     }
 
     pub(crate) fn pop_layer(&mut self) {
-        let layer = self.current_layer;
-        let tree = &mut self.trees[layer.idx()];
+        assert!(
+            self.layer_stack.len() > 1,
+            "pop_layer without matching push_layer",
+        );
+        let layer = self.current_layer();
+        let tree = &mut self.trees[layer];
         assert!(
             tree.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
@@ -284,45 +293,40 @@ impl Forest {
             layer,
         );
         tree.pending_anchors.pop();
-        self.current_layer = self
-            .layer_stack
-            .pop()
-            .expect("pop_layer without matching push_layer");
+        self.layer_stack.pop();
     }
 
     /// Borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree(&self, layer: Layer) -> &Tree {
-        &self.trees[layer.idx()]
+        &self.trees[layer]
     }
 
     /// Mutably borrow the tree owned by `layer`.
     #[inline]
     pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
-        &mut self.trees[layer.idx()]
+        &mut self.trees[layer]
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one
     /// `open_node` / `add_shape` dispatch to. Convenience over
-    /// `tree(current_layer)` for the very common case.
+    /// `tree(current_layer())` for the very common case.
     #[inline]
     pub(crate) fn current_tree(&self) -> &Tree {
-        &self.trees[self.current_layer.idx()]
+        &self.trees[self.current_layer()]
     }
 
     /// Mutably borrow the tree for the [`Self::current_layer`].
     #[inline]
     pub(crate) fn current_tree_mut(&mut self) -> &mut Tree {
-        &mut self.trees[self.current_layer.idx()]
+        let layer = self.current_layer();
+        &mut self.trees[layer]
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing
     /// each with its layer tag. Pipeline passes consume this to
     /// process layers bottom-up.
     pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &Tree)> {
-        Layer::PAINT_ORDER
-            .iter()
-            .copied()
-            .map(move |layer| (layer, &self.trees[layer.idx()]))
+        self.trees.iter_paint_order()
     }
 }

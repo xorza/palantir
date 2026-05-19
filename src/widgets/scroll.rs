@@ -227,7 +227,7 @@ fn push_bar_nodes(
             Background {
                 fill: theme.track.into(),
                 stroke: Stroke::ZERO,
-                radius,
+                corners: radius,
                 shadow: Shadow::NONE,
             },
             |_| {},
@@ -258,7 +258,7 @@ fn push_bar_nodes(
         Background {
             fill: fill.into(),
             stroke: Stroke::ZERO,
-            radius,
+            corners: radius,
             shadow: Shadow::NONE,
         },
         |_| {},

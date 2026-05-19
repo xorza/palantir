@@ -110,7 +110,7 @@ mod tests {
                 background: Some(Background {
                     fill: Color::hex(0x336699).into(),
                     stroke: Stroke::solid(Color::hex(0xffffff), 1.5),
-                    radius: Corners::all(6.0),
+                    corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                 }),
                 text: Some(TextStyle::default().with_font_size(20.0)),

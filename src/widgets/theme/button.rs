@@ -54,7 +54,7 @@ impl Default for ButtonTheme {
             Some(Background {
                 fill: fill.into(),
                 stroke: Stroke::solid(edge, 1.0),
-                radius: Corners::all(4.0),
+                corners: Corners::all(4.0),
                 shadow: Shadow::NONE,
             })
         };
@@ -62,7 +62,7 @@ impl Default for ButtonTheme {
         let pressed_bg = Background {
             fill: palette::ELEM_ACTIVE.into(),
             stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.0),
-            radius: Corners::all(4.0),
+            corners: Corners::all(4.0),
             shadow: Shadow::NONE,
         };
         Self {

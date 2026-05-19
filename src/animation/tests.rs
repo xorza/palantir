@@ -760,7 +760,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let bg = Background {
         fill: Color::hex(0x336699).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 2.0),
-        radius: Corners::all(4.0),
+        corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
     let look = WidgetLook {
@@ -783,7 +783,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         "None: stroke width snaps"
     );
     assert_eq!(snap.background.stroke.brush, bg.stroke.brush);
-    assert_eq!(snap.background.radius, bg.radius);
+    assert_eq!(snap.background.corners, bg.corners);
     assert_eq!(
         snap.text.color, fallback.color,
         "None: text falls back to fallback_text",
@@ -833,7 +833,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let start = Background {
         fill: Color::rgb(0.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
-        radius: Corners::all(2.0),
+        corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
     // First touch: snaps current = start, returns settled. No motion
@@ -844,7 +844,7 @@ fn spring_snap_fields_carry_target_immediately() {
     let target = Background {
         fill: Color::rgb(1.0, 0.0, 0.0).into(),
         stroke: Stroke::ZERO,
-        radius: Corners::all(12.0),
+        corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
     let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016, next_frame());
@@ -853,7 +853,7 @@ fn spring_snap_fields_carry_target_immediately() {
         "spring with a real fill diff must remain in flight after one step",
     );
     assert_eq!(
-        r.current.radius, target.radius,
+        r.current.corners, target.corners,
         "snap field must carry target value on the first stepped frame, not lag until settle",
     );
     assert!(

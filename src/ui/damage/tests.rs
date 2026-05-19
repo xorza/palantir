@@ -70,7 +70,12 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = ui.forest.tree(Layer::Main).rollups.paints.count_ones(..);
+    let painting = ui.layout.cascades.layers[Layer::Main]
+        .paint_arena
+        .node_spans
+        .iter()
+        .filter(|s| s.len > 0)
+        .count();
     assert_eq!(ui.damage_engine.dirty.len(), painting);
     // First frame is `force_full`, so `compute` short-circuits to
     // `Damage::Full` after the structural diff and skips the
@@ -1694,11 +1699,9 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     );
 }
 
-/// `NodeSnapshot.chrome_rect` mirrors `Cascades.chrome_rects` and
-/// `NodeSnapshot.shapes` contains one entry per direct shape with
-/// matching rect and canonical hash. Verifies slice 3's
-/// decomposition is populated correctly without yet driving the
-/// per-shape damage push.
+/// `NodeSnapshot.paint_span` covers one entry per Paint row on the
+/// node — chrome at row 0 when present, then each direct shape — with
+/// matching rect and canonical hash. Mirrors `Cascades::paint_arenas`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::Shape;
@@ -1732,48 +1735,42 @@ fn node_snapshot_decomposition_matches_cascade() {
     });
 
     let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
-    let li = Layer::Main.idx();
+    let layer = Layer::Main;
     let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")] as usize;
+    let node_span = ui.layout.cascades.layers[layer].paint_arena.node_spans[node_idx];
+    let layer_paints = &ui.layout.cascades.layers[layer].paint_arena.rows;
 
-    // chrome_rect mirrors `Cascades.chrome_rects` (the chrome-only,
-    // pre-shapes-union screen rect).
-    assert_eq!(
-        snap.chrome_rect, ui.layout.cascades.chrome_rects[li][node_idx],
-        "snapshot chrome_rect must match cascade column",
-    );
+    // Chrome lands at row 0 of the node's paint span when present.
+    let chrome_paint = layer_paints[node_span.start as usize];
     assert!(
-        snap.chrome_rect.area() > 0.0,
-        "chrome panel must have non-zero chrome_rect",
+        chrome_paint.screen.area() > 0.0,
+        "chrome panel must have non-zero chrome rect",
     );
 
-    // One entry per direct shape in the engine's shape arena.
-    let snap_shapes = &ui.damage_engine.shape_snaps[snap.shape_span.range()];
-    assert_eq!(snap_shapes.len(), 2, "two direct shapes ⇒ two snaps");
-    let shape_rects = &ui.layout.cascades.shape_rects[li];
-    let shape_hashes = &ui.forest.tree(Layer::Main).shapes.hashes;
-    for (ord, s) in snap_shapes.iter().enumerate() {
+    // Snapshot mirrors the cascade arena slice.
+    let snap_paints = &ui.damage_engine.paint_snaps[snap.paint_span.range()];
+    assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
+    let cascade_paints = &layer_paints[node_span.range()];
+    for (ord, p) in snap_paints.iter().enumerate() {
         assert_eq!(
-            s.rect, shape_rects[ord],
-            "shape #{ord} rect must match cascade column",
+            p.screen, cascade_paints[ord].screen,
+            "paint #{ord} rect must match cascade column",
         );
         assert_eq!(
-            s.hash, shape_hashes[ord],
-            "shape #{ord} hash must match the canonical per-shape hash",
+            p.hash, cascade_paints[ord].hash,
+            "paint #{ord} hash must match cascade column",
         );
     }
 
-    // Slice 4 contract: Vacant pushes chrome + each shape rect
-    // separately, never the union. With chrome + 2 shapes ⇒ 3
-    // entries in `raw_rects`. Order: chrome first, then shapes in
-    // record order.
+    // Vacant pushes one rect per paint row (chrome + each shape).
     assert_eq!(
         ui.damage_engine.raw_rects.len(),
         3,
-        "Vacant insert pushes chrome + one entry per shape (slice 4)",
+        "Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(ui.damage_engine.raw_rects[0], snap.chrome_rect);
-    assert_eq!(ui.damage_engine.raw_rects[1], snap_shapes[0].rect);
-    assert_eq!(ui.damage_engine.raw_rects[2], snap_shapes[1].rect);
+    assert_eq!(ui.damage_engine.raw_rects[0], snap_paints[0].screen);
+    assert_eq!(ui.damage_engine.raw_rects[1], snap_paints[1].screen);
+    assert_eq!(ui.damage_engine.raw_rects[2], snap_paints[2].screen);
 }
 
 /// Slice 4 headline: a multi-shape owner whose shapes are spatially
@@ -1839,11 +1836,13 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // geometry AND authoring → no chrome push. Shapes 0 and 1 are
     // bit-identical → no push.
     let prev_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_shape2_rect = ui.damage_engine.shape_snaps[prev_snap.shape_span.range()][2].rect;
+    // paint_snaps row 0 is chrome; shapes follow at offset 1.
+    let prev_shape2_rect = ui.damage_engine.paint_snaps[prev_snap.paint_span.range()][1 + 2].screen;
     frame(&mut ui, |ui| build(140.0, ui));
 
     let canvas_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let curr_shape2_rect = ui.damage_engine.shape_snaps[canvas_snap.shape_span.range()][2].rect;
+    let curr_shape2_rect =
+        ui.damage_engine.paint_snaps[canvas_snap.paint_span.range()][1 + 2].screen;
 
     // The damage region must intersect both old and new positions of
     // shape 2 (so the pixels-at-old-position get cleared and
@@ -1881,11 +1880,11 @@ fn per_shape_damage_only_pushes_changed_shapes() {
 
 /// Chrome authoring change (hover fill flip, no rect change) must
 /// push the chrome rect even though the geometric rect is identical.
-/// Pins the `chrome_hash` half of the chrome leg — without it, a
-/// hover-color flip would fall through the rect-only guard and emit
-/// no damage at all.
+/// Chrome is row 0 of the node's paint span and carries its own
+/// authoring hash via `Paint.hash`; without that, a hover-color flip
+/// would fall through the rect-only guard and emit no damage at all.
 #[test]
-fn chrome_authoring_change_pushes_chrome_rect() {
+fn chrome_authoring_change_pushes_chrome_paint_row() {
     let mut ui = Ui::for_test();
     let build = |fill: Color, ui: &mut Ui| {
         Panel::hstack()
@@ -1899,15 +1898,16 @@ fn chrome_authoring_change_pushes_chrome_rect() {
     };
     frame(&mut ui, |ui| build(BLUE, ui));
     frame(&mut ui, |ui| build(BLUE, ui)); // settle
-    let snap_rect = ui.damage_engine.prev[&WidgetId::from_hash("c")].chrome_rect;
+    let snap = ui.damage_engine.prev[&WidgetId::from_hash("c")];
+    let snap_rect = ui.damage_engine.paint_snaps[snap.paint_span.start as usize].screen;
 
     frame(&mut ui, |ui| build(RED, ui));
     let region = ui.damage_region();
     let rects: Vec<_> = region.iter_rects().collect();
     assert!(
         rects.iter().any(|r| r.intersects(snap_rect)),
-        "chrome authoring change must push chrome_rect even when rect \
-         geometry is unchanged; region = {rects:?}",
+        "chrome authoring change must push chrome paint row even when \
+         rect geometry is unchanged; region = {rects:?}",
     );
 }
 
@@ -1963,10 +1963,11 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // Snapshot the prev rects for shapes 0/1/2 so we can verify the
     // post-delete damage region.
     let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
-    let prev_shapes = &ui.damage_engine.shape_snaps[prev.shape_span.range()];
+    // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
+    let prev_shapes = &ui.damage_engine.paint_snaps[prev.paint_span.range()];
     assert_eq!(prev_shapes.len(), 3);
-    let prev_middle_rect = prev_shapes[1].rect;
-    let prev_blue_rect = prev_shapes[2].rect;
+    let prev_middle_rect = prev_shapes[1].screen;
+    let prev_blue_rect = prev_shapes[2].screen;
 
     // Delete the middle shape. Now ord 0 still maps to red, but
     // ord 1 — previously green — is now blue. The diff sees:
@@ -1978,8 +1979,8 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
 
     let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     assert_eq!(
-        post.shape_span.len, 2,
-        "snapshot tail must be trimmed to the new shape count",
+        post.paint_span.len, 2,
+        "snapshot tail must be trimmed to the new paint count",
     );
 
     let region = ui.damage_region();
@@ -2003,19 +2004,15 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // pin that the *deleted* and *shifted* rects are present.
 }
 
-/// Regression: a chrome-only owner (background but zero direct shapes)
-/// records a `Span` with `len == 0` whose `start` is whatever
-/// `shape_snaps.len()` happened to be at insert time. When a later
-/// compaction shrinks the arena, the `len == 0` continue arm in
-/// `compact_shape_snaps` used to leave the stale `start` alone — so
-/// any subsequent `shape_snaps[snap.shape_span.range()]` slice (the
-/// removed-eviction tail at the bottom of `compute`, the per-frame
-/// chrome-only `push_decomposed_paint` paths) tripped a bounds panic
-/// like "range start index 245 out of range for slice of length 83".
+/// Painting-only invariant: every `DamageEngine.prev` entry covers
+/// at least one Paint row. A chrome-only owner used to land in `prev`
+/// with `shape_span.len == 0` (chrome was tracked in a separate
+/// column); under the unified `paint_arena`, chrome is row 0 of the
+/// node's span, so the same owner now has `paint_span.len == 1`.
+/// `compact_paint_snaps` asserts on zero-len entries — this test
+/// pins the producer side of that contract.
 #[test]
-fn compaction_normalises_zero_len_spans_to_in_bounds_start() {
-    use crate::ui::damage::Span;
-
+fn chrome_only_owner_has_nonzero_paint_span() {
     let mut ui = Ui::for_test();
     let build = |ui: &mut Ui| {
         Panel::hstack()
@@ -2027,36 +2024,27 @@ fn compaction_normalises_zero_len_spans_to_in_bounds_start() {
             })
             .show(ui, |_| {});
     };
-
     frame(&mut ui, build);
-    frame(&mut ui, build); // settle
+    frame(&mut ui, build); // settle prev
 
-    // The chrome-only panel paints (chrome), but contributes zero
-    // direct shapes, so its snapshot's span has len == 0.
     let wid = WidgetId::from_hash("chrome_only");
-    assert_eq!(ui.damage_engine.prev[&wid].shape_span.len, 0);
-
-    // Simulate the state left by a previous compaction cycle: the
-    // arena is small (compaction copied only the entries it actually
-    // reseated) and our zero-len snap still references the pre-swap
-    // tail.
-    ui.damage_engine.prev.get_mut(&wid).unwrap().shape_span = Span::new(999, 0);
-
-    // Run another compaction. Pre-fix, the zero-len `continue` left
-    // start=999 untouched; post-fix, it is normalised so the range
-    // stays in bounds.
-    ui.damage_engine.compact_shape_snaps(&ui.forest);
-
     let snap = ui.damage_engine.prev[&wid];
-    let len = ui.damage_engine.shape_snaps.len() as u32;
-    assert!(
-        snap.shape_span.start <= len,
-        "zero-len span start {} must be <= shape_snaps.len() {}",
-        snap.shape_span.start,
-        len,
+    assert_eq!(
+        snap.paint_span.len, 1,
+        "chrome-only owner must contribute exactly one Paint row (chrome)",
     );
-    // And the slice itself must not panic.
-    let _ = &ui.damage_engine.shape_snaps[snap.shape_span.range()];
+
+    // Every entry in `prev` covers at least one row.
+    for (k, s) in &ui.damage_engine.prev {
+        assert!(
+            s.paint_span.len > 0,
+            "prev entry {k:?} has zero-len paint_span, violating painting-only invariant",
+        );
+    }
+
+    // Compaction must accept the live state without tripping the
+    // invariant assert.
+    ui.damage_engine.compact_paint_snaps(&ui.forest);
 }
 
 /// Pin: changing the *content* of a `Shape::Text` with
@@ -2125,7 +2113,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // so the assertion below can reason from the actual measured
     // values rather than hand-recomputing mono geometry.
     let prev_snap = ui.damage_engine.prev[&leaf_id];
-    let prev_text_rect = ui.damage_engine.shape_snaps[prev_snap.shape_span.range()][0].rect;
+    let prev_text_rect = ui.damage_engine.paint_snaps[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0, FONT);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
@@ -2136,7 +2124,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut ui, |ui| build("abcdef", ui));
 
     let curr_snap = ui.damage_engine.prev[&leaf_id];
-    let curr_text_rect = ui.damage_engine.shape_snaps[curr_snap.shape_span.range()][0].rect;
+    let curr_text_rect = ui.damage_engine.paint_snaps[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0, FONT);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
@@ -2234,7 +2222,12 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let tree = ui.forest.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_idx];
     assert!(shape_span.len >= 1, "host should have at least one shape");
-    let shape_rect = cascades.shape_rects[Layer::Main.idx()][shape_span.start as usize];
+    // First Paint row for the host node — chrome row 0 if present,
+    // otherwise the first shape. The host here has no chrome, so
+    // `node_spans[host_idx].start` indexes the first shape's `Paint`.
+    let paint_arena = &cascades.layers[Layer::Main].paint_arena;
+    let paints_start = paint_arena.node_spans[host_idx].start as usize;
+    let shape_rect = paint_arena.rows[paints_start].screen;
     assert!(
         shape_rect.size.w <= host_rect.size.w + 0.5,
         "direct shape rect must be clipped to the host's own mask; \

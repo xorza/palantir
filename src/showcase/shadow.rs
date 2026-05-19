@@ -179,7 +179,7 @@ fn chrome_soft() -> Background {
     Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
-        radius: Corners::all(12.0),
+        corners: Corners::all(12.0),
         shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.20),
             offset: Vec2::new(0.0, 4.0),
@@ -194,7 +194,7 @@ fn chrome_elevated() -> Background {
     Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
-        radius: Corners::all(12.0),
+        corners: Corners::all(12.0),
         shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.28),
             offset: Vec2::new(0.0, 12.0),
@@ -209,7 +209,7 @@ fn chrome_inset() -> Background {
     Background {
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
-        radius: Corners::all(12.0),
+        corners: Corners::all(12.0),
         shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.45),
             offset: Vec2::new(0.0, 3.0),
@@ -227,7 +227,7 @@ fn chrome_translucent() -> Background {
     Background {
         fill: Color::rgba(0.95, 0.95, 0.97, 0.4).into(),
         stroke: Default::default(),
-        radius: Corners::all(12.0),
+        corners: Corners::all(12.0),
         shadow: Shadow {
             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
             offset: Vec2::new(0.0, 6.0),
