@@ -335,7 +335,6 @@ impl Tree {
         let grid_defs = &self.grid.defs;
         let node_out = self.rollups.node.as_mut_slice();
         let subtree_out = self.rollups.subtree.as_mut_slice();
-        let chrome_out = self.rollups.chrome.as_mut_slice();
 
         for i in (0..n).rev() {
             let mut h = Hasher::new();
@@ -353,23 +352,15 @@ impl Tree {
                 // `self_transform_change_flips_node_hash`.
                 panel_tab[s].hash(&mut h);
             }
-            let has_chrome = ex.chrome.get().is_some();
-            // Chrome's authoring hash, isolated from the rest of the
-            // node's inputs so the damage diff can decide
-            // "chrome flipped vs. shape flipped" without re-walking
-            // the chrome at diff time. Both arms write a 1-byte
-            // discriminant before any payload so a chromeless node's
-            // stream can't collide with a chromed node whose hash
-            // happens to start `0x00`. Chromeless nodes leave the
-            // slot at `NodeHash::default()`.
-            if has_chrome {
-                let chrome = &chrome_tab[ex.chrome.get().unwrap()];
-                let mut ch = Hasher::new();
-                chrome.hash(&mut ch);
-                let chrome_hash = NodeHash(ch.finish());
-                chrome_out[i] = chrome_hash;
+            // Chrome authoring hash is pre-computed at lowering time
+            // (`FrameArena::lower_background`) and stored inline on
+            // `ChromeRow.hash`. Both arms write a 1-byte discriminant
+            // before any payload so a chromeless node's stream can't
+            // collide with a chromed node whose hash happens to start
+            // `0x00`.
+            if let Some(s) = ex.chrome.get() {
                 h.write_u8(1);
-                h.write_u64(chrome_hash.0);
+                h.write_u64(chrome_tab[s].hash.0);
             } else {
                 h.write_u8(0);
             }
@@ -470,7 +461,7 @@ impl Tree {
         );
 
         if matches!(element.clip_mode(), ClipMode::Rounded) {
-            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.radius.approx_zero());
+            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.corners.approx_zero());
             if radius_zero {
                 element.set_clip(ClipMode::Rect);
             }

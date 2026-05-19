@@ -75,19 +75,19 @@ impl Default for TextEditTheme {
         let normal_bg = Background {
             fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::solid(edge, 1.0),
-            radius,
+            corners: radius,
             shadow: Shadow::NONE,
         };
         let focused_bg = Background {
             fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.5),
-            radius,
+            corners: radius,
             shadow: Shadow::NONE,
         };
         let disabled_bg = Background {
             fill: palette::ELEM.into(),
             stroke: Stroke::solid(edge, 1.0),
-            radius,
+            corners: radius,
             shadow: Shadow::NONE,
         };
         // Selection = accent at ~25% alpha — readable wash that doesn't

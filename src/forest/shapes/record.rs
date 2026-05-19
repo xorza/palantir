@@ -87,41 +87,26 @@ impl From<ShapeStroke> for Stroke {
 
 /// Lowered chrome row stored in `Tree.chrome_table`. The user-facing
 /// `Background` is ~232 B (inline `Brush` + `Stroke` with inline
-/// `Brush`); this row keeps the same fields in their lowered forms,
-/// shrinking the per-chrome footprint to ~96 B. Same lifecycle as
-/// shape records — written at `open_node_with_chrome`, cleared per
-/// frame. Gradient handle indexes into `FrameArena.gradients` (the
-/// same arena `ShapeBrush::Gradient` uses), so chrome and shape
-/// paints share storage.
+/// `Brush`); this row keeps the same fields in their lowered forms.
+/// Same lifecycle as shape records — written at
+/// `open_node_with_chrome`, cleared per frame. Gradient handle indexes
+/// into `FrameArena.gradients` (the same arena `ShapeBrush::Gradient`
+/// uses), so chrome and shape paints share storage.
+///
+/// `hash` is the canonical authoring fingerprint, pre-computed at
+/// lowering time (`FrameArena::lower_background`) over `fill` +
+/// `stroke` + `radius` + `shadow`. Read at damage diff time via the
+/// chrome row of [`crate::ui::cascade::Paint`], and folded into the
+/// owner node's hash in [`crate::forest::tree::Tree::compute_hashes`]
+/// as a single `u64` write — no second per-chrome hash walk.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ChromeRow {
     pub(crate) fill: ShapeBrush,
     pub(crate) stroke: ShapeStroke,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
-    /// Pre-computed content hash for `fill` when it's a gradient, 0
-    /// for solid — same context-free-Hash trick as
-    /// `ShapeRecord::RoundedRect.fill_grad_hash`. Lets
-    /// `ChromeRow::Hash` work without threading the gradient arena.
-    pub(crate) fill_grad_hash: u64,
-}
-
-impl Hash for ChromeRow {
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        match self.fill {
-            ShapeBrush::Solid(c) => {
-                h.write_u8(0);
-                c.hash(h);
-            }
-            ShapeBrush::Gradient(_) => {
-                h.write_u8(1);
-                h.write_u64(self.fill_grad_hash);
-            }
-        }
-        h.write(bytemuck::bytes_of(&self.stroke));
-        self.radius.hash(h);
-        self.shadow.hash(h);
-    }
+    /// Canonical authoring hash. See struct docs.
+    pub(crate) hash: crate::forest::rollups::NodeHash,
 }
 
 /// Lowered shadow. The user-facing `Shadow` is 36 B (linear `Color` +

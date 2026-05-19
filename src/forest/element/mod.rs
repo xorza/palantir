@@ -418,19 +418,6 @@ impl LayoutCore {
     }
 }
 
-impl std::hash::Hash for LayoutCore {
-    /// Three `u64` writes (size/padding/margin) + one `u16` packing
-    /// `bits` and the mode tag. `mode_payload` excluded — see
-    /// `hash_with_flags`.
-    #[inline(always)]
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u64(self.size.as_u64());
-        h.write_u64(self.padding.as_u64());
-        h.write_u64(self.margin.as_u64());
-        h.write_u16(u16::from_ne_bytes([self.bits, self.mode as u8]));
-    }
-}
-
 const _: () = assert!(
     (Visibility::Collapsed as u8) <= (LayoutCore::VIS_MASK >> LayoutCore::VIS_SHIFT),
     "Visibility discriminant exceeds 2 bits",

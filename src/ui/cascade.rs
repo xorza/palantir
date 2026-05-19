@@ -599,7 +599,7 @@ fn compute_paint_rect(
         union_in(&mut union, screen);
         arena.rows.push(Paint {
             screen,
-            hash: tree.rollups.chrome[node.idx()],
+            hash: bg.hash,
         });
     } else if tree.records.attrs()[node.idx()].clip_mode().is_clip() {
         // Chromeless clip-only container: union the owner rect into
