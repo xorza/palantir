@@ -1,4 +1,4 @@
-use half::f16;
+use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 
 #[repr(C)]
 #[derive(
@@ -409,10 +409,7 @@ impl ColorF16 {
     /// slice path. Single instruction on F16C/fp16 targets.
     #[inline]
     pub fn unpack(self) -> Color {
-        use half::slice::HalfFloatSliceExt;
-        let arr: &[f16; 4] = bytemuck::cast_ref(&self.0);
-        let mut out = [0.0f32; 4];
-        arr.as_slice().convert_to_f32_slice(&mut out);
+        let out = f16x4_to_f32x4(self.0);
         Color {
             r: out[0],
             g: out[1],
@@ -427,11 +424,7 @@ impl From<Color> for ColorF16 {
     /// on F16C/fp16 targets, scalar fallback elsewhere.
     #[inline]
     fn from(c: Color) -> Self {
-        use half::slice::HalfFloatSliceExt;
-        let src = [c.r, c.g, c.b, c.a];
-        let mut out = [f16::ZERO; 4];
-        out.as_mut_slice().convert_from_f32_slice(&src);
-        Self(bytemuck::cast(out))
+        Self(f16x4_from_f32x4([c.r, c.g, c.b, c.a]))
     }
 }
 

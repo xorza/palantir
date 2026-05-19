@@ -1,3 +1,4 @@
+use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 use super::num::Num;
 use super::size::Size;
 use glam::Vec2;
@@ -218,11 +219,7 @@ impl Corners {
     /// SIMD rationale — same `half` slice path.
     #[inline]
     pub fn as_array(&self) -> [f32; 4] {
-        use half::slice::HalfFloatSliceExt;
-        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.0);
-        let mut out = [0.0f32; 4];
-        arr.as_slice().convert_to_f32_slice(&mut out);
-        out
+        f16x4_to_f32x4(self.0)
     }
 
     /// Inverse of [`Self::as_array`] — pack 4 runtime f32s into the
@@ -232,10 +229,7 @@ impl Corners {
     /// compile-time-known values.
     #[inline]
     pub fn from_array(v: [f32; 4]) -> Self {
-        use half::slice::HalfFloatSliceExt;
-        let mut out = [half::f16::ZERO; 4];
-        out.as_mut_slice().convert_from_f32_slice(&v);
-        Self(bytemuck::cast(out))
+        Self(f16x4_from_f32x4(v))
     }
 
     #[inline]

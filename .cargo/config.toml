@@ -1,0 +1,8 @@
+[build]
+# x86-64-v3 = Haswell/Excavator era and newer: AVX2, BMI1/2, FMA, F16C.
+# F16C in particular eliminates the runtime CPUID dispatch in
+# `half::HalfFloatSliceExt::convert_{to,from}_f32_slice`, which the
+# layout / cascade hot path hits every node (Spacing/Corners/Color/Brush
+# packed-f16 unpacks). Measured -6% on `frame/cached`, -6.6% on
+# `frame/resizing` (see benches/frame-baseline.txt).
+rustflags = ["-C", "target-cpu=x86-64-v3"]
