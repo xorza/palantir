@@ -149,14 +149,17 @@ pub(crate) struct LayoutEngine {
     pub(crate) cache: MeasureCache,
 }
 
-/// Quantize wrap target to ~0.1 logical px. Coarse enough to absorb
-/// sub-pixel jitter from animated parents, fine enough that any
-/// noticeable layout shift forces a reshape. Layout policy — lives
+/// Quantum (inverse) for wrap-target quantization: bucket width is
+/// `1.0 / WRAP_QUANTUM_PX_INV` logical pixels (= 0.1 px). Coarse enough
+/// to absorb sub-pixel jitter from animated parents, fine enough that
+/// any noticeable layout shift forces a reshape. Layout policy — lives
 /// here, not in `text/`, so the granularity tradeoff is local to its
 /// only consumer.
+const WRAP_QUANTUM_PX_INV: f32 = 10.0;
+
 #[inline]
 fn quantize_wrap_target(v: f32) -> u32 {
-    (v.max(0.0) * 10.0).round() as u32
+    (v.max(0.0) * WRAP_QUANTUM_PX_INV).round() as u32
 }
 
 /// Derive the driver-facing `inner_avail` size: outer = Fixed(v) for any
