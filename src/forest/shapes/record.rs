@@ -146,14 +146,16 @@ impl LoweredShadow {
         crate::primitives::approx::noop_f16_bits(self.color.0[3])
     }
 
-    /// Unpack the four f16 geom lanes at once via the batched slice
-    /// path and return them as named fields.
+    /// Unpack the four f16 geom lanes at once via the shared SIMD
+    /// helper (single `vcvtph2ps` on x86 F16C, `fcvtl` on aarch64-fp16).
+    /// Bypasses `half::HalfFloatSliceExt::convert_to_f32_slice`, which
+    /// gates every call on a runtime `is_x86_feature_detected!("f16c")`
+    /// lookup + an out-of-line dispatch — visible at ~1.4% self in the
+    /// `frame` bench.
     #[inline]
     pub(crate) fn geom(self) -> ShadowGeom {
-        use half::slice::HalfFloatSliceExt;
-        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.geom_f16);
-        let mut out = [0.0f32; 4];
-        arr.as_slice().convert_to_f32_slice(&mut out);
+        use crate::primitives::half_simd::f16x4_to_f32x4;
+        let out = f16x4_to_f32x4(self.geom_f16);
         ShadowGeom {
             offset: Vec2::new(out[0], out[1]),
             blur: out[2],
@@ -168,17 +170,16 @@ impl LoweredShadow {
 }
 
 impl From<Shadow> for LoweredShadow {
-    /// Quantize a user-facing `Shadow` into the packed form. f16 pack
-    /// is one batched SIMD on F16C/fp16 targets.
+    /// Quantize a user-facing `Shadow` into the packed form. Uses the
+    /// shared `f16x4_from_f32x4` helper — single `vcvtps2ph` on F16C,
+    /// no runtime feature dispatch per call.
     #[inline]
     fn from(s: Shadow) -> Self {
-        use half::slice::HalfFloatSliceExt;
-        let src = [s.offset.x, s.offset.y, s.blur, s.spread];
-        let mut out = [half::f16::ZERO; 4];
-        out.as_mut_slice().convert_from_f32_slice(&src);
+        use crate::primitives::half_simd::f16x4_from_f32x4;
+        let geom_f16 = f16x4_from_f32x4([s.offset.x, s.offset.y, s.blur, s.spread]);
         Self {
             color: s.color.into(),
-            geom_f16: bytemuck::cast(out),
+            geom_f16,
             inset_flag: s.inset as u16,
         }
     }

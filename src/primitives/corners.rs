@@ -37,13 +37,12 @@ impl std::fmt::Debug for Corners {
     }
 }
 
-const fn pack(tl: f32, tr: f32, br: f32, bl: f32) -> [u16; 4] {
-    [
-        f16::from_f32_const(tl).to_bits(),
-        f16::from_f32_const(tr).to_bits(),
-        f16::from_f32_const(br).to_bits(),
-        f16::from_f32_const(bl).to_bits(),
-    ]
+/// Runtime f32→f16 pack — single F16C / fp16 instruction on supported
+/// targets. See `Spacing::pack` for the rationale; this is the same path
+/// shared via `half_simd`.
+#[inline]
+fn pack(tl: f32, tr: f32, br: f32, bl: f32) -> [u16; 4] {
+    f16x4_from_f32x4([tl, tr, br, bl])
 }
 
 #[inline]
@@ -155,46 +154,55 @@ impl<'de> serde::Deserialize<'de> for Corners {
 impl Corners {
     pub const ZERO: Self = Self([0; 4]);
 
-    pub const fn all(r: f32) -> Self {
+    #[inline]
+    pub fn all(r: f32) -> Self {
         Self(pack(r, r, r, r))
     }
 
-    pub const fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
+    #[inline]
+    pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
         Self(pack(tl, tr, br, bl))
     }
 
     /// Round the top edge only — `tl == tr == r`, `br == bl == 0`.
-    pub const fn top(r: f32) -> Self {
+    #[inline]
+    pub fn top(r: f32) -> Self {
         Self(pack(r, r, 0.0, 0.0))
     }
 
     /// Round the bottom edge only.
-    pub const fn bottom(r: f32) -> Self {
+    #[inline]
+    pub fn bottom(r: f32) -> Self {
         Self(pack(0.0, 0.0, r, r))
     }
 
     /// Round the left edge only.
-    pub const fn left(r: f32) -> Self {
+    #[inline]
+    pub fn left(r: f32) -> Self {
         Self(pack(r, 0.0, 0.0, r))
     }
 
     /// Round the right edge only.
-    pub const fn right(r: f32) -> Self {
+    #[inline]
+    pub fn right(r: f32) -> Self {
         Self(pack(0.0, r, r, 0.0))
     }
 
     /// CSS-style `[top, bottom]` shorthand.
-    pub const fn top_bottom(top: f32, bottom: f32) -> Self {
+    #[inline]
+    pub fn top_bottom(top: f32, bottom: f32) -> Self {
         Self(pack(top, top, bottom, bottom))
     }
 
     /// Round the `tl`/`br` diagonal pair (e.g. asymmetric chat bubble).
-    pub const fn diag_main(r: f32) -> Self {
+    #[inline]
+    pub fn diag_main(r: f32) -> Self {
         Self(pack(r, 0.0, r, 0.0))
     }
 
     /// Round the `tr`/`bl` diagonal pair.
-    pub const fn diag_anti(r: f32) -> Self {
+    #[inline]
+    pub fn diag_anti(r: f32) -> Self {
         Self(pack(0.0, r, 0.0, r))
     }
 
