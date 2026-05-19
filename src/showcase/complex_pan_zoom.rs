@@ -153,7 +153,7 @@ fn gradient_strip(ui: &mut Ui) {
                     .size((Sizing::Fixed(72.0), Sizing::Fixed(56.0)))
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(0.0, a, b)),
-                        radius: Corners::all(6.0),
+                        corners: Corners::all(6.0),
                         stroke: Stroke::solid(Color::hex(0x202020), 1.0),
                         shadow: Shadow::NONE,
                     })
@@ -207,7 +207,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                             .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                             .background(Background {
                                 fill: cell_color(i, i / 3).into(),
-                                radius: Corners::all(20.0),
+                                corners: Corners::all(20.0),
                                 ..Default::default()
                             })
                             .show(ui);
@@ -241,7 +241,7 @@ fn canvas_polylines(ui: &mut Ui) {
         .size((Sizing::FILL, Sizing::Fixed(120.0)))
         .background(Background {
             fill: Color::hex(0x1a1a1a).into(),
-            radius: Corners::all(4.0),
+            corners: Corners::all(4.0),
             stroke: Stroke::solid(Color::hex(0x303030), 1.0),
             shadow: Shadow::NONE,
         })
@@ -281,14 +281,14 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
     let bg = |fill: Color| -> Background {
         Background {
             fill: fill.into(),
-            radius: Corners::all(3.0),
+            corners: Corners::all(3.0),
             ..Default::default()
         }
     };
     let pressed_bg = Background {
         fill: brighten(base, 0.3).into(),
         stroke: Stroke::solid(Color::hex(0xffffff), 1.0),
-        radius: Corners::all(3.0),
+        corners: Corners::all(3.0),
         shadow: Shadow::NONE,
     };
     let label_text = TextStyle::default()

@@ -129,7 +129,7 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
                 palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
                 1.0,
             ),
-            radius: Corners::all(10.0),
+            corners: Corners::all(10.0),
             shadow: Shadow::NONE,
         })
         .show(ui, |ui| {

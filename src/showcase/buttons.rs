@@ -80,7 +80,7 @@ fn outlined_style() -> ButtonTheme {
     let bg = |fill: Color, stroke| Background {
         fill: fill.into(),
         stroke,
-        radius: Corners::all(4.0),
+        corners: Corners::all(4.0),
         shadow: Shadow::NONE,
     };
     ButtonTheme {
@@ -113,7 +113,7 @@ fn danger_style() -> ButtonTheme {
     let bg = |fill: Color| Background {
         fill: fill.into(),
         stroke: Stroke::ZERO,
-        radius: Corners::all(2.0),
+        corners: Corners::all(2.0),
         shadow: Shadow::NONE,
     };
     ButtonTheme {
