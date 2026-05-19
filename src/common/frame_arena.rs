@@ -183,8 +183,8 @@ impl FrameArena {
         let LoweredBrush {
             brush: fill,
             hash: fill_grad_hash,
-        } = a.lower_brush_inner(bg.fill, atlas);
-        let stroke = ShapeStroke::from(bg.stroke);
+        } = a.lower_brush_inner(bg.fill.clone(), atlas);
+        let stroke = ShapeStroke::from(bg.stroke.clone());
         let corners = bg.corners;
         let shadow: crate::forest::shapes::record::LoweredShadow = bg.shadow.into();
         // Canonical authoring hash: fold all inputs into one

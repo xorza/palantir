@@ -51,13 +51,17 @@ pub(crate) fn step<T: Animatable>(
     let sub_dt = dt / n;
     let mut cur = current;
     let mut vel = velocity;
+    // `T: Animatable` is now `Clone` (not `Copy`) so heavyweights like
+    // `Background` only `Copy` when their fields actually are. For the
+    // common scalar/vector animations these clones compile to noops;
+    // for the few wide types they're explicit by design.
     for _ in 0..(n as u32) {
-        let displacement = cur.sub(target);
+        let displacement = cur.clone().sub(target.clone());
         let spring_force = displacement.scale(-stiffness);
-        let damp_force = vel.scale(-damping);
+        let damp_force = vel.clone().scale(-damping);
         let accel = spring_force.add(damp_force);
         vel = vel.add(accel.scale(sub_dt));
-        cur = cur.add(vel.scale(sub_dt));
+        cur = cur.add(vel.clone().scale(sub_dt));
     }
     // `Animatable::lerp(_, target, 0.0)` is the trick that pulls
     // `#[animate(snap)]` fields from `target` while leaving the
@@ -67,9 +71,9 @@ pub(crate) fn step<T: Animatable>(
     // frame and only catch up when `SpringStep` snaps to target on
     // settle — duration animations don't have this problem because
     // `lerp` is on the hot path there.
-    let cur = T::lerp(cur, target, 0.0);
-    let displacement = cur.sub(target);
-    if within_settle_eps(displacement, vel) {
+    let cur = T::lerp(cur, target.clone(), 0.0);
+    let displacement = cur.clone().sub(target.clone());
+    if within_settle_eps(displacement, vel.clone()) {
         SpringStep {
             current: target,
             velocity: T::zero(),

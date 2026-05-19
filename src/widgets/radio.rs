@@ -60,7 +60,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
 
         let theme = &ui.theme.radio;
-        let look_target = *theme.pick(state, selected);
+        let look_target = theme.pick(state, selected).clone();
         let row_gap = theme.row_gap;
         let pip_size = theme.box_size;
         let dot_inset = theme.indicator_inset;
@@ -73,7 +73,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // can't accidentally square-corner the pip.
         let mut look = look_target.animate(ui, id, fallback_text, anim);
         look.background.corners = Corners::all(pip_size * 0.5);
-        let chrome = look.background;
+        let chrome = look.background.clone();
         let label = self.label;
 
         let mut element = self.element;

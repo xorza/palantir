@@ -133,7 +133,10 @@ impl Popup {
                 .show(ui);
         });
         let mut element = self.element;
-        let chrome = self.chrome.or(ui.theme.panel_background);
+        let chrome = self
+            .chrome
+            .clone()
+            .or_else(|| ui.theme.panel_background.clone());
         if matches!(element.flags.clip_mode(), ClipMode::None) {
             element.flags.set_clip(ui.theme.panel_clip);
         }

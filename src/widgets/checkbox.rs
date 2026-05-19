@@ -57,7 +57,7 @@ impl<'a> Checkbox<'a> {
         let checked = *self.value;
 
         let theme = &ui.theme.checkbox;
-        let look_target = *theme.pick(state, checked);
+        let look_target = theme.pick(state, checked).clone();
         let row_gap = theme.row_gap;
         let box_size = theme.box_size;
         let indicator_stroke = theme.indicator_stroke;
@@ -66,7 +66,7 @@ impl<'a> Checkbox<'a> {
         let fallback_text = ui.theme.text;
 
         let look = look_target.animate(ui, id, fallback_text, anim);
-        let chrome = look.background;
+        let chrome = look.background.clone();
         let label = self.label;
 
         let mut element = self.element;

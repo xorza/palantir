@@ -266,7 +266,7 @@ impl MenuItem {
 
         let theme = ui.theme.context_menu.item.clone();
         let look = theme.pick(raw_state);
-        let look_bg = look.background;
+        let look_bg = look.background.clone();
         let text_style = look.text.unwrap_or(ui.theme.text);
         let label_color = text_style.color;
         let font_size_px = text_style.font_size_px;

@@ -116,15 +116,15 @@ pub use winit_host::{App, WinitHost, WinitHostConfig};
 
 #[cfg(test)]
 mod hot_struct_sizes {
+    use crate::forest::element::Element;
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::forest::node::NodeRecord;
     use crate::forest::rollups::{CascadeInputHash, NodeHash};
     use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
-    use crate::primitives::background::Background;
-    use crate::primitives::brush::Brush;
-    use crate::forest::element::Element;
     use crate::forest::tree::ExtrasIdx;
     use crate::layout::ShapedText;
+    use crate::primitives::background::Background;
+    use crate::primitives::brush::Brush;
     use crate::primitives::span::Span;
     use crate::renderer::frontend::cmd_buffer::{
         DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,

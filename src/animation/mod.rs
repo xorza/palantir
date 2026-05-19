@@ -168,7 +168,13 @@ impl<T: Animatable> Default for AnimMapTyped<T> {
 /// residual velocity aids or opposes motion toward the new target.
 #[inline]
 fn dot<T: Animatable>(a: T, b: T) -> f32 {
-    0.5 * (a.add(b).magnitude_squared() - a.magnitude_squared() - b.magnitude_squared())
+    // T is `Clone` (not `Copy`); each `Animatable` method consumes its
+    // operand. Compute the magnitudes off the clones first, then let
+    // `add` consume `a` and `b`.
+    let mag_a = a.clone().magnitude_squared();
+    let mag_b = b.clone().magnitude_squared();
+    let sum = a.add(b).magnitude_squared();
+    0.5 * (sum - mag_a - mag_b)
 }
 
 pub(crate) struct TickResult<T: Animatable> {
@@ -194,14 +200,19 @@ impl<T: Animatable> AnimMapTyped<T> {
         dt: f32,
         frame_id: u64,
     ) -> TickResult<T> {
+        // `T: Animatable` is `Clone` (not `Copy`): each consume of a
+        // T field through trait methods needs an explicit `.clone()`.
+        // For Copy fields (f32, Vec2, Color) the clone compiles away;
+        // for heavyweights (Background) the clone is a deliberate
+        // memcpy at a known site.
         let row = match self.rows.entry((id, slot)) {
             Entry::Vacant(v) => {
                 v.insert(AnimRow {
-                    current: target,
-                    target,
+                    current: target.clone(),
+                    target: target.clone(),
                     velocity: T::zero(),
                     elapsed: 0.0,
-                    segment_start: target,
+                    segment_start: target.clone(),
                     touched: true,
                     advanced_at: frame_id,
                     settled: true,
@@ -225,7 +236,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // immediately.
         if row.settled && row.target == target {
             return TickResult {
-                current: row.current,
+                current: row.current.clone(),
                 settled: true,
             };
         }
@@ -241,7 +252,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         if row.target != target {
             match spec {
                 AnimSpec::Duration { .. } => {
-                    row.segment_start = row.current;
+                    row.segment_start = row.current.clone();
                     row.elapsed = 0.0;
                     // Zero residual spring velocity so a Spring →
                     // Duration switch starts the new segment from
@@ -252,8 +263,8 @@ impl<T: Animatable> AnimMapTyped<T> {
                     row.velocity = T::zero();
                 }
                 AnimSpec::Spring { .. } => {
-                    let to_target = target.sub(row.current);
-                    if dot(row.velocity, to_target) < 0.0 {
+                    let to_target = target.clone().sub(row.current.clone());
+                    if dot(row.velocity.clone(), to_target) < 0.0 {
                         row.velocity = T::zero();
                     }
                 }
@@ -269,12 +280,15 @@ impl<T: Animatable> AnimMapTyped<T> {
         // (theme color rounded to nearest ulp, etc.) that would
         // otherwise drive a full ease/spring cycle for a visually
         // imperceptible change.
-        if within_settle_eps(row.current.sub(row.target), row.velocity) {
-            row.current = row.target;
+        if within_settle_eps(
+            row.current.clone().sub(row.target.clone()),
+            row.velocity.clone(),
+        ) {
+            row.current = row.target.clone();
             row.velocity = T::zero();
             row.settled = true;
             return TickResult {
-                current: row.target,
+                current: row.target.clone(),
                 settled: true,
             };
         }
@@ -286,7 +300,7 @@ impl<T: Animatable> AnimMapTyped<T> {
         // double the animation speed on any input frame.
         if already_advanced {
             return TickResult {
-                current: row.current,
+                current: row.current.clone(),
                 settled: false,
             };
         }
@@ -295,14 +309,14 @@ impl<T: Animatable> AnimMapTyped<T> {
             AnimSpec::Duration { secs, ease } => {
                 row.elapsed += dt;
                 let t = (row.elapsed / secs).clamp(0.0, 1.0);
-                row.current = T::lerp(row.segment_start, row.target, ease.apply(t));
+                row.current = T::lerp(row.segment_start.clone(), row.target.clone(), ease.apply(t));
                 let settled = t >= 1.0;
                 if settled {
-                    row.current = row.target;
+                    row.current = row.target.clone();
                 }
                 row.settled = settled;
                 TickResult {
-                    current: row.current,
+                    current: row.current.clone(),
                     settled,
                 }
             }
@@ -310,16 +324,16 @@ impl<T: Animatable> AnimMapTyped<T> {
                 let step = spring_step(
                     stiffness,
                     damping,
-                    row.current,
-                    row.velocity,
-                    row.target,
+                    row.current.clone(),
+                    row.velocity.clone(),
+                    row.target.clone(),
                     dt,
                 );
                 row.current = step.current;
                 row.velocity = step.velocity;
                 row.settled = step.settled;
                 TickResult {
-                    current: row.current,
+                    current: row.current.clone(),
                     settled: step.settled,
                 }
             }
