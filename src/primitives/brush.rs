@@ -1,5 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::primitives::color::{Color, ColorU8};
+use crate::primitives::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -36,22 +37,14 @@ impl FillAxis {
     /// path. Single SIMD instruction on F16C/fp16 targets.
     #[inline]
     pub fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
-        use half::slice::HalfFloatSliceExt;
-        let src = [a, b, c, d];
-        let mut out = [half::f16::ZERO; 4];
-        out.as_mut_slice().convert_from_f32_slice(&src);
-        Self(bytemuck::cast(out))
+        Self(f16x4_from_f32x4([a, b, c, d]))
     }
 
     /// All four lanes unpacked at once via the batched slice path —
     /// matches `Corners::as_array`.
     #[inline]
     pub fn lanes(self) -> [f32; 4] {
-        use half::slice::HalfFloatSliceExt;
-        let arr: &[half::f16; 4] = bytemuck::cast_ref(&self.0);
-        let mut out = [0.0f32; 4];
-        arr.as_slice().convert_to_f32_slice(&mut out);
-        out
+        f16x4_to_f32x4(self.0)
     }
 
     #[inline]
