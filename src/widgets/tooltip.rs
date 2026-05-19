@@ -8,7 +8,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::ResponseSnapshot;
 use crate::widgets::text::Text;
 use glam::Vec2;
 use std::borrow::Cow;
@@ -87,7 +87,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
 /// triggers by default. Pass `.show_when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
 pub struct Tooltip<'r> {
-    response: &'r Response,
+    snapshot: &'r ResponseSnapshot,
     text: Cow<'static, str>,
     delay: Option<f32>,
     show_when_disabled: bool,
@@ -96,16 +96,18 @@ pub struct Tooltip<'r> {
 }
 
 impl<'r> Tooltip<'r> {
-    /// Attach a tooltip to the given trigger response. The response
-    /// carries the trigger's `WidgetId` and last-frame rect — both
-    /// drive timer keying and anchor computation.
+    /// Attach a tooltip to the given trigger response snapshot. The
+    /// snapshot carries the trigger's `WidgetId` and last-frame rect
+    /// — both drive timer keying and anchor computation. Pass via
+    /// `trigger.snapshot()` to detach from the trigger's `&Ui`
+    /// borrow before recording the tooltip body.
     #[track_caller]
-    pub fn for_(response: &'r Response) -> Self {
+    pub fn for_(snapshot: &'r ResponseSnapshot) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         // Bubble must never claim hover — would shadow its own trigger.
         element.flags.set_sense(Sense::empty());
         Self {
-            response,
+            snapshot,
             text: Cow::Borrowed(""),
             delay: None,
             show_when_disabled: false,
@@ -149,7 +151,7 @@ impl<'r> Tooltip<'r> {
         let warmup = ui.theme.tooltip.warmup;
         let gap = ui.theme.tooltip.gap;
 
-        let trigger_id = self.response.id;
+        let trigger_id = self.snapshot.id;
         let state_id = trigger_id.with("tooltip");
         let bubble_id = trigger_id.with("tooltip.bubble");
         let g_id = *GLOBAL_STATE_ID;
@@ -165,9 +167,9 @@ impl<'r> Tooltip<'r> {
              paired. Drop the override.",
         );
 
-        let trigger_hovered = self.response.state.hovered;
-        let trigger_disabled = self.response.state.disabled;
-        let trigger_rect = self.response.state.rect;
+        let trigger_hovered = self.snapshot.state.hovered;
+        let trigger_disabled = self.snapshot.state.disabled;
+        let trigger_rect = self.snapshot.state.rect;
         let active_trigger = trigger_hovered && (!trigger_disabled || self.show_when_disabled);
 
         let now = ui.time.as_secs_f32();

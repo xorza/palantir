@@ -32,7 +32,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
                     .size(40.0)
                     .show(ui);
             })
-            .node(ui);
+            .node();
     });
 
     let kids: Vec<_> = ui
@@ -76,7 +76,7 @@ fn collapsed_does_not_consume_fill_weight() {
                     .size((Sizing::Fill(1.0), Sizing::Hug))
                     .show(ui);
             })
-            .node(ui);
+            .node();
     });
 
     let kids: Vec<_> = ui
@@ -130,7 +130,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
                     })
                     .show(ui);
             })
-            .node(ui);
+            .node();
     });
 
     let kids: Vec<_> = ui
@@ -224,7 +224,7 @@ fn hstack_child_align_per_axis_with_overrides() {
                     }
                     b.show(ui);
                 })
-                .node(ui);
+                .node();
         });
 
         let kids: Vec<_> = ui

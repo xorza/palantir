@@ -71,7 +71,7 @@ impl Text {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let style = self.style.unwrap_or(ui.theme.text);
         let line_height_px = style.line_height_for(style.font_size_px);
         let id = ui.make_persistent_id(self.element.salt);
@@ -87,8 +87,9 @@ impl Text {
                 family: style.family,
             });
         });
-        let state = ui.response_for(id);
-        Response { id, state }
+        // Decorative: skip eager `response_for`. Discarded responses
+        // pay zero; a `.clicked()` call later does one lazy probe.
+        Response::lazy(id, ui)
     }
 }
 

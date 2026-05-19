@@ -48,7 +48,7 @@ impl Button {
         self
     }
 
-    pub fn show(self, ui: &mut Ui) -> Response {
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut element = self.element;
         // Resolve `.id_salt(...)`'s parent-scoping now so per-id
         // state lookups (response_for, animate) below see the same
@@ -104,10 +104,9 @@ impl Button {
                 });
             }
         });
-        Response {
-            id,
-            state: raw_state,
-        }
+        // Eager: theme picking already paid for `response_for`, so
+        // hand the cached state to the caller.
+        Response::eager(id, ui, raw_state)
     }
 }
 

@@ -379,7 +379,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                             .size(40.0)
                             .show(ui);
                     })
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -667,7 +667,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });

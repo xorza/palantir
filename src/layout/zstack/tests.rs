@@ -23,7 +23,7 @@ fn zstack_hugs_to_largest_child_per_axis_independently() {
                     .size((10.0, 80.0))
                     .show(ui);
             })
-            .node(ui)
+            .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 40.0);
@@ -48,7 +48,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
                     .size((30.0, 30.0))
                     .show(ui);
             })
-            .node(ui)
+            .node()
     });
     let kids: Vec<_> = ui
         .forest
@@ -113,7 +113,7 @@ fn zstack_per_axis_alignment() {
                         .show(ui);
                 }
             })
-            .node(ui)
+            .node()
         });
         let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
         let kids: Vec<_> = ui
@@ -147,7 +147,7 @@ fn zstack_fill_child_stretches_to_inner() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
-            .node(ui)
+            .node()
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
     let kids: Vec<_> = ui
@@ -178,7 +178,7 @@ fn hug_zstack_with_only_fill_children_collapses_to_zero() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .show(ui);
             })
-            .node(ui)
+            .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 0.0);
@@ -203,7 +203,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
                     .collapsed()
                     .show(ui);
             })
-            .node(ui)
+            .node()
     });
     let r = ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 20.0);

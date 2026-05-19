@@ -65,7 +65,7 @@ fn frame(
             if let Some(p) = placeholder {
                 e = e.placeholder(p);
             }
-            node = Some(e.show(ui).node(ui));
+            node = Some(e.show(ui).node());
         });
     };
     ui.run_at_acked(NARROW, &mut record);
@@ -496,7 +496,7 @@ mod per_line {
                         .text_align(Align::TOP_RIGHT)
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
                         .show(ui)
-                        .node(ui),
+                        .node(),
                 );
             });
         };
@@ -608,7 +608,7 @@ mod per_line {
                         .placeholder("type a paragraph here — long enough to actually wrap")
                         .size((Sizing::Fixed(300.0), Sizing::Fixed(120.0)))
                         .show(ui)
-                        .node(ui),
+                        .node(),
                 );
             });
         };
@@ -786,7 +786,7 @@ fn multiline_default_is_top_left() {
                     .multiline(true)
                     .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(80.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     };

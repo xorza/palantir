@@ -23,15 +23,15 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
                     .label("hi")
                     .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node(ui));
+            txt_node = Some(Text::new("hi").auto_id().show(ui).node());
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -74,7 +74,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
     let mut node = None;
     ui.run_at_acked(NARROW, |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
-            node = Some(Text::new("hi").auto_id().show(ui).node(ui));
+            node = Some(Text::new("hi").auto_id().show(ui).node());
         });
     });
     let color = ui
@@ -107,7 +107,7 @@ fn text_widget_color_override_wins_over_theme() {
                     .auto_id()
                     .style(TextStyle::default().with_color(Color::rgb(0.0, 1.0, 0.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -146,15 +146,15 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
                     .label("hi")
                     .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
-            txt_node = Some(Text::new("hi").auto_id().show(ui).node(ui));
+            txt_node = Some(Text::new("hi").auto_id().show(ui).node());
             ed_node = Some(
                 TextEdit::new(&mut buf)
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -214,7 +214,7 @@ fn textedit_style_override_replaces_default_theme() {
                         .style(style.clone())
                         .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                         .show(ui)
-                        .node(ui),
+                        .node(),
                 );
             });
         });
@@ -244,7 +244,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -286,7 +286,7 @@ fn no_selection_paints_no_highlight_rect() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     };
@@ -319,7 +319,7 @@ fn shift_end_paints_selection_highlight() {
                     .id(WidgetId::from_hash("ed"))
                     .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     };
@@ -453,7 +453,7 @@ fn line_height_override_changes_caret_rect_height() {
                 if let Some(s) = style.clone() {
                     e = e.style(s);
                 }
-                *leaf = Some(e.show(ui).node(ui));
+                *leaf = Some(e.show(ui).node());
             });
         };
         ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));

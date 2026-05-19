@@ -111,7 +111,7 @@ pub use widgets::theme::toggle::ToggleTheme;
 pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
-pub use widgets::{InnerResponse, Response};
+pub use widgets::{InnerResponse, Response, ResponseSnapshot};
 pub use winit_host::{App, WinitHost, WinitHostConfig};
 
 #[cfg(test)]

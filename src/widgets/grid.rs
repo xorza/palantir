@@ -132,7 +132,7 @@ impl Grid {
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> crate::widgets::InnerResponse<R> {
+    ) -> crate::widgets::InnerResponse<'_, R> {
         let active_layer = ui.forest.current_layer();
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
         let mut element = self.element;
@@ -151,9 +151,9 @@ impl Grid {
             Some(c) => ui.node_with_chrome(id, element, &c, body),
             None => ui.node(id, element, body),
         };
-        let state = ui.response_for(id);
         crate::widgets::InnerResponse {
-            response: Response { id, state },
+            // Decorative: skip eager `response_for`.
+            response: Response::lazy(id, ui),
             inner,
         }
     }

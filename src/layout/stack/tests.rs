@@ -33,7 +33,7 @@ fn hstack_arranges_two_buttons_side_by_side() {
                         .size((100.0, Sizing::Hug))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let root = root.unwrap();
@@ -73,7 +73,7 @@ fn vstack_with_fill_distributes_remainder() {
                         .size((Sizing::Hug, Sizing::FILL))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -100,7 +100,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
                         .size((Sizing::Fill(3.0), Sizing::Hug))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -130,7 +130,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -169,7 +169,7 @@ fn hstack_justify_distributes_leftover() {
                                 .show(ui);
                         }
                     })
-                    .node(ui),
+                    .node(),
             );
         });
         let kids = child_rects(&ui, root.unwrap());
@@ -203,7 +203,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
                         .size(40.0)
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -236,7 +236,7 @@ fn hstack_gap_inserts_space_between_children() {
                         .size(40.0)
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -261,7 +261,7 @@ fn hstack_align_center_centers_child_on_cross_axis() {
                         .align(Align::CENTER)
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let r = child_rects(&ui, root.unwrap())[0];
@@ -283,7 +283,7 @@ fn negative_left_margin_spills_outside_slot() {
                     .size((Sizing::Fixed(50.0), Sizing::Fixed(30.0)))
                     .margin((-10.0, 0.0, 0.0, 0.0))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -315,7 +315,7 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     assert_eq!(
@@ -350,7 +350,7 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
                         .size((30.0, 20.0))
                         .show(ui);
                 })
-                .node(ui),
+                .node(),
         );
     });
     let kids = child_rects(&ui, root.unwrap());
@@ -386,7 +386,7 @@ fn hstack_fill_max_size_caps_measured_share() {
                         .size((Sizing::FILL, 20.0))
                         .max_size(Size::new(50.0, f32::INFINITY))
                         .show(ui)
-                        .node(ui),
+                        .node(),
                 );
             });
     });
@@ -417,10 +417,10 @@ fn parent_max_size_clamps_children_available() {
                         .id(WidgetId::from_hash("inner"))
                         .size((Sizing::FILL, Sizing::Fixed(20.0)))
                         .show(ui, |_| {})
-                        .node(ui),
+                        .node(),
                 );
             })
-            .node(ui)
+            .node()
     });
     let parent_rect = ui.layout[Layer::Main].rect[parent_node.idx()];
     assert_eq!(

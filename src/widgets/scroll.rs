@@ -376,7 +376,7 @@ impl Scroll {
         self,
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui) -> R,
-    ) -> crate::widgets::InnerResponse<R> {
+    ) -> crate::widgets::InnerResponse<'_, R> {
         let id = ui.make_persistent_id(self.element.salt);
         let mode = self.element.mode;
         assert!(
@@ -790,10 +790,11 @@ impl Scroll {
 
         let resp_state = ui.response_for(id);
         crate::widgets::InnerResponse {
-            response: Response {
-                id,
-                state: resp_state,
-            },
+            // Eager: Scroll already paid for `response_for` here
+            // and the caller almost always reads at least one field
+            // (drag delta, scroll delta, hovered). Hand the cached
+            // state through.
+            response: Response::eager(id, ui, resp_state),
             inner: inner_value,
         }
     }

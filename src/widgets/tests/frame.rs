@@ -26,7 +26,7 @@ fn frame_paints_a_single_rounded_rect() {
                         ..Default::default()
                     })
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
         });
     });

@@ -589,7 +589,7 @@ fn child_under_transformed_parent_damage_in_screen_space() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });
@@ -643,7 +643,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });
@@ -708,7 +708,7 @@ fn transform_animation_keeps_far_positions_split() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });
@@ -1254,14 +1254,14 @@ fn button_hover_damage_covers_only_the_button() {
                             .id(WidgetId::from_hash("hot"))
                             .label("Hover me")
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                     *cold = Some(
                         Button::new()
                             .id(WidgetId::from_hash("cold"))
                             .label("Quiet")
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });
@@ -1331,14 +1331,14 @@ fn button_unhover_damage_covers_only_the_button() {
                             .id(WidgetId::from_hash("hot"))
                             .label("Hover me")
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                     *cold = Some(
                         Button::new()
                             .id(WidgetId::from_hash("cold"))
                             .label("Quiet")
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });
@@ -1403,7 +1403,7 @@ fn child_overflowing_clipped_parent_damage_clipped_to_viewport() {
                                         ..Default::default()
                                     })
                                     .show(ui)
-                                    .node(ui),
+                                    .node(),
                             );
                         });
                 });

@@ -46,7 +46,7 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
                     .wrapping()
                     .grid_cell((0, 0))
                     .show(ui)
-                    .node(ui),
+                    .node(),
             );
             Text::new("right column")
                 .auto_id()
@@ -78,7 +78,7 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
                         .size((Sizing::FILL, Sizing::Hug))
                         .wrapping()
                         .show(ui)
-                        .node(ui),
+                        .node(),
                 );
             });
     });

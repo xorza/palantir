@@ -27,7 +27,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .id(WidgetId::from_hash("none"))
                 .size(50.0)
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("none", n, ClipMode::None, false));
 
             let n = Panel::zstack()
@@ -38,7 +38,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                     ..Default::default()
                 })
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("paint-only", n, ClipMode::None, true));
 
             // Surface::scissor — clip + transparent paint. Chrome is
@@ -49,7 +49,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 .size(50.0)
                 .clip_rect()
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("scissor", n, ClipMode::Rect, false));
 
             let n = Panel::zstack()
@@ -61,7 +61,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rect()
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("clipped", n, ClipMode::Rect, true));
 
             let n = Panel::zstack()
@@ -74,7 +74,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("rounded", n, ClipMode::Rounded, true));
 
             // Background + clip_rounded with zero radius — Ui::node downgrades.
@@ -87,7 +87,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
                 })
                 .clip_rounded()
                 .show(ui, |_| {})
-                .node(ui);
+                .node();
             cases.push(("rounded-zero", n, ClipMode::Rect, true));
         });
     });
@@ -126,17 +126,17 @@ fn panel_hugs_largest_child_and_layers_them() {
                                 .id(WidgetId::from_hash("a"))
                                 .size((Sizing::Fixed(80.0), Sizing::Fixed(30.0)))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                         b_node = Some(
                             Button::new()
                                 .id(WidgetId::from_hash("b"))
                                 .size((Sizing::Fixed(60.0), Sizing::Fixed(50.0)))
                                 .show(ui)
-                                .node(ui),
+                                .node(),
                         );
                     })
-                    .node(ui),
+                    .node(),
             );
         });
     });
@@ -189,7 +189,7 @@ fn panel_with_fill_child_grows_to_panel_inner() {
                                 ..Default::default()
                             })
                             .show(ui)
-                            .node(ui),
+                            .node(),
                     );
                 });
         });

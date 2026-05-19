@@ -44,7 +44,8 @@ pub fn build(ui: &mut Ui) {
                     let trigger = Button::new()
                         .id_salt("ctx-menu-button-trigger")
                         .label("right-click me")
-                        .show(ui);
+                        .show(ui)
+                        .snapshot();
                     attach_menu(ui, &trigger, state_id, MenuFlavor::Default);
                 });
 
@@ -61,7 +62,8 @@ pub fn build(ui: &mut Ui) {
                     corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                 })
-                .show(ui);
+                .show(ui)
+                .snapshot();
             attach_menu(ui, &surface, state_id, MenuFlavor::Default);
 
             // Trigger 3: same items, but configured wider with bigger
@@ -77,7 +79,8 @@ pub fn build(ui: &mut Ui) {
                     corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                 })
-                .show(ui);
+                .show(ui)
+                .snapshot();
             attach_menu(ui, &wide_surface, state_id, MenuFlavor::Wide);
         });
 }
@@ -88,7 +91,12 @@ enum MenuFlavor {
     Wide,
 }
 
-fn attach_menu(ui: &mut Ui, trigger: &palantir::Response, state_id: WidgetId, flavor: MenuFlavor) {
+fn attach_menu(
+    ui: &mut Ui,
+    trigger: &palantir::ResponseSnapshot,
+    state_id: WidgetId,
+    flavor: MenuFlavor,
+) {
     let mut menu = ContextMenu::attach(ui, trigger).size((Sizing::Hug, Sizing::Hug));
     if let MenuFlavor::Wide = flavor {
         menu = menu

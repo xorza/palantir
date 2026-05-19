@@ -14,7 +14,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
 use crate::text::{CursorPos, FontFamily};
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{Response, ResponseSnapshot};
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
 use glam::Vec2;
@@ -451,7 +451,7 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response {
+    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
         let id = ui.make_persistent_id(self.element.salt);
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
@@ -764,8 +764,16 @@ impl<'a> TextEdit<'a> {
             ui.request_focus(None);
         }
 
+        // Re-read `response_for(id)` after Phase 4's
+        // `request_focus(None)` blur — that's the only state
+        // mutation between the theme-pick read at L475 and here,
+        // and it would otherwise leak a stale `focused` bit into
+        // the returned `Response`. Built as an owned snapshot so
+        // the Phase-5 context-menu work below can keep using
+        // `&mut ui` freely; `state` itself is `Copy` and survives
+        // for the final `Response::eager` build at the bottom.
         let state = ui.response_for(id);
-        let response = Response { id, state };
+        let snapshot = ResponseSnapshot { id, state };
 
         // Phase 5: default Cut / Copy / Paste / Clear context menu.
         // Triggered by secondary click on the editor; items mutate
@@ -783,7 +791,7 @@ impl<'a> TextEdit<'a> {
         let has_sel = sel.is_some();
         let has_text = !self.text.is_empty();
         let text = self.text;
-        ContextMenu::attach(ui, &response).show(ui, |ui, popup| {
+        ContextMenu::attach(ui, &snapshot).show(ui, |ui, popup| {
             if MenuItem::new("Cut")
                 .shortcut(Shortcut::cmd('X'))
                 .enabled(has_sel)
@@ -825,7 +833,9 @@ impl<'a> TextEdit<'a> {
             }
         });
 
-        response
+        // Eager Response build last — all `&mut ui` ops above are
+        // done. Caller inherits the cached state without a re-probe.
+        Response::eager(id, ui, state)
     }
 }
 
