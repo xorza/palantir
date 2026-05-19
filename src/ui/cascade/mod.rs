@@ -157,6 +157,28 @@ struct Frame {
 /// together by the damage diff and encoder — keeping them on one
 /// struct means there's exactly one indexing point per layer and no
 /// chance of resetting one column but not another.
+///
+/// ## AoS vs SoA split
+///
+/// The per-node data is deliberately divided three ways, driven by
+/// who reads what together:
+///
+/// - [`Cascade`] (`paint_rect` + `cascade_input`) is **AoS**: damage's
+///   hot per-node scan reads both fields per iteration, so colocating
+///   them keeps the inner loop at 24 B/node and one indexed load.
+/// - [`Self::subtree_paint_rects`] is **split out**: read by the
+///   encoder cull but *not* by damage. Inlining it into `Cascade`
+///   would widen damage's per-row footprint by 16 B (~66 %) for a
+///   read it doesn't perform.
+/// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
+///   [`Paint`]s, the `node_spans` index, and the `shape_to_paint`
+///   reverse map). Read only on cache-miss paths (vacant insert, hash
+///   mismatch, paint-anim lookup), so it sits behind a `node_spans[i]`
+///   indirection that damage's fast path skips entirely.
+///
+/// Any new per-node datum that damage's hot scan needs to read every
+/// frame belongs inline on `Cascade`; anything read only by the
+/// encoder or only on cache-miss paths should stay parallel.
 #[derive(Default)]
 pub(crate) struct LayerCascades {
     /// Per-node cascade rows, indexed the same way as

@@ -240,7 +240,7 @@ pub(crate) fn arrange(
                 main_size,
                 cross_p.size,
             );
-            layout.arrange(tree, c, child_rect, out);
+            layout.arrange(tree, c, Some(node), child_rect, out);
             main_cursor += main_size;
         }
         *cross_cursor += line_cross;
