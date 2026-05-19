@@ -766,7 +766,7 @@ impl InputState {
         // stay `true`.
         for cap in &mut self.captures {
             if let Some(a) = cap.active
-                && !cascades.by_id.contains_key(&a)
+                && !cascades.contains_widget(a)
             {
                 cap.active = None;
                 cap.clear_press();
@@ -777,7 +777,7 @@ impl InputState {
         // focus to None; otherwise next frame's keystrokes route to a
         // ghost.
         if let Some(focused) = self.focused
-            && !cascades.by_id.contains_key(&focused)
+            && !cascades.contains_widget(focused)
         {
             self.focused = None;
         }
@@ -841,7 +841,7 @@ impl InputState {
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
-        let entry_idx = cascades.by_id.get(&id).copied().map(|i| i as usize);
+        let entry_idx = cascades.entry_idx_of(id).map(|i| i as usize);
         let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
         let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
         // Cascade flattens parent-disabled into each entry, so this is

@@ -12,6 +12,7 @@ use crate::common::per_layer::PerLayer;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
+use crate::forest::seen_ids::Endpoint;
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
@@ -207,25 +208,38 @@ pub(crate) struct LayerCascades {
     /// Unified paint arena (rows + per-node spans + shape→paint
     /// translation).
     pub(crate) paint_arena: PaintArena,
+    /// Offset of this layer's first `EntryRow` in
+    /// [`Cascades::entries`] — fixed for the layer's run, set at
+    /// `reset_for` time. Every node in `tree.records` pushes exactly
+    /// one entry in [`run_tree`], so within the layer block the entry
+    /// index is `entries_base + node.0`. Combined with the per-pass
+    /// [`Cascades::by_id`] snapshot this gives O(1) `WidgetId → entry`
+    /// without a per-widget `WidgetId → u32` hashmap fill.
+    pub(crate) entries_base: u32,
 }
 
 impl LayerCascades {
-    /// Reset all per-node columns for `n_nodes` and `n_shapes`.
+    /// Reset all per-node columns for `n_nodes` and `n_shapes` and
+    /// stamp the layer's `entries_base` in one call — both prep this
+    /// layer for the upcoming `run_tree`, splitting them invites a
+    /// caller that resets but forgets the offset (or vice versa).
     /// `rows` and `subtree_paint_rects` are cleared and reserved
     /// (filled by per-node pushes during the walk); `paint_arena`
     /// columns reset according to their own sizing rules.
-    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize) {
+    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize, entries_base: u32) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.subtree_paint_rects.clear();
         self.subtree_paint_rects.reserve(n_nodes);
         self.paint_arena.reset_for(n_nodes, n_shapes);
+        self.entries_base = entries_base;
     }
 }
 
 /// Read-only artifact of `CascadesEngine::run`. Holds per-layer
 /// cascade state (per-node rows, subtree rollups, paint arena — see
-/// [`LayerCascades`]) and a global `WidgetId`-keyed hit index.
+/// [`LayerCascades`]) plus the [`Self::by_id`] hit-lookup snapshot.
+#[derive(Default)]
 pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
@@ -236,28 +250,46 @@ pub(crate) struct Cascades {
     /// append in paint order so reverse iteration yields topmost-
     /// first.
     pub(crate) entries: Soa<EntryRow>,
-    pub(crate) by_id: FxHashMap<WidgetId, u32>,
-}
-
-impl Default for Cascades {
-    fn default() -> Self {
-        Self {
-            layers: PerLayer::default(),
-            entries: Soa::new(),
-            by_id: FxHashMap::default(),
-        }
-    }
+    /// `WidgetId → Endpoint` lookup for hit-test consumers
+    /// ([`crate::input::InputState::response_for`], capture / focus
+    /// eviction). **Invariant: equals `SeenIds.curr` as observed at
+    /// the end of the most recent `CascadesEngine::run`** — populated
+    /// by `clone_from(&seen.curr)` in [`CascadesEngine::run`], no
+    /// other writer. The snapshot is required (rather than reading
+    /// `seen.curr` directly) because `response_for` is called during
+    /// recording, and `SeenIds::pre_record` clears `curr` at the top
+    /// of every record pass — `request_relayout`'s second pass needs
+    /// to see pass A's entries while its own widgets are still being
+    /// recorded into the freshly-cleared `curr`. `seen.prev` is the
+    /// wrong fallback: it carries the previous *frame*'s data, not
+    /// the previous *pass*'s. Pays one O(N) memcpy per cascade run
+    /// in exchange for not paying an O(N) hashmap insert per widget.
+    pub(crate) by_id: FxHashMap<WidgetId, Endpoint>,
 }
 
 impl Cascades {
-    /// Push a hit-test row and register its entry index in `by_id`.
-    /// One source of truth for "append to the hit index"; callers
-    /// can't drift a parallel array out of sync because there isn't
-    /// one any more — the SoA storage keeps every column lockstep.
+    /// Push a hit-test row to the global SoA. Within a layer the
+    /// pushes happen in `NodeId` order (one per [`run_tree`]
+    /// iteration), so `LayerCascades::entries_base + node.0` is
+    /// always the global entry index of the row — no parallel
+    /// `WidgetId → u32` map needed.
     #[inline]
     fn push_entry(&mut self, row: EntryRow) {
-        self.by_id.insert(row.widget_id, self.entries.len() as u32);
         self.entries.push(row);
+    }
+
+    /// Global entry index of the widget last recorded under `id`,
+    /// or `None` if `id` isn't in the most recent cascade run.
+    #[inline]
+    pub(crate) fn entry_idx_of(&self, id: WidgetId) -> Option<u32> {
+        let ep = self.by_id.get(&id)?;
+        Some(self.layers[ep.layer].entries_base + ep.node.0)
+    }
+
+    /// True when `id` appears in the most recent cascade run.
+    #[inline]
+    pub(crate) fn contains_widget(&self, id: WidgetId) -> bool {
+        self.by_id.contains_key(&id)
     }
 }
 
@@ -359,18 +391,39 @@ impl CascadesEngine {
             let r = &mut layout.cascades;
             r.entries.clear();
             r.entries.reserve(total);
-            r.by_id.clear();
-            r.by_id.reserve(total);
         }
 
         for (layer, tree) in forest.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
             let r = &mut layout.cascades;
             let n = tree.records.len();
-            r.layers[layer].reset_for(n, tree.shapes.records.len());
+            let entries_base = r.entries.len() as u32;
+            r.layers[layer].reset_for(n, tree.shapes.records.len(), entries_base);
             self.stack.clear();
             run_tree(tree, layer_layout, r, layer, &mut self.stack);
+            // Invariant guarding `Cascades::entry_idx_of`'s
+            // `entries_base + node.0` arithmetic: every node in
+            // `tree.records` must push exactly one `EntryRow`. An
+            // early-continue / skip-invisible optimization inside
+            // `run_tree` that doesn't push would silently shift every
+            // later widget's entry by one. Release `assert!` —
+            // `n + entries_base` is already loaded, the equality is a
+            // single compare.
+            assert_eq!(
+                r.entries.len() as u32 - entries_base,
+                n as u32,
+                "run_tree pushed {} entries for layer with {n} nodes — every record must push exactly one row to keep entries_base + node.0 valid",
+                r.entries.len() as u32 - entries_base,
+            );
         }
+
+        // Snapshot `seen.curr` for inter-pass `response_for` lookups.
+        // `request_relayout`'s second pass clears `curr` in
+        // `pre_record` *before* the second pass's widgets call
+        // `response_for(id)`, so the data has to live on `Cascades`
+        // instead. `clone_from` reuses storage — one O(N) memcpy
+        // replaces N per-widget hashmap inserts.
+        layout.cascades.by_id.clone_from(&forest.ids.curr);
     }
 }
 
