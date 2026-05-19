@@ -13,7 +13,7 @@
 //!
 //! **Painting-only invariant.** `DamageEngine.prev` only holds entries for
 //! widgets that painted on their last recorded frame (have chrome OR
-//! direct shapes — i.e. `cascades.paint_arenas[li].node_spans[i].len > 0`).
+//! direct shapes — i.e. `cascades.layers[li].paint_arena.node_spans[i].len > 0`).
 //! Non-painting nodes contribute zero pixels, so they're skipped on
 //! insert. A painting→non-painting transition evicts the entry in the
 //! same diff loop; the prev rects contribute (clear those pixels), the
@@ -363,12 +363,13 @@ impl DamageEngine {
 
         for (layer, tree) in forest.iter_paint_order() {
             let li = layer.idx();
-            let rows = cascades.rows_for(layer);
+            let layer_cascades = &cascades.layers[li];
+            let rows = layer_cascades.rows.as_slice();
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();
             let subtree_end = tree.records.subtree_end();
-            let layer_paints = &cascades.paint_arenas[li].rows;
-            let layer_node_paints = &cascades.paint_arenas[li].node_spans;
+            let layer_paints = &layer_cascades.paint_arena.rows;
+            let layer_node_paints = &layer_cascades.paint_arena.node_spans;
             let mut i = 0;
             while i < n {
                 let node_span = layer_node_paints[i];
@@ -640,8 +641,9 @@ fn extend_predamaged(
     let Some(prev) = prev_time else { return };
     for (layer, tree) in forest.iter_paint_order() {
         let li = layer.idx();
-        let paints = &cascades.paint_arenas[li].rows;
-        let shape_to_paint = &cascades.paint_arenas[li].shape_to_paint;
+        let arena = &cascades.layers[li].paint_arena;
+        let paints = &arena.rows;
+        let shape_to_paint = &arena.shape_to_paint;
         for e in &tree.paint_anims.entries {
             if e.anim.next_wake(prev) <= now {
                 let paint_idx = shape_to_paint[e.shape_idx as usize];
