@@ -487,6 +487,16 @@ fn run_tree(
         let layout_rect = layout.rect[id.idx()];
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
+        // Self-transform is read once here and threaded into both
+        // descendant transform composition (below) and
+        // `compute_paint_rect`'s shape-transform composition —
+        // `tree.transform_of` is a sparse-column probe, and doing it
+        // twice per node showed up in the cascade self-time profile.
+        let node_transform = tree.transform_of(id);
+        let self_transform = node_transform
+            .map(|t| t.anchored_at(layout_rect.min))
+            .unwrap_or(TranslateScale::IDENTITY);
+        let clips = attrs.clip_mode().is_clip();
         // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
         // **before** the body. Direct shapes and descendants both
         // paint inside it. Mirror that here so per-shape damage rects
@@ -494,7 +504,7 @@ fn run_tree(
         // otherwise a TextEdit's tall text shape (extent = full
         // shaped buffer) reports damage well past the editor's rect
         // on every scroll tick.
-        let shape_clip = if attrs.clip_mode().is_clip() {
+        let shape_clip = if clips {
             let padding = layout_col[i].padding;
             let mask_local = layout_rect.deflated_by(padding);
             Some(clip_to(
@@ -512,6 +522,8 @@ fn run_tree(
             parent_transform,
             parent_clip,
             shape_clip,
+            self_transform,
+            clips,
             &mut cascades.layers[layer].paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
@@ -535,9 +547,13 @@ fn run_tree(
         // a raw `self.compose` against absolute-coord layout rects
         // would introduce. Identity-preserving — no-op when
         // `scale == 1`. See `TranslateScale::anchored_at`.
-        let node_transform = tree.transform_of(id);
+        // `self_transform` already incorporates the anchoring above;
+        // for descendants we compose it onto the parent's transform.
+        // When `node_transform` is `None`, `self_transform` is
+        // `IDENTITY`, so `compose` is a no-op but we'd still pay a
+        // branch — skip explicitly.
         let desc_transform = match node_transform {
-            Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
+            Some(_) => parent_transform.compose(self_transform),
             None => parent_transform,
         };
         // Descendants inherit the deflated-mask clip — same value the
@@ -703,13 +719,15 @@ fn compute_paint_rect(
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
+    // `self_transform` and `clips` are computed once in `run_tree`
+    // and threaded in to avoid re-probing the sparse `transform_of`
+    // column and the SoA `attrs` column for the same node here —
+    // both showed up as duplicate work in cascade profiling.
+    self_transform: TranslateScale,
+    clips: bool,
     arena: &mut PaintArena,
 ) -> Rect {
     let paints_start = arena.rows.len() as u32;
-    let self_transform = tree
-        .transform_of(node)
-        .map(|t| t.anchored_at(layout_rect.min))
-        .unwrap_or(TranslateScale::IDENTITY);
     let shape_transform = parent_transform.compose(self_transform);
 
     // `Option<Rect>` because zero-size sentinels bias `Rect::union`
@@ -742,7 +760,7 @@ fn compute_paint_rect(
             screen,
             hash: bg.hash,
         });
-    } else if tree.records.attrs()[node.idx()].clip_mode().is_clip() {
+    } else if clips {
         // Chromeless clip-only container: union the owner rect into
         // the cull rollup so the encoder emits the PushClip/PopClip
         // pair even when the subtree paints nothing (empty scroll
