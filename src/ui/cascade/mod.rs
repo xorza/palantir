@@ -149,6 +149,12 @@ struct Frame {
     /// already been folded in. Each pop unions this into the new
     /// top frame so the rollup ripples upward to the root.
     subtree_paint_rect: Rect,
+    /// FxHasher state pre-populated with this frame's ancestor-derived
+    /// hash inputs (transform / clip / disabled / invisible). Cloned
+    /// once per descendant to seed `cascade_input` — descendants only
+    /// fold in their own `layout_rect`, avoiding a re-hash of the 32 B
+    /// ancestor prefix per node. See `hash_cascade_input`.
+    cascade_prefix: Hasher,
 }
 
 /// All per-layer cascade state grouped on one struct. `rows` +
@@ -393,6 +399,7 @@ fn run_tree(
     let attrs_col = tree.records.attrs();
     let widget_ids = tree.records.widget_id();
     let ends = tree.records.subtree_end();
+    let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
 
     for i in 0..n {
         while let Some(top) = stack.last() {
@@ -406,10 +413,17 @@ fn run_tree(
                 popped,
             );
         }
-        let (parent_transform, parent_clip, parent_dis, parent_inv) = match stack.last() {
-            Some(p) => (p.transform, p.clip, p.disabled, p.invisible),
-            None => (TranslateScale::IDENTITY, None, false, false),
-        };
+        let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
+            match stack.last() {
+                Some(p) => (
+                    p.transform,
+                    p.clip,
+                    p.disabled,
+                    p.invisible,
+                    &p.cascade_prefix,
+                ),
+                None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
+            };
 
         let id = NodeId(i as u32);
         let attrs = attrs_col[i];
@@ -456,14 +470,7 @@ fn run_tree(
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
         cascades.layers[layer].rows.push(Cascade {
             paint_rect,
-            cascade_input: hash_cascade_input(
-                parent_transform,
-                parent_clip,
-                parent_dis,
-                parent_inv,
-                layout_rect,
-                invisible,
-            ),
+            cascade_input: finish_cascade_input(parent_prefix, layout_rect, invisible),
         });
         cascades.layers[layer]
             .subtree_paint_rects
@@ -500,14 +507,25 @@ fn run_tree(
             layout_rect,
         });
 
+        // Leaves can't be a parent_prefix for anyone — skip the 32 B
+        // prefix-hash work, push a fresh-state Hasher as a placeholder.
+        // `Hasher::new()` is just `FxHasher { hash: 0 }`, ~free.
+        let subtree_end = ends[i];
+        let is_leaf = subtree_end == (i as u32) + 1;
+        let cascade_prefix = if is_leaf {
+            Hasher::new()
+        } else {
+            build_cascade_prefix(desc_transform, desc_clip, disabled, invisible)
+        };
         stack.push(Frame {
             transform: desc_transform,
             clip: desc_clip,
             disabled,
             invisible,
-            subtree_end: ends[i],
+            subtree_end,
             node_idx: i,
             subtree_paint_rect: subtree_seed,
+            cascade_prefix,
         });
     }
     // Drain frames whose subtree extends to the end of the tree —
@@ -521,42 +539,49 @@ fn run_tree(
     }
 }
 
+/// Ancestor-derived portion of the `cascade_input` hash — folded once
+/// per stack frame at push time (32 B) and cloned per descendant. Split
+/// out from the per-node suffix (`layout_rect`) so a tree-shaped UI
+/// avoids re-hashing the parent context on every node.
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::NoUninit)]
+struct CascadePrefixBytes {
+    parent_transform: TranslateScale, // 12B
+    clip_rect: Rect,                  // 16B (zeroed when absent)
+    clip_present: u8,
+    parent_dis: u8,
+    parent_inv: u8,
+    _pad: u8,
+}
+
 #[inline]
-fn hash_cascade_input(
+fn build_cascade_prefix(
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     parent_dis: bool,
     parent_inv: bool,
-    layout_rect: Rect,
-    invisible: bool,
-) -> CascadeInputHash {
+) -> Hasher {
     let (clip_rect, clip_present) = match parent_clip {
         Some(c) => (c, 1u8),
         None => (Rect::ZERO, 0u8),
     };
-    #[repr(C)]
-    #[derive(Clone, Copy, bytemuck::NoUninit)]
-    struct CascadeInputBytes {
-        parent_transform: TranslateScale, // 12B
-        layout_rect: Rect,                // 16B
-        clip_rect: Rect,                  // 16B (zeroed when absent)
-        clip_present: u8,
-        parent_dis: u8,
-        parent_inv: u8,
-        _pad: u8,
-    }
-    let packed = CascadeInputBytes {
+    let packed = CascadePrefixBytes {
         parent_transform,
-        layout_rect,
         clip_rect,
         clip_present,
         parent_dis: parent_dis as u8,
         parent_inv: parent_inv as u8,
         _pad: 0,
     };
-
     let mut h = Hasher::new();
     h.pod(&packed);
+    h
+}
+
+#[inline]
+fn finish_cascade_input(prefix: &Hasher, layout_rect: Rect, invisible: bool) -> CascadeInputHash {
+    let mut h = prefix.clone();
+    h.pod(&layout_rect);
     CascadeInputHash::pack(h.finish(), invisible)
 }
 
