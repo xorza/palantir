@@ -385,26 +385,44 @@ fn measure_inner(
     // `&mut depth_stack[depth]` borrow is released before the
     // `layout.intrinsic` calls below (which need `&mut layout`).
     let col_tracks = layout.scratch.grid.depth_stack.at(depth).col.tracks.clone();
-    // Skip the span-1 child walk entirely when no column is Hug-sized
-    // — Fixed/Fill columns don't read the hug arrays, so the per-cell
-    // intrinsic queries would all reject at the `Sizing::Hug` filter.
-    let any_hug_col = col_tracks.iter().any(|t| matches!(t.size, Sizing::Hug));
-    if any_hug_col {
+    // Skip the span-1 child walk entirely when no column is content-
+    // floor-sensitive. Hug cols need both `min` (constraint solver lo)
+    // and `max` (constraint solver hi); Fill cols only need `min` so
+    // the Phase 3 distributor floors them at their cells' min-content
+    // (matching Stack's freeze-loop floor, prevents collapse below a
+    // rigid descendant like a Fixed widget or unbreakable word).
+    // Fixed cols read neither.
+    let any_content_floor_col = col_tracks
+        .iter()
+        .any(|t| matches!(t.size, Sizing::Hug | Sizing::Fill(_)));
+    if any_content_floor_col {
         for c in tree.active_children(node) {
             let cell = tree.bounds(c).grid;
             if cell.col_span != 1 {
                 continue;
             }
             let t = &col_tracks[cell.col as usize];
-            if !matches!(t.size, Sizing::Hug) {
-                continue;
-            }
-            let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
-            let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
             let i = cell.col as usize;
-            let (cols_min, cols_max) = layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
-            cols_min[i] = cols_min[i].max(min);
-            cols_max[i] = cols_max[i].max(max);
+            match t.size {
+                Sizing::Hug => {
+                    let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+                    let max = layout.intrinsic(tree, c, Axis::X, LenReq::MaxContent, tc);
+                    let (cols_min, cols_max) =
+                        layout.scratch.grid.hugs.slice_mut_pair(idx, Axis::X);
+                    cols_min[i] = cols_min[i].max(min);
+                    cols_max[i] = cols_max[i].max(max);
+                }
+                Sizing::Fill(_) => {
+                    let min = layout.intrinsic(tree, c, Axis::X, LenReq::MinContent, tc);
+                    let cols_min = layout
+                        .scratch
+                        .grid
+                        .hugs
+                        .slice_mut(idx, Axis::X, HugKind::Min);
+                    cols_min[i] = cols_min[i].max(min);
+                }
+                Sizing::Fixed(_) => {}
+            }
         }
     }
 
@@ -478,17 +496,26 @@ fn measure_inner(
         // Row Hug accumulates from cell's measured height. Row min-content
         // could come from a Y intrinsic query, but it'd be the single-line
         // height — the wrapped height (in `desired.h`) is what actually
-        // matters, so leave row hug_min at zero for now. Skip multi-row
-        // spans: their height is distributed across rows, not attributable
-        // to one Hug row.
+        // matters. For Fill rows, the same `d.h` is the min-content
+        // floor used by `resolve_axis` Phase 3 to prevent collapse
+        // below a rigid descendant (matches Stack's freeze-loop floor).
+        // Skip multi-row spans: their height is distributed across rows,
+        // not attributable to one row.
         if cell.row_span == 1 {
             let GridContext {
                 depth_stack, hugs, ..
             } = &mut layout.scratch.grid;
             let row = cell.row as usize;
-            if matches!(depth_stack.at(depth).row.tracks[row].size, Sizing::Hug) {
-                let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
-                hug_max[row] = hug_max[row].max(d.h);
+            match depth_stack.at(depth).row.tracks[row].size {
+                Sizing::Hug => {
+                    let hug_max = hugs.slice_mut(idx, Axis::Y, HugKind::Max);
+                    hug_max[row] = hug_max[row].max(d.h);
+                }
+                Sizing::Fill(_) => {
+                    let hug_min = hugs.slice_mut(idx, Axis::Y, HugKind::Min);
+                    hug_min[row] = hug_min[row].max(d.h);
+                }
+                Sizing::Fixed(_) => {}
             }
         }
     }
@@ -807,8 +834,12 @@ fn resolve_axis(
 
     // Phase 3: Fill — constraint-by-exclusion. Fills get the leftover
     // after Fixed + Hug, distributed by weight; any Fill whose share
-    // falls outside `[Track.min, Track.max]` clamps and exits the
-    // pool, remaining Fills rebalance.
+    // falls outside `[lo, Track.max]` (where `lo = max(Track.min,
+    // hug_min[i])`) clamps and exits the pool, remaining Fills
+    // rebalance. The `hug_min` floor prevents a Fill cell with a rigid
+    // descendant (Fixed widget, longest unbreakable word) from
+    // collapsing below its real min-content — matches Stack's
+    // freeze-loop floor.
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
     let mut flexible_weight = 0.0_f32;
@@ -820,8 +851,8 @@ fn resolve_axis(
     }
 
     // Clamp-and-rebalance loop. Each iteration looks for one Fill whose
-    // proportional share violates `[Track.min, Track.max]`; if it
-    // exists, clamp it, remove it from the pool, and rerun. When every
+    // proportional share violates `[lo, Track.max]`; if it exists,
+    // clamp it, remove it from the pool, and rerun. When every
     // remaining Fill's share is in-range, commit them at that share and
     // exit. Converges in ≤ N iterations (each clamp removes one).
     while !a.flexible.is_empty() && flexible_weight > 0.0 {
@@ -831,7 +862,8 @@ fn resolve_axis(
                 unreachable!()
             };
             let candidate = remaining * w / flexible_weight;
-            candidate < t.min || candidate > t.max
+            let lo = t.min.max(hug_min[i]);
+            candidate < lo || candidate > t.max
         });
         match clamp_idx {
             Some(k) => {
@@ -841,7 +873,8 @@ fn resolve_axis(
                     unreachable!()
                 };
                 let candidate = remaining * w / flexible_weight;
-                let clamped = candidate.clamp(t.min, t.max);
+                let lo = t.min.max(hug_min[i]);
+                let clamped = candidate.clamp(lo, t.max);
                 a.sizes[i] = clamped;
                 remaining = (remaining - clamped).max(0.0);
                 flexible_weight -= w;

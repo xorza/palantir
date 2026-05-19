@@ -156,6 +156,83 @@ fn grid_fill_weights_and_clamps() {
 }
 
 #[test]
+fn grid_fill_col_floors_at_descendant_min_content() {
+    // Two equal-weight Fill cols, surface 300 wide. Cell (0,0) holds a
+    // Fixed-width 200 frame: that's the col's MinContent intrinsic
+    // floor. Without the floor, weights split 150/150 and the rigid
+    // frame overflows its cell. With the floor (Phase 3 max(t.min,
+    // hug_min[i])), col 0 clamps to 200 and col 1 takes the 100
+    // remainder — matches Stack's freeze-loop floor.
+    let mut ui = Ui::for_test();
+    let mut root = None;
+    ui.run_at(UVec2::new(300, 100), |ui| {
+        root = Some(
+            Grid::new()
+                .auto_id()
+                .cols([Track::fill(), Track::fill()])
+                .rows([Track::fill()])
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("rigid"))
+                        .size((Sizing::Fixed(200.0), Sizing::FILL))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("flex"))
+                        .grid_cell((0, 1))
+                        .show(ui);
+                })
+                .node(ui),
+        );
+    });
+    let kids = child_rects(&ui, root.unwrap());
+    assert_eq!(
+        kids[0].size.w, 200.0,
+        "rigid cell floors at descendant min-content"
+    );
+    assert_eq!(kids[1].size.w, 100.0, "flex cell takes the remainder");
+}
+
+#[test]
+fn grid_fill_row_floors_at_descendant_min_content() {
+    // Symmetric Y-axis case: two equal-weight Fill rows, surface 100
+    // tall. Cell (0,0) holds a Fixed-height 60 frame; cell (1,0) is
+    // open. Without floor: rows split 50/50 and the rigid frame
+    // overflows. With floor (Phase 2 records `d.h` into hug_min for
+    // Fill rows): row 0 clamps to 60, row 1 takes 40.
+    let mut ui = Ui::for_test();
+    let mut root = None;
+    ui.run_at(UVec2::new(100, 100), |ui| {
+        root = Some(
+            Grid::new()
+                .auto_id()
+                .cols([Track::fill()])
+                .rows([Track::fill(), Track::fill()])
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("rigid"))
+                        .size((Sizing::FILL, Sizing::Fixed(60.0)))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                    Frame::new()
+                        .id(WidgetId::from_hash("flex"))
+                        .grid_cell((1, 0))
+                        .show(ui);
+                })
+                .node(ui),
+        );
+    });
+    let kids = child_rects(&ui, root.unwrap());
+    assert_eq!(
+        kids[0].size.h, 60.0,
+        "rigid row floors at descendant min-content"
+    );
+    assert_eq!(kids[1].size.h, 40.0, "flex row takes the remainder");
+}
+
+#[test]
 fn grid_span_covers_multiple_tracks_with_gap() {
     // 3 fixed primary tracks of 100 with gap 10 → spanning all = 320.
     // Body sits in track (1,1) → 110 offset on primary, 50 on secondary.
