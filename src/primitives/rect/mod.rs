@@ -47,6 +47,7 @@ impl Rect {
     /// True if this rect is approximately `Rect::ZERO` — `min` within
     /// `EPS` of `(0, 0)` AND `size.approx_zero()`. Strict, matches
     /// [`Size::approx_zero`] semantic.
+    #[inline]
     pub const fn approx_zero(self) -> bool {
         use super::approx::approx_zero;
         approx_zero(self.min.x) && approx_zero(self.min.y) && self.size.approx_zero()
