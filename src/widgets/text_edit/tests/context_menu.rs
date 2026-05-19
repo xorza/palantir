@@ -118,16 +118,15 @@ fn clipboard_shortcuts_apply_keypresses() {
     let _cb_guard = crate::clipboard::test_serialize_guard();
 
     fn primary(c: char) -> KeyPress {
-        let mods = if cfg!(target_os = "macos") {
-            Modifiers {
+        let mods = match PLATFORM {
+            Platform::Mac => Modifiers {
                 meta: true,
                 ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
+            },
+            _ => Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
-            }
+            },
         };
         KeyPress {
             key: Key::Char(c),
@@ -137,16 +136,15 @@ fn clipboard_shortcuts_apply_keypresses() {
     }
 
     fn non_primary(c: char) -> KeyPress {
-        let mods = if cfg!(target_os = "macos") {
-            Modifiers {
+        let mods = match PLATFORM {
+            Platform::Mac => Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
+            },
+            _ => Modifiers {
                 meta: true,
                 ..Modifiers::NONE
-            }
+            },
         };
         KeyPress {
             key: Key::Char(c),
@@ -220,24 +218,14 @@ fn paste_strips_newlines() {
         );
     }
 
-    // End-to-end via Cmd+V: a multi-line clipboard string lands in
-    // the buffer as a single space-separated line.
+    // End-to-end via Cmd+V (Ctrl+V on non-Mac): a multi-line
+    // clipboard string lands in the buffer as a single
+    // space-separated line.
     let _cb_guard = crate::clipboard::test_serialize_guard();
     crate::clipboard::set("first\r\nsecond\nthird");
     let mut text = String::new();
     let mut state = TextEditState::default();
-    apply_key(
-        &mut text,
-        &mut state,
-        KeyPress {
-            key: Key::Char('v'),
-            mods: Modifiers {
-                meta: true,
-                ..Modifiers::NONE
-            },
-            repeat: false,
-        },
-    );
+    apply_key(&mut text, &mut state, cmd_press(Key::Char('v')));
     assert_eq!(text, "first second third");
     assert_eq!(state.caret, text.len());
 }

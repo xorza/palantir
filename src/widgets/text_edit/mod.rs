@@ -1,4 +1,5 @@
 use crate::animation::paint::PaintAnim;
+use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::input::sense::Sense;
@@ -1199,10 +1200,9 @@ fn apply_key(
 /// the platform conventions every desktop text field follows. Shift may
 /// be held in addition (selection-extending word nav).
 fn is_word_nav(m: Modifiers) -> bool {
-    if cfg!(target_os = "macos") {
-        m.alt && !m.ctrl && !m.meta
-    } else {
-        m.ctrl && !m.alt && !m.meta
+    match PLATFORM {
+        Platform::Mac => m.alt && !m.ctrl && !m.meta,
+        _ => m.ctrl && !m.alt && !m.meta,
     }
 }
 
