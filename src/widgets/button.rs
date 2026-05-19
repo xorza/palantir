@@ -90,7 +90,7 @@ impl Button {
         let label = self.label;
         let label_align = self.label_align;
 
-        ui.node_with_chrome(id, element, chrome, |ui| {
+        ui.node_with_chrome(id, element, &chrome, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: None,

@@ -83,7 +83,7 @@ impl Panel {
         }
         let id = ui.make_persistent_id(element.salt);
         let inner = match chrome {
-            Some(c) => ui.node_with_chrome(id, element, c, body),
+            Some(c) => ui.node_with_chrome(id, element, &c, body),
             None => ui.node(id, element, body),
         };
         let state = ui.response_for(id);

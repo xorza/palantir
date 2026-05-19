@@ -174,8 +174,11 @@ impl FrameArena {
 
     /// Lower a user-facing `Background` to a `ChromeRow`. Same
     /// gradient lowering as `Shapes::add` uses for `RoundedRect.fill`,
-    /// so chrome and shape paints share one pool.
-    pub(crate) fn lower_background(&self, bg: Background, atlas: &GradientAtlas) -> ChromeRow {
+    /// so chrome and shape paints share one pool. Takes `bg` by
+    /// reference — `Background` is 168 B and the recording chain
+    /// threads it through 4 functions; the per-field reads below copy
+    /// the small fields locally as needed.
+    pub(crate) fn lower_background(&self, bg: &Background, atlas: &GradientAtlas) -> ChromeRow {
         let mut a = self.0.borrow_mut();
         let LoweredBrush {
             brush: fill,

@@ -439,7 +439,7 @@ impl Tree {
         new_id: NodeId,
         widget_id: WidgetId,
         mut element: Element,
-        chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
+        chrome: Option<(&Background, &FrameArena, &GradientAtlas)>,
     ) -> NodeId {
         debug_assert_eq!(
             new_id.0 as usize,
