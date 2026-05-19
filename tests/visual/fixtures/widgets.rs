@@ -2,6 +2,7 @@
 //! widget's render path.
 
 use glam::{UVec2, Vec2};
+use image::Rgba;
 use palantir::{
     Background, Brush, Button, Color, ColorU8, Configure, ConicGradient, Corners, Frame, LineCap,
     LineJoin, LinearGradient, Panel, RadialGradient, Rect, Shadow, Shape, Sizing, Stroke,
@@ -321,10 +322,20 @@ fn surface_rounded_clips_full_fill_child() {
 /// side. The mask SDF must use the panel's true rect — not the
 /// viewport-clamped scissor — so the rounded corners stay outside
 /// the viewport instead of "sliding inward" into the visible region.
-/// Visible: a black panel with a green stroke filling the entire
-/// viewport with NO rounded corners visible (they sit off-screen);
-/// without the fix, dark curved notches appear at each viewport
-/// corner where the stencil mask cuts the rect.
+///
+/// Panel rect `(-6, -6) .. (194, 144)` over a `120×90` viewport,
+/// radius 24. Three of the four rounded corners (TR / BL / BR) are
+/// fully off-screen; only TL pokes into the viewport — its arc center
+/// at world `(18, 18)` makes the arc cross the viewport's top edge at
+/// `x≈2.1` and left edge at `y≈2.1`, producing a small visible
+/// green-stroked curve plus a `DARK_BG` corner cutout in the top-left.
+/// The rest of the viewport is filled solid black.
+///
+/// Without the fix, the mask SDF uses the viewport-clamped scissor —
+/// so additional spurious rounded notches appear at the TR / BL / BR
+/// viewport corners where the bug-mode mask cuts the panel fill, and
+/// `DARK_BG` shows through there too. The pixel asserts below pin
+/// that exact discrimination.
 #[test]
 fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     let mut h = Harness::new();
@@ -335,7 +346,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
             .show(ui, |ui| {
                 Panel::zstack()
                     .id_salt("rounded")
-                    .position(Vec2::new(-40.0, -30.0))
+                    .position(Vec2::new(-6.0, -6.0))
                     .size((Sizing::Fixed(200.0), Sizing::Fixed(150.0)))
                     .background(Background {
                         fill: Color::TRANSPARENT.into(),
@@ -356,6 +367,47 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     });
             });
     });
+
+    // sRGB(0.08, 0.08, 0.10) ≈ (20, 20, 25). "near-black" = all
+    // channels well under that; "dark-bg-ish" = R/G near 20.
+    let is_near_black = |p: Rgba<u8>| p.0[0] < 8 && p.0[1] < 8 && p.0[2] < 8;
+    let is_dark_bg = |p: Rgba<u8>| p.0[0] > 12 && p.0[0] < 32 && p.0[2] > 12 && p.0[2] < 40;
+
+    // TL viewport corner is the genuine cutout — DARK_BG should show
+    // through whether the fix is in place or not.
+    let tl = *img.get_pixel(0, 0);
+    assert!(
+        is_dark_bg(tl),
+        "TL viewport corner should be DARK_BG (genuine offscreen-arc cutout), got rgba={:?}",
+        tl.0,
+    );
+
+    // Discriminating pixels: the other three viewport corners must
+    // be solid black under the fix. With the bug (viewport-clamped
+    // mask), each gets a spurious rounded notch and reads DARK_BG.
+    for (x, y, label) in [
+        (119, 0, "TR"),
+        (0, 89, "BL"),
+        (119, 89, "BR"),
+    ] {
+        let px = *img.get_pixel(x, y);
+        assert!(
+            is_near_black(px),
+            "{label} viewport corner ({x},{y}) should be black (panel arc is offscreen), \
+             got rgba={:?} — the mask SDF is using the viewport-clamped scissor \
+             instead of the panel's true rect.",
+            px.0,
+        );
+    }
+
+    // Viewport centre should obviously be black.
+    let centre = *img.get_pixel(60, 45);
+    assert!(
+        is_near_black(centre),
+        "viewport centre should be solid black, got rgba={:?}",
+        centre.0,
+    );
+
     assert_matches_golden(
         "rounded_clip_partially_offscreen",
         &img,
