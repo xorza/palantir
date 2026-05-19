@@ -25,10 +25,12 @@ use palantir::{
 };
 use std::hint::black_box;
 
-/// Local mono-fallback `Ui` constructor. `internals::new_ui` is gated
-/// behind the `internals` feature; this bench doesn't enable it.
 #[global_allocator]
 static ALLOC: dhat::Alloc = dhat::Alloc;
+
+// `Ui::for_test()` would pre-mark warm but is gated behind the
+// `internals` feature; this bench doesn't opt in and warms manually
+// below via `WARMUP_FRAMES`.
 
 const WARMUP_FRAMES: usize = 16;
 // 256 measure frames so an intermittent grow-on-Nth-frame allocation

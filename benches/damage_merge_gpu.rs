@@ -10,10 +10,9 @@
 //! two flipping cells in a 32×32 grid) and reports `separate` vs
 //! `merged` strategies side-by-side at each gap.
 //!
-//! DamageEngine region is forced via
-//! `support::internals::force_frame_damage_to_rects`, bypassing the
-//! production merge policy so the same scene is submitted with
-//! either strategy. Cell-rect computation hard-codes the grid
+//! Damage region is forced via `FrameReport::force_damage_to_rects`,
+//! bypassing the production merge policy so the same scene is
+//! submitted with either strategy. Cell-rect computation hard-codes the grid
 //! geometry (matches `build_grid` below); the rect is padded by 2 px
 //! to guarantee leaf paints intersect the damage filter.
 //!
