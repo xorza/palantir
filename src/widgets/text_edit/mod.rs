@@ -772,12 +772,15 @@ impl<'a> TextEdit<'a> {
         // the host's buffer through the same `&mut String` borrow
         // `show` was given, then sync `TextEditState.caret` /
         // `selection` so the next frame paints the right place.
-        // Selection range + clipboard liveness snapshotted before
-        // the closure so the items can render with the right
-        // `.enabled(...)` per state.
+        // Selection range snapshotted before the closure for the
+        // `.enabled(...)` flags. Clipboard liveness is read **inside**
+        // the closure — `ContextMenu::show` early-returns when the
+        // menu is closed, so probing the OS clipboard every frame on
+        // every TextEdit (via `arboard` → `NSPasteboardItem`) would
+        // be pure overhead. Deferred read keeps the closed-menu path
+        // syscall-free.
         let sel = ui.state_mut::<TextEditState>(id).sel_range();
         let has_sel = sel.is_some();
-        let cb_has = !crate::clipboard::get().is_empty();
         let has_text = !self.text.is_empty();
         let text = self.text;
         ContextMenu::attach(ui, &response).show(ui, |ui, popup| {
@@ -798,6 +801,7 @@ impl<'a> TextEdit<'a> {
             {
                 crate::clipboard::set(&text[r]);
             }
+            let cb_has = !crate::clipboard::get().is_empty();
             if MenuItem::new("Paste")
                 .shortcut(Shortcut::cmd('V'))
                 .enabled(cb_has)
