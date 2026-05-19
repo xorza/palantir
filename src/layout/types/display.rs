@@ -23,8 +23,13 @@ pub struct Display {
     /// Logical→physical conversion factor (e.g. `2.0` on a 2× retina
     /// display). Must be `≥ f32::EPSILON`; `Ui::set_display` asserts.
     pub scale_factor: f32,
-    /// Whether the renderer snaps rect edges to integer physical
-    /// pixels. Default `true` — sharper edges, no half-pixel blur.
+    /// Whether the composer snaps painted geometry edges (quad rects,
+    /// shadow rects, image rects, text bounds, clip scissors) to
+    /// integer physical pixels. Default `true` — sharper edges, no
+    /// half-pixel blur. Mesh/curve/polyline vertices and corner radii
+    /// are never snapped (would warp geometry). Damage scissors (fed
+    /// to `wgpu::RenderPass::set_scissor_rect`, which only accepts
+    /// `u32`) always snap regardless of this flag.
     pub pixel_snap: bool,
 }
 

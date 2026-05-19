@@ -813,14 +813,21 @@ fn any_overlap(slots: &[URect], r: URect) -> bool {
 /// Clamp a physical-px AABB to the viewport, returning the
 /// non-negative `URect` the GPU can consume. NaN/non-finite inputs
 /// collapse to `URect::default()` (zero-sized).
+///
+/// Floor on min, ceil on max — so unsnapped float inputs (curve/
+/// polyline bbox with `snap=false`) expand outward to fully cover
+/// their source rect. For snapped inputs the edges are already
+/// integer floats so floor == ceil and behavior is unchanged.
+/// Under-bounding the bbox would feed false-negatives to overlap
+/// tracking (paint reorder) and cull (dropped paints).
 fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
     if !(min.x.is_finite() && min.y.is_finite() && max.x.is_finite() && max.y.is_finite()) {
         return URect::default();
     }
     let x = (min.x.max(0.0) as u32).min(viewport.x);
     let y = (min.y.max(0.0) as u32).min(viewport.y);
-    let right = (max.x.max(0.0) as u32).min(viewport.x);
-    let bottom = (max.y.max(0.0) as u32).min(viewport.y);
+    let right = (max.x.max(0.0).ceil() as u32).min(viewport.x);
+    let bottom = (max.y.max(0.0).ceil() as u32).min(viewport.y);
     URect {
         x,
         y,
