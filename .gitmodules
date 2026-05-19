@@ -1,0 +1,3 @@
+[submodule "vendor/glyphon"]
+	path = vendor/glyphon
+	url = https://github.com/xorza/glyphon.git
