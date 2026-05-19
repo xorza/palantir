@@ -44,18 +44,22 @@ Arena `Tree`, **SoA** — `records: Soa<NodeRecord>` (via `soa-rs`) indexed by `
 
 Adjacent storage on the tree, not part of the SoA:
 
-- `shapes: Shapes` — flat per-frame `ShapeRecord` buffer (`shapes.records`) + per-variant payload arenas (`shapes.payloads`) backing the variable-length `Polyline` / `Mesh` variants. Per-node ranges live in `records.shape_span()[i]`.
-- `parents: Vec<NodeId>` — `NodeId::ROOT` for roots; gives any post-recording pass O(1) "who's my parent?" without a backwards `subtree_end` walk.
-- `bounds: SparseColumn<BoundsExtras>` — rare positioning fields (`transform`, absolute `position`).
-- `panel: SparseColumn<PanelExtras>` — panel-only fields (grid cell + span, scroll axes).
-- `chrome: SparseColumn<Background>` — panel chrome (fill + radius).
-- `clip_radius: SparseColumn<Corners>` — mask radius for `ClipMode::Rounded`. Decoupled from `chrome` so a clipped node with invisible paint still has a radius for the stencil-mask path.
+- `shapes: Shapes` — flat per-frame `ShapeRecord` buffer (`shapes.records`); per-node ranges live in `records.shape_span()[i]`. Variable-length payloads (polyline points/colors, mesh verts/indices, gradient stops) live on `FrameArena` and are referenced via spans/ids from each `ShapeRecord`.
+- `extras_idx: Vec<ExtrasIdx>` — one packed row per node; three niche-encoded `Slot` fields (`bounds`, `panel`, `chrome`). `u16::MAX` = absent; otherwise indexes the matching dense table below. One packed store per `open_node` (vs three separate `Vec<u16>::push`es previously) and hash/damage walks read all three slots from the same cache line.
+- `bounds_table: Vec<BoundsExtras>` — rare positioning fields (`transform`, absolute `position`).
+- `panel_table: Vec<PanelExtras>` — panel-only fields (grid cell + span, scroll axes).
+- `chrome_table: Vec<ChromeRow>` — panel chrome (fill + radius). A `ChromeRow` is also allocated for any node with `ClipMode::Rounded` even when paint is fully `is_noop`, so the encoder can read `radius` for the stencil-mask path without a separate `clip_radius` column. Per-emit gates in `cmd_buffer::draw_*` drop the visually no-op slices; the radius survives.
+- `paint_anims: PaintAnims` — shape-keyed paint-only animation registry (alpha mods today via `PaintAnim::BlinkOpacity`; rotation/pulse/marquee land once the encoder grows transform-mod plumbing — see `docs/roadmap/paint-tick.md`). `Forest::min_paint_anim_wake` folds each anim's `next_wake` into `Ui::repaint_wakes` at the tail of every frame, so widget code never calls `request_repaint_after` for these shapes.
 - `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
-- `rollups: SubtreeRollups` — per-node + subtree hashes, `paints` bitset, `has_grid` fast-path bit. Populated in `post_record` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
+- `roots: Vec<RootSlot>` — top-level root slots in this tree, in record order. Empty when no nodes were recorded into this tree this frame.
+- `rollups: SubtreeRollups` — per-node + subtree hashes + `paints` bitset. Populated in `post_record` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
+- `has_grid: FixedBitSet` — per-node bit set iff the subtree rooted at node `i` contains any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s grid-hug snapshot/restore walk.
+
+Parent lookups are not stored as a column — passes that need a parent walk back via `subtree_end` (rare; almost everything is post-order or pre-order over the dense `records`).
 
 Atomic-push across the SoA columns means `open_node` writes all five per-node fields together and they can't drift. Measured `desired`/`rect`/`text_shapes`/`scroll_content`/`available_q` live on `LayoutResult` keyed by `NodeId`, **not** on the tree — the tree is input, results are derived.
 
-`Shape` (paint primitive: `RoundedRect`, `Line`, `Polyline`, `CubicBezier`, `QuadraticBezier`, `Text`, `Mesh`) is lowered at authoring time into `ShapeRecord`s in `Tree.shapes.records`; variable-length `Polyline`/`Mesh` data sits in `Tree.shapes.payloads`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
+`Shape` (paint primitive: `RoundedRect`, `Line`, `Polyline`, `CubicBezier`, `QuadraticBezier`, `Text`, `Mesh`, `Image`, `Shadow`) is lowered at authoring time into `ShapeRecord`s in `Tree.shapes.records`; variable-length payloads (polyline points/colors, mesh verts/indices, gradient stops) sit on `FrameArena`. `RoundedRect` always paints the owner's full arranged rect — no per-shape positioning. **Layout passes ignore Shapes and `attrs`; paint pass ignores hierarchy beyond `subtree_end`.** This decoupling is load-bearing.
 
 ## Sizing model (flex-shrink with min-content floor)
 
