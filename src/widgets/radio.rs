@@ -33,7 +33,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     #[track_caller]
     pub fn new(current: &'a mut T, value: T) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
-        element.set_sense(Sense::CLICK);
+        element.flags.set_sense(Sense::CLICK);
         Self {
             element,
             current,
@@ -51,7 +51,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let id = ui.make_persistent_id(self.element.salt);
         let raw_state = ui.response_for(id);
         let mut state = raw_state;
-        state.disabled |= self.element.is_disabled();
+        state.disabled |= self.element.flags.is_disabled();
         let selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
         // matches platform behavior on every OS.
@@ -77,8 +77,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         let label = self.label;
 
         let mut element = self.element;
-        element.set_gap(row_gap);
-        element.set_child_align(Align::v(VAlign::Center));
+        element.gaps.set_gap(row_gap);
+        element.child_align = Align::v(VAlign::Center);
 
         ui.node(id, element, |ui| {
             let pip_id = id.with("pip");

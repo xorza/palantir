@@ -30,7 +30,7 @@ impl<'a> Checkbox<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
-        element.set_sense(Sense::CLICK);
+        element.flags.set_sense(Sense::CLICK);
         Self {
             element,
             value,
@@ -50,7 +50,7 @@ impl<'a> Checkbox<'a> {
         // Cascade lags by a frame; OR self-disabled in so a freshly
         // disabled checkbox doesn't toggle or paint hovered on its
         // first frame. Mirrors Button.
-        state.disabled |= self.element.is_disabled();
+        state.disabled |= self.element.flags.is_disabled();
         if state.clicked && !state.disabled {
             *self.value = !*self.value;
         }
@@ -70,8 +70,8 @@ impl<'a> Checkbox<'a> {
         let label = self.label;
 
         let mut element = self.element;
-        element.set_gap(row_gap);
-        element.set_child_align(Align::v(VAlign::Center));
+        element.gaps.set_gap(row_gap);
+        element.child_align = Align::v(VAlign::Center);
 
         ui.node(id, element, |ui| {
             let box_id = id.with("box");
