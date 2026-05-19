@@ -50,7 +50,7 @@ pub mod region;
 /// they live in [`DamageEngine::paint_snaps`], a single contiguous
 /// arena shared by every painting widget, and this struct just holds
 /// a `Span` into it. Each row is either chrome (row 0 when present)
-/// or one direct shape, mirroring `Cascades::paints`.
+/// or one direct shape, mirroring `Cascades::paint_arenas`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
     /// Screen-space rect from last frame's `Cascade.paint_rect`
@@ -383,9 +383,7 @@ impl DamageEngine {
                     Entry::Vacant(_) if !curr.paints || !curr.rect.intersects(surface) => 1,
                     Entry::Vacant(e) => {
                         let paint_span = append_curr_paints(paint_snaps, curr_paints_slice);
-                        for p in &paint_snaps[paint_span.range()] {
-                            raw_rects.push(p.screen);
-                        }
+                        push_screens(raw_rects, &paint_snaps[paint_span.range()]);
                         e.insert(curr.to_snapshot(paint_span));
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(curr.node);
@@ -436,9 +434,7 @@ impl DamageEngine {
                         // everything the node *was* painting, then
                         // evict.
                         let prev = *e.get();
-                        for p in &paint_snaps[prev.paint_span.range()] {
-                            raw_rects.push(p.screen);
-                        }
+                        push_screens(raw_rects, &paint_snaps[prev.paint_span.range()]);
                         *orphaned = orphaned.saturating_add(prev.paint_span.len);
                         e.remove();
                         #[cfg(any(test, feature = "internals"))]
@@ -477,9 +473,10 @@ impl DamageEngine {
         // between them.
         for wid in removed {
             if let Some(snap) = self.prev.remove(wid) {
-                for p in &self.paint_snaps[snap.paint_span.range()] {
-                    self.raw_rects.push(p.screen);
-                }
+                push_screens(
+                    &mut self.raw_rects,
+                    &self.paint_snaps[snap.paint_span.range()],
+                );
                 self.paint_snaps_orphaned = self
                     .paint_snaps_orphaned
                     .saturating_add(snap.paint_span.len);
@@ -603,6 +600,16 @@ fn append_curr_paints(arena: &mut Vec<Paint>, curr_paints: &[Paint]) -> Span {
     let start = arena.len() as u32;
     arena.extend_from_slice(curr_paints);
     Span::new(start, curr_paints.len() as u32)
+}
+
+/// Drain every paint's screen rect into the raw-rect buffer. Used by
+/// the Vacant-insert arm (everything's new), the eviction arm
+/// (everything's going), and the removed-widget tail.
+#[inline]
+fn push_screens(out: &mut Vec<Rect>, paints: &[Paint]) {
+    for p in paints {
+        out.push(p.screen);
+    }
 }
 
 /// Cascade-input-shift refresh: rects moved with the ancestor

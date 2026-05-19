@@ -26,9 +26,12 @@ const PAINT_ANIM_NONE: u16 = u16::MAX;
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
     /// Index into `Tree::shapes.records` of the shape this anim drives.
-    /// Read by `Ui::predamaged_rects` to look up the shape's tight
-    /// screen-space damage rect off `Cascades::shape_rects[layer]`.
-    /// Encoder uses the parallel `by_shape` array instead.
+    /// Read by the damage's `extend_predamaged` path, which translates
+    /// to a paint-arena index via
+    /// `Cascades::paint_arenas[layer].shape_to_paint[shape_idx]` (may
+    /// be `u32::MAX` if the cascade walk never visited the shape — a
+    /// collapsed / invisible subtree). Encoder uses the parallel
+    /// `by_shape` array instead.
     pub(crate) shape_idx: u32,
 }
 

@@ -27,7 +27,7 @@ mod tests;
 /// child placed at `.position(700, ...)` with size 160 forces a FILL
 /// canvas's `intrinsic_min` to 860, which floors FILL above the
 /// available and overflows the surface; in the damage diff, the canvas's
-/// `chrome_rect` then changes every frame the user drags the child,
+/// chrome paint rect then changes every frame the user drags the child,
 /// producing `Damage::Full` flicker (the darkroom graph-view bug).
 /// Negative positions render outside the canvas's `inner` either way
 /// (the loop's running max starts at 0); if you need scrollable
