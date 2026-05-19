@@ -9,7 +9,7 @@ use crate::common::per_layer::PerLayer;
 use crate::forest::element::Element;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
-use crate::forest::tree::{PendingAnchor, Tree};
+use crate::forest::tree::{PendingAnchor, RecordingScratch, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -87,6 +87,12 @@ impl Layer {
 /// (e.g. summing record counts).
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
+    /// Per-layer recording-only state (ancestor stack + pending
+    /// anchor). Lives off `Tree` so downstream passes holding `&Tree`
+    /// can't reach transient state; cleared by `pre_record`, drained
+    /// at each top-level `close_node`. Disjoint from `trees` so
+    /// `open_node` can borrow both via field access.
+    pub(crate) scratch: PerLayer<RecordingScratch>,
     /// Per-frame `WidgetId` tracker. Mutated by `open_node` (collision
     /// detection + auto-id disambiguation), reset by `pre_record`, and
     /// rolled over by `Ui::finalize_frame` (which fans `ids.removed`
@@ -113,6 +119,7 @@ impl Default for Forest {
     fn default() -> Self {
         Self {
             trees: PerLayer::default(),
+            scratch: PerLayer::default(),
             ids: SeenIds::default(),
             collisions: Vec::new(),
             layer_stack: vec![Layer::Main],
@@ -139,6 +146,9 @@ impl Forest {
         for t in &mut self.trees {
             t.pre_record();
         }
+        for s in &mut self.scratch {
+            s.clear();
+        }
     }
 
     /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
@@ -156,6 +166,12 @@ impl Forest {
             "post_record called with active layer {active:?} — Ui::layer body forgot to return",
         );
         for layer in Layer::PAINT_ORDER {
+            let scratch = &self.scratch[layer];
+            assert!(
+                scratch.open_frames.is_empty(),
+                "post_record: layer {layer:?} has {} node(s) still open — a widget builder forgot close_node",
+                scratch.open_frames.len(),
+            );
             self.trees[layer].post_record();
         }
     }
@@ -195,7 +211,7 @@ impl Forest {
         chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
     ) {
         let layer = self.current_layer();
-        let node = self.current_tree_mut().peek_next_id();
+        let node = self.trees[layer].peek_next_id();
         let endpoint = Endpoint { layer, node };
         if let EndpointOutcome::ExplicitCollision { first, second } =
             self.ids.record_endpoint(widget_id, endpoint)
@@ -209,12 +225,18 @@ impl Forest {
             );
             self.collisions.push(CollisionRecord { first, second });
         }
-        self.current_tree_mut()
-            .open_node(node, widget_id, element, chrome);
+        // Disjoint borrow: `trees` and `scratch` are separate fields
+        // on `Forest`, so both can be mutably borrowed at the same call.
+        let tree = &mut self.trees[layer];
+        let scratch = &mut self.scratch[layer];
+        tree.open_node(scratch, node, widget_id, element, chrome);
     }
 
     pub(crate) fn close_node(&mut self) {
-        self.current_tree_mut().close_node();
+        let layer = self.current_layer();
+        let tree = &mut self.trees[layer];
+        let scratch = &mut self.scratch[layer];
+        tree.close_node(scratch);
     }
 
     /// Lower a user-facing [`Shape`] (curve flattening, span
@@ -227,15 +249,15 @@ impl Forest {
         arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
-        let tree = self.current_tree_mut();
+        let layer = self.current_layer();
         assert!(
-            !tree.open_frames.is_empty(),
+            !self.scratch[layer].open_frames.is_empty(),
             "add_shape called with no open node",
         );
         // No `paint_anims.by_shape` bookkeeping on the unanimated path —
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
-        let _ = tree.shapes.add(shape, arena, atlas);
+        let _ = self.trees[layer].shapes.add(shape, arena, atlas);
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the
@@ -250,11 +272,12 @@ impl Forest {
         arena: &FrameArena,
         atlas: &GradientAtlas,
     ) {
-        let tree = self.current_tree_mut();
+        let layer = self.current_layer();
         assert!(
-            !tree.open_frames.is_empty(),
+            !self.scratch[layer].open_frames.is_empty(),
             "add_shape_animated called with no open node",
         );
+        let tree = &mut self.trees[layer];
         let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
             return;
         };
@@ -269,16 +292,16 @@ impl Forest {
             Layer::Main,
             "Ui::layer must be called from the Main scope (current: {active:?})",
         );
-        let tree = &mut self.trees[layer];
+        let scratch = &mut self.scratch[layer];
         assert!(
-            tree.open_frames.is_empty(),
+            scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
         debug_assert!(
-            tree.pending_anchor.is_none(),
+            scratch.pending_anchor.is_none(),
             "push_layer({layer:?}) found pending_anchor already set — no-nesting invariant violated",
         );
-        tree.pending_anchor = Some(PendingAnchor { anchor, size });
+        scratch.pending_anchor = Some(PendingAnchor { anchor, size });
         self.layer_stack.push(layer);
     }
 
@@ -288,14 +311,14 @@ impl Forest {
             "pop_layer without matching push_layer",
         );
         let layer = self.current_layer();
-        let tree = &mut self.trees[layer];
+        let scratch = &mut self.scratch[layer];
         assert!(
-            tree.open_frames.is_empty(),
+            scratch.open_frames.is_empty(),
             "Ui::layer body left {} node(s) open in layer {:?}",
-            tree.open_frames.len(),
+            scratch.open_frames.len(),
             layer,
         );
-        tree.pending_anchor = None;
+        scratch.pending_anchor = None;
         self.layer_stack.pop();
     }
 
@@ -319,11 +342,12 @@ impl Forest {
         &self.trees[self.current_layer()]
     }
 
-    /// Mutably borrow the tree for the [`Self::current_layer`].
+    /// Recording-only scratch for the active layer. Read by
+    /// `Ui::make_persistent_id` (parent lookup) and the disabled
+    /// cascade at record time.
     #[inline]
-    pub(crate) fn current_tree_mut(&mut self) -> &mut Tree {
-        let layer = self.current_layer();
-        &mut self.trees[layer]
+    pub(crate) fn current_scratch(&self) -> &RecordingScratch {
+        &self.scratch[self.current_layer()]
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing

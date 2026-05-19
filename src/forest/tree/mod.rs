@@ -65,6 +65,56 @@ pub(crate) struct OpenFrame {
     pub(crate) ancestor_or_self_disabled: bool,
 }
 
+/// Per-layer recording-only state: the ancestor stack and the pending
+/// layer anchor. Lives off `Tree` so every downstream pass holding
+/// `&Tree` is type-prevented from reaching transient state — `Tree`
+/// itself is the finalized output. Cleared by `Forest::pre_record`;
+/// drained at every top-level `close_node`.
+#[derive(Default)]
+pub(crate) struct RecordingScratch {
+    /// Ancestor stack for the currently-open scope. Empty outside the
+    /// `pre_record` ↔ root `close_node` window. Capacity retained across
+    /// frames.
+    ///
+    /// Each frame carries a precomputed `ancestor_or_self_disabled` bit:
+    /// on push, OR the new node's `disabled` with the parent frame's
+    /// bit. That makes [`Self::ancestor_disabled`] a one-element load
+    /// (read from `last()`) instead of an O(depth) walk.
+    pub(crate) open_frames: Vec<OpenFrame>,
+
+    /// Anchor + optional size cap for the active `Forest::push_layer`
+    /// scope. `Some` between `push_layer` and `pop_layer`; root mints
+    /// inside the scope read it (don't consume — multiple roots share
+    /// the same anchor). `None` outside any scope and always on `Main`
+    /// (its implicit root paints the full surface); in that case root
+    /// mints fall through to `PendingAnchor::default()` =
+    /// `(Vec2::ZERO, None)`. `Forest::push_layer` asserts no nesting,
+    /// so a single slot suffices.
+    pub(crate) pending_anchor: Option<PendingAnchor>,
+}
+
+impl RecordingScratch {
+    pub(crate) fn clear(&mut self) {
+        self.open_frames.clear();
+        self.pending_anchor = None;
+    }
+
+    /// True when any currently-open ancestor in the active recording
+    /// scope has `disabled=true`. Lets widgets see inherited-disabled
+    /// at record time, in the *same* frame the ancestor was opened —
+    /// `cascade.disabled` is one frame stale, so without this an
+    /// inherited-disabled child paints alive on first appearance and
+    /// then animates to disabled. O(1): the bit is propagated on
+    /// `open_node` push, so `last()` already encodes the OR over the
+    /// whole open chain.
+    #[inline]
+    pub(crate) fn ancestor_disabled(&self) -> bool {
+        self.open_frames
+            .last()
+            .is_some_and(|f| f.ancestor_or_self_disabled)
+    }
+}
+
 /// One root within a single layer's [`Tree`]. Multiple roots in the
 /// same tree happen for popups (eater + body recorded as two
 /// top-level scopes) and any future `Ui::layer` scope that opens
@@ -205,28 +255,6 @@ pub(crate) struct Tree {
     /// frame.
     pub(crate) roots: Vec<RootSlot>,
 
-    // -- Recording-only ancestor stack -----------------------------------
-    /// Ancestor stack for this tree's currently-open scope. Empty
-    /// outside the `pre_record` ↔ root `close_node` window. Capacity
-    /// retained.
-    ///
-    /// Each frame carries a precomputed `ancestor_or_self_disabled`
-    /// bit: on push, OR the new node's `disabled` with the parent
-    /// frame's bit. That makes `ancestor_disabled` a one-element
-    /// load (read from `last()`) instead of an O(depth) walk.
-    pub(crate) open_frames: Vec<OpenFrame>,
-
-    /// Anchor + optional size cap for the active `Forest::push_layer`
-    /// scope. `Some` between `push_layer` and `pop_layer`; root mints
-    /// inside the scope read it (and don't consume — multiple roots
-    /// share the same anchor). `None` outside any scope and always on
-    /// `Main` (its implicit root paints the full surface); in that
-    /// case root mints fall through to `PendingAnchor::default()` =
-    /// `(Vec2::ZERO, None)`. `Forest::push_layer` asserts no nesting,
-    /// so a single slot suffices; if nested layers ever land, flip
-    /// back to `Vec`.
-    pub(crate) pending_anchor: Option<PendingAnchor>,
-
     // -- Paint-anim registry ----------------------------------------------
     /// Shape-keyed paint animation registrations. Pushed in lockstep
     /// with `shapes.records` via `Forest::add_shape{,_animated}`,
@@ -264,8 +292,6 @@ impl Tree {
         self.has_grid.clear();
         self.has_grid.grow(prev_node_count);
         self.roots.clear();
-        self.open_frames.clear();
-        self.pending_anchor = None;
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
@@ -275,11 +301,6 @@ impl Tree {
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
-        assert!(
-            self.open_frames.is_empty(),
-            "post_record called with {} node(s) still open — a widget builder forgot close_node",
-            self.open_frames.len(),
-        );
         // `by_shape` is lazy — empty in frames with no animated
         // shapes, otherwise sized to `last_animated_shape_idx + 1`.
         // Encoder treats `idx >= by_shape.len()` as "no anim". Sanity
@@ -394,9 +415,9 @@ impl Tree {
     }
 
     /// Push a node as a child of the currently-open node (or as a new
-    /// root if `open_frames` is empty) and make it the new tip. Root
-    /// mints stamp `pending_anchor` onto the new `RootSlot`; child
-    /// opens don't read it.
+    /// root if `scratch.open_frames` is empty) and make it the new tip.
+    /// Root mints stamp `scratch.pending_anchor` onto the new
+    /// `RootSlot`; child opens don't read it.
     ///
     /// `new_id` is the pre-reserved id `Forest::open_node` already
     /// computed via [`Self::peek_next_id`] to build the `SeenIds`
@@ -414,6 +435,7 @@ impl Tree {
     #[inline]
     pub(crate) fn open_node(
         &mut self,
+        scratch: &mut RecordingScratch,
         new_id: NodeId,
         widget_id: WidgetId,
         mut element: Element,
@@ -432,10 +454,10 @@ impl Tree {
             }
         }
 
-        let parent_frame = self.open_frames.last().copied();
+        let parent_frame = scratch.open_frames.last().copied();
 
         if parent_frame.is_none() {
-            let pending = self.pending_anchor.unwrap_or_default();
+            let pending = scratch.pending_anchor.unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id.0,
                 anchor: pending.anchor,
@@ -508,7 +530,7 @@ impl Tree {
         }
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
-        self.open_frames.push(OpenFrame {
+        scratch.open_frames.push(OpenFrame {
             node: new_id,
             ancestor_or_self_disabled,
         });
@@ -547,22 +569,8 @@ impl Tree {
         }
     }
 
-    /// True when any currently-open ancestor in this tree's recording
-    /// scope has `disabled=true`. Lets widgets see inherited-disabled
-    /// at record time, in the *same* frame the ancestor was opened —
-    /// `cascade.disabled` is one frame stale, so without this an
-    /// inherited-disabled child paints alive on first appearance and
-    /// then animates to disabled. O(1): the bit is propagated on
-    /// `open_node` push, so `last()` already encodes the OR over the
-    /// whole open chain.
-    pub(crate) fn ancestor_disabled(&self) -> bool {
-        self.open_frames
-            .last()
-            .is_some_and(|f| f.ancestor_or_self_disabled)
-    }
-
-    pub(crate) fn close_node(&mut self) {
-        let closing = self
+    pub(crate) fn close_node(&mut self, scratch: &mut RecordingScratch) {
+        let closing = scratch
             .open_frames
             .pop()
             .expect("close_node called with no open node")
@@ -579,7 +587,7 @@ impl Tree {
         }
         let i_has_grid = self.has_grid.contains(i);
 
-        if let Some(parent) = self.open_frames.last().map(|f| f.node) {
+        if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
             let pi = parent.idx();
             let ends = self.records.subtree_end_mut();
             if ends[pi] < end {
