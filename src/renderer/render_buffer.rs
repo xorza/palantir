@@ -154,7 +154,7 @@ pub(crate) struct ImageBatch {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct RoundedClip {
     pub(crate) mask_rect: Rect,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
 }
 
 /// Scene-wide mesh pool, SoA-stored as `Soa<MeshDrawRow>`. The

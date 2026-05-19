@@ -177,7 +177,7 @@ fn caps(ui: &mut Ui) {
 fn backdrop(ui: &mut Ui) {
     ui.add_shape(Shape::RoundedRect {
         local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
-        radius: Corners::ZERO,
+        corners: Corners::ZERO,
         fill: Color::rgb(1.0, 0.0, 1.0).into(),
         stroke: Stroke::ZERO,
     });

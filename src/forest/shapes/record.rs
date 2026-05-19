@@ -228,7 +228,7 @@ pub(crate) enum ShapeRecord {
     /// Text shape on a leaf → slot 0, after the Text in record order).
     RoundedRect {
         local_rect: Option<Rect>,
-        radius: Corners,
+        corners: Corners,
         fill: ShapeBrush,
         stroke: ShapeStroke,
         /// Pre-computed content hash of `fill` when it's a gradient,
@@ -330,7 +330,7 @@ pub(crate) enum ShapeRecord {
     /// `DrawRect` cmd with `FillKind::SHADOW_DROP|SHADOW_INSET`.
     Shadow {
         local_rect: Option<Rect>,
-        radius: Corners,
+        corners: Corners,
         shadow: LoweredShadow,
     } = 4,
     /// Textured rectangle. `handle` references an entry in the shared
@@ -550,7 +550,7 @@ impl Hash for ShapeRecord {
         match self {
             ShapeRecord::RoundedRect {
                 local_rect,
-                radius,
+                corners,
                 fill,
                 stroke,
                 fill_grad_hash,
@@ -562,7 +562,7 @@ impl Hash for ShapeRecord {
                         r.hash(h);
                     }
                 }
-                radius.hash(h);
+                corners.hash(h);
                 match fill {
                     ShapeBrush::Solid(c) => {
                         h.write_u8(0);
@@ -632,7 +632,7 @@ impl Hash for ShapeRecord {
             }
             ShapeRecord::Shadow {
                 local_rect,
-                radius,
+                corners,
                 shadow,
             } => {
                 match local_rect {
@@ -642,7 +642,7 @@ impl Hash for ShapeRecord {
                         r.hash(h);
                     }
                 }
-                radius.hash(h);
+                corners.hash(h);
                 shadow.hash(h);
             }
             ShapeRecord::Curve {

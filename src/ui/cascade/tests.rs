@@ -34,7 +34,7 @@ fn shape_rect_composes_self_transform() {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect::new(0.0, 0.0, 30.0, 30.0)),
-                        radius: Corners::ZERO,
+                        corners: Corners::ZERO,
                         fill: Color::rgb(0.5, 0.5, 0.5).into(),
                         stroke: Stroke::ZERO,
                     });
@@ -91,7 +91,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
                         // Panel-local (0, 0) — the natural top-left
                         // of the panel's body.
                         local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
-                        radius: Corners::ZERO,
+                        corners: Corners::ZERO,
                         fill: Color::rgb(0.5, 0.5, 0.5).into(),
                         stroke: Stroke::ZERO,
                     });

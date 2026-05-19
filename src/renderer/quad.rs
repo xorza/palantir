@@ -130,7 +130,7 @@ pub(crate) struct Quad {
     /// (`Color::srgb_to_linear`). Saves 12 B per Quad instance on
     /// every GPU upload vs. `Color` (16 B).
     pub(crate) fill: ColorF16,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
     pub(crate) stroke_color: ColorF16,
     pub(crate) stroke_width: f32,
     /// Packed brush metadata; see [`FillKind`] for layout.
@@ -172,7 +172,7 @@ mod tests {
     fn quad_field_offsets_match_vertex_attr_array() {
         assert_eq!(offset_of!(Quad, rect), 0, "loc 0 (pos) + loc 1 (size)");
         assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill, packed)");
-        assert_eq!(offset_of!(Quad, radius), 24, "loc 3 (radius, packed)");
+        assert_eq!(offset_of!(Quad, corners), 24, "loc 3 (radius, packed)");
         assert_eq!(
             offset_of!(Quad, stroke_color),
             32,

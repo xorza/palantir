@@ -332,7 +332,7 @@ fn bench_workloads(c: &mut Criterion) {
                 for s in 0..count {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect::new((s as f32) * 4.0, 2.0, 3.0, 20.0)),
-                        radius: Corners::all(1.0),
+                        corners: Corners::all(1.0),
                         fill: Color::rgb(0.3 + (s as f32) * 0.05, 0.4, 0.6).into(),
                         stroke: Stroke::ZERO,
                     });

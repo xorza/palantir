@@ -47,7 +47,7 @@ fn scroll_vertical_overflow_matches_golden() {
                             .id_salt(("row", i))
                             .background(Background {
                                 fill: ROW.into(),
-                                radius: Corners::all(3.0),
+                                corners: Corners::all(3.0),
                                 ..Default::default()
                             })
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
@@ -79,7 +79,7 @@ fn scroll_horizontal_overflow_matches_golden() {
                             .id_salt(("col", i))
                             .background(Background {
                                 fill: ROW.into(),
-                                radius: Corners::all(3.0),
+                                corners: Corners::all(3.0),
                                 ..Default::default()
                             })
                             .size((Sizing::Fixed(40.0), Sizing::FILL))
@@ -110,7 +110,7 @@ fn scroll_xy_overflow_matches_golden() {
                         .id_salt("big")
                         .background(Background {
                             fill: ROW.into(),
-                            radius: Corners::all(6.0),
+                            corners: Corners::all(6.0),
                             ..Default::default()
                         })
                         .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
@@ -140,7 +140,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
                         .id_salt("short")
                         .background(Background {
                             fill: ROW.into(),
-                            radius: Corners::all(3.0),
+                            corners: Corners::all(3.0),
                             ..Default::default()
                         })
                         .size((Sizing::FILL, Sizing::Fixed(40.0)))
@@ -174,7 +174,7 @@ fn scroll_with_user_padding_matches_golden() {
                             .id_salt(("row", i))
                             .background(Background {
                                 fill: ROW.into(),
-                                radius: Corners::all(3.0),
+                                corners: Corners::all(3.0),
                                 ..Default::default()
                             })
                             .size((Sizing::FILL, Sizing::Fixed(20.0)))
@@ -214,7 +214,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                         .padding(6.0)
                         .background(Background {
                             fill: CARD.into(),
-                            radius: Corners::all(6.0),
+                            corners: Corners::all(6.0),
                             ..Default::default()
                         })
                         .clip_rect()
@@ -230,7 +230,7 @@ fn scroll_warm_cache_matches_cold_encoded_second_frame() {
                                             .id_salt((tag, "row", i))
                                             .background(Background {
                                                 fill: ROW.into(),
-                                                radius: Corners::all(3.0),
+                                                corners: Corners::all(3.0),
                                                 ..Default::default()
                                             })
                                             .size((Sizing::FILL, Sizing::Fixed(18.0)))

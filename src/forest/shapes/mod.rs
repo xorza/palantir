@@ -75,7 +75,7 @@ impl Shapes {
         let record = match shape {
             Shape::RoundedRect {
                 local_rect,
-                radius,
+                corners,
                 fill,
                 stroke,
             } => {
@@ -83,7 +83,7 @@ impl Shapes {
                 let stroke = ShapeStroke::from(stroke);
                 ShapeRecord::RoundedRect {
                     local_rect,
-                    radius,
+                    corners,
                     fill: lowered.brush,
                     stroke,
                     fill_grad_hash: lowered.hash,
@@ -161,11 +161,11 @@ impl Shapes {
             }
             Shape::Shadow {
                 local_rect,
-                radius,
+                corners,
                 shadow,
             } => ShapeRecord::Shadow {
                 local_rect,
-                radius,
+                corners,
                 shadow: shadow.into(),
             },
             Shape::Image {

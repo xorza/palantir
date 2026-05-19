@@ -73,7 +73,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .grid_span((1, 3))
                     .background(Background {
                         fill: Color::rgb(0.25, 0.30, 0.45).into(),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -82,7 +82,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .grid_cell((1, 0))
                     .background(Background {
                         fill: Color::rgb(0.35, 0.45, 0.30).into(),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -91,7 +91,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .grid_cell((1, 1))
                     .background(Background {
                         fill: Color::rgb(0.20, 0.20, 0.28).into(),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -100,7 +100,7 @@ fn grid_mixed_tracks_matches_golden() {
                     .grid_cell((1, 2))
                     .background(Background {
                         fill: Color::rgb(0.50, 0.30, 0.45).into(),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -123,7 +123,7 @@ fn zstack_centered_button_matches_golden() {
             .background(Background {
                 fill: Color::rgb(0.16, 0.20, 0.28).into(),
                 stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
-                radius: Corners::all(10.0),
+                corners: Corners::all(10.0),
                 shadow: Shadow::NONE,
             })
             .show(ui, |ui| {

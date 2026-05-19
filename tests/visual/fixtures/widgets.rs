@@ -38,7 +38,7 @@ fn frame_filled_with_stroke_matches_golden() {
                 .background(Background {
                     fill: Color::rgb(0.20, 0.30, 0.55).into(),
                     stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
-                    radius: Corners::all(16.0),
+                    corners: Corners::all(16.0),
                     shadow: Shadow::NONE,
                 })
                 .show(ui);
@@ -67,7 +67,7 @@ fn frame_linear_gradient_matches_golden() {
                         ColorU8::hex(0x1a1a2e),
                         ColorU8::hex(0x4c5cdb),
                     )),
-                    radius: Corners::all(16.0),
+                    corners: Corners::all(16.0),
                     ..Default::default()
                 })
                 .show(ui);
@@ -88,7 +88,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
         Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 local_rect: Some(Rect::new(0.0, 0.0, 180.0, 100.0)),
-                radius: Corners::all(12.0),
+                corners: Corners::all(12.0),
                 fill: Brush::Linear(LinearGradient::two_stop(
                     0.0,
                     ColorU8::hex(0xff5e44),
@@ -124,7 +124,7 @@ fn showcase_gradients_tab_matches_golden() {
         let green = ColorU8::hex(0x46c46c);
         let cell = |g: LinearGradient| Background {
             fill: Brush::Linear(g),
-            radius: Corners::all(8.0),
+            corners: Corners::all(8.0),
             ..Default::default()
         };
         Panel::vstack()
@@ -238,7 +238,7 @@ fn radial_and_conic_gradient_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: Brush::Radial(r),
-                        radius: Corners::all(8.0),
+                        corners: Corners::all(8.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -258,7 +258,7 @@ fn radial_and_conic_gradient_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: Brush::Conic(c),
-                        radius: Corners::all(8.0),
+                        corners: Corners::all(8.0),
                         ..Default::default()
                     })
                     .show(ui);
@@ -294,7 +294,7 @@ fn surface_rounded_clips_full_fill_child() {
                     .background(Background {
                         fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 5.0),
-                        radius: Corners::new(4.0, 12.0, 20.0, 28.0),
+                        corners: Corners::new(4.0, 12.0, 20.0, 28.0),
                         shadow: Shadow::NONE,
                     })
                     .clip_rounded()
@@ -340,7 +340,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
                     .background(Background {
                         fill: Color::TRANSPARENT.into(),
                         stroke: Stroke::solid(Color::rgb_u8(0, 255, 0), 4.0),
-                        radius: Corners::all(24.0),
+                        corners: Corners::all(24.0),
                         shadow: Shadow::NONE,
                     })
                     .clip_rounded()
@@ -385,7 +385,7 @@ fn rounded_clip_survives_surface_resize() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: Color::rgb(0.2, 0.2, 0.3).into(),
-                        radius: Corners::all(8.0),
+                        corners: Corners::all(8.0),
                         ..Default::default()
                     })
                     .clip_rounded()
@@ -428,7 +428,7 @@ fn interleaved_shapes_paint_in_record_order() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 30.0, 60.0)),
-                    radius: Corners::default(),
+                    corners: Corners::default(),
                     fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -442,7 +442,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     .show(ui);
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(30.0, 0.0, 60.0, 60.0)),
-                    radius: Corners::default(),
+                    corners: Corners::default(),
                     fill: Color::rgb(0.0, 1.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -456,7 +456,7 @@ fn interleaved_shapes_paint_in_record_order() {
                     .show(ui);
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(90.0, 0.0, 60.0, 60.0)),
-                    radius: Corners::default(),
+                    corners: Corners::default(),
                     fill: Color::rgb(0.2, 0.4, 1.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -686,7 +686,7 @@ fn polyline_translucent_premultiplies_in_mesh_shader() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(1.0, 0.0, 1.0).into(),
                     stroke: Stroke::ZERO,
                 });

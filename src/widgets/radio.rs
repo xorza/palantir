@@ -91,7 +91,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(dot),
-                        radius: Corners::all(dot_size * 0.5),
+                        corners: Corners::all(dot_size * 0.5),
                         fill: indicator.into(),
                         stroke: Stroke::ZERO,
                     });
