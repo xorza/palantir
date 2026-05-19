@@ -209,6 +209,7 @@ impl LinearGradient {
     }
 
     /// Paints nothing visible when every stop is transparent.
+    #[inline]
     pub fn is_noop(&self) -> bool {
         self.stops.iter().all(|s| s.color.is_noop())
     }
@@ -297,6 +298,7 @@ impl RadialGradient {
         self
     }
 
+    #[inline]
     pub fn is_noop(&self) -> bool {
         self.stops.iter().all(|s| s.color.is_noop())
     }
@@ -382,6 +384,7 @@ impl ConicGradient {
         self
     }
 
+    #[inline]
     pub fn is_noop(&self) -> bool {
         self.stops.iter().all(|s| s.color.is_noop())
     }

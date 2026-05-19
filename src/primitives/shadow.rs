@@ -47,6 +47,7 @@ impl Shadow {
         inset: false,
     };
 
+    #[inline]
     pub fn is_noop(&self) -> bool {
         self.color.is_noop()
     }

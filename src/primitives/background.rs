@@ -47,6 +47,7 @@ impl Background {
     /// branch paints shadow before the rect, so dropping chrome
     /// without considering shadow would silently kill a shadow-only
     /// background.
+    #[inline]
     pub fn is_noop(&self) -> bool {
         self.fill.is_noop() && self.stroke.is_noop() && self.shadow.is_noop()
     }

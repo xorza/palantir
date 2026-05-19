@@ -99,6 +99,7 @@ impl Color {
     /// paints nothing. Mirrors the `is_noop` predicate on `Stroke`
     /// / `Background` / `Surface` / `ShapeRecord`; consistent name
     /// across primitives.
+    #[inline]
     pub const fn is_noop(self) -> bool {
         super::approx::noop_f32(self.a)
     }
@@ -338,6 +339,7 @@ impl ColorU8 {
     }
 
     /// True when alpha is zero — paints nothing visible.
+    #[inline]
     pub const fn is_noop(self) -> bool {
         self.a == 0
     }
