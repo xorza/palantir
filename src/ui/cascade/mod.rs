@@ -605,6 +605,17 @@ fn union_in(acc: &mut Option<Rect>, screen: Rect) {
 /// (inside the body push, per `Panel::transform`). The two transforms
 /// are the only structural difference between the two row kinds —
 /// both flow through [`push_row`].
+///
+/// # Invariant
+///
+/// The returned `Rect` is bit-identical to the screen-space union of
+/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`.
+/// `Cascade.paint_rect` stores it as a precomputed scalar so damage's
+/// hot per-node scan reads `rows[i].paint_rect` in one load instead of
+/// looping over each node's Paint slice to recompute the union.
+/// Touching the union accumulator without also updating the per-paint
+/// `screen` (or vice versa) breaks the damage fast path silently —
+/// keep both legs in lockstep when adding new paint contributions.
 #[allow(clippy::too_many_arguments)]
 fn compute_paint_rect(
     tree: &Tree,

@@ -27,6 +27,7 @@
 
 use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
+#[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
@@ -190,6 +191,22 @@ impl Default for DamageEngine {
 /// below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 
+/// Minimum `paint_snaps` length before [`DamageEngine::maybe_compact_paint_snaps`]
+/// considers running. Below this the arena is small enough that the
+/// reseat walk costs more than the orphaned-slot memory it would
+/// reclaim — capacity is `Vec`-amortised and these entries stay hot
+/// in cache. Empirically tuned against `bench-deep` (TODO: link
+/// docs/roadmap entry once added); change with a benchmark on the
+/// damage-merge fixture.
+const COMPACT_MIN_TOTAL: u32 = 256;
+
+/// Orphan-ratio threshold (in 1/4 units) above which compaction
+/// triggers — `orphaned * 4 >= total * COMPACT_ORPHAN_RATIO_NUM` is
+/// the predicate. `3/4 = 75%` orphaned means three quarters of the
+/// arena is dead bytes before a reseat pays off; lower values cause
+/// thrash on churn-heavy frames. Same TODO as `COMPACT_MIN_TOTAL`.
+const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
+
 /// What the GPU should do with this frame:
 /// - `None` — nothing changed; the backbuffer is correct as-is.
 /// - `Full` — clear + paint everything.
@@ -282,12 +299,14 @@ impl DamageEngine {
         }
     }
 
-    /// Trigger compaction when the arena is large enough and orphaned
-    /// entries are ≥ 75 % of the buffer.
+    /// Trigger compaction when the arena is large enough
+    /// ([`COMPACT_MIN_TOTAL`]) and orphaned entries are ≥ 75 % of the
+    /// buffer ([`COMPACT_ORPHAN_RATIO_NUM`]/4).
     fn maybe_compact_paint_snaps(&mut self, forest: &Forest) {
-        const MIN_TOTAL: u32 = 256;
         let total = self.paint_snaps.len() as u32;
-        if total >= MIN_TOTAL && self.paint_snaps_orphaned.saturating_mul(4) >= total * 3 {
+        if total >= COMPACT_MIN_TOTAL
+            && self.paint_snaps_orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
+        {
             self.compact_paint_snaps(forest);
         }
     }
@@ -382,30 +401,33 @@ impl DamageEngine {
             while i < n {
                 let node_span = layer_node_paints[i];
                 let curr_paints_slice = &layer_paints[node_span.range()];
-                let curr = CurrNode {
-                    node: NodeId(i as u32),
-                    rect: rows[i].paint_rect,
-                    paints: node_span.len > 0,
-                    node_hash: tree.rollups.node[i],
-                    subtree_hash: tree.rollups.subtree[i],
-                    cascade_input: rows[i].cascade_input,
-                };
+                let curr_rect = rows[i].paint_rect;
+                let curr_paints = node_span.len > 0;
+                let curr_node_hash = tree.rollups.node[i];
+                let curr_subtree_hash = tree.rollups.subtree[i];
+                let curr_cascade_input = rows[i].cascade_input;
                 let advance = match prev_map.entry(widget_ids[i]) {
-                    Entry::Vacant(_) if !curr.paints || !curr.rect.intersects(surface) => 1,
+                    Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => 1,
                     Entry::Vacant(e) => {
                         let paint_span = append_curr_paints(paint_snaps, curr_paints_slice);
                         push_screens(raw_rects, &paint_snaps[paint_span.range()]);
-                        e.insert(curr.to_snapshot(paint_span));
+                        e.insert(NodeSnapshot {
+                            rect: curr_rect,
+                            paint_span,
+                            hash: curr_node_hash,
+                            subtree_hash: curr_subtree_hash,
+                            cascade_input: curr_cascade_input,
+                        });
                         #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(curr.node);
+                        dirty_out.push(NodeId(i as u32));
                         1
                     }
                     Entry::Occupied(mut e)
-                        if e.get().rect == curr.rect && e.get().hash == curr.node_hash =>
+                        if e.get().rect == curr_rect && e.get().hash == curr_node_hash =>
                     {
                         let prev = *e.get();
-                        if prev.subtree_hash == curr.subtree_hash
-                            && prev.cascade_input == curr.cascade_input
+                        if prev.subtree_hash == curr_subtree_hash
+                            && prev.cascade_input == curr_cascade_input
                         {
                             let span = (subtree_end[i] as usize) - i;
                             #[cfg(any(test, feature = "internals"))]
@@ -414,19 +436,25 @@ impl DamageEngine {
                             }
                             span
                         } else {
-                            if curr.paints && prev.cascade_input != curr.cascade_input {
-                                raw_rects.push(curr.rect);
+                            if curr_paints && prev.cascade_input != curr_cascade_input {
+                                raw_rects.push(curr_rect);
                             }
                             refresh_paint_rects_in_arena(
                                 paint_snaps,
                                 prev.paint_span,
                                 curr_paints_slice,
                             );
-                            *e.get_mut() = curr.to_snapshot(prev.paint_span);
+                            *e.get_mut() = NodeSnapshot {
+                                rect: curr_rect,
+                                paint_span: prev.paint_span,
+                                hash: curr_node_hash,
+                                subtree_hash: curr_subtree_hash,
+                                cascade_input: curr_cascade_input,
+                            };
                             1
                         }
                     }
-                    Entry::Occupied(mut e) if curr.paints => {
+                    Entry::Occupied(mut e) if curr_paints => {
                         let prev = *e.get();
                         let new_span = diff_changed_paint_leg(
                             paint_snaps,
@@ -435,9 +463,15 @@ impl DamageEngine {
                             prev.paint_span,
                             curr_paints_slice,
                         );
-                        *e.get_mut() = curr.to_snapshot(new_span);
+                        *e.get_mut() = NodeSnapshot {
+                            rect: curr_rect,
+                            paint_span: new_span,
+                            hash: curr_node_hash,
+                            subtree_hash: curr_subtree_hash,
+                            cascade_input: curr_cascade_input,
+                        };
                         #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(curr.node);
+                        dirty_out.push(NodeId(i as u32));
                         1
                     }
                     Entry::Occupied(e) => {
@@ -449,7 +483,7 @@ impl DamageEngine {
                         *orphaned = orphaned.saturating_add(prev.paint_span.len);
                         e.remove();
                         #[cfg(any(test, feature = "internals"))]
-                        dirty_out.push(curr.node);
+                        dirty_out.push(NodeId(i as u32));
                         1
                     }
                 };
@@ -523,32 +557,6 @@ impl DamageEngine {
         extend_predamaged(&mut self.raw_rects, forest, cascades, prev_time, now);
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
         Damage::new(surface, region)
-    }
-}
-
-/// Per-node inputs to the diff body, packed at the top of each
-/// iteration so the four match arms can name a single value instead
-/// of seven loose locals. All fields are `Copy` and small; the struct
-/// is build-and-drop per iteration with no heap traffic.
-struct CurrNode {
-    #[cfg_attr(not(any(test, feature = "internals")), allow(dead_code))]
-    node: NodeId,
-    rect: Rect,
-    paints: bool,
-    node_hash: NodeHash,
-    subtree_hash: NodeHash,
-    cascade_input: CascadeInputHash,
-}
-
-impl CurrNode {
-    fn to_snapshot(&self, paint_span: Span) -> NodeSnapshot {
-        NodeSnapshot {
-            rect: self.rect,
-            paint_span,
-            hash: self.node_hash,
-            subtree_hash: self.subtree_hash,
-            cascade_input: self.cascade_input,
-        }
     }
 }
 
