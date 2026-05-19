@@ -54,16 +54,15 @@ fn word_range_at_picks_anchor_kind() {
 fn apply_key_word_nav_cases() {
     // Word-nav modifier (Alt on macOS, Ctrl elsewhere) plus arrow.
     fn word_nav(key: Key) -> KeyPress {
-        let mods = if cfg!(target_os = "macos") {
-            Modifiers {
+        let mods = match PLATFORM {
+            Platform::Mac => Modifiers {
                 alt: true,
                 ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
+            },
+            _ => Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
-            }
+            },
         };
         KeyPress {
             key,
