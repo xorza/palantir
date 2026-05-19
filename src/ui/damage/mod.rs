@@ -742,7 +742,11 @@ pub(crate) mod test_support {
         /// Force a compaction pass. Production frames go through
         /// `compute`, which calls `arena.maybe_compact` after the
         /// eviction tail; this is the entry point for tests / benches
-        /// that want to drive the compaction directly.
+        /// that want to drive the compaction directly. The `internals`
+        /// feature exposes this for downstream consumers even though
+        /// only `cfg(test)` callers exist today — keep `allow(dead_code)`
+        /// so a feature-only build doesn't trip `-D warnings`.
+        #[allow(dead_code)]
         pub(crate) fn compact_paint_snaps(&mut self, forest: &Forest) {
             self.arena.compact(forest, &mut self.prev);
         }

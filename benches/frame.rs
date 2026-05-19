@@ -558,7 +558,12 @@ fn bench_frame(c: &mut Criterion) {
                         build_ui(&mut state, ui)
                     }),
                 );
-                frontend.build_for_test(&ui, RenderPlan::Full { clear: Color::BLACK });
+                frontend.build_for_test(
+                    &ui,
+                    RenderPlan::Full {
+                        clear: Color::BLACK,
+                    },
+                );
             });
         });
     }
@@ -583,7 +588,12 @@ fn bench_frame(c: &mut Criterion) {
                         build_ui(&mut state, ui)
                     }),
                 );
-                frontend.build_for_test(&ui, RenderPlan::Full { clear: Color::BLACK });
+                frontend.build_for_test(
+                    &ui,
+                    RenderPlan::Full {
+                        clear: Color::BLACK,
+                    },
+                );
             });
         });
     }
