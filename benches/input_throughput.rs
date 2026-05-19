@@ -30,8 +30,9 @@ use palantir::{
 use std::hint::black_box;
 use std::time::Duration;
 
-/// Local mono-fallback `Ui` constructor; `support::testing::new_ui`
-/// is gated behind `cfg(test)` and not visible from bench targets.
+// `Ui::for_test()` is gated behind the `internals` feature; this
+// bench doesn't opt in and uses `Ui::default()` (same mono-fallback
+// shaper path).
 const SIZE: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
 const OVERLAP_LAYERS: usize = 64;

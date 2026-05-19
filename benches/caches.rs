@@ -26,7 +26,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::Vec2;
 use palantir::{
     Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
-    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextShaper, TextStyle, Ui,
+    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextStyle, Ui,
 };
 use std::hint::black_box;
 
@@ -320,7 +320,7 @@ fn bench(c: &mut Criterion) {
     // row, real cosmic-text shaping, deeper nesting, strokes. Heavier
     // baseline for the measure cache.
     group.bench_function("heavy/measure/cached", |b| {
-        let mut ui = fresh_heavy_ui();
+        let mut ui = Ui::for_test_text();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             build_heavy,
@@ -334,7 +334,7 @@ fn bench(c: &mut Criterion) {
     });
 
     group.bench_function("heavy/measure/forced_miss", |b| {
-        let mut ui = fresh_heavy_ui();
+        let mut ui = Ui::for_test_text();
         let _ = ui.frame(
             FrameStamp::new(display, std::time::Duration::ZERO),
             build_heavy,
@@ -386,23 +386,6 @@ fn bench(c: &mut Criterion) {
 
 fn build_scrolling(ui: &mut Ui) {
     Scroll::vertical().id_salt("scroll-root").show(ui, build);
-}
-
-/// New `Ui` with a fresh cosmic shaper installed. Heavy workload uses
-/// real cosmic-text shaping (no mono fallback) so text measurement
-/// reflects realistic per-glyph cost. Each call constructs a fresh
-/// `CosmicMeasure`; calling once per bench arm and reusing across
-/// `b.iter` invocations amortizes font-database parsing.
-fn fresh_heavy_ui() -> Ui {
-    // Direct construction with bundled fonts (the
-    // `support::internals::new_ui_mono` helper covers the no-text
-    // case; this bench wants real shaping for steady-state text
-    // measure work).
-    Ui::new(
-        TextShaper::with_bundled_fonts(),
-        palantir::FrameArena::default(),
-        palantir::RenderCaches::default(),
-    )
 }
 
 criterion_group!(benches, bench);

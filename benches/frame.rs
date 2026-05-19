@@ -13,16 +13,16 @@ use palantir::{Align, Button, Configure, Frame, Grid, Justify, Panel, Sizing, Te
 use std::hint::black_box;
 use std::rc::Rc;
 
-/// Local mono-fallback `Ui` constructor. The `internals::new_ui`
-/// helper lives behind the `internals` feature; `frame.rs` doesn't
-/// enable it, so we inline the equivalent here.
-const SCALE: usize = 32;
+/// `Ui::for_test()` (and friends) are gated behind the `internals`
+/// feature; `frame.rs` doesn't opt in, so it uses plain `Ui::default()`
+/// — same mono-fallback shaper path.
+const WORKLOAD_SCALE: usize = 32;
 
 fn build_ui(ui: &mut Ui) {
-    let sidebar_items = 5 * SCALE;
-    let chat_messages = 2 * SCALE;
-    let canvas_dots = 3 * SCALE;
-    let prop_rows = 4 + SCALE;
+    let sidebar_items = 5 * WORKLOAD_SCALE;
+    let chat_messages = 2 * WORKLOAD_SCALE;
+    let canvas_dots = 3 * WORKLOAD_SCALE;
+    let prop_rows = 4 + WORKLOAD_SCALE;
 
     Panel::vstack().auto_id()
         .gap(8.0)
@@ -219,23 +219,21 @@ fn bench_frame(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut ui = Ui::default();
 
-    c.bench_function("frame/post_record", |b| {
+    c.bench_function("frame/full_pipeline", |b| {
         b.iter(|| {
             black_box(ui.frame(
                 FrameStamp::new(display, std::time::Duration::ZERO),
                 build_ui,
             ));
-            // #[cfg(feature = "internals")]
-            // palantir::ui::frame_state::test_support::ui.mark_frame_submitted();
         });
     });
 
     // Same workload, but the window resizes every iteration so the
-    // measure/encode caches see a fresh `available` quantization each frame.
+    // measure cache sees a fresh `available` quantization each frame.
     // Approximates a live drag-resize.
     let mut ui = Ui::default();
     let mut frame = 0u32;
-    c.bench_function("frame/post_record_resizing", |b| {
+    c.bench_function("frame/full_pipeline_resizing", |b| {
         b.iter(|| {
             let w = 1024 + (frame % 512);
             let h = 640 + ((frame / 7) % 320);
@@ -245,8 +243,6 @@ fn bench_frame(c: &mut Criterion) {
                 FrameStamp::new(display, std::time::Duration::ZERO),
                 build_ui,
             ));
-            // #[cfg(feature = "internals")]
-            // palantir::ui::frame_state::test_support::ui.mark_frame_submitted();
         });
     });
 }
