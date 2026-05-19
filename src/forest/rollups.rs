@@ -74,23 +74,11 @@ impl CascadeInputHash {
 ///   across frames means nothing in the subtree changed; the
 ///   cross-frame measure cache keys on this. See
 ///   `src/layout/measure-cache.md`.
-/// - `paints[i]` — bit `i` is true iff node `i` directly contributes
-///   pixels (has chrome OR records ≥1 direct `ShapeRecord`). Read by the
-///   damage diff: nodes that paint nothing (e.g. invisible click-eaters)
-///   contribute zero rect on add/remove/change, so a full-surface eater
-///   doesn't blow past the full-repaint threshold. Populated alongside
-///   `node` in `compute_node_hashes`.
 ///
-///   **Lives here, not in `NodeFlags.attrs`.** The other per-node 1-byte
-///   flags (sense / disabled / clip / focusable) are *recording-time
-///   authoring inputs* set by `NodeFlags::pack()` at `open_node`;
-///   `paints` is *derived at post_record* from `chrome` + `shape_span`
-///   (only known after `close_node`). Mixing the two would silently
-///   break "attrs == what the user typed", and the hash pass already
-///   covers chrome + shapes — packing `paints` into `attrs` would
-///   either hash it redundantly or need a special mask. A future
-///   subtree-rollup variant for whole-subtree skipping would also
-///   belong here, not in `attrs`.
+/// "Does this node directly contribute pixels?" used to live here as
+/// a `paints: FixedBitSet`; the unified `Cascades::node_paints` Span
+/// answers the same question (empty span means "paints nothing"), so
+/// the bitset was removed.
 #[derive(Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
@@ -103,15 +91,13 @@ pub(crate) struct SubtreeRollups {
     /// Populated in `compute_hashes` from the same chrome hashing
     /// pass that folds into `node[i]`.
     pub(crate) chrome: Vec<NodeHash>,
-    pub(crate) paints: fixedbitset::FixedBitSet,
 }
 
 impl SubtreeRollups {
     /// Reset and size every column for `n` records. `node`, `subtree`,
     /// and `chrome` are resized with default values — filled by
     /// indexed assignment during the fused reverse-pre-order pass in
-    /// `Tree::compute_hashes`. `paints` is resized to `n` and cleared
-    /// (filled by indexed `set` during the same pass).
+    /// `Tree::compute_hashes`.
     pub(crate) fn reset_for(&mut self, n: usize) {
         // Single-pass resize: `compute_hashes` overwrites every slot
         // via indexed assignment, so the fill value is irrelevant —
@@ -120,8 +106,6 @@ impl SubtreeRollups {
         self.node.resize(n, NodeHash::default());
         self.subtree.resize(n, NodeHash::default());
         self.chrome.resize(n, NodeHash::default());
-        self.paints.clear();
-        self.paints.grow(n);
     }
 }
 

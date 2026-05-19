@@ -10,11 +10,12 @@
 use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
-use crate::forest::rollups::CascadeInputHash;
+use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
+use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use glam::Vec2;
@@ -23,6 +24,56 @@ use soa_rs::{Soa, Soars};
 use std::array;
 use std::hash::Hasher as _;
 use strum::EnumCount as _;
+
+/// One paintable contribution from a single node — either chrome (row 0
+/// of the node's paint span when the node has chrome) or one direct
+/// shape. Single source of truth for "did this pixel-producer change
+/// since last frame?"
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct Paint {
+    /// Screen-space rect after parent transform + clip.
+    pub(crate) screen: Rect,
+    /// Authoring hash. For chrome: `Tree.rollups.chrome[node]`.
+    /// For shape: `Tree.shapes.hashes[shape_idx]`.
+    pub(crate) hash: NodeHash,
+}
+
+/// Per-layer paint state: the unified [`Paint`] arena plus the two
+/// index columns into it. Grouped because the three vectors are
+/// produced + cleared in lockstep by [`compute_paint_rect`]; keeping
+/// them on one struct means there's exactly one place to call
+/// `reset_for` from and the columns can't drift in length.
+#[derive(Default)]
+pub(crate) struct PaintArena {
+    /// One [`Paint`] row per chrome contribution (row 0 of a node's
+    /// span when present) or shape contribution. Pushed in pre-order
+    /// paint order; cleared each frame.
+    pub(crate) rows: Vec<Paint>,
+    /// Per-node [`Span`] into [`Self::rows`]. Empty span
+    /// (`Span::default()`) means the node paints nothing — replaces
+    /// the old `rollups.paints` bitset.
+    pub(crate) node_spans: Vec<Span>,
+    /// `shape_idx → paint_idx` translation. Lets the paint-anim damage
+    /// path recover a shape's screen rect via
+    /// `rows[shape_to_paint[shape_idx] as usize].screen`. `u32::MAX`
+    /// for shapes never visited by the cascade walk.
+    pub(crate) shape_to_paint: Vec<u32>,
+}
+
+impl PaintArena {
+    /// Reset all three columns for a new frame. `n_nodes` sizes
+    /// `node_spans` (zero-init to `Span::default()`); `n_shapes` sizes
+    /// `shape_to_paint` (zero-init to `u32::MAX`); `rows` is cleared
+    /// and reserved for the expected upper bound.
+    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize) {
+        self.rows.clear();
+        self.rows.reserve(n_nodes);
+        self.node_spans.clear();
+        self.node_spans.resize(n_nodes, Span::default());
+        self.shape_to_paint.clear();
+        self.shape_to_paint.resize(n_shapes, u32::MAX);
+    }
+}
 
 /// Per-node cascade row: what the encoder and damage diff need to
 /// know about node `i` after ancestor state has been folded in.
@@ -122,30 +173,10 @@ pub(crate) struct Cascades {
     /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
     /// hidden subtree doesn't keep the cull from firing at ancestors.
     pub(crate) subtree_paint_rects: [Vec<Rect>; Layer::COUNT],
-    /// One [`Rect`] per shape in `tree.shapes.records`, per layer —
-    /// `shape_rects[L][shape_idx]` is the screen-space damage bound
-    /// for that shape. Written during the cascade walk in
-    /// [`compute_paint_rect`] (same `TreeItems` pass that unions for
-    /// `paint_rect`), so cascade stays a pure `&Forest → Cascades`
-    /// producer. Indexed by `shape_idx` directly — same key as
-    /// `tree.paint_anims.by_shape`, so callers (paint-anim damage
-    /// today; future per-shape culling / debug) reach a shape's
-    /// rect with one indexed load. `Rect::ZERO` for shapes never
-    /// visited by the cascade walk (collapsed / invisible subtrees),
-    /// keeping the column dense without a sentinel.
-    pub(crate) shape_rects: [Vec<Rect>; Layer::COUNT],
-    /// Per-layer per-node chrome rect — the screen-space, ancestor-
-    /// clipped paint bound of just the node's chrome (panel
-    /// background + shadow halo), with shapes excluded. `Rect::ZERO`
-    /// when the node has no chrome. Sister column to `shape_rects`:
-    /// together they decompose what `Cascade.paint_rect` stores as a
-    /// single union, so the damage diff can push the changed half
-    /// (chrome OR a single shape) without inflating the rect to the
-    /// node's whole paint footprint. Filled in `compute_paint_rect`
-    /// alongside the union write into `Cascade.paint_rect`. Encoder
-    /// doesn't read this — keeps `Cascade` row at 24 B for the hot
-    /// paint walk.
-    pub(crate) chrome_rects: [Vec<Rect>; Layer::COUNT],
+    /// Per-layer unified paint arena (rows + per-node spans + shape→paint
+    /// translation). Three columns travel together — written in
+    /// lockstep by `compute_paint_rect`, cleared together each frame.
+    pub(crate) paint_arenas: [PaintArena; Layer::COUNT],
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
     /// `entries.widget_id()`, …) so the hot reverse-scan in
@@ -162,8 +193,7 @@ impl Default for Cascades {
         Self {
             rows: array::from_fn(|_| Vec::new()),
             subtree_paint_rects: array::from_fn(|_| Vec::new()),
-            shape_rects: array::from_fn(|_| Vec::new()),
-            chrome_rects: array::from_fn(|_| Vec::new()),
+            paint_arenas: array::from_fn(|_| PaintArena::default()),
             entries: Soa::new(),
             by_id: FxHashMap::default(),
         }
@@ -307,18 +337,7 @@ impl CascadesEngine {
             r.rows[i].reserve(n);
             r.subtree_paint_rects[i].clear();
             r.subtree_paint_rects[i].reserve(n);
-            // Chrome-only per-node rect column, parallel to `rows[i]`.
-            // Sized + zeroed up front so `compute_paint_rect` can
-            // index-assign without per-call growth.
-            r.chrome_rects[i].clear();
-            r.chrome_rects[i].resize(n, Rect::ZERO);
-            let shape_rects = &mut r.shape_rects[i];
-            shape_rects.clear();
-            // Index-by-`shape_idx`. Resize so collapsed / invisible
-            // subtrees (which `compute_paint_rect` skips writing for)
-            // leave `Default::default()` in place — readers see zero,
-            // which damage / culling treat as "contributes nothing".
-            shape_rects.resize(tree.shapes.records.len(), Rect::ZERO);
+            r.paint_arenas[i].reset_for(n, tree.shapes.records.len());
             self.stack.clear();
             run_tree(tree, layer_layout, r, layer, &mut self.stack);
         }
@@ -381,8 +400,7 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
-            &mut cascades.shape_rects[li],
-            &mut cascades.chrome_rects[li],
+            &mut cascades.paint_arenas[li],
         );
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -505,6 +523,13 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
 /// apply `parent_transform`, then clip to the ancestor clip. Nodes
 /// with no shapes — or with shapes whose bbox stays inside the
 /// owner rect — fall through to the un-inflated path.
+///
+/// Side effect: appends one [`Paint`] row to `paints` per chrome /
+/// shape contribution and writes the [`Span`] covering them into
+/// `node_paints[node]`. Chrome lands at row 0 of the span when
+/// present, then shapes in record order. Also stamps each shape's
+/// index into `shape_to_paint[shape_idx]` for the paint-anim damage
+/// reverse lookup.
 #[allow(clippy::too_many_arguments)]
 fn compute_paint_rect(
     tree: &Tree,
@@ -513,9 +538,9 @@ fn compute_paint_rect(
     layout_rect: Rect,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
-    shape_rects: &mut [Rect],
-    chrome_rects: &mut [Rect],
+    arena: &mut PaintArena,
 ) -> Rect {
+    let paints_start = arena.rows.len() as u32;
     // Two transforms apply to this node's paint:
     // - `parent_transform` for chrome (encoder emits chrome before the
     //   body push) and the chrome's drop shadow.
@@ -540,20 +565,61 @@ fn compute_paint_rect(
     // the origin (see `Rect::union` doc), and seeding to the owner
     // rect would inflate paint-rect for non-painting containers and
     // for chromeless shape hosts — defeating tight damage on pan.
+    // Chrome leg first so it lands at row 0 of the node's paint span
+    // when present. The `has_clip` lift keeps the encoder's subtree
+    // cull alive on clipped, chromeless containers by contributing
+    // the owner rect to `paint_rect` even though no Paint row is
+    // emitted (clipless + chromeless contributes nothing).
+    let has_clip_pre = tree.records.attrs()[node.idx()].clip_mode().is_clip();
+    let chrome_pre = tree.chrome(node);
     let mut chrome_local: Option<Rect> = None;
-    let mut shapes_local: Option<Rect> = None;
+    if chrome_pre.is_some() || has_clip_pre {
+        let owner_local = Rect {
+            min: Vec2::ZERO,
+            size: layout_rect.size,
+        };
+        let mut local = owner_local;
+        if let Some(bg) = chrome_pre
+            && !bg.shadow.is_noop()
+        {
+            let s = &bg.shadow;
+            let g = s.geom();
+            local = local.union(shadow_paint_rect_local(
+                None,
+                layout_rect.size,
+                g.offset,
+                g.blur,
+                g.spread,
+                s.inset(),
+            ));
+        }
+        chrome_local = Some(local);
+    }
+    let chrome_screen = chrome_local.map(|local| {
+        let tree_local = Rect {
+            min: layout_rect.min + local.min,
+            size: local.size,
+        };
+        clip_to(parent_transform.apply_rect(tree_local), parent_clip)
+    });
+    let chrome_paint_screen = if chrome_pre.is_some() {
+        let screen = chrome_screen.unwrap_or(Rect::ZERO);
+        arena.rows.push(Paint {
+            screen,
+            hash: tree.rollups.chrome[node.idx()],
+        });
+        Some(screen)
+    } else {
+        None
+    };
+
+    let mut shapes_screen: Option<Rect> = None;
     if tree.records.shape_span()[node.idx()].len > 0 {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
+        let shape_hashes = tree.shapes.hashes.as_slice();
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
-                // Text gets the tight bbox here: shaping has produced
-                // `measured` by now, so the cascade can collapse what
-                // used to be a `(degenerate, owner-rect)` tuple into
-                // one rect that matches the encoder's actual paint
-                // rect. All other shapes use the variant-driven
-                // owner-local bbox. Once every variant flows through
-                // one helper, `paint_extents_local`'s tuple goes away.
                 let precise = match s {
                     ShapeRecord::Text {
                         local_origin,
@@ -575,80 +641,32 @@ fn compute_paint_rect(
                 if matches!(s, ShapeRecord::Text { .. }) {
                     text_ord += 1;
                 }
-                shapes_local = Some(match shapes_local {
-                    Some(acc) => acc.union(precise),
-                    None => precise,
-                });
                 let tree_local = Rect {
                     min: layout_rect.min + precise.min,
                     size: precise.size,
                 };
                 let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
-                shape_rects[idx as usize] = screen;
+                shapes_screen = Some(match shapes_screen {
+                    Some(acc) => acc.union(screen),
+                    None => screen,
+                });
+                arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
+                arena.rows.push(Paint {
+                    screen,
+                    hash: shape_hashes[idx as usize],
+                });
             }
         }
     }
-    // Owner rect: contributed when this node paints chrome (so the
-    // chrome rect and its shadow show up in damage / paint extent)
-    // OR when it has a clip mode set (so the encoder's
-    // subtree-paint-rect cull doesn't skip the node before its
-    // PushClip/PopClip pair fires). Chromeless, clipless nodes
-    // contribute only their direct shapes — that's the fix that
-    // collapses pan-damage on a transformed shape host from
-    // "full surface" to "swept shape band".
-    let has_clip = tree.records.attrs()[node.idx()].clip_mode().is_clip();
-    let chrome = tree.chrome(node);
-    if chrome.is_some() || has_clip {
-        let owner_local = Rect {
-            min: Vec2::ZERO,
-            size: layout_rect.size,
-        };
-        let mut local = owner_local;
-        if let Some(bg) = chrome
-            && !bg.shadow.is_noop()
-        {
-            let s = &bg.shadow;
-            let g = s.geom();
-            local = local.union(shadow_paint_rect_local(
-                None,
-                layout_rect.size,
-                g.offset,
-                g.blur,
-                g.spread,
-                s.inset(),
-            ));
-        }
-        chrome_local = Some(local);
-    }
 
-    let chrome_screen = chrome_local.map(|local| {
-        let tree_local = Rect {
-            min: layout_rect.min + local.min,
-            size: local.size,
-        };
-        clip_to(parent_transform.apply_rect(tree_local), parent_clip)
-    });
-    // Chrome-only screen rect for damage's per-shape decomposition.
-    // Written whenever the node has chrome authoring so the column
-    // aligns with the `chrome_hash != default` chromedness predicate
-    // — a chromed node that's fully clipped to nothing this frame
-    // stores `Rect::ZERO` here, harmless because `DamageRegion::
-    // collapse_from` drops empty rects. The `has_clip` lift in
-    // `chrome_local → Some(owner_local)` (encoder cull, no paint)
-    // leaves `chrome_screen == Some(owner_local)` not `None`, so
-    // this still writes the cull rect — the diff would only push it
-    // pair-wise when hash/rect changed.
-    if chrome.is_some() {
-        chrome_rects[node.idx()] = chrome_screen.unwrap_or(Rect::ZERO);
-    }
-    let shapes_screen = shapes_local.map(|local| {
-        let tree_local = Rect {
-            min: layout_rect.min + local.min,
-            size: local.size,
-        };
-        clip_to(shape_transform.apply_rect(tree_local), parent_clip)
-    });
-    match (chrome_screen, shapes_screen) {
+    let paints_len = arena.rows.len() as u32 - paints_start;
+    arena.node_spans[node.idx()] = Span::new(paints_start, paints_len);
+
+    // The cull union still includes a `has_clip` chromeless node's
+    // owner rect — chrome_screen above covers chromed nodes, and
+    // a clip-only node falls through to chrome_screen via the
+    // `chrome_pre.is_some() || has_clip_pre` lift earlier.
+    match (chrome_paint_screen.or(chrome_screen), shapes_screen) {
         (Some(c), Some(s)) => c.union(s),
         (Some(c), None) => c,
         (None, Some(s)) => s,
@@ -702,10 +720,10 @@ mod tests {
             });
         });
 
-        // Shape is the first (and only) recorded shape; its rect lives
-        // at `cascades.shape_rects[layer][0]`.
         let layer_idx = Layer::Main.idx();
-        let shape_rect = ui.layout.cascades.shape_rects[layer_idx][0];
+        let cascades = &ui.layout.cascades;
+        let paint_idx = cascades.paint_arenas[layer_idx].shape_to_paint[0] as usize;
+        let shape_rect = cascades.paint_arenas[layer_idx].rows[paint_idx].screen;
         // The Panel sits at the hstack origin (0, 0). Owner-local
         // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
         //   min = (0, 0) * 3 + (10, 20) = (10, 20)
@@ -760,7 +778,9 @@ mod tests {
         });
 
         let layer_idx = Layer::Main.idx();
-        let shape_rect = ui.layout.cascades.shape_rects[layer_idx][0];
+        let cascades = &ui.layout.cascades;
+        let paint_idx = cascades.paint_arenas[layer_idx].shape_to_paint[0] as usize;
+        let shape_rect = cascades.paint_arenas[layer_idx].rows[paint_idx].screen;
         // Panel sits at (50, 0). Shape's panel-local (0, 0) should
         // map to screen (50, 0) under the anchor — the panel's own
         // top-left is the fixed point of its scale. Size is
@@ -783,10 +803,9 @@ mod tests {
         );
     }
 
-    /// `chrome_rects[i]` carries the chrome-only paint rect for the
-    /// damage diff's per-shape decomposition. A panel with a
-    /// `background` populates the slot; a chromeless panel leaves
-    /// `Rect::ZERO`.
+    /// A panel with chrome emits a Paint row at the start of its
+    /// node's `node_paints` span; a chromeless panel emits an empty
+    /// span.
     #[test]
     fn chrome_rects_populated_for_chrome_panels_only() {
         use crate::primitives::background::Background;
@@ -810,24 +829,28 @@ mod tests {
         });
 
         let li = Layer::Main.idx();
-        let by_id = &ui.layout.cascades.by_id;
+        let cascades = &ui.layout.cascades;
+        let by_id = &cascades.by_id;
         let chrome_idx = by_id[&WidgetId::from_hash("chrome")] as usize;
         let bare_idx = by_id[&WidgetId::from_hash("bare")] as usize;
-        let chrome_rect = ui.layout.cascades.chrome_rects[li][chrome_idx];
-        let bare_rect = ui.layout.cascades.chrome_rects[li][bare_idx];
+        let chrome_span = cascades.paint_arenas[li].node_spans[chrome_idx];
+        let bare_span = cascades.paint_arenas[li].node_spans[bare_idx];
 
         assert!(
-            chrome_rect.area() > 0.0,
-            "chromed panel must have a non-zero chrome_rect; got {chrome_rect:?}",
+            chrome_span.len > 0
+                && cascades.paint_arenas[li].rows[chrome_span.start as usize]
+                    .screen
+                    .area()
+                    > 0.0,
+            "chromed panel must have a non-empty paint span with non-zero chrome rect",
         );
         assert_eq!(
-            bare_rect,
-            Rect::ZERO,
-            "chromeless panel must leave chrome_rect at the resize default (ZERO); got {bare_rect:?}",
+            bare_span.len, 0,
+            "chromeless panel must have empty paint span; got {bare_span:?}",
         );
     }
 
-    /// `chrome_rects` length matches the layer's node count so the
+    /// `node_paints` length matches the layer's node count so the
     /// damage diff can index by `NodeId.0` without a bounds-cap.
     #[test]
     fn chrome_rects_sized_to_node_count() {
@@ -840,9 +863,9 @@ mod tests {
         let li = Layer::Main.idx();
         let nodes = ui.forest.tree(Layer::Main).records.len();
         assert_eq!(
-            ui.layout.cascades.chrome_rects[li].len(),
+            ui.layout.cascades.paint_arenas[li].node_spans.len(),
             nodes,
-            "chrome_rects column must be sized to the layer's node count",
+            "node_paints column must be sized to the layer's node count",
         );
     }
 }
