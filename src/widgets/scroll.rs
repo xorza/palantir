@@ -221,17 +221,13 @@ fn push_bar_nodes(
     track.position = plan.track_rect.min;
     track.flags.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
-        ui.node_with_chrome(
-            track_id,
-            track,
-            Background {
-                fill: theme.track.into(),
-                stroke: Stroke::ZERO,
-                corners: radius,
-                shadow: Shadow::NONE,
-            },
-            |_| {},
-        );
+        let chrome = Background {
+            fill: theme.track.into(),
+            stroke: Stroke::ZERO,
+            corners: radius,
+            shadow: Shadow::NONE,
+        };
+        ui.node_with_chrome(track_id, track, &chrome, |_| {});
     } else {
         ui.node(track_id, track, |_| {});
     }
@@ -252,17 +248,13 @@ fn push_bar_nodes(
         .into();
     thumb.position = plan.thumb_rect.min;
     thumb.flags.set_sense(Sense::DRAG);
-    ui.node_with_chrome(
-        thumb_id,
-        thumb,
-        Background {
-            fill: fill.into(),
-            stroke: Stroke::ZERO,
-            corners: radius,
-            shadow: Shadow::NONE,
-        },
-        |_| {},
-    );
+    let chrome = Background {
+        fill: fill.into(),
+        stroke: Stroke::ZERO,
+        corners: radius,
+        shadow: Shadow::NONE,
+    };
+    ui.node_with_chrome(thumb_id, thumb, &chrome, |_| {});
 }
 
 // ---------------------------------------------------------------------------
@@ -771,7 +763,7 @@ impl Scroll {
 
         let inner_value = ui.node(id, outer, |ui| {
             let inner_value = match inner_chrome {
-                Some(c) => ui.node_with_chrome(scroll_id, inner, c, body),
+                Some(c) => ui.node_with_chrome(scroll_id, inner, &c, body),
                 None => ui.node(scroll_id, inner, body),
             };
             // Bar overlay: Canvas sibling of inner, Fill on both axes

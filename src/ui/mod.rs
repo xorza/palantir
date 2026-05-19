@@ -919,12 +919,17 @@ impl Ui {
         r
     }
 
-    /// Chrome variant of [`Self::node`]. Same `id` contract.
+    /// Chrome variant of [`Self::node`]. Same `id` contract. `chrome`
+    /// is taken by reference because `Background` is 168 B and gets
+    /// threaded through 4 functions per call (here → `Forest::open_node`
+    /// → `Tree::open_node` → `FrameArena::lower_background`); passing by
+    /// value made `node_with_chrome` ~35 % YMM stack copies in the
+    /// `frame` bench (`vmovups`). One pointer write per hop instead.
     pub(crate) fn node_with_chrome<R>(
         &mut self,
         id: WidgetId,
         element: Element,
-        chrome: Background,
+        chrome: &Background,
         f: impl FnOnce(&mut Ui) -> R,
     ) -> R {
         self.forest.open_node(

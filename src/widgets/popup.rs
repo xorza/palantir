@@ -140,7 +140,7 @@ impl Popup {
         let handle = PopupHandle::new();
         ui.layer(Layer::Popup, self.anchor, None, |ui| match chrome {
             Some(c) => {
-                ui.node_with_chrome(body_id, element, c, |ui| body(ui, &handle));
+                ui.node_with_chrome(body_id, element, &c, |ui| body(ui, &handle));
             }
             None => {
                 ui.node(body_id, element, |ui| body(ui, &handle));

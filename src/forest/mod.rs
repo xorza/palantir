@@ -202,13 +202,16 @@ impl Forest {
     /// collision pair), and opens the node in the active tree.
     ///
     /// `chrome` is `Some((bg, arena, atlas))` for nodes with a
-    /// background paint and `None` otherwise.
+    /// background paint and `None` otherwise. `bg` is borrowed (not
+    /// owned) so the 168 B `Background` doesn't get copied through the
+    /// `Ui::node_with_chrome → here → Tree::open_node →
+    /// FrameArena::lower_background` chain on every chromed widget.
     #[inline]
     pub(crate) fn open_node(
         &mut self,
         widget_id: WidgetId,
         element: Element,
-        chrome: Option<(Background, &FrameArena, &GradientAtlas)>,
+        chrome: Option<(&Background, &FrameArena, &GradientAtlas)>,
     ) {
         let layer = self.current_layer();
         let node = self.trees[layer].peek_next_id();

@@ -253,7 +253,7 @@ impl MenuItem {
             shadow: Shadow::NONE,
         };
         let id = ui.make_persistent_id(element.salt);
-        ui.node_with_chrome(id, element, chrome, |_| {});
+        ui.node_with_chrome(id, element, &chrome, |_| {});
         let state = ui.response_for(id);
         Response { id, state }
     }
@@ -329,7 +329,7 @@ impl MenuItem {
             }
         };
         match look_bg {
-            Some(c) => ui.node_with_chrome(id, element, c, body),
+            Some(c) => ui.node_with_chrome(id, element, &c, body),
             None => ui.node(id, element, body),
         }
 

@@ -218,7 +218,7 @@ impl<'r> Tooltip<'r> {
                 element.max_size = ui.theme.tooltip.max_size;
             }
             ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
-                ui.node_with_chrome(bubble_id, element, chrome, |ui| {
+                ui.node_with_chrome(bubble_id, element, &chrome, |ui| {
                     Text::new(text).style(text_style).wrapping().show(ui);
                 });
             });
