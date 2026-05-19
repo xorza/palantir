@@ -122,6 +122,7 @@ mod hot_struct_sizes {
     use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
+    use crate::forest::element::Element;
     use crate::forest::tree::ExtrasIdx;
     use crate::layout::ShapedText;
     use crate::primitives::span::Span;
@@ -153,6 +154,7 @@ mod hot_struct_sizes {
             row::<ChromeRow>("forest::ChromeRow"),
             row::<Background>("primitives::Background"),
             row::<Brush>("primitives::Brush"),
+            row::<Element>("forest::Element"),
             row::<Span>("layout::Span"),
             row::<ShapedText>("layout::ShapedText"),
             row::<NodeHash>("rollups::NodeHash"),
