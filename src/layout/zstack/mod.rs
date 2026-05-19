@@ -81,6 +81,6 @@ pub(crate) fn arrange(
             min: inner.min + Vec2::new(x.offset, y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, child_rect, out);
+        layout.arrange(tree, c, Some(node), child_rect, out);
     }
 }

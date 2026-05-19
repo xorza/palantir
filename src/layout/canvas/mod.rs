@@ -81,7 +81,7 @@ pub(crate) fn arrange(
             min: inner.min + pos,
             size: d,
         };
-        layout.arrange(tree, c, child_rect, out);
+        layout.arrange(tree, c, Some(node), child_rect, out);
     }
 }
 

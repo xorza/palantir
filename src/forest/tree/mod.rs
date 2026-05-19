@@ -50,12 +50,6 @@ use std::hash::{Hash, Hasher as _};
 pub(crate) struct NodeId(pub(crate) u32);
 
 impl NodeId {
-    /// Sentinel "no parent" value used in [`Tree::parents`] for root
-    /// slots. `u32::MAX` is unreachable as a real `NodeId` (record cap
-    /// is `u32::MAX - 1` in practice; sparse column caps trip far
-    /// sooner).
-    pub(crate) const ROOT: Self = Self(u32::MAX);
-
     #[inline]
     pub(crate) fn idx(self) -> usize {
         self.0 as usize
@@ -199,14 +193,6 @@ pub(crate) struct Tree {
     /// drop the visual no-op slices; the radius survives.
     pub(crate) chrome_table: Vec<ChromeRow>,
 
-    /// Parent `NodeId` per node, or [`NodeId::ROOT`] for roots. Written
-    /// at `open_node` from `open_frames.last()`; lets any post-recording
-    /// pass (arrange, cascade, encode, debug) ask "who's my parent?" in
-    /// O(1) without a backwards `subtree_end` walk. Same lifecycle as
-    /// `records`: cleared in `pre_record`, pushed in `open_node`,
-    /// length-asserted at the end of `open_node`.
-    pub(crate) parents: Vec<NodeId>,
-
     // -- Shapes ----------------------------------------------------------
     /// Flat per-frame shape buffer. Records are indexed via
     /// `NodeRecord.shape_span`; variable-length payloads (mesh
@@ -278,7 +264,6 @@ impl Tree {
         self.bounds_table.clear();
         self.panel_table.clear();
         self.chrome_table.clear();
-        self.parents.clear();
         self.shapes.clear();
         self.paint_anims.clear();
         self.grid.clear();
@@ -417,13 +402,9 @@ impl Tree {
     /// `element` is moved into the tree.
     pub(crate) fn peek_next_id(&self) -> NodeId {
         let id = self.records.len() as u32;
-        // `NodeId::ROOT = u32::MAX` is the sentinel `Tree::parents`
-        // uses for root slots; a real node landing on that value
-        // would silently look up its own row as the parent. Sparse-
-        // column `Slot` caps at `u16::MAX` trip far sooner in
-        // practice — `debug_assert` because in release, the
-        // `Slot::from_len` assert is what actually fires on runaway
-        // record paths, ~65 535 nodes before this ceiling.
+        // Sparse-column `Slot` caps at `u16::MAX` trip far sooner in
+        // practice (~65 535 nodes) than this `u32` ceiling — this
+        // assert is a final guardrail against silent wraparound.
         assert!(id < u32::MAX, "Tree record cap reached: {id} nodes");
         NodeId(id)
     }
@@ -531,18 +512,15 @@ impl Tree {
             layout: cols.layout,
             attrs: cols.attrs,
         });
-        self.parents
-            .push(parent_frame.map(|f| f.node).unwrap_or(NodeId::ROOT));
         self.has_grid.grow(self.records.len());
-        // Column length-equality. `records` + `extras_idx` + `parents`
-        // must agree on `len`; a missed push silently shifts every
-        // later node's index. Invariant is structurally guarded by the
-        // unconditional pushes above — debug-only check.
+        // Column length-equality. `records` + `extras_idx` must agree
+        // on `len`; a missed push silently shifts every later node's
+        // index. Invariant is structurally guarded by the unconditional
+        // pushes above — debug-only check.
         #[cfg(debug_assertions)]
         {
             let n = self.records.len();
             assert_eq!(self.extras_idx.len(), n);
-            assert_eq!(self.parents.len(), n);
         }
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
