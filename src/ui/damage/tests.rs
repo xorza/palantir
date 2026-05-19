@@ -773,7 +773,7 @@ fn transform_shifted_direct_shape_with_invariant_clipped_paint_rect_contributes_
                                     // under small `dx` translates.
                                     ui.add_shape(Shape::RoundedRect {
                                         local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
-                                        radius: Corners::ZERO,
+                                        corners: Corners::ZERO,
                                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
                                         stroke: Stroke::default(),
                                     });
@@ -830,7 +830,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
                                 .show(ui, |ui| {
                                     ui.add_shape(Shape::RoundedRect {
                                         local_rect: Some(Rect::new(-200.0, 0.0, 500.0, 50.0)),
-                                        radius: Corners::ZERO,
+                                        corners: Corners::ZERO,
                                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
                                         stroke: Stroke::default(),
                                     });
@@ -887,7 +887,7 @@ fn self_transform_shift_damages_direct_shapes() {
                             // beziers on the inner canvas.
                             ui.add_shape(Shape::RoundedRect {
                                 local_rect: Some(Rect::new(40.0, 40.0, 30.0, 30.0)),
-                                radius: Corners::ZERO,
+                                corners: Corners::ZERO,
                                 fill: Color::rgb(0.2, 0.6, 0.9).into(),
                                 stroke: Stroke::default(),
                             });
@@ -1455,7 +1455,7 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::Shadow {
                         local_rect: None,
-                        radius: Corners::all(0.0),
+                        corners: Corners::all(0.0),
                         shadow: Shadow {
                             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                             offset: Vec2::ZERO,
@@ -1556,7 +1556,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
                                 .show(ui, |ui| {
                                     ui.add_shape(Shape::Shadow {
                                         local_rect: None,
-                                        radius: Corners::all(0.0),
+                                        corners: Corners::all(0.0),
                                         shadow: Shadow {
                                             color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                                             offset: Vec2::ZERO,
@@ -1801,13 +1801,13 @@ fn per_shape_damage_only_pushes_changed_shapes() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 20.0, 10.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(60.0, 0.0, 20.0, 10.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(0.0, 1.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -1815,7 +1815,7 @@ fn per_shape_damage_only_pushes_changed_shapes() {
                 // bbox doesn't merge with theirs in the damage region.
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, moving_y, 20.0, 10.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(0.0, 0.0, 1.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -1936,21 +1936,21 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
             .show(ui, |ui| {
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(1.0, 0.0, 0.0).into(),
                     stroke: Stroke::ZERO,
                 });
                 if include_middle {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect::new(60.0, 0.0, 20.0, 20.0)),
-                        radius: Corners::ZERO,
+                        corners: Corners::ZERO,
                         fill: Color::rgb(0.0, 1.0, 0.0).into(),
                         stroke: Stroke::ZERO,
                     });
                 }
                 ui.add_shape(Shape::RoundedRect {
                     local_rect: Some(Rect::new(120.0, 0.0, 20.0, 20.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Color::rgb(0.0, 0.0, 1.0).into(),
                     stroke: Stroke::ZERO,
                 });
@@ -2203,7 +2203,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect::new(0.0, 0.0, 400.0, 20.0)),
-                        radius: Corners::ZERO,
+                        corners: Corners::ZERO,
                         fill: Color::rgb(1.0, 0.0, 0.0).into(),
                         stroke: Stroke::ZERO,
                     });

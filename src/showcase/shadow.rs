@@ -10,7 +10,7 @@ use palantir::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape
 fn shadow_shape(s: Shadow) -> Shape<'static> {
     Shape::Shadow {
         local_rect: Some(card_rect()),
-        radius: radius(),
+        corners: corners(),
         shadow: s,
     }
 }
@@ -71,14 +71,14 @@ fn card_rect() -> Rect {
     Rect::new(20.0, 20.0, 160.0, 100.0)
 }
 
-fn radius() -> Corners {
+fn corners() -> Corners {
     Corners::all(12.0)
 }
 
 fn card_fill(ui: &mut Ui) {
     ui.add_shape(Shape::RoundedRect {
         local_rect: Some(card_rect()),
-        radius: radius(),
+        corners: corners(),
         fill: Color::rgb(0.95, 0.95, 0.97).into(),
         stroke: Default::default(),
     });

@@ -126,7 +126,7 @@ pub(crate) enum CmdKind {
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct PushClipPayload {
     pub(crate) rect: Rect,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
 }
 
 /// Brush metadata packed into draw-rect payloads. `fill_kind` low byte
@@ -143,7 +143,7 @@ pub(crate) struct PushClipPayload {
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
     /// sRGB-encoded fill. Zeroed for gradients; the atlas row at
     /// `fill_lut_row` supplies the colour in that case.
     pub(crate) fill: ColorF16,
@@ -165,7 +165,7 @@ pub(crate) struct DrawRectPayload {
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawShadowPayload {
     pub(crate) rect: Rect,
-    pub(crate) radius: Corners,
+    pub(crate) corners: Corners,
     pub(crate) color: ColorF16,
     pub(crate) fill_kind: FillKind,
     pub(crate) fill_axis: FillAxis,
@@ -375,15 +375,15 @@ impl RenderCmdBuffer {
             &mut self.data,
             PushClipPayload {
                 rect,
-                radius: Corners::ZERO,
+                corners: Corners::ZERO,
             },
         );
     }
 
     #[inline]
-    pub(crate) fn push_clip_rounded(&mut self, rect: Rect, radius: Corners) {
+    pub(crate) fn push_clip_rounded(&mut self, rect: Rect, corners: Corners) {
         self.record_start(CmdKind::PushClip);
-        write_pod(&mut self.data, PushClipPayload { rect, radius });
+        write_pod(&mut self.data, PushClipPayload { rect, corners });
     }
 
     #[inline]
@@ -406,7 +406,7 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_rect(
         &mut self,
         rect: Rect,
-        radius: Corners,
+        corners: Corners,
         fill: BrushSource,
         stroke: ShapeStroke,
     ) {
@@ -427,7 +427,7 @@ impl RenderCmdBuffer {
         };
         let payload = DrawRectPayload {
             rect,
-            radius,
+            corners,
             fill: fill_color,
             stroke_color,
             stroke_width,
@@ -450,14 +450,14 @@ impl RenderCmdBuffer {
     pub(crate) fn draw_shadow(
         &mut self,
         rect: Rect,
-        radius: Corners,
+        corners: Corners,
         color: ColorF16,
         fill_kind: FillKind,
         fill_axis: FillAxis,
     ) {
         let payload = DrawShadowPayload {
             rect,
-            radius,
+            corners,
             color,
             fill_kind,
             fill_axis,

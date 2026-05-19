@@ -318,7 +318,7 @@ impl Composer {
             match kind {
                 CmdKind::PushClip => {
                     let p: PushClipPayload = cmds.read(start);
-                    let logical_radius = (!p.radius.approx_zero()).then_some(p.radius);
+                    let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
                     let world = current_transform.apply_rect(p.rect);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
                     let scissor = match self.clip_stack.last() {
@@ -336,7 +336,7 @@ impl Composer {
                         out.has_rounded_clip = true;
                         Some(RoundedClip {
                             mask_rect: world.scaled_by(scale, snap),
-                            radius: logical_radius.scaled_by(phys_scale),
+                            corners: logical_radius.scaled_by(phys_scale),
                         })
                     } else {
                         // Rect clip nested inside a rounded ancestor: inherit
@@ -385,13 +385,13 @@ impl Composer {
                         continue;
                     }
                     self.quad_forces_flush(quad_urect, out);
-                    let world_radius = p.radius.scaled_by(current_transform.scale);
+                    let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.fill,
-                        radius: phys_radius,
+                        corners: phys_radius,
                         stroke_color: p.stroke_color,
                         stroke_width: p.stroke_width * current_transform.scale * scale,
                         fill_kind: p.fill_kind,
@@ -416,7 +416,7 @@ impl Composer {
                     let sigma_phys = p.fill_axis.t0().max(0.0) * current_transform.scale * scale;
                     let overlap_urect = quad_urect.deflated((2.0 * sigma_phys) as u32);
                     self.quad_forces_flush(overlap_urect, out);
-                    let world_radius = p.radius.scaled_by(current_transform.scale);
+                    let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
                     // Shadow params (offset, σ) are logical-px scalars;
@@ -426,7 +426,7 @@ impl Composer {
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.color,
-                        radius: phys_radius,
+                        corners: phys_radius,
                         stroke_color: ColorF16::TRANSPARENT,
                         stroke_width: 0.0,
                         fill_kind: p.fill_kind,

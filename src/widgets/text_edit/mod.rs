@@ -682,7 +682,7 @@ impl<'a> TextEdit<'a> {
                             min: r.min + glam::Vec2::new(dx, dy),
                             size: r.size,
                         }),
-                        radius: Default::default(),
+                        corners: Default::default(),
                         fill: sel_color.into(),
                         stroke: Stroke::ZERO,
                     });
@@ -746,7 +746,7 @@ impl<'a> TextEdit<'a> {
                 );
                 let shape = Shape::RoundedRect {
                     local_rect: Some(caret_rect),
-                    radius: Default::default(),
+                    corners: Default::default(),
                     fill: theme.caret.into(),
                     stroke: Stroke::ZERO,
                 };

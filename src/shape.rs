@@ -25,7 +25,7 @@ use glam::Vec2;
 pub enum Shape<'a> {
     RoundedRect {
         local_rect: Option<Rect>,
-        radius: Corners,
+        corners: Corners,
         fill: Brush,
         stroke: Stroke,
     },
@@ -152,7 +152,7 @@ pub enum Shape<'a> {
     /// record order — composer batches them on the same draw call.
     Shadow {
         local_rect: Option<Rect>,
-        radius: Corners,
+        corners: Corners,
         shadow: Shadow,
     },
 }

@@ -1013,7 +1013,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
             ui.add_shape_animated(
                 Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
                     stroke: Stroke::default(),
                 },
@@ -1088,7 +1088,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
             ui.add_shape_animated(
                 Shape::RoundedRect {
                     local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    radius: Corners::ZERO,
+                    corners: Corners::ZERO,
                     fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
                     stroke: Stroke::default(),
                 },
@@ -1155,7 +1155,7 @@ fn input_policy_routes_paint_only_gate() {
                 ui.add_shape_animated(
                     Shape::RoundedRect {
                         local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                        radius: Corners::ZERO,
+                        corners: Corners::ZERO,
                         fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
                         stroke: Stroke::default(),
                     },

@@ -430,7 +430,7 @@ impl QuadPipeline {
                 },
             },
             fill: Color { a: 1.0, ..color }.into(),
-            radius: Corners::default(),
+            corners: Corners::default(),
             stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()
@@ -496,7 +496,7 @@ impl QuadPipeline {
                 && let Some(r) = g.rounded_clip
             {
                 self.mask_indices[i] = Some(self.masks.len() as u32);
-                self.masks.push(Self::mask_instance(r.mask_rect, r.radius));
+                self.masks.push(Self::mask_instance(r.mask_rect, r.corners));
             }
         }
         if self.masks.is_empty() {
@@ -546,11 +546,11 @@ impl QuadPipeline {
     /// Only `rect` + `radius` reach the SDF in `fs_mask`; color/stroke
     /// are ignored (mask pipeline disables color writes), so we pass
     /// defaults.
-    fn mask_instance(rect: Rect, radius: Corners) -> Quad {
+    fn mask_instance(rect: Rect, corners: Corners) -> Quad {
         Quad {
             rect,
             fill: Color::default().into(),
-            radius,
+            corners,
             stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()

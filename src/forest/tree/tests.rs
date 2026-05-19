@@ -55,7 +55,7 @@ fn interleaved_shapes_record_correct_order() {
         let s = (slot + 1) as f32 * 10.0;
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, s, s)),
-            radius: Corners::default(),
+            corners: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }
@@ -146,7 +146,7 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     fn pos_rect() -> Shape<'static> {
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, 10.0, 10.0)),
-            radius: Corners::default(),
+            corners: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }
@@ -969,7 +969,7 @@ fn mid_recording_popup_keeps_trees_independent() {
         let w = (slot + 1) as f32;
         Shape::RoundedRect {
             local_rect: Some(Rect::new(0.0, 0.0, w, w)),
-            radius: Corners::default(),
+            corners: Corners::default(),
             fill: Color::rgb(1.0, 0.0, 0.0).into(),
             stroke: Stroke::ZERO,
         }

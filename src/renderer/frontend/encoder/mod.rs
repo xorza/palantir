@@ -154,7 +154,7 @@ fn emit_one_shape(
     match shape {
         ShapeRecord::RoundedRect {
             local_rect,
-            radius,
+            corners,
             fill,
             stroke,
             ..
@@ -167,7 +167,7 @@ fn emit_one_shape(
                 },
             };
             let src = shape_brush_source(gradients, *fill);
-            out.draw_rect(r, *radius, src, *stroke);
+            out.draw_rect(r, *corners, src, *stroke);
         }
         ShapeRecord::Text {
             local_origin,
@@ -238,9 +238,9 @@ fn emit_one_shape(
         }
         ShapeRecord::Shadow {
             local_rect,
-            radius,
+            corners,
             shadow,
-        } => emit_shadow(out, owner_rect, *local_rect, *radius, shadow),
+        } => emit_shadow(out, owner_rect, *local_rect, *corners, shadow),
         ShapeRecord::Mesh {
             local_rect,
             tint,
@@ -533,7 +533,7 @@ fn emit_shadow(
     out: &mut RenderCmdBuffer,
     owner_rect: Rect,
     local_rect: Option<Rect>,
-    radius: Corners,
+    corners: Corners,
     shadow: &LoweredShadow,
 ) {
     if shadow.is_noop() {
@@ -559,7 +559,7 @@ fn emit_shadow(
     };
     out.draw_shadow(
         paint_rect,
-        radius,
+        corners,
         // LoweredShadow.color is `ColorF16` (the field); cmd-buffer
         // takes the packed form directly so the encoder doesn't
         // unpack-and-repack.

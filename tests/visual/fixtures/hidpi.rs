@@ -43,7 +43,7 @@ fn dashboard_matches_golden() {
                     .background(Background {
                         fill: Color::rgb(0.18, 0.22, 0.32).into(),
                         stroke: Stroke::solid(Color::rgb(0.30, 0.36, 0.46), 1.0),
-                        radius: Corners::all(6.0),
+                        corners: Corners::all(6.0),
                         shadow: Shadow::NONE,
                     })
                     .show(ui, |ui| {
@@ -71,7 +71,7 @@ fn dashboard_matches_golden() {
                     .gap(4.0)
                     .background(Background {
                         fill: Color::rgb(0.14, 0.17, 0.24).into(),
-                        radius: Corners::all(6.0),
+                        corners: Corners::all(6.0),
                         ..Default::default()
                     })
                     .show(ui, |ui| {
@@ -86,7 +86,7 @@ fn dashboard_matches_golden() {
                                     } else {
                                         Color::TRANSPARENT.into()
                                     },
-                                    radius: Corners::all(4.0),
+                                    corners: Corners::all(4.0),
                                     ..Default::default()
                                 })
                                 .show(ui);
@@ -118,7 +118,7 @@ fn dashboard_matches_golden() {
                                 .background(Background {
                                     fill: (*c).into(),
                                     stroke: Stroke::solid(Color::rgba(1.0, 1.0, 1.0, 0.18), 1.0),
-                                    radius: Corners::all(8.0),
+                                    corners: Corners::all(8.0),
                                     shadow: Shadow::NONE,
                                 })
                                 .show(ui, |ui| {
@@ -150,7 +150,7 @@ fn dashboard_matches_golden() {
                     .padding((4.0, 10.0, 4.0, 10.0))
                     .background(Background {
                         fill: Color::rgb(0.10, 0.12, 0.18).into(),
-                        radius: Corners::all(4.0),
+                        corners: Corners::all(4.0),
                         ..Default::default()
                     })
                     .show(ui, |ui| {

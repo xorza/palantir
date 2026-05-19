@@ -137,7 +137,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::RoundedRect {
                 local_rect: None,
-                radius: Corners::all(4.0),
+                corners: Corners::all(4.0),
                 fill: Color::rgb(1.0, 0.0, 0.0).into(),
                 stroke: Stroke::ZERO,
             });
@@ -211,7 +211,7 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
         Panel::hstack().auto_id().show(ui, |ui| {
             ui.add_shape(Shape::Shadow {
                 local_rect: Some(Rect::new(10.0, 20.0, 30.0, 40.0)),
-                radius: Corners::all(4.0),
+                corners: Corners::all(4.0),
                 shadow: Shadow {
                     color: Color::rgba(0.0, 0.0, 0.0, 0.5),
                     offset: Vec2::new(2.0, 4.0),
@@ -394,7 +394,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
                 return None;
             }
             let payload: PushClipPayload = cmds.read(cmds.starts[idx]);
-            (!payload.radius.approx_zero()).then_some(idx)
+            (!payload.corners.approx_zero()).then_some(idx)
         })
         .expect("rounded clip with rounded background emits PushClip with non-zero radius");
     let rounded_count = cmds
@@ -404,7 +404,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
         .filter(|(idx, k)| {
             **k == CmdKind::PushClip && {
                 let p: PushClipPayload = cmds.read(cmds.starts[*idx]);
-                !p.radius.approx_zero()
+                !p.corners.approx_zero()
             }
         })
         .count();
@@ -418,7 +418,7 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     // every side. Radius reduces by 2 to stay concentric with the
     // painted stroke's inner edge.
     assert_eq!(payload.rect, panel_rect.deflated_by(Spacing::all(2.0)));
-    assert_eq!(payload.radius, Corners::all(6.0));
+    assert_eq!(payload.corners, Corners::all(6.0));
 }
 
 #[test]
@@ -448,7 +448,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
         .collect();
     assert_eq!(push_clips.len(), 1);
     assert!(
-        push_clips[0].radius.approx_zero(),
+        push_clips[0].corners.approx_zero(),
         "no background → no radius → falls back to plain scissor",
     );
 }
@@ -1032,7 +1032,7 @@ fn transformed_panel_applies_transform_to_direct_shapes() {
                 .show(ui, |ui| {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect::new(0.0, 0.0, 30.0, 30.0)),
-                        radius: Corners::all(0.0),
+                        corners: Corners::all(0.0),
                         fill: shape_color.into(),
                         stroke: Stroke::ZERO,
                     });

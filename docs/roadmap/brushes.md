@@ -41,9 +41,9 @@ intent but not the literal types:
 
 ## Today
 
-- `Background { fill: Color, stroke: Stroke, radius: Corners }`
+- `Background { fill: Color, stroke: Stroke, corners: Corners: }`
   in `src/primitives/background.rs:25`. Stored as `Tree.chrome:
-  SparseColumn<Background>` (`src/forest/tree/mod.rs:131`), filtered out when
+SparseColumn<Background>` (`src/forest/tree/mod.rs:131`), filtered out when
   `is_noop()` so transparent panels stay zero-cost.
 - `Stroke { color: Color, width: f32 }` (`src/primitives/stroke.rs:18`),
   `#[repr(C)] Pod` with hand-`Hash` over `bytes_of(self)`
@@ -190,7 +190,7 @@ brushing.
 `Background` and `Stroke` currently derive `Animatable` and lerp colors
 componentwise — Button hover/press depends on it. Generic `Brush` can't
 lerp across variants (no meaning to "halfway between a solid red and a
-radial gradient"), and `Arc<LinearGradient>` etc. can't lerp *within* a
+radial gradient"), and `Arc<LinearGradient>` etc. can't lerp _within_ a
 variant without allocating a new `Arc` per frame (violates the
 steady-state alloc-free contract). So we hand-write `Animatable for
 Brush` with one rule:
@@ -255,7 +255,7 @@ header. Use `padding-struct` so future fields don't rot the layout:
 #[repr(C)]
 pub(crate) struct Quad {
     pub rect: Rect,
-    pub radius: Corners,
+    pub corners: Corners,
     pub stroke_width: f32,
     pub fill_brush: BrushSlot,    // 24 B, inline
     pub stroke_brush: BrushSlot,  // 24 B, inline
@@ -378,7 +378,7 @@ side in `renderer/quad.rs`:
 
 ```rust
 #[repr(C)] #[derive(Pod, Zeroable)]
-pub(crate) struct SolidQuad { rect: Rect, fill: Color, radius: Corners,
+pub(crate) struct SolidQuad { rect: Rect, fill: Color, corners: Corners,
                               stroke_color: Color, stroke_width: f32 }   // 68 B
 
 // `Quad` (84 B) above — the brush-pipeline instance.
@@ -412,7 +412,7 @@ test and for a future cache.)
 
 - `GradientId` and `ImageId` are **content hashes**, not slot indices.
   `Brush::LinearGradient(id).hash()` therefore depends on the gradient's
-  *content*, not on a frame-local position. Two consequences:
+  _content_, not on a frame-local position. Two consequences:
   1. Same gradient definition across frames → same id → encode cache
      hits correctly.
   2. Different gradients across frames → different ids → encode cache
@@ -427,7 +427,7 @@ test and for a future cache.)
   `Brush::Solid(c).hash() != c.hash()` because of the discriminant byte:
   every subtree key changes once on rollout, then is stable.
 - **LUT atlas rows are content-addressed** (see "Gradient LUT atlas") so
-  that *if* an encode/compose cache ever returns, cached `BrushSlot`s with
+  that _if_ an encode/compose cache ever returns, cached `BrushSlot`s with
   `lut_row = R` stay valid: the only way `lut_row = R` exists is for the
   same content the row was baked from. Eviction means "row free for a
   different hash to claim" — no in-place overwrite of live content. With
@@ -466,7 +466,7 @@ test and for a future cache.)
   a solid `Background` records to today's exact `Quad` bytes (still 68 B
   in slice 1; `BrushSlot` doesn't exist yet).
 - **Slice 2 pinning test migration**: the slice-1 test moves from
-  "asserts `Quad` bytes" to "asserts `SolidQuad` bytes *and* asserts the
+  "asserts `Quad` bytes" to "asserts `SolidQuad` bytes _and_ asserts the
   composer routed the panel to the solid pipeline". `size_of::<Quad>() == 84`
   and `size_of::<SolidQuad>() == 68` get their own assertions in
   `renderer/quad.rs`.
@@ -554,7 +554,7 @@ roughly increasing complexity:
    bench that counts allocs per frame.
 
 2. **Per-frame `BrushArena` scratch.** Add `Ui::brush_scratch:
-   BrushArena` cleared at `post_record`, capacity-reused. `Brush::Linear`
+BrushArena` cleared at `post_record`, capacity-reused. `Brush::Linear`
    becomes `enum LinearHandle { Shared(Arc<…>), Frame(u32) }`; lerps
    push onto the scratch and return `Frame(idx)`. Truly alloc-free
    after warmup. Cost: `Hash` / `is_noop` / `PartialEq` on `Frame`

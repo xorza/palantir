@@ -11,7 +11,7 @@ Panel::vstack()
     .background(Surface::rounded(Background {
         fill: BG,
         stroke: Stroke { width: 1.0, color: BORDER }),
-        radius: Corners::all(8.0),
+        corners: Corners::all(8.0),
     }))
     .show(ui, |ui| { ... });
 ```

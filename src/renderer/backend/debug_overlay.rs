@@ -94,7 +94,7 @@ impl DebugOverlay {
                 },
             },
             fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha).into(),
-            radius: Corners::default(),
+            corners: Corners::default(),
             stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
             ..Default::default()
@@ -147,7 +147,7 @@ impl DebugOverlay {
             quads.push(Quad {
                 rect: *r,
                 fill: ColorF16::TRANSPARENT,
-                radius: Corners::default(),
+                corners: Corners::default(),
                 stroke_color: stroke_color_f16,
                 stroke_width,
                 ..Default::default()
