@@ -988,6 +988,7 @@ dependencies = [
  "criterion",
  "etagere",
  "pollster",
+ "profiling",
  "resvg",
  "rustc-hash 2.1.2",
  "wgpu",

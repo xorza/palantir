@@ -395,10 +395,16 @@ impl WgpuBackend {
         // (not per group) — coalescing N text groups into one batch
         // means N→1 prepare/render calls.
         self.text.update_viewport(&self.queue, buffer.viewport_phys);
-        for (i, b) in buffer.text_batches.iter().enumerate() {
-            let runs = &buffer.texts[b.texts.range()];
-            self.text
-                .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
+        {
+            profiling::scope!(
+                "text.prepare_batches",
+                &format!("count={}", buffer.text_batches.len())
+            );
+            for (i, b) in buffer.text_batches.iter().enumerate() {
+                let runs = &buffer.texts[b.texts.range()];
+                self.text
+                    .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
+            }
         }
 
         let mut encoder = self

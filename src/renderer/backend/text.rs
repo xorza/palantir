@@ -171,6 +171,7 @@ impl TextRenderer {
     ) -> bool {
         // Lazy-build the stencil-mode renderer on first use.
         if matches!(mode, StencilMode::Stencil) && self.stencil.is_none() {
+            profiling::scope!("lazy_stencil_build");
             let renderer = GlyphonRenderer::new(
                 &mut self.atlas,
                 device,
