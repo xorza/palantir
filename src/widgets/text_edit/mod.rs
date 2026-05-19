@@ -318,20 +318,31 @@ fn update_scroll(
     let inner_h = (rect.size.h - ctx.padding.vert()).max(0.0);
     if ctx.multiline {
         state.scroll.x = 0.0;
+        // Trailing sliver like the single-line x clamp below — keep
+        // the caret's bottom edge strictly inside the scissor so the
+        // last line's caret can't lose its bottom pixel to rounding.
+        let trailing = (inner_h - caret_width).max(0.0);
         let caret_bottom = caret_pos.y_top + caret_pos.line_height;
         if caret_pos.y_top < state.scroll.y {
             state.scroll.y = caret_pos.y_top;
-        } else if caret_bottom > state.scroll.y + inner_h {
-            state.scroll.y = caret_bottom - inner_h;
+        } else if caret_bottom > state.scroll.y + trailing {
+            state.scroll.y = caret_bottom - trailing;
         }
         state.scroll.y = state.scroll.y.max(0.0);
     } else {
         state.scroll.y = 0.0;
+        // Keep a caret-width sliver between the caret's right edge
+        // and the scissor's right edge — otherwise the caret's last
+        // pixel can land flush on the scissor boundary and get
+        // clipped under sub-pixel rounding. Mirrors the
+        // `inner_w - caret_room` reduction the multi-line wrap target
+        // applies for the same reason.
+        let trailing = (inner_w - caret_width).max(0.0);
         let caret_right = caret_pos.x + caret_width;
         if caret_pos.x < state.scroll.x {
             state.scroll.x = caret_pos.x;
-        } else if caret_right > state.scroll.x + inner_w {
-            state.scroll.x = caret_right - inner_w;
+        } else if caret_right > state.scroll.x + trailing {
+            state.scroll.x = caret_right - trailing;
         }
         state.scroll.x = state.scroll.x.max(0.0);
     }
@@ -469,7 +480,26 @@ impl<'a> TextEdit<'a> {
             .animate(ui, id, fallback_text, theme.anim);
         let font_size = look.text.font_size_px;
         let line_height_mult = look.text.line_height_mult;
-        let padding = self.element.padding;
+        // `Tree::open_node` folds chrome stroke width into the stored
+        // padding so children sit inside the painted stroke ring (see
+        // `forest/tree/mod.rs::open_node`). Encoder's clip mask is
+        // `rect.deflated_by(post-inflate padding)`, so glyph + caret
+        // coordinates must use the same effective value — otherwise
+        // the top row of glyphs sits above the clip and gets scissored
+        // away. The element's own padding stays at the pre-inflate
+        // value so Tree's fold reproduces the same effective padding.
+        let stroke_w = if crate::primitives::approx::noop_f32(look.background.stroke.width) {
+            0.0
+        } else {
+            look.background.stroke.width
+        };
+        let raw_padding = self.element.padding;
+        let padding = Spacing::new(
+            raw_padding.left() + stroke_w,
+            raw_padding.top() + stroke_w,
+            raw_padding.right() + stroke_w,
+            raw_padding.bottom() + stroke_w,
+        );
         // Reserve a caret-width sliver at the trailing edge of every
         // line so a caret sitting at end-of-line on right/center-
         // aligned text stays inside the clip. The shaper's per-line
