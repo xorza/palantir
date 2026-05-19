@@ -1,11 +1,11 @@
 use super::super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
-use super::align_text_in;
 use crate::Ui;
 use crate::common::frame_arena::FrameArena;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::shapes::record::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
@@ -684,20 +684,20 @@ fn align_text_in_cases() {
     let leaf = Rect::new(10.0, 20.0, 200.0, 40.0);
     let measured = Size::new(80.0, 16.0);
 
-    let r = align_text_in(leaf, measured, Align::CENTER);
+    let r = text_in_rect(leaf, measured, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (70.0, 32.0));
     assert_eq!((r.size.w, r.size.h), (80.0, 16.0));
 
-    let r = align_text_in(leaf, measured, Align::default());
+    let r = text_in_rect(leaf, measured, Align::default());
     assert_eq!((r.min.x, r.min.y), (10.0, 20.0));
 
-    let r = align_text_in(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
+    let r = text_in_rect(leaf, measured, Align::new(HAlign::Right, VAlign::Bottom));
     assert_eq!((r.min.x, r.min.y), (10.0 + 120.0, 20.0 + 24.0));
 
     // Negative-slack guard: oversize text clamps to top-left.
     let small = Rect::new(0.0, 0.0, 50.0, 10.0);
     let oversize = Size::new(80.0, 16.0);
-    let r = align_text_in(small, oversize, Align::CENTER);
+    let r = text_in_rect(small, oversize, Align::CENTER);
     assert_eq!((r.min.x, r.min.y), (0.0, 0.0));
 }
 

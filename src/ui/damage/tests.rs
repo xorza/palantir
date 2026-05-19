@@ -2058,3 +2058,115 @@ fn compaction_normalises_zero_len_spans_to_in_bounds_start() {
     // And the slice itself must not panic.
     let _ = &ui.damage_engine.shape_snaps[snap.shape_span.range()];
 }
+
+/// Pin: changing the *content* of a `Shape::Text` with
+/// `local_origin: Some(_)` damages the shaped-text bbox, not just the
+/// origin point.
+///
+/// Before the fix, `paint_bbox_local` for `Text { local_origin: Some(_) }`
+/// returned `{ min: origin, size: ZERO }` — a degenerate point, because
+/// the glyph extent isn't known to the record. Cascade dutifully stored
+/// that point in `Cascades::shape_rects[idx]`; the diff's
+/// `diff_changed_shape_leg` then pushed two zero-size rects when text
+/// changed → effectively no damage from the text shape. The
+/// user-visible symptom: type a character in a `TextEdit`, and only the
+/// caret-sized strip got repainted while the rest of the text went
+/// stale.
+///
+/// Post-fix, cascade looks up the shaped extent from
+/// `LayerLayout::text_shapes` (already computed by the measure pass)
+/// and stores the tight `(origin, measured)` rect. The diff pushes
+/// prev + curr extents, so the damage region covers the union of both
+/// strings' bboxes.
+#[test]
+fn text_content_change_damages_shaped_extent_not_just_origin() {
+    use crate::forest::element::{Element, LayoutMode, Salt};
+    use crate::primitives::size::Size;
+    use crate::shape::{Shape, TextWrap};
+    use crate::text::FontFamily;
+
+    let mut ui = Ui::for_test();
+    // Mono fallback geometry: glyph width = font_size_px * 0.5, line
+    // height = font_size_px. With font_size_px = 14, "abc" measures
+    // 21×14 and "abcdef" measures 42×14.
+    const FONT: f32 = 14.0;
+    const ORIGIN: Vec2 = Vec2::new(10.0, 10.0);
+    let leaf_id = WidgetId::from_hash("text-host");
+    let build = |text: &'static str, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
+            .show(ui, |ui| {
+                let mut element = Element::new(LayoutMode::Leaf);
+                element.salt = Salt::Verbatim(leaf_id);
+                ui.node(leaf_id, element, |ui| {
+                    ui.add_shape(Shape::Text {
+                        local_origin: Some(ORIGIN),
+                        text: text.into(),
+                        brush: Color::WHITE.into(),
+                        font_size_px: FONT,
+                        line_height_px: FONT,
+                        wrap: TextWrap::Single,
+                        align: Default::default(),
+                        family: FontFamily::Sans,
+                    });
+                });
+            });
+    };
+
+    frame(&mut ui, |ui| build("abc", ui));
+    frame(&mut ui, |ui| build("abc", ui));
+    assert!(
+        ui.damage_engine.dirty.is_empty(),
+        "steady frame must produce no diff"
+    );
+
+    // Cache prev shaped rect (size of "abc") off the previous snapshot
+    // so the assertion below can reason from the actual measured
+    // values rather than hand-recomputing mono geometry.
+    let prev_snap = ui.damage_engine.prev[&leaf_id];
+    let prev_text_rect = ui.damage_engine.shape_snaps[prev_snap.shape_span.range()][0].rect;
+    let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0, FONT);
+    assert!(
+        (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
+            && (prev_text_rect.size.h - prev_size_short.h).abs() < 0.5,
+        "prev text rect should have shaped size ≈ {prev_size_short:?}, got {prev_text_rect:?}",
+    );
+
+    frame(&mut ui, |ui| build("abcdef", ui));
+
+    let curr_snap = ui.damage_engine.prev[&leaf_id];
+    let curr_text_rect = ui.damage_engine.shape_snaps[curr_snap.shape_span.range()][0].rect;
+    let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0, FONT);
+    assert!(
+        (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
+            && (curr_text_rect.size.h - curr_size_long.h).abs() < 0.5,
+        "curr text rect should have shaped size ≈ {curr_size_long:?}, got {curr_text_rect:?}",
+    );
+
+    let region = ui.damage_region();
+    let intersects = |r: Rect| region.iter_rects().any(|d| d.intersects(r));
+
+    // Probe deep inside the new "abcdef" rect but past where the old
+    // "abc" rect ended (x = origin.x + 30 ≈ middle of "abcdef", past
+    // the 21-px width of "abc"). Pre-fix this point is *not* in damage
+    // (per-shape rect was a zero-size point at origin); post-fix it is
+    // (curr rect spans origin..origin+42px).
+    let inside_new_only = Rect::new(ORIGIN.x + 30.0, ORIGIN.y + 5.0, 1.0, 1.0);
+    assert!(
+        intersects(inside_new_only),
+        "probe inside new text but past old text must be in damage; \
+         probe = {inside_new_only:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+
+    // Also assert prev's middle gets damaged (so the old glyph
+    // pixels actually clear).
+    let inside_old = Rect::new(ORIGIN.x + 10.0, ORIGIN.y + 5.0, 1.0, 1.0);
+    assert!(
+        intersects(inside_old),
+        "probe inside old text must be in damage; \
+         probe = {inside_old:?}, region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}

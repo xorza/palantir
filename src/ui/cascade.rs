@@ -11,7 +11,7 @@ use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::CascadeInputHash;
-use crate::forest::shapes::record::shadow_paint_rect_local;
+use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
@@ -376,6 +376,7 @@ fn run_tree(
         let visible_rect = clip_to(screen_rect, parent_clip);
         let paint_rect = compute_paint_rect(
             tree,
+            layout,
             id,
             layout_rect,
             parent_transform,
@@ -504,8 +505,10 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
 /// apply `parent_transform`, then clip to the ancestor clip. Nodes
 /// with no shapes — or with shapes whose bbox stays inside the
 /// owner rect — fall through to the un-inflated path.
+#[allow(clippy::too_many_arguments)]
 fn compute_paint_rect(
     tree: &Tree,
+    layout: &LayerLayout,
     node: NodeId,
     layout_rect: Rect,
     parent_transform: TranslateScale,
@@ -540,21 +543,49 @@ fn compute_paint_rect(
     let mut chrome_local: Option<Rect> = None;
     let mut shapes_local: Option<Rect> = None;
     if tree.records.shape_span()[node.idx()].len > 0 {
+        // Text variants resolve their owner-local rect against the
+        // shaped extent from the measure pass — `text_spans[node]`
+        // points at one `ShapedText` entry per `ShapeRecord::Text` on
+        // this node, in record order. `text_ordinal` walks them in
+        // lockstep with the encoder's own counter so cascade damage
+        // rects and encoder draw rects align.
+        let text_span = layout.text_spans[node.idx()];
+        let padding = tree.records.layout()[node.idx()].padding;
+        let mut text_ordinal: u32 = 0;
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
-                // `precise` for the per-shape rect column (paint anims,
-                // per-shape damage), `extent` for the node-level
-                // paint_rect accumulator — wider when the precise
-                // bbox is degenerate (e.g. Text-with-origin before
-                // shaping). See `ShapeRecord::paint_extents_local`.
-                let (precise, extent) = s.paint_extents_local(layout_rect.size);
+                let local = match s {
+                    ShapeRecord::Text {
+                        local_origin,
+                        align,
+                        ..
+                    } => {
+                        assert!(
+                            text_ordinal < text_span.len,
+                            "cascade text-shape ordinal {text_ordinal} out of bounds for \
+                             span len {} on node {node:?} — only Leaf nodes shape text",
+                            text_span.len,
+                        );
+                        let measured =
+                            layout.text_shapes[(text_span.start + text_ordinal) as usize].measured;
+                        text_ordinal += 1;
+                        text_paint_bbox_local(
+                            *local_origin,
+                            *align,
+                            padding,
+                            layout_rect.size,
+                            measured,
+                        )
+                    }
+                    _ => s.paint_bbox_local(layout_rect.size),
+                };
                 shapes_local = Some(match shapes_local {
-                    Some(acc) => acc.union(extent),
-                    None => extent,
+                    Some(acc) => acc.union(local),
+                    None => local,
                 });
                 let tree_local = Rect {
-                    min: layout_rect.min + precise.min,
-                    size: precise.size,
+                    min: layout_rect.min + local.min,
+                    size: local.size,
                 };
                 let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
                 shape_rects[idx as usize] = screen;
