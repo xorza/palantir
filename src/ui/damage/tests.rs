@@ -1698,11 +1698,9 @@ fn off_surface_first_seen_node_skips_prev_insert() {
     );
 }
 
-/// `NodeSnapshot.chrome_rect` mirrors `Cascades.chrome_rects` and
-/// `NodeSnapshot.shapes` contains one entry per direct shape with
-/// matching rect and canonical hash. Verifies slice 3's
-/// decomposition is populated correctly without yet driving the
-/// per-shape damage push.
+/// `NodeSnapshot.paint_span` covers one entry per Paint row on the
+/// node — chrome at row 0 when present, then each direct shape — with
+/// matching rect and canonical hash. Mirrors `Cascades::paint_arenas`.
 #[test]
 fn node_snapshot_decomposition_matches_cascade() {
     use crate::Shape;
@@ -1881,11 +1879,11 @@ fn per_shape_damage_only_pushes_changed_shapes() {
 
 /// Chrome authoring change (hover fill flip, no rect change) must
 /// push the chrome rect even though the geometric rect is identical.
-/// Pins the `chrome_hash` half of the chrome leg — without it, a
-/// hover-color flip would fall through the rect-only guard and emit
-/// no damage at all.
+/// Chrome is row 0 of the node's paint span and carries its own
+/// authoring hash via `Paint.hash`; without that, a hover-color flip
+/// would fall through the rect-only guard and emit no damage at all.
 #[test]
-fn chrome_authoring_change_pushes_chrome_rect() {
+fn chrome_authoring_change_pushes_chrome_paint_row() {
     let mut ui = Ui::for_test();
     let build = |fill: Color, ui: &mut Ui| {
         Panel::hstack()
@@ -1907,8 +1905,8 @@ fn chrome_authoring_change_pushes_chrome_rect() {
     let rects: Vec<_> = region.iter_rects().collect();
     assert!(
         rects.iter().any(|r| r.intersects(snap_rect)),
-        "chrome authoring change must push chrome_rect even when rect \
-         geometry is unchanged; region = {rects:?}",
+        "chrome authoring change must push chrome paint row even when \
+         rect geometry is unchanged; region = {rects:?}",
     );
 }
 

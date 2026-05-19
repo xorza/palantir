@@ -68,7 +68,7 @@ fn canvas_hugs_to_bounding_box_of_placed_children() {
 /// canvas with a child positioned past its available width does NOT
 /// grow to wrap the child. Without this gate, `Fill = available floored
 /// at intrinsic_min` floors above `available` and the canvas overflows
-/// its parent — and the resulting per-frame `chrome_rect` shift drives
+/// its parent — and the resulting per-frame chrome paint rect shift drives
 /// `Damage::Full` flicker on every drag-the-node-past-the-edge tick
 /// (the darkroom graph-view bug). Hug canvas behavior is unchanged
 /// (verified by `canvas_places_child_at_position_within_inner_rect` and

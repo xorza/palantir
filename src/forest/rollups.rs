@@ -76,9 +76,9 @@ impl CascadeInputHash {
 ///   `src/layout/measure-cache.md`.
 ///
 /// "Does this node directly contribute pixels?" used to live here as
-/// a `paints: FixedBitSet`; the unified `Cascades::node_paints` Span
-/// answers the same question (empty span means "paints nothing"), so
-/// the bitset was removed.
+/// a `paints: FixedBitSet`; the unified
+/// `Cascades::paint_arenas[].node_spans` answers the same question
+/// (empty span means "paints nothing"), so the bitset was removed.
 #[derive(Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,

@@ -86,15 +86,15 @@ impl PaintArena {
 /// via `cascade_input.invisible()`; damage compares the full u64.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Cascade {
-    /// **Own** paint extent: the node's layout rect transformed into
-    /// screen space, unioned with the owner-local
-    /// [`Overhang`](crate::forest::shapes::record::Overhang) of each
-    /// *direct* shape (drop-shadow halos today), then clipped to the
+    /// **Own** paint extent: screen-space union of every [`Paint`] row
+    /// emitted for this node by [`compute_paint_rect`] — chrome
+    /// (inflated by drop-shadow halo when present) plus each direct
+    /// shape's tight bbox, all post-transform and clipped to the
     /// ancestor clip. Used by [`crate::ui::damage::DamageEngine`] as
-    /// the per-widget paint snapshot — keeping it tight (no
-    /// descendant rollup) lets a leaf colour change produce a leaf-
-    /// sized dirty rect instead of an ancestor-sized one. Hit-test
-    /// uses its own `EntryRow.rect`; shadows aren't clickable.
+    /// the per-widget paint snapshot; keeping it tight (no descendant
+    /// rollup) lets a leaf colour change produce a leaf-sized dirty
+    /// rect instead of an ancestor-sized one. Hit-test uses its own
+    /// `EntryRow.rect`; shadows aren't clickable.
     pub(crate) paint_rect: Rect,
     /// Fingerprint of the ancestor state + own arranged rect that
     /// flowed into this row, packed with the cascade-resolved
@@ -518,19 +518,43 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
     }
 }
 
-/// Union the owner-local `paint_bbox` of every direct shape on
-/// `node` with the node's own rect, translate to tree-local coords,
-/// apply `parent_transform`, then clip to the ancestor clip. Nodes
-/// with no shapes — or with shapes whose bbox stays inside the
-/// owner rect — fall through to the un-inflated path.
+/// Lift an owner-local rect into screen space: translate by the owner's
+/// arranged origin, apply the relevant transform (`parent_transform`
+/// for chrome / clip lift, `shape_transform` for shapes), then clip
+/// to the ancestor clip. One source of truth for the three coord-
+/// space hops the paint emit does.
+#[inline]
+fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rect>) -> Rect {
+    clip_to(
+        t.apply_rect(Rect {
+            min: origin + local.min,
+            size: local.size,
+        }),
+        clip,
+    )
+}
+
+#[inline]
+fn union_in(acc: &mut Option<Rect>, screen: Rect) {
+    *acc = Some(match *acc {
+        Some(a) => a.union(screen),
+        None => screen,
+    });
+}
+
+/// Emit every paint row for `node` (chrome at row 0 when present,
+/// then direct shapes in record order), stamp each shape's paint
+/// index into `shape_to_paint` for the paint-anim reverse lookup,
+/// write the covering [`Span`] into `node_spans[node]`, and return
+/// the screen-space union of every row — fed into `Cascade.paint_rect`
+/// for the damage diff and rolled into `subtree_paint_rects` for the
+/// encoder's cull.
 ///
-/// Side effect: appends one [`Paint`] row to `paints` per chrome /
-/// shape contribution and writes the [`Span`] covering them into
-/// `node_paints[node]`. Chrome lands at row 0 of the span when
-/// present, then shapes in record order. Also stamps each shape's
-/// index into `shape_to_paint[shape_idx]` for the paint-anim damage
-/// reverse lookup.
-#[allow(clippy::too_many_arguments)]
+/// Chrome rides `parent_transform` (encoder emits chrome before the
+/// body push); shapes ride `shape_transform = parent ∘ self_anchored`
+/// (inside the body push, per `Panel::transform`). The two transforms
+/// are the only structural difference between the two row kinds —
+/// both flow through [`push_row`].
 fn compute_paint_rect(
     tree: &Tree,
     layout: &LayerLayout,
@@ -541,137 +565,100 @@ fn compute_paint_rect(
     arena: &mut PaintArena,
 ) -> Rect {
     let paints_start = arena.rows.len() as u32;
-    // Two transforms apply to this node's paint:
-    // - `parent_transform` for chrome (encoder emits chrome before the
-    //   body push) and the chrome's drop shadow.
-    // - `shape_transform = parent.compose(self.anchored_at(layout.min))`
-    //   for direct shapes (encoder emits shapes inside the body push,
-    //   per the `Panel::transform` contract). Anchoring at
-    //   `layout.min` matches the cascade's descendant transform and
-    //   gives "scale my body about my own origin" semantics — see
-    //   `TranslateScale::anchored_at`.
-    // Chrome and shapes are unioned in screen space so each side
-    // carries its own transform — folding them in owner-local would
-    // lose `self.transform` for shapes.
     let self_transform = tree
         .transform_of(node)
         .map(|t| t.anchored_at(layout_rect.min))
         .unwrap_or(TranslateScale::IDENTITY);
     let shape_transform = parent_transform.compose(self_transform);
 
-    // Each accumulator is `Option<Rect>` rather than seeded to
-    // `owner_local` / `Rect::ZERO`, because `Rect::union` is not
-    // sound under either sentinel: zero-sized rects bias toward
-    // the origin (see `Rect::union` doc), and seeding to the owner
-    // rect would inflate paint-rect for non-painting containers and
-    // for chromeless shape hosts — defeating tight damage on pan.
-    // Chrome leg first so it lands at row 0 of the node's paint span
-    // when present. The `has_clip` lift keeps the encoder's subtree
-    // cull alive on clipped, chromeless containers by contributing
-    // the owner rect to `paint_rect` even though no Paint row is
-    // emitted (clipless + chromeless contributes nothing).
-    let has_clip_pre = tree.records.attrs()[node.idx()].clip_mode().is_clip();
-    let chrome_pre = tree.chrome(node);
-    let mut chrome_local: Option<Rect> = None;
-    if chrome_pre.is_some() || has_clip_pre {
-        let owner_local = Rect {
-            min: Vec2::ZERO,
-            size: layout_rect.size,
-        };
-        let mut local = owner_local;
-        if let Some(bg) = chrome_pre
-            && !bg.shadow.is_noop()
-        {
-            let s = &bg.shadow;
-            let g = s.geom();
-            local = local.union(shadow_paint_rect_local(
+    // `Option<Rect>` because zero-size sentinels bias `Rect::union`
+    // toward the origin and an owner-rect seed would inflate damage
+    // for chromeless shape hosts.
+    let mut union: Option<Rect> = None;
+
+    let owner_local = Rect {
+        min: Vec2::ZERO,
+        size: layout_rect.size,
+    };
+
+    if let Some(bg) = tree.chrome(node) {
+        let chrome_local = if bg.shadow.is_noop() {
+            owner_local
+        } else {
+            let g = bg.shadow.geom();
+            owner_local.union(shadow_paint_rect_local(
                 None,
                 layout_rect.size,
                 g.offset,
                 g.blur,
                 g.spread,
-                s.inset(),
-            ));
-        }
-        chrome_local = Some(local);
-    }
-    let chrome_screen = chrome_local.map(|local| {
-        let tree_local = Rect {
-            min: layout_rect.min + local.min,
-            size: local.size,
+                bg.shadow.inset(),
+            ))
         };
-        clip_to(parent_transform.apply_rect(tree_local), parent_clip)
-    });
-    let chrome_paint_screen = if chrome_pre.is_some() {
-        let screen = chrome_screen.unwrap_or(Rect::ZERO);
+        let screen = lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip);
+        union_in(&mut union, screen);
         arena.rows.push(Paint {
             screen,
             hash: tree.rollups.chrome[node.idx()],
         });
-        Some(screen)
-    } else {
-        None
-    };
+    } else if tree.records.attrs()[node.idx()].clip_mode().is_clip() {
+        // Chromeless clip-only container: union the owner rect into
+        // the cull rollup so the encoder emits the PushClip/PopClip
+        // pair even when the subtree paints nothing (empty scroll
+        // host, etc.). No Paint row — the node contributes no pixels.
+        let screen = lift_to_screen(owner_local, layout_rect.min, parent_transform, parent_clip);
+        union_in(&mut union, screen);
+    }
 
-    let mut shapes_screen: Option<Rect> = None;
     if tree.records.shape_span()[node.idx()].len > 0 {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
         let shape_hashes = tree.shapes.hashes.as_slice();
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
-            if let TreeItem::ShapeRecord(idx, s) = item {
-                let precise = match s {
-                    ShapeRecord::Text {
-                        local_origin,
-                        align,
-                        ..
-                    } if text_ord < text_span.len => {
-                        let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
-                        let padding = tree.records.layout()[node.idx()].padding;
-                        text_paint_bbox_local(
-                            layout_rect.size,
-                            padding,
-                            *local_origin,
-                            shaped.measured,
-                            *align,
-                        )
-                    }
-                    _ => s.paint_bbox_local(layout_rect.size),
-                };
-                if matches!(s, ShapeRecord::Text { .. }) {
+            let TreeItem::ShapeRecord(idx, s) = item else {
+                continue;
+            };
+            // Text shapes live only on Leaf nodes (`leaf_text_shapes`
+            // asserts the same), so when this node has any text shape
+            // `text_span.len` must equal the count of `Text` variants
+            // yielded by `TreeItems` here. Drift would silently fall
+            // back to the owner rect — assert instead.
+            let local = match s {
+                ShapeRecord::Text {
+                    local_origin,
+                    align,
+                    ..
+                } => {
+                    assert!(
+                        text_ord < text_span.len,
+                        "cascade saw a text shape without a matching ShapedText entry — \
+                         leaf_content_size and the cascade walk are out of sync",
+                    );
+                    let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
                     text_ord += 1;
+                    text_paint_bbox_local(
+                        layout_rect.size,
+                        tree.records.layout()[node.idx()].padding,
+                        *local_origin,
+                        shaped.measured,
+                        *align,
+                    )
                 }
-                let tree_local = Rect {
-                    min: layout_rect.min + precise.min,
-                    size: precise.size,
-                };
-                let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
-                shapes_screen = Some(match shapes_screen {
-                    Some(acc) => acc.union(screen),
-                    None => screen,
-                });
-                arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
-                arena.rows.push(Paint {
-                    screen,
-                    hash: shape_hashes[idx as usize],
-                });
-            }
+                _ => s.paint_bbox_local(layout_rect.size),
+            };
+            let screen = lift_to_screen(local, layout_rect.min, shape_transform, parent_clip);
+            union_in(&mut union, screen);
+            arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
+            arena.rows.push(Paint {
+                screen,
+                hash: shape_hashes[idx as usize],
+            });
         }
     }
 
     let paints_len = arena.rows.len() as u32 - paints_start;
     arena.node_spans[node.idx()] = Span::new(paints_start, paints_len);
-
-    // The cull union still includes a `has_clip` chromeless node's
-    // owner rect — chrome_screen above covers chromed nodes, and
-    // a clip-only node falls through to chrome_screen via the
-    // `chrome_pre.is_some() || has_clip_pre` lift earlier.
-    match (chrome_paint_screen.or(chrome_screen), shapes_screen) {
-        (Some(c), Some(s)) => c.union(s),
-        (Some(c), None) => c,
-        (None, Some(s)) => s,
-        (None, None) => Rect::ZERO,
-    }
+    union.unwrap_or(Rect::ZERO)
 }
 
 #[cfg(test)]
@@ -691,7 +678,7 @@ mod tests {
     use glam::{UVec2, Vec2};
 
     /// A direct shape recorded on a panel with `.transform(...)` must
-    /// land in `Cascades::shape_rects` at the *composed* transform
+    /// land in `Cascades::paint_arenas` at the *composed* transform
     /// (parent ∘ self), not just `parent_transform`. Pins the cascade
     /// half of the `Panel::transform`-applies-to-body contract — the
     /// encoder half is already pinned by
@@ -804,10 +791,10 @@ mod tests {
     }
 
     /// A panel with chrome emits a Paint row at the start of its
-    /// node's `node_paints` span; a chromeless panel emits an empty
+    /// node's `node_spans` span; a chromeless panel emits an empty
     /// span.
     #[test]
-    fn chrome_rects_populated_for_chrome_panels_only() {
+    fn node_spans_populated_for_chrome_panels_only() {
         use crate::primitives::background::Background;
 
         let mut ui = Ui::for_test();
@@ -850,10 +837,10 @@ mod tests {
         );
     }
 
-    /// `node_paints` length matches the layer's node count so the
+    /// `node_spans` length matches the layer's node count so the
     /// damage diff can index by `NodeId.0` without a bounds-cap.
     #[test]
-    fn chrome_rects_sized_to_node_count() {
+    fn node_spans_sized_to_node_count() {
         let mut ui = Ui::for_test();
         ui.run_at_acked(UVec2::new(100, 100), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
@@ -865,7 +852,7 @@ mod tests {
         assert_eq!(
             ui.layout.cascades.paint_arenas[li].node_spans.len(),
             nodes,
-            "node_paints column must be sized to the layer's node count",
+            "node_spans column must be sized to the layer's node count",
         );
     }
 }
