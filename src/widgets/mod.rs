@@ -234,7 +234,23 @@ impl ResponseSnapshot {
 
 /// `Response` plus a value returned by the body closure of widgets
 /// that take one (`Panel`/`Grid`/`Scroll`). `Deref`s to `Response` so
-/// callers ignoring the inner value keep working unchanged.
+/// callers ignoring the inner value keep `panel.show(ui, body).clicked()`
+/// working unchanged.
+///
+/// Three constraints keep the `Deref` shortcut honest. Breaking any
+/// of them silently changes call-site behavior:
+/// 1. **No inherent methods on `InnerResponse`** — a method named e.g.
+///    `clicked` here would shadow `Response::clicked` via the standard
+///    method-resolution order, and callers would never see a compile
+///    error.
+/// 2. **Field access doesn't auto-deref** — `r.response.id` works,
+///    `r.id` does not. Don't extend `Response` with `pub` fields that
+///    callers might expect to reach through `InnerResponse`.
+/// 3. **`Response` methods stay `&self`-only** — `Deref::deref` yields
+///    `&Response`, so any future `self`-consuming method on `Response`
+///    would be unreachable via this shortcut. Callers would have to
+///    write `r.response.foo()` instead of `r.foo()` — silent surface
+///    drift.
 #[derive(Debug)]
 pub struct InnerResponse<'a, R> {
     pub response: Response<'a>,
