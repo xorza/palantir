@@ -133,7 +133,7 @@ impl Grid {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui) -> R,
     ) -> crate::widgets::InnerResponse<R> {
-        let active_layer = ui.forest.current_layer;
+        let active_layer = ui.forest.current_layer();
         let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
         let mut element = self.element;
         element.mode_payload = idx;
