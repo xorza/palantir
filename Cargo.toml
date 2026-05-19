@@ -18,7 +18,7 @@ bytemuck = { version = "*", features = ["derive"] }
 encase = "*"
 fixedbitset = "*"
 glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
-glyphon = "*"
+glyphon = { path = "vendor/glyphon" }
 half = { version = "*", features = ["bytemuck"] }
 rustc-hash = "*"
 tracing = "*"
