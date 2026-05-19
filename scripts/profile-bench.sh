@@ -25,7 +25,7 @@
 # Requires: samply, atos (Xcode CLT), python3, otool, jq.
 # Optional: rustfilt (cargo install rustfilt) for cleaner Rust v0 demangling.
 
-set -euo pipefail
+set -eu
 
 cd "$(dirname "$0")/.."
 
@@ -54,7 +54,7 @@ REPORT="tmp/profile-${BENCH_NAME}.txt"
 echo "==> Building bench '$BENCH_NAME'"
 BUILD_ARGS=(bench --bench "$BENCH_NAME" --no-run)
 [ -n "$FEATURES_ARG" ] && BUILD_ARGS+=(--features "$FEATURES_ARG")
-cargo "${BUILD_ARGS[@]}" 2>&1 | tail -3
+{ cargo "${BUILD_ARGS[@]}" 2>&1 || true; } | tail -3
 
 BENCH_BIN=$(ls -t "target/release/deps/${BENCH_NAME}"-* 2>/dev/null \
     | grep -vE '\.(d|dSYM)$' | head -1)
