@@ -42,10 +42,10 @@ fn shape_rect_composes_self_transform() {
         });
     });
 
-    let layer_idx = Layer::Main.idx();
+    let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
-    let paint_idx = cascades.layers[layer_idx].paint_arena.shape_to_paint[0] as usize;
-    let shape_rect = cascades.layers[layer_idx].paint_arena.rows[paint_idx].screen;
+    let paint_idx = cascades.layers[layer].paint_arena.shape_to_paint[0] as usize;
+    let shape_rect = cascades.layers[layer].paint_arena.rows[paint_idx].screen;
     // The Panel sits at the hstack origin (0, 0). Owner-local
     // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
     //   min = (0, 0) * 3 + (10, 20) = (10, 20)
@@ -99,10 +99,10 @@ fn self_transform_anchors_scale_at_panel_origin() {
         });
     });
 
-    let layer_idx = Layer::Main.idx();
+    let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
-    let paint_idx = cascades.layers[layer_idx].paint_arena.shape_to_paint[0] as usize;
-    let shape_rect = cascades.layers[layer_idx].paint_arena.rows[paint_idx].screen;
+    let paint_idx = cascades.layers[layer].paint_arena.shape_to_paint[0] as usize;
+    let shape_rect = cascades.layers[layer].paint_arena.rows[paint_idx].screen;
     // Panel sits at (50, 0). Shape's panel-local (0, 0) should
     // map to screen (50, 0) under the anchor — the panel's own
     // top-left is the fixed point of its scale. Size is
@@ -150,17 +150,17 @@ fn node_spans_populated_for_chrome_panels_only() {
         });
     });
 
-    let li = Layer::Main.idx();
+    let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
     let by_id = &cascades.by_id;
     let chrome_idx = by_id[&WidgetId::from_hash("chrome")] as usize;
     let bare_idx = by_id[&WidgetId::from_hash("bare")] as usize;
-    let chrome_span = cascades.layers[li].paint_arena.node_spans[chrome_idx];
-    let bare_span = cascades.layers[li].paint_arena.node_spans[bare_idx];
+    let chrome_span = cascades.layers[layer].paint_arena.node_spans[chrome_idx];
+    let bare_span = cascades.layers[layer].paint_arena.node_spans[bare_idx];
 
     assert!(
         chrome_span.len > 0
-            && cascades.layers[li].paint_arena.rows[chrome_span.start as usize]
+            && cascades.layers[layer].paint_arena.rows[chrome_span.start as usize]
                 .screen
                 .area()
                 > 0.0,
@@ -182,10 +182,13 @@ fn node_spans_sized_to_node_count() {
             Panel::hstack().auto_id().show(ui, |_| {});
         });
     });
-    let li = Layer::Main.idx();
+    let layer = Layer::Main;
     let nodes = ui.forest.tree(Layer::Main).records.len();
     assert_eq!(
-        ui.layout.cascades.layers[li].paint_arena.node_spans.len(),
+        ui.layout.cascades.layers[layer]
+            .paint_arena
+            .node_spans
+            .len(),
         nodes,
         "node_spans column must be sized to the layer's node count",
     );
