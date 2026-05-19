@@ -1,19 +1,19 @@
-//! Cache-effectiveness A/B benchmark. One nested workload, three axes
-//! (measure / encode / compose), each axis benched in two arms:
+//! Cache-effectiveness A/B benchmark. Measures the **measure cache**
+//! (the only cache left in the layout pipeline) under three workload
+//! shapes, each in two arms:
 //!
-//! - `cached`: warm-up frame primes every cache; subsequent iterations hit
-//!   the cache at the highest stable subtree root every frame (in steady
+//! - `cached`: warm-up frame primes the cache; subsequent iterations
+//!   hit at the highest stable subtree root every frame (in steady
 //!   state, the root itself).
-//! - `forced_miss`: warm-up primes the *other two* caches; each iteration
-//!   then clears only the cache for this axis before `post_record`, so the
-//!   axis under test rebuilds from scratch while the other two stay pure
-//!   cache hits.
+//! - `forced_miss`: warm-up primes the cache; each iteration then calls
+//!   `Ui::clear_measure_cache()` before recording, so measure rebuilds
+//!   from scratch.
 //!
-//! Ratio of `cached / forced_miss` quantifies the cache's contribution
+//! Ratio of `cached / forced_miss` quantifies what MeasureCache buys
 //! on a comparable workload. See `src/layout/measure-cache.md`. The
 //! encode and compose caches were removed after their contributions
-//! turned out to be < 1% — see `docs/encode-cache-investigation.md`
-//! and `docs/compose-cache-under-scroll.md`.
+//! turned out to be < 1% — see `docs/cache-history/encode.md` and
+//! `docs/cache-history/compose.md`.
 //!
 //! Gated behind the `bench-deep` feature so default `cargo bench` runs
 //! only the steady-state aggregate in `frame.rs`. Run with
