@@ -122,20 +122,31 @@ pub(crate) struct AxisCtx {
     pub max: f32,
 }
 
-/// **Flex-shrink semantics with min-content floor:** Hug clamps down
-/// to fit `available`; Fill consumes `available` exactly. Both axes
-/// shrink with parent down to `intrinsic_min` — the largest
-/// non-shrinkable descendant on this axis (Fixed widget extents,
-/// explicit `min_size`, longest-unbreakable-word for wrapping text).
-/// This matches CSS Flexbox's default `min-width: auto` for flex
-/// items: a flex item shrinks down to min-content, then stops.
+/// **Contains-content rule:** Hug aims for content size, Fill aims
+/// for `available`. Both floor at `max(content, intrinsic_min)` — a
+/// node's rect always contains what's inside it. If the rigid floor
+/// exceeds `available`, the node overflows its parent rather than its
+/// content overflowing the node's rect. Downstream
+/// (cascade/composer/backend) tolerates overflow, same as the
+/// root-vs-surface case.
 ///
-/// The only ways desired can exceed `available` are
-/// `intrinsic_min > available` (rigid descendant doesn't fit), an
-/// explicit `min_size` floor, or `Sizing::Fixed(v)`. When that
-/// happens the child's rect overflows its slot; downstream
-/// (cascade/composer/backend) tolerates it, same as the
-/// root-vs-surface overflow.
+/// `content` here is the post-dispatch measured content size
+/// (margin-exclusive). It already reflects wrapping/shrink under the
+/// constrained available width, so on the cross axis of a wrapping
+/// text leaf it's the correct multi-line height — unlike
+/// `intrinsic_min`, which is computed pure-subtree at `available =
+/// INFINITY` and only captures the single-line case. Hug needed both
+/// (content already reflects wrapping; intrinsic_min catches rigid X
+/// descendants like long unbreakable words). Fill needs both for the
+/// same reason: `content` keeps the rect ≥ its measured content,
+/// `intrinsic_min` keeps it ≥ rigid descendants the pure-subtree
+/// query identified.
+///
+/// The two cases where desired exceeds `available`:
+/// `max(content, intrinsic_min) > available` (rigid descendant or
+/// post-wrap content doesn't fit) or `Sizing::Fixed(v)`. An explicit
+/// `min_size` floor applies on top of all three branches via the
+/// trailing `clamp`.
 ///
 /// `Fill` on an unconstrained axis (intrinsic queries with
 /// `available = INFINITY`) collapses to its content size — matches
@@ -155,7 +166,9 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
         }
         Sizing::Fill(_) => {
             if ctx.available.is_finite() {
-                (ctx.available - ctx.margin).max(ctx.intrinsic_min - ctx.margin)
+                (ctx.available - ctx.margin)
+                    .max(content)
+                    .max(ctx.intrinsic_min - ctx.margin)
             } else {
                 content
             }

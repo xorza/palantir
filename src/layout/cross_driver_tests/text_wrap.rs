@@ -192,14 +192,13 @@ fn hstack_fill_wrap_text_floors_at_min_content() {
     );
 }
 
-/// Pin (flex semantics): a Stack's Fill child clamps DOWN to its
-/// allocated slot when slot < min-content. The shaped text overflows
-/// the rect visually (paint extends past the rect's right edge) but
-/// the rect itself stays at the slot. Replaces an older test that
-/// pinned the WPF "Fill parent grows to contain min-content overflow"
-/// rule.
+/// Pin (contains-content rule): a Stack's Fill child grows to fit
+/// its measured content when the allocated slot is smaller than the
+/// content's rigid min. The rect never paints content outside itself —
+/// the overflow propagates upward (the parent stack rect ends up wider
+/// than its `available`, and an ancestor that can grow absorbs it).
 #[test]
-fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
+fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
     let mut ui = Ui::for_test_at_text(UVec2::new(200, 400));
     let mut msg = None;
     ui.run_at_acked(UVec2::new(200, 400), |ui| {
@@ -216,8 +215,8 @@ fn hstack_fill_clamped_below_min_content_keeps_rect_at_slot() {
         "measure must floor at MinContent; got shaped_w={shaped_w}"
     );
     assert!(
-        rect_w < shaped_w,
-        "rect should clamp to slot under flex semantics, paint overflows; \
+        (rect_w - shaped_w).abs() <= 0.5,
+        "rect must contain its measured content (no paint outside rect); \
          shaped_w={shaped_w} rect_w={rect_w}"
     );
 }
@@ -626,4 +625,65 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
         f2_first.measured,
         f2_second.measured,
     );
+}
+
+/// Pin (contains-content rule, cross axis): a FILL chrome panel
+/// wrapping a paragraph in a Fixed(width) inner panel must grow on Y
+/// to contain its wrapped content, even when surface_h is smaller.
+/// The intrinsic-min query alone underestimates this (wrapping text
+/// intrinsic runs at INF width → single-line height), so the floor
+/// has to come from the post-dispatch measured content. Without the
+/// fix, surface_h < natural content height makes the chrome panel
+/// rect shorter than its content, visibly clipping at the bottom.
+#[test]
+fn fill_panel_grows_to_contain_wrapped_content_on_y() {
+    use crate::forest::tree::NodeId;
+    use crate::widgets::panel::Panel;
+    fn build(ui: &mut crate::Ui) -> (NodeId, NodeId) {
+        let mut inner = NodeId(0);
+        Panel::zstack()
+            .auto_id()
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                inner = Panel::vstack()
+                    .id_salt("inner")
+                    .size((Sizing::Fixed(360.0), Sizing::Hug))
+                    .padding(8.0)
+                    .show(ui, |ui| {
+                        Text::new(
+                            "The quick brown fox jumps over the lazy dog. \
+                             Pack my box with five dozen liquor jugs. \
+                             How vexingly quick daft zebras jump!",
+                        )
+                        .auto_id()
+                        .style(TextStyle::default().with_font_size(14.0))
+                        .wrapping()
+                        .show(ui);
+                    })
+                    .node(ui);
+            });
+        // The chrome panel is the first child of the implicit root.
+        (NodeId(1), inner)
+    }
+    // The inner Fixed-width panel is Hug on Y, so its rect.size.h is the
+    // measured wrapped-paragraph height (+ inner padding). Chrome must
+    // be at least that + chrome padding (16*2 = 32) on Y, at every
+    // surface height — including ones smaller than the natural content.
+    for h in [800u32, 400, 300, 200, 150, 100, 50] {
+        let mut ui = crate::Ui::for_test_at_text(UVec2::new(800, h));
+        let mut nodes = (NodeId(0), NodeId(0));
+        ui.run_at_acked(UVec2::new(800, h), |ui| {
+            nodes = build(ui);
+        });
+        let (chrome, inner) = nodes;
+        let chrome_h = ui.layout[Layer::Main].rect[chrome.idx()].size.h;
+        let inner_h = ui.layout[Layer::Main].rect[inner.idx()].size.h;
+        let floor = inner_h + 32.0;
+        assert!(
+            chrome_h + 0.5 >= floor,
+            "FILL chrome panel must contain its inner panel on Y at surface_h={h}; \
+             chrome_h={chrome_h} inner_h={inner_h} required_floor={floor}",
+        );
+    }
 }
