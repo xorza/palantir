@@ -152,9 +152,8 @@ fn node_spans_populated_for_chrome_panels_only() {
 
     let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
-    let by_id = &cascades.by_id;
-    let chrome_idx = by_id[&WidgetId::from_hash("chrome")] as usize;
-    let bare_idx = by_id[&WidgetId::from_hash("bare")] as usize;
+    let chrome_idx = cascades.by_id[&WidgetId::from_hash("chrome")].node.idx();
+    let bare_idx = cascades.by_id[&WidgetId::from_hash("bare")].node.idx();
     let chrome_span = cascades.layers[layer].paint_arena.node_spans[chrome_idx];
     let bare_span = cascades.layers[layer].paint_arena.node_spans[bare_idx];
 

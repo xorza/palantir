@@ -1736,7 +1736,9 @@ fn node_snapshot_decomposition_matches_cascade() {
 
     let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
-    let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")] as usize;
+    let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")]
+        .node
+        .idx();
     let node_span = ui.layout.cascades.layers[layer].paint_arena.node_spans[node_idx];
     let layer_paints = &ui.layout.cascades.layers[layer].paint_arena.rows;
 
@@ -2217,16 +2219,17 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // cascaded screen rect. Pre-fix the rect spans the full 400 px;
     // post-fix it's clamped to (host_width − padding-fold).
     let cascades = &ui.layout.cascades;
-    let host_idx = *cascades.by_id.get(&host_id).expect("host node recorded") as usize;
-    let host_rect = cascades.entries.rect()[host_idx];
+    let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
+    let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
+    let host_rect = cascades.entries.rect()[host_entry_idx];
     let tree = ui.forest.tree(Layer::Main);
-    let shape_span = tree.records.shape_span()[host_idx];
+    let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
     // First Paint row for the host node — chrome row 0 if present,
     // otherwise the first shape. The host here has no chrome, so
-    // `node_spans[host_idx].start` indexes the first shape's `Paint`.
+    // `node_spans[host_node].start` indexes the first shape's `Paint`.
     let paint_arena = &cascades.layers[Layer::Main].paint_arena;
-    let paints_start = paint_arena.node_spans[host_idx].start as usize;
+    let paints_start = paint_arena.node_spans[host_ep.node.idx()].start as usize;
     let shape_rect = paint_arena.rows[paints_start].screen;
     assert!(
         shape_rect.size.w <= host_rect.size.w + 0.5,

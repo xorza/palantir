@@ -86,8 +86,10 @@ pub(crate) struct SeenIds {
     /// `Forest::open_node`. Read for explicit-collision endpoint
     /// resolution (the first endpoint lives under `raw_id`, which is
     /// the un-disambiguated form of any subsequent occurrence). Same
-    /// keys feed the [`Self::rollover`] removed-diff.
-    curr: FxHashMap<WidgetId, Endpoint>,
+    /// keys feed the [`Self::rollover`] removed-diff and the
+    /// [`crate::ui::cascade::Cascades::by_id`] snapshot taken at
+    /// the end of each `CascadesEngine::run`.
+    pub(crate) curr: FxHashMap<WidgetId, Endpoint>,
     /// Last *painted* frame's `curr`. Only the keys matter for the
     /// rollover diff — values are stale across frames. Same type as
     /// `curr` so `std::mem::swap` is alloc-free.
