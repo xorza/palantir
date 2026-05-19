@@ -1,4 +1,4 @@
-use crate::layout::types::align::Align;
+use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
@@ -6,6 +6,7 @@ use crate::primitives::image::{ImageFit, ImageHandle};
 use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::gradient_atlas::LutRow;
@@ -431,51 +432,76 @@ pub(crate) fn shadow_paint_rect_local(
     }
 }
 
+/// Position a text run's bounding box inside a leaf's arranged rect per
+/// `align`. Returns a rect with `min` shifted by the alignment offset
+/// and `size` shrunk to the measured text bbox — composer takes
+/// `min` as the glyph origin and `size` as the clip bounds. Glyphs
+/// don't stretch, so `Auto`/`Stretch` collapse to start (top-left)
+/// — matches `place_axis`'s behavior for non-stretchable content.
+/// Shared between encoder (final paint) and cascade (tight damage
+/// rect via `text_paint_bbox_local`).
+pub(crate) fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
+    let dx = match align.halign() {
+        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
+        HAlign::Center => (leaf.size.w - measured.w) * 0.5,
+        HAlign::Right => leaf.size.w - measured.w,
+    };
+    let dy = match align.valign() {
+        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
+        VAlign::Center => (leaf.size.h - measured.h) * 0.5,
+        VAlign::Bottom => leaf.size.h - measured.h,
+    };
+    Rect::new(
+        leaf.min.x + dx.max(0.0),
+        leaf.min.y + dy.max(0.0),
+        measured.w,
+        measured.h,
+    )
+}
+
+/// Owner-local tight paint bbox of a [`ShapeRecord::Text`] given the
+/// shaped run's `measured` size. `local_origin: None` deflates the
+/// owner by `padding` and aligns the measured bbox inside;
+/// `Some(origin)` places `measured` at `origin` (widget-owned
+/// positioning, `align` is ignored). Sole formula source — both the
+/// cascade (damage / paint-extent union) and the encoder (final
+/// `DrawText` rect, after translating by `owner_rect.min`) call this.
+pub(crate) fn text_paint_bbox_local(
+    owner_size: Size,
+    padding: Spacing,
+    local_origin: Option<Vec2>,
+    measured: Size,
+    align: Align,
+) -> Rect {
+    match local_origin {
+        None => {
+            let owner_local = Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            };
+            let padded = owner_local.deflated_by(padding);
+            align_text_in(padded, measured, align)
+        }
+        Some(origin) => Rect {
+            min: origin,
+            size: measured,
+        },
+    }
+}
+
 impl ShapeRecord {
     /// Owner-local paint bbox this shape draws into — cascade unions
     /// across siblings to derive `Cascade.paint_rect`, encoder reads
     /// the world-space form for damage culling. Drop shadows extend
     /// beyond the owner via [`shadow_paint_rect_local`]; other variants
     /// paint into `local_rect` (when set) or the owner's full rect at
-    /// Returns `(precise, extent)`:
-    ///
-    /// - `precise` = the tight per-shape paint bbox in owner-local
-    ///   coords. Stored in `Cascades::shape_rects[idx]` and consumed
-    ///   by per-shape consumers (paint anims, predmaged routing) that
-    ///   need exact rects.
-    /// - `extent` = the **conservative** bbox that should feed the
-    ///   node-level `paint_rect` accumulator for damage purposes.
-    ///   Wider than `precise` when the shape's true extent isn't
-    ///   known at record time (`Text` with `local_origin: Some(_)`
-    ///   reports zero glyph width because cosmic-text hasn't shaped
-    ///   yet); same as `precise` for everything else.
-    ///
-    /// One call site reads both halves, avoiding a per-variant
-    /// special case at the cascade.
-    #[inline]
-    pub(crate) fn paint_extents_local(&self, owner_size: Size) -> (Rect, Rect) {
-        let precise = self.paint_bbox_local(owner_size);
-        let extent = match self {
-            // Glyph extent isn't known until shaping runs, so the
-            // precise bbox is degenerate (`size = ZERO`, anchored at
-            // `origin`). Inflate to the owner rect for the damage
-            // union — chrome and shapes both depend on cascade picking
-            // up a non-empty paint extent here, otherwise the
-            // encoder's subtree-cull skips the leaf entirely.
-            ShapeRecord::Text {
-                local_origin: Some(_),
-                ..
-            } => Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            },
-            _ => precise,
-        };
-        (precise, extent)
-    }
-
-    /// `(0, 0)`. `Polyline` carries a pre-computed owner-relative bbox
-    /// from `lower_polyline`.
+    /// `(0, 0)`. `Polyline`/`Curve` carry a pre-computed owner-relative
+    /// bbox from lowering. **`Text` callers must go through
+    /// [`text_paint_bbox_local`] instead** — that path takes the
+    /// shaped run's `measured` size so it can return the same tight
+    /// rect the encoder paints into. The arm here exists only so the
+    /// match is exhaustive and falls back to the owner rect when shaped
+    /// data isn't available.
     #[inline]
     pub(crate) fn paint_bbox_local(&self, owner_size: Size) -> Rect {
         match self {
@@ -503,11 +529,10 @@ impl ShapeRecord {
                 min: Vec2::ZERO,
                 size: owner_size,
             }),
-            // `Text` carries an origin-only override — glyph extent
-            // depends on shaped-buffer measurement which paint_bbox
-            // doesn't have. Width reports zero on the `Some(origin)`
-            // path; cascade falls back to the leaf's own arranged
-            // rect for the damage union.
+            // Glyph extent isn't known until shaping runs — see
+            // `text_paint_bbox_local`. Fallback for non-cascade callers
+            // is the owner rect (`None`) or a degenerate point at the
+            // override origin (`Some`).
             ShapeRecord::Text { local_origin, .. } => match local_origin {
                 None => Rect {
                     min: Vec2::ZERO,

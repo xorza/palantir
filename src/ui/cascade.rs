@@ -11,7 +11,7 @@ use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::CascadeInputHash;
-use crate::forest::shapes::record::shadow_paint_rect_local;
+use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
@@ -376,6 +376,7 @@ fn run_tree(
         let visible_rect = clip_to(screen_rect, parent_clip);
         let paint_rect = compute_paint_rect(
             tree,
+            layout,
             id,
             layout_rect,
             parent_transform,
@@ -504,8 +505,10 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
 /// apply `parent_transform`, then clip to the ancestor clip. Nodes
 /// with no shapes — or with shapes whose bbox stays inside the
 /// owner rect — fall through to the un-inflated path.
+#[allow(clippy::too_many_arguments)]
 fn compute_paint_rect(
     tree: &Tree,
+    layout: &LayerLayout,
     node: NodeId,
     layout_rect: Rect,
     parent_transform: TranslateScale,
@@ -540,17 +543,41 @@ fn compute_paint_rect(
     let mut chrome_local: Option<Rect> = None;
     let mut shapes_local: Option<Rect> = None;
     if tree.records.shape_span()[node.idx()].len > 0 {
+        let text_span = layout.text_spans[node.idx()];
+        let mut text_ord: u32 = 0;
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             if let TreeItem::ShapeRecord(idx, s) = item {
-                // `precise` for the per-shape rect column (paint anims,
-                // per-shape damage), `extent` for the node-level
-                // paint_rect accumulator — wider when the precise
-                // bbox is degenerate (e.g. Text-with-origin before
-                // shaping). See `ShapeRecord::paint_extents_local`.
-                let (precise, extent) = s.paint_extents_local(layout_rect.size);
+                // Text gets the tight bbox here: shaping has produced
+                // `measured` by now, so the cascade can collapse what
+                // used to be a `(degenerate, owner-rect)` tuple into
+                // one rect that matches the encoder's actual paint
+                // rect. All other shapes use the variant-driven
+                // owner-local bbox. Once every variant flows through
+                // one helper, `paint_extents_local`'s tuple goes away.
+                let precise = match s {
+                    ShapeRecord::Text {
+                        local_origin,
+                        align,
+                        ..
+                    } if text_ord < text_span.len => {
+                        let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
+                        let padding = tree.records.layout()[node.idx()].padding;
+                        text_paint_bbox_local(
+                            layout_rect.size,
+                            padding,
+                            *local_origin,
+                            shaped.measured,
+                            *align,
+                        )
+                    }
+                    _ => s.paint_bbox_local(layout_rect.size),
+                };
+                if matches!(s, ShapeRecord::Text { .. }) {
+                    text_ord += 1;
+                }
                 shapes_local = Some(match shapes_local {
-                    Some(acc) => acc.union(extent),
-                    None => extent,
+                    Some(acc) => acc.union(precise),
+                    None => precise,
                 });
                 let tree_local = Rect {
                     min: layout_rect.min + precise.min,
