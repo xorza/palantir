@@ -374,6 +374,23 @@ fn run_tree(
         let layout_rect = layout.rect[id.idx()];
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
+        // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
+        // **before** the body. Direct shapes and descendants both
+        // paint inside it. Mirror that here so per-shape damage rects
+        // and inherited child clips reflect what actually paints —
+        // otherwise a TextEdit's tall text shape (extent = full
+        // shaped buffer) reports damage well past the editor's rect
+        // on every scroll tick.
+        let shape_clip = if attrs.clip_mode().is_clip() {
+            let padding = layout_col[i].padding;
+            let mask_local = layout_rect.deflated_by(padding);
+            Some(clip_to(
+                parent_transform.apply_rect(mask_local),
+                parent_clip,
+            ))
+        } else {
+            parent_clip
+        };
         let paint_rect = compute_paint_rect(
             tree,
             layout,
@@ -381,6 +398,7 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
+            shape_clip,
             &mut cascades.shape_rects[li],
             &mut cascades.chrome_rects[li],
         );
@@ -415,11 +433,10 @@ fn run_tree(
             Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
             None => parent_transform,
         };
-        let desc_clip = if attrs.clip_mode().is_clip() {
-            Some(clip_to(screen_rect, parent_clip))
-        } else {
-            parent_clip
-        };
+        // Descendants inherit the deflated-mask clip — same value the
+        // direct shapes were clipped to above and the encoder pushes
+        // before the body.
+        let desc_clip = shape_clip;
         let cascaded_off = disabled || invisible;
         let sense = if cascaded_off {
             Sense::NONE
@@ -513,6 +530,7 @@ fn compute_paint_rect(
     layout_rect: Rect,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
+    shape_clip: Option<Rect>,
     shape_rects: &mut [Rect],
     chrome_rects: &mut [Rect],
 ) -> Rect {
@@ -587,7 +605,7 @@ fn compute_paint_rect(
                     min: layout_rect.min + local.min,
                     size: local.size,
                 };
-                let screen = clip_to(shape_transform.apply_rect(tree_local), parent_clip);
+                let screen = clip_to(shape_transform.apply_rect(tree_local), shape_clip);
                 shape_rects[idx as usize] = screen;
             }
         }
@@ -645,12 +663,16 @@ fn compute_paint_rect(
     if chrome.is_some() {
         chrome_rects[node.idx()] = chrome_screen.unwrap_or(Rect::ZERO);
     }
+    // Shapes paint inside the node's own clip (encoder pushes the
+    // mask before the body), so the accumulator that feeds
+    // node-level `paint_rect` clips to `shape_clip` — chrome bypasses
+    // this above and still uses the un-deflated `parent_clip`.
     let shapes_screen = shapes_local.map(|local| {
         let tree_local = Rect {
             min: layout_rect.min + local.min,
             size: local.size,
         };
-        clip_to(shape_transform.apply_rect(tree_local), parent_clip)
+        clip_to(shape_transform.apply_rect(tree_local), shape_clip)
     });
     match (chrome_screen, shapes_screen) {
         (Some(c), Some(s)) => c.union(s),
