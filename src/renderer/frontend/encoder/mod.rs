@@ -5,7 +5,7 @@ use super::cmd_buffer::{
 use crate::common::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
-    text_paint_bbox_local,
+    text_in_rect,
 };
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
@@ -196,16 +196,15 @@ fn emit_one_shape(
             //   ignored (only `align.halign()` matters here, and
             //   that's already baked into the shaped buffer's
             //   per-line glyph offsets).
-            let local = text_paint_bbox_local(
-                owner_rect.size,
-                tree.records.layout()[id.idx()].padding,
-                *local_origin,
-                shaped.measured,
-                *align,
-            );
-            let rect = Rect {
-                min: owner_rect.min + local.min,
-                size: local.size,
+            let rect = match local_origin {
+                None => {
+                    let padded = owner_rect.deflated_by(tree.records.layout()[id.idx()].padding);
+                    text_in_rect(padded, shaped.measured, *align)
+                }
+                Some(origin) => Rect {
+                    min: owner_rect.min + *origin,
+                    size: shaped.measured,
+                },
             };
             out.draw_text(rect, *color, shaped.key);
         }

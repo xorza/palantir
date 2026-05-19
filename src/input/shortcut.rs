@@ -402,20 +402,34 @@ mod tests {
         }
     }
 
+    /// Modifier set with the platform "primary command" key held —
+    /// `meta` on macOS, `ctrl` elsewhere. Mirrors what `Mods::from_event`
+    /// reads to project back into `Mods::CMD`.
+    fn primary_mod() -> Modifiers {
+        match PLATFORM {
+            Platform::Mac => Modifiers {
+                meta: true,
+                ..Modifiers::NONE
+            },
+            _ => Modifiers {
+                ctrl: true,
+                ..Modifiers::NONE
+            },
+        }
+    }
+
+    /// Platform primary + shift held.
+    fn primary_shift_mod() -> Modifiers {
+        Modifiers {
+            shift: true,
+            ..primary_mod()
+        }
+    }
+
     #[test]
     fn cmd_matches_platform_primary_modifier() {
         let cut = Shortcut::cmd('X');
-        let platform_cmd = if cfg!(target_os = "macos") {
-            Modifiers {
-                meta: true,
-                ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            }
-        };
+        let platform_cmd = primary_mod();
         assert!(cut.matches(kp(platform_cmd, Key::Char('x'))));
         assert!(cut.matches(kp(platform_cmd, Key::Char('X'))));
     }
@@ -424,16 +438,15 @@ mod tests {
     fn other_platform_primary_does_not_match() {
         let cut = Shortcut::cmd('X');
         // Cmd on Linux, Ctrl on macOS — opposite of the platform primary.
-        let other = if cfg!(target_os = "macos") {
-            Modifiers {
+        let other = match PLATFORM {
+            Platform::Mac => Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
+            },
+            _ => Modifiers {
                 meta: true,
                 ..Modifiers::NONE
-            }
+            },
         };
         assert!(!cut.matches(kp(other, Key::Char('x'))));
     }
@@ -443,19 +456,7 @@ mod tests {
         let cut = Shortcut::cmd('A');
         let primary = Mods::CMD;
         // Cmd+Shift+A must not match plain Cmd+A.
-        let mods = if cfg!(target_os = "macos") {
-            Modifiers {
-                meta: true,
-                shift: true,
-                ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
-                ctrl: true,
-                shift: true,
-                ..Modifiers::NONE
-            }
-        };
+        let mods = primary_shift_mod();
         assert_eq!(Mods::from_event(mods), Mods::CMD_SHIFT);
         assert!(!cut.matches(kp(mods, Key::Char('A'))));
         assert_eq!(cut.mods, primary);
@@ -464,30 +465,16 @@ mod tests {
     #[test]
     fn cmd_shift_matches() {
         let s = Shortcut::cmd_shift('K');
-        let mods = if cfg!(target_os = "macos") {
-            Modifiers {
-                meta: true,
-                shift: true,
-                ..Modifiers::NONE
-            }
-        } else {
-            Modifiers {
-                ctrl: true,
-                shift: true,
-                ..Modifiers::NONE
-            }
-        };
-        assert!(s.matches(kp(mods, Key::Char('K'))));
+        assert!(s.matches(kp(primary_shift_mod(), Key::Char('K'))));
     }
 
     #[test]
     fn label_hot_path_borrowed() {
         let s = Shortcut::cmd('C').label();
         assert!(matches!(s, Cow::Borrowed(_)));
-        let expected = if cfg!(target_os = "macos") {
-            "⌘C"
-        } else {
-            "Ctrl+C"
+        let expected = match PLATFORM {
+            Platform::Mac => "⌘C",
+            _ => "Ctrl+C",
         };
         assert_eq!(s, expected);
     }
@@ -496,10 +483,9 @@ mod tests {
     fn label_shift_combo_borrowed() {
         let s = Shortcut::cmd_shift('K').label();
         assert!(matches!(s, Cow::Borrowed(_)));
-        let expected = if cfg!(target_os = "macos") {
-            "⇧⌘K"
-        } else {
-            "Ctrl+Shift+K"
+        let expected = match PLATFORM {
+            Platform::Mac => "⇧⌘K",
+            _ => "Ctrl+Shift+K",
         };
         assert_eq!(s, expected);
     }
@@ -508,17 +494,16 @@ mod tests {
     fn label_non_letter_key_falls_back_to_display() {
         let s = Shortcut::new(Mods::CMD, Key::ArrowLeft).label();
         assert!(matches!(s, Cow::Owned(_)));
-        let expected = if cfg!(target_os = "macos") {
-            "⌘←"
-        } else {
-            "Ctrl+←"
+        let expected = match PLATFORM {
+            Platform::Mac => "⌘←",
+            _ => "Ctrl+←",
         };
         assert_eq!(s, expected);
     }
 
     #[test]
     fn macos_modifier_order_is_canonical() {
-        if !cfg!(target_os = "macos") {
+        if !matches!(PLATFORM, Platform::Mac) {
             return;
         }
         // ⌥ ⇧ ⌘ K — option, shift, cmd, then key.

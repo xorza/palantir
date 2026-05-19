@@ -256,9 +256,18 @@ impl DamageEngine {
                 let Some(snap) = self.prev.get_mut(wid) else {
                     continue;
                 };
-                if snap.paint_span.len == 0 {
-                    continue;
-                }
+                // Painting-only invariant: every entry in `prev`
+                // covers at least one Paint row (chrome at row 0 OR
+                // ≥1 shape). The unified `paint_arena.rows` doesn't
+                // distinguish chrome from shape spans, so a
+                // chrome-only owner contributes one row, not zero.
+                // A zero-len snap would have a stale `start` after
+                // the swap below — assert rather than silently skip.
+                assert!(
+                    snap.paint_span.len > 0,
+                    "compact_paint_snaps: prev entry for {wid:?} has zero-len paint_span, \
+                     violating the painting-only invariant",
+                );
                 let new_start = self.paint_snaps_scratch.len() as u32;
                 self.paint_snaps_scratch
                     .extend_from_slice(&self.paint_snaps[snap.paint_span.range()]);

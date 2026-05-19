@@ -420,6 +420,23 @@ fn run_tree(
         let layout_rect = layout.rect[id.idx()];
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
+        // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
+        // **before** the body. Direct shapes and descendants both
+        // paint inside it. Mirror that here so per-shape damage rects
+        // and inherited child clips reflect what actually paints —
+        // otherwise a TextEdit's tall text shape (extent = full
+        // shaped buffer) reports damage well past the editor's rect
+        // on every scroll tick.
+        let shape_clip = if attrs.clip_mode().is_clip() {
+            let padding = layout_col[i].padding;
+            let mask_local = layout_rect.deflated_by(padding);
+            Some(clip_to(
+                parent_transform.apply_rect(mask_local),
+                parent_clip,
+            ))
+        } else {
+            parent_clip
+        };
         let paint_rect = compute_paint_rect(
             tree,
             layout,
@@ -427,6 +444,7 @@ fn run_tree(
             layout_rect,
             parent_transform,
             parent_clip,
+            shape_clip,
             &mut cascades.layers[layer].paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
@@ -462,11 +480,10 @@ fn run_tree(
             Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
             None => parent_transform,
         };
-        let desc_clip = if attrs.clip_mode().is_clip() {
-            Some(clip_to(screen_rect, parent_clip))
-        } else {
-            parent_clip
-        };
+        // Descendants inherit the deflated-mask clip — same value the
+        // direct shapes were clipped to above and the encoder pushes
+        // before the body.
+        let desc_clip = shape_clip;
         let cascaded_off = disabled || invisible;
         let sense = if cascaded_off {
             Sense::NONE
@@ -588,6 +605,7 @@ fn union_in(acc: &mut Option<Rect>, screen: Rect) {
 /// (inside the body push, per `Panel::transform`). The two transforms
 /// are the only structural difference between the two row kinds —
 /// both flow through [`push_row`].
+#[allow(clippy::too_many_arguments)]
 fn compute_paint_rect(
     tree: &Tree,
     layout: &LayerLayout,
@@ -595,6 +613,7 @@ fn compute_paint_rect(
     layout_rect: Rect,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
+    shape_clip: Option<Rect>,
     arena: &mut PaintArena,
 ) -> Rect {
     let paints_start = arena.rows.len() as u32;
@@ -670,16 +689,16 @@ fn compute_paint_rect(
                     let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
                     text_ord += 1;
                     text_paint_bbox_local(
-                        layout_rect.size,
-                        tree.records.layout()[node.idx()].padding,
                         *local_origin,
-                        shaped.measured,
                         *align,
+                        tree.records.layout()[node.idx()].padding,
+                        layout_rect.size,
+                        shaped.measured,
                     )
                 }
                 _ => s.paint_bbox_local(layout_rect.size),
             };
-            let screen = lift_to_screen(local, layout_rect.min, shape_transform, parent_clip);
+            let screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
             union_in(&mut union, screen);
             arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
             arena.rows.push(Paint {

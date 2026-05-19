@@ -341,13 +341,20 @@ impl TextShaper {
                 // line-end position. Using `run.line_w` instead would
                 // ignore cosmic's per-line halign offset and the
                 // caret would jump back to the left on right/center-
-                // aligned lines.
+                // aligned lines. Empty lines (no glyphs) need the
+                // explicit halign-aware position because cosmic's
+                // per-line offset only kicks in when there's a glyph
+                // to offset — `line_w` stays 0.
                 let mut last_in_line: Option<(f32, f32, f32)> = None;
                 for run in buffer.layout_runs() {
                     if run.line_i != target.line {
                         continue;
                     }
-                    let line_end_x = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
+                    let line_end_x = run
+                        .glyphs
+                        .last()
+                        .map(|g| g.x + g.w)
+                        .unwrap_or_else(|| empty_line_x(max_width_px, halign));
                     last_in_line = Some((line_end_x, run.line_top, run.line_height));
                     for g in run.glyphs {
                         if g.start == target.index {
@@ -1061,6 +1068,58 @@ mod tests {
         assert!(
             widths[s.len()] > widths[0],
             "non-empty string has positive width",
+        );
+    }
+
+    /// Right-aligned multi-line buffer: caret at byte 4 ("abc\n|") lands
+    /// on the empty second line. Cosmic's per-line halign offset only
+    /// shifts existing glyphs, so an empty line has `line_w = 0` and
+    /// the naive `unwrap_or(run.line_w)` reports `x = 0` (left edge).
+    /// Post-fix the empty-line branch routes through `empty_line_x`,
+    /// putting the caret at the right edge of the wrap target.
+    #[test]
+    fn cursor_xy_on_empty_line_respects_right_align() {
+        let m = TextShaper::with_bundled_fonts();
+        let text = "abc\n";
+        let wrap = 200.0;
+        let font = 16.0;
+        let line_h = font * LINE_HEIGHT_MULT;
+        // `cursor_xy` calls `with_buffer` which in turn drives
+        // `measure` end-to-end (unbounded + wrap-shape), so no
+        // pre-prime is needed — the shaper builds whatever cache
+        // entry it needs on first hit.
+        let pos = m.cursor_xy(
+            text,
+            text.len(),
+            font,
+            line_h,
+            Some(wrap),
+            FontFamily::Sans,
+            HAlign::Right,
+        );
+        assert!(
+            (pos.x - wrap).abs() < 0.5,
+            "right-aligned caret on empty trailing line must sit at \
+             the wrap target ({wrap}); got x = {}",
+            pos.x,
+        );
+        // And the left-aligned counterpart still anchors at zero —
+        // sanity-pins the helper isn't accidentally always returning
+        // the right edge.
+        let pos_left = m.cursor_xy(
+            text,
+            text.len(),
+            font,
+            line_h,
+            Some(wrap),
+            FontFamily::Sans,
+            HAlign::Left,
+        );
+        assert!(
+            pos_left.x.abs() < 0.5,
+            "left-aligned caret on empty trailing line stays at 0; \
+             got x = {}",
+            pos_left.x,
         );
     }
 }
