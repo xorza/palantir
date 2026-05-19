@@ -58,7 +58,7 @@ pub fn build(ui: &mut Ui) {
                 .background(Background {
                     fill: Color::hex(0x2a2a2a).into(),
                     stroke: Stroke::solid(Color::hex(0x4a4a4a), 1.0),
-                    radius: Corners::all(6.0),
+                    corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                 })
                 .show(ui);
@@ -74,7 +74,7 @@ pub fn build(ui: &mut Ui) {
                 .background(Background {
                     fill: Color::hex(0x223344).into(),
                     stroke: Stroke::solid(Color::hex(0x445566), 1.0),
-                    radius: Corners::all(6.0),
+                    corners: Corners::all(6.0),
                     shadow: Shadow::NONE,
                 })
                 .show(ui);
