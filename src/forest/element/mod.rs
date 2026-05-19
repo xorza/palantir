@@ -65,64 +65,6 @@ impl std::hash::Hash for Gaps {
     }
 }
 
-/// Packed `(justify, align, child_align)` in `u16`.
-///
-/// Lives on `Element` only — fan-out unpacks back into the dense
-/// `LayoutCore.align` + sparse `PanelExtras.{justify, child_align}`
-/// columns. Bit layout: 0-2 justify, 3-8 align (h:3, v:3), 9-14
-/// child_align (h:3, v:3). Identity is carried by `Element.salt`
-/// (a separate enum), not packed here.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
-pub(crate) struct ElementSlots {
-    pub(crate) bits: u16,
-}
-
-impl ElementSlots {
-    const JUSTIFY_MASK: u16 = 0b111;
-    const ALIGN_SHIFT: u16 = 3;
-    const ALIGN_MASK: u16 = 0b111_111 << Self::ALIGN_SHIFT;
-    const CHILD_ALIGN_SHIFT: u16 = 9;
-    const CHILD_ALIGN_MASK: u16 = 0b111_111 << Self::CHILD_ALIGN_SHIFT;
-
-    #[inline]
-    pub(crate) fn justify(self) -> Justify {
-        match self.bits & Self::JUSTIFY_MASK {
-            0 => Justify::Start,
-            1 => Justify::Center,
-            2 => Justify::End,
-            3 => Justify::SpaceBetween,
-            4 => Justify::SpaceAround,
-            _ => unreachable!(),
-        }
-    }
-    #[inline]
-    pub(crate) fn align(self) -> Align {
-        Align::from_raw(((self.bits & Self::ALIGN_MASK) >> Self::ALIGN_SHIFT) as u8)
-    }
-    #[inline]
-    pub(crate) fn child_align(self) -> Align {
-        Align::from_raw(((self.bits & Self::CHILD_ALIGN_MASK) >> Self::CHILD_ALIGN_SHIFT) as u8)
-    }
-    #[inline]
-    pub(crate) fn set_justify(&mut self, j: Justify) {
-        self.bits = (self.bits & !Self::JUSTIFY_MASK) | (j as u16);
-    }
-    #[inline]
-    pub(crate) fn set_align(&mut self, a: Align) {
-        self.bits = (self.bits & !Self::ALIGN_MASK) | ((a.raw() as u16) << Self::ALIGN_SHIFT);
-    }
-    #[inline]
-    pub(crate) fn set_child_align(&mut self, a: Align) {
-        self.bits =
-            (self.bits & !Self::CHILD_ALIGN_MASK) | ((a.raw() as u16) << Self::CHILD_ALIGN_SHIFT);
-    }
-}
-
-const _: () = assert!(
-    (Justify::SpaceAround as u8) < 8,
-    "Justify exceeds 3 bits in ElementSlots",
-);
-
 impl Gaps {
     pub(crate) const ZERO: Self = Self([0; 2]);
 
@@ -515,13 +457,14 @@ pub struct Element {
     /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
     /// Grid (Grid uses its own row_gap/col_gap).
     /// Within-line + between-line gaps packed as two f16 lanes.
-    /// Private — read/written via inline accessors that hide the
-    /// bit-layout (`element.gap()` / `element.set_gap(g)`).
-    gaps: Gaps,
+    pub(crate) gaps: Gaps,
 
-    /// Packed `(justify, align, child_align)` in `u16`.
-    /// Private — read/written via inline accessors.
-    slots: ElementSlots,
+    /// Main-axis distribution of leftover space (HStack/VStack only).
+    pub(crate) justify: Justify,
+    /// Own alignment within the parent's inner rect.
+    pub(crate) align: Align,
+    /// Default alignment applied to children with `Auto` axis (panels only).
+    pub(crate) child_align: Align,
     /// Absolute position inside a `Canvas` parent (parent-inner coordinates).
     /// Defaults to `Vec2::ZERO`. Ignored when the parent isn't a `Canvas`.
     pub(crate) position: Vec2,
@@ -529,11 +472,10 @@ pub struct Element {
     /// `(1, 1)` span. Ignored when the parent isn't a `Grid`.
     pub(crate) grid: GridCell,
 
-    /// Packed paint/input flags (sense, disabled, focusable, clip). One
-    /// `u8`, mirrors the `NodeFlags` column `into_columns` writes to —
-    /// no per-field decode at fan-out. Private — read/written via inline
-    /// accessors (`element.sense()` / `element.set_sense(s)`, etc.).
-    flags: NodeFlags,
+    /// Packed paint/input flags (sense, disabled, focusable, clip).
+    /// Two bytes, mirrors the `NodeFlags` column `into_columns` writes
+    /// to — fan-out is a single `u16` copy.
+    pub(crate) flags: NodeFlags,
 
     // ---- Paint + cascade -----------------------------------------------------
     /// WPF-style three-state visibility. `Hidden` keeps the node's slot in
@@ -580,89 +522,15 @@ impl Element {
             padding: Spacing::ZERO,
             margin: Spacing::ZERO,
             gaps: Gaps::ZERO,
-            slots: ElementSlots::default(),
+            justify: Justify::Start,
+            align: Align::new(HAlign::Auto, VAlign::Auto),
+            child_align: Align::new(HAlign::Auto, VAlign::Auto),
             position: Vec2::ZERO,
             grid: GridCell::default(),
             flags: NodeFlags::default(),
             visibility: Visibility::Visible,
             transform: TranslateScale::IDENTITY,
         }
-    }
-
-    // ---- Inline accessors over the packed `flags` / `slots` / `gaps` ----
-    // Hide the bit-layout from widget call sites — they write
-    // `element.set_sense(s)` instead of `element.flags.set_sense(s)`.
-    // Each method is a one-hop delegate to a `#[inline]` packed-storage
-    // method, so it inlines straight through at the call site with no
-    // extra call frame.
-
-    #[inline]
-    pub(crate) fn sense(&self) -> Sense {
-        self.flags.sense()
-    }
-    #[inline]
-    pub(crate) fn is_disabled(&self) -> bool {
-        self.flags.is_disabled()
-    }
-    #[inline]
-    pub(crate) fn is_focusable(&self) -> bool {
-        self.flags.is_focusable()
-    }
-    #[inline]
-    pub(crate) fn clip_mode(&self) -> ClipMode {
-        self.flags.clip_mode()
-    }
-    #[inline]
-    pub(crate) fn set_sense(&mut self, s: Sense) {
-        self.flags.set_sense(s);
-    }
-    #[inline]
-    pub(crate) fn set_disabled(&mut self, v: bool) {
-        self.flags.set_disabled(v);
-    }
-    #[inline]
-    pub(crate) fn set_focusable(&mut self, v: bool) {
-        self.flags.set_focusable(v);
-    }
-    #[inline]
-    pub(crate) fn set_clip(&mut self, c: ClipMode) {
-        self.flags.set_clip(c);
-    }
-
-    #[inline]
-    pub(crate) fn justify(&self) -> Justify {
-        self.slots.justify()
-    }
-    #[inline]
-    pub(crate) fn align(&self) -> Align {
-        self.slots.align()
-    }
-    #[inline]
-    pub(crate) fn child_align(&self) -> Align {
-        self.slots.child_align()
-    }
-    #[inline]
-    pub(crate) fn set_justify(&mut self, j: Justify) {
-        self.slots.set_justify(j);
-    }
-    #[inline]
-    pub(crate) fn set_align(&mut self, a: Align) {
-        self.slots.set_align(a);
-    }
-    #[inline]
-    pub(crate) fn set_child_align(&mut self, a: Align) {
-        self.slots.set_child_align(a);
-    }
-
-    #[inline]
-    pub(crate) fn set_gap(&mut self, v: f32) {
-        self.gaps.set_gap(v);
-    }
-    /// Copy the gap pair from `other` (used by widgets like `Scroll`
-    /// that split themselves into outer/inner nodes).
-    #[inline]
-    pub(crate) fn set_gaps_from(&mut self, other: &Element) {
-        self.gaps = other.gaps;
     }
 
     /// Fan this `Element` out into the per-NodeId columns `Tree` stores.
@@ -680,7 +548,7 @@ impl Element {
                 padding: self.padding,
                 margin: self.margin,
                 mode_payload: self.mode_payload,
-                bits: LayoutCore::pack_bits(self.slots.align(), self.visibility),
+                bits: LayoutCore::pack_bits(self.align, self.visibility),
                 mode: self.mode,
             },
             attrs: self.flags,
@@ -692,8 +560,8 @@ impl Element {
             },
             panel: PanelExtras {
                 gaps: self.gaps,
-                justify: self.slots.justify(),
-                child_align: self.slots.child_align(),
+                justify: self.justify,
+                child_align: self.child_align,
                 transform: self.transform,
             },
         }
@@ -809,6 +677,7 @@ pub trait Configure: Sized {
         self.element_mut().gaps.set_gap(g);
         self
     }
+
     /// Logical-px space between *lines* for WrapHStack/WrapVStack —
     /// the cross-axis spacing between wrap rows/columns. Inert in
     /// every other layout mode. Pair with `.gap(...)` for the within-
@@ -820,20 +689,20 @@ pub trait Configure: Sized {
     /// Main-axis distribution of leftover space for `HStack`/`VStack`.
     /// Ignored when any child has `Sizing::Fill` on the main axis.
     fn justify(mut self, j: Justify) -> Self {
-        self.element_mut().slots.set_justify(j);
+        self.element_mut().justify = j;
         self
     }
     /// Alignment inside the parent's inner rect. For single-axis use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn align(mut self, a: Align) -> Self {
-        self.element_mut().slots.set_align(a);
+        self.element_mut().align = a;
         self
     }
     /// Default alignment applied to children when their own axis is `Auto`.
     /// Mirrors CSS `align-items`. For single-axis defaults use the
     /// [`Align::h`] / [`Align::v`] constructors.
     fn child_align(mut self, a: Align) -> Self {
-        self.element_mut().slots.set_child_align(a);
+        self.element_mut().child_align = a;
         self
     }
     fn sense(mut self, s: Sense) -> Self {

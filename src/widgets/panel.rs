@@ -78,8 +78,8 @@ impl Panel {
         // value) wins.
         let mut element = self.element;
         let chrome = self.chrome.or(ui.theme.panel_background);
-        if matches!(element.clip_mode(), ClipMode::None) {
-            element.set_clip(ui.theme.panel_clip);
+        if matches!(element.flags.clip_mode(), ClipMode::None) {
+            element.flags.set_clip(ui.theme.panel_clip);
         }
         let id = ui.make_persistent_id(element.salt);
         let inner = match chrome {

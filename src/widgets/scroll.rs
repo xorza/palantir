@@ -219,7 +219,7 @@ fn push_bar_nodes(
     )
         .into();
     track.position = plan.track_rect.min;
-    track.set_sense(Sense::CLICK);
+    track.flags.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
         ui.node_with_chrome(
             track_id,
@@ -251,7 +251,7 @@ fn push_bar_nodes(
     )
         .into();
     thumb.position = plan.thumb_rect.min;
-    thumb.set_sense(Sense::DRAG);
+    thumb.flags.set_sense(Sense::DRAG);
     ui.node_with_chrome(
         thumb_id,
         thumb,
@@ -323,11 +323,11 @@ impl Scroll {
         // `self.zoom.is_some()`, but the routing has to be on
         // regardless so the pinch factor reaches us in the first
         // place. Cheap — one bit on the sense flags.
-        element.set_sense(Sense::SCROLL | Sense::PINCH);
+        element.flags.set_sense(Sense::SCROLL | Sense::PINCH);
         // Scroll requires clipping; default to `Rect` so callers that
         // don't override get the cheap scissor path. Callers can still
         // call `Configure::clip_rounded` to upgrade to a stencil mask.
-        element.set_clip(ClipMode::Rect);
+        element.flags.set_clip(ClipMode::Rect);
         Self {
             element,
             zoom: None,
@@ -704,14 +704,14 @@ impl Scroll {
         outer.min_size = self.element.min_size;
         outer.max_size = self.element.max_size;
         outer.margin = self.element.margin;
-        outer.set_align(self.element.align());
+        outer.align = self.element.align;
         outer.position = self.element.position;
         outer.grid = self.element.grid;
         // Outer carries sense/disabled/focusable/visibility from the
         // user's element. Inner owns clip + justify (set below).
-        outer.set_sense(self.element.sense());
-        outer.set_disabled(self.element.is_disabled());
-        outer.set_focusable(self.element.is_focusable());
+        outer.flags.set_sense(self.element.flags.sense());
+        outer.flags.set_disabled(self.element.flags.is_disabled());
+        outer.flags.set_focusable(self.element.flags.is_focusable());
         outer.visibility = self.element.visibility;
 
         // Inner viewport: owns the clip, the pan transform, the
@@ -726,19 +726,21 @@ impl Scroll {
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
-        inner.set_gaps_from(&self.element);
-        inner.set_justify(self.element.justify());
-        inner.set_child_align(self.element.child_align());
+        inner.gaps = self.element.gaps;
+        inner.justify = self.element.justify;
+        inner.child_align = self.element.child_align;
         let inner_chrome = self.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
         // `Configure::clip_rounded`, that wins.
-        let user_clip = self.element.clip_mode();
-        inner.set_clip(if matches!(user_clip, ClipMode::None) {
-            ClipMode::Rect
-        } else {
-            user_clip
-        });
+        let user_clip = self.element.flags.clip_mode();
+        inner
+            .flags
+            .set_clip(if matches!(user_clip, ClipMode::None) {
+                ClipMode::Rect
+            } else {
+                user_clip
+            });
         // Raw pan/zoom — cascade anchors the scale at the inner's own
         // `layout_rect.min` (`TranslateScale::anchored_at`), so we
         // don't pre-bake the origin compensation. Translation is just

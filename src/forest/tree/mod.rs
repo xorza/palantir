@@ -447,10 +447,10 @@ impl Tree {
             "Tree::open_node received a NodeId that doesn't match the next slot",
         );
 
-        if matches!(element.clip_mode(), ClipMode::Rounded) {
+        if matches!(element.flags.clip_mode(), ClipMode::Rounded) {
             let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.corners.approx_zero());
             if radius_zero {
-                element.set_clip(ClipMode::Rect);
+                element.flags.set_clip(ClipMode::Rect);
             }
         }
 
