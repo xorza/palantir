@@ -402,8 +402,14 @@ impl WgpuBackend {
             );
             for (i, b) in buffer.text_batches.iter().enumerate() {
                 let runs = &buffer.texts[b.texts.range()];
-                self.text
-                    .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs, text_mode);
+                self.text.prepare_batch(
+                    &self.device,
+                    &self.queue,
+                    buffer.scale,
+                    i,
+                    runs,
+                    text_mode,
+                );
             }
         }
 

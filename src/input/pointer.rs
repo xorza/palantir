@@ -10,8 +10,9 @@
 //! event vocabulary — no routing logic.
 
 use glam::Vec2;
+use strum::{EnumCount, EnumIter, IntoEnumIterator};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, EnumCount, EnumIter)]
 #[repr(u8)]
 pub enum PointerButton {
     Left = 0,
@@ -20,7 +21,13 @@ pub enum PointerButton {
 }
 
 impl PointerButton {
-    pub(crate) const COUNT: usize = 3;
+    /// Iterate every variant in declaration order. Wraps
+    /// `strum::IntoEnumIterator` so callers don't need to bring the
+    /// trait into scope.
+    #[inline]
+    pub fn all() -> impl Iterator<Item = Self> {
+        <Self as IntoEnumIterator>::iter()
+    }
 
     #[inline]
     pub(crate) fn idx(self) -> usize {

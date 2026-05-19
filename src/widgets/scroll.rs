@@ -232,7 +232,7 @@ fn push_bar_nodes(
         ui.node(track_id, track, |_| {});
     }
 
-    let fill = if resp.drag_delta.is_some() || resp.pressed {
+    let fill = if resp.drag_delta().is_some() || resp.pressed {
         theme.thumb_active
     } else if resp.hovered {
         theme.thumb_hover
@@ -578,7 +578,7 @@ impl Scroll {
                 if !panned {
                     continue;
                 }
-                if resp.drag_started {
+                if resp.drag_started() {
                     row.drag_anchor = Some((axis, row.offset));
                 }
                 let Some((anchor_axis, anchor)) = row.drag_anchor else {
@@ -587,7 +587,7 @@ impl Scroll {
                 if anchor_axis != axis {
                     continue;
                 }
-                let Some(delta) = resp.drag_delta else {
+                let Some(delta) = resp.drag_delta() else {
                     // Drag ended on this thumb — drop the anchor so
                     // the next press starts a fresh snapshot.
                     row.drag_anchor = None;

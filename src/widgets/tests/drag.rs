@@ -177,7 +177,7 @@ fn drag_started_fires_only_on_latch_frame() {
                     .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                     .show(ui, |ui| {
                         a.record(ui);
-                        latched |= ui.response_for(card_id("a")).drag_started;
+                        latched |= ui.response_for(card_id("a")).drag_started();
                     });
             });
         });
