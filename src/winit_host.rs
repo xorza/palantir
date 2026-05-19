@@ -132,9 +132,14 @@ where
         let Some(rt) = state.as_mut() else {
             return;
         };
-        rt.next = rt
-            .host
-            .frame(&rt.surface, &rt.config, rt.scale_factor, |ui| app.frame(ui));
+        let window = rt.window.clone();
+        rt.next = rt.host.frame(
+            &rt.surface,
+            &rt.config,
+            rt.scale_factor,
+            |ui| app.frame(ui),
+            || window.pre_present_notify(),
+        );
     }
 }
 
@@ -204,7 +209,10 @@ where
             view_formats: vec![],
             desired_maximum_frame_latency: cfg.max_frame_latency,
         };
-        surface.configure(&device, &config);
+        // `Host::frame` configures the surface lazily when it spots
+        // `(config.width, config.height)` differing from the last
+        // configured pair — first paint hits that path because the
+        // baseline is `None`. No eager configure here.
 
         let mut host = Host::new(device.clone(), queue.clone(), format);
         if let Some(setup) = self.setup.take() {
@@ -272,13 +280,31 @@ where
             }
             WindowEvent::Resized(new) => {
                 let max = rt.device.limits().max_texture_dimension_2d;
-                rt.config.width = new.width.clamp(1, max);
-                rt.config.height = new.height.clamp(1, max);
-                rt.surface.configure(&rt.device, &rt.config);
-                // Let `RedrawRequested` drive the actual paint —
-                // most platforms emit one immediately after resize,
-                // and painting inline here would double-draw.
-                rt.next = FramePresent::Immediate;
+                let w = new.width.clamp(1, max);
+                let h = new.height.clamp(1, max);
+                // Stash the new size only — `Host::frame` notices the
+                // mismatch against its `configured` baseline and runs
+                // `surface.configure` once before acquiring the next
+                // swapchain texture, so identical repeats (Wayland
+                // resends configures on focus / output changes) cost
+                // nothing. `surface.configure` waits for GPU idle and
+                // reallocates the swapchain — wgpu #7447 measures
+                // 100ms+ stalls when called per repeated event, which
+                // is what fed the resize backlog.
+                if w != rt.config.width || h != rt.config.height {
+                    rt.config.width = w;
+                    rt.config.height = h;
+                    // Defer the paint: inline `self.draw()` in this
+                    // handler lags noticeably on this Wayland setup
+                    // even with `pre_present_notify` wired up — the
+                    // paint blocks on FIFO vsync inside
+                    // `surface.get_current_texture` and the compositor
+                    // queue drains faster than we drain it. Letting
+                    // `about_to_wait` coalesce into one
+                    // `RedrawRequested` per loop tick gives the
+                    // smoother feel in practice.
+                    rt.next = FramePresent::Immediate;
+                }
             }
             WindowEvent::Occluded(occluded) => {
                 rt.host.set_occluded(occluded);
