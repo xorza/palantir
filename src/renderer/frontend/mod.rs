@@ -36,7 +36,7 @@ use crate::ui::frame_report::RenderPlan;
 /// Owned by [`Host`](crate::host::Host) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned
 /// `&RenderBuffer` straight to the backend.
-pub(crate) struct Frontend {
+pub struct Frontend {
     pub(crate) cmds: RenderCmdBuffer,
     pub(crate) composer: Composer,
     pub(crate) buffer: RenderBuffer,
@@ -80,6 +80,24 @@ pub mod test_support {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
             Self::new(FrameArena::default())
+        }
+
+        /// `Frontend` sharing `ui`'s frame arena. The arena holds per-frame
+        /// shape/text/mesh payloads written during record; the encoder + composer
+        /// read it on the same frame. Required for benches that want a
+        /// full CPU-side frame including encode + compose.
+        pub fn for_test_sharing(ui: &crate::ui::Ui) -> Self {
+            Self::new(ui.frame_arena.clone())
+        }
+
+        /// Drive the full CPU-side frontend (encode + compose) against a
+        /// just-recorded `Ui`. Bench / test reach-in for the otherwise
+        /// `pub(crate)` `Frontend::build`. The output `RenderBuffer` is
+        /// crate-private; the side effect (mutating `self.cmds`,
+        /// `self.composer`, `self.buffer`) is what bench callers want
+        /// timed, so the helper returns nothing.
+        pub fn build_for_test(&mut self, ui: &crate::ui::Ui, plan: super::RenderPlan) {
+            let _ = self.build(ui, plan);
         }
     }
 }

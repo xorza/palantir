@@ -28,6 +28,8 @@
 //! cache A/B benches (gated behind `bench-deep`).
 
 use criterion::{Criterion, criterion_group, criterion_main};
+use palantir::renderer::frontend::Frontend;
+use palantir::ui::frame_report::RenderPlan;
 use palantir::{
     Align, Background, Brush, Button, Checkbox, Color, ColorU8, Configure, ConicGradient, Corners,
     Display, Frame, FrameArena, FrameStamp, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh,
@@ -541,10 +543,13 @@ fn fresh_ui() -> Ui {
 fn bench_frame(c: &mut Criterion) {
     // ── Cached arm: fixed viewport. After the criterion warmup loop
     // primes the measure cache, every subsequent frame hits at the
-    // highest stable subtree root.
+    // highest stable subtree root. Includes the frontend (encode +
+    // compose) so the measured cost reflects everything between
+    // record and GPU submit.
     {
         let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
         let mut ui = fresh_ui();
+        let mut frontend = Frontend::for_test_sharing(&ui);
         let mut state = FormState::default();
         c.bench_function("frame/cached", |b| {
             b.iter(|| {
@@ -553,15 +558,18 @@ fn bench_frame(c: &mut Criterion) {
                         build_ui(&mut state, ui)
                     }),
                 );
+                frontend.build_for_test(&ui, RenderPlan::Full { clear: Color::BLACK });
             });
         });
     }
 
     // ── Uncached arm: viewport mutates every iteration so the
     // `MeasureCache` key's `available_q` busts and the cache rebuilds
-    // each frame. Approximates a live drag-resize.
+    // each frame. Approximates a live drag-resize. Same record →
+    // frontend pipeline as the cached arm.
     {
         let mut ui = fresh_ui();
+        let mut frontend = Frontend::for_test_sharing(&ui);
         let mut state = FormState::default();
         let mut frame = 0u32;
         c.bench_function("frame/resizing", |b| {
@@ -575,6 +583,7 @@ fn bench_frame(c: &mut Criterion) {
                         build_ui(&mut state, ui)
                     }),
                 );
+                frontend.build_for_test(&ui, RenderPlan::Full { clear: Color::BLACK });
             });
         });
     }

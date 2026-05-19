@@ -60,6 +60,7 @@ path = "tests/alloc/main.rs"
 [[bench]]
 name = "frame"
 harness = false
+required-features = ["internals"]
 
 [[bench]]
 name = "alloc_free"
