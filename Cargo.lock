@@ -987,7 +987,6 @@ dependencies = [
  "cosmic-text",
  "criterion",
  "etagere",
- "lru",
  "pollster",
  "resvg",
  "rustc-hash 2.1.2",
@@ -1353,12 +1352,6 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
 ]
-
-[[package]]
-name = "lru"
-version = "0.18.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8a860605968fce16869fd239cf4237a82f3ac470723415db603b0e8b6c8d4fb9"
 
 [[package]]
 name = "matchers"

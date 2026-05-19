@@ -1,11 +1,18 @@
 //! Glyphon-backed text renderer with **per-batch prepare/render** so text
 //! interleaves correctly with quads in paint order. The wgpu backend calls
 //! [`TextRenderer::prepare_batch`] for each [`TextBatch`] (a coalesced run
-//! of text spans that share one `glyphon::prepare`), then inside the
-//! render pass calls [`TextRenderer::render_batch`] right after the
-//! batch's last group's quads draw. Glyph data is shared via a single
-//! [`TextAtlas`] across all renderers in the pool, so the cache is hit
-//! for free across batches.
+//! of text spans that share one `glyphon::prepare_append`), then inside
+//! the render pass calls [`TextRenderer::render_batch`] right after the
+//! batch's last group's quads draw.
+//!
+//! **One [`GlyphonRenderer`] per [`StencilMode`].** Glyphon's vertex
+//! buffer accumulates instances across batches via the vendored
+//! `prepare_append` / `render_range` API — each batch gets a
+//! `Range<u32>` of instances and `render_range` draws only that range,
+//! so per-batch interleaving with quads still works while sharing one
+//! buffer + one pipeline state across all batches. Stencil mode is a
+//! separate renderer because glyphon caches its pipeline by
+//! `(format, multisample, depth_stencil)`.
 //!
 //! [`TextBatch`]: crate::renderer::render_buffer::TextBatch
 //!
@@ -17,19 +24,19 @@ use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
-use fixedbitset::FixedBitSet;
 use glam::UVec2;
 use glyphon::{
     Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextRenderer as GlyphonRenderer, Viewport,
 };
+use std::ops::Range;
 
-/// Selects which renderer pool a `prepare_batch` / `render_batch` call
-/// targets. Plain frames stay on the no-stencil pool (existing
+/// Selects which renderer a `prepare_batch` / `render_batch` call
+/// targets. Plain frames stay on the no-stencil renderer (existing
 /// behavior). When the surrounding pass has a stencil attachment
 /// (rounded-clip path), text must use a depth-stencil-aware glyphon
-/// pipeline or wgpu validation errors — `Stencil` selects that pool.
-/// Pools share the underlying `TextAtlas` so glyph caches hit across
+/// pipeline or wgpu validation errors — `Stencil` selects that one.
+/// Both share the underlying `TextAtlas` so glyph caches hit across
 /// modes for free.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StencilMode {
@@ -41,145 +48,46 @@ pub(crate) enum StencilMode {
     Stencil,
 }
 
-/// Pool shrinks only when grossly over-allocated: pool length must
-/// exceed `2 × high_water` to trigger a truncate down to high_water.
-/// That hysteresis absorbs frame-to-frame fluctuation (tooltip in/out,
-/// modal toggling) without forcing buffer recreation, while still
-/// reclaiming memory after a one-off burst (e.g. an app briefly
-/// rendering 1000 text groups, then settling at 50). Steady-state UIs
-/// never trigger the shrink branch — pool just hovers at peak usage.
-const POOL_SHRINK_RATIO: usize = 2;
-
-/// Upper bound on consecutive frames that may hash-skip
-/// `glyphon::prepare`. When this many "skip-something" frames pass
-/// without a clean trim opportunity, the next frame ignores hash hits
-/// and re-prepares every group so `atlas.trim` can run safely.
-/// Bounds atlas memory growth in zoom/scroll-dominated workloads
-/// where adjacent frames mint similar-but-different glyph cache keys.
-const FORCE_PREPARE_INTERVAL: u32 = 30;
-
-/// Per-mode pool of glyphon renderers + the parallel bookkeeping that
-/// drives the hash-skip fast path. Three fields kept in lockstep:
-/// pool length, `ready` bits, and `last_hashes` fingerprints. Bundled
-/// so the lockstep is a type-level fact and per-mode dispatch in
-/// [`TextRenderer`] is a single `match` instead of three.
-#[derive(Default)]
-struct PoolState {
-    /// One slot per group that ever held text in this app's lifetime.
-    /// Grows on demand to the historical high water; capacity retained
-    /// across frames so steady state is alloc-free.
-    renderers: Vec<GlyphonRenderer>,
-    /// Bit `i` says whether `renderers[i].prepare(...)` was called this
-    /// frame (or hash-skipped against a prior prepare's still-valid
-    /// vertex buffer) and should render. Length grows with the pool;
-    /// bits past `renderers.len()` are unused. Reset in
+/// One renderer + the per-batch ranges it produced this frame.
+struct ModeState {
+    renderer: GlyphonRenderer,
+    /// `ranges[i]` = instance range returned by this frame's
+    /// `prepare_append` for batch `i`, or `None` if batch `i` wasn't
+    /// prepared in this mode this frame. Capacity retained across
+    /// frames; reset to all-`None` (not deallocated) in
     /// [`TextRenderer::post_record`].
-    ready: FixedBitSet,
-    /// Per-slot fingerprint of the runs handed to the most recent
-    /// successful `prepare_batch` call. On a fresh call where
-    /// `hash_runs(...) == last_hashes[i]`, the inner `glyphon::prepare`
-    /// is skipped — the renderer's vertex buffer + the atlas glyphs
-    /// from the prior frame are still valid as long as
-    /// [`TextRenderer::post_record`] suppresses `atlas.trim` on skip
-    /// frames. `None` = no prior prepare, or the prior prepare's
-    /// glyphs were invalidated by a trim.
-    last_hashes: Vec<Option<u64>>,
+    ranges: Vec<Option<Range<u32>>>,
 }
 
-impl PoolState {
-    /// Clear hash entries for slots NOT touched this frame. Called
-    /// after a real `atlas.trim` — those slots' atlas glyphs were just
-    /// evicted, so a future hash hit would render against stale
-    /// references.
-    ///
-    /// **Mode-switch behaviour.** Per-frame the surrounding pass
-    /// picks one [`StencilMode`] (asserted in
-    /// [`TextRenderer::prepare_batch`]), so on a trim frame the
-    /// *inactive* pool's `ready` is all-zero and this method clears
-    /// every slot. That's correct (the trim may have evicted atlas
-    /// glyphs the inactive pool's hashes referenced), but it means
-    /// the first frame after switching modes can't hash-skip — it
-    /// pays a full `glyphon::prepare` for every slot. Acceptable: a
-    /// pass-mode flip is rare (a single rounded-clip appearing /
-    /// disappearing in the tree) and the cost is bounded by the
-    /// active group count.
-    fn invalidate_untouched(&mut self) {
-        for i in 0..self.last_hashes.len() {
-            if !self.ready.contains(i) {
-                self.last_hashes[i] = None;
-            }
+impl ModeState {
+    fn new(renderer: GlyphonRenderer) -> Self {
+        Self {
+            renderer,
+            ranges: Vec::new(),
         }
-    }
-
-    /// Truncate renderers + their parallel hash slots in lockstep.
-    /// `ready` only grows (one bit per slot ever); bits past `len` are
-    /// never read after the caller clears them.
-    fn shrink_to(&mut self, len: usize) {
-        self.renderers.truncate(len);
-        self.last_hashes.truncate(len);
     }
 }
 
 /// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds
-/// glyphon device-bound state (atlas + viewport + swash cache) plus a
-/// pool of [`GlyphonRenderer`]s per mode. The renderers share the
-/// atlas — glyph cache hits across groups and across modes are free.
-///
-/// **Why a pool, not a single renderer.** `GlyphonRenderer::prepare`
-/// clears its `glyph_vertices` and overwrites its `vertex_buffer` —
-/// calling `prepare` twice between two `render` draws would let the
-/// second prepare overwrite the buffer the first draw still needs at
-/// GPU execution time. Glyphon's `bind_group` and `get_or_create_pipeline`
-/// are `pub(crate)`, so we can't bypass `render()` and slice into one
-/// renderer's buffer ourselves with our own draw offsets.
-///
-/// Cost is small: pipeline is `Arc`-cloned across renderers (free), and
-/// each renderer is just a ~4 KB vertex buffer + a `Vec<GlyphToRender>`
-/// scratch. Capacity retains across frames; pool grows to historical
-/// high water.
+/// glyphon device-bound state (atlas + viewport + swash cache) plus one
+/// [`GlyphonRenderer`] per [`StencilMode`]. Renderers share the
+/// atlas — glyph cache hits across batches and across modes are free.
 pub(crate) struct TextRenderer {
     /// Shared shaper handle, installed at construction. Must be the
     /// *same* [`TextShaper`] the host installed on `Ui`, otherwise
     /// lookups in [`Self::prepare_batch`] miss against keys minted
-    /// on a different cache. The handle is immutable for the
-    /// renderer's lifetime — no `set_shaper`. Hosts that need a
-    /// different shaper rebuild the renderer (and thus the atlas)
-    /// from scratch; the alternative was a hot-swap method that
-    /// silently invalidated `last_hashes` semantics.
+    /// on a different cache.
     shaper: TextShaper,
     atlas: TextAtlas,
     viewport: Viewport,
     swash_cache: SwashCache,
-    /// No-stencil pool. Used on frames without rounded clip.
-    plain: PoolState,
-    /// Stencil-aware pool. Lazy-built on the first
-    /// `prepare_batch(.., StencilMode::Stencil)` call. Apps that
-    /// never use rounded clip never push into this pool. Shares the
-    /// `atlas` (glyphon caches pipelines by
-    /// `(format, multisample, depth_stencil)` — no fork needed).
-    stencil: PoolState,
-    /// Set if any `prepare_batch` call this frame hash-skipped the
-    /// inner `glyphon::prepare`. When set, [`Self::post_record`]
-    /// must *not* call `atlas.trim` — trimming would evict glyphs
-    /// the skipped renderers still depend on. Cleared at end of
-    /// `post_record`.
-    skipped_any_this_frame: bool,
-    /// Counts consecutive frames where `skipped_any_this_frame` was
-    /// true. When it reaches [`FORCE_PREPARE_INTERVAL`], the next
-    /// `prepare_batch` calls ignore hash hits and re-run
-    /// `glyphon::prepare` so a subsequent `atlas.trim` can clean up
-    /// long-tail accumulated cache_keys (e.g. unique scales minted
-    /// during a long zoom gesture).
-    frames_since_full_prepare: u32,
-    /// Highest `batch_idx + 1` prepared this frame across **either**
-    /// pool. Used by [`Self::post_record`] to shrink whichever pool
-    /// grew past `2 × high_water`. Shared because a given frame is
-    /// either all-`Plain` or all-`Stencil` (the surrounding render
-    /// pass picks one — pinned by `debug_assert!` in
-    /// [`Self::prepare_batch`]), so `high_water` reflects the active
-    /// mode's group count; the inactive pool — if it overshot in a
-    /// prior frame — trims down without losing live state.
-    high_water: usize,
+    /// No-stencil renderer. Built eagerly.
+    plain: ModeState,
+    /// Stencil-aware renderer. Lazy-built on the first
+    /// `prepare_batch(.., StencilMode::Stencil)` call. Apps that never
+    /// use rounded clip never instantiate it. Shares the atlas with
+    /// `plain`.
+    stencil: Option<ModeState>,
     /// Last viewport size pushed to glyphon's viewport uniform. `ZERO`
     /// on construction; first non-zero `update_viewport` mismatches
     /// and uploads. Saves a per-frame `viewport.update` call in steady
@@ -189,10 +97,12 @@ pub(crate) struct TextRenderer {
     /// Both fields track the same logical signal but gate writes to
     /// two *different* GPU buffers — glyphon owns its own uniform via
     /// [`Viewport::update`] and isn't reachable through the shared
-    /// quad/mesh/image `ViewportUniform`. Drift between the caches
-    /// costs at most one extra `queue.write_buffer` per frame
-    /// (whichever cache missed); the bytes uploaded are the same.
+    /// quad/mesh/image `ViewportUniform`.
     last_viewport: UVec2,
+    /// True if at least one `prepare_batch` succeeded this frame.
+    /// Drives `has_prepared` (the wgpu backend skips `post_record`
+    /// entirely when false).
+    prepared_anything: bool,
 }
 
 impl TextRenderer {
@@ -203,44 +113,30 @@ impl TextRenderer {
         shaper: TextShaper,
     ) -> Self {
         let cache = Cache::new(device);
-        let atlas = TextAtlas::new(device, queue, &cache, format);
+        let mut atlas = TextAtlas::new(device, queue, &cache, format);
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
+        let plain_renderer =
+            GlyphonRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
         Self {
             shaper,
             atlas,
             viewport,
             swash_cache,
-            plain: PoolState::default(),
-            stencil: PoolState::default(),
-            skipped_any_this_frame: false,
-            frames_since_full_prepare: 0,
-            high_water: 0,
+            plain: ModeState::new(plain_renderer),
+            stencil: None,
             last_viewport: UVec2::ZERO,
+            prepared_anything: false,
         }
     }
 
-    fn pool(&self, mode: StencilMode) -> &PoolState {
-        match mode {
-            StencilMode::Plain => &self.plain,
-            StencilMode::Stencil => &self.stencil,
-        }
-    }
-
-    fn pool_mut(&mut self, mode: StencilMode) -> &mut PoolState {
-        match mode {
-            StencilMode::Plain => &mut self.plain,
-            StencilMode::Stencil => &mut self.stencil,
-        }
-    }
-
-    /// True if any group has been prepared this frame and should render.
+    /// True if any batch has been prepared this frame and should render.
     pub(crate) fn has_prepared(&self) -> bool {
-        self.plain.ready.count_ones(..) > 0 || self.stencil.ready.count_ones(..) > 0
+        self.prepared_anything
     }
 
     /// Update the viewport uniform. Called once per frame before the
-    /// per-group prepares so all renderers see the same viewport.
+    /// per-batch prepares so both renderers see the same viewport.
     /// Skips the GPU upload when the viewport matches last frame's —
     /// glyphon's uniform contents are pure functions of the resolution.
     #[profiling::function]
@@ -259,21 +155,10 @@ impl TextRenderer {
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
-    /// shaper's buffer cache) and call `prepare` on the pool slot at
-    /// `batch_idx`. `mode` selects the no-stencil or stencil-aware
-    /// pool — both share `atlas`. Returns `false` and skips work if no
-    /// runs resolve to a buffer. The pool grows on demand if
-    /// `batch_idx` exceeds its current length.
-    ///
-    /// **Hash-skip fast path.** Each successful prepare stashes a
-    /// fingerprint of `(scale, runs)` in [`PoolState::last_hashes`].
-    /// A later call with the same fingerprint skips the inner
-    /// `glyphon::prepare` — the renderer's vertex buffer + atlas
-    /// glyphs from the prior frame remain valid because
-    /// [`Self::post_record`] suppresses `atlas.trim` on any frame
-    /// where a skip occurred. After [`FORCE_PREPARE_INTERVAL`]
-    /// consecutive skip frames, the next frame ignores hash hits to
-    /// give `atlas.trim` a clean opportunity.
+    /// shaper's buffer cache) and call `prepare_append` on the renderer
+    /// for `mode`. Returns `false` and skips work if no runs resolve to
+    /// a buffer. The per-batch `Range<u32>` returned by glyphon is
+    /// stashed at `batch_idx` for [`Self::render_batch`].
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -284,41 +169,21 @@ impl TextRenderer {
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
-        // Pin the "one mode per frame" invariant: the surrounding render
-        // pass picks Plain vs Stencil for the whole frame, and the
-        // pool-shrink + `high_water` accounting assumes the inactive pool
-        // has no live ready bits.
-        let other = match mode {
-            StencilMode::Plain => &self.stencil,
-            StencilMode::Stencil => &self.plain,
-        };
-        debug_assert!(
-            other.ready.count_ones(..) == 0,
-            "TextRenderer expects a single StencilMode per frame; opposite pool has live `ready` bits",
-        );
-
-        let want_force = self.frames_since_full_prepare >= FORCE_PREPARE_INTERVAL;
-        let hash = hash_runs(scale, runs);
-
-        // Hash-skip check — no atlas access needed, so `pool_mut` is
-        // fine without inline disjoint borrow.
-        if !want_force {
-            let p = self.pool_mut(mode);
-            let prior = p.last_hashes.get(batch_idx).copied().flatten();
-            if batch_idx < p.renderers.len() && prior == Some(hash) {
-                p.ready.insert(batch_idx);
-                if batch_idx + 1 > self.high_water {
-                    self.high_water = batch_idx + 1;
-                }
-                self.skipped_any_this_frame = true;
-                return true;
-            }
+        // Lazy-build the stencil-mode renderer on first use.
+        if matches!(mode, StencilMode::Stencil) && self.stencil.is_none() {
+            let renderer = GlyphonRenderer::new(
+                &mut self.atlas,
+                device,
+                wgpu::MultisampleState::default(),
+                Some(super::stencil::stencil_test_state()),
+            );
+            self.stencil = Some(ModeState::new(renderer));
         }
 
         // Clone to release the `&self.shaper` borrow for the closure
         // body — refcount bump, ~free. `with_render_split` returns
         // `None` when the shaper is mono (no cosmic to split), which
-        // we surface as `false` (no work done this group).
+        // we surface as `false` (no work done this batch).
         let shaper = self.shaper.clone();
         shaper
             .with_render_split(|split| {
@@ -327,42 +192,14 @@ impl TextRenderer {
                     lookup,
                 } = split;
 
-                // Skip-empty without materializing a Vec<TextArea>. Two
-                // passes over `runs` (count + filter_map into the iterator
-                // handed to prepare). Both are O(runs.len()) on typical
-                // handfuls of runs per group, and avoid the
-                // lifetime-laundering scratch field.
-                let resolvable = runs.iter().filter(|r| lookup.get(r.key).is_some()).count();
-                if resolvable == 0 {
-                    return false;
-                }
-
-                // Inline match instead of `pool_mut(mode)` because we
-                // need disjoint field borrows: `pool.renderers[..].prepare`
+                // Inline match instead of a helper because we need
+                // disjoint field borrows: `renderer.prepare_append`
                 // also takes `&mut self.atlas`, `&self.viewport`,
-                // `&mut self.swash_cache`. A method returning
-                // `&mut PoolState` would lock all of `self`.
-                let depth_stencil = match mode {
-                    StencilMode::Plain => None,
-                    StencilMode::Stencil => Some(super::stencil::stencil_test_state()),
-                };
-                let pool = match mode {
+                // `&mut self.swash_cache`.
+                let state = match mode {
                     StencilMode::Plain => &mut self.plain,
-                    StencilMode::Stencil => &mut self.stencil,
+                    StencilMode::Stencil => self.stencil.as_mut().unwrap(),
                 };
-                while pool.renderers.len() <= batch_idx {
-                    let renderer = GlyphonRenderer::new(
-                        &mut self.atlas,
-                        device,
-                        wgpu::MultisampleState::default(),
-                        depth_stencil.clone(),
-                    );
-                    pool.renderers.push(renderer);
-                }
-                pool.ready.grow(pool.renderers.len());
-                if pool.last_hashes.len() < pool.renderers.len() {
-                    pool.last_hashes.resize(pool.renderers.len(), None);
-                }
 
                 let text_areas = runs.iter().filter_map(|r| {
                     lookup.get(r.key).map(|buffer| TextArea {
@@ -380,7 +217,7 @@ impl TextRenderer {
                     })
                 });
 
-                let result = pool.renderers[batch_idx].prepare(
+                let result = state.renderer.prepare_append(
                     device,
                     queue,
                     font_system,
@@ -390,92 +227,73 @@ impl TextRenderer {
                     &mut self.swash_cache,
                 );
 
-                if let Err(e) = result {
-                    tracing::error!(?e, batch_idx, ?mode, "glyphon prepare failed");
-                    pool.ready.remove(batch_idx);
-                    pool.last_hashes[batch_idx] = None;
-                    return false;
+                match result {
+                    Ok(range) => {
+                        if state.ranges.len() <= batch_idx {
+                            state.ranges.resize(batch_idx + 1, None);
+                        }
+                        let did_work = !range.is_empty();
+                        state.ranges[batch_idx] = Some(range);
+                        did_work
+                    }
+                    Err(e) => {
+                        tracing::error!(?e, batch_idx, ?mode, "glyphon prepare failed");
+                        false
+                    }
                 }
-                pool.ready.insert(batch_idx);
-                pool.last_hashes[batch_idx] = Some(hash);
-                if batch_idx + 1 > self.high_water {
-                    self.high_water = batch_idx + 1;
+            })
+            .inspect(|&did_work| {
+                if did_work {
+                    self.prepared_anything = true;
                 }
-                true
             })
             .unwrap_or(false)
     }
 
-    /// Render the prepared text for `batch_idx` from the `mode` pool.
-    /// Silently no-ops if the group wasn't prepared this frame in that
-    /// mode (no text, no shaper, prepare failed, or wrong pool).
+    /// Render the prepared text for `batch_idx` from the `mode`
+    /// renderer. Silently no-ops if the batch wasn't prepared this
+    /// frame in that mode (no text, no shaper, prepare failed, or
+    /// wrong mode).
     pub(crate) fn render_batch(
         &self,
         batch_idx: usize,
         pass: &mut wgpu::RenderPass<'_>,
         mode: StencilMode,
     ) {
-        let p = self.pool(mode);
-        if !p.ready.contains(batch_idx) {
+        let state = match mode {
+            StencilMode::Plain => &self.plain,
+            StencilMode::Stencil => {
+                let Some(s) = self.stencil.as_ref() else {
+                    return;
+                };
+                s
+            }
+        };
+        let Some(range) = state.ranges.get(batch_idx).cloned().flatten() else {
             return;
-        }
-        if let Err(e) = p.renderers[batch_idx].render(&self.atlas, &self.viewport, pass) {
-            tracing::warn!(?e, batch_idx, "glyphon render failed");
+        };
+        if let Err(e) = state
+            .renderer
+            .render_range(range, &self.atlas, &self.viewport, pass)
+        {
+            tracing::warn!(?e, batch_idx, "glyphon render_range failed");
         }
     }
 
-    /// Reclaim atlas slots for glyphs unused this frame, shrink the
-    /// renderer pool if it's grossly over-allocated, and reset
-    /// per-renderer ready flags. Call once after all `render_batch`
-    /// calls have been submitted in the encoder pass.
-    ///
-    /// `atlas.trim` runs only on frames where every active group
-    /// passed through the full `glyphon::prepare` path — those frames
-    /// have `glyphs_in_use` fully populated, so trim is safe. On
-    /// any frame where one or more groups hash-skipped, trim is
-    /// suppressed (it would evict glyphs the skipped renderers still
-    /// reference). The [`FORCE_PREPARE_INTERVAL`] threshold in
-    /// `prepare_batch` bounds how long this suppression can run
-    /// before a forced full-prepare frame restores the trim
-    /// opportunity.
+    /// Reclaim atlas slots for glyphs unused this frame and reset
+    /// per-batch range tracking + the glyphon vertex accumulator. Call
+    /// once after all `render_batch` calls have been submitted in the
+    /// encoder pass.
     pub(crate) fn post_record(&mut self) {
-        if self.skipped_any_this_frame {
-            self.frames_since_full_prepare += 1;
-        } else {
-            self.atlas.trim();
-            self.frames_since_full_prepare = 0;
-            self.plain.invalidate_untouched();
-            self.stencil.invalidate_untouched();
+        self.atlas.trim();
+        self.plain.renderer.clear_frame();
+        self.plain.ranges.fill(None);
+        if let Some(s) = self.stencil.as_mut() {
+            s.renderer.clear_frame();
+            s.ranges.fill(None);
         }
-        self.skipped_any_this_frame = false;
-        // Pool shrink: see [`POOL_SHRINK_RATIO`]. `shrink_to` truncates
-        // renderers and `last_hashes` in lockstep so a future regrow
-        // doesn't reuse a stale fingerprint from a different content era.
-        if self.plain.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
-            self.plain.shrink_to(self.high_water);
-        }
-        if self.stencil.renderers.len() > self.high_water.saturating_mul(POOL_SHRINK_RATIO) {
-            self.stencil.shrink_to(self.high_water);
-        }
-        self.plain.ready.clear();
-        self.stencil.ready.clear();
-        self.high_water = 0;
+        self.prepared_anything = false;
     }
-}
-
-/// Fingerprint `(scale, runs)` for the `prepare_batch` hash-skip fast
-/// path. `TextRun` is `#[repr(C)]` with no internal padding, so one
-/// byte-slice write covers every byte glyphon would consume from the
-/// run set; the leading `scale.to_bits()` write captures the DPI
-/// parameter glyphon multiplies into `TextArea.scale`. Without it,
-/// a DPI change with byte-identical runs would silently hash-hit.
-fn hash_runs(scale: f32, runs: &[TextRun]) -> u64 {
-    use std::hash::Hasher as _;
-    let mut h = crate::common::hash::Hasher::new();
-    h.write_u32(scale.to_bits());
-    h.write_usize(runs.len());
-    h.write(bytemuck::cast_slice(runs));
-    h.finish()
 }
 
 fn text_bounds(b: URect) -> TextBounds {
