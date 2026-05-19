@@ -20,6 +20,7 @@ use std::hash::Hasher as _;
 /// Implements `std::hash::Hasher` so `value.hash(&mut h)` and
 /// `h.write_u8(...)` etc. work unchanged when the trait is in scope
 /// (`use std::hash::Hasher as _;`).
+#[derive(Clone)]
 pub(crate) struct Hasher(FxHasher);
 
 impl Hasher {
