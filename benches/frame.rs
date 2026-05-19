@@ -29,11 +29,10 @@
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use palantir::{
-    Align, Background, Brush, Button, Checkbox, Color, ColorU8, ConicGradient, Configure, Corners,
-    Display, Frame, FrameArena, FrameStamp, Grid, Justify, LineCap, LineJoin, LinearGradient,
-    Mesh, Panel, PolylineColors, Popup, RadialGradient, RadioButton, Rect,
-    RenderCaches, Scroll, Shadow, Shape, Sizing, Stop, Stroke, Text, TextEdit, TextShaper,
-    TextStyle, Tooltip, Track, Ui,
+    Align, Background, Brush, Button, Checkbox, Color, ColorU8, Configure, ConicGradient, Corners,
+    Display, Frame, FrameArena, FrameStamp, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh,
+    Panel, PolylineColors, Popup, RadialGradient, RadioButton, Rect, RenderCaches, Scroll, Shadow,
+    Shape, Sizing, Stop, Stroke, Text, TextEdit, TextShaper, TextStyle, Tooltip, Track, Ui,
 };
 use std::hint::black_box;
 use std::rc::Rc;
@@ -154,8 +153,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                         .show(ui, |ui| {
                             // Property grid — Hug label col + Fill value col
                             // with wrapping text. Exercises Grid + intrinsic.
-                            let rows: Vec<Track> =
-                                (0..prop_rows).map(|_| Track::hug()).collect();
+                            let rows: Vec<Track> = (0..prop_rows).map(|_| Track::hug()).collect();
                             Grid::new()
                                 .id_salt("props")
                                 .cols(Rc::from([
@@ -231,10 +229,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                                             .label(["read", "write", "admin"][v as usize])
                                             .show(ui);
                                     }
-                                    Button::new()
-                                        .id_salt("submit")
-                                        .label("Submit")
-                                        .show(ui);
+                                    Button::new().id_salt("submit").label("Submit").show(ui);
                                 });
 
                             // ── Tag wrap list: WrapHStack flowing many
@@ -302,9 +297,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                                                     .gap(2.0)
                                                     .size((Sizing::FILL, Sizing::Hug))
                                                     .show(ui, |ui| {
-                                                        let name = ui.fmt(format_args!(
-                                                            "user_{i}"
-                                                        ));
+                                                        let name = ui.fmt(format_args!("user_{i}"));
                                                         Text::new(name)
                                                             .id_salt(("from", i))
                                                             .style(
@@ -555,10 +548,11 @@ fn bench_frame(c: &mut Criterion) {
         let mut state = FormState::default();
         c.bench_function("frame/cached", |b| {
             b.iter(|| {
-                black_box(ui.frame(
-                    FrameStamp::new(display, std::time::Duration::ZERO),
-                    |ui| build_ui(&mut state, ui),
-                ));
+                black_box(
+                    ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), |ui| {
+                        build_ui(&mut state, ui)
+                    }),
+                );
             });
         });
     }
@@ -576,10 +570,11 @@ fn bench_frame(c: &mut Criterion) {
                 let h = 640 + ((frame / 7) % 320);
                 frame = frame.wrapping_add(1);
                 let display = Display::from_physical(glam::UVec2::new(w, h), 2.0);
-                black_box(ui.frame(
-                    FrameStamp::new(display, std::time::Duration::ZERO),
-                    |ui| build_ui(&mut state, ui),
-                ));
+                black_box(
+                    ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), |ui| {
+                        build_ui(&mut state, ui)
+                    }),
+                );
             });
         });
     }

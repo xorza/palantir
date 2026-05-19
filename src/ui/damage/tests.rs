@@ -1748,7 +1748,7 @@ fn node_snapshot_decomposition_matches_cascade() {
     );
 
     // Snapshot mirrors the cascade arena slice.
-    let snap_paints = &ui.damage_engine.paint_snaps[snap.paint_span.range()];
+    let snap_paints = &ui.damage_engine.arena.snaps[snap.paint_span.range()];
     assert_eq!(snap_paints.len(), 3, "chrome + 2 direct shapes ⇒ 3 rows");
     let cascade_paints = &layer_paints[node_span.range()];
     for (ord, p) in snap_paints.iter().enumerate() {
@@ -1837,12 +1837,12 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // bit-identical → no push.
     let prev_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
-    let prev_shape2_rect = ui.damage_engine.paint_snaps[prev_snap.paint_span.range()][1 + 2].screen;
+    let prev_shape2_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][1 + 2].screen;
     frame(&mut ui, |ui| build(140.0, ui));
 
     let canvas_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     let curr_shape2_rect =
-        ui.damage_engine.paint_snaps[canvas_snap.paint_span.range()][1 + 2].screen;
+        ui.damage_engine.arena.snaps[canvas_snap.paint_span.range()][1 + 2].screen;
 
     // The damage region must intersect both old and new positions of
     // shape 2 (so the pixels-at-old-position get cleared and
@@ -1899,7 +1899,7 @@ fn chrome_authoring_change_pushes_chrome_paint_row() {
     frame(&mut ui, |ui| build(BLUE, ui));
     frame(&mut ui, |ui| build(BLUE, ui)); // settle
     let snap = ui.damage_engine.prev[&WidgetId::from_hash("c")];
-    let snap_rect = ui.damage_engine.paint_snaps[snap.paint_span.start as usize].screen;
+    let snap_rect = ui.damage_engine.arena.snaps[snap.paint_span.start as usize].screen;
 
     frame(&mut ui, |ui| build(RED, ui));
     let region = ui.damage_region();
@@ -1964,7 +1964,7 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     // post-delete damage region.
     let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     // Chromeless canvas ⇒ paint_snaps maps 1:1 to direct shapes.
-    let prev_shapes = &ui.damage_engine.paint_snaps[prev.paint_span.range()];
+    let prev_shapes = &ui.damage_engine.arena.snaps[prev.paint_span.range()];
     assert_eq!(prev_shapes.len(), 3);
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
@@ -2113,7 +2113,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // so the assertion below can reason from the actual measured
     // values rather than hand-recomputing mono geometry.
     let prev_snap = ui.damage_engine.prev[&leaf_id];
-    let prev_text_rect = ui.damage_engine.paint_snaps[prev_snap.paint_span.range()][0].screen;
+    let prev_text_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0, FONT);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
@@ -2124,7 +2124,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     frame(&mut ui, |ui| build("abcdef", ui));
 
     let curr_snap = ui.damage_engine.prev[&leaf_id];
-    let curr_text_rect = ui.damage_engine.paint_snaps[curr_snap.paint_span.range()][0].screen;
+    let curr_text_rect = ui.damage_engine.arena.snaps[curr_snap.paint_span.range()][0].screen;
     let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0, FONT);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5

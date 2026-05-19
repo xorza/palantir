@@ -402,23 +402,19 @@ impl Ui {
         // instead of stale state from the previous frame.
         let surface = self.display.logical_rect();
         let prev_time = self.prev_stamp.map(|s| s.time);
+        let input = crate::ui::damage::DamageInput {
+            forest: &self.forest,
+            cascades: &self.layout.cascades,
+            surface,
+            prev_time,
+            now: self.time,
+        };
         let damage = match plan {
-            FramePlan::PaintOnly => self.damage_engine.compute_paint_only(
-                &self.forest,
-                &self.layout.cascades,
-                surface,
-                prev_time,
-                self.time,
-            ),
-            FramePlan::FullRecord { force_full } => self.damage_engine.compute(
-                &self.forest,
-                &self.layout.cascades,
-                &self.forest.ids.removed,
-                surface,
-                force_full,
-                prev_time,
-                self.time,
-            ),
+            FramePlan::PaintOnly => self.damage_engine.compute_paint_only(input),
+            FramePlan::FullRecord { force_full } => {
+                self.damage_engine
+                    .compute(input, &self.forest.ids.removed, force_full)
+            }
         };
 
         // First-frame contract: no prev snapshot to diff against, so
@@ -1263,13 +1259,13 @@ pub mod test_support {
         /// Live entries in the `paint_snaps` arena (sum of every
         /// `NodeSnapshot::paint_span.len`, including orphaned tail).
         pub fn damage_shape_snaps_len(&self) -> usize {
-            self.damage_engine.paint_snaps.len()
+            self.damage_engine.arena.len()
         }
 
         /// Count of orphaned `Paint` entries in the arena —
         /// drives the compaction trigger.
         pub fn damage_shape_snaps_orphaned(&self) -> u32 {
-            self.damage_engine.paint_snaps_orphaned
+            self.damage_engine.arena.orphaned()
         }
 
         /// Times `compact_shape_snaps` has run on this engine.
@@ -1277,7 +1273,7 @@ pub mod test_support {
         /// exercised and to count compactions over a measurement
         /// window.
         pub fn damage_compactions_run(&self) -> u32 {
-            self.damage_engine.compactions_run
+            self.damage_engine.arena.compactions_run()
         }
 
         /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.

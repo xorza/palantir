@@ -385,11 +385,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
     // Discriminating pixels: the other three viewport corners must
     // be solid black under the fix. With the bug (viewport-clamped
     // mask), each gets a spurious rounded notch and reads DARK_BG.
-    for (x, y, label) in [
-        (119, 0, "TR"),
-        (0, 89, "BL"),
-        (119, 89, "BR"),
-    ] {
+    for (x, y, label) in [(119, 0, "TR"), (0, 89, "BL"), (119, 89, "BR")] {
         let px = *img.get_pixel(x, y);
         assert!(
             is_near_black(px),
