@@ -470,7 +470,7 @@ impl TextShaper {
                     let start = cursor_from_byte(text, range.start);
                     let end = cursor_from_byte(text, range.end);
                     for run in buffer.layout_runs() {
-                        if let Some((x, w)) = run.highlight(start, end) {
+                        for (x, w) in run.highlight(start, end) {
                             out.push(Rect::new(x, run.line_top, w, run.line_height));
                         }
                     }

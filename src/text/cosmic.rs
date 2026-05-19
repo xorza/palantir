@@ -225,7 +225,7 @@ impl CosmicMeasure {
 
         let metrics = Metrics::new(font_size_px, line_height_px);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(&mut self.font_system, max_width_px, None);
+        buffer.set_size(max_width_px, None);
         // Per-line alignment travels through cosmic's `set_text`
         // `alignment` slot — that's the canonical entry point and
         // applies the align to every parsed buffer line in one
@@ -236,13 +236,7 @@ impl CosmicMeasure {
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
         let alignment = max_width_px.and_then(|_| cosmic_align(halign));
-        buffer.set_text(
-            &mut self.font_system,
-            text,
-            &attrs_for(family),
-            Shaping::Advanced,
-            alignment,
-        );
+        buffer.set_text(text, &attrs_for(family), Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let mut max_w = 0.0_f32;
