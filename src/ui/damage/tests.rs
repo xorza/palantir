@@ -2170,3 +2170,74 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
         region.iter_rects().collect::<Vec<_>>(),
     );
 }
+
+/// Pin: a direct shape on a clipped node has its per-shape rect (the
+/// column the damage diff reads from) clipped to the node's own clip
+/// mask — not just the ancestor clip.
+///
+/// Before the fix, `compute_paint_rect` clipped each shape's screen
+/// rect to `parent_clip` only. A `Shape::Text` with `local_origin`
+/// expressing a scroll offset reported its **full** shaped extent as
+/// the per-shape rect (cosmic-text's measured `Size` for the whole
+/// buffer). For a multi-line `TextEdit` taller than its visible rect,
+/// scrolling produced damage rects spanning the entire text — way
+/// past the editor's own `ClipMode::Rect`. The encoder's GPU scissor
+/// clips the actual pixels, so the user *saw* tight repaints, but
+/// the damage region driving the scissor pass was over-large,
+/// inflating the partial-redraw quad to the unclipped text bbox.
+///
+/// This test fakes the scenario with a `RoundedRect` shape extending
+/// past the host's clip on the right edge; pre-fix the per-shape rect
+/// captures the full 400-px-wide shape, post-fix it's clipped to the
+/// host's deflated mask.
+#[test]
+fn direct_shape_on_clipped_node_clips_to_own_mask() {
+    use crate::Shape;
+    use crate::forest::Layer;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    // Host panel: 80×40, padding 4 each side via background. The
+    // direct shape extends to x=400 (well past 80). After the cascade
+    // walk, `shape_rects[idx]` must be clipped to the host's deflated
+    // mask, not span the full 400 px.
+    let mut ui = Ui::for_test();
+    let host_id = WidgetId::from_hash("clip-host");
+    let build = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::hstack()
+                .id(host_id)
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .background(Background {
+                    fill: BLUE.into(),
+                    ..Default::default()
+                })
+                .clip_rect()
+                .show(ui, |ui| {
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(Rect::new(0.0, 0.0, 400.0, 20.0)),
+                        radius: Corners::ZERO,
+                        fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                });
+        });
+    };
+    frame(&mut ui, build);
+    frame(&mut ui, build);
+
+    // Locate the host node by widget id and read its first shape's
+    // cascaded screen rect. Pre-fix the rect spans the full 400 px;
+    // post-fix it's clamped to (host_width − padding-fold).
+    let cascades = &ui.layout.cascades;
+    let host_idx = *cascades.by_id.get(&host_id).expect("host node recorded") as usize;
+    let host_rect = cascades.entries.rect()[host_idx];
+    let tree = ui.forest.tree(Layer::Main);
+    let shape_span = tree.records.shape_span()[host_idx];
+    assert!(shape_span.len >= 1, "host should have at least one shape");
+    let shape_rect = cascades.shape_rects[Layer::Main.idx()][shape_span.start as usize];
+    assert!(
+        shape_rect.size.w <= host_rect.size.w + 0.5,
+        "direct shape rect must be clipped to the host's own mask; \
+         host_rect = {host_rect:?}, shape_rect = {shape_rect:?}",
+    );
+}
