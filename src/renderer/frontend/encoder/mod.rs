@@ -5,10 +5,11 @@ use super::cmd_buffer::{
 use crate::common::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
+    text_paint_bbox_local,
 };
 use crate::forest::tree::{NodeId, Tree, TreeItem};
 use crate::layout::LayerLayout;
-use crate::layout::types::{align::Align, align::HAlign, align::VAlign, clip_mode::ClipMode};
+use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
@@ -194,15 +195,16 @@ fn emit_one_shape(
             //   ignored (only `align.halign()` matters here, and
             //   that's already baked into the shaped buffer's
             //   per-line glyph offsets).
-            let rect = match local_origin {
-                None => {
-                    let padded = owner_rect.deflated_by(tree.records.layout()[id.idx()].padding);
-                    align_text_in(padded, shaped.measured, *align)
-                }
-                Some(origin) => Rect {
-                    min: owner_rect.min + *origin,
-                    size: shaped.measured,
-                },
+            let local = text_paint_bbox_local(
+                owner_rect.size,
+                tree.records.layout()[id.idx()].padding,
+                *local_origin,
+                shaped.measured,
+                *align,
+            );
+            let rect = Rect {
+                min: owner_rect.min + local.min,
+                size: local.size,
             };
             out.draw_text(rect, *color, shaped.key);
         }
@@ -520,31 +522,6 @@ fn encode_node(
     if clip {
         out.pop_clip();
     }
-}
-
-/// Position a text run's bounding box inside a leaf's arranged rect per
-/// `align`. Returns a rect with `min` shifted by the alignment offset
-/// and `size` shrunk to the measured text bbox — composer takes
-/// `min` as the glyph origin and `size` as the clip bounds. Glyphs
-/// don't stretch, so `Auto`/`Stretch` collapse to start (top-left)
-/// — matches `place_axis`'s behavior for non-stretchable content.
-fn align_text_in(leaf: Rect, measured: Size, align: Align) -> Rect {
-    let dx = match align.halign() {
-        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-        HAlign::Center => (leaf.size.w - measured.w) * 0.5,
-        HAlign::Right => leaf.size.w - measured.w,
-    };
-    let dy = match align.valign() {
-        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
-        VAlign::Center => (leaf.size.h - measured.h) * 0.5,
-        VAlign::Bottom => leaf.size.h - measured.h,
-    };
-    Rect::new(
-        leaf.min.x + dx.max(0.0),
-        leaf.min.y + dy.max(0.0),
-        measured.w,
-        measured.h,
-    )
 }
 
 /// Shared shadow emit. Chrome branch (`Background::shadow`,
