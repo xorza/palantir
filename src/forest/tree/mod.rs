@@ -83,9 +83,9 @@ pub(crate) struct RootSlot {
     pub(crate) size: Option<Size>,
 }
 
-/// Pending anchor entry for the `pending_anchors` stack. One per live
-/// `Forest::push_layer` scope; consumed by root mints inside the scope
-/// and popped at `pop_layer`.
+/// Pending anchor entry for `Tree::pending_anchor`. Populated by
+/// `Forest::push_layer`, consumed by root mints inside the scope, and
+/// cleared by `pop_layer`.
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct PendingAnchor {
     pub(crate) anchor: Vec2,
@@ -216,17 +216,16 @@ pub(crate) struct Tree {
     /// load (read from `last()`) instead of an O(depth) walk.
     pub(crate) open_frames: Vec<OpenFrame>,
 
-    /// Anchor + optional size cap stack. Each `Forest::push_layer`
-    /// scope pushes one entry; root mints inside the scope read the
-    /// top, and `Forest::pop_layer` pops on the way out. Empty on
-    /// `Main` (its implicit root always paints the full surface) and
-    /// outside any `push_layer` scope; in that case root mints fall
-    /// through to `PendingAnchor::default()` = `(Vec2::ZERO, None)`.
-    /// Stack form keeps the no-clobber invariant local: nested
-    /// `push_layer` calls (which the assert in `Forest::push_layer`
-    /// currently forbids, but a future relaxation might enable) save
-    /// and restore correctly without depending on that assert.
-    pub(crate) pending_anchors: Vec<PendingAnchor>,
+    /// Anchor + optional size cap for the active `Forest::push_layer`
+    /// scope. `Some` between `push_layer` and `pop_layer`; root mints
+    /// inside the scope read it (and don't consume — multiple roots
+    /// share the same anchor). `None` outside any scope and always on
+    /// `Main` (its implicit root paints the full surface); in that
+    /// case root mints fall through to `PendingAnchor::default()` =
+    /// `(Vec2::ZERO, None)`. `Forest::push_layer` asserts no nesting,
+    /// so a single slot suffices; if nested layers ever land, flip
+    /// back to `Vec`.
+    pub(crate) pending_anchor: Option<PendingAnchor>,
 
     // -- Paint-anim registry ----------------------------------------------
     /// Shape-keyed paint animation registrations. Pushed in lockstep
@@ -266,7 +265,7 @@ impl Tree {
         self.has_grid.grow(prev_node_count);
         self.roots.clear();
         self.open_frames.clear();
-        self.pending_anchors.clear();
+        self.pending_anchor = None;
     }
 
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
@@ -396,8 +395,8 @@ impl Tree {
 
     /// Push a node as a child of the currently-open node (or as a new
     /// root if `open_frames` is empty) and make it the new tip. Root
-    /// mints stamp the top of `pending_anchors` onto the new
-    /// `RootSlot`; child opens don't read the stack.
+    /// mints stamp `pending_anchor` onto the new `RootSlot`; child
+    /// opens don't read it.
     ///
     /// `new_id` is the pre-reserved id `Forest::open_node` already
     /// computed via [`Self::peek_next_id`] to build the `SeenIds`
@@ -436,7 +435,7 @@ impl Tree {
         let parent_frame = self.open_frames.last().copied();
 
         if parent_frame.is_none() {
-            let pending = self.pending_anchors.last().copied().unwrap_or_default();
+            let pending = self.pending_anchor.unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id.0,
                 anchor: pending.anchor,
