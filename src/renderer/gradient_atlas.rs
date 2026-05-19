@@ -744,7 +744,7 @@ mod tests {
     fn register_hit_bumps_stamp_protecting_recent_content() {
         let mut atlas = GradientCpuAtlas::default();
         let pinned = distinct_grad(0.0);
-        let pinned_row = register_for(&mut atlas, pinned);
+        let pinned_row = register_for(&mut atlas, pinned.clone());
         // Fill 253 more rows.
         for i in 1..(ATLAS_ROWS - 2) {
             register_for(&mut atlas, distinct_grad(i as f32 * 0.01));
@@ -770,7 +770,7 @@ mod tests {
     fn evicted_content_can_be_re_registered() {
         let mut atlas = GradientCpuAtlas::default();
         let first = distinct_grad(0.0);
-        let _ = register_for(&mut atlas, first);
+        let _ = register_for(&mut atlas, first.clone());
         // Fill + force eviction of `first` (oldest stamp).
         for i in 1..(ATLAS_ROWS - 1) {
             register_for(&mut atlas, distinct_grad(i as f32 * 0.01));

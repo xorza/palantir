@@ -18,7 +18,10 @@ use palantir_anim_derive::Animatable;
 /// Per-theme `pick(state)` returns `&WidgetLook`; widgets call
 /// [`Self::animate`] to interpolate the look's components and get an
 /// [`AnimatedLook`] ready to render with.
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+// **Not `Copy`** because `Background` isn't — `WidgetLook` shows up in
+// theme definitions and is cheap to `.clone()` (one branch for each
+// `Option` + the underlying field clones).
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct WidgetLook {
     pub background: Option<Background>,
     pub text: Option<TextStyle>,
@@ -32,7 +35,8 @@ pub struct WidgetLook {
 /// `text.line_height_mult` are snap-carried from the picked
 /// `WidgetLook` (or the fallback) — see `TextStyle`'s
 /// `#[animate(snap)]` markings.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Animatable)]
+// **Not `Copy`** because `Background` isn't.
+#[derive(Clone, Debug, Default, PartialEq, Animatable)]
 pub struct AnimatedLook {
     pub background: Background,
     pub text: TextStyle,
@@ -70,7 +74,7 @@ impl WidgetLook {
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
         let target = AnimatedLook {
-            background: self.background.unwrap_or_default(),
+            background: self.background.clone().unwrap_or_default(),
             text: self.text.unwrap_or(fallback_text),
         };
         ui.animate(id, Self::SLOT_LOOK, target, spec)
@@ -81,7 +85,8 @@ impl WidgetLook {
 /// `normal/hovered/pressed/disabled` rhythm but don't carry Button's
 /// container ergonomics (`padding`/`margin`/`anim` on the outer
 /// theme). [`crate::ToggleTheme`] keeps one of these per checked-state.
-#[derive(Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+// **Not `Copy`** because `WidgetLook` isn't.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatefulLook {
     pub normal: WidgetLook,
     pub hovered: WidgetLook,

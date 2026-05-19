@@ -139,7 +139,10 @@ impl Grid {
         element.mode_payload = idx;
 
         // Theme fallback for chrome / clip — see `Panel::show`.
-        let chrome = self.chrome.or(ui.theme.panel_background);
+        let chrome = self
+            .chrome
+            .clone()
+            .or_else(|| ui.theme.panel_background.clone());
         if matches!(element.flags.clip_mode(), ClipMode::None) {
             element.flags.set_clip(ui.theme.panel_clip);
         }

@@ -71,7 +71,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
         .gap(8.0)
         .padding(12.0)
         .size((Sizing::FILL, Sizing::FILL))
-        .background(panel_bg)
+        .background(panel_bg.clone())
         .show(ui, |ui| {
             // ── Header bar: real cosmic-shaped title + Fill spacer +
             // action buttons. Exercises stack Fill + child_align.
@@ -112,7 +112,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                         .gap(4.0)
                         .padding(8.0)
                         .size((Sizing::Fixed(220.0), Sizing::FILL))
-                        .background(panel_bg)
+                        .background(panel_bg.clone())
                         .clip_rounded()
                         .show(ui, |ui| {
                             Scroll::vertical()
@@ -215,7 +215,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                                 .padding(6.0)
                                 .child_align(Align::CENTER)
                                 .size((Sizing::FILL, Sizing::Hug))
-                                .background(panel_bg)
+                                .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     TextEdit::new(&mut state.name)
                                         .id_salt("edit-name")
@@ -242,7 +242,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                                 .gap(4.0)
                                 .padding(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
-                                .background(panel_bg)
+                                .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     for i in 0..tag_count {
                                         let label = ui.fmt(format_args!("#tag{i}"));
@@ -256,7 +256,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                             Panel::canvas()
                                 .id_salt("shape-gallery")
                                 .size((Sizing::FILL, Sizing::Fixed(140.0)))
-                                .background(panel_bg)
+                                .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     add_shape_gallery(ui);
                                 });
@@ -400,7 +400,7 @@ fn build_ui(state: &mut FormState, ui: &mut Ui) {
                     // surface, used here purely to exercise the popup
                     // recording layer + anchoring math.
                     Popup::anchored_to(glam::Vec2::new(20.0, 600.0))
-                        .background(panel_bg)
+                        .background(panel_bg.clone())
                         .show(ui, |ui, _handle| {
                             Text::new("Popup layer")
                                 .id_salt("popup-label")

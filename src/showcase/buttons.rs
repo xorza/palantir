@@ -85,11 +85,11 @@ fn outlined_style() -> ButtonTheme {
     };
     ButtonTheme {
         normal: WidgetLook {
-            background: Some(bg(Color::TRANSPARENT, stroke)),
+            background: Some(bg(Color::TRANSPARENT, stroke.clone())),
             text: None,
         },
         hovered: WidgetLook {
-            background: Some(bg(accent.with_alpha(0.18), stroke)),
+            background: Some(bg(accent.with_alpha(0.18), stroke.clone())),
             text: None,
         },
         pressed: WidgetLook {

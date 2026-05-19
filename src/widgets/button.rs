@@ -74,7 +74,7 @@ impl Button {
         let style_padding = style.padding;
         let style_margin = style.margin;
         let style_anim = style.anim;
-        let look_target = *style.pick(picked_state);
+        let look_target = style.pick(picked_state).clone();
         // Apply theme padding/margin when the builder hasn't set
         // anything (sentinel: `Spacing::ZERO` == "use theme"). User
         // overrides — anything non-zero set via `.padding(...)` /
@@ -86,7 +86,7 @@ impl Button {
             element.margin = style_margin;
         }
         let look = look_target.animate(ui, id, fallback_text, style_anim);
-        let chrome = look.background;
+        let chrome = look.background.clone();
         let label = self.label;
         let label_align = self.label_align;
 

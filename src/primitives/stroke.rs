@@ -7,9 +7,10 @@ use palantir_anim_derive::Animatable;
 /// `Brush` is an enum); the renderer's `Quad` carries an inline
 /// `stroke_color: Color` + `stroke_width: f32` pair instead and the
 /// composer translates between the two.
-#[derive(
-    Clone, Copy, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable,
-)]
+// **Not `Copy`** because `Brush` isn't — see that type's comment for
+// the auto-`Copy` audit story. `.clone()` is cheap (40 B inline
+// `ArrayVec` for the gradient variant, plus tag + width) but explicit.
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, Animatable)]
 pub struct Stroke {
     pub brush: Brush,
     pub width: f32,

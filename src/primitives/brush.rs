@@ -135,9 +135,14 @@ pub enum Interp {
 /// bounding rect end-to-end at the given angle.
 ///
 /// Stops live inline via `ArrayVec<[Stop; MAX_STOPS]>` so a
-/// `LinearGradient` value is heap-free and `Copy`. Total size is ~80 B
-/// (4 B angle + 64 B stops + 1 B spread + 1 B interp + pad).
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+/// `LinearGradient` value is heap-free. Total size is ~80 B (4 B angle
+/// + 64 B stops + 1 B spread + 1 B interp + pad).
+///
+/// **Not `Copy`** — the 40 B `ArrayVec` made implicit per-frame
+/// copies expensive through the recording chain; see `Brush`'s
+/// comment for the auto-`Copy` audit story. `.clone()` is cheap
+/// (one inline memcpy) — just explicit.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct LinearGradient {
     pub angle: f32,
     pub stops: ArrayVec<[Stop; MAX_STOPS]>,
@@ -238,7 +243,7 @@ impl LinearGradient {
 ///
 /// Per-variant `Interp` default: `Oklab` — radial fills are usually
 /// soft glows where perceptual smoothness matters most.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct RadialGradient {
     pub center: Vec2,
     pub radius: Vec2,
@@ -323,7 +328,7 @@ impl RadialGradient {
 /// Oklab can shift the perceived hue at the midpoint. (A future
 /// `Oklch{hue}` interp would be the truly right default — see
 /// `docs/roadmap/brushes.md`.)
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct ConicGradient {
     pub center: Vec2,
     pub start_angle: f32,
@@ -426,7 +431,16 @@ fn collect_stops<const N: usize>(
 /// gradients of the same variant (see `docs/roadmap/brushes.md` "Future
 /// work: gradient morph animation"). Stroke-with-gradient is still
 /// solid-only; lowering sites call `as_solid().expect(...)` for stroke.
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+// `Brush` is intentionally **not `Copy`** — the gradient variants
+// carry a 40 B `ArrayVec<[Stop; 8]>` and the whole enum is 60 B. The
+// recording chain used to thread `Brush` (often inside `Background`)
+// through 3-4 functions per chromed widget by value; auto-`Copy` hid
+// an O(N) of `vmovups` per frame in `Ui::node_with_chrome`. Hot paths
+// now pass `&Brush` / `&Background`; explicit `.clone()` at the
+// remaining duplication sites keeps the cost auditable. See
+// `Animatable`'s `Clone` (not `Copy`) supertrait for the matching
+// animation-side relaxation.
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Brush {
     Solid(Color),
     Linear(LinearGradient),
@@ -451,11 +465,13 @@ impl Brush {
     /// Extracts the underlying `Color` for the solid fast path. Returns
     /// `None` for gradient variants; downstream sites that don't yet
     /// support gradient paint (currently: stroke) `.expect()` with a
-    /// TODO message.
+    /// TODO message. Takes `&self` so callers with borrowed `Brush`
+    /// (e.g. inside an `AnimatedLook`'s background) don't need to clone
+    /// just to pull out the solid color.
     #[inline]
-    pub const fn as_solid(self) -> Option<Color> {
+    pub const fn as_solid(&self) -> Option<Color> {
         match self {
-            Brush::Solid(c) => Some(c),
+            Brush::Solid(c) => Some(*c),
             Brush::Linear(_) | Brush::Radial(_) | Brush::Conic(_) => None,
         }
     }
@@ -465,7 +481,7 @@ impl Brush {
     /// gradient-not-supported assert; remove this method when slice 2 lands.
     #[inline]
     #[track_caller]
-    pub fn expect_solid(self) -> Color {
+    pub fn expect_solid(&self) -> Color {
         self.as_solid().expect(
             "gradient brush rendering not yet implemented; see docs/roadmap/brushes.md slice 2",
         )
@@ -513,8 +529,12 @@ impl std::hash::Hash for Brush {
 impl Animatable for Brush {
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
-        match (a, b) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(Color::lerp(x, y, t)),
+        // Match on `(&a, &b)` instead of `(a, b)` so the gradient
+        // fallback can still hand back one of the originals without
+        // re-`Clone` — the tuple-by-value pattern used to work via
+        // `Brush: Copy`, but the trait now requires only `Clone`.
+        match (&a, &b) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(Color::lerp(*x, *y, t)),
             // Gradient morphs snap; see docs/roadmap/brushes.md
             // "Future work: gradient morph animation."
             _ => {
@@ -528,15 +548,15 @@ impl Animatable for Brush {
     }
     #[inline]
     fn sub(self, other: Self) -> Self {
-        match (self, other) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.sub(y)),
+        match (&self, &other) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.sub(*y)),
             _ => self,
         }
     }
     #[inline]
     fn add(self, other: Self) -> Self {
-        match (self, other) {
-            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.add(y)),
+        match (&self, &other) {
+            (Brush::Solid(x), Brush::Solid(y)) => Brush::Solid(x.add(*y)),
             _ => self,
         }
     }
@@ -604,7 +624,7 @@ mod tests {
             ),
         ];
         for (label, x, y) in cases {
-            assert_eq!(h(*x), h(*y), "case: {label}");
+            assert_eq!(h(x.clone()), h(y.clone()), "case: {label}");
         }
     }
 
@@ -700,8 +720,8 @@ mod tests {
         let a = Brush::Linear(g0);
         let b = Brush::Linear(g1);
         // t < 1.0 snaps to a; t >= 1.0 snaps to b.
-        assert_eq!(Brush::lerp(a, b, 0.5), a);
-        assert_eq!(Brush::lerp(a, b, 1.0), b);
+        assert_eq!(Brush::lerp(a.clone(), b.clone(), 0.5), a);
+        assert_eq!(Brush::lerp(a, b.clone(), 1.0), b);
     }
 
     #[test]
@@ -781,8 +801,8 @@ mod tests {
             stops,
         ));
         let c = Brush::Conic(ConicGradient::new(Vec2::splat(0.5), 0.0, stops));
-        assert_ne!(h(l), h(r));
-        assert_ne!(h(r), h(c));
+        assert_ne!(h(l.clone()), h(r.clone()));
+        assert_ne!(h(r), h(c.clone()));
         assert_ne!(h(l), h(c));
     }
 

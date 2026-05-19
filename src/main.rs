@@ -156,7 +156,7 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
 /// the defaults.
 fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonTheme {
     palantir::ButtonTheme {
-        normal: default.hovered,
+        normal: default.hovered.clone(),
         ..default.clone()
     }
 }

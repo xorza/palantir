@@ -210,7 +210,10 @@ impl<'r> Tooltip<'r> {
             let mut element = self.element;
             element.salt = Salt::Verbatim(bubble_id);
             let text_style = ui.theme.tooltip.text;
-            let chrome = self.chrome.unwrap_or(ui.theme.tooltip.panel);
+            let chrome = self
+                .chrome
+                .clone()
+                .unwrap_or_else(|| ui.theme.tooltip.panel.clone());
             if element.padding == Spacing::ZERO {
                 element.padding = ui.theme.tooltip.padding;
             }

@@ -16,7 +16,16 @@ use glam::Vec2;
 /// target, so we skip the sub + magnitude pair on the steady-state
 /// path. All built-in and derived types already implement
 /// `PartialEq`.
-pub trait Animatable: Copy + PartialEq + 'static {
+///
+/// `Clone` (not `Copy`): heavy `Animatable` types — `Background`
+/// (168 B), `Brush` (60 B with inline gradient stops), `Stroke` — used
+/// to auto-`Copy` through the recording chain. Per-frame stack copies
+/// of those types showed up at ~35 % self in `Ui::node_with_chrome`
+/// (`vmovups` ladders). Forcing `.clone()` at duplication sites makes
+/// every copy a deliberate call-site decision; small `Copy` types
+/// (`f32`, `Vec2`, `Color`) still pass through the trait at zero
+/// cost because `Copy → Clone` is a no-op codegen.
+pub trait Animatable: Clone + PartialEq + 'static {
     fn lerp(a: Self, b: Self, t: f32) -> Self;
     fn sub(self, other: Self) -> Self;
     fn add(self, other: Self) -> Self;

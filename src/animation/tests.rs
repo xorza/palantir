@@ -764,7 +764,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         shadow: Shadow::NONE,
     };
     let look = WidgetLook {
-        background: Some(bg),
+        background: Some(bg.clone()),
         text: None, // → falls back to TextStyle default
     };
     let fallback = TextStyle::default();
@@ -776,7 +776,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         captured.set(Some(look.animate(ui, id, fallback, None)));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
-    let snap = captured.get().expect("animate ran");
+    let snap = captured.take().expect("animate ran");
     assert_eq!(snap.background.fill, bg.fill, "None: fill snaps to target");
     assert_eq!(
         snap.background.stroke.width, 2.0,
@@ -803,7 +803,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     let look2 = WidgetLook {
         background: Some(Background {
             fill: Color::hex(0xff0000).into(),
-            ..bg
+            ..bg.clone()
         }),
         text: None,
     };
@@ -847,7 +847,14 @@ fn spring_snap_fields_carry_target_immediately() {
         corners: Corners::all(12.0),
         shadow: Shadow::NONE,
     };
-    let r = map.tick(id, SLOT, target, AnimSpec::SPRING, 0.016, next_frame());
+    let r = map.tick(
+        id,
+        SLOT,
+        target.clone(),
+        AnimSpec::SPRING,
+        0.016,
+        next_frame(),
+    );
     assert!(
         !r.settled,
         "spring with a real fill diff must remain in flight after one step",
