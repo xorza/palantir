@@ -184,27 +184,45 @@ impl FrameArena {
         let stroke = ShapeStroke::from(bg.stroke);
         let corners = bg.corners;
         let shadow: crate::forest::shapes::record::LoweredShadow = bg.shadow.into();
-        // Canonical authoring hash: fold `fill` (variant tag + colour
-        // or pre-baked gradient hash) + packed `stroke` bytes + radius
-        // + shadow. Single producer site so downstream consumers read
-        // `row.hash` without re-walking the fields. Matches the prior
-        // `ChromeRow::Hash` impl byte-for-byte.
-        let mut h = FxHasher::new();
-        match fill {
-            ShapeBrush::Solid(c) => {
-                h.write_u8(0);
-                use std::hash::Hash;
-                c.hash(&mut h);
-            }
-            ShapeBrush::Gradient(_) => {
-                h.write_u8(1);
-                h.write_u64(fill_grad_hash);
-            }
+        // Canonical authoring hash: fold all inputs into one
+        // `Hasher::pod` call. Hashing field-by-field via 5 separate
+        // `Hasher::write*` calls (the prior shape) paid `hash_bytes`
+        // setup + final `add_to_hash` 5 times — ~40 cycles of overhead
+        // dominated `lower_background`'s self-time (~0.5% of frame
+        // total). The Pod struct below is layout-engineered to have
+        // zero internal padding bytes (u64s first → 2-align Pod
+        // structs → tag → explicit tail pad), so `bytemuck::NoUninit`
+        // / `bytes_of` is sound. Hash value differs from the prior
+        // byte-for-byte form — no consumer pins literal hash values
+        // and damage auto-resyncs on first-frame mismatch.
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        struct ChromeHashBytes {
+            fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
+            corners_u64: u64,
+            stroke: ShapeStroke,                                  // 10 B align 2
+            shadow: crate::forest::shapes::record::LoweredShadow, // 18 B align 2
+            fill_tag: u8,
+            _pad: [u8; 3],
         }
-        h.write(bytemuck::bytes_of(&stroke));
-        use std::hash::Hash;
-        corners.hash(&mut h);
-        shadow.hash(&mut h);
+        let fill_payload: u64 = match fill {
+            ShapeBrush::Solid(c) => u64::from_ne_bytes(bytemuck::cast(c.0)),
+            ShapeBrush::Gradient(_) => fill_grad_hash,
+        };
+        let fill_tag: u8 = match fill {
+            ShapeBrush::Solid(_) => 0,
+            ShapeBrush::Gradient(_) => 1,
+        };
+        let packed = ChromeHashBytes {
+            fill_payload,
+            corners_u64: bytemuck::cast(corners),
+            stroke,
+            shadow,
+            fill_tag,
+            _pad: [0; 3],
+        };
+        let mut h = FxHasher::new();
+        h.pod(&packed);
         let hash = crate::forest::rollups::NodeHash(h.finish());
         ChromeRow {
             fill,
