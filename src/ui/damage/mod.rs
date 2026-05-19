@@ -103,8 +103,6 @@ pub(crate) struct NodeSnapshot {
 /// Capacities on `dirty` and `prev` are retained across frames;
 /// `region` is inline (`DamageRegion` is `Copy`).
 pub(crate) struct DamageEngine {
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) dirty: Vec<NodeId>,
     /// Per-pass merge budget (extra-overdraw px) used when
     /// `compute` builds the next frame's region. Defaults to
     /// [`DEFAULT_PASS_BUDGET_PX`]; override in place (e.g. from a
@@ -135,11 +133,6 @@ pub(crate) struct DamageEngine {
     /// `NodeSnapshot::paint_span` points into. Drives the compaction
     /// trigger. Counted in entries, not bytes.
     pub(crate) paint_snaps_orphaned: u32,
-    /// Compaction-event counter — bumped each time
-    /// `compact_paint_snaps` runs. Gated behind `internals` so
-    /// benches can verify the path is actually exercised.
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) compactions_run: u32,
     /// Pass-1 scratch buffer. `compute` walks every damage source
     /// (structural diff, predamaged anim rects, removed-widget evict)
     /// and appends each contribution here without applying the merge
@@ -147,6 +140,7 @@ pub(crate) struct DamageEngine {
     /// which produces the bounded region. Retained capacity — no
     /// per-frame allocation in steady state.
     pub(crate) raw_rects: Vec<Rect>,
+
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the Occupied-equal arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
@@ -155,6 +149,13 @@ pub(crate) struct DamageEngine {
     /// `dirty` — production builds don't pay the increment.
     #[cfg(any(test, feature = "internals"))]
     pub(crate) subtree_skips: u32,
+    /// Compaction-event counter — bumped each time
+    /// `compact_paint_snaps` runs. Gated behind `internals` so
+    /// benches can verify the path is actually exercised.
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) compactions_run: u32,
+    #[cfg(any(test, feature = "internals"))]
+    pub(crate) dirty: Vec<NodeId>,
 }
 
 impl Default for DamageEngine {
@@ -354,6 +355,7 @@ impl DamageEngine {
         let paint_snaps = &mut self.paint_snaps;
         let orphaned = &mut self.paint_snaps_orphaned;
         let raw_rects = &mut self.raw_rects;
+        
         #[cfg(any(test, feature = "internals"))]
         let dirty_out = &mut self.dirty;
         #[cfg(any(test, feature = "internals"))]
