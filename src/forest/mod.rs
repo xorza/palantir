@@ -103,10 +103,9 @@ pub(crate) struct Forest {
     /// Layer scope stack. Top is the active layer for the next
     /// `open_node`; the entry below (when any) is the layer
     /// `pop_layer` will restore. Seeded with `[Layer::Main]` and never
-    /// drained below that baseline — `pop_layer` asserts. Anchors save
-    /// and restore on the per-`Tree` `pending_anchors` stack, so
-    /// nested same-layer pushes (currently forbidden by the
-    /// `Forest::push_layer` assert) would also be safe.
+    /// drained below that baseline — `pop_layer` asserts. Anchors live
+    /// on the per-`Tree` `pending_anchor` slot; `push_layer`'s no-
+    /// nesting assert keeps the slot single-occupancy.
     layer_stack: Vec<Layer>,
 }
 
@@ -275,7 +274,11 @@ impl Forest {
             tree.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
         );
-        tree.pending_anchors.push(PendingAnchor { anchor, size });
+        debug_assert!(
+            tree.pending_anchor.is_none(),
+            "push_layer({layer:?}) found pending_anchor already set — no-nesting invariant violated",
+        );
+        tree.pending_anchor = Some(PendingAnchor { anchor, size });
         self.layer_stack.push(layer);
     }
 
@@ -292,7 +295,7 @@ impl Forest {
             tree.open_frames.len(),
             layer,
         );
-        tree.pending_anchors.pop();
+        tree.pending_anchor = None;
         self.layer_stack.pop();
     }
 
