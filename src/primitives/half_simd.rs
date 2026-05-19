@@ -91,6 +91,14 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    //! Bench reach-in: exposes the same pack/unpack entry points under
+    //! the canonical `test_support` gate so external benches can call
+    //! them without making the module `pub`.
+    pub use super::{f16x4_from_f32x4, f16x4_to_f32x4};
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
