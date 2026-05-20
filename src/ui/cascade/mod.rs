@@ -7,6 +7,8 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&Cascades` as their single frozen-state handle.
 
+pub(crate) mod cache;
+
 use crate::common::hash::Hasher;
 use crate::common::per_layer::PerLayer;
 use crate::forest::Forest;
@@ -158,6 +160,14 @@ struct Frame {
     /// fold in their own `layout_rect`, avoiding a re-hash of the 32 B
     /// ancestor prefix per node. See `hash_cascade_input`.
     cascade_prefix: Hasher,
+    /// `paint_arena.rows.len()` snapshotted at push time. Subtree's
+    /// paint range is `[paint_capture_start..paint_arena.rows.len()]`
+    /// once this frame pops. `u32::MAX` is the "skip capture for
+    /// this subtree" sentinel — set at push when `is_cacheable`
+    /// rejected the subtree, or overwritten mid-walk when a
+    /// descendant cache hit poisoned this ancestor (see the poison
+    /// loop in `run_tree`).
+    paint_capture_start: u32,
 }
 
 /// All per-layer cascade state grouped on one struct. `rows` +
@@ -377,6 +387,12 @@ pub(crate) struct HitTargets {
 #[derive(Default)]
 pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
+    /// Cross-frame subtree-skip cache. Snapshots cache the per-node
+    /// rows + per-paint contributions of a subtree keyed on
+    /// `(WidgetId, subtree_hash, parent_prefix, root_rect_q)`; a hit
+    /// blits the cached output and skips the walk for that subtree.
+    /// See `docs/roadmap/cascade-cache.md`.
+    pub(crate) cache: cache::CascadeCache,
 }
 
 impl CascadesEngine {
@@ -394,6 +410,7 @@ impl CascadesEngine {
             r.entries.clear();
             r.entries.reserve(total);
         }
+        self.cache.reset_counters();
 
         for (layer, tree) in forest.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
@@ -402,7 +419,15 @@ impl CascadesEngine {
             let entries_base = r.entries.len() as u32;
             r.layers[layer].reset_for(n, tree.shapes.records.len(), entries_base);
             self.stack.clear();
-            run_tree(tree, layer_layout, r, layer, &mut self.stack);
+            run_tree(
+                tree,
+                layer_layout,
+                r,
+                layer,
+                &mut self.stack,
+                &mut self.cache,
+                entries_base,
+            );
             // Invariant guarding `Cascades::entry_idx_of`'s
             // `entries_base + node.0` arithmetic: every node in
             // `tree.records` must push exactly one `EntryRow`. An
@@ -427,6 +452,10 @@ impl CascadesEngine {
         // replaces N per-widget hashmap inserts.
         layout.cascades.by_id.clone_from(&forest.ids.curr);
     }
+
+    pub(crate) fn sweep_removed(&mut self, removed: &rustc_hash::FxHashSet<WidgetId>) {
+        self.cache.sweep_removed(removed);
+    }
 }
 
 /// Finalize one stack frame: write the rolled-up
@@ -442,29 +471,96 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
     }
 }
 
+/// `finalize_frame` + capture the popped subtree into the cross-frame
+/// cache. Called instead of `finalize_frame` from every pop site so
+/// snapshot storage stays in lockstep with the rollup writeback.
+#[inline]
+#[allow(clippy::too_many_arguments)]
+fn finalize_and_capture(
+    stack: &mut [Frame],
+    layer_cascades: &mut LayerCascades,
+    entries: &Soa<EntryRow>,
+    entries_base: u32,
+    tree: &Tree,
+    layer_layout: &LayerLayout,
+    root_prefix: &Hasher,
+    cache: &mut cache::CascadeCache,
+    popped: Frame,
+) {
+    let node_idx = popped.node_idx;
+    let root_paint_rect = popped.subtree_paint_rect;
+    let subtree_end = popped.subtree_end;
+    let paint_capture_start = popped.paint_capture_start;
+    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
+    // `u32::MAX` is the "skip capture" sentinel — set at push time
+    // when the subtree was sub-threshold, or mid-walk when a
+    // descendant cache hit poisoned this ancestor (see the poison
+    // loop in `run_tree`).
+    if paint_capture_start == u32::MAX {
+        return;
+    }
+    let widget_id = entries.widget_id()[entries_base as usize + node_idx];
+    // Recompute the probe key at capture time — the parent's
+    // cascade_prefix is `stack.last()` (we already popped) or the root
+    // prefix. Saves stashing 32 B per Frame on the push side, and
+    // captures only fire on cacheable subtrees so the extra
+    // `finish()` is amortized.
+    let parent_prefix = match stack.last() {
+        Some(p) => p.cascade_prefix.finish(),
+        None => root_prefix.finish(),
+    };
+    let key = cache::ProbeKey {
+        subtree_hash: tree.rollups.subtree[node_idx],
+        parent_prefix,
+        rect_q: cache::quantize_rect(layer_layout.rect[node_idx]),
+    };
+    cache.capture(
+        widget_id,
+        key,
+        tree,
+        node_idx as u32,
+        subtree_end,
+        root_paint_rect,
+        layer_cascades,
+        entries,
+        entries_base,
+        paint_capture_start,
+    );
+}
+
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
     cascades: &mut Cascades,
     layer: Layer,
     stack: &mut Vec<Frame>,
+    cache: &mut cache::CascadeCache,
+    entries_base: u32,
 ) {
-    let n = tree.records.len();
+    let n = tree.records.len() as u32;
     let layout_col = tree.records.layout();
     let attrs_col = tree.records.attrs();
     let widget_ids = tree.records.widget_id();
     let ends = tree.records.subtree_end();
     let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
 
-    for i in 0..n {
+    let mut i: u32 = 0;
+    while i < n {
+        // Pop completed frames + capture their snapshots.
         while let Some(top) = stack.last() {
-            if (i as u32) < top.subtree_end {
+            if i < top.subtree_end {
                 break;
             }
             let popped = stack.pop().unwrap();
-            finalize_frame(
+            finalize_and_capture(
                 stack,
-                &mut cascades.layers[layer].subtree_paint_rects,
+                &mut cascades.layers[layer],
+                &cascades.entries,
+                entries_base,
+                tree,
+                layout,
+                &root_prefix,
+                cache,
                 popped,
             );
         }
@@ -480,13 +576,65 @@ fn run_tree(
                 None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
             };
 
-        let id = NodeId(i as u32);
-        let attrs = attrs_col[i];
+        let iu = i as usize;
+        let id = NodeId(i);
+        let attrs = attrs_col[iu];
 
         let disabled = parent_dis || attrs.is_disabled();
-        let invisible = parent_inv || !layout_col[i].visibility().is_visible();
+        let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
 
-        let layout_rect = layout.rect[id.idx()];
+        let layout_rect = layout.rect[iu];
+        let subtree_end = ends[iu];
+
+        // Cache lookup. Only build the probe key + probe when this
+        // subtree is large enough to be worth caching — the size gate
+        // matches `capture`, and skips the per-leaf hashmap traffic +
+        // 24 B of key-building on every walk.
+        let wid = widget_ids[iu];
+        let cacheable = cache::CascadeCache::is_cacheable(subtree_end - i);
+        if cacheable {
+            let cache_key = cache::ProbeKey {
+                subtree_hash: tree.rollups.subtree[iu],
+                parent_prefix: parent_prefix.finish(),
+                rect_q: cache::quantize_rect(layout_rect),
+            };
+            if cache.probe(wid, &cache_key) {
+                let root_paint_rect = cache.blit(
+                    wid,
+                    tree,
+                    i,
+                    subtree_end,
+                    &mut cascades.layers[layer],
+                    &mut cascades.entries,
+                );
+                // Poison every ancestor's capture sentinel: a subtree
+                // that contains a static (cache-hitting) child *and*
+                // arrived here through a miss is itself dynamic — its
+                // own hash will keep shifting next frame and any
+                // snapshot of it would be dead weight. Walk top-down
+                // and stop at the first already-poisoned ancestor —
+                // an earlier sibling's hit already covered everything
+                // above it. Without this rule the partial-damage
+                // workload re-captures root-ish ancestors every frame
+                // and the cache becomes a net loss.
+                for ancestor in stack.iter_mut().rev() {
+                    if ancestor.paint_capture_start == u32::MAX {
+                        break;
+                    }
+                    ancestor.paint_capture_start = u32::MAX;
+                }
+                // Fold the subtree's contribution into the parent's
+                // running rollup — the path the original walk's pop
+                // loop would have taken if we'd walked through this
+                // subtree.
+                if let Some(parent) = stack.last_mut() {
+                    parent.subtree_paint_rect = parent.subtree_paint_rect.union(root_paint_rect);
+                }
+                i = subtree_end;
+                continue;
+            }
+        }
+
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = clip_to(screen_rect, parent_clip);
         // Self-transform is read once here and threaded into both
@@ -507,7 +655,7 @@ fn run_tree(
         // shaped buffer) reports damage well past the editor's rect
         // on every scroll tick.
         let shape_clip = if clips {
-            let padding = layout_col[i].padding;
+            let padding = layout_col[iu].padding;
             let mask_local = layout_rect.deflated_by(padding);
             Some(clip_to(
                 parent_transform.apply_rect(mask_local),
@@ -515,6 +663,16 @@ fn run_tree(
             ))
         } else {
             parent_clip
+        };
+        // Snapshot the paint-arena cursor *before* `compute_paint_rect`
+        // runs so the popped frame captures every paint row emitted by
+        // this node's subtree. `u32::MAX` is the "don't capture this
+        // subtree" sentinel — skips the recompute + insert in
+        // `finalize_and_capture` for non-cacheable subtrees.
+        let paint_capture_start = if cacheable {
+            cascades.layers[layer].paint_arena.rows.len() as u32
+        } else {
+            u32::MAX
         };
         let paint_rect = compute_paint_rect(
             tree,
@@ -571,7 +729,7 @@ fn run_tree(
         };
         let focusable = !cascaded_off && attrs.is_focusable();
         cascades.push_entry(EntryRow {
-            widget_id: widget_ids[i],
+            widget_id: wid,
             rect: visible_rect,
             sense,
             focusable,
@@ -582,8 +740,7 @@ fn run_tree(
         // Leaves can't be a parent_prefix for anyone — skip the 32 B
         // prefix-hash work, push a fresh-state Hasher as a placeholder.
         // `Hasher::new()` is just `FxHasher { hash: 0 }`, ~free.
-        let subtree_end = ends[i];
-        let is_leaf = subtree_end == (i as u32) + 1;
+        let is_leaf = subtree_end == i + 1;
         let cascade_prefix = if is_leaf {
             Hasher::new()
         } else {
@@ -595,17 +752,25 @@ fn run_tree(
             disabled,
             invisible,
             subtree_end,
-            node_idx: i,
+            node_idx: iu,
             subtree_paint_rect: subtree_seed,
             cascade_prefix,
+            paint_capture_start,
         });
+        i += 1;
     }
     // Drain frames whose subtree extends to the end of the tree —
     // they never hit the `< top.subtree_end` exit at the loop head.
     while let Some(popped) = stack.pop() {
-        finalize_frame(
+        finalize_and_capture(
             stack,
-            &mut cascades.layers[layer].subtree_paint_rects,
+            &mut cascades.layers[layer],
+            &cascades.entries,
+            entries_base,
+            tree,
+            layout,
+            &root_prefix,
+            cache,
             popped,
         );
     }

@@ -1,136 +1,131 @@
-# Cascade subtree-skip cache (speculative)
+# Cascade subtree-skip cache
 
-Profiler-motivated proposal — **not yet justified by a bench**. The
-encode-cache postmortem (`docs/cache-history/encode.md`) is a direct
-warning that "memcpy-shaped O(N) walks" don't necessarily amortize
-under a cache; read it before committing.
+Cross-frame subtree cache for `CascadesEngine::run`. Skips the per-node
+walk for subtrees whose `(WidgetId, subtree_hash, parent_prefix,
+root_rect_q)` matches a snapshot from the previous frame; on hit,
+blits the cached per-node rows (`Cascade`, `subtree_paint_rect`,
+`EntryRow`, paint `Span`) and per-paint rows (`Paint`,
+`shape_to_paint` links) into the live cascade arenas.
 
-## Motivation
+Live: `src/ui/cascade/cache.rs` + integration in
+`src/ui/cascade/mod.rs`. Sweep eviction rides on the same
+`Ui::finalize_frame` plumbing as `MeasureCache` and friends.
 
-`scripts/bench-perf.sh BENCH=frame FEATURES=internals` (2026-05-20,
-ASUS ROG, P-core 0) attributes **11.7% self-time** to
-`CascadesEngine::run` across the four `frame/*` cases — the largest
-single function in the report. Annotation showed no inner hot
-instruction (max 1.38%); the cost is a dense per-node body, ~100 ns
-on ~150 nodes, with IPC 3.1 and 0.26% branch miss rate. There is no
-local micro-optimization available (a layer-hoist rewrite measured
-+2.8% regression on `cached_cpu`).
+## Bench
 
-For `frame/cached_cpu` (99 µs, fully-cached path) cascade is
-~11.6 µs. If a subtree-skip cache turned that into a memcpy at
-~100 B/node, the upper-bound win is ~10% of `cached_cpu`.
+ASUS ROG (i9-13980HX, P-core), `cargo bench --bench frame --features internals`:
 
-## Why it could work where the encode cache didn't
+| arm          | no cache  | with cache | delta |
+| ------------ | --------- | ---------- | ----- |
+| cached_cpu   | 102.66 µs | 96.05 µs   | **−6.4%** |
+| partial_cpu  | 141.14 µs | 131.67 µs  | **−6.7%** |
+| resizing_cpu | 1423.5 µs | 1450.4 µs  | +1.9% (noise, p=0.80) |
 
-The encode cache failed because re-encoding was already memcpy-shaped
-(`Vec<u32>` payload push) and the cache replay (`extend_from_slice` +
-per-cmd start/rect rebase) did equal work in a different shape.
+GPU arms within ±5% noise band.
 
-Cascade is more than memcpy per node:
+## Design
 
-- Per-node `compute_paint_rect` does `parent_transform.compose(self_transform)`
-  + per-shape `apply_rect` + per-shape `Rect::union` rollup.
-- `build_cascade_prefix` + `finish_cascade_input` per node (FxHash over
-  32 B of state).
-- `Rect::union` ripple through the parent stack on pop.
-- Multiple `Vec::push` (rows, subtree_paint_rects, entries SoA,
-  paint_arena rows, paint_arena spans) with bounds checks each.
+### Eligibility
 
-A cache hit replaces all of that with `extend_from_slice` of stored
-row ranges — strictly less work per node. **If** the hit rate is high
-enough.
+Only subtrees with `span >= MIN_CACHEABLE_SPAN` (currently 256) are
+probed and captured. The threshold is calibrated against the bench
+fixture (~840-node tree): one root-ish subtree (~820 nodes) clears
+the bar and accounts for nearly every hit; intermediate ancestors
+(30–500 nodes) were captured at lower thresholds but never amortized
+their write cost.
 
-## Mechanism sketch
+### Hit poisoning of ancestors
 
-Mirror `MeasureCache`. Key per cache-eligible subtree on:
+On a cache hit at depth d, every frame on the walk stack (i.e. every
+strict ancestor of the hit subtree) has its `paint_capture_start` set
+to `u32::MAX` — the "skip capture" sentinel. The reasoning is direct:
+a subtree that contains a static (cache-hitting) descendant *and*
+arrived through a miss is itself dynamic — its own hash will shift
+again next frame and any snapshot of it would be dead weight. Without
+this rule, partial-damage workloads (one animated counter / blinking
+caret) re-captured the root subtree every frame at full size, turning
+the cache into a net loss (+8% partial regression in the prototype).
+With the rule, partial sees 0 captures in steady state and crosses
+into a clean win.
+
+### In-place rewrite on same-shape captures
+
+When evicting a snapshot whose new capture has the same node /
+paint / shape-link counts, the cache overwrites the existing arena
+slots rather than evict-and-append. Without this, an animated widget
+whose authoring hash shifts every frame would grow the arenas
+monotonically and violate the alloc-free invariant
+(`alloc_free` test pins zero blocks in steady state).
+
+### Storage
+
+Per-node arenas (`rows: Vec<Cascade>`, `sptrs: Vec<Rect>`,
+`entries: Vec<EntryRow>`, `paint_spans: Vec<Span>`) share a
+`node_live` liveness counter. Per-paint and per-shape-link data
+ride on `LiveArena`s (`paints`, `shape_links`). Compaction is not
+yet wired — `release` marks slack in place; if arena bloat shows
+up under long-lived workloads, add the same mark-garbage compaction
+path `MeasureCache` uses.
+
+Per-snapshot key/extent metadata:
 
 ```text
-(WidgetId, subtree_hash, parent_cascade_prefix_hash, root_layout_rect_q)
+Snapshot {
+    key: ProbeKey,                  // 32 B (subtree_hash + parent_prefix + rect_q)
+    nodes: Span,                    // range in 4 per-node arenas
+    paints: Span,                   // range in `paints` arena
+    shape_links: Span,              // range in `shape_links` arena
+    root_paint_rect: Rect,          // 16 B (parent-stack rollup on hit)
+}
 ```
 
-Inputs already exist:
+### Frame state
 
-- `subtree_hash` — `Tree.rollups.subtree[i]` (computed in `post_record`)
-- `parent_cascade_prefix_hash` — finish the `Hasher` on the parent's
-  `Frame.cascade_prefix` once per push and stash the u64; cheap because
-  `build_cascade_prefix` already runs for non-leaves.
-- `root_layout_rect_q` — integer-quantized `layout.rect[i]`; mirrors
-  `available_q` in MeasureCache.
+`Frame::paint_capture_start: u32` doubles as the "should capture this
+frame on pop?" signal:
 
-A hit blits five row ranges from per-WidgetId arenas into the live
-cascade output:
+- Set to `cascades.paint_arena.rows.len()` at push for cacheable subtrees.
+- Set to `u32::MAX` for non-cacheable subtrees (sub-threshold span).
+- Overwritten to `u32::MAX` on every ancestor when a descendant hits
+  (the poisoning rule above).
 
-1. `Cascade` rows → `cascades.rows[base..base+span]`
-2. `Rect` rollups → `cascades.subtree_paint_rects[base..base+span]`
-3. `EntryRow` SoA columns → global `cascades.entries` (variable-length;
-   stored subtree-relative, copied at current `entries.len()`)
-4. `Paint` rows → `cascades.paint_arena.rows` (stored subtree-relative
-   indices; rebase on copy)
-5. `Span` per-node → `cascades.paint_arena.node_spans[base..]` (stored
-   subtree-relative; rebase by the current `paint_arena.rows.len()`
-   before copy)
+`finalize_and_capture` reads the field on pop: `u32::MAX` skips the
+recompute + insert path; any other value triggers the capture.
 
-Plus `paint_arena.shape_to_paint[shape_idx]` — sparse per-shape,
-indexed by tree-wide shape index, so stored subtree-relative-to-the-
-root-shape-index and rebased on copy.
+The probe key for capture is recomputed at pop time rather than
+stashed on `Frame` — `stack.last().cascade_prefix.finish()` gives the
+parent prefix (the stack was popped already), and the other inputs
+come straight from `tree.rollups` and `layout.rect`. Saves 32 B per
+`Frame` on the push side; the extra `finish()` call only fires on
+captures (rare in steady state).
 
-Storage layout: same `LiveArena` discipline as `MeasureCache` — flat
-per-WidgetId arenas with mark-garbage compaction, eviction via
-`SeenIds.removed` plumbed through `Ui::post_record`.
+### Why the encode cache postmortem warnings didn't apply
 
-## Risks / open questions
+`docs/cache-history/encode.md` declined a per-subtree encode cache
+because re-encoding was already `Vec<u32>::extend_from_slice`-shaped
+and the cache's "store-relative, rebase on replay" did equal work in
+a different shape. The cascade walk is **not** memcpy-shaped — every
+node runs `compute_paint_rect` (per-shape transform composition,
+per-shape paint-rect emission via `lift_to_screen`/`Rect::union`) +
+`build_cascade_prefix` + `finish_cascade_input`, all genuine arithmetic
+the cache replaces with `extend_from_slice` of pre-computed rows.
 
-1. **Encode-cache shape match.** The encode cache had the same
-   "store subtree-relative, rebase on copy" pattern. If the rebase
-   step (translating row indices by `entries.len()` /
-   `paint_arena.rows.len()` / shape-index base) ends up as expensive
-   as the per-node walk, the cache is a wash. Need a back-of-the-
-   envelope cycle count *before* implementing.
-2. **Authoring-stable but transform-shifting subtrees.** A scrolled
-   panel re-records the same authoring (same subtree_hash) but its
-   `parent_transform` shifts every frame. That invalidates every
-   descendant cache entry — they all rebuild. Plausible bench: a
-   long scrolled list. Need to know whether the workloads where
-   cascade is hot are the workloads where this cache hits.
-3. **Damage dependency.** Damage already does
-   `subtree_hash + cascade_input` equality at the root of a subtree
-   to skip its diff (`src/ui/damage/mod.rs:553`). The cascade cache
-   would be doing the same check one pass earlier, then duplicating
-   the output. Worth checking whether damage's skip can be widened
-   to also skip the cascade walk for the subtree — i.e. cascade
-   becomes a *consumer* of last frame's cascade output rather than
-   gaining its own cache. That's a cheaper refactor with the same
-   payoff.
-4. **Hit-rate floor for the steady-state showcase.** The MeasureCache
-   bench (`benches/measure_cache.rs`) sees ~25% wall-time improvement
-   on the `nested` workload at high hit rate. Cascade's potential
-   ceiling is ~11.6 µs / 99 µs = 12% on `cached_cpu`. If the actual
-   hit rate is materially below 90% the win disappears under
-   bookkeeping overhead.
+What the postmortem *did* correctly predict: a naive cache that
+captures every miss balloons the bookkeeping cost above the savings.
+The `MIN_CACHEABLE_SPAN = 256` gate plus the hit-poisoning rule are
+what made the bench cross from "marginal speedup + partial
+regression" into "clean win on every CPU arm".
 
-## Before implementing
+## Bring it forward if
 
-Land a bench first:
-
-1. Pick a representative workload (showcase, frame_visual, or a
-   synthetic high-fanout tree mirroring `benches/frame.rs`).
-2. Add `benches/cascade_cache.rs` with `cached` (steady-state) and
-   `forced_miss` variants — mirror the MeasureCache bench shape.
-3. **Without writing the cache**, instrument `CascadesEngine::run` to
-   count nodes whose `(subtree_hash, parent_prefix, root_rect)` would
-   have hit had a cache existed. If that count is < 80% in steady
-   state on realistic workloads, the cache is dead on arrival — its
-   ceiling is below the bookkeeping floor.
-4. Only if hit-rate ≥ 80% and projected savings ≥ 5% of frame time,
-   implement the cache and run the same bench A/B.
-
-## Bring it back if
-
-- A workload bench shows cascade > 10% of frame time *and* the hit-
-  rate instrumentation in step (3) above clears 80%.
-- A future refactor makes cascade meaningfully more expensive per
-  node (e.g. multi-pass paint-rect rollup, per-shape stencil
-  pre-computation) — today the walk is dense but tight.
-
-Otherwise: file alongside the encode/compose cache postmortems as
-"considered, instrumented, declined".
+- Cache hit rate degrades in a real-app workload — instrument
+  `CascadeCache::{hits, misses, captures, nodes_blit}` via the
+  existing `ui.cascade_cache()` accessor in the showcase HUD.
+- Arena bloat shows up on long-lived workloads — add compaction
+  borrowed from `MeasureCache`.
+- A profile shows the in-place rewrite path as a hot spot — the
+  current implementation does per-entry SoA push rebuilding from
+  `widget_id() / rect() / sense() / focusable() / disabled() /
+  layout_rect()` slices, which is the costliest per-node op. A bulk
+  Soa-column writer (likely needing `unsafe` into `soa-rs`) would
+  trim it.
