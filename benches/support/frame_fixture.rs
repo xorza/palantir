@@ -19,7 +19,12 @@ use palantir::{
     TextStyle, Tooltip, Track, Ui,
 };
 
-pub const WORKLOAD_SCALE: usize = 32;
+// Each include site (bench / example) only uses one constant; the other
+// looks dead via #[path] inclusion.
+#[allow(dead_code)]
+pub const BENCH_SCALE: usize = 32;
+#[allow(dead_code)]
+pub const VISUAL_SCALE: usize = 6;
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
@@ -31,12 +36,12 @@ pub struct FormState {
     pub role: u8,
 }
 
-pub fn build_ui(state: &mut FormState, ui: &mut Ui) {
-    let sidebar_items = 5 * WORKLOAD_SCALE;
-    let chat_messages = 2 * WORKLOAD_SCALE;
-    let canvas_dots = 3 * WORKLOAD_SCALE;
-    let prop_rows = 4 + WORKLOAD_SCALE;
-    let tag_count = 3 * WORKLOAD_SCALE;
+pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
+    let sidebar_items = 5 * scale;
+    let chat_messages = 2 * scale;
+    let canvas_dots = 3 * scale;
+    let prop_rows = 4 + scale;
+    let tag_count = 3 * scale;
 
     let panel_bg = Background {
         fill: Color::rgb(0.14, 0.16, 0.22).into(),

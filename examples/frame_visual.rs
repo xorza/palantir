@@ -17,7 +17,7 @@ struct FrameVisual {
 
 impl App for FrameVisual {
     fn frame(&mut self, ui: &mut Ui) {
-        fixture::build_ui(&mut self.state, ui);
+        fixture::build_ui(&mut self.state, fixture::VISUAL_SCALE, ui);
     }
 }
 

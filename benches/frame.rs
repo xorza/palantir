@@ -23,7 +23,7 @@
 mod fixture;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use fixture::{FormState, build_ui};
+use fixture::{BENCH_SCALE, FormState, build_ui};
 use palantir::{Color, Host};
 use pollster::FutureExt;
 use std::hint::black_box;
@@ -31,12 +31,15 @@ use std::sync::OnceLock;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const SCALE: f32 = 2.0;
-const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(2560, 1600); // 1280x800 @ 2x
+// View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-button
+// wrap, 6-pass shape gallery, 96-dot canvas, chat scroll, notes editor)
+// fits without overflowing the main column.
+const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 4800); // 1920x2400 @ 2x
 const RESIZE_POOL: &[glam::UVec2] = &[
-    glam::UVec2::new(2048, 1280),
-    glam::UVec2::new(2560, 1600),
-    glam::UVec2::new(2304, 1440),
-    glam::UVec2::new(2816, 1792),
+    glam::UVec2::new(3200, 4400),
+    glam::UVec2::new(3840, 4800),
+    glam::UVec2::new(3520, 4600),
+    glam::UVec2::new(4160, 5000),
 ];
 
 struct Gpu {
@@ -102,7 +105,7 @@ fn bench_frame(c: &mut Criterion) {
         let mut state = FormState::default();
         // Prime caches so the first measured iter is steady-state.
         for _ in 0..4 {
-            host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, ui));
+            host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
             g.device
                 .poll(wgpu::PollType::Wait {
                     submission_index: None,
@@ -113,7 +116,7 @@ fn bench_frame(c: &mut Criterion) {
 
         c.bench_function("frame/cached", |b| {
             b.iter(|| {
-                host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, ui));
+                host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
                 g.device
                     .poll(wgpu::PollType::Wait {
                         submission_index: None,
@@ -140,7 +143,7 @@ fn bench_frame(c: &mut Criterion) {
         let mut idx = 0usize;
         for _ in 0..4 {
             host.frame_offscreen(&targets[idx % targets.len()], SCALE, |ui| {
-                build_ui(&mut state, ui)
+                build_ui(&mut state, BENCH_SCALE, ui)
             });
             g.device
                 .poll(wgpu::PollType::Wait {
@@ -155,7 +158,7 @@ fn bench_frame(c: &mut Criterion) {
             b.iter(|| {
                 let target = &targets[idx % targets.len()];
                 idx = idx.wrapping_add(1);
-                host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, ui));
+                host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
                 g.device
                     .poll(wgpu::PollType::Wait {
                         submission_index: None,
