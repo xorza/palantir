@@ -15,7 +15,8 @@ use super::{FontFamily, MeasureResult, TextCacheKey};
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use glyphon::cosmic_text::{
-    Align as CosmicAlign, Attrs, Buffer, Family, FontSystem, Metrics, Shaping, fontdb,
+    Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
+    fontdb,
 };
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
@@ -72,9 +73,13 @@ fn key_for(
 }
 
 fn attrs_for(family: FontFamily) -> Attrs<'static> {
+    // Skip TrueType bytecode hinting: skrifa's hint VM was 50-60% of zoom-frame
+    // CPU time, and at HiDPI / during animated zoom the visual difference is
+    // imperceptible. See `palantir/vendor/glyphon/benches/prepare_zoom.rs`.
+    let base = Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING);
     match family {
-        FontFamily::Sans => Attrs::new().family(Family::Name("Inter")),
-        FontFamily::Mono => Attrs::new().family(Family::Name("JetBrains Mono")),
+        FontFamily::Sans => base.family(Family::Name("Inter")),
+        FontFamily::Mono => base.family(Family::Name("JetBrains Mono")),
     }
 }
 
