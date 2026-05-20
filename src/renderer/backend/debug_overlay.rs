@@ -11,7 +11,7 @@
 //! never enable debug overlays still allocate these buffers (cheap
 //! at ~92 B each) but never upload to them.
 
-use super::UploadCtx;
+use super::GpuCtx;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
@@ -85,7 +85,7 @@ impl DebugOverlay {
     /// the showcase default. Premultiplied-alpha blending means the
     /// rgb channel doubles as the "remaining brightness" multiplier:
     /// 40% alpha → 60% of the underlying pixel survives.
-    pub(super) fn upload_dim(&self, ctx: &mut UploadCtx<'_>, viewport: Vec2, alpha: f32) {
+    pub(super) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2, alpha: f32) {
         let q = Quad {
             rect: Rect {
                 min: Vec2::ZERO,
@@ -124,7 +124,7 @@ impl DebugOverlay {
     /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
     pub(super) fn upload_overlays(
         &mut self,
-        ctx: &mut UploadCtx<'_>,
+        ctx: &mut GpuCtx<'_>,
         rects: &[Rect],
         stroke_color: Color,
         stroke_width: f32,

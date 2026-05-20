@@ -6,7 +6,7 @@ use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 use super::ContentType;
-use crate::renderer::backend::UploadCtx;
+use crate::renderer::backend::GpuCtx;
 
 /// Initial atlas side length. Bumped from glyphon's 256 to skip the
 /// 256→512→1024 grow chain on first frame with non-trivial text.
@@ -238,7 +238,7 @@ impl GlyphAtlas {
     /// `copy_buffer_to_buffer` into our retained staging buffer), plus
     /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
     /// The renderer owns the submit; this method adds no extra one.
-    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut UploadCtx<'_>) {
+    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
         // within an encoder, so recording in this order is enough.

@@ -1,6 +1,7 @@
 mod curve_pipeline;
 mod debug_overlay;
 mod dynamic_buffer;
+mod gpu_ctx;
 pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
 mod image_pipeline;
@@ -10,13 +11,12 @@ mod quad_pipeline;
 mod queue;
 mod schedule;
 mod stencil;
-mod upload_ctx;
 mod viewport;
 #[cfg(feature = "internals")]
 pub(crate) mod write_stats;
 
+pub use self::gpu_ctx::GpuCtx;
 pub use self::queue::Queue;
-pub use self::upload_ctx::UploadCtx;
 
 use self::stencil::STENCIL_FORMAT;
 
@@ -323,14 +323,6 @@ impl WgpuBackend {
         };
         let arena = self.frame_arena.clone();
         let arena = arena.inner();
-        // Sync gradient LUT atlas to GPU. Idle frames (no new
-        // gradients) drain an empty dirty flag and do nothing; first
-        // frame uploads row 0's magenta fallback plus any baked rows
-        // composer queued. Has to run before the render pass starts —
-        // any quad whose `fill_kind` low byte is a gradient tag (1..=3)
-        // samples this texture.
-        self.quad
-            .upload_gradients(&self.queue, &self.caches.gradients);
 
         let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
@@ -415,15 +407,25 @@ impl WgpuBackend {
 
         // Image-registry texture uploads: rare, hit `queue.write_texture`
         // directly (StagingBelt's buffer-only path doesn't help here).
-        // Done before the upload phase so first-frame images have a
-        // bind group ready when the schedule's draw call lands.
-        self.image
-            .drain_registry(&self.device, &self.queue, &self.caches.images);
-
         // Belt-routed upload phase. Scoped so the borrows release
         // before the render-pass phase needs `&mut encoder` cleanly.
         {
-            let mut ctx = UploadCtx::new(&self.device, &mut self.staging_belt, &mut encoder);
+            let mut ctx = GpuCtx::new(
+                &self.device,
+                &self.queue,
+                &mut self.staging_belt,
+                &mut encoder,
+            );
+
+            // Texture-only uploads (the belt is buffer-only). Run
+            // first so any draws below see the right pixels:
+            // - gradient LUT atlas: idle frames drain an empty dirty
+            //   flag and do nothing; first frame uploads row 0's
+            //   magenta fallback plus any baked rows composer queued.
+            // - image registry: first-frame images need a bind group
+            //   ready when the schedule's draw call lands.
+            self.quad.upload_gradients(&ctx, &self.caches.gradients);
+            self.image.drain_registry(&mut ctx, &self.caches.images);
 
             if dim_undamaged {
                 self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f, 0.4);
@@ -895,7 +897,8 @@ impl WgpuBackend {
             // the encoder borrow releases before `begin_render_pass`
             // below.
             {
-                let mut ctx = UploadCtx::new(&self.device, &mut self.staging_belt, encoder);
+                let mut ctx =
+                    GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
                 self.debug.upload_overlays(
                     &mut ctx,
                     &overlay_rects,

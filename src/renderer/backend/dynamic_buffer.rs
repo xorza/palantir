@@ -10,7 +10,7 @@
 //! On Metal each `queue.write_buffer` allocates a fresh
 //! `MTLBlitCommandEncoder` (~26% self-time in `begin_encoding` per the
 //! frame-bench profile). Routing through the
-//! [`UploadCtx`](super::upload_ctx::UploadCtx)'s staging belt collapses
+//! [`GpuCtx`](super::gpu_ctx::GpuCtx)'s staging belt collapses
 //! N writes into N `copy_buffer_to_buffer` commands on one encoder.
 //! The hash gate stays valuable on top — a content match skips the
 //! belt allocation + copy command + memcpy.
@@ -18,7 +18,7 @@
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) plus
 //! `text_backend`'s vbuf.
 
-use super::upload_ctx::UploadCtx;
+use super::gpu_ctx::GpuCtx;
 
 pub(crate) struct DynamicBuffer {
     buffer: wgpu::Buffer,
@@ -103,12 +103,7 @@ impl DynamicBuffer {
     /// Common case: hash `bytes`, grow if needed, schedule a belt
     /// write to offset 0. Returns `true` when a belt write actually
     /// fired. `bytes.len()` must equal `item_count * self.item_size`.
-    pub(crate) fn upload(
-        &mut self,
-        ctx: &mut UploadCtx<'_>,
-        bytes: &[u8],
-        item_count: usize,
-    ) -> bool {
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) -> bool {
         self.upload_with(ctx, item_count, hash_bytes(bytes), |dst, ctx| {
             ctx.write(dst, 0, bytes);
         })
@@ -123,13 +118,13 @@ impl DynamicBuffer {
     /// invoked only when the gate decides a write is needed.
     pub(crate) fn upload_with<F>(
         &mut self,
-        ctx: &mut UploadCtx<'_>,
+        ctx: &mut GpuCtx<'_>,
         item_count: usize,
         content_hash: u64,
         write: F,
     ) -> bool
     where
-        F: FnOnce(&wgpu::Buffer, &mut UploadCtx<'_>),
+        F: FnOnce(&wgpu::Buffer, &mut GpuCtx<'_>),
     {
         let grew = self.grow(ctx.device, item_count);
         if !grew && self.last_hash == Some(content_hash) {

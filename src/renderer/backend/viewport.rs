@@ -3,7 +3,7 @@
 //! No GPU handles in the math; the uniform is a thin wrapper around
 //! `wgpu::Buffer` that skips redundant writes when size hasn't changed.
 
-use super::UploadCtx;
+use super::GpuCtx;
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -101,7 +101,7 @@ impl ViewportUniform {
         }
     }
 
-    pub(crate) fn write(&mut self, ctx: &mut UploadCtx<'_>, size: Vec2) {
+    pub(crate) fn write(&mut self, ctx: &mut GpuCtx<'_>, size: Vec2) {
         if self.last == size {
             return;
         }
