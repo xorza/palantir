@@ -805,6 +805,19 @@ struct TextRectGrid {
     /// `TinyVec` is cleared (cheap, no dealloc) on
     /// [`Self::clear`].
     tiles: Vec<TileBucket>,
+    /// Indices (into `tiles`) that received at least one `push` this
+    /// frame — the set we walk on [`Self::clear`] instead of the full
+    /// row-major grid. A tile is recorded the first time it
+    /// transitions from empty to non-empty within a frame; subsequent
+    /// pushes to the same tile skip the record. Capacity is retained
+    /// across frames.
+    ///
+    /// Profiling motivation: `Composer::compose` was spending ~37% of
+    /// its self-time clearing all ~4500 tiles every frame (4K viewport
+    /// / 64-px tiles), even though only ~100-300 actually held
+    /// anything in the bench fixture. Tracking touches drops the
+    /// per-frame clear walk to the tiles we genuinely touched.
+    touched: Vec<u32>,
     /// All rects inserted into the current batch, in insertion order.
     /// `tiles` stores indices into this vec.
     rects: Vec<URect>,
@@ -818,8 +831,19 @@ impl TextRectGrid {
         let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
         let want = (cols * rows) as usize;
-        if self.tiles.len() != want {
-            self.tiles.clear();
+        // Grow-only — never shrink. A smaller-viewport frame reuses
+        // the larger backing vector; tiles beyond the active grid
+        // never get touched because `push` clamps indices to
+        // `cols - 1` / `rows - 1`. `touched` stores absolute indices
+        // into `tiles`, so `clear` works the same regardless of how
+        // `cols × rows` map onto positions inside the vec.
+        //
+        // Profiling motivation: the resize-arm bench cycles through
+        // 4 different viewports per frame. With unconditional
+        // `tiles.clear()` + `resize_with(...)` the per-frame
+        // `drop_in_place` sweep over every old TinyVec dominated
+        // `Composer::compose` (~7% of the bench's CPU cycles).
+        if want > self.tiles.len() {
             self.tiles.resize_with(want, TileBucket::default);
         }
         self.cols = cols;
@@ -827,12 +851,15 @@ impl TextRectGrid {
         self.clear();
     }
 
-    /// Drop every registered rect. Each tile's inline buffer is
-    /// cleared in place; the outer `Vec` keeps its capacity.
+    /// Drop every registered rect. Only walks the tiles that actually
+    /// got pushed to this frame (`touched`), not the full row-major
+    /// grid — `~100-300` tile clears in the dense-text fixture vs
+    /// `~4500` on the full sweep.
     fn clear(&mut self) {
-        for t in &mut self.tiles {
-            t.clear();
+        for &i in &self.touched {
+            self.tiles[i as usize].clear();
         }
+        self.touched.clear();
         self.rects.clear();
     }
 
@@ -853,7 +880,15 @@ impl TextRectGrid {
         for ty in cy0..=cy1 {
             let row = ty * self.cols;
             for tx in cx0..=cx1 {
-                self.tiles[(row + tx) as usize].push(idx);
+                let tile_idx = (row + tx) as usize;
+                let tile = &mut self.tiles[tile_idx];
+                // First touch this frame? Track for the next `clear`
+                // so we don't have to walk the whole grid.
+                let was_empty = tile.is_empty();
+                tile.push(idx);
+                if was_empty {
+                    self.touched.push(tile_idx as u32);
+                }
             }
         }
     }
