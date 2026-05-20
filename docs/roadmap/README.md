@@ -10,6 +10,7 @@ priority (Now / Next / Later / Speculative).
 - [Focus](focus.md) — tab cycling, focus ring, restoration
 - [Scroll](scroll.md) — scrollbar UX, virtualization, inertia
 - [Damage](damage.md) — multi-rect, debug overlay
+- [Cascade cache](cascade-cache.md) — speculative subtree-skip on cached frames
 - [Invalidation](invalidation.md) — discard
 - [Renderer / GPU](renderer.md) — staging belt, offscreen, nested clips
 - [Text](text.md) — cache eviction, atlas, allocs
