@@ -57,9 +57,14 @@ pub(super) struct GpuTimings {
     query_set: wgpu::QuerySet,
     resolve_buffer: wgpu::Buffer,
     slots: [Slot; NUM_STAGING],
-    /// Index of the slot written this frame (set by [`Self::resolve`]
-    /// so [`Self::after_submit`] knows which slot to map).
-    write_index: usize,
+    /// Slot written by the most recent [`Self::resolve`] —
+    /// [`Self::after_submit`] uses it to kick the matching
+    /// `map_async`. `None` when the last `resolve` early-returned
+    /// (both slots in-flight), preventing a stale re-map that would
+    /// trigger wgpu's "buffer already mapped" assertion under
+    /// `PollType::Poll`-only drives where the GPU lags the CPU by
+    /// >1 frame.
+    pending_slot: Option<usize>,
     /// `queue.get_timestamp_period()` — ticks → nanoseconds factor.
     /// Cached at construction; not expected to change at runtime.
     period_ns: f32,
@@ -92,7 +97,7 @@ impl GpuTimings {
             query_set,
             resolve_buffer,
             slots,
-            write_index: 0,
+            pending_slot: None,
             period_ns,
         }
     }
@@ -114,9 +119,15 @@ impl GpuTimings {
     /// silently drops this frame's measurement.
     pub(super) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
         let Some(slot) = (0..NUM_STAGING).find(|&i| !self.slots[i].in_flight) else {
+            // Every slot still holds an outstanding map. Don't queue
+            // another timestamp pair this frame — `pending_slot =
+            // None` signals `after_submit` to skip the matching
+            // `map_async`, which would otherwise trip wgpu's
+            // "buffer already mapped" assertion on the stale slot.
+            self.pending_slot = None;
             return;
         };
-        self.write_index = slot;
+        self.pending_slot = Some(slot);
         encoder.resolve_query_set(&self.query_set, 0..N_TIMESTAMPS, &self.resolve_buffer, 0);
         encoder.copy_buffer_to_buffer(
             &self.resolve_buffer,
@@ -129,12 +140,11 @@ impl GpuTimings {
     }
 
     /// Call after `queue.submit`. Kicks an async map on the slot
-    /// just written, polls the device so any prior map_async
+    /// just written (if any), polls the device so prior `map_async`
     /// callbacks fire, and publishes any slot whose readback has
     /// landed into [`super::gpu_pass_stats`].
     pub(super) fn after_submit(&mut self, device: &wgpu::Device) {
-        let slot_idx = self.write_index;
-        if self.slots[slot_idx].in_flight {
+        if let Some(slot_idx) = self.pending_slot.take() {
             let ready = self.slots[slot_idx].ready.clone();
             self.slots[slot_idx]
                 .buffer
