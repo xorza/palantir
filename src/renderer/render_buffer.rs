@@ -121,6 +121,15 @@ pub(crate) struct TextBatch {
     /// between two text groups sharing one batch) can fall between
     /// the batch's `first_group` and `last_group`.
     pub(crate) last_group: u32,
+    /// Physical-pixel union of every contributing `TextRun.bounds`.
+    /// The schedule sets this as the GPU scissor before the batch's
+    /// `Text` step (intersected with `damage_scissor`) so glyphs can't
+    /// rasterize outside any contributing run's bounds — long lines
+    /// whose painted block grew past the per-group scissor (via
+    /// ladder-snap or a wide owner rect) get clipped here. The
+    /// shader does no per-fragment bounds test, so the GPU scissor
+    /// is the only x-axis clip.
+    pub(crate) scissor: URect,
 }
 
 /// A batch of mesh draws emitted together. `meshes` is a contiguous

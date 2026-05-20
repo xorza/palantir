@@ -98,8 +98,34 @@ pub(crate) fn for_each_step(
     use_stencil: bool,
     mut emit: impl FnMut(RenderStep),
 ) {
+    // Drain every text batch whose `last_group < target` — emit each
+    // with its own bounds-union scissor (intersected with the damage
+    // region) so the inlined text backend's missing per-fragment x-clip
+    // doesn't leak glyphs past a clipped owner's scissor (e.g. into a
+    // scrollbar gutter). `target = i` drains stuck batches before
+    // group `i`'s emits; `target = i + 1` drains the in-flight group's
+    // own batches after its quads; `target = usize::MAX` drains tail
+    // batches anchored in skipped groups.
+    let drain_text_batches =
+        |target: usize, next_batch: &mut usize, emit: &mut dyn FnMut(RenderStep)| {
+            while *next_batch < buffer.text_batches.len()
+                && (buffer.text_batches[*next_batch].last_group as usize) < target
+            {
+                let s = match damage_scissor {
+                    Some(d) => buffer.text_batches[*next_batch]
+                        .scissor
+                        .intersect(d)
+                        .unwrap_or_default(),
+                    None => buffer.text_batches[*next_batch].scissor,
+                };
+                if s.w != 0 && s.h != 0 {
+                    emit(RenderStep::SetScissor(s));
+                    emit(RenderStep::Text { batch: *next_batch });
+                }
+                *next_batch += 1;
+            }
+        };
     let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
-    let text_scissor = damage_scissor.unwrap_or(full_viewport);
 
     if let Some(scissor) = damage_scissor {
         emit(RenderStep::SetScissor(scissor));
@@ -179,13 +205,7 @@ pub(crate) fn for_each_step(
         // Drain batches stuck behind earlier damage-skipped groups
         // BEFORE this group's own setup, so the next quad/meshes
         // emitted (in this group) can paint over the drained text.
-        while next_batch < buffer.text_batches.len()
-            && (buffer.text_batches[next_batch].last_group as usize) < i
-        {
-            emit(RenderStep::SetScissor(text_scissor));
-            emit(RenderStep::Text { batch: next_batch });
-            next_batch += 1;
-        }
+        drain_text_batches(i, &mut next_batch, &mut emit);
         emit(RenderStep::SetScissor(effective));
 
         if use_stencil {
@@ -219,13 +239,7 @@ pub(crate) fn for_each_step(
                     range: g.quads,
                 });
             }
-            while next_batch < buffer.text_batches.len()
-                && buffer.text_batches[next_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(text_scissor));
-                emit(RenderStep::Text { batch: next_batch });
-                next_batch += 1;
-            }
+            drain_text_batches(i + 1, &mut next_batch, &mut emit);
             // Drain mesh batches anchored at this group. Restore the
             // group's own scissor in case text drain widened it; mesh
             // draws clip against the group's region same as quads.
@@ -273,16 +287,7 @@ pub(crate) fn for_each_step(
                     range: g.quads,
                 });
             }
-            while next_batch < buffer.text_batches.len()
-                && buffer.text_batches[next_batch].last_group as usize == i
-            {
-                // Text uses a full-viewport scissor + per-area
-                // `bounds` for clipping (set in compose). Under
-                // partial repaint we narrow to the damage rect.
-                emit(RenderStep::SetScissor(text_scissor));
-                emit(RenderStep::Text { batch: next_batch });
-                next_batch += 1;
-            }
+            drain_text_batches(i + 1, &mut next_batch, &mut emit);
             while next_mesh_batch < buffer.mesh_batches.len()
                 && buffer.mesh_batches[next_mesh_batch].last_group as usize == i
             {
@@ -313,9 +318,5 @@ pub(crate) fn for_each_step(
         }
     }
     // Trailing drain — batches anchored in tail-skipped groups.
-    while next_batch < buffer.text_batches.len() {
-        emit(RenderStep::SetScissor(text_scissor));
-        emit(RenderStep::Text { batch: next_batch });
-        next_batch += 1;
-    }
+    drain_text_batches(usize::MAX, &mut next_batch, &mut emit);
 }

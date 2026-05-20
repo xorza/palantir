@@ -17,9 +17,11 @@ use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_p
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
+use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
+use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 use soa_rs::{Soa, Soars};
@@ -679,6 +681,36 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
     )
 }
 
+/// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
+/// measured extent on each axis side, then re-clamp to `clip`.
+///
+/// The composer paints glyphs at the ladder-*snapped* scale
+/// (`composer::snap_text_scale`), while the cascade lifts the rect at
+/// the unsnapped scale. The painted block can be up to
+/// `|snapped − cascade| ≤ STEP/2` longer per axis than the lifted
+/// rect, which works out to `measured × STEP/2` of absolute screen
+/// pixels per side — independent of cascade scale. A local-coord pad
+/// would multiply by cascade and underflow at `cascade < 1`
+/// (zoomed-out content), leaking glyph fringes past the damage rect.
+/// Padding in screen space keeps damage covering the worst-case
+/// painted extent at any zoom.
+#[inline]
+fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect {
+    let pad_w = measured.w * (TEXT_SCALE_STEP * 0.5);
+    let pad_h = measured.h * (TEXT_SCALE_STEP * 0.5);
+    let inflated = Rect {
+        min: Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
+        size: Size {
+            w: screen.size.w + 2.0 * pad_w,
+            h: screen.size.h + 2.0 * pad_h,
+        },
+    };
+    match clip {
+        Some(c) => inflated.intersect(c),
+        None => inflated,
+    }
+}
+
 #[inline]
 fn union_in(acc: &mut Option<Rect>, screen: Rect) {
     *acc = Some(match *acc {
@@ -809,30 +841,7 @@ fn compute_paint_rect(
             };
             let mut screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
             if let Some(measured) = text_measured {
-                // Painted glyphs run at the composer's ladder-snapped
-                // scale (`composer::snap_text_scale`), while `screen`
-                // here was lifted at the unsnapped cascade scale. The
-                // painted block can be up to `|snapped − cascade| ≤
-                // STEP/2` longer per axis than `screen`, which in
-                // screen pixels works out to `measured × STEP/2` on
-                // each side regardless of cascade scale. Pad here so
-                // damage covers the worst-case painted extent — at
-                // cascade < 1 (zoomed-out content) a local-coord pad
-                // would underflow and leak fringes past the damage
-                // rect.
-                let half_step = crate::text::TEXT_SCALE_STEP * 0.5;
-                let pad_w = measured.w * half_step;
-                let pad_h = measured.h * half_step;
-                screen = Rect {
-                    min: glam::Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
-                    size: crate::primitives::size::Size {
-                        w: screen.size.w + 2.0 * pad_w,
-                        h: screen.size.h + 2.0 * pad_h,
-                    },
-                };
-                if let Some(clip) = shape_clip {
-                    screen = screen.intersect(clip);
-                }
+                screen = inflate_text_damage(screen, measured, shape_clip);
             }
             union_in(&mut union, screen);
             arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
