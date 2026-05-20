@@ -138,20 +138,36 @@ impl TextRenderer {
     /// Update the viewport uniform. Called once per frame before the
     /// per-batch prepares so both renderers see the same viewport.
     /// Skips the GPU upload when the viewport matches last frame's —
-    /// glyphon's uniform contents are pure functions of the resolution.
+    /// glyphon's uniform contents are pure functions of the resolution
+    /// and current atlas sizes; [`Viewport::update`] short-circuits on
+    /// no change.
     #[profiling::function]
     pub(crate) fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
-        if self.last_viewport == viewport_phys {
-            return;
-        }
         self.viewport.update(
             queue,
             Resolution {
                 width: viewport_phys.x,
                 height: viewport_phys.y,
             },
+            &self.atlas,
         );
         self.last_viewport = viewport_phys;
+    }
+
+    /// Re-push the viewport uniform if the atlas grew during the
+    /// frame's `prepare` calls. Cheap when nothing changed —
+    /// [`Viewport::update`] short-circuits on identical params.
+    /// Call once after all `prepare_batch`es, before any `render_batch`.
+    #[profiling::function]
+    pub(crate) fn sync_atlas_to_viewport(&mut self, queue: &wgpu::Queue) {
+        self.viewport.update(
+            queue,
+            Resolution {
+                width: self.last_viewport.x,
+                height: self.last_viewport.y,
+            },
+            &self.atlas,
+        );
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
@@ -226,6 +242,8 @@ impl TextRenderer {
                     &self.viewport,
                     text_areas,
                     &mut self.swash_cache,
+                    |_| 0.0,
+                    |_| None,
                 );
 
                 match result {
@@ -273,12 +291,9 @@ impl TextRenderer {
         let Some(range) = state.ranges.get(batch_idx).cloned().flatten() else {
             return;
         };
-        if let Err(e) = state
+        state
             .renderer
-            .render_range(range, &self.atlas, &self.viewport, pass)
-        {
-            tracing::warn!(?e, batch_idx, "glyphon render_range failed");
-        }
+            .render_range(range, &self.atlas, &self.viewport, pass);
     }
 
     /// Reclaim atlas slots for glyphs unused this frame and reset

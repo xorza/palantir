@@ -358,8 +358,7 @@ impl ResponseState {
     /// is `true` only on the frame a middle-button drag latches.
     #[inline]
     pub fn drag_started_by(&self, button: PointerButton) -> bool {
-        self.drag
-            .is_some_and(|d| d.button == button && d.started)
+        self.drag.is_some_and(|d| d.button == button && d.started)
     }
 
     /// Cumulative pointer travel of the active drag, regardless of
