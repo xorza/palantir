@@ -783,7 +783,7 @@ fn compute_paint_rect(
             // `text_span.len` must equal the count of `Text` variants
             // yielded by `TreeItems` here. Drift would silently fall
             // back to the owner rect — assert instead.
-            let local = match s {
+            let (local, text_measured) = match s {
                 ShapeRecord::Text {
                     local_origin,
                     align,
@@ -796,17 +796,44 @@ fn compute_paint_rect(
                     );
                     let shaped = layout.text_shapes[(text_span.start + text_ord) as usize];
                     text_ord += 1;
-                    text_paint_bbox_local(
+                    let local = text_paint_bbox_local(
                         *local_origin,
                         *align,
                         tree.records.layout()[node.idx()].padding,
                         layout_rect.size,
                         shaped.measured,
-                    )
+                    );
+                    (local, Some(shaped.measured))
                 }
-                _ => s.paint_bbox_local(layout_rect.size),
+                _ => (s.paint_bbox_local(layout_rect.size), None),
             };
-            let screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
+            let mut screen = lift_to_screen(local, layout_rect.min, shape_transform, shape_clip);
+            if let Some(measured) = text_measured {
+                // Painted glyphs run at the composer's ladder-snapped
+                // scale (`composer::snap_text_scale`), while `screen`
+                // here was lifted at the unsnapped cascade scale. The
+                // painted block can be up to `|snapped − cascade| ≤
+                // STEP/2` longer per axis than `screen`, which in
+                // screen pixels works out to `measured × STEP/2` on
+                // each side regardless of cascade scale. Pad here so
+                // damage covers the worst-case painted extent — at
+                // cascade < 1 (zoomed-out content) a local-coord pad
+                // would underflow and leak fringes past the damage
+                // rect.
+                let half_step = crate::text::TEXT_SCALE_STEP * 0.5;
+                let pad_w = measured.w * half_step;
+                let pad_h = measured.h * half_step;
+                screen = Rect {
+                    min: glam::Vec2::new(screen.min.x - pad_w, screen.min.y - pad_h),
+                    size: crate::primitives::size::Size {
+                        w: screen.size.w + 2.0 * pad_w,
+                        h: screen.size.h + 2.0 * pad_h,
+                    },
+                };
+                if let Some(clip) = shape_clip {
+                    screen = screen.intersect(clip);
+                }
+            }
             union_in(&mut union, screen);
             arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
             arena.rows.push(Paint {
