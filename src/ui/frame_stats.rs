@@ -21,7 +21,14 @@ use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 
 pub(crate) fn record_frame_stats(ui: &mut Ui) {
-    let label = format!("f {} · {:>4.0} fps", ui.frame_id, ui.fps_ema);
+    // GPU pass time column: omitted entirely on adapters / first
+    // frames where the timestamp-query readback hasn't yielded a
+    // value yet, rather than printing "n/a" — the leading layout of
+    // the readout stays clean and stable.
+    let gpu = crate::renderer::backend::gpu_pass_stats::last_pass_ms()
+        .map(|ms| format!(" · gpu {ms:>5.2} ms"))
+        .unwrap_or_default();
+    let label = format!("f {} · {:>4.0} fps{}", ui.frame_id, ui.fps_ema, gpu);
     let style = TextStyle {
         family: FontFamily::Mono,
         color: Color::rgb(1.0, 0.2, 0.2),

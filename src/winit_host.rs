@@ -175,9 +175,22 @@ where
         }))
         .expect("request adapter");
 
+        // Gate timing collection behind the `internals` feature.
+        // Without it, requesting `TIMESTAMP_QUERY` would still cost
+        // per-frame work (`resolve_query_set` + `map_async` +
+        // `device.poll(Poll)` + readback in `GpuTimings::after_submit`).
+        // Matches the `write_stats` gating posture: instrumentation
+        // off in production builds, opt-in for benches / debug
+        // overlays. `cfg!` folds to a const; the intersection drops
+        // the bit on adapters that don't advertise it.
+        let timing_features = if cfg!(feature = "internals") {
+            wgpu::Features::TIMESTAMP_QUERY
+        } else {
+            wgpu::Features::empty()
+        };
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("palantir.device"),
-            required_features: wgpu::Features::empty(),
+            required_features: adapter.features() & timing_features,
             required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
             experimental_features: wgpu::ExperimentalFeatures::default(),
             memory_hints: wgpu::MemoryHints::Performance,
