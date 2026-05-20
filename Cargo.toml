@@ -83,6 +83,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "text_atlas"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "input_throughput"
 harness = false
 
