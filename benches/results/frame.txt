@@ -21,10 +21,10 @@ Hardware: MacBook Air (M5)
   Cached frames hit Damage::Skip after warmup → no main pass → n/a.
 
 Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
-  frame/cached_cpu     time: [98.754 µs 99.241 µs 99.934 µs]
-  frame/cached_gpu     time: [1.3238 ms 1.3476 ms 1.3670 ms]
-  frame/resizing_cpu   time: [832.39 µs 836.46 µs 840.48 µs]
-  frame/resizing_gpu   time: [3.3958 ms 3.4242 ms 3.4530 ms]
+  frame/cached_cpu     time: [98.825 µs 99.119 µs 99.407 µs]
+  frame/cached_gpu     time: [1.3433 ms 1.3697 ms 1.3913 ms]
+  frame/resizing_cpu   time: [807.73 µs 811.88 µs 816.01 µs]
+  frame/resizing_gpu   time: [3.3811 ms 3.3932 ms 3.4056 ms]
 
   Per-frame GPU main-pass time (resizing, via TIMESTAMP_QUERY):
     frame 1   gpu:  0.23 ms     frame 4   gpu:  0.31 ms
