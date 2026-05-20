@@ -8,11 +8,11 @@ Arms:
           CPU side of submit), GPU runs async, not counted.
   *_gpu = PollType::Wait → full CPU + GPU frame.
 
-Hardware: MacBook Air (M5)
-  frame/cached_cpu     time: [413.81 µs 414.08 µs 414.33 µs]
-  frame/cached_gpu     time: [3.1217 ms 3.1471 ms 3.1719 ms]
-  frame/resizing_cpu   time: [2.2361 ms 2.2887 ms 2.3469 ms]
-  frame/resizing_gpu   time: [7.3750 ms 7.7677 ms 8.1634 ms]
+Hardware: MacBook Air (M5) — Low Power Mode (throttled, tight CIs)
+  frame/cached_cpu     time: [783.17 µs 791.32 µs 799.80 µs]
+  frame/cached_gpu     time: [2.8583 ms 2.8835 ms 2.9083 ms]
+  frame/resizing_cpu   time: [4.7381 ms 4.7565 ms 4.7754 ms]
+  frame/resizing_gpu   time: [10.294 ms 10.588 ms 10.883 ms]
 
 Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
   frame/cached_cpu     time: [98.325 µs 98.643 µs 98.946 µs]
