@@ -66,7 +66,6 @@ impl<'a> Checkbox<'a> {
         let fallback_text = ui.theme.text;
 
         let look = look_target.animate(ui, id, fallback_text, anim);
-        let chrome = look.background.clone();
         let label = self.label;
 
         let mut element = self.element;
@@ -78,7 +77,7 @@ impl<'a> Checkbox<'a> {
             let mut box_elem = Element::new(LayoutMode::Leaf);
             box_elem.salt = Salt::Verbatim(box_id);
             box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
-            ui.node_with_chrome(box_id, box_elem, &chrome, |ui| {
+            ui.node_with_chrome(box_id, box_elem, &look.background, |ui| {
                 if checked {
                     let pts = check_pts(box_size);
                     ui.add_shape(Shape::Polyline {

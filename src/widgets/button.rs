@@ -86,11 +86,10 @@ impl Button {
             element.margin = style_margin;
         }
         let look = look_target.animate(ui, id, fallback_text, style_anim);
-        let chrome = look.background.clone();
         let label = self.label;
         let label_align = self.label_align;
 
-        ui.node_with_chrome(id, element, &chrome, |ui| {
+        ui.node_with_chrome(id, element, &look.background, |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: None,
