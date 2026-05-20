@@ -50,11 +50,14 @@ pub(crate) struct QuadPipeline {
     /// inside the damage scissor so `LoadOp::Load` doesn't leak last
     /// frame's AA-fringe pixels into this frame's blends.
     clear_buffer: wgpu::Buffer,
-    /// Set true by [`Self::upload_clear`], reset by [`Self::post_record`].
-    /// [`Self::draw_clear`] asserts it's true — catches a future
-    /// refactor that decorrelates the upload guard in `submit` from
-    /// the per-pass `PreClear` emit in the schedule.
-    clear_buffer_dirty: bool,
+    /// Last `(viewport, color)` written to `clear_buffer`. `None`
+    /// before the first call to [`Self::upload_clear`]; thereafter
+    /// holds the last upload's inputs so steady-state Partial frames
+    /// can short-circuit the `queue.write_buffer`. [`Self::draw_clear`]
+    /// asserts `Some` — catches a future refactor that decorrelates
+    /// the upload guard in `submit` from the per-pass `PreClear` emit
+    /// in the schedule.
+    last_clear: Option<(Vec2, Color)>,
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -244,7 +247,7 @@ impl QuadPipeline {
             mask_indices: Vec::new(),
             masks: Vec::new(),
             clear_buffer,
-            clear_buffer_dirty: false,
+            last_clear: None,
             shader,
             color_format: format,
             bind_layout,
@@ -422,6 +425,13 @@ impl QuadPipeline {
     /// the fringe-fix.
     #[profiling::function]
     pub(crate) fn upload_clear(&mut self, queue: &Queue, viewport: Vec2, color: Color) {
+        // Steady state: viewport + clear color match last frame, so the
+        // clear_buffer already holds the right pixels. Skip the
+        // 96-byte write — on Metal each `queue.write_buffer` allocates
+        // a fresh blit encoder.
+        if self.last_clear == Some((viewport, color)) {
+            return;
+        }
         let q = Quad {
             rect: Rect {
                 min: glam::Vec2::ZERO,
@@ -437,7 +447,7 @@ impl QuadPipeline {
             ..Default::default()
         };
         queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
-        self.clear_buffer_dirty = true;
+        self.last_clear = Some((viewport, color));
     }
 
     /// Bind the appropriate pipeline + clear buffer and draw one
@@ -448,7 +458,7 @@ impl QuadPipeline {
     /// stencil intact.
     pub(crate) fn draw_clear<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         debug_assert!(
-            self.clear_buffer_dirty,
+            self.last_clear.is_some(),
             "draw_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
@@ -466,12 +476,10 @@ impl QuadPipeline {
 
     /// Reset per-frame state. Called from `WgpuBackend::submit` after
     /// `queue.submit` so the next frame starts with a clean slate.
-    /// Today only resets `clear_buffer_dirty` so the assert in
-    /// `draw_clear` actually catches "upload_clear was never called
-    /// this frame."
-    pub(crate) fn post_record(&mut self) {
-        self.clear_buffer_dirty = false;
-    }
+    /// `last_clear` is intentionally **not** reset — it persists
+    /// across frames so steady-state Partial frames can short-circuit
+    /// the clear write_buffer in [`Self::upload_clear`].
+    pub(crate) fn post_record(&mut self) {}
 
     /// Build the per-group mask-index map for the schedule and upload
     /// one mask quad per rounded-clip group in `groups`. Caller must
