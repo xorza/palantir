@@ -2114,9 +2114,14 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // Cache prev shaped rect (size of "abc") off the previous snapshot
     // so the assertion below can reason from the actual measured
     // values rather than hand-recomputing mono geometry.
+    // Damage rects inflate by `TEXT_SCALE_STEP * measured` total per
+    // axis (`STEP/2` per side) to cover composer ladder snaps — see
+    // `text_paint_bbox_local`. Expected shaped size scales by the
+    // same factor.
+    let inflate = 1.0 + crate::text::TEXT_SCALE_STEP;
     let prev_snap = ui.damage_engine.prev[&leaf_id];
     let prev_text_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
-    let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0, FONT);
+    let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);
     assert!(
         (prev_text_rect.size.w - prev_size_short.w).abs() < 0.5
             && (prev_text_rect.size.h - prev_size_short.h).abs() < 0.5,
@@ -2127,7 +2132,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
 
     let curr_snap = ui.damage_engine.prev[&leaf_id];
     let curr_text_rect = ui.damage_engine.arena.snaps[curr_snap.paint_span.range()][0].screen;
-    let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0, FONT);
+    let curr_size_long: Size = Size::new(FONT * 0.5 * 6.0 * inflate, FONT * inflate);
     assert!(
         (curr_text_rect.size.w - curr_size_long.w).abs() < 0.5
             && (curr_text_rect.size.h - curr_size_long.h).abs() < 0.5,
