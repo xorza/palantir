@@ -241,6 +241,16 @@ fn bench_text_atlas(c: &mut Criterion) {
                 run_frame(g, &mut backend, &view, &runs, BASE_SCALE);
             });
         });
+        // CPU-only: prepare + end_frame, no encoder/submit/poll.
+        // Isolates text-backend CPU work from GPU sync — useful when
+        // the full case looks GPU-bound and you want to see whether a
+        // change moved the CPU prepare cost.
+        group.bench_function("steady_warm_cpu", |b| {
+            b.iter(|| {
+                backend.prepare(&g.device, &g.queue, BASE_SCALE, &runs);
+                backend.end_frame();
+            });
+        });
     }
 
     {

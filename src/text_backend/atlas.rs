@@ -40,6 +40,12 @@ pub(crate) struct GlyphAtlas {
     pub(crate) sides: [Side; 2],
     pub(crate) cache: FxHashMap<CacheKey, GlyphSlot>,
     pub(crate) current_frame: u64,
+    /// Bumped every time `evict_one` reuses a slot. Encoded-glyph
+    /// caches keyed on slot positions latch this on insert and
+    /// re-validate on lookup; any eviction invalidates every entry
+    /// (conservative — slot rectangles are stable across grows because
+    /// `etagere::grow` preserves rects).
+    pub(crate) eviction_count: u64,
     pub(crate) max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(crate) bind_group_dirty: bool,
@@ -94,6 +100,7 @@ impl GlyphAtlas {
             sides,
             cache: FxHashMap::default(),
             current_frame: 1,
+            eviction_count: 0,
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
             pending_staging: Vec::new(),
@@ -342,6 +349,7 @@ impl GlyphAtlas {
         if let Some(id) = slot.alloc {
             self.sides[target as usize].packer.deallocate(id);
         }
+        self.eviction_count += 1;
         true
     }
 
