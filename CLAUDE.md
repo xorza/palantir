@@ -53,7 +53,8 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/primitives/` — pure geometry + leaf types: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Background/Brush/Shadow/Image/Mesh/WidgetId/bezier/num/approx/urect/span/half_simd/interned_str
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Polyline, CubicBezier, QuadraticBezier, Text, Mesh, Image, Shadow)
 - `src/forest/` — `Forest` (per-layer arenas, `mod.rs`), `tree/` (per-layer `Tree`: SoA records + packed `ExtrasIdx` + dense `bounds_table`/`panel_table`/`chrome_table` (`ChromeRow` holds chrome+`ClipMode::Rounded` radius) + `Shapes` + `GridArena` + `SubtreeRollups` + `PaintAnims`, `NodeId`, `Layer`), `element/` (Element builder, `LayoutCore`/`NodeFlags`/`LayoutMode`, `Configure`), `node.rs` (`NodeRecord`), `rollups.rs` (per-node + subtree hashes + `paints` bitset), `shapes/` (`ShapeRecord` + add/clear), `seen_ids.rs`, `visibility.rs`
-- `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + glyphon rendering glue; mono fallback for headless
+- `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + the rendering glue against `src/text_backend/`; mono fallback for headless
+- `src/text_backend/` — **inlined glyphon fork**. We took glyphon (`atlas.rs`, `mod.rs`, `shader.wgsl`, `encode.rs`) into the tree so we can modify the GPU upload path directly (route writes through palantir's staging belt, custom atlas / batch shape, integrate with `DynamicBuffer`). No `glyphon` crate dep; only `cosmic-text` remains external. Treat this as our code, not vendored read-only — modify it like any other module when palantir needs it.
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid/scroll), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell/ClipMode — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades), keyboard/pointer/sense/shortcut/subscriptions/policy
 - `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer/GradientAtlas) + `stroke_tessellate/` (polyline → fringe-AA mesh)
@@ -70,7 +71,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `examples/` — `dump_theme` (theme TOML round-trip)
 - `benches/` — criterion (alloc_free, alloc_free_gpu, caches, cascade, damage, damage_merge_gpu, frame, half_simd, input_throughput, scrollzoom, stroke_tessellate); `docs/` — in-flight notes + `roadmap/` (per-feature design notes) + `cache-history/` (post-mortem on removed caches); `DESIGN.md` — full rationale
 
-Key deps: `wgpu`+`winit`, `glyphon`+`cosmic-text`, `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
+Key deps: `wgpu`+`winit`, `cosmic-text` (glyphon is inlined as `src/text_backend/`, not an external dep), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
 
 ## References
 
