@@ -12,7 +12,7 @@
 //! [`MeshPipeline`]: super::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: super::image_pipeline::ImagePipeline
 
-use super::UploadCtx;
+use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
@@ -176,7 +176,7 @@ impl CurvePipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, ctx: &mut UploadCtx<'_>, instances: &[CurveInstance]) {
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
         if instances.is_empty() {
             return;
         }

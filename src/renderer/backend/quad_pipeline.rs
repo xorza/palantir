@@ -2,9 +2,9 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
+use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
-use super::{Queue, UploadCtx};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -256,9 +256,9 @@ impl QuadPipeline {
     /// overhead. Called from `WgpuBackend::submit` before the render
     /// pass starts.
     #[profiling::function]
-    pub(crate) fn upload_gradients(&self, queue: &Queue, atlas: &GradientAtlas) {
+    pub(crate) fn upload_gradients(&self, ctx: &GpuCtx<'_>, atlas: &GradientAtlas) {
         atlas.flush_with(|bytes| {
-            queue.write_texture(
+            ctx.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.gradient_texture,
                     mip_level: 0,
@@ -359,7 +359,7 @@ impl QuadPipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, ctx: &mut UploadCtx<'_>, quads: &[Quad]) {
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
         if quads.is_empty() {
             return;
         }
@@ -405,7 +405,7 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     #[profiling::function]
-    pub(crate) fn upload_clear(&mut self, ctx: &mut UploadCtx<'_>, viewport: Vec2, color: Color) {
+    pub(crate) fn upload_clear(&mut self, ctx: &mut GpuCtx<'_>, viewport: Vec2, color: Color) {
         // Steady state: viewport + clear color match last frame, so
         // the clear_buffer already holds the right pixels. Skip the
         // belt write entirely on a match.
@@ -467,7 +467,7 @@ impl QuadPipeline {
     /// this call, `self.mask_indices` parallels `groups`: `Some(j)`
     /// at index `i` says "group `i`'s mask is mask quad `j`."
     #[profiling::function]
-    pub(crate) fn stage_masks(&mut self, ctx: &mut UploadCtx<'_>, groups: &[DrawGroup]) {
+    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, groups: &[DrawGroup]) {
         debug_assert!(
             self.stencil.is_some(),
             "stage_masks requires ensure_stencil to have run this frame"

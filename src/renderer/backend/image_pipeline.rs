@@ -5,8 +5,8 @@
 //! list each frame and uploads to GPU, then caches the resulting
 //! `GpuImage` by [`ImageHandle`] across frames.
 
+use super::GpuCtx;
 use super::Queue;
-use super::UploadCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
@@ -226,15 +226,10 @@ impl ImagePipeline {
     /// `GpuImage` in the cache (or be missing from the registry, in
     /// which case the draw is silently skipped).
     #[profiling::function]
-    pub(crate) fn drain_registry(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
-        images: &ImageRegistry,
-    ) {
+    pub(crate) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
         self.frame_id = self.frame_id.wrapping_add(1);
         for (handle, image) in images.drain_pending() {
-            let bind_group = self.upload(device, queue, handle.id, &image);
+            let bind_group = self.upload(ctx.device, ctx.queue, handle.id, &image);
             let bytes = image.width.saturating_mul(image.height).saturating_mul(4);
             let entry = GpuImage {
                 bind_group,
@@ -317,11 +312,7 @@ impl ImagePipeline {
     /// Sync the per-instance buffer. Single contiguous upload — the
     /// schedule slices by batch at draw time.
     #[profiling::function]
-    pub(crate) fn upload_instances(
-        &mut self,
-        ctx: &mut UploadCtx<'_>,
-        instances: &[ImageInstance],
-    ) {
+    pub(crate) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
         if instances.is_empty() {
             return;
         }

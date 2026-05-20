@@ -10,7 +10,7 @@
 //! (see [`Self::ensure_stencil`]) — it reads the mask but never
 //! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
 
-use super::UploadCtx;
+use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::mesh::MeshVertex;
@@ -130,7 +130,7 @@ impl MeshPipeline {
     #[profiling::function]
     pub(crate) fn upload(
         &mut self,
-        ctx: &mut UploadCtx<'_>,
+        ctx: &mut GpuCtx<'_>,
         vertices: &[MeshVertex],
         indices: &[u16],
         instances: &[MeshInstance],

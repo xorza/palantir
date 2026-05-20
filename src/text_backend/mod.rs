@@ -23,7 +23,7 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
-use crate::renderer::backend::UploadCtx;
+use crate::renderer::backend::GpuCtx;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
@@ -275,7 +275,7 @@ impl TextBackend {
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
-        ctx: &mut UploadCtx<'_>,
+        ctx: &mut GpuCtx<'_>,
         scale: f32,
         batch_idx: usize,
         runs: &[TextRun],
@@ -393,7 +393,7 @@ impl TextBackend {
     /// `prepare_batch` calls and right after the renderer creates its
     /// main command encoder — so atlas uploads share the same submit
     /// as the text draws that read from them.
-    pub(crate) fn flush_atlas_uploads(&mut self, ctx: &mut UploadCtx<'_>) {
+    pub(crate) fn flush_atlas_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         self.atlas.flush_pending_uploads(ctx);
     }
 
@@ -425,7 +425,7 @@ impl TextBackend {
         self.prepared_anything = false;
     }
 
-    fn upload_vbuf(&mut self, ctx: &mut UploadCtx<'_>) {
+    fn upload_vbuf(&mut self, ctx: &mut GpuCtx<'_>) {
         let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
         let needed = bytes.len() as u64;
         if needed > self.vbuf_capacity {
@@ -564,11 +564,11 @@ pub mod test_support {
     use glam::{UVec2, Vec2};
 
     pub use super::TextBackend;
-    /// Re-export the `pub(crate)` `UploadCtx` so benches can construct
+    /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
     /// one to feed `prepare`/`flush`. The full path
-    /// (`crate::renderer::backend::dynamic_buffer::UploadCtx`) is
+    /// (`crate::renderer::backend::dynamic_buffer::GpuCtx`) is
     /// noisy at the call site.
-    pub use crate::renderer::backend::UploadCtx;
+    pub use crate::renderer::backend::GpuCtx;
     /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
@@ -596,11 +596,11 @@ pub mod test_support {
         }
 
         /// Append-mode prepare into batch 0.
-        pub fn prepare(&mut self, ctx: &mut UploadCtx<'_>, scale: f32, runs: &[TextRun]) -> bool {
+        pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) -> bool {
             self.prepare_batch(ctx, scale, 0, runs)
         }
 
-        pub fn flush(&mut self, ctx: &mut UploadCtx<'_>) {
+        pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
             self.flush_atlas_uploads(ctx);
         }
 

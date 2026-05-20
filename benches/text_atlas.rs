@@ -46,7 +46,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::ColorU8;
 use palantir::TextShaper;
-use palantir::text_backend::test_support::{TextBackend, TextRun, UploadCtx, make_run};
+use palantir::text_backend::test_support::{GpuCtx, TextBackend, TextRun, make_run};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -193,7 +193,7 @@ fn run_frame(
             label: Some("palantir.text_atlas.encoder"),
         });
     {
-        let mut ctx = UploadCtx::new(&g.device, belt, &mut encoder);
+        let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
         backend.prepare(&mut ctx, scale, runs);
         backend.flush(&mut ctx);
     }
@@ -265,7 +265,7 @@ fn bench_text_atlas(c: &mut Criterion) {
                             label: Some("palantir.text_atlas.cpu_prepare"),
                         });
                 {
-                    let mut ctx = UploadCtx::new(&g.device, &mut belt, &mut encoder);
+                    let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);
                     backend.prepare(&mut ctx, BASE_SCALE, &runs);
                 }
                 belt.finish();
