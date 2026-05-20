@@ -9,10 +9,16 @@ Arms:
   *_gpu = PollType::Wait → full CPU + GPU frame.
 
 Hardware: MacBook Air (M5)
-  frame/cached_cpu     time: [423.74 µs 432.50 µs 441.82 µs]
-  frame/cached_gpu     time: [2.0285 ms 2.1385 ms 2.2550 ms]
-  frame/resizing_cpu   time: [2.0606 ms 2.0723 ms 2.0827 ms]
-  frame/resizing_gpu   time: [9.1510 ms 9.6114 ms 10.072 ms]
+  frame/cached_cpu     time: [418.15 µs 424.96 µs 432.72 µs]
+  frame/cached_gpu     time: [2.0753 ms 2.2360 ms 2.4114 ms]
+  frame/resizing_cpu   time: [2.0968 ms 2.1068 ms 2.1160 ms]
+  frame/resizing_gpu   time: [10.221 ms 10.496 ms 10.776 ms]
+
+  Per-frame GPU main-pass time (resizing, via TIMESTAMP_QUERY):
+    frame 1   gpu:  1.75 ms     frame 4   gpu:  2.37 ms
+    frame 2   gpu:  2.14 ms     frame 5   gpu:  1.71 ms
+    frame 3   gpu:  1.90 ms
+  Cached frames hit Damage::Skip after warmup → no main pass → n/a.
 
 Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
   frame/cached_cpu     time: [98.754 µs 99.241 µs 99.934 µs]
