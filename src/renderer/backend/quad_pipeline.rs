@@ -2,6 +2,7 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
+use super::Queue;
 use super::pipeline_utils::{
     PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
 };
@@ -261,7 +262,7 @@ impl QuadPipeline {
     /// overhead. Called from `WgpuBackend::submit` before the render
     /// pass starts.
     #[profiling::function]
-    pub(crate) fn upload_gradients(&self, queue: &wgpu::Queue, atlas: &GradientAtlas) {
+    pub(crate) fn upload_gradients(&self, queue: &Queue, atlas: &GradientAtlas) {
         atlas.flush_with(|bytes| {
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -364,7 +365,7 @@ impl QuadPipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, quads: &[Quad]) {
+    pub(crate) fn upload(&mut self, device: &wgpu::Device, queue: &Queue, quads: &[Quad]) {
         if quads.is_empty() {
             return;
         }
@@ -420,7 +421,7 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     #[profiling::function]
-    pub(crate) fn upload_clear(&mut self, queue: &wgpu::Queue, viewport: Vec2, color: Color) {
+    pub(crate) fn upload_clear(&mut self, queue: &Queue, viewport: Vec2, color: Color) {
         let q = Quad {
             rect: Rect {
                 min: glam::Vec2::ZERO,
@@ -481,7 +482,7 @@ impl QuadPipeline {
     pub(crate) fn stage_masks(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         groups: &[DrawGroup],
     ) {
         debug_assert!(

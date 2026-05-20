@@ -171,7 +171,52 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
     SyncMode::Gpu.poll(&g.device);
 }
 
+/// Per-frame `queue.write_*` counts for both arms, frames 0..=5, so
+/// the cold→warm transition is visible. Reports buffer + texture
+/// calls and bytes attributed to palantir's backend (quad / mesh /
+/// curve / image / viewport / debug / text pipelines).
+fn report_write_stats() {
+    fn run<F: FnMut(usize) -> &'static wgpu::Texture>(label: &str, mut pick: F) {
+        let g = gpu();
+        let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+        host.ui.theme.window_clear = Color::BLACK;
+        let mut state = FormState::default();
+        eprintln!("[write_stats] {label}:");
+        for frame in 0..6 {
+            let _ = palantir::renderer::write_stats::take();
+            host.frame_offscreen(pick(frame), SCALE, |ui| {
+                build_ui(&mut state, BENCH_SCALE, ui)
+            });
+            SyncMode::Gpu.poll(&g.device);
+            let s = palantir::renderer::write_stats::take();
+            eprintln!(
+                "  frame {frame}  buffer: {:>2} calls, {:>9} B   texture: {:>2} calls, {:>9} B",
+                s.buffer_calls, s.buffer_bytes, s.texture_calls, s.texture_bytes,
+            );
+        }
+    }
+
+    let g = gpu();
+    let cached: &'static wgpu::Texture = Box::leak(Box::new(make_target(
+        &g.device,
+        CACHED_SIZE,
+        "write_stats.cached",
+    )));
+    run("cached", |_| cached);
+
+    let pool: &'static [wgpu::Texture] = Box::leak(
+        RESIZE_POOL
+            .iter()
+            .enumerate()
+            .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
+            .collect::<Vec<_>>()
+            .into_boxed_slice(),
+    );
+    run("resizing", move |frame| &pool[frame % pool.len()]);
+}
+
 fn bench_frame(c: &mut Criterion) {
+    report_write_stats();
     run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
     run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
     run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);

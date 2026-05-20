@@ -10,6 +10,7 @@
 //! (see [`Self::ensure_stencil`]) — it reads the mask but never
 //! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
 
+use super::Queue;
 use super::pipeline_utils::{
     PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
 };
@@ -153,7 +154,7 @@ impl MeshPipeline {
     pub(crate) fn upload(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         vertices: &[MeshVertex],
         indices: &[u16],
         instances: &[MeshInstance],

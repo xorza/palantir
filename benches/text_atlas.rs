@@ -62,7 +62,7 @@ const ROWS: u32 = 32;
 
 struct Gpu {
     device: wgpu::Device,
-    queue: wgpu::Queue,
+    queue: palantir::renderer::Queue,
 }
 
 fn gpu() -> &'static Gpu {
@@ -88,7 +88,10 @@ fn gpu() -> &'static Gpu {
             })
             .block_on()
             .expect("request device");
-        Gpu { device, queue }
+        Gpu {
+            device,
+            queue: palantir::renderer::Queue::new(queue),
+        }
     })
 }
 

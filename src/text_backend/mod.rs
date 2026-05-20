@@ -23,6 +23,7 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
+use crate::renderer::backend::Queue;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
@@ -275,7 +276,7 @@ impl TextBackend {
     pub(crate) fn prepare_batch(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         scale: f32,
         batch_idx: usize,
         runs: &[TextRun],
@@ -396,7 +397,7 @@ impl TextBackend {
     pub(crate) fn flush_atlas_uploads(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
         self.atlas.flush_pending_uploads(device, queue, encoder);
@@ -430,7 +431,7 @@ impl TextBackend {
         self.prepared_anything = false;
     }
 
-    fn upload_vbuf(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
+    fn upload_vbuf(&mut self, device: &wgpu::Device, queue: &Queue) {
         let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
         let needed = bytes.len() as u64;
         if needed > self.vbuf_capacity {
@@ -564,6 +565,7 @@ pub mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
+    use crate::renderer::backend::Queue;
     use crate::text::{FontFamily, TextShaper};
     use glam::{UVec2, Vec2};
 
@@ -598,7 +600,7 @@ pub mod test_support {
         pub fn prepare(
             &mut self,
             device: &wgpu::Device,
-            queue: &wgpu::Queue,
+            queue: &Queue,
             scale: f32,
             runs: &[TextRun],
         ) -> bool {
@@ -608,7 +610,7 @@ pub mod test_support {
         pub fn flush(
             &mut self,
             device: &wgpu::Device,
-            queue: &wgpu::Queue,
+            queue: &Queue,
             encoder: &mut wgpu::CommandEncoder,
         ) {
             self.flush_atlas_uploads(device, queue, encoder);

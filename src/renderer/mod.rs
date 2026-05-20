@@ -18,6 +18,18 @@
 //! the public top-level handle.
 pub(crate) mod backend;
 pub use backend::DEFAULT_IMAGE_BUDGET_BYTES;
+/// Counting wrapper around `wgpu::Queue` — every `write_buffer` /
+/// `write_texture` call routed through this type bumps the per-frame
+/// counters under [`write_stats`] (gated on `internals`). Production
+/// builds compile to a zero-cost passthrough.
+pub use backend::Queue;
+/// Per-frame counters for `queue.write_buffer` / `write_texture` calls
+/// issued through [`Queue`]. Gated behind `internals` for the frame
+/// bench's write-attribution arm.
+#[cfg(feature = "internals")]
+pub mod write_stats {
+    pub use crate::renderer::backend::write_stats::{Stats, take};
+}
 pub(crate) mod caches;
 pub mod frontend;
 pub(crate) mod gradient_atlas;

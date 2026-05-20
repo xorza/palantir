@@ -4,9 +4,14 @@ mod image_pipeline;
 mod mesh_pipeline;
 mod pipeline_utils;
 mod quad_pipeline;
+mod queue;
 mod schedule;
 mod stencil;
 mod viewport;
+#[cfg(feature = "internals")]
+pub(crate) mod write_stats;
+
+pub use self::queue::Queue;
 
 use self::stencil::STENCIL_FORMAT;
 
@@ -66,7 +71,7 @@ struct StencilAttachment {
 /// `RenderBuffer`.
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
-    queue: wgpu::Queue,
+    queue: Queue,
     viewport_uniform: ViewportUniform,
     quad: QuadPipeline,
     mesh: MeshPipeline,
@@ -148,7 +153,7 @@ impl WgpuBackend {
         let debug = DebugOverlay::new(&device);
         Self {
             device,
-            queue,
+            queue: Queue::new(queue),
             viewport_uniform,
             quad,
             mesh,
