@@ -4,8 +4,8 @@
 //!
 //! - [`CosmicMeasure`] — real shaping via `cosmic-text`, with a per-key
 //!   shaped-buffer cache. The wgpu backend reuses these `Buffer`s in
-//!   `glyphon::TextRenderer::prepare`, so each visible string is shaped
-//!   exactly once across its lifetime.
+//!   `glyphon::TextRenderer::prepare_append`, so each visible string
+//!   is shaped exactly once across its lifetime.
 //! - [`mono_measure`] — deterministic placeholder metric used when no
 //!   `CosmicMeasure` is installed (default in [`Ui`]). Every glyph is
 //!   `font_size_px * 0.5` wide; runs measured this way carry

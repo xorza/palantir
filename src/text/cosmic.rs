@@ -4,7 +4,7 @@
 //!
 //! The renderer (`WgpuBackend`) downcasts the trait object to this concrete
 //! type to reach the cached `Buffer`s and the `FontSystem` for
-//! `glyphon::TextRenderer::prepare`.
+//! `glyphon::TextRenderer::prepare_append`.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
 //! text rather than storing the full string), but at typical UI scales the
@@ -134,7 +134,7 @@ impl CosmicMeasure {
     }
 
     /// Borrow the underlying `FontSystem` (e.g. to register additional fonts,
-    /// or for `glyphon::TextRenderer::prepare`).
+    /// or for `glyphon::TextRenderer::prepare_append`).
     pub fn font_system_mut(&mut self) -> &mut FontSystem {
         &mut self.font_system
     }
