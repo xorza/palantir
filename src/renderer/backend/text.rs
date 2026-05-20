@@ -108,12 +108,11 @@ pub(crate) struct TextRenderer {
 impl TextRenderer {
     pub(crate) fn new(
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
     ) -> Self {
         let cache = Cache::new(device);
-        let mut atlas = TextAtlas::new(device, queue, &cache, format);
+        let mut atlas = TextAtlas::new(device, &cache, format);
         let viewport = Viewport::new(device, &cache);
         let swash_cache = SwashCache::new();
         let plain_renderer =

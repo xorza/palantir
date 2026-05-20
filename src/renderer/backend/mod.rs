@@ -137,7 +137,7 @@ impl WgpuBackend {
             &quad.gradient_texture_view,
             &quad.gradient_sampler,
         );
-        let text = TextRenderer::new(&device, &queue, format, shaper);
+        let text = TextRenderer::new(&device, format, shaper);
         let debug = DebugOverlay::new(&device);
         Self {
             device,
