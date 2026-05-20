@@ -1,0 +1,7 @@
+=== 2026-05-20 14:49:51Z ===
+frame/cached_cpu       time: [ 428.94 µs  431.42 µs  433.83 µs]
+frame/cached_gpu       time: [  1.573 ms   1.654 ms   1.746 ms]
+frame/partial_cpu      time: [ 457.51 µs  458.78 µs  460.17 µs]
+frame/partial_gpu      time: [  3.476 ms   3.519 ms   3.560 ms]
+frame/resizing_cpu     time: [  2.113 ms   2.150 ms   2.179 ms]
+frame/resizing_gpu     time: [  8.950 ms   9.430 ms   9.911 ms]
