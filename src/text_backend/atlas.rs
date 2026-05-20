@@ -1,5 +1,6 @@
 //! Glyph atlas: one struct for both mask + color content.
 
+use crate::renderer::backend::Queue;
 use cosmic_text::CacheKey;
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
@@ -240,7 +241,7 @@ impl GlyphAtlas {
     pub(crate) fn flush_pending_uploads(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
         // Grow blits first: old→new copy must complete before any new

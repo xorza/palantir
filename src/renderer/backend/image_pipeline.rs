@@ -5,6 +5,7 @@
 //! list each frame and uploads to GPU, then caches the resulting
 //! `GpuImage` by [`ImageHandle`] across frames.
 
+use super::Queue;
 use super::pipeline_utils::{
     PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
 };
@@ -235,7 +236,7 @@ impl ImagePipeline {
     pub(crate) fn drain_registry(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         images: &ImageRegistry,
     ) {
         self.frame_id = self.frame_id.wrapping_add(1);
@@ -263,7 +264,7 @@ impl ImagePipeline {
     fn upload(
         &self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         id: u64,
         image: &Rc<Image>,
     ) -> wgpu::BindGroup {
@@ -326,7 +327,7 @@ impl ImagePipeline {
     pub(crate) fn upload_instances(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
+        queue: &Queue,
         instances: &[ImageInstance],
     ) {
         if instances.is_empty() {
