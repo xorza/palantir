@@ -23,6 +23,7 @@
 use crate::primitives::color::ColorU8;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
+use crate::renderer::render_buffer::TextRun;
 use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
@@ -33,7 +34,6 @@ use super::{ContentType, GlyphInstance};
 /// One text run resolved to a cosmic buffer + placement.
 pub(crate) struct ResolvedRun<'a> {
     pub(crate) buffer: &'a Buffer,
-    pub(crate) key: TextCacheKey,
     pub(crate) origin: glam::Vec2,
     pub(crate) bounds: URect,
     pub(crate) scale: f32,
@@ -57,6 +57,16 @@ pub(crate) struct EncodedKey {
     /// Low nibble: `y_bin`. Next nibble up: `x_bin`. Cosmic's
     /// `SubpixelBin` has four variants (2 bits each).
     pub(crate) bins: u8,
+}
+
+/// `encode_key_for`'s named result. Carries the cache identity plus
+/// the integer-pixel origin (the fractional component is folded into
+/// `EncodedKey::bins`).
+#[derive(Clone, Copy)]
+pub(crate) struct EncodedRunKey {
+    pub(crate) key: EncodedKey,
+    pub(crate) origin_x: i32,
+    pub(crate) origin_y: i32,
 }
 
 /// One cached glyph: origin-relative position + slot's atlas uv +
@@ -97,7 +107,7 @@ pub(crate) struct EncodedCache {
     pub(crate) arena: Vec<EncodedGlyph>,
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
-    scratch: Vec<EncodedGlyph>,
+    pub(crate) scratch: Vec<EncodedGlyph>,
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -133,21 +143,21 @@ impl EncodedCache {
 /// plus the integer-pixel origin (cosmic's subpixel bins absorb the
 /// fractional component into per-glyph `CacheKey`s, so two runs at
 /// different fractional origins live in different cache entries).
-pub(crate) fn encode_key_for(
-    r: &crate::renderer::render_buffer::TextRun,
-    frame_scale: f32,
-) -> (EncodedKey, i32, i32) {
+pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
     let scale = frame_scale * r.scale;
     let area_color: u32 = bytemuck::cast(r.color);
-    let (origin_x_i, x_bin) = SubpixelBin::new(r.origin.x);
-    let (origin_y_i, y_bin) = SubpixelBin::new(r.origin.y);
-    let key = EncodedKey {
-        text: r.key,
-        scale_q: (scale * 65536.0).round() as u32,
-        area_color,
-        bins: ((x_bin as u8) << 2) | (y_bin as u8),
-    };
-    (key, origin_x_i, origin_y_i)
+    let (origin_x, x_bin) = SubpixelBin::new(r.origin.x);
+    let (origin_y, y_bin) = SubpixelBin::new(r.origin.y);
+    EncodedRunKey {
+        key: EncodedKey {
+            text: r.key,
+            scale_q: (scale * 65536.0).round() as u32,
+            area_color,
+            bins: ((x_bin as u8) << 2) | (y_bin as u8),
+        },
+        origin_x,
+        origin_y,
+    }
 }
 
 /// Cache-hit fast path. Returns `true` if `key` resolved to a live
@@ -157,12 +167,10 @@ pub(crate) fn try_emit_cached(
     cache: &mut EncodedCache,
     atlas_eviction: u64,
     current_frame: u64,
-    key: &EncodedKey,
-    origin_x_i: i32,
-    origin_y_i: i32,
+    run_key: &EncodedRunKey,
     out: &mut Vec<GlyphInstance>,
 ) -> bool {
-    let Some(entry) = cache.map.get_mut(key) else {
+    let Some(entry) = cache.map.get_mut(&run_key.key) else {
         return false;
     };
     if entry.eviction_at != atlas_eviction {
@@ -174,7 +182,7 @@ pub(crate) fn try_emit_cached(
     out.reserve(glyphs.len());
     for g in glyphs {
         out.push(GlyphInstance {
-            pos: [g.rel_x + origin_x_i, g.rel_y + origin_y_i],
+            pos: [g.rel_x + run_key.origin_x, g.rel_y + run_key.origin_y],
             dim: g.dim,
             uv_and_kind: g.uv_and_kind,
             color: g.color,
@@ -183,23 +191,28 @@ pub(crate) fn try_emit_cached(
     true
 }
 
+/// Stable dependencies for the slow walk in `encode_batch`. Bundles
+/// the six refs that would otherwise drag every helper into an
+/// 8-arg signature.
+pub(crate) struct EncodeCtx<'a> {
+    pub(crate) device: &'a wgpu::Device,
+    pub(crate) font_system: &'a mut FontSystem,
+    pub(crate) swash_cache: &'a mut SwashCache,
+    pub(crate) atlas: &'a mut GlyphAtlas,
+    pub(crate) cache: &'a mut EncodedCache,
+}
+
 /// Walk one batch's runs that didn't hit the encoded cache: shape via
 /// cosmic, touch/insert atlas slots, emit `GlyphInstance`s and
 /// populate the encoded cache as a side effect. Callers are expected
 /// to have already filtered out invalid keys and cache hits.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn encode_batch<'a>(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    font_system: &mut FontSystem,
-    swash_cache: &mut SwashCache,
-    atlas: &mut GlyphAtlas,
-    cache: &mut EncodedCache,
-    runs: impl IntoIterator<Item = (ResolvedRun<'a>, EncodedKey, i32, i32)>,
+    ctx: &mut EncodeCtx<'_>,
+    runs: impl IntoIterator<Item = (ResolvedRun<'a>, EncodedRunKey)>,
     out: &mut Vec<GlyphInstance>,
 ) {
-    let current_frame = atlas.current_frame;
-    for (area, key, origin_x_i, origin_y_i) in runs {
+    let current_frame = ctx.atlas.current_frame;
+    for (area, run_key) in runs {
         let area_color: u32 = bytemuck::cast(area.color);
         let scale = area.scale;
         let origin = area.origin;
@@ -219,8 +232,8 @@ pub(crate) fn encode_batch<'a>(
         // atlas eviction happens mid-walk we truncate back to
         // `pending_start` so the partial run never becomes an entry
         // (eviction could have invalidated earlier glyphs' uv coords).
-        let eviction_at_start = atlas.eviction_count;
-        let pending_start = cache.arena.len() as u32;
+        let eviction_at_start = ctx.atlas.eviction_count;
+        let pending_start = ctx.cache.arena.len() as u32;
 
         for run in runs_iter {
             let line_y_px = (run.line_y * scale).round() as i32;
@@ -232,14 +245,13 @@ pub(crate) fn encode_batch<'a>(
                     None => area_color,
                 };
 
-                let slot = match atlas.touch(&physical.cache_key) {
+                let slot = match ctx.atlas.touch(&physical.cache_key) {
                     Some(s) => s,
                     None => match rasterize_and_insert(
-                        device,
-                        queue,
-                        font_system,
-                        swash_cache,
-                        atlas,
+                        ctx.device,
+                        ctx.font_system,
+                        ctx.swash_cache,
+                        ctx.atlas,
                         physical.cache_key,
                     ) {
                         Some(s) => s,
@@ -262,9 +274,9 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
-                cache.arena.push(EncodedGlyph {
-                    rel_x: abs_x - origin_x_i,
-                    rel_y: abs_y - origin_y_i,
+                ctx.cache.arena.push(EncodedGlyph {
+                    rel_x: abs_x - run_key.origin_x,
+                    rel_y: abs_y - run_key.origin_y,
                     dim,
                     uv_and_kind,
                     color,
@@ -272,21 +284,21 @@ pub(crate) fn encode_batch<'a>(
             }
         }
 
-        // Only cache if no eviction happened mid-walk and the run had
-        // a valid shaping key (the mono fallback emits no glyphs).
-        if !area.key.is_invalid() && atlas.eviction_count == eviction_at_start {
-            let span = Span::new(pending_start, cache.arena.len() as u32 - pending_start);
-            cache.map.insert(
-                key,
+        // Only cache if no eviction happened mid-walk. Pass 1 already
+        // filtered invalid keys; valid-key here is a precondition.
+        if ctx.atlas.eviction_count == eviction_at_start {
+            let span = Span::new(pending_start, ctx.cache.arena.len() as u32 - pending_start);
+            ctx.cache.map.insert(
+                run_key.key,
                 EncodedEntry {
                     span,
                     last_use: current_frame,
-                    eviction_at: atlas.eviction_count,
+                    eviction_at: ctx.atlas.eviction_count,
                 },
             );
         } else {
             // Roll back the partial entry — its uv coords are stale.
-            cache.arena.truncate(pending_start as usize);
+            ctx.cache.arena.truncate(pending_start as usize);
         }
     }
 }
@@ -295,14 +307,13 @@ pub(crate) fn encode_batch<'a>(
 /// high bit carries `content_type` (atlases cap at 16384 = 14 bits).
 #[inline]
 pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
-    debug_assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
+    assert!(u <= 0x7FFF, "uv high bit reserved for content_type");
     (u as u32) | ((kind as u32) << 15) | ((v as u32) << 16)
 }
 
 /// Cache miss path: ask swash for the bitmap, push into the atlas.
 fn rasterize_and_insert(
     device: &wgpu::Device,
-    queue: &wgpu::Queue,
     font_system: &mut FontSystem,
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
@@ -321,15 +332,13 @@ fn rasterize_and_insert(
     if w == 0 || h == 0 {
         return Some(atlas.insert_empty(key, content, left, top));
     }
-    atlas.insert(device, queue, key, content, w, h, left, top, &image.data)
+    atlas.insert(device, key, content, w, h, left, top, &image.data)
 }
 
-/// Cosmic stores `0xAARRGGBB` (low→high: B,G,R,A). Our shader reads R
-/// from the low byte. Byte-swap so channels match Palantir's linear
-/// straight-RGBA convention.
+/// Cosmic's `Color` packs as `0xAARRGGBB`; our shader reads R from the
+/// low byte. Repack via the public accessors.
 fn cosmic_color_to_linear_rgba_u32(c: cosmic_text::Color) -> u32 {
-    let [b, g, r, a] = c.0.to_le_bytes();
-    u32::from_le_bytes([r, g, b, a])
+    u32::from_le_bytes([c.r(), c.g(), c.b(), c.a()])
 }
 
 #[cfg(test)]
