@@ -21,6 +21,7 @@
 //! invalidation is needed there.
 
 use crate::primitives::color::ColorU8;
+use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
@@ -70,8 +71,11 @@ pub(crate) struct EncodedGlyph {
     pub(crate) color: u32,
 }
 
+#[derive(Clone, Copy)]
 pub(crate) struct EncodedEntry {
-    pub(crate) glyphs: Vec<EncodedGlyph>,
+    /// Slice into `EncodedCache.arena` holding this run's glyph
+    /// templates.
+    pub(crate) span: Span,
     pub(crate) last_use: u64,
     /// `GlyphAtlas::eviction_count` at insert. If the atlas has
     /// evicted any slot since (count differs), this entry's uv coords
@@ -80,17 +84,48 @@ pub(crate) struct EncodedEntry {
     pub(crate) eviction_at: u64,
 }
 
+/// Flat-arena cache: one contiguous `Vec<EncodedGlyph>` holds every
+/// run's glyphs, with each `EncodedEntry` pointing at its span.
+/// After warmup this is alloc-free — the arena/map/scratch all retain
+/// capacity across frames.
 #[derive(Default)]
 pub(crate) struct EncodedCache {
     pub(crate) map: FxHashMap<EncodedKey, EncodedEntry>,
+    /// Append-only arena. Replaced runs leave dead spans behind;
+    /// `sweep` compacts when dead bytes exceed live ones (see
+    /// `COMPACT_RATIO`).
+    pub(crate) arena: Vec<EncodedGlyph>,
+    /// Retained scratch for the compact pass — kept on the struct so
+    /// compaction is a `swap`, not an alloc.
+    scratch: Vec<EncodedGlyph>,
 }
 
+/// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
+/// i.e. dead glyphs exceed 50% of live ones. Tuned to amortize the
+/// compact cost over many frames while bounding wasted memory.
+const COMPACT_RATIO: usize = 1;
+
 impl EncodedCache {
-    /// Drop entries not touched in the last `keep_frames` frames so a
-    /// long zoom gesture doesn't grow the cache unboundedly.
+    /// Drop entries not touched in the last `keep_frames` frames and,
+    /// when the arena holds more dead-glyph slack than live, compact
+    /// it into the retained scratch. Compaction rewrites every
+    /// surviving entry's `span`.
     pub(crate) fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
         let cutoff = current_frame.saturating_sub(keep_frames);
         self.map.retain(|_, e| e.last_use >= cutoff);
+
+        let live: usize = self.map.values().map(|e| e.span.len as usize).sum();
+        if self.arena.len() <= live * (1 + COMPACT_RATIO) {
+            return;
+        }
+        self.scratch.clear();
+        for entry in self.map.values_mut() {
+            let new_start = self.scratch.len() as u32;
+            let r = entry.span.range();
+            self.scratch.extend_from_slice(&self.arena[r]);
+            entry.span = Span::new(new_start, entry.span.len);
+        }
+        std::mem::swap(&mut self.arena, &mut self.scratch);
     }
 }
 
@@ -133,8 +168,10 @@ pub(crate) fn encode_batch<'a>(
             && entry.eviction_at == atlas.eviction_count
         {
             entry.last_use = current_frame;
-            out.reserve(entry.glyphs.len());
-            for g in &entry.glyphs {
+            let span = entry.span;
+            let glyphs = &cache.arena[span.range()];
+            out.reserve(glyphs.len());
+            for g in glyphs {
                 out.push(GlyphInstance {
                     pos: [g.rel_x + origin_x_i, g.rel_y + origin_y_i],
                     dim: g.dim,
@@ -156,11 +193,12 @@ pub(crate) fn encode_batch<'a>(
             .take_while(move |run| run.line_top * scale + origin.y <= bounds_bot);
 
         // Build a fresh cache entry as a side effect of the slow
-        // walk. We only commit it at the end if no atlas eviction
-        // happened mid-walk (eviction during this run could have
-        // invalidated earlier glyphs' uv coords).
+        // walk. We push templates straight onto `cache.arena`; if an
+        // atlas eviction happens mid-walk we truncate back to
+        // `pending_start` so the partial run never becomes an entry
+        // (eviction could have invalidated earlier glyphs' uv coords).
         let eviction_at_start = atlas.eviction_count;
-        let mut pending: Vec<EncodedGlyph> = Vec::new();
+        let pending_start = cache.arena.len() as u32;
 
         for run in runs_iter {
             let line_y_px = (run.line_y * scale).round() as i32;
@@ -202,7 +240,7 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
-                pending.push(EncodedGlyph {
+                cache.arena.push(EncodedGlyph {
                     rel_x: abs_x - origin_x_i,
                     rel_y: abs_y - origin_y_i,
                     dim,
@@ -215,14 +253,18 @@ pub(crate) fn encode_batch<'a>(
         // Only cache if no eviction happened mid-walk and the run had
         // a valid shaping key (the mono fallback emits no glyphs).
         if !area.key.is_invalid() && atlas.eviction_count == eviction_at_start {
+            let span = Span::new(pending_start, cache.arena.len() as u32 - pending_start);
             cache.map.insert(
                 key,
                 EncodedEntry {
-                    glyphs: pending,
+                    span,
                     last_use: current_frame,
                     eviction_at: atlas.eviction_count,
                 },
             );
+        } else {
+            // Roll back the partial entry — its uv coords are stale.
+            cache.arena.truncate(pending_start as usize);
         }
     }
 }
