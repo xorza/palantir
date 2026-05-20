@@ -267,9 +267,17 @@ fn report_write_stats() {
             let gpu = palantir::renderer::gpu_pass_stats::last_pass_ms()
                 .map(|ms| format!("{ms:>5.2} ms"))
                 .unwrap_or_else(|| "  n/a   ".into());
+            let cc = host.ui.cascade_cache();
             eprintln!(
-                "  frame {frame}  buffer: {:>2} calls, {:>9} B   texture: {:>2} calls, {:>9} B   gpu: {gpu}",
-                s.buffer_calls, s.buffer_bytes, s.texture_calls, s.texture_bytes,
+                "  frame {frame}  buffer: {:>2} calls, {:>9} B   texture: {:>2} calls, {:>9} B   gpu: {gpu}   cache: {:>3} hits / {:>3} misses, {:>3} captures, {:>4} nodes blit",
+                s.buffer_calls,
+                s.buffer_bytes,
+                s.texture_calls,
+                s.texture_bytes,
+                cc.hits,
+                cc.misses,
+                cc.captures,
+                cc.nodes_blit,
             );
         }
     }
