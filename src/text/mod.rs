@@ -290,7 +290,7 @@ impl TextShaper {
         max_width_px: Option<f32>,
         family: FontFamily,
         halign: HAlign,
-        body: impl FnOnce(&glyphon::cosmic_text::Buffer) -> R,
+        body: impl FnOnce(&cosmic_text::Buffer) -> R,
     ) -> Option<R> {
         let result = self.measure(
             text,
@@ -763,7 +763,7 @@ fn mono_byte_at_x(text: &str, target_x: f32, font_size_px: f32) -> usize {
 /// Map a UTF-8 byte offset into `text` to a cosmic-text `Cursor`:
 /// `line` = count of `\n` before the offset, `index` = bytes since
 /// the most recent `\n` (or start of text).
-fn cursor_from_byte(text: &str, byte_offset: usize) -> glyphon::cosmic_text::Cursor {
+fn cursor_from_byte(text: &str, byte_offset: usize) -> cosmic_text::Cursor {
     let mut line = 0usize;
     let mut line_start = 0usize;
     for (i, byte) in text.as_bytes().iter().enumerate() {
@@ -775,12 +775,12 @@ fn cursor_from_byte(text: &str, byte_offset: usize) -> glyphon::cosmic_text::Cur
             line_start = i + 1;
         }
     }
-    glyphon::cosmic_text::Cursor::new(line, byte_offset.saturating_sub(line_start))
+    cosmic_text::Cursor::new(line, byte_offset.saturating_sub(line_start))
 }
 
 /// Inverse of [`cursor_from_byte`]. Walks `text` to find the
 /// `line`-th `\n` and adds `cursor.index`.
-fn cursor_to_byte(text: &str, cursor: glyphon::cosmic_text::Cursor) -> usize {
+fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
     if cursor.line == 0 {
         return cursor.index.min(text.len());
     }

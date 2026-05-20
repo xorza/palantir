@@ -16,6 +16,7 @@ arboard = "*"
 bitflags = "*"
 bytemuck = { version = "*", features = ["derive"] }
 encase = "*"
+cosmic-text = "*"
 fixedbitset = "*"
 glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
 glyphon = { path = "vendor/glyphon" }

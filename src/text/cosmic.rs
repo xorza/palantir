@@ -14,7 +14,7 @@
 use super::{FontFamily, MeasureResult, TextCacheKey};
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use glyphon::cosmic_text::{
+use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     fontdb,
 };
