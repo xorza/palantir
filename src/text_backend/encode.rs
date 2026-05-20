@@ -129,8 +129,64 @@ impl EncodedCache {
     }
 }
 
-/// Walk one batch's runs, append a `GlyphInstance` per visible glyph
-/// to `out`. See module docs for the cache-hit vs. miss split.
+/// Build the cache key for a `TextRun` placed at `frame_scale * r.scale`,
+/// plus the integer-pixel origin (cosmic's subpixel bins absorb the
+/// fractional component into per-glyph `CacheKey`s, so two runs at
+/// different fractional origins live in different cache entries).
+pub(crate) fn encode_key_for(
+    r: &crate::renderer::render_buffer::TextRun,
+    frame_scale: f32,
+) -> (EncodedKey, i32, i32) {
+    let scale = frame_scale * r.scale;
+    let area_color: u32 = bytemuck::cast(r.color);
+    let (origin_x_i, x_bin) = SubpixelBin::new(r.origin.x);
+    let (origin_y_i, y_bin) = SubpixelBin::new(r.origin.y);
+    let key = EncodedKey {
+        text: r.key,
+        scale_q: (scale * 65536.0).round() as u32,
+        area_color,
+        bins: ((x_bin as u8) << 2) | (y_bin as u8),
+    };
+    (key, origin_x_i, origin_y_i)
+}
+
+/// Cache-hit fast path. Returns `true` if `key` resolved to a live
+/// entry and the run's glyphs were emitted to `out`. Caller falls
+/// through to the slow path on `false`.
+pub(crate) fn try_emit_cached(
+    cache: &mut EncodedCache,
+    atlas_eviction: u64,
+    current_frame: u64,
+    key: &EncodedKey,
+    origin_x_i: i32,
+    origin_y_i: i32,
+    out: &mut Vec<GlyphInstance>,
+) -> bool {
+    let Some(entry) = cache.map.get_mut(key) else {
+        return false;
+    };
+    if entry.eviction_at != atlas_eviction {
+        return false;
+    }
+    entry.last_use = current_frame;
+    let span = entry.span;
+    let glyphs = &cache.arena[span.range()];
+    out.reserve(glyphs.len());
+    for g in glyphs {
+        out.push(GlyphInstance {
+            pos: [g.rel_x + origin_x_i, g.rel_y + origin_y_i],
+            dim: g.dim,
+            uv_and_kind: g.uv_and_kind,
+            color: g.color,
+        });
+    }
+    true
+}
+
+/// Walk one batch's runs that didn't hit the encoded cache: shape via
+/// cosmic, touch/insert atlas slots, emit `GlyphInstance`s and
+/// populate the encoded cache as a side effect. Callers are expected
+/// to have already filtered out invalid keys and cache hits.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn encode_batch<'a>(
     device: &wgpu::Device,
@@ -139,48 +195,14 @@ pub(crate) fn encode_batch<'a>(
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
     cache: &mut EncodedCache,
-    runs: impl IntoIterator<Item = ResolvedRun<'a>>,
+    runs: impl IntoIterator<Item = (ResolvedRun<'a>, EncodedKey, i32, i32)>,
     out: &mut Vec<GlyphInstance>,
 ) {
     let current_frame = atlas.current_frame;
-    for area in runs {
+    for (area, key, origin_x_i, origin_y_i) in runs {
         let area_color: u32 = bytemuck::cast(area.color);
         let scale = area.scale;
         let origin = area.origin;
-
-        // Subpixel-aware origin: cosmic folds the fractional component
-        // of (x, y) into each glyph's `CacheKey` via 4-bin subpixel
-        // bins, so two runs at different fractional origins land in
-        // distinct atlas slots even at the same scale. Splitting the
-        // integer-pixel origin out lets the cache emit positions as
-        // `i32 + i32` adds.
-        let (origin_x_i, x_bin) = SubpixelBin::new(origin.x);
-        let (origin_y_i, y_bin) = SubpixelBin::new(origin.y);
-        let key = EncodedKey {
-            text: area.key,
-            scale_q: (scale * 65536.0).round() as u32,
-            area_color,
-            bins: ((x_bin as u8) << 2) | (y_bin as u8),
-        };
-
-        if !area.key.is_invalid()
-            && let Some(entry) = cache.map.get_mut(&key)
-            && entry.eviction_at == atlas.eviction_count
-        {
-            entry.last_use = current_frame;
-            let span = entry.span;
-            let glyphs = &cache.arena[span.range()];
-            out.reserve(glyphs.len());
-            for g in glyphs {
-                out.push(GlyphInstance {
-                    pos: [g.rel_x + origin_x_i, g.rel_y + origin_y_i],
-                    dim: g.dim,
-                    uv_and_kind: g.uv_and_kind,
-                    color: g.color,
-                });
-            }
-            continue;
-        }
 
         let bounds_top = area.bounds.y as f32;
         let bounds_bot = (area.bounds.y + area.bounds.h) as f32;

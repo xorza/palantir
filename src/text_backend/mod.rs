@@ -33,7 +33,7 @@ use std::ops::Range;
 use wgpu::util::DeviceExt;
 
 pub(crate) use atlas::GlyphAtlas;
-use encode::{EncodedCache, ResolvedRun, encode_batch};
+use encode::{EncodedCache, ResolvedRun, encode_batch, encode_key_for, try_emit_cached};
 
 /// Frames an unused `EncodedCache` entry survives before being swept
 /// in `post_record`. Keeps the cache from growing unboundedly under a
@@ -113,6 +113,11 @@ pub struct TextBackend {
     prepared_anything: bool,
 
     encoded_cache: EncodedCache,
+    /// Indices into the caller-supplied `runs` slice that missed the
+    /// encoded cache in `prepare_batch`'s pass 1 and need cosmic
+    /// shaping in pass 2. Retained across calls so an all-hit frame
+    /// can stay alloc-free.
+    miss_indices: Vec<u32>,
 }
 
 impl TextBackend {
@@ -244,6 +249,7 @@ impl TextBackend {
             ranges: Vec::new(),
             prepared_anything: false,
             encoded_cache: EncodedCache::default(),
+            miss_indices: Vec::new(),
         }
     }
 
@@ -271,35 +277,76 @@ impl TextBackend {
     ) -> bool {
         let start = self.instances.len() as u32;
 
-        let shaper = self.shaper.clone();
-        shaper.with_render_split(|split| {
-            let RenderSplit {
-                font_system,
-                lookup,
-            } = split;
-
-            let resolved = runs.iter().filter_map(|r| {
-                lookup.get(r.key).map(|buffer| ResolvedRun {
-                    buffer,
-                    key: r.key,
-                    origin: r.origin,
-                    bounds: r.bounds,
-                    scale: scale * r.scale,
-                    color: r.color,
-                })
-            });
-
-            encode_batch(
-                device,
-                queue,
-                font_system,
-                &mut self.swash_cache,
-                &mut self.atlas,
+        // Pass 1: walk every run, emit encoded-cache hits straight to
+        // `instances`, collect miss indices. No `with_render_split` —
+        // an all-hit frame never cracks the RefCell or hits cosmic.
+        let current_frame = self.atlas.current_frame;
+        let eviction = self.atlas.eviction_count;
+        self.miss_indices.clear();
+        for (i, r) in runs.iter().enumerate() {
+            if r.key.is_invalid() {
+                // Mono fallback emits nothing; skip both paths.
+                continue;
+            }
+            let (key, ox, oy) = encode_key_for(r, scale);
+            if try_emit_cached(
                 &mut self.encoded_cache,
-                resolved,
+                eviction,
+                current_frame,
+                &key,
+                ox,
+                oy,
                 &mut self.instances,
-            );
-        });
+            ) {
+                continue;
+            }
+            self.miss_indices.push(i as u32);
+        }
+
+        // Pass 2: shape only the misses. Take `miss_indices` so the
+        // closure can borrow it without conflicting with `&mut self`.
+        if !self.miss_indices.is_empty() {
+            let shaper = self.shaper.clone();
+            let miss_indices = std::mem::take(&mut self.miss_indices);
+            shaper.with_render_split(|split| {
+                let RenderSplit {
+                    font_system,
+                    lookup,
+                } = split;
+
+                let resolved = miss_indices.iter().filter_map(|&i| {
+                    let r = &runs[i as usize];
+                    let (key, ox, oy) = encode_key_for(r, scale);
+                    lookup.get(r.key).map(|buffer| {
+                        (
+                            ResolvedRun {
+                                buffer,
+                                key: r.key,
+                                origin: r.origin,
+                                bounds: r.bounds,
+                                scale: scale * r.scale,
+                                color: r.color,
+                            },
+                            key,
+                            ox,
+                            oy,
+                        )
+                    })
+                });
+
+                encode_batch(
+                    device,
+                    queue,
+                    font_system,
+                    &mut self.swash_cache,
+                    &mut self.atlas,
+                    &mut self.encoded_cache,
+                    resolved,
+                    &mut self.instances,
+                );
+            });
+            self.miss_indices = miss_indices;
+        }
 
         let end = self.instances.len() as u32;
         let did_work = end > start;
