@@ -9,8 +9,8 @@ use super::ContentType;
 
 /// Initial atlas side length. Bumped from glyphon's 256 to skip the
 /// 256→512→1024 grow chain on first frame with non-trivial text.
-pub(crate) const INITIAL_ATLAS_SIZE: u32 = 1024;
-pub(crate) const ATLAS_GROWTH_FACTOR: u32 = 2;
+const INITIAL_ATLAS_SIZE: u32 = 1024;
+const ATLAS_GROWTH_FACTOR: u32 = 2;
 
 #[derive(Clone, Copy)]
 pub(crate) struct GlyphSlot {
@@ -34,6 +34,19 @@ pub(crate) struct Side {
     pub(crate) format: wgpu::TextureFormat,
     pub(crate) bpp: u32,
     pub(crate) label: &'static str,
+    /// On grow, the previous-frame texture is moved here so the
+    /// shared-encoder flush can record the copy alongside pending
+    /// glyph writes. `None` whenever there's no pending grow blit
+    /// for this side.
+    pending_grow: Option<PendingGrow>,
+}
+
+/// Old texture + its size (= square edge length, == old.width ==
+/// old.height) preserved across the grow point. Consumed by
+/// `flush_pending_uploads`.
+pub(crate) struct PendingGrow {
+    pub(crate) old_texture: wgpu::Texture,
+    pub(crate) old_size: u32,
 }
 
 pub(crate) struct GlyphAtlas {
@@ -140,7 +153,6 @@ impl GlyphAtlas {
     pub(crate) fn insert(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         key: CacheKey,
         content: ContentType,
         width: u16,
@@ -149,7 +161,7 @@ impl GlyphAtlas {
         top: i16,
         pixels: &[u8],
     ) -> Option<GlyphSlot> {
-        let alloc = self.allocate(device, queue, content, width, height)?;
+        let alloc = self.allocate(device, content, width, height)?;
         self.enqueue_upload(
             content,
             alloc.rectangle.min.x as u32,
@@ -231,6 +243,31 @@ impl GlyphAtlas {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
     ) {
+        // Grow blits first: old→new copy must complete before any new
+        // glyph writes hit the new texture. wgpu serialises commands
+        // within an encoder, so recording in this order is enough.
+        let mut any_grow = false;
+        for side in &mut self.sides {
+            if let Some(pg) = side.pending_grow.take() {
+                if !any_grow {
+                    encoder.push_debug_group("palantir text atlas grow blit");
+                    any_grow = true;
+                }
+                encoder.copy_texture_to_texture(
+                    pg.old_texture.as_image_copy(),
+                    side.texture.as_image_copy(),
+                    wgpu::Extent3d {
+                        width: pg.old_size,
+                        height: pg.old_size,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+        if any_grow {
+            encoder.pop_debug_group();
+        }
+
         if self.pending_copies.is_empty() {
             return;
         }
@@ -320,7 +357,6 @@ impl GlyphAtlas {
     fn allocate(
         &mut self,
         device: &wgpu::Device,
-        queue: &wgpu::Queue,
         content: ContentType,
         width: u16,
         height: u16,
@@ -330,7 +366,7 @@ impl GlyphAtlas {
             if let Some(a) = self.sides[content as usize].packer.allocate(need) {
                 return Some(a);
             }
-            if !self.evict_one(content) && !self.grow(device, queue, content) {
+            if !self.evict_one(content) && !self.grow(device, content) {
                 return None;
             }
         }
@@ -354,30 +390,29 @@ impl GlyphAtlas {
     }
 
     /// Double the atlas of `content`. Returns `false` at GPU-max. On
-    /// success, blits old → new (etagere preserves rects on
-    /// `packer.grow`, so the cache stays valid — no re-rasterization).
-    fn grow(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, content: ContentType) -> bool {
+    /// success, stashes the old texture into `Side::pending_grow` so
+    /// `flush_pending_uploads` can record the old→new blit on the
+    /// shared encoder. etagere preserves rects on `packer.grow`, so
+    /// the cache stays valid — no re-rasterization.
+    fn grow(&mut self, device: &wgpu::Device, content: ContentType) -> bool {
         let side = &mut self.sides[content as usize];
         if side.size >= self.max_texture_dimension_2d {
             return false;
         }
         let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(self.max_texture_dimension_2d);
         let new_texture = make_texture(device, side.format, new_size, side.label);
-
+        let old_size = side.size;
         let old_texture = std::mem::replace(&mut side.texture, new_texture);
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("palantir text atlas grow"),
-        });
-        encoder.copy_texture_to_texture(
-            old_texture.as_image_copy(),
-            side.texture.as_image_copy(),
-            wgpu::Extent3d {
-                width: side.size,
-                height: side.size,
-                depth_or_array_layers: 1,
-            },
-        );
-        queue.submit(std::iter::once(encoder.finish()));
+
+        // If a previous grow this frame hasn't flushed yet, keep the
+        // oldest texture — that's the one holding live pixel data
+        // (the intermediate-size texture was never written into).
+        if side.pending_grow.is_none() {
+            side.pending_grow = Some(PendingGrow {
+                old_texture,
+                old_size,
+            });
+        }
 
         side.view = side
             .texture
@@ -407,6 +442,7 @@ impl Side {
             format,
             bpp,
             label,
+            pending_grow: None,
         }
     }
 }

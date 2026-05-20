@@ -33,7 +33,10 @@ use std::ops::Range;
 use wgpu::util::DeviceExt;
 
 pub(crate) use atlas::GlyphAtlas;
-use encode::{EncodedCache, ResolvedRun, encode_batch, encode_key_for, try_emit_cached};
+use encode::{
+    EncodeCtx, EncodedCache, EncodedRunKey, ResolvedRun, encode_batch, encode_key_for,
+    try_emit_cached,
+};
 
 /// Frames an unused `EncodedCache` entry survives before being swept
 /// in `post_record`. Keeps the cache from growing unboundedly under a
@@ -92,8 +95,6 @@ pub struct TextBackend {
 
     pipelines: Vec<wgpu::RenderPipeline>,
     atlas_bgl: wgpu::BindGroupLayout,
-    #[allow(dead_code)] // Held only for the lifetime of `pipelines`.
-    params_bgl: wgpu::BindGroupLayout,
     atlas_bg: wgpu::BindGroup,
     params_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
@@ -110,14 +111,20 @@ pub struct TextBackend {
     vbuf_capacity: u64,
 
     ranges: Vec<Option<Range<u32>>>,
-    prepared_anything: bool,
+    pub(crate) prepared_anything: bool,
 
     encoded_cache: EncodedCache,
-    /// Indices into the caller-supplied `runs` slice that missed the
-    /// encoded cache in `prepare_batch`'s pass 1 and need cosmic
-    /// shaping in pass 2. Retained across calls so an all-hit frame
-    /// can stay alloc-free.
-    miss_indices: Vec<u32>,
+    /// Misses found in `prepare_batch`'s pass 1. Each entry pins the
+    /// run index plus the already-computed cache key + origin so
+    /// pass 2 doesn't repeat `encode_key_for`. Retained across calls
+    /// so an all-hit frame stays alloc-free.
+    misses: Vec<MissEntry>,
+}
+
+#[derive(Clone, Copy)]
+struct MissEntry {
+    run_idx: u32,
+    run_key: EncodedRunKey,
 }
 
 impl TextBackend {
@@ -196,6 +203,9 @@ impl TextBackend {
                 resource: params_buffer.as_entire_binding(),
             }],
         });
+        // `params_bgl` is consumed by `pipeline_layout`; wgpu Arc-counts
+        // bind-group layouts internally so the local goes out of scope
+        // safely after pipeline construction.
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir text shader"),
@@ -236,7 +246,6 @@ impl TextBackend {
             atlas,
             pipelines,
             atlas_bgl,
-            params_bgl,
             atlas_bg,
             params_bg,
             sampler,
@@ -249,7 +258,7 @@ impl TextBackend {
             ranges: Vec::new(),
             prepared_anything: false,
             encoded_cache: EncodedCache::default(),
-            miss_indices: Vec::new(),
+            misses: Vec::new(),
         }
     }
 
@@ -257,10 +266,6 @@ impl TextBackend {
     /// alongside atlas-size changes.
     pub(crate) fn update_viewport(&mut self, viewport_phys: UVec2) {
         self.params.screen_px = viewport_phys;
-    }
-
-    pub(crate) fn has_prepared(&self) -> bool {
-        self.prepared_anything
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
@@ -278,74 +283,71 @@ impl TextBackend {
         let start = self.instances.len() as u32;
 
         // Pass 1: walk every run, emit encoded-cache hits straight to
-        // `instances`, collect miss indices. No `with_render_split` —
-        // an all-hit frame never cracks the RefCell or hits cosmic.
+        // `instances`, collect miss entries (carrying their already-
+        // computed key + origin so pass 2 doesn't re-derive). No
+        // `with_render_split` — an all-hit frame never cracks the
+        // RefCell or hits cosmic.
         let current_frame = self.atlas.current_frame;
         let eviction = self.atlas.eviction_count;
-        self.miss_indices.clear();
+        self.misses.clear();
         for (i, r) in runs.iter().enumerate() {
             if r.key.is_invalid() {
                 // Mono fallback emits nothing; skip both paths.
                 continue;
             }
-            let (key, ox, oy) = encode_key_for(r, scale);
+            let run_key = encode_key_for(r, scale);
             if try_emit_cached(
                 &mut self.encoded_cache,
                 eviction,
                 current_frame,
-                &key,
-                ox,
-                oy,
+                &run_key,
                 &mut self.instances,
             ) {
                 continue;
             }
-            self.miss_indices.push(i as u32);
+            self.misses.push(MissEntry {
+                run_idx: i as u32,
+                run_key,
+            });
         }
 
-        // Pass 2: shape only the misses. Take `miss_indices` so the
-        // closure can borrow it without conflicting with `&mut self`.
-        if !self.miss_indices.is_empty() {
+        // Pass 2: shape only the misses. Take `misses` so the closure
+        // can borrow it without conflicting with `&mut self`.
+        if !self.misses.is_empty() {
             let shaper = self.shaper.clone();
-            let miss_indices = std::mem::take(&mut self.miss_indices);
+            let misses = std::mem::take(&mut self.misses);
             shaper.with_render_split(|split| {
                 let RenderSplit {
                     font_system,
                     lookup,
                 } = split;
 
-                let resolved = miss_indices.iter().filter_map(|&i| {
-                    let r = &runs[i as usize];
-                    let (key, ox, oy) = encode_key_for(r, scale);
+                let resolved = misses.iter().filter_map(|m| {
+                    let r = &runs[m.run_idx as usize];
                     lookup.get(r.key).map(|buffer| {
                         (
                             ResolvedRun {
                                 buffer,
-                                key: r.key,
                                 origin: r.origin,
                                 bounds: r.bounds,
                                 scale: scale * r.scale,
                                 color: r.color,
                             },
-                            key,
-                            ox,
-                            oy,
+                            m.run_key,
                         )
                     })
                 });
 
-                encode_batch(
+                let mut ctx = EncodeCtx {
                     device,
-                    queue,
                     font_system,
-                    &mut self.swash_cache,
-                    &mut self.atlas,
-                    &mut self.encoded_cache,
-                    resolved,
-                    &mut self.instances,
-                );
+                    swash_cache: &mut self.swash_cache,
+                    atlas: &mut self.atlas,
+                    cache: &mut self.encoded_cache,
+                };
+                encode_batch(&mut ctx, resolved, &mut self.instances);
             });
-            self.miss_indices = miss_indices;
+            self.misses = misses;
         }
 
         let end = self.instances.len() as u32;

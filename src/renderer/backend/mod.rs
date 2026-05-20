@@ -489,7 +489,7 @@ impl WgpuBackend {
         self.queue.submit(std::iter::once(encoder.finish()));
         self.quad.post_record();
 
-        if self.text.has_prepared() {
+        if self.text.prepared_anything {
             self.text.post_record();
         }
 
