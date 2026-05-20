@@ -73,9 +73,9 @@ fn key_for(
 }
 
 fn attrs_for(family: FontFamily) -> Attrs<'static> {
-    // Skip TrueType bytecode hinting: skrifa's hint VM was 50-60% of zoom-frame
-    // CPU time, and at HiDPI / during animated zoom the visual difference is
-    // imperceptible. See `palantir/vendor/glyphon/benches/prepare_zoom.rs`.
+    // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
+    // CPU time, and at HiDPI / during animated zoom the visual difference
+    // is imperceptible.
     let base = Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING);
     match family {
         FontFamily::Sans => base.family(Family::Name("Inter")),
