@@ -1170,15 +1170,31 @@ fn text_grid_clear_drops_all_rects() {
 }
 
 #[test]
-fn text_grid_resize_to_smaller_viewport_drops_tiles() {
-    // Cover the resize branch where the tile grid shrinks. The grid
-    // must still answer correctly after the shrink — rects pushed
-    // pre-shrink are gone (clear is the caller's job; this test
-    // pushes after the shrink to verify the post-shrink grid
-    // dimensions work).
+fn text_grid_shrinks_viewport_without_visible_stale_state() {
+    // start_frame is grow-only: a smaller-viewport frame reuses the
+    // larger backing vector, but the active grid still answers
+    // correctly. The previous frame's rects must NOT show up after
+    // start_frame clears.
     let mut g = super::TextRectGrid::default();
     g.start_frame(UVec2::new(2048, 2048));
+    g.push(URect::new(1500, 1500, 40, 40)); // far outside the smaller viewport
     g.start_frame(UVec2::new(256, 256));
+    // Stale rect from the 2048-viewport frame must be cleared even
+    // though its physical tile index lives past the new grid.
+    assert!(!g.any_overlap(URect::new(1500, 1500, 4, 4)));
     g.push(URect::new(10, 10, 40, 40));
     assert!(g.any_overlap(URect::new(20, 20, 5, 5)));
+}
+
+#[test]
+fn text_grid_start_frame_is_grow_only() {
+    // Internal contract: shrinking the viewport doesn't free the tile
+    // vector — it stays sized to the high-water mark so the
+    // resize-arm benchmark (cycling between viewports) doesn't
+    // re-drop and re-allocate per-tile TinyVecs every frame.
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(2048, 2048));
+    let big = g.tiles.len();
+    g.start_frame(UVec2::new(256, 256));
+    assert_eq!(g.tiles.len(), big, "shrink must not deallocate tiles");
 }
