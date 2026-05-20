@@ -118,6 +118,10 @@ fn buf_with(groups: Vec<DrawGroup>) -> RenderBuffer {
             text_batches.push(TextBatch {
                 texts: g.texts,
                 last_group: i as u32,
+                // Schedule tests don't drive shader-level clipping;
+                // mirror the group's scissor (or a full-viewport
+                // sentinel) so the schedule emits the text step.
+                scissor: g.scissor.unwrap_or(URect::new(0, 0, u32::MAX, u32::MAX)),
             });
         }
     }
@@ -544,6 +548,7 @@ fn text_batch_spanning_two_groups_emits_once_at_last_group() {
         vec![TextBatch {
             texts: Span::new(0, 2),
             last_group: 1,
+            scissor: URect::new(0, 0, u32::MAX, u32::MAX),
         }],
     );
     assert_eq!(
@@ -576,6 +581,7 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
         vec![TextBatch {
             texts: Span::new(0, 1),
             last_group: 0,
+            scissor: URect::new(0, 0, u32::MAX, u32::MAX),
         }],
     );
     assert_eq!(
@@ -612,6 +618,7 @@ fn text_batch_anchored_in_damage_skipped_group_still_emits() {
         vec![TextBatch {
             texts: Span::new(0, 2),
             last_group: 1,
+            scissor: URect::new(0, 0, u32::MAX, u32::MAX),
         }],
     );
     // Damage rect: covers only group 0.
@@ -651,6 +658,7 @@ fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
         vec![TextBatch {
             texts: Span::new(0, 2),
             last_group: 1,
+            scissor: URect::new(0, 0, u32::MAX, u32::MAX),
         }],
     );
     let damage = URect::new(0, 0, 50, 50);
@@ -685,10 +693,12 @@ fn two_text_batches_emit_at_their_own_last_groups() {
             TextBatch {
                 texts: Span::new(0, 1),
                 last_group: 0,
+                scissor: URect::new(0, 0, u32::MAX, u32::MAX),
             },
             TextBatch {
                 texts: Span::new(1, 1),
                 last_group: 1,
+                scissor: URect::new(0, 0, u32::MAX, u32::MAX),
             },
         ],
     );

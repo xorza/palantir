@@ -195,6 +195,13 @@ impl Composer {
         out.text_batches.push(TextBatch {
             texts: (b.texts_start..texts_end).into(),
             last_group: b.last_group,
+            // `text_union` is already in physical pixels and clamped
+            // to every contributing run's clip-stack-narrowed bounds.
+            // Hand it through as the GPU scissor for this batch — the
+            // schedule was previously widening to the full viewport
+            // here and relying on per-run shader clipping that the
+            // inlined text backend doesn't actually implement.
+            scissor: b.text_union,
         });
         self.text_grid.clear();
     }
