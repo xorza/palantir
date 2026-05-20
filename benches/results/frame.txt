@@ -14,5 +14,10 @@ Hardware: MacBook Air (M5)
   frame/resizing_cpu   time: [2.0646 ms 2.0813 ms 2.0982 ms]
   frame/resizing_gpu   time: [11.163 ms 11.429 ms 11.704 ms]
 
+  After composer spatial grid (TextRectGrid replacing linear scan):
+    frame/cached    time: [1.1940 ms 1.2295 ms 1.2592 ms]  (noise ±5%)
+    frame/resizing  time: [2.2626 ms 2.2874 ms 2.3126 ms]  (-5.2%)
+    Composer::quad_forces_flush self-time: 8.94% → 1.63% of cycles
+
 Command: cargo bench --bench frame --features internals
 Visual:  cargo run --release --example frame_visual
