@@ -1,12 +1,12 @@
 //! Glyph atlas: one struct for both mask + color content.
 
-use crate::renderer::backend::Queue;
 use cosmic_text::CacheKey;
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 use super::ContentType;
+use crate::renderer::backend::UploadCtx;
 
 /// Initial atlas side length. Bumped from glyphon's 256 to skip the
 /// 256→512→1024 grow chain on first frame with non-trivial text.
@@ -233,17 +233,12 @@ impl GlyphAtlas {
         });
     }
 
-    /// Drain queued uploads into the caller's encoder: one
-    /// `queue.write_buffer` to a retained staging buffer (coalesced
-    /// with the next user submit by wgpu's staging belt), plus N
-    /// `copy_buffer_to_texture` commands recorded on `encoder`. The
-    /// renderer owns the submit; this method adds no extra one.
-    pub(crate) fn flush_pending_uploads(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
-        encoder: &mut wgpu::CommandEncoder,
-    ) {
+    /// Drain queued uploads through `ctx`: the per-glyph bytes are
+    /// staged through the renderer's shared staging belt (one
+    /// `copy_buffer_to_buffer` into our retained staging buffer), plus
+    /// N `copy_buffer_to_texture` commands recorded on `ctx.encoder`.
+    /// The renderer owns the submit; this method adds no extra one.
+    pub(crate) fn flush_pending_uploads(&mut self, ctx: &mut UploadCtx<'_>) {
         // Grow blits first: old→new copy must complete before any new
         // glyph writes hit the new texture. wgpu serialises commands
         // within an encoder, so recording in this order is enough.
@@ -251,10 +246,11 @@ impl GlyphAtlas {
         for side in &mut self.sides {
             if let Some(pg) = side.pending_grow.take() {
                 if !any_grow {
-                    encoder.push_debug_group("palantir text atlas grow blit");
+                    ctx.encoder
+                        .push_debug_group("palantir text atlas grow blit");
                     any_grow = true;
                 }
-                encoder.copy_texture_to_texture(
+                ctx.encoder.copy_texture_to_texture(
                     pg.old_texture.as_image_copy(),
                     side.texture.as_image_copy(),
                     wgpu::Extent3d {
@@ -266,7 +262,7 @@ impl GlyphAtlas {
             }
         }
         if any_grow {
-            encoder.pop_debug_group();
+            ctx.encoder.pop_debug_group();
         }
 
         if self.pending_copies.is_empty() {
@@ -278,7 +274,7 @@ impl GlyphAtlas {
                 .next_power_of_two()
                 .max(self.staging_cap * 2)
                 .max(4096);
-            self.staging_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
+            self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir text atlas staging"),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
@@ -287,12 +283,13 @@ impl GlyphAtlas {
             self.staging_cap = new_cap;
         }
         let buf = self.staging_buf.as_ref().unwrap();
-        queue.write_buffer(buf, 0, &self.pending_staging);
+        ctx.write(buf, 0, &self.pending_staging);
 
-        encoder.push_debug_group("palantir text atlas batch upload");
+        ctx.encoder
+            .push_debug_group("palantir text atlas batch upload");
         for c in &self.pending_copies {
             let side = &self.sides[c.side as usize];
-            encoder.copy_buffer_to_texture(
+            ctx.encoder.copy_buffer_to_texture(
                 wgpu::TexelCopyBufferInfo {
                     buffer: buf,
                     layout: wgpu::TexelCopyBufferLayout {
@@ -318,7 +315,7 @@ impl GlyphAtlas {
                 },
             );
         }
-        encoder.pop_debug_group();
+        ctx.encoder.pop_debug_group();
 
         self.pending_staging.clear();
         self.pending_copies.clear();

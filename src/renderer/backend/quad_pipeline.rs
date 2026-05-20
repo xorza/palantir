@@ -2,9 +2,9 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use super::Queue;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
+use super::{Queue, UploadCtx};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -219,14 +219,8 @@ impl QuadPipeline {
             },
         );
 
-        let instance_buffer = DynamicBuffer::new(
-            device,
-            "palantir.quad.instances",
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<Quad>(),
-            256,
-            8,
-        );
+        let instance_buffer =
+            DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256, 8);
 
         let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.quad.clear"),
@@ -365,13 +359,12 @@ impl QuadPipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(&mut self, device: &wgpu::Device, queue: &Queue, quads: &[Quad]) {
+    pub(crate) fn upload(&mut self, ctx: &mut UploadCtx<'_>, quads: &[Quad]) {
         if quads.is_empty() {
             return;
         }
-
         self.instance_buffer
-            .upload(device, queue, bytemuck::cast_slice(quads), quads.len());
+            .upload(ctx, bytemuck::cast_slice(quads), quads.len());
     }
 
     /// Bind pipeline + viewport bind group + instance buffer once per
@@ -412,11 +405,10 @@ impl QuadPipeline {
     /// pre-clear would blend against last frame's pixels and defeat
     /// the fringe-fix.
     #[profiling::function]
-    pub(crate) fn upload_clear(&mut self, queue: &Queue, viewport: Vec2, color: Color) {
-        // Steady state: viewport + clear color match last frame, so the
-        // clear_buffer already holds the right pixels. Skip the
-        // 96-byte write — on Metal each `queue.write_buffer` allocates
-        // a fresh blit encoder.
+    pub(crate) fn upload_clear(&mut self, ctx: &mut UploadCtx<'_>, viewport: Vec2, color: Color) {
+        // Steady state: viewport + clear color match last frame, so
+        // the clear_buffer already holds the right pixels. Skip the
+        // belt write entirely on a match.
         if self.last_clear == Some((viewport, color)) {
             return;
         }
@@ -434,7 +426,7 @@ impl QuadPipeline {
             stroke_width: 0.0,
             ..Default::default()
         };
-        queue.write_buffer(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
+        ctx.write(&self.clear_buffer, 0, bytemuck::bytes_of(&q));
         self.last_clear = Some((viewport, color));
     }
 
@@ -475,12 +467,7 @@ impl QuadPipeline {
     /// this call, `self.mask_indices` parallels `groups`: `Some(j)`
     /// at index `i` says "group `i`'s mask is mask quad `j`."
     #[profiling::function]
-    pub(crate) fn stage_masks(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
-        groups: &[DrawGroup],
-    ) {
+    pub(crate) fn stage_masks(&mut self, ctx: &mut UploadCtx<'_>, groups: &[DrawGroup]) {
         debug_assert!(
             self.stencil.is_some(),
             "stage_masks requires ensure_stencil to have run this frame"
@@ -503,21 +490,9 @@ impl QuadPipeline {
         // reuse across frames (capacity grows monotonically through
         // `DynamicBuffer::upload`).
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::new(
-                device,
-                "palantir.quad.masks",
-                wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                std::mem::size_of::<Quad>(),
-                8,
-                8,
-            )
+            DynamicBuffer::vertex::<Quad>(ctx.device, "palantir.quad.masks", 8, 8)
         });
-        buf.upload(
-            device,
-            queue,
-            bytemuck::cast_slice(&self.masks),
-            self.masks.len(),
-        );
+        buf.upload(ctx, bytemuck::cast_slice(&self.masks), self.masks.len());
     }
 
     /// Bind the stencil-test (color) pipeline + main instance buffer.

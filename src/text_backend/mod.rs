@@ -23,7 +23,7 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
-use crate::renderer::backend::Queue;
+use crate::renderer::backend::UploadCtx;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
@@ -275,8 +275,7 @@ impl TextBackend {
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
+        ctx: &mut UploadCtx<'_>,
         scale: f32,
         batch_idx: usize,
         runs: &[TextRun],
@@ -339,14 +338,14 @@ impl TextBackend {
                     })
                 });
 
-                let mut ctx = EncodeCtx {
-                    device,
+                let mut ectx = EncodeCtx {
+                    device: ctx.device,
                     font_system,
                     swash_cache: &mut self.swash_cache,
                     atlas: &mut self.atlas,
                     cache: &mut self.encoded_cache,
                 };
-                encode_batch(&mut ctx, resolved, &mut self.instances);
+                encode_batch(&mut ectx, resolved, &mut self.instances);
             });
             self.misses = misses;
         }
@@ -357,7 +356,7 @@ impl TextBackend {
         // Rebuild bind group if atlas grew during encode.
         if self.atlas.bind_group_dirty {
             self.atlas_bg = build_atlas_bg(
-                device,
+                ctx.device,
                 &self.atlas_bgl,
                 self.atlas.mask_view(),
                 self.atlas.color_view(),
@@ -373,7 +372,7 @@ impl TextBackend {
         // schedule the write.
         self.params.atlas_px = [self.atlas.color_size(), self.atlas.mask_size()];
         if self.params != self.uploaded_params {
-            queue.write_buffer(&self.params_buffer, 0, bytemuck::bytes_of(&self.params));
+            ctx.write(&self.params_buffer, 0, bytemuck::bytes_of(&self.params));
             self.uploaded_params = self.params;
         }
 
@@ -384,7 +383,7 @@ impl TextBackend {
 
         if did_work {
             self.prepared_anything = true;
-            self.upload_vbuf(device, queue);
+            self.upload_vbuf(ctx);
         }
         did_work
     }
@@ -394,13 +393,8 @@ impl TextBackend {
     /// `prepare_batch` calls and right after the renderer creates its
     /// main command encoder — so atlas uploads share the same submit
     /// as the text draws that read from them.
-    pub(crate) fn flush_atlas_uploads(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
-        encoder: &mut wgpu::CommandEncoder,
-    ) {
-        self.atlas.flush_pending_uploads(device, queue, encoder);
+    pub(crate) fn flush_atlas_uploads(&mut self, ctx: &mut UploadCtx<'_>) {
+        self.atlas.flush_pending_uploads(ctx);
     }
 
     pub(crate) fn render_batch(
@@ -431,12 +425,12 @@ impl TextBackend {
         self.prepared_anything = false;
     }
 
-    fn upload_vbuf(&mut self, device: &wgpu::Device, queue: &Queue) {
+    fn upload_vbuf(&mut self, ctx: &mut UploadCtx<'_>) {
         let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
         let needed = bytes.len() as u64;
         if needed > self.vbuf_capacity {
             let new_cap = needed.next_power_of_two().max(self.vbuf_capacity * 2);
-            self.vbuf = device.create_buffer(&wgpu::BufferDescriptor {
+            self.vbuf = ctx.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir text vbuf"),
                 size: new_cap,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
@@ -444,7 +438,7 @@ impl TextBackend {
             });
             self.vbuf_capacity = new_cap;
         }
-        queue.write_buffer(&self.vbuf, 0, bytes);
+        ctx.write(&self.vbuf, 0, bytes);
     }
 }
 
@@ -565,11 +559,16 @@ pub mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::Queue;
+
     use crate::text::{FontFamily, TextShaper};
     use glam::{UVec2, Vec2};
 
     pub use super::TextBackend;
+    /// Re-export the `pub(crate)` `UploadCtx` so benches can construct
+    /// one to feed `prepare`/`flush`. The full path
+    /// (`crate::renderer::backend::dynamic_buffer::UploadCtx`) is
+    /// noisy at the call site.
+    pub use crate::renderer::backend::UploadCtx;
     /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
@@ -597,23 +596,12 @@ pub mod test_support {
         }
 
         /// Append-mode prepare into batch 0.
-        pub fn prepare(
-            &mut self,
-            device: &wgpu::Device,
-            queue: &Queue,
-            scale: f32,
-            runs: &[TextRun],
-        ) -> bool {
-            self.prepare_batch(device, queue, scale, 0, runs)
+        pub fn prepare(&mut self, ctx: &mut UploadCtx<'_>, scale: f32, runs: &[TextRun]) -> bool {
+            self.prepare_batch(ctx, scale, 0, runs)
         }
 
-        pub fn flush(
-            &mut self,
-            device: &wgpu::Device,
-            queue: &Queue,
-            encoder: &mut wgpu::CommandEncoder,
-        ) {
-            self.flush_atlas_uploads(device, queue, encoder);
+        pub fn flush(&mut self, ctx: &mut UploadCtx<'_>) {
+            self.flush_atlas_uploads(ctx);
         }
 
         pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {

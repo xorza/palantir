@@ -10,7 +10,7 @@
 //! (see [`Self::ensure_stencil`]) — it reads the mask but never
 //! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
 
-use super::Queue;
+use super::UploadCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::mesh::MeshVertex;
@@ -80,30 +80,11 @@ impl MeshPipeline {
             },
         );
 
-        let vertex_buffer = DynamicBuffer::new(
-            device,
-            "palantir.mesh.vertices",
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<MeshVertex>(),
-            256,
-            64,
-        );
-        let index_buffer = DynamicBuffer::new(
-            device,
-            "palantir.mesh.indices",
-            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<u16>(),
-            1024,
-            256,
-        );
-        let instance_buffer = DynamicBuffer::new(
-            device,
-            "palantir.mesh.instances",
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<MeshInstance>(),
-            64,
-            16,
-        );
+        let vertex_buffer =
+            DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256, 64);
+        let index_buffer = DynamicBuffer::index::<u16>(device, "palantir.mesh.indices", 1024, 256);
+        let instance_buffer =
+            DynamicBuffer::vertex::<MeshInstance>(device, "palantir.mesh.instances", 64, 16);
 
         Self {
             pipeline,
@@ -149,8 +130,7 @@ impl MeshPipeline {
     #[profiling::function]
     pub(crate) fn upload(
         &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
+        ctx: &mut UploadCtx<'_>,
         vertices: &[MeshVertex],
         indices: &[u16],
         instances: &[MeshInstance],
@@ -159,18 +139,10 @@ impl MeshPipeline {
             return;
         }
 
-        self.instance_buffer.upload(
-            device,
-            queue,
-            bytemuck::cast_slice(instances),
-            instances.len(),
-        );
-        self.vertex_buffer.upload(
-            device,
-            queue,
-            bytemuck::cast_slice(vertices),
-            vertices.len(),
-        );
+        self.instance_buffer
+            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
+        self.vertex_buffer
+            .upload(ctx, bytemuck::cast_slice(vertices), vertices.len());
 
         // The index buffer's binding stride is 2 bytes (u16). wgpu
         // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
@@ -182,7 +154,7 @@ impl MeshPipeline {
         let padded = (indices.len() + 1) & !1;
         if indices.len() == padded {
             self.index_buffer
-                .upload(device, queue, bytemuck::cast_slice(indices), padded);
+                .upload(ctx, bytemuck::cast_slice(indices), padded);
         } else {
             use std::hash::Hasher as _;
             let mut h = crate::common::hash::Hasher::new();
@@ -190,10 +162,10 @@ impl MeshPipeline {
             h.write_u16(0);
             let content_hash = h.finish();
             self.index_buffer
-                .upload_with(device, padded, content_hash, |buf| {
-                    queue.write_buffer(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
+                .upload_with(ctx, padded, content_hash, |buf, ctx| {
+                    ctx.write(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
                     let tail = [indices[indices.len() - 1], 0u16];
-                    queue.write_buffer(
+                    ctx.write(
                         buf,
                         ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
                         bytemuck::cast_slice(&tail),
