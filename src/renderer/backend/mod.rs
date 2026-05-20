@@ -1,5 +1,7 @@
 mod curve_pipeline;
 mod debug_overlay;
+pub(crate) mod gpu_pass_stats;
+mod gpu_timings;
 mod image_pipeline;
 mod mesh_pipeline;
 mod pipeline_utils;
@@ -19,6 +21,7 @@ use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
+use self::gpu_timings::GpuTimings;
 pub use self::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
@@ -101,6 +104,12 @@ pub(crate) struct WgpuBackend {
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
     caches: RenderCaches,
+    /// Main-pass timestamp queries. `Some` when the device was
+    /// created with [`wgpu::Features::TIMESTAMP_QUERY`] enabled
+    /// (host opportunistically requests it — see `winit_host.rs`).
+    /// Surfaces per-frame GPU pass duration into
+    /// [`gpu_pass_stats`] for the debug overlay and benches.
+    gpu_timings: Option<GpuTimings>,
 }
 
 impl WgpuBackend {
@@ -125,6 +134,14 @@ impl WgpuBackend {
         caches: RenderCaches,
         image_budget_bytes: u64,
     ) -> Self {
+        // Opportunistic GPU pass timing. Requires both the feature
+        // bit (host requests it when the adapter advertises it — see
+        // `winit_host.rs`) and a non-zero timestamp period (some
+        // headless / software queues advertise the feature but can't
+        // actually time submissions).
+        let gpu_timings = (device.features().contains(wgpu::Features::TIMESTAMP_QUERY)
+            && queue.get_timestamp_period() > 0.0)
+            .then(|| GpuTimings::new(&device, queue.get_timestamp_period()));
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
         let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
@@ -165,6 +182,7 @@ impl WgpuBackend {
             backbuffer: None,
             frame_arena,
             caches,
+            gpu_timings,
         }
     }
 
@@ -491,7 +509,23 @@ impl WgpuBackend {
             debug_overlay,
         );
 
+        // Last step before encoder.finish(): resolve the main-pass
+        // timestamps if timing is on. The main pass closed before
+        // copy_backbuffer_into; the resolve can ride in the same
+        // command buffer as everything else.
+        if let Some(t) = self.gpu_timings.as_mut() {
+            t.resolve(&mut encoder);
+        }
+
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Kick the map_async on this frame's staging slot and read
+        // back any prior frame whose map has completed. Cheap (one
+        // device.poll(Poll), one memcpy on the ready slot).
+        if let Some(t) = self.gpu_timings.as_mut() {
+            t.after_submit(&self.device);
+        }
+
         self.quad.post_record();
 
         if self.text.prepared_anything {
@@ -597,6 +631,7 @@ impl WgpuBackend {
             None => wgpu::LoadOp::Clear(clear),
             Some(_) => wgpu::LoadOp::Load,
         };
+        let timestamp_writes = self.gpu_timings.as_ref().map(|t| t.pass_writes());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -609,7 +644,7 @@ impl WgpuBackend {
                 },
             })],
             depth_stencil_attachment,
-            timestamp_writes: None,
+            timestamp_writes,
             occlusion_query_set: None,
             multiview_mask: None,
         });
