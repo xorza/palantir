@@ -7,9 +7,8 @@ Hardware: MacBook Air (M5)
   frame/resizing  time: [7.8350 ms 8.2718 ms 8.7218 ms]
 
 Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
-  (Run on previous 1280x800 view; re-run pending.)
-  frame/cached    time: [938.34 µs 952.30 µs 965.75 µs]
-  frame/resizing  time: [2.0436 ms 2.0541 ms 2.0648 ms]
+  frame/cached    time: [1.0872 ms 1.1351 ms 1.1770 ms]
+  frame/resizing  time: [2.3984 ms 2.4130 ms 2.4275 ms]
 
 Command: cargo bench --bench frame --features internals
 Visual:  cargo run --release --example frame_visual
