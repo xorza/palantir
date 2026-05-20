@@ -67,14 +67,14 @@ impl WidgetLook {
     /// `fallback_text` is used when `self.text == None` — pass
     /// `ui.theme.text` (TextStyle is `Copy`).
     pub fn animate(
-        &self,
+        self,
         ui: &mut Ui,
         id: WidgetId,
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
         let target = AnimatedLook {
-            background: self.background.clone().unwrap_or_default(),
+            background: self.background.unwrap_or_default(),
             text: self.text.unwrap_or(fallback_text),
         };
         ui.animate(id, Self::SLOT_LOOK, target, spec)

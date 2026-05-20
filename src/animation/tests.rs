@@ -773,7 +773,7 @@ fn widget_look_animate_resolves_components_and_falls_back() {
     // capture out of the FnMut closure.
     let captured: Cell<Option<AnimatedLook>> = Cell::new(None);
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(16)), |ui| {
-        captured.set(Some(look.animate(ui, id, fallback, None)));
+        captured.set(Some(look.clone().animate(ui, id, fallback, None)));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     let snap = captured.take().expect("animate ran");
@@ -808,7 +808,9 @@ fn widget_look_animate_resolves_components_and_falls_back() {
         text: None,
     };
     let _ = ui.frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
-        let _ = look2.animate(ui, id, fallback, Some(AnimSpec::FAST));
+        let _ = look2
+            .clone()
+            .animate(ui, id, fallback, Some(AnimSpec::FAST));
         Frame::new().id(WidgetId::from_hash("look-test")).show(ui);
     });
     assert!(

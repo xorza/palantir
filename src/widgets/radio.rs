@@ -73,7 +73,6 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         // can't accidentally square-corner the pip.
         let mut look = look_target.animate(ui, id, fallback_text, anim);
         look.background.corners = Corners::all(pip_size * 0.5);
-        let chrome = look.background.clone();
         let label = self.label;
 
         let mut element = self.element;
@@ -85,7 +84,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             let mut pip_elem = Element::new(LayoutMode::Leaf);
             pip_elem.salt = Salt::Verbatim(pip_id);
             pip_elem.size = (Sizing::Fixed(pip_size), Sizing::Fixed(pip_size)).into();
-            ui.node_with_chrome(pip_id, pip_elem, &chrome, |ui| {
+            ui.node_with_chrome(pip_id, pip_elem, &look.background, |ui| {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);

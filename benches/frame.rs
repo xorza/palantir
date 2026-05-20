@@ -1,23 +1,25 @@
-//! Per-frame aggregate benchmark — full CPU + GPU.
+//! Per-frame aggregate benchmark — CPU + GPU.
 //!
 //! Drives the canonical public API: `Host::frame_offscreen` against an
-//! offscreen `wgpu::Texture`, with a blocking GPU poll between
-//! iterations so frames don't pipeline and the measured time covers
-//! one complete record → measure → arrange → cascade → encode →
-//! compose → submit → execute cycle.
+//! offscreen `wgpu::Texture`. Two arms × two sync modes:
+//!
+//! - **`frame/cached_*`** — fixed viewport, MeasureCache hits.
+//! - **`frame/resizing_*`** — rotates a pool of differently-sized
+//!   targets so `available_q` busts each iter.
+//!
+//! Each arm runs in both sync modes:
+//!
+//! - **`*_gpu`** — `PollType::Wait` between iters. Wall time covers
+//!   the full CPU + GPU pipeline. Useful as the "what does a frame
+//!   actually cost end-to-end" number; dominated by GPU exec on
+//!   large views.
+//! - **`*_cpu`** — `PollType::Poll` (non-blocking). Wall time covers
+//!   record + measure + arrange + cascade + encode + compose + the
+//!   CPU side of submit, but not GPU exec. Useful for measuring
+//!   palantir's CPU pipeline without GPU variance dominating.
 //!
 //! The `build_ui` workload lives in `benches/support/frame_fixture.rs`
-//! and is shared with `examples/frame_visual.rs`, which renders the
-//! same scene in a real window for manual visual inspection.
-//!
-//! Two arms — same workload, different cache state:
-//!
-//! - **`frame/cached`** — fixed viewport. After criterion's warmup,
-//!   `MeasureCache` hits at the highest stable root every frame.
-//! - **`frame/resizing`** — rotates through a small pool of
-//!   differently-sized offscreen targets, so `available_q` busts on
-//!   every iteration and measure rebuilds from scratch. Approximates
-//!   a live drag-resize.
+//! and is shared with `examples/frame_visual.rs`.
 
 #[path = "support/frame_fixture.rs"]
 mod fixture;
@@ -32,8 +34,8 @@ use std::sync::OnceLock;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const SCALE: f32 = 2.0;
 // View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-button
-// wrap, 6-pass shape gallery, 96-dot canvas, chat scroll, notes editor)
-// fits without overflowing the main column.
+// wrap, shape gallery, 96-dot canvas, chat scroll, notes) fits without
+// overflowing the main column.
 const CACHED_SIZE: glam::UVec2 = glam::UVec2::new(3840, 4800); // 1920x2400 @ 2x
 const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(3200, 4400),
@@ -41,6 +43,29 @@ const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(3520, 4600),
     glam::UVec2::new(4160, 5000),
 ];
+
+#[derive(Clone, Copy)]
+enum SyncMode {
+    /// Block on GPU completion between iters. Wall time = full
+    /// CPU + GPU frame.
+    Gpu,
+    /// Non-blocking poll between iters. Wall time = CPU pipeline only;
+    /// GPU work runs async and isn't counted.
+    Cpu,
+}
+
+impl SyncMode {
+    fn poll(self, device: &wgpu::Device) {
+        let pt = match self {
+            SyncMode::Gpu => wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            },
+            SyncMode::Cpu => wgpu::PollType::Poll,
+        };
+        device.poll(pt).expect("device poll");
+    }
+}
 
 struct Gpu {
     device: wgpu::Device,
@@ -93,82 +118,64 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
     })
 }
 
-fn bench_frame(c: &mut Criterion) {
+fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
     let g = gpu();
-
-    // ── Cached arm: one offscreen target, fixed size. Steady-state
-    // cost of the full pipeline with warm caches.
-    {
-        let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
-        host.ui.theme.window_clear = Color::BLACK;
-        let target = make_target(&g.device, CACHED_SIZE, "palantir.frame_bench.cached");
-        let mut state = FormState::default();
-        // Prime caches so the first measured iter is steady-state.
-        for _ in 0..4 {
+    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    host.ui.theme.window_clear = Color::BLACK;
+    let target = make_target(&g.device, CACHED_SIZE, "palantir.frame_bench.cached");
+    let mut state = FormState::default();
+    // Warmup with Wait to drain pre-bench setup work regardless of mode.
+    for _ in 0..4 {
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+        SyncMode::Gpu.poll(&g.device);
+    }
+    c.bench_function(name, |b| {
+        b.iter(|| {
             host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-            g.device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                })
-                .expect("device poll");
-        }
-
-        c.bench_function("frame/cached", |b| {
-            b.iter(|| {
-                host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-                g.device
-                    .poll(wgpu::PollType::Wait {
-                        submission_index: None,
-                        timeout: None,
-                    })
-                    .expect("device poll");
-                black_box(&target);
-            });
+            sync.poll(&g.device);
+            black_box(&target);
         });
-    }
+    });
+    // Drain pipelined GPU work before the next bench function reuses
+    // the device.
+    SyncMode::Gpu.poll(&g.device);
+}
 
-    // ── Resizing arm: cycle through a pool of differently-sized
-    // targets so MeasureCache keys bust each iter. Pool is
-    // pre-allocated outside the timing loop.
-    {
-        let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
-        host.ui.theme.window_clear = Color::BLACK;
-        let targets: Vec<wgpu::Texture> = RESIZE_POOL
-            .iter()
-            .enumerate()
-            .map(|(i, s)| make_target(&g.device, *s, &format!("palantir.frame_bench.resize.{i}")))
-            .collect();
-        let mut state = FormState::default();
-        let mut idx = 0usize;
-        for _ in 0..4 {
-            host.frame_offscreen(&targets[idx % targets.len()], SCALE, |ui| {
-                build_ui(&mut state, BENCH_SCALE, ui)
-            });
-            g.device
-                .poll(wgpu::PollType::Wait {
-                    submission_index: None,
-                    timeout: None,
-                })
-                .expect("device poll");
-            idx += 1;
-        }
-
-        c.bench_function("frame/resizing", |b| {
-            b.iter(|| {
-                let target = &targets[idx % targets.len()];
-                idx = idx.wrapping_add(1);
-                host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-                g.device
-                    .poll(wgpu::PollType::Wait {
-                        submission_index: None,
-                        timeout: None,
-                    })
-                    .expect("device poll");
-                black_box(target);
-            });
+fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
+    let g = gpu();
+    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    host.ui.theme.window_clear = Color::BLACK;
+    let targets: Vec<wgpu::Texture> = RESIZE_POOL
+        .iter()
+        .enumerate()
+        .map(|(i, s)| make_target(&g.device, *s, &format!("palantir.frame_bench.resize.{i}")))
+        .collect();
+    let mut state = FormState::default();
+    let mut idx = 0usize;
+    for _ in 0..4 {
+        host.frame_offscreen(&targets[idx % targets.len()], SCALE, |ui| {
+            build_ui(&mut state, BENCH_SCALE, ui)
         });
+        SyncMode::Gpu.poll(&g.device);
+        idx += 1;
     }
+    c.bench_function(name, |b| {
+        b.iter(|| {
+            let target = &targets[idx % targets.len()];
+            idx = idx.wrapping_add(1);
+            host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+            sync.poll(&g.device);
+            black_box(target);
+        });
+    });
+    SyncMode::Gpu.poll(&g.device);
+}
+
+fn bench_frame(c: &mut Criterion) {
+    run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
+    run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
+    run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
+    run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
 }
 
 criterion_group!(benches, bench_frame);

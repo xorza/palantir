@@ -1,14 +1,18 @@
-Frame bench — full CPU + GPU (offscreen) — 2026-05-20
+Frame bench — 2026-05-20
 View: 1920x2400 logical @ 2x (3840x4800 physical) so BENCH_SCALE=32
       content fits without overflow.
 
-Hardware: MacBook Air (M5)
-  frame/cached    time: [1.8850 ms 2.0020 ms 2.1261 ms]
-  frame/resizing  time: [7.8350 ms 8.2718 ms 8.7218 ms]
+Arms:
+  *_cpu = PollType::Poll between iters → CPU pipeline only
+          (record + measure + arrange + cascade + encode + compose +
+          CPU side of submit), GPU runs async, not counted.
+  *_gpu = PollType::Wait → full CPU + GPU frame.
 
-Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
-  frame/cached    time: [1.0872 ms 1.1351 ms 1.1770 ms]
-  frame/resizing  time: [2.3984 ms 2.4130 ms 2.4275 ms]
+Hardware: MacBook Air (M5)
+  frame/cached_cpu     time: [426.70 µs 427.98 µs 429.28 µs]
+  frame/cached_gpu     time: [2.1095 ms 2.2444 ms 2.3878 ms]
+  frame/resizing_cpu   time: [2.0646 ms 2.0813 ms 2.0982 ms]
+  frame/resizing_gpu   time: [11.163 ms 11.429 ms 11.704 ms]
 
 Command: cargo bench --bench frame --features internals
 Visual:  cargo run --release --example frame_visual

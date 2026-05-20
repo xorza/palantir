@@ -477,6 +477,7 @@ impl<'a> TextEdit<'a> {
         let fallback_text = ui.theme.text;
         let look = theme
             .pick(response)
+            .clone()
             .animate(ui, id, fallback_text, theme.anim);
         let font_size = look.text.font_size_px;
         let line_height_mult = look.text.line_height_mult;
