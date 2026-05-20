@@ -33,7 +33,13 @@ use std::ops::Range;
 use wgpu::util::DeviceExt;
 
 pub(crate) use atlas::GlyphAtlas;
-use encode::{ResolvedRun, encode_batch};
+use encode::{EncodedCache, ResolvedRun, encode_batch};
+
+/// Frames an unused `EncodedCache` entry survives before being swept
+/// in `post_record`. Keeps the cache from growing unboundedly under a
+/// long zoom gesture while comfortably outliving any short flicker
+/// (visibility toggle, hover paint) that drops a run for a frame.
+const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
 
 /// Selects which pipeline a `prepare_batch` / `render_batch` call
 /// targets. Same as the existing wrapper's `StencilMode`.
@@ -105,6 +111,8 @@ pub struct TextBackend {
 
     ranges: Vec<Option<Range<u32>>>,
     prepared_anything: bool,
+
+    encoded_cache: EncodedCache,
 }
 
 impl TextBackend {
@@ -235,6 +243,7 @@ impl TextBackend {
             vbuf_capacity,
             ranges: Vec::new(),
             prepared_anything: false,
+            encoded_cache: EncodedCache::default(),
         }
     }
 
@@ -272,6 +281,7 @@ impl TextBackend {
             let resolved = runs.iter().filter_map(|r| {
                 lookup.get(r.key).map(|buffer| ResolvedRun {
                     buffer,
+                    key: r.key,
                     origin: r.origin,
                     bounds: r.bounds,
                     scale: scale * r.scale,
@@ -285,6 +295,7 @@ impl TextBackend {
                 font_system,
                 &mut self.swash_cache,
                 &mut self.atlas,
+                &mut self.encoded_cache,
                 resolved,
                 &mut self.instances,
             );
@@ -363,6 +374,8 @@ impl TextBackend {
 
     pub(crate) fn post_record(&mut self) {
         self.atlas.trim();
+        self.encoded_cache
+            .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
         self.ranges.fill(None);
         self.prepared_anything = false;

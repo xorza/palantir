@@ -1,12 +1,30 @@
 //! Per-batch instance emission: cosmic `LayoutRun` → `GlyphInstance`s.
 //!
-//! No CPU per-glyph clipping. Composer scissor + interpolated UVs
-//! handle partial glyphs at the GPU. The cheap y-range pre-cull stays
-//! so off-screen lines don't touch the atlas cache.
+//! Two paths:
+//!
+//! - **Cache hit**: prior frames laid this exact `(TextCacheKey,
+//!   scale, subpixel origin bin, area color)` run out into the atlas;
+//!   the resulting `GlyphInstance` templates are stored in the
+//!   [`EncodedCache`]. Emit = `Vec::extend` with origin-shifted
+//!   positions, no cosmic walk, no per-glyph atlas hashmap lookup, no
+//!   `CacheKey::new`. This is the ~37% of frame time we're targeting.
+//! - **Cache miss**: walks cosmic `LayoutRun`s, touches/inserts atlas
+//!   slots, emits to `out`, and populates the cache entry with the
+//!   origin-relative templates so the next frame at the same `(key,
+//!   scale, bins, color)` lands on the fast path.
+//!
+//! Atlas eviction reuses slot rectangles for new glyphs; any cached
+//! entry holding the old uv would point at the wrong image. The
+//! atlas's `eviction_count` is latched on insert and re-checked on
+//! lookup — any eviction since the entry was built invalidates it.
+//! Atlas growth preserves rects (`etagere::grow`), so no
+//! invalidation is needed there.
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::urect::URect;
-use cosmic_text::{Buffer, FontSystem, SwashCache, SwashContent};
+use crate::text::TextCacheKey;
+use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
+use rustc_hash::FxHashMap;
 
 use super::atlas::GlyphAtlas;
 use super::{ContentType, GlyphInstance};
@@ -14,27 +32,119 @@ use super::{ContentType, GlyphInstance};
 /// One text run resolved to a cosmic buffer + placement.
 pub(crate) struct ResolvedRun<'a> {
     pub(crate) buffer: &'a Buffer,
+    pub(crate) key: TextCacheKey,
     pub(crate) origin: glam::Vec2,
     pub(crate) bounds: URect,
     pub(crate) scale: f32,
     pub(crate) color: ColorU8,
 }
 
+/// Cache-hit identity for an encoded run. Subpixel bins capture the
+/// fractional component of `origin` that cosmic folds into per-glyph
+/// `CacheKey`s (so different fractional origins produce different
+/// atlas slots and can't share an entry). Area color is part of the
+/// key because per-glyph color overrides are baked into the cached
+/// `EncodedGlyph.color` field.
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub(crate) struct EncodedKey {
+    pub(crate) text: TextCacheKey,
+    /// `(scale * 65536).round() as u32`. 1/65536 px is below cosmic's
+    /// 4-bin subpixel resolution, so distinct quantized scales are the
+    /// only ones that produce distinct cosmic cache keys.
+    pub(crate) scale_q: u32,
+    pub(crate) area_color: u32,
+    /// Low nibble: `y_bin`. Next nibble up: `x_bin`. Cosmic's
+    /// `SubpixelBin` has four variants (2 bits each).
+    pub(crate) bins: u8,
+}
+
+/// One cached glyph: origin-relative position + slot's atlas uv +
+/// final post-blend color (per-glyph cosmic override resolved against
+/// the run's area color at cache-insertion time).
+#[derive(Clone, Copy)]
+pub(crate) struct EncodedGlyph {
+    pub(crate) rel_x: i32,
+    pub(crate) rel_y: i32,
+    pub(crate) dim: u32,
+    pub(crate) uv_and_kind: u32,
+    pub(crate) color: u32,
+}
+
+pub(crate) struct EncodedEntry {
+    pub(crate) glyphs: Vec<EncodedGlyph>,
+    pub(crate) last_use: u64,
+    /// `GlyphAtlas::eviction_count` at insert. If the atlas has
+    /// evicted any slot since (count differs), this entry's uv coords
+    /// may point at a re-used rectangle holding a different glyph —
+    /// drop and rebuild.
+    pub(crate) eviction_at: u64,
+}
+
+#[derive(Default)]
+pub(crate) struct EncodedCache {
+    pub(crate) map: FxHashMap<EncodedKey, EncodedEntry>,
+}
+
+impl EncodedCache {
+    /// Drop entries not touched in the last `keep_frames` frames so a
+    /// long zoom gesture doesn't grow the cache unboundedly.
+    pub(crate) fn sweep(&mut self, current_frame: u64, keep_frames: u64) {
+        let cutoff = current_frame.saturating_sub(keep_frames);
+        self.map.retain(|_, e| e.last_use >= cutoff);
+    }
+}
+
 /// Walk one batch's runs, append a `GlyphInstance` per visible glyph
-/// to `out`.
+/// to `out`. See module docs for the cache-hit vs. miss split.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn encode_batch<'a>(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     font_system: &mut FontSystem,
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
+    cache: &mut EncodedCache,
     runs: impl IntoIterator<Item = ResolvedRun<'a>>,
     out: &mut Vec<GlyphInstance>,
 ) {
+    let current_frame = atlas.current_frame;
     for area in runs {
         let area_color: u32 = bytemuck::cast(area.color);
         let scale = area.scale;
         let origin = area.origin;
+
+        // Subpixel-aware origin: cosmic folds the fractional component
+        // of (x, y) into each glyph's `CacheKey` via 4-bin subpixel
+        // bins, so two runs at different fractional origins land in
+        // distinct atlas slots even at the same scale. Splitting the
+        // integer-pixel origin out lets the cache emit positions as
+        // `i32 + i32` adds.
+        let (origin_x_i, x_bin) = SubpixelBin::new(origin.x);
+        let (origin_y_i, y_bin) = SubpixelBin::new(origin.y);
+        let key = EncodedKey {
+            text: area.key,
+            scale_q: (scale * 65536.0).round() as u32,
+            area_color,
+            bins: ((x_bin as u8) << 2) | (y_bin as u8),
+        };
+
+        if !area.key.is_invalid()
+            && let Some(entry) = cache.map.get_mut(&key)
+            && entry.eviction_at == atlas.eviction_count
+        {
+            entry.last_use = current_frame;
+            out.reserve(entry.glyphs.len());
+            for g in &entry.glyphs {
+                out.push(GlyphInstance {
+                    pos: [g.rel_x + origin_x_i, g.rel_y + origin_y_i],
+                    dim: g.dim,
+                    uv_and_kind: g.uv_and_kind,
+                    color: g.color,
+                });
+            }
+            continue;
+        }
+
         let bounds_top = area.bounds.y as f32;
         let bounds_bot = (area.bounds.y + area.bounds.h) as f32;
 
@@ -44,6 +154,13 @@ pub(crate) fn encode_batch<'a>(
             .layout_runs()
             .skip_while(move |run| (run.line_top + run.line_height) * scale + origin.y < bounds_top)
             .take_while(move |run| run.line_top * scale + origin.y <= bounds_bot);
+
+        // Build a fresh cache entry as a side effect of the slow
+        // walk. We only commit it at the end if no atlas eviction
+        // happened mid-walk (eviction during this run could have
+        // invalidated earlier glyphs' uv coords).
+        let eviction_at_start = atlas.eviction_count;
+        let mut pending: Vec<EncodedGlyph> = Vec::new();
 
         for run in runs_iter {
             let line_y_px = (run.line_y * scale).round() as i32;
@@ -74,16 +191,38 @@ pub(crate) fn encode_batch<'a>(
                     continue; // zero-area glyph
                 }
 
+                let abs_x = physical.x + slot.left as i32;
+                let abs_y = line_y_px + physical.y - slot.top as i32;
+                let dim = (slot.width as u32) | ((slot.height as u32) << 16);
+                let uv_and_kind = pack_uv(slot.x, slot.y, slot.content);
+
                 out.push(GlyphInstance {
-                    pos: [
-                        physical.x + slot.left as i32,
-                        line_y_px + physical.y - slot.top as i32,
-                    ],
-                    dim: (slot.width as u32) | ((slot.height as u32) << 16),
-                    uv_and_kind: pack_uv(slot.x, slot.y, slot.content),
+                    pos: [abs_x, abs_y],
+                    dim,
+                    uv_and_kind,
+                    color,
+                });
+                pending.push(EncodedGlyph {
+                    rel_x: abs_x - origin_x_i,
+                    rel_y: abs_y - origin_y_i,
+                    dim,
+                    uv_and_kind,
                     color,
                 });
             }
+        }
+
+        // Only cache if no eviction happened mid-walk and the run had
+        // a valid shaping key (the mono fallback emits no glyphs).
+        if !area.key.is_invalid() && atlas.eviction_count == eviction_at_start {
+            cache.map.insert(
+                key,
+                EncodedEntry {
+                    glyphs: pending,
+                    last_use: current_frame,
+                    eviction_at: atlas.eviction_count,
+                },
+            );
         }
     }
 }
