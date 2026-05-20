@@ -1837,6 +1837,7 @@ dependencies = [
  "backtrace",
  "bitflags 2.11.1",
  "bytemuck",
+ "cosmic-text",
  "criterion",
  "dhat",
  "encase",

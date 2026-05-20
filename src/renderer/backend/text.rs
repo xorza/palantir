@@ -24,10 +24,10 @@ use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
+use cosmic_text::SwashCache;
 use glam::UVec2;
 use glyphon::{
-    Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer as GlyphonRenderer,
-    Viewport,
+    Resolution, TextArea, TextAtlas, TextBounds, TextRenderer as GlyphonRenderer, Viewport,
 };
 use std::ops::Range;
 
@@ -262,9 +262,9 @@ fn text_bounds(b: URect) -> TextBounds {
     }
 }
 
-fn glyphon_color(c: ColorU8) -> glyphon::Color {
+fn glyphon_color(c: ColorU8) -> cosmic_text::Color {
     // Glyphon's shader decodes the byte channels sRGB→linear before
     // writing to the sRGB target — `TextRun.color` is already sRGB-
     // encoded at compose time.
-    glyphon::Color::rgba(c.r, c.g, c.b, c.a)
+    cosmic_text::Color::rgba(c.r, c.g, c.b, c.a)
 }
