@@ -481,26 +481,25 @@ impl ShapeRecord {
     }
 }
 
-/// Owner-local **damage** bbox of a [`ShapeRecord::Text`] — the tight
-/// shaped extent (the encoder's `TextRun.bounds`) inflated by
-/// [`crate::text::TEXT_SCALE_STEP`] / 2 on each axis side.
+/// Tight owner-local paint bbox of a [`ShapeRecord::Text`], using the
+/// shaped extent the measure pass already computed (lives in
+/// `LayerLayout::text_shapes`). The encoder applies the same formula
+/// in screen space — `text_in_rect` is the sole source so cascade
+/// damage rects and encoder draw rects can't drift.
 ///
-/// The composer paints glyphs at a *snapped* scale on the text-scale
-/// ladder, while the cascade projects this rect via the unsnapped
-/// cascade scale. Between rungs the painted glyph block can be up to
-/// `STEP / 2` wider than the unscaled measured extent on either side;
-/// without the inflation, a rung-jump between consecutive frames
-/// leaves pixels just outside the damage rect un-repainted (visible
-/// as stale glyph fringes at the edges).
-///
-/// The encoder uses [`text_in_rect`] directly with the tight measured
-/// size for the draw clip — only the cascade calls this helper, so
-/// damage runs loose and paint runs tight.
+/// **Damage inflation lives in cascade** (`ui::cascade`), not here —
+/// the ladder-snap overshoot is in absolute screen pixels
+/// (`measured × STEP/2`) regardless of the ancestor scale, so it must
+/// be applied to the screen rect *after* `lift_to_screen` rather than
+/// to the local rect *before* it. Inflating in local coords would
+/// produce a screen pad of `measured × STEP/2 × cascade_scale`, which
+/// underflows at `cascade_scale < 1` (zoomed-out content) and lets
+/// long lines bleed past the damage region.
 ///
 /// - `local_origin: Some(origin)` ⇒ widget owns positioning; rect is
-///   `origin + measured`, then inflated.
-/// - `local_origin: None` ⇒ position via [`text_in_rect`] against the
-///   owner's padded inner rect, then inflate.
+///   `origin + measured`.
+/// - `local_origin: None` ⇒ encoder owns positioning via
+///   [`text_in_rect`] against the owner's padded inner rect.
 pub(crate) fn text_paint_bbox_local(
     local_origin: Option<Vec2>,
     align: Align,
@@ -508,7 +507,7 @@ pub(crate) fn text_paint_bbox_local(
     owner_size: Size,
     measured: Size,
 ) -> Rect {
-    let tight = match local_origin {
+    match local_origin {
         Some(origin) => Rect {
             min: origin,
             size: measured,
@@ -520,20 +519,6 @@ pub(crate) fn text_paint_bbox_local(
             };
             text_in_rect(owner_local.deflated_by(padding), measured, align)
         }
-    };
-    // Inflate by half a ladder step per side on each axis. The factor
-    // multiplies `measured` (not `tight.size`) because the painted
-    // block grows from the shaped extent — alignment offsets shift
-    // it inside the leaf but don't scale its glyph dimensions.
-    let half_step = crate::text::TEXT_SCALE_STEP * 0.5;
-    let pad_w = measured.w * half_step;
-    let pad_h = measured.h * half_step;
-    Rect {
-        min: tight.min - Vec2::new(pad_w, pad_h),
-        size: Size {
-            w: tight.size.w + 2.0 * pad_w,
-            h: tight.size.h + 2.0 * pad_h,
-        },
     }
 }
 
