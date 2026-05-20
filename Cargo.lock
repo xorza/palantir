@@ -1778,6 +1778,7 @@ dependencies = [
  "encase",
  "etagere",
  "fixedbitset",
+ "gethostname",
  "glam",
  "half",
  "image",

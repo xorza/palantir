@@ -433,30 +433,29 @@ fn fmt_estimate(e: Estimate) -> String {
     format!("[{} {} {}]", one(e.lo_ns), one(e.mid_ns), one(e.hi_ns))
 }
 
-/// `PALANTIR_BENCH_MACHINE` overrides the default `hostname -s`-derived
-/// label. Sanitized to lowercase alnum + `-_` so it's safe as a
-/// filename. Empty / failed → `unknown`.
+/// `PALANTIR_BENCH_MACHINE` overrides the default hostname-derived
+/// label. Sanitized to lowercase alnum + `-_` (first dotted component
+/// only, so FQDNs collapse to their short form) so it's safe as a
+/// filename. Falls back to `gethostname`; empty result → `unknown`.
 fn machine_label() -> String {
     fn sanitize(raw: &str) -> String {
         raw.trim()
+            .split('.')
+            .next()
+            .unwrap_or("")
             .chars()
             .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
             .collect::<String>()
             .to_lowercase()
     }
-    if let Ok(s) = std::env::var("PALANTIR_BENCH_MACHINE") {
-        let n = sanitize(&s);
+    if let Ok(env) = std::env::var("PALANTIR_BENCH_MACHINE") {
+        let n = sanitize(&env);
         if !n.is_empty() {
             return n;
         }
     }
-    let raw = std::process::Command::new("hostname")
-        .arg("-s")
-        .output()
-        .ok()
-        .and_then(|o| String::from_utf8(o.stdout).ok())
-        .unwrap_or_default();
-    let n = sanitize(&raw);
+    let raw = gethostname::gethostname();
+    let n = sanitize(&raw.to_string_lossy());
     if n.is_empty() { "unknown".into() } else { n }
 }
 
