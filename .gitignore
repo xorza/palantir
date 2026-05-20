@@ -6,3 +6,4 @@ tests/visual/golden/
 tests/visual/output/
 .claude/scheduled_tasks.lock
 docs/screens
+benches/results/

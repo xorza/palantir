@@ -312,6 +312,9 @@ const ARM_NAMES: &[&str] = &[
 ];
 
 fn bench_frame(c: &mut Criterion) {
+    // Fail fast before any work runs so a 90 s bench doesn't finish
+    // and then realise the results row has no context.
+    let _ = bench_annotation();
     report_write_stats();
     run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
     run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
@@ -331,7 +334,11 @@ fn prepend_machine_results() {
     let machine = machine_label();
     let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
-    block.push_str(&format!("=== {} ===\n", now_label()));
+    block.push_str(&format!(
+        "=== {} — {} ===\n",
+        now_label(),
+        bench_annotation()
+    ));
     for &name in ARM_NAMES {
         let row = match read_criterion_mean(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
@@ -457,6 +464,19 @@ fn machine_label() -> String {
     let raw = gethostname::gethostname();
     let n = sanitize(&raw.to_string_lossy());
     if n.is_empty() { "unknown".into() } else { n }
+}
+
+/// Required context tag for the results row. Read from
+/// `PALANTIR_BENCH_NOTE`; the bench refuses to run without one so
+/// every appended row has a why-was-this-measured caption.
+fn bench_annotation() -> String {
+    match std::env::var("PALANTIR_BENCH_NOTE") {
+        Ok(s) if !s.trim().is_empty() => s.trim().to_owned(),
+        _ => panic!(
+            "frame bench requires PALANTIR_BENCH_NOTE=<short context>; \
+             e.g. PALANTIR_BENCH_NOTE='after staging-belt rework' cargo bench --bench frame",
+        ),
+    }
 }
 
 fn now_label() -> String {
