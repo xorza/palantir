@@ -911,9 +911,15 @@ const MAX_SUB_INSTANCES: u32 = 256;
 /// **Geometric note.** Measurement uses the unscaled `font_size_px`
 /// (`TextShaper::measure`) — only the paint-time scale is snapped. At a
 /// non-rung zoom level the rendered glyph block is up to `STEP/2`
-/// wider/narrower than the layout-space rect it nominally fills; the
-/// extra width is clipped at `TextRun.bounds`.
-const TEXT_SCALE_STEP: f32 = 0.025;
+/// wider/narrower than the layout-space rect it nominally fills. The
+/// extra width is clipped at `TextRun.bounds`, and the cascade
+/// inflates text damage rects by the same fraction so a rung-jump
+/// between consecutive frames repaints all affected pixels (see
+/// `forest::shapes::record::text_paint_bbox_local`).
+///
+/// Sourced from [`crate::text::TEXT_SCALE_STEP`] so the cascade's
+/// inflation and the composer's snap stay locked in step.
+const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 
 /// Snap the ancestor-transform component of a text run's scale to the
 /// additive 2.5% ladder. Identity is preserved exactly so non-zoom UIs

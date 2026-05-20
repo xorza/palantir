@@ -39,6 +39,19 @@ mod tests;
 /// Single source — cosmic and the theme default move together.
 pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 
+/// Additive step on the text-scale ladder used by the composer to snap
+/// continuous zoom scales to discrete glyph-cache keys (`composer::
+/// snap_text_scale`). The cascade computes text damage rects at the
+/// unscaled cascade scale; the composer paints glyphs at the snapped
+/// scale — between rungs the painted block can be up to
+/// `TEXT_SCALE_STEP / 2` wider than the damage rect on each axis.
+/// [`crate::forest::shapes::record::text_paint_bbox_local`] inflates
+/// by this fraction to keep damage covering the worst-case painted
+/// extent.
+///
+/// Single source — `composer::TEXT_SCALE_STEP` re-exports this value.
+pub(crate) const TEXT_SCALE_STEP: f32 = 0.025;
+
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 
 /// Output buffer for [`TextShaper::selection_rects`]. Stack-allocated
