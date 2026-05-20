@@ -1,7 +1,8 @@
 Frame bench — full CPU + GPU (offscreen) — 2026-05-20
+Hardware: MacBook Air (M5)
 
-frame/cached    time: [1.3889 ms 1.3997 ms 1.4133 ms]
-frame/resizing  time: [2.7943 ms 2.8879 ms 2.9851 ms]
+frame/cached    time: [1.5699 ms 1.6017 ms 1.6375 ms]
+frame/resizing  time: [3.4724 ms 3.6015 ms 3.7399 ms]
 
 Command: cargo bench --bench frame --features internals
 Visual:  cargo run --release --example frame_visual
