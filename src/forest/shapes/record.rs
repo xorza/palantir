@@ -1,3 +1,4 @@
+use crate::InternedStr;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
@@ -15,7 +16,7 @@ use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
 use half::f16;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 
 /// Frame-local handle into [`crate::common::frame_arena::FrameArena::gradients`].
 /// Stable only within one frame — cleared alongside the rest of the
@@ -285,7 +286,7 @@ pub(crate) enum ShapeRecord {
         /// `Shapes::clear`), `Interned` carries the span+hash from
         /// [`Ui::fmt`](crate::Ui::fmt) unchanged. `text_hash` is the
         /// pre-computed FxHash for context-free `Hash for ShapeRecord`.
-        text: crate::primitives::interned_str::InternedStr,
+        text: InternedStr,
         text_hash: u64,
         color: ColorF16,
         font_size_px: f32,
@@ -468,7 +469,7 @@ impl ShapeRecord {
     /// `Hash` impl, which feeds subtree hashes / cache keys. The
     /// values match the `= N` annotations on the variants — never
     /// edit one without the other.
-    const fn tag(&self) -> u8 {
+    pub(crate) const fn tag(&self) -> u8 {
         match self {
             ShapeRecord::RoundedRect { .. } => 0,
             ShapeRecord::Polyline { .. } => 1,
@@ -551,177 +552,22 @@ pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
     )
 }
 
-impl Hash for ShapeRecord {
-    /// Discriminant tags come from [`ShapeRecord::tag`] and are pinned
-    /// via `#[repr(u8)]` + explicit `= N` on each variant, so cache
-    /// keys don't shift if variants are reordered.
-    fn hash<H: Hasher>(&self, h: &mut H) {
-        h.write_u8(self.tag());
-        match self {
-            ShapeRecord::RoundedRect {
-                local_rect,
-                corners,
-                fill,
-                stroke,
-                fill_grad_hash,
-            } => {
-                match local_rect {
-                    None => h.write_u8(0),
-                    Some(r) => {
-                        h.write_u8(1);
-                        r.hash(h);
-                    }
-                }
-                corners.hash(h);
-                match fill {
-                    ShapeBrush::Solid(c) => {
-                        h.write_u8(0);
-                        c.hash(h);
-                    }
-                    ShapeBrush::Gradient(_) => {
-                        h.write_u8(1);
-                        h.write_u64(*fill_grad_hash);
-                    }
-                }
-                // Pod-byte hash: one `write()` call for `(color, width)` —
-                // 20 bytes in, single hasher dispatch.
-                h.write(bytemuck::bytes_of(stroke));
-            }
-            ShapeRecord::Polyline { content_hash, .. } => {
-                // `content_hash` already covers width + color_mode +
-                // cap + join + points + colors (computed in
-                // `ShapePayloads::lower_polyline` / `lower_bezier`).
-                // bbox is derived from points; spans are frame-local —
-                // neither belongs in cache identity.
-                h.write_u64(*content_hash);
-            }
-            ShapeRecord::Text {
-                local_origin,
-                text: _,
-                text_hash,
-                color,
-                font_size_px,
-                line_height_px,
-                wrap,
-                align,
-                family,
-            } => {
-                match local_origin {
-                    None => h.write_u8(0),
-                    Some(o) => {
-                        h.write_u8(1);
-                        h.write_u32(o.x.to_bits());
-                        h.write_u32(o.y.to_bits());
-                    }
-                }
-                h.write_u64(*text_hash);
-                color.hash(h);
-                let dims =
-                    ((font_size_px.to_bits() as u64) << 32) | line_height_px.to_bits() as u64;
-                h.write_u64(dims);
-                let style = ((align.raw() as u32) << 16) | ((*wrap as u32) << 8) | (*family as u32);
-                h.write_u32(style);
-            }
-            ShapeRecord::Mesh {
-                local_rect,
-                tint,
-                vertices: _,
-                indices: _,
-                bbox: _,
-                content_hash,
-            } => {
-                match local_rect {
-                    None => h.write_u8(0),
-                    Some(r) => {
-                        h.write_u8(1);
-                        r.hash(h);
-                    }
-                }
-                tint.hash(h);
-                h.write_u64(*content_hash);
-            }
-            ShapeRecord::Shadow {
-                local_rect,
-                corners,
-                shadow,
-            } => {
-                match local_rect {
-                    None => h.write_u8(0),
-                    Some(r) => {
-                        h.write_u8(1);
-                        r.hash(h);
-                    }
-                }
-                corners.hash(h);
-                shadow.hash(h);
-            }
-            ShapeRecord::Curve {
-                content_hash,
-                fill,
-                fill_grad_hash,
-                ..
-            } => {
-                // `content_hash` summarizes p0..p3 + width + cap +
-                // (for solid) inline colour. The brush variant is
-                // folded in separately so curves with the same
-                // geometry but different fills (solid vs gradient
-                // pointing at the same colours) don't collide.
-                h.write_u64(*content_hash);
-                match fill {
-                    ShapeBrush::Solid(c) => {
-                        h.write_u8(0);
-                        c.hash(h);
-                    }
-                    ShapeBrush::Gradient(_) => {
-                        h.write_u8(1);
-                        h.write_u64(*fill_grad_hash);
-                    }
-                }
-            }
-            ShapeRecord::Image {
-                local_rect,
-                tint,
-                handle,
-                fit,
-            } => {
-                match local_rect {
-                    None => h.write_u8(0),
-                    Some(r) => {
-                        h.write_u8(1);
-                        r.hash(h);
-                    }
-                }
-                tint.hash(h);
-                // Hash `id` + `size` (handle's `Hash` impl keys on
-                // `id` only, but cache identity needs both — even
-                // though same-id-different-size can't legitimately
-                // happen, the dims are part of the lowered shape's
-                // appearance). Pack `size.x | size.y | fit` into one
-                // u64 so this is two writes total — id + packed.
-                h.write_u64(handle.id);
-                let packed =
-                    (handle.size.x as u64) | ((handle.size.y as u64) << 16) | ((*fit as u64) << 32);
-                h.write_u64(packed);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::hash::Hasher as FxHasher;
+    use crate::forest::shapes::hash::compute_record_hash;
 
     #[test]
     fn shape_mesh_hash_excludes_span_offsets() {
+        let tint = ColorF16::from(Color {
+            r: 0.0,
+            g: 1.0,
+            b: 0.0,
+            a: 1.0,
+        });
         let a = ShapeRecord::Mesh {
             local_rect: None,
-            tint: ColorF16::from(Color {
-                r: 0.0,
-                g: 1.0,
-                b: 0.0,
-                a: 1.0,
-            }),
+            tint,
             vertices: Span::new(0, 3),
             indices: Span::new(0, 3),
             bbox: crate::primitives::rect::Rect::ZERO,
@@ -729,22 +575,13 @@ mod tests {
         };
         let b = ShapeRecord::Mesh {
             local_rect: None,
-            tint: ColorF16::from(Color {
-                r: 0.0,
-                g: 1.0,
-                b: 0.0,
-                a: 1.0,
-            }),
+            tint,
             vertices: Span::new(1234, 3),
             indices: Span::new(5678, 3),
             bbox: crate::primitives::rect::Rect::ZERO,
             content_hash: 0xdead_beef,
         };
-        let mut ha = FxHasher::new();
-        let mut hb = FxHasher::new();
-        a.hash(&mut ha);
-        b.hash(&mut hb);
-        assert_eq!(ha.finish(), hb.finish());
+        assert_eq!(compute_record_hash(&a), compute_record_hash(&b));
     }
 
     #[test]
@@ -758,13 +595,11 @@ mod tests {
             },
             fit: ImageFit::Fill,
         };
-        let h = |r: &ShapeRecord| {
-            let mut s = FxHasher::new();
-            r.hash(&mut s);
-            s.finish()
-        };
-        let baseline = h(&make(0xa, Color::WHITE));
-        assert_ne!(baseline, h(&make(0xb, Color::WHITE)));
-        assert_ne!(baseline, h(&make(0xa, Color::rgba(1.0, 0.0, 0.0, 1.0))));
+        let baseline = compute_record_hash(&make(0xa, Color::WHITE));
+        assert_ne!(baseline, compute_record_hash(&make(0xb, Color::WHITE)));
+        assert_ne!(
+            baseline,
+            compute_record_hash(&make(0xa, Color::rgba(1.0, 0.0, 0.0, 1.0)))
+        );
     }
 }

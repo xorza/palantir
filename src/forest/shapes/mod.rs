@@ -1,8 +1,9 @@
+pub(crate) mod hash;
 pub(crate) mod record;
 
 use crate::common::frame_arena::FrameArena;
-use crate::common::hash::Hasher;
 use crate::forest::rollups::NodeHash;
+use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
@@ -80,12 +81,11 @@ impl Shapes {
                 stroke,
             } => {
                 let lowered = arena.lower_brush(fill, atlas);
-                let stroke = ShapeStroke::from(stroke);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     corners,
                     fill: lowered.brush,
-                    stroke,
+                    stroke: ShapeStroke::from(stroke),
                     fill_grad_hash: lowered.hash,
                 }
             }
@@ -202,18 +202,7 @@ impl Shapes {
             }
         };
         let idx = self.records.len() as u32;
-        // Canonical per-shape hash: computed once at lowering time
-        // where the record's authoring inputs are immutable and the
-        // heavy per-payload sub-hashes (`Polyline::content_hash`,
-        // `Mesh::content_hash`, `Text::text_hash`) are already in
-        // hand. `Tree::compute_hashes` reads this back and folds it
-        // into the owner's node hash as a u64 — no second per-shape
-        // hash sweep. Damage diff keys on this for the per-shape
-        // contribution path.
-        use std::hash::{Hash, Hasher as _};
-        let mut sh = Hasher::new();
-        record.hash(&mut sh);
-        let hash = NodeHash(sh.finish());
+        let hash = compute_record_hash(&record);
         self.records.push(record);
         self.hashes.push(hash);
         Some(idx)
