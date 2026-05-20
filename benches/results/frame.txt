@@ -14,10 +14,11 @@ Hardware: MacBook Air (M5)
   frame/resizing_cpu   time: [2.0646 ms 2.0813 ms 2.0982 ms]
   frame/resizing_gpu   time: [11.163 ms 11.429 ms 11.704 ms]
 
-  After composer spatial grid (TextRectGrid replacing linear scan):
-    frame/cached    time: [1.1940 ms 1.2295 ms 1.2592 ms]  (noise ±5%)
-    frame/resizing  time: [2.2626 ms 2.2874 ms 2.3126 ms]  (-5.2%)
-    Composer::quad_forces_flush self-time: 8.94% → 1.63% of cycles
+Hardware: ASUS ROG Strix SCAR 18 (G834JY) — i9-13980HX + RTX 4090 Laptop
+  frame/cached_cpu     time: [98.325 µs 98.643 µs 98.946 µs]
+  frame/cached_gpu     time: [1.2309 ms 1.2595 ms 1.2824 ms]
+  frame/resizing_cpu   time: [1.3658 ms 1.4088 ms 1.4340 ms]
+  frame/resizing_gpu   time: [2.2905 ms 2.3079 ms 2.3226 ms]
 
 Command: cargo bench --bench frame --features internals
 Visual:  cargo run --release --example frame_visual
