@@ -984,6 +984,7 @@ dependencies = [
 name = "glyphon"
 version = "0.99.0"
 dependencies = [
+ "bytemuck",
  "cosmic-text",
  "criterion",
  "etagere",
