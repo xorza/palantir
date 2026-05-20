@@ -299,30 +299,96 @@ fn report_write_stats() {
     run("resizing", &pool, |_, _| {});
 }
 
-/// Names of every arm criterion runs, ordered as in `bench_frame`.
-/// Used by the per-machine results writer to know which criterion
-/// estimate files to read after all arms have finished.
-const ARM_NAMES: &[&str] = &[
-    "frame/cached_cpu",
-    "frame/cached_gpu",
-    "frame/partial_cpu",
-    "frame/partial_gpu",
-    "frame/resizing_cpu",
-    "frame/resizing_gpu",
-];
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BenchMode {
+    Cpu,
+    Gpu,
+    Both,
+}
+
+impl BenchMode {
+    fn includes_cpu(self) -> bool {
+        matches!(self, BenchMode::Cpu | BenchMode::Both)
+    }
+    fn includes_gpu(self) -> bool {
+        matches!(self, BenchMode::Gpu | BenchMode::Both)
+    }
+}
+
+/// Required mode selector for the frame bench. Read from
+/// `PALANTIR_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. The bench
+/// refuses to run without one so every invocation is an explicit
+/// decision about which arms to pay for (the full `both` matrix is
+/// ~90 s; `cpu` or `gpu` alone is ~45 s).
+fn bench_mode() -> BenchMode {
+    match std::env::var("PALANTIR_BENCH_MODE")
+        .ok()
+        .as_deref()
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("cpu") => BenchMode::Cpu,
+        Some("gpu") => BenchMode::Gpu,
+        Some("both") => BenchMode::Both,
+        _ => panic!(
+            "frame bench requires PALANTIR_BENCH_MODE=cpu|gpu|both; \
+             e.g. PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='...' cargo bench --bench frame",
+        ),
+    }
+}
+
+/// Arm names criterion runs for a given mode, ordered as in
+/// `bench_frame`. Used by the per-machine results writer to know which
+/// criterion estimate files to read after all arms have finished.
+fn arm_names(mode: BenchMode) -> Vec<&'static str> {
+    let mut v = Vec::with_capacity(6);
+    if mode.includes_cpu() {
+        v.push("frame/cached_cpu");
+    }
+    if mode.includes_gpu() {
+        v.push("frame/cached_gpu");
+    }
+    if mode.includes_cpu() {
+        v.push("frame/partial_cpu");
+    }
+    if mode.includes_gpu() {
+        v.push("frame/partial_gpu");
+    }
+    if mode.includes_cpu() {
+        v.push("frame/resizing_cpu");
+    }
+    if mode.includes_gpu() {
+        v.push("frame/resizing_gpu");
+    }
+    v
+}
 
 fn bench_frame(c: &mut Criterion) {
     // Fail fast before any work runs so a 90 s bench doesn't finish
     // and then realise the results row has no context.
     let _ = bench_annotation();
+    let mode = bench_mode();
     report_write_stats();
-    run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
-    run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
-    run_partial(c, "frame/partial_cpu", SyncMode::Cpu);
-    run_partial(c, "frame/partial_gpu", SyncMode::Gpu);
-    run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
-    run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
-    prepend_machine_results();
+    if mode.includes_cpu() {
+        run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
+    }
+    if mode.includes_gpu() {
+        run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
+    }
+    if mode.includes_cpu() {
+        run_partial(c, "frame/partial_cpu", SyncMode::Cpu);
+    }
+    if mode.includes_gpu() {
+        run_partial(c, "frame/partial_gpu", SyncMode::Gpu);
+    }
+    if mode.includes_cpu() {
+        run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
+    }
+    if mode.includes_gpu() {
+        run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
+    }
+    prepend_machine_results(mode);
 }
 
 /// Read criterion's `mean` estimate out of `target/criterion/<slug>/new/estimates.json`
@@ -330,16 +396,22 @@ fn bench_frame(c: &mut Criterion) {
 /// stdout prints — to a per-machine `.txt`. Newest run lives at the
 /// top of the file (`head` gives the latest). Best-effort: any I/O
 /// failure prints to stderr and continues.
-fn prepend_machine_results() {
+fn prepend_machine_results(mode: BenchMode) {
     let machine = machine_label();
     let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
     let mut block = String::new();
+    let mode_tag = match mode {
+        BenchMode::Cpu => "cpu",
+        BenchMode::Gpu => "gpu",
+        BenchMode::Both => "both",
+    };
     block.push_str(&format!(
-        "=== {} — {} ===\n",
+        "=== {} — [{}] {} ===\n",
         now_label(),
+        mode_tag,
         bench_annotation()
     ));
-    for &name in ARM_NAMES {
+    for &name in arm_names(mode).iter() {
         let row = match read_criterion_mean(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
             None => format!("{name:<22} time: (criterion estimates not found)\n"),
