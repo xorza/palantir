@@ -5,7 +5,7 @@ use super::cmd_buffer::{
 use crate::common::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::color::{Color, ColorF16};
+use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::image::ImageHandle;
 use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
@@ -730,18 +730,12 @@ impl Composer {
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
                         bounds,
-                        // Glyphon's `ColorMode::Accurate` decodes sRGB→linear
-                        // in its shader, so encode once here rather than per
-                        // frame in the backend. Also makes `TextRun` Pod for
-                        // byte-slice hashing in the hash-skip fast path.
-                        // Cmd buffer stores `ColorF16` (linear); glyphon
-                        // expects `ColorU8`. Decode f16→linear then encode
-                        // linear→sRGB once at the boundary.
-                        // Glyphon is the one sRGB special case: its API
-                        // expects sRGB-encoded u8. Everything else
-                        // downstream (Quad fill/stroke, vertex colours,
-                        // gradient LUT) stays linear.
-                        color: Color::from(t.color).to_srgb_u8(),
+                        // Linear ColorU8 straight to the text backend.
+                        // Palantir's native text shader (replaced glyphon,
+                        // see `src/text_backend/`) consumes linear bytes
+                        // and premultiplies at output — matching the rest
+                        // of the renderer's pipelines. No sRGB roundtrip.
+                        color: ColorU8::from(Color::from(t.color)),
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 2.5% steps. Continuous

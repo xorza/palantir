@@ -29,8 +29,7 @@ use crate::text::TextShaper;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
 
-mod text;
-use text::TextRenderer;
+use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
 
 /// Persistent off-screen target that the render pass paints into.
 /// We render to this texture (not to the swapchain view directly)
@@ -73,7 +72,7 @@ pub(crate) struct WgpuBackend {
     mesh: MeshPipeline,
     image: ImagePipeline,
     curve: CurvePipeline,
-    text: TextRenderer,
+    text: TextBackend,
     debug: DebugOverlay,
     /// Color format the quad pipeline + text atlas were built for.
     /// Fixed at [`Self::new`]; [`Self::ensure_backbuffer`] hard-asserts
@@ -137,7 +136,15 @@ impl WgpuBackend {
             &quad.gradient_texture_view,
             &quad.gradient_sampler,
         );
-        let text = TextRenderer::new(&device, format, shaper);
+        let text = TextBackend::new(
+            &device,
+            format,
+            wgpu::MultisampleState::default(),
+            // Index 0 = Plain, index 1 = Stencil — matches
+            // `text_backend::StencilMode::pipeline_idx`.
+            &[None, Some(stencil::stencil_test_state())],
+            shaper,
+        );
         let debug = DebugOverlay::new(&device);
         Self {
             device,
@@ -343,9 +350,9 @@ impl WgpuBackend {
         // After staging, `self.quad.mask_indices` parallels
         // `buffer.groups` and `render_groups` reads it directly.
         let text_mode = if use_stencil {
-            text::StencilMode::Stencil
+            TextStencilMode::Stencil
         } else {
-            text::StencilMode::Plain
+            TextStencilMode::Plain
         };
         if use_stencil {
             self.ensure_stencil();
@@ -394,7 +401,7 @@ impl WgpuBackend {
         // is safe to run unconditionally. One pool slot per batch
         // (not per group) — coalescing N text groups into one batch
         // means N→1 prepare/render calls.
-        self.text.update_viewport(&self.queue, buffer.viewport_phys);
+        self.text.update_viewport(buffer.viewport_phys);
         {
             profiling::scope!(
                 "text.prepare_batches",
@@ -402,18 +409,11 @@ impl WgpuBackend {
             );
             for (i, b) in buffer.text_batches.iter().enumerate() {
                 let runs = &buffer.texts[b.texts.range()];
-                self.text.prepare_batch(
-                    &self.device,
-                    &self.queue,
-                    buffer.scale,
-                    i,
-                    runs,
-                    text_mode,
-                );
+                self.text
+                    .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs);
             }
-            // Re-push viewport uniform in case `prepare_batch` grew the
-            // atlas — shader reads atlas sizes from the uniform now.
-            self.text.sync_atlas_to_viewport(&self.queue);
+            // (TextBackend flushes its params buffer inside prepare_batch
+            // whenever resolution or atlas sizes change — no second sync needed.)
         }
 
         let mut encoder = self
@@ -551,7 +551,7 @@ impl WgpuBackend {
         partial_scissors: Option<&[URect]>,
         clear: wgpu::Color,
         use_stencil: bool,
-        text_mode: text::StencilMode,
+        text_mode: TextStencilMode,
     ) {
         let backbuffer = self
             .backbuffer
@@ -631,7 +631,7 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
         use_stencil: bool,
-        text_mode: text::StencilMode,
+        text_mode: TextStencilMode,
     ) {
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
