@@ -16,6 +16,7 @@ use crate::renderer::render_buffer::{
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
+use tinyvec::TinyVec;
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
@@ -30,7 +31,7 @@ use glam::{UVec2, Vec2};
 /// a higher kind, no later draw of a lower kind overlaps it — a draw
 /// that violates the rule forces a [`Self::flush`] so record order is
 /// honored. The check uses
-/// [`batch_text_rects`](Self::batch_text_rects) (per-batch text AABBs)
+/// [`text_grid`](Self::text_grid) (per-batch text AABBs, spatially indexed)
 /// and [`above_text_rects`](Self::above_text_rects) (per-group AABBs
 /// of mesh/image/polyline draws that paint above text under
 /// kind-reorder).
@@ -46,14 +47,20 @@ pub(crate) struct Composer {
     /// fed to the stroke tessellator. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
-    /// Physical-px AABBs of the text runs accumulated in the current
-    /// text-batch (potentially across multiple groups). A new quad
-    /// overlapping any of these would paint *under* the merged
-    /// batch text — closes the batch (and flushes the group) so
-    /// paint order is preserved. Cleared in [`Self::close_batch`].
-    /// Subsumes the old per-group `text_rects` since intra-group
-    /// overlap is a special case of intra-batch overlap.
-    batch_text_rects: Vec<URect>,
+    /// Spatial index over the physical-px AABBs of text runs accumulated
+    /// in the current text-batch (potentially across multiple groups).
+    /// A new quad overlapping any of these would paint *under* the
+    /// merged batch text — closes the batch (and flushes the group)
+    /// so paint order is preserved. Cleared in [`Self::close_batch`].
+    ///
+    /// Backed by a viewport-tiled grid (see [`TextRectGrid`]). The
+    /// grid replaces a flat `Vec<URect>` linear scan that dominated
+    /// compose time in dense text UIs (~9% of frame on the resizing
+    /// benchmark): batches grew to ~120 rects on average and every
+    /// `quad_forces_flush` did a 4-axis AABB compare per rect. The
+    /// grid lookup walks only the tiles the query rect overlaps and
+    /// drops typical scan length to 1-4 candidates.
+    text_grid: TextRectGrid,
     /// Per-group AABBs of draws that paint above text under the
     /// kind-reorder (mesh, image, polyline). Used by the intra-group
     /// text-after-X check: text recorded after a same-group higher-kind
@@ -74,7 +81,7 @@ pub(crate) struct Composer {
     /// Bundled state for the currently-open text batch — `Some` while
     /// the composer is accumulating runs into a batch, `None`
     /// between batches. The rect scratch lives outside in
-    /// `batch_text_rects` so its `Vec` capacity is retained across
+    /// `text_grid` so its tile vectors stay capacity-retained across
     /// open/close cycles (steady-state alloc-free).
     open_batch: Option<OpenBatch>,
 }
@@ -99,9 +106,9 @@ struct OpenBatch {
     /// in-flight group's eventual index is `out.groups.len()`).
     /// Tells the schedule where to emit the merged render step.
     last_group: u32,
-    /// Union AABB of every rect in `Composer.batch_text_rects` for
-    /// this batch. The first reject for a new quad's overlap test —
-    /// O(1) instead of the linear scan.
+    /// Union AABB of every rect in `Composer.text_grid` for this
+    /// batch. The first reject for a new quad's overlap test — O(1)
+    /// before falling through to the grid lookup.
     text_union: URect,
 }
 
@@ -189,7 +196,7 @@ impl Composer {
             texts: (b.texts_start..texts_end).into(),
             last_group: b.last_group,
         });
-        self.batch_text_rects.clear();
+        self.text_grid.clear();
     }
 
     /// Return a mutable handle to the open batch, opening a fresh one
@@ -231,7 +238,7 @@ impl Composer {
             .open_batch
             .as_ref()
             .is_some_and(|b| b.text_union.intersect(overlap).is_some())
-            && any_overlap(&self.batch_text_rects, overlap);
+            && self.text_grid.any_overlap(overlap);
         if batch_text_hit {
             self.close_batch(out);
             self.flush(out);
@@ -300,7 +307,7 @@ impl Composer {
 
         self.clip_stack.clear();
         self.transform_stack.clear();
-        self.batch_text_rects.clear();
+        self.text_grid.start_frame(viewport_phys);
         self.above_text_rects.clear();
         self.current_scissor = None;
         self.current_rounded = None;
@@ -748,12 +755,135 @@ impl Composer {
                         // text glyph crispness "steps."
                         scale: snap_text_scale(current_transform.scale),
                     });
-                    self.batch_text_rects.push(bounds);
+                    self.text_grid.push(bounds);
                 }
             }
         }
         self.close_batch(out);
         self.flush(out);
+    }
+}
+
+/// Physical-pixel size of one tile in [`TextRectGrid`]. Each text rect
+/// is registered into every tile it overlaps; each
+/// `quad_forces_flush` walks the tiles a quad covers and intersects
+/// against per-tile rect lists. 64 px balances tile count (~4500 for a
+/// 4K viewport, fits in L1) against per-tile rect count (typically 1-3
+/// in dense UIs).
+const TILE_SIZE: u32 = 64;
+
+/// Per-tile inline capacity for the grid's index lists. Sized
+/// empirically from the `frame/resizing` workload (dense UI at 32×
+/// bench scale, viewport 3840×4800 phys px): observed max occupancy
+/// was **3**. `N = 8` keeps every tile fully inline with substantial
+/// headroom in any realistic UI — a 64-px tile holds 2-3 stacked
+/// labels in a typical column.
+///
+/// `TinyVec` rather than `ArrayVec` to keep pathological text-dense
+/// workloads (e.g. spreadsheet-grid layouts with tiny fonts and no
+/// padding) functional rather than panicking. Once a tile spills to
+/// the heap, its `clear()` between batches only resets `len`; the
+/// heap buffer is retained, so a one-time allocation amortizes across
+/// every subsequent frame. Steady-state alloc-free after warmup
+/// holds.
+type TileBucket = TinyVec<[u16; 8]>;
+
+/// Spatial index over the open batch's text-rect AABBs. Replaces a
+/// flat `Vec<URect>` linear scan that dominated compose time in
+/// text-dense UIs. Backed by a row-major grid of tiles
+/// ([`TILE_SIZE`] phys px); each rect lives in the tiles it covers,
+/// each query walks only the tiles its rect overlaps and may visit a
+/// rect twice for rects spanning >1 tile — fine, we early-exit on
+/// first hit so duplicate visits cost only constant-factor false
+/// positives.
+#[derive(Default)]
+struct TextRectGrid {
+    cols: u32,
+    rows: u32,
+    /// Per-tile rect-index lists. Row-major: `tiles[ty * cols + tx]`.
+    /// The outer `Vec` is retained across batches; each inner
+    /// `TinyVec` is cleared (cheap, no dealloc) on
+    /// [`Self::clear`].
+    tiles: Vec<TileBucket>,
+    /// All rects inserted into the current batch, in insertion order.
+    /// `tiles` stores indices into this vec.
+    rects: Vec<URect>,
+}
+
+impl TextRectGrid {
+    /// Reshape to cover `viewport` and reset all state. Called once
+    /// per frame at compose start. Cheap when the viewport hasn't
+    /// changed (no allocation — the outer `Vec` is already sized).
+    fn start_frame(&mut self, viewport: UVec2) {
+        let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
+        let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
+        let want = (cols * rows) as usize;
+        if self.tiles.len() != want {
+            self.tiles.clear();
+            self.tiles.resize_with(want, TileBucket::default);
+        }
+        self.cols = cols;
+        self.rows = rows;
+        self.clear();
+    }
+
+    /// Drop every registered rect. Each tile's inline buffer is
+    /// cleared in place; the outer `Vec` keeps its capacity.
+    fn clear(&mut self) {
+        for t in &mut self.tiles {
+            t.clear();
+        }
+        self.rects.clear();
+    }
+
+    /// Register `r`. No-op for zero-area input (degenerate text rects
+    /// can't intersect anything anyway).
+    fn push(&mut self, r: URect) {
+        if r.w == 0 || r.h == 0 {
+            return;
+        }
+        let idx = self.rects.len() as u16;
+        self.rects.push(r);
+        let max_x = self.cols - 1;
+        let max_y = self.rows - 1;
+        let cx0 = (r.x / TILE_SIZE).min(max_x);
+        let cy0 = (r.y / TILE_SIZE).min(max_y);
+        let cx1 = ((r.x + r.w - 1) / TILE_SIZE).min(max_x);
+        let cy1 = ((r.y + r.h - 1) / TILE_SIZE).min(max_y);
+        for ty in cy0..=cy1 {
+            let row = ty * self.cols;
+            for tx in cx0..=cx1 {
+                self.tiles[(row + tx) as usize].push(idx);
+            }
+        }
+    }
+
+    /// `true` if any registered rect intersects `q`. Returns on first
+    /// hit. Walks every tile in `q`'s tile range and checks each
+    /// tile's rect list — typical workload visits 1-4 tiles with 1-3
+    /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
+    /// old flat scan).
+    fn any_overlap(&self, q: URect) -> bool {
+        if q.w == 0 || q.h == 0 || self.rects.is_empty() {
+            return false;
+        }
+        let max_x = self.cols - 1;
+        let max_y = self.rows - 1;
+        let cx0 = (q.x / TILE_SIZE).min(max_x);
+        let cy0 = (q.y / TILE_SIZE).min(max_y);
+        let cx1 = ((q.x + q.w - 1) / TILE_SIZE).min(max_x);
+        let cy1 = ((q.y + q.h - 1) / TILE_SIZE).min(max_y);
+        for ty in cy0..=cy1 {
+            let row = ty * self.cols;
+            for tx in cx0..=cx1 {
+                for &i in self.tiles[(row + tx) as usize].iter() {
+                    if self.rects[i as usize].intersect(q).is_some() {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
     }
 }
 

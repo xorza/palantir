@@ -1072,3 +1072,113 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
         );
     }
 }
+
+// -- TextRectGrid --
+
+#[test]
+fn text_grid_empty_returns_no_overlap() {
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(1024, 1024));
+    assert_eq!(g.rects.len(), 0);
+    assert!(!g.any_overlap(URect::new(10, 10, 50, 50)));
+}
+
+#[test]
+fn text_grid_zero_area_input_is_ignored() {
+    // Push: zero w/h rects don't enter the index (they can't
+    // intersect anything anyway). Query: zero w/h queries
+    // short-circuit to false.
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(1024, 1024));
+    g.push(URect::new(10, 10, 0, 50));
+    g.push(URect::new(10, 10, 50, 0));
+    assert_eq!(g.rects.len(), 0, "zero-area pushes don't grow the index");
+    g.push(URect::new(10, 10, 50, 50));
+    assert!(!g.any_overlap(URect::new(10, 10, 0, 50)));
+    assert!(!g.any_overlap(URect::new(10, 10, 50, 0)));
+}
+
+#[test]
+fn text_grid_finds_within_single_tile() {
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(1024, 1024));
+    g.push(URect::new(10, 10, 40, 20));
+    // Hit: overlapping rect inside the same tile.
+    assert!(g.any_overlap(URect::new(20, 15, 5, 5)));
+    // Miss: disjoint rect inside the same tile.
+    assert!(!g.any_overlap(URect::new(0, 0, 5, 5)));
+    // Miss: disjoint rect in a different tile (far away).
+    assert!(!g.any_overlap(URect::new(500, 500, 10, 10)));
+}
+
+#[test]
+fn text_grid_finds_across_tile_boundaries() {
+    // Tile size is 64. A rect spanning tile boundary registers into
+    // multiple tiles; queries from either tile must hit.
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(1024, 1024));
+    g.push(URect::new(60, 60, 20, 20));
+    assert!(g.any_overlap(URect::new(60, 60, 4, 4)), "left tile hit");
+    assert!(g.any_overlap(URect::new(76, 76, 4, 4)), "right tile hit");
+    assert!(g.any_overlap(URect::new(64, 64, 1, 1)), "boundary tile hit");
+}
+
+#[test]
+fn text_grid_matches_linear_scan_on_random_workload() {
+    // Cross-check: for a synthetic workload, the grid agrees with a
+    // flat linear scan across many queries. Catches regressions where
+    // the tile-range math (off-by-one on edges, missing the
+    // last-pixel tile) lets a query miss a registered rect.
+    let mut g = super::TextRectGrid::default();
+    let viewport = UVec2::new(800, 600);
+    g.start_frame(viewport);
+    // Tiles of 64 px in an 800x600 viewport — boundaries at
+    // 0,64,128,…,768 → 13 cols × 10 rows = 130 tiles.
+    let rects = [
+        URect::new(0, 0, 10, 10),
+        URect::new(60, 60, 20, 20), // spans 2x2 tiles
+        URect::new(100, 100, 50, 50),
+        URect::new(250, 80, 80, 40),
+        URect::new(500, 400, 100, 100),
+        URect::new(0, 500, 800, 30), // full-width strip
+        URect::new(640, 0, 40, 600), // full-height strip
+    ];
+    for r in rects {
+        g.push(r);
+    }
+    // Probe a grid of query rects and confirm grid ↔ linear scan
+    // verdicts agree everywhere.
+    for qy in (0..600).step_by(37) {
+        for qx in (0..800).step_by(43) {
+            let q = URect::new(qx, qy, 20, 20);
+            let linear = rects.iter().any(|r| r.intersect(q).is_some());
+            let grid = g.any_overlap(q);
+            assert_eq!(linear, grid, "disagreement at q={q:?}");
+        }
+    }
+}
+
+#[test]
+fn text_grid_clear_drops_all_rects() {
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(1024, 1024));
+    g.push(URect::new(10, 10, 40, 40));
+    assert!(g.any_overlap(URect::new(20, 20, 5, 5)));
+    g.clear();
+    assert_eq!(g.rects.len(), 0);
+    assert!(!g.any_overlap(URect::new(20, 20, 5, 5)));
+}
+
+#[test]
+fn text_grid_resize_to_smaller_viewport_drops_tiles() {
+    // Cover the resize branch where the tile grid shrinks. The grid
+    // must still answer correctly after the shrink — rects pushed
+    // pre-shrink are gone (clear is the caller's job; this test
+    // pushes after the shrink to verify the post-shrink grid
+    // dimensions work).
+    let mut g = super::TextRectGrid::default();
+    g.start_frame(UVec2::new(2048, 2048));
+    g.start_frame(UVec2::new(256, 256));
+    g.push(URect::new(10, 10, 40, 40));
+    assert!(g.any_overlap(URect::new(20, 20, 5, 5)));
+}
