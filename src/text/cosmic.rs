@@ -18,9 +18,8 @@ use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     fontdb,
 };
-use std::collections::HashMap;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
+use rustc_hash::{FxHashMap, FxHasher};
+use std::hash::Hasher;
 use std::sync::Arc;
 
 /// Bundled fonts shipped with the crate. Inter for proportional / UI body,
@@ -44,8 +43,14 @@ fn key_for(
     family: FontFamily,
     halign: HAlign,
 ) -> TextCacheKey {
-    let mut h = DefaultHasher::new();
-    text.hash(&mut h);
+    // FxHasher beats SipHash here by ~10× for the short ASCII strings
+    // typical of UI labels — the cache-key fingerprint doesn't need
+    // DoS resistance, and the bulk byte-write path stays in registers
+    // for the whole input. Pre-`Hash` the `&str` to a single `write`
+    // so we don't pay the per-call SipHash overhead even for tiny
+    // strings.
+    let mut h = FxHasher::default();
+    h.write(text.as_bytes());
     let mut text_hash = h.finish();
     // Avoid colliding with INVALID. Probability astronomically low; flip a
     // bit if it happens so the renderer never silently drops a real run.
@@ -119,7 +124,7 @@ struct CacheEntry {
 /// resolve against the bundled set.
 pub struct CosmicMeasure {
     font_system: FontSystem,
-    cache: HashMap<TextCacheKey, CacheEntry>,
+    cache: FxHashMap<TextCacheKey, CacheEntry>,
 }
 
 impl CosmicMeasure {
@@ -134,7 +139,7 @@ impl CosmicMeasure {
         let font_system = FontSystem::new_with_fonts(sources);
         Self {
             font_system,
-            cache: HashMap::new(),
+            cache: FxHashMap::default(),
         }
     }
 
@@ -176,7 +181,7 @@ pub struct RenderSplit<'a> {
 /// Read-only view into the buffer cache. Constructed by
 /// [`CosmicMeasure::split_for_render`]; held alongside a `&mut FontSystem`.
 pub struct BufferLookup<'a> {
-    cache: &'a HashMap<TextCacheKey, CacheEntry>,
+    cache: &'a FxHashMap<TextCacheKey, CacheEntry>,
 }
 
 impl<'a> BufferLookup<'a> {
