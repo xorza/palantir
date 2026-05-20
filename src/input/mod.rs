@@ -287,19 +287,27 @@ pub struct ResponseState {
     /// through [`Self::drag_delta`] / [`Self::drag_started`] /
     /// [`Self::dragged_by`] etc. rather than reading this field.
     pub drag: Option<DragState>,
-    /// Combined wheel + touchpad scroll delta this frame, in logical
-    /// pixels. Already negated at ingest so `+y` means "advance the
-    /// scroll offset forward" (canonical use: `offset += delta`).
-    /// Only non-zero when the widget has [`Sense::SCROLL`] AND was
-    /// the topmost scroll target under the pointer this frame. Wheel
-    /// lines are converted to pixels via a font-derived line step
-    /// chosen at [`crate::Ui::response_for`] time.
-    pub scroll_delta: Vec2,
+    /// Pixel-precise scroll delta this frame, in logical pixels — the
+    /// touchpad / precision-wheel source (winit
+    /// `MouseScrollDelta::PixelDelta`). Already negated at ingest so
+    /// `+y` means "advance the scroll offset forward." Only non-zero
+    /// when the widget has [`Sense::SCROLL`] AND was the topmost
+    /// scroll target under the pointer this frame. Pair with
+    /// [`Self::scroll_lines`] to form a combined pan delta:
+    /// `scroll_pixels + scroll_lines * line_px`.
+    pub scroll_pixels: Vec2,
+    /// Notched / line-discrete scroll delta this frame, in raw line
+    /// units (NOT pixels) — the classic-wheel source (winit
+    /// `MouseScrollDelta::LineDelta`). Sign matches `scroll_pixels`
+    /// (`+y` = advance offset). Use for "mouse wheel" intent (e.g.
+    /// zoom-by-notches in a graph viewport that pans on touchpad).
+    /// Same routing as `scroll_pixels`.
+    pub scroll_lines: Vec2,
     /// Multiplicative pinch zoom factor this frame (`1.0` = no
-    /// pinch). Same routing as `scroll_delta` (widget must have
-    /// [`Sense::SCROLL`] and be the topmost target). Pinch always
-    /// reports — no modifier gating, unlike wheel zoom which the
-    /// caller derives manually from `scroll_delta` + modifiers.
+    /// pinch). Same routing as `scroll_pixels`/`scroll_lines` (widget
+    /// must have [`Sense::SCROLL`] and be the topmost target). Pinch
+    /// always reports — no modifier gating, unlike wheel zoom which
+    /// the caller derives manually from `scroll_lines` + modifiers.
     pub zoom_factor: f32,
     /// Cursor position relative to this widget's `rect.min`. `None`
     /// when the pointer is off-surface or the widget didn't arrange
@@ -325,7 +333,8 @@ impl Default for ResponseState {
             disabled: false,
             focused: false,
             drag: None,
-            scroll_delta: Vec2::ZERO,
+            scroll_pixels: Vec2::ZERO,
+            scroll_lines: Vec2::ZERO,
             zoom_factor: 1.0,
             pointer_local: None,
         }
@@ -420,11 +429,10 @@ pub struct InputState {
     /// Frame-snapshot of the theme's default font line height in
     /// logical px. Filled by [`crate::Ui::frame_inner`] before any
     /// `response_for` calls; read here to convert
-    /// `frame_scroll_lines` into pixels for `ResponseState::scroll_delta`
-    /// without each response_for call dereffing `theme.text` again.
-    /// Cached on `InputState` (not on `Ui`) because the consumers —
-    /// `scroll_delta_for` / `response_for` — already take `&self.input`,
-    /// so the snapshot lives in the same borrow.
+    /// `frame_scroll_lines` into pixels for `scroll_delta_for` without
+    /// each call dereffing `theme.text` again. Cached on `InputState`
+    /// (not on `Ui`) because the consumer (`scroll_delta_for`) already
+    /// takes `&self.input`, so the snapshot lives in the same borrow.
     pub(crate) frame_line_px: f32,
     /// Unified keyboard event stream this frame:
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
@@ -865,6 +873,32 @@ impl InputState {
         }
     }
 
+    /// Pixel-precise scroll this frame for `id` if it's the current
+    /// scroll target — the touchpad / precision-wheel source
+    /// (`MouseScrollDelta::PixelDelta`). Sibling of [`Self::scroll_delta_for`]
+    /// that exposes the touchpad slice on its own so consumers can
+    /// distinguish "trackpad pan" from "wheel notch."
+    pub(crate) fn scroll_pixels_for(&self, id: WidgetId) -> Vec2 {
+        if self.scroll_target == Some(id) {
+            self.frame_scroll_pixels
+        } else {
+            Vec2::ZERO
+        }
+    }
+
+    /// Line-discrete scroll this frame for `id` if it's the current
+    /// scroll target — the classic-wheel source
+    /// (`MouseScrollDelta::LineDelta`), in **raw line units** (not
+    /// multiplied by `line_px`). Sibling of [`Self::scroll_delta_for`]
+    /// that exposes the wheel slice on its own.
+    pub(crate) fn scroll_lines_for(&self, id: WidgetId) -> Vec2 {
+        if self.scroll_target == Some(id) {
+            self.frame_scroll_lines
+        } else {
+            Vec2::ZERO
+        }
+    }
+
     /// Returns this frame's notched scroll count if `id` is the
     /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines
     /// real line deltas (classic wheel) with touchpad-pixel deltas
@@ -944,7 +978,8 @@ impl InputState {
         // Both gates fire even when the routed delta is `Vec2::ZERO`
         // / `1.0` — the caller checks against the identity value to
         // distinguish "not routed" from "routed but quiet".
-        let scroll_delta = self.scroll_delta_for(id, self.frame_line_px);
+        let scroll_pixels = self.scroll_pixels_for(id);
+        let scroll_lines = self.scroll_lines_for(id);
         let zoom_factor = self.zoom_delta_for(id);
         let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
 
@@ -958,7 +993,8 @@ impl InputState {
             disabled,
             focused,
             drag,
-            scroll_delta,
+            scroll_pixels,
+            scroll_lines,
             zoom_factor,
             pointer_local,
         }
