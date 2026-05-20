@@ -328,6 +328,20 @@ impl TextBackend {
         did_work
     }
 
+    /// Drain glyph-atlas uploads accumulated by `prepare_batch` into
+    /// the renderer's encoder. Called once per frame, after all
+    /// `prepare_batch` calls and right after the renderer creates its
+    /// main command encoder — so atlas uploads share the same submit
+    /// as the text draws that read from them.
+    pub(crate) fn flush_atlas_uploads(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        self.atlas.flush_pending_uploads(device, queue, encoder);
+    }
+
     pub(crate) fn render_batch(
         &self,
         batch_idx: usize,

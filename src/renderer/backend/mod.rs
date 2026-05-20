@@ -422,6 +422,12 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
+        // Drain glyph atlas uploads into this encoder so all
+        // per-glyph `copy_buffer_to_texture` commands share the
+        // main render submit — no second `queue.submit` for text.
+        self.text
+            .flush_atlas_uploads(&self.device, &self.queue, &mut encoder);
+
         // Two paths, branching on whether the frame is a Full or
         // Partial repaint. Both go through one `begin_render_pass`:
         // - `damage_scissors` empty ⇒ Full: one schedule walk with no

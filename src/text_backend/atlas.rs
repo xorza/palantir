@@ -3,6 +3,7 @@
 use cosmic_text::CacheKey;
 use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
+use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
 use super::ContentType;
 
@@ -42,6 +43,28 @@ pub(crate) struct GlyphAtlas {
     pub(crate) max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(crate) bind_group_dirty: bool,
+
+    /// Glyph pixel data queued by `insert`, packed with per-row padding
+    /// so each glyph's copy can satisfy
+    /// `wgpu::COPY_BYTES_PER_ROW_ALIGNMENT = 256`. Drained by
+    /// [`Self::flush_pending_uploads`] into one staging buffer + one
+    /// encoder with N `copy_buffer_to_texture` commands.
+    pending_staging: Vec<u8>,
+    pending_copies: Vec<PendingCopy>,
+    /// Retained staging buffer; grown on demand, reused across frames.
+    staging_buf: Option<wgpu::Buffer>,
+    staging_cap: u64,
+}
+
+#[derive(Clone, Copy)]
+struct PendingCopy {
+    side: u8,
+    origin_x: u32,
+    origin_y: u32,
+    width: u32,
+    height: u32,
+    bytes_per_row: u32,
+    staging_offset: u64,
 }
 
 impl GlyphAtlas {
@@ -73,6 +96,10 @@ impl GlyphAtlas {
             current_frame: 1,
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
+            pending_staging: Vec::new(),
+            pending_copies: Vec::new(),
+            staging_buf: None,
+            staging_cap: 0,
         }
     }
 
@@ -96,9 +123,12 @@ impl GlyphAtlas {
         Some(*slot)
     }
 
-    /// Insert a freshly-rasterized glyph. Uploads via
-    /// `queue.write_texture` (wgpu batches internally). Grows if
-    /// full; returns `None` only at GPU-max and still doesn't fit.
+    /// Insert a freshly-rasterized glyph. Queues the pixel data into
+    /// a per-frame staging buffer (drained by
+    /// [`Self::flush_pending_uploads`] before the text pass) so all
+    /// glyph uploads land in one encoder/submit instead of N separate
+    /// `queue.write_texture` calls. Grows if full; returns `None`
+    /// only at GPU-max and still doesn't fit.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn insert(
         &mut self,
@@ -113,29 +143,13 @@ impl GlyphAtlas {
         pixels: &[u8],
     ) -> Option<GlyphSlot> {
         let alloc = self.allocate(device, queue, content, width, height)?;
-        let side = &self.sides[content as usize];
-        queue.write_texture(
-            wgpu::TexelCopyTextureInfo {
-                texture: &side.texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d {
-                    x: alloc.rectangle.min.x as u32,
-                    y: alloc.rectangle.min.y as u32,
-                    z: 0,
-                },
-                aspect: wgpu::TextureAspect::All,
-            },
+        self.enqueue_upload(
+            content,
+            alloc.rectangle.min.x as u32,
+            alloc.rectangle.min.y as u32,
+            width as u32,
+            height as u32,
             pixels,
-            wgpu::TexelCopyBufferLayout {
-                offset: 0,
-                bytes_per_row: Some(width as u32 * side.bpp),
-                rows_per_image: Some(height as u32),
-            },
-            wgpu::Extent3d {
-                width: width as u32,
-                height: height as u32,
-                depth_or_array_layers: 1,
-            },
         );
 
         let slot = GlyphSlot {
@@ -151,6 +165,118 @@ impl GlyphAtlas {
         };
         self.cache.insert(key, slot);
         Some(slot)
+    }
+
+    /// Append one glyph's pixel data to the pending-upload staging
+    /// vec, padding each row out to `COPY_BYTES_PER_ROW_ALIGNMENT` so
+    /// `copy_buffer_to_texture` can consume it. The per-glyph
+    /// staging-buffer offset is 256-aligned by construction (rows
+    /// pad to 256), satisfying both the row-pitch and buffer-offset
+    /// alignment requirements.
+    fn enqueue_upload(
+        &mut self,
+        content: ContentType,
+        origin_x: u32,
+        origin_y: u32,
+        width: u32,
+        height: u32,
+        pixels: &[u8],
+    ) {
+        let bpp = self.sides[content as usize].bpp;
+        let unpadded = width * bpp;
+        let bytes_per_row =
+            unpadded.div_ceil(COPY_BYTES_PER_ROW_ALIGNMENT) * COPY_BYTES_PER_ROW_ALIGNMENT;
+        // Start each glyph at a 256-aligned offset so the buffer-offset
+        // alignment requirement holds for every PendingCopy.
+        let start = self.pending_staging.len() as u64;
+        let aligned_start = start.div_ceil(COPY_BYTES_PER_ROW_ALIGNMENT as u64)
+            * COPY_BYTES_PER_ROW_ALIGNMENT as u64;
+        if aligned_start > start {
+            self.pending_staging.resize(aligned_start as usize, 0);
+        }
+        let region_bytes = bytes_per_row as usize * height as usize;
+        let region_start = self.pending_staging.len();
+        self.pending_staging.resize(region_start + region_bytes, 0);
+        for row in 0..height as usize {
+            let src = &pixels[row * unpadded as usize..(row + 1) * unpadded as usize];
+            let dst_off = region_start + row * bytes_per_row as usize;
+            self.pending_staging[dst_off..dst_off + unpadded as usize].copy_from_slice(src);
+        }
+        self.pending_copies.push(PendingCopy {
+            side: content as u8,
+            origin_x,
+            origin_y,
+            width,
+            height,
+            bytes_per_row,
+            staging_offset: aligned_start,
+        });
+    }
+
+    /// Drain queued uploads into the caller's encoder: one
+    /// `queue.write_buffer` to a retained staging buffer (coalesced
+    /// with the next user submit by wgpu's staging belt), plus N
+    /// `copy_buffer_to_texture` commands recorded on `encoder`. The
+    /// renderer owns the submit; this method adds no extra one.
+    pub(crate) fn flush_pending_uploads(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
+        if self.pending_copies.is_empty() {
+            return;
+        }
+        let bytes = self.pending_staging.len() as u64;
+        if bytes > self.staging_cap || self.staging_buf.is_none() {
+            let new_cap = bytes
+                .next_power_of_two()
+                .max(self.staging_cap * 2)
+                .max(4096);
+            self.staging_buf = Some(device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("palantir text atlas staging"),
+                size: new_cap,
+                usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+                mapped_at_creation: false,
+            }));
+            self.staging_cap = new_cap;
+        }
+        let buf = self.staging_buf.as_ref().unwrap();
+        queue.write_buffer(buf, 0, &self.pending_staging);
+
+        encoder.push_debug_group("palantir text atlas batch upload");
+        for c in &self.pending_copies {
+            let side = &self.sides[c.side as usize];
+            encoder.copy_buffer_to_texture(
+                wgpu::TexelCopyBufferInfo {
+                    buffer: buf,
+                    layout: wgpu::TexelCopyBufferLayout {
+                        offset: c.staging_offset,
+                        bytes_per_row: Some(c.bytes_per_row),
+                        rows_per_image: Some(c.height),
+                    },
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &side.texture,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d {
+                        x: c.origin_x,
+                        y: c.origin_y,
+                        z: 0,
+                    },
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: c.width,
+                    height: c.height,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        encoder.pop_debug_group();
+
+        self.pending_staging.clear();
+        self.pending_copies.clear();
     }
 
     /// Insert a zero-area glyph entry (no atlas slot, no upload).
