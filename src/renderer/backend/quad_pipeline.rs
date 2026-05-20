@@ -3,9 +3,8 @@
 //! shader at `quad.wgsl` next to this file.
 
 use super::Queue;
-use super::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
-};
+use super::dynamic_buffer::DynamicBuffer;
+use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -21,8 +20,7 @@ pub(crate) struct QuadPipeline {
     /// the public surface is "what to do", not "what to bind."
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    instance_buffer: wgpu::Buffer,
-    instance_capacity: usize,
+    instance_buffer: DynamicBuffer,
     /// Lazy stencil-aware pipeline variants — built on first need
     /// (first frame with `FrameOutput::has_rounded_clip == true`) so
     /// apps that never round-clip pay nothing. Once built, kept
@@ -30,9 +28,9 @@ pub(crate) struct QuadPipeline {
     stencil: Option<StencilPipelines>,
     /// Lazy buffer holding one `Quad` per rounded clip in the current
     /// frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
-    /// across frames; capacity grows monotonically.
-    mask_buffer: Option<wgpu::Buffer>,
-    mask_capacity: usize,
+    /// across frames; capacity grows monotonically. `None` until the
+    /// first stencil frame.
+    mask_buffer: Option<DynamicBuffer>,
     /// Retained scratch for the stencil-mask sweep. `Some(j)` at index
     /// `i` says "group `i`'s mask is mask quad `j` in the upload
     /// buffer." Sized to `buffer.groups.len()` each frame; capacity
@@ -221,13 +219,14 @@ impl QuadPipeline {
             },
         );
 
-        let instance_capacity = 256;
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.instances"),
-            size: (instance_capacity * std::mem::size_of::<Quad>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let instance_buffer = DynamicBuffer::new(
+            device,
+            "palantir.quad.instances",
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<Quad>(),
+            256,
+            8,
+        );
 
         let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.quad.clear"),
@@ -240,10 +239,8 @@ impl QuadPipeline {
             pipeline,
             bind_group,
             instance_buffer,
-            instance_capacity,
             stencil: None,
             mask_buffer: None,
-            mask_capacity: 0,
             mask_indices: Vec::new(),
             masks: Vec::new(),
             clear_buffer,
@@ -373,17 +370,8 @@ impl QuadPipeline {
             return;
         }
 
-        grow_instance_buffer(
-            device,
-            &mut self.instance_buffer,
-            &mut self.instance_capacity,
-            quads.len(),
-            std::mem::size_of::<Quad>(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.quad.instances",
-            8,
-        );
-        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(quads));
+        self.instance_buffer
+            .upload(device, queue, bytemuck::cast_slice(quads), quads.len());
     }
 
     /// Bind pipeline + viewport bind group + instance buffer once per
@@ -392,7 +380,7 @@ impl QuadPipeline {
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
     }
 
     /// Bind pipeline + viewport bind group **without** the instance
@@ -511,20 +499,25 @@ impl QuadPipeline {
         if self.masks.is_empty() {
             return;
         }
-        if self.masks.len() > self.mask_capacity {
-            self.mask_capacity = self.masks.len().next_power_of_two().max(8);
-            self.mask_buffer = Some(device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.quad.masks"),
-                size: (self.mask_capacity * std::mem::size_of::<Quad>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            }));
-        }
-        let buf = self
-            .mask_buffer
-            .as_ref()
-            .expect("mask_buffer just allocated");
-        queue.write_buffer(buf, 0, bytemuck::cast_slice(&self.masks));
+        // Lazy-create the mask buffer on the first stencil frame, then
+        // reuse across frames (capacity grows monotonically through
+        // `DynamicBuffer::upload`).
+        let buf = self.mask_buffer.get_or_insert_with(|| {
+            DynamicBuffer::new(
+                device,
+                "palantir.quad.masks",
+                wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+                std::mem::size_of::<Quad>(),
+                8,
+                8,
+            )
+        });
+        buf.upload(
+            device,
+            queue,
+            bytemuck::cast_slice(&self.masks),
+            self.masks.len(),
+        );
     }
 
     /// Bind the stencil-test (color) pipeline + main instance buffer.
@@ -533,7 +526,7 @@ impl QuadPipeline {
         let stencil = self.stencil.as_ref().expect("ensure_stencil first");
         pass.set_pipeline(&stencil.stencil_test);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
     }
 
     /// Bind the mask-write pipeline + mask instance buffer. Caller sets
@@ -543,7 +536,7 @@ impl QuadPipeline {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         pass.set_pipeline(&stencil.mask_write);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, buf.slice(..));
+        pass.set_vertex_buffer(0, buf.buffer().slice(..));
     }
 
     /// Draw the single mask `Quad` at `mask_idx` in the mask buffer.

@@ -1,7 +1,7 @@
-=== 2026-05-20 14:49:51Z ===
-frame/cached_cpu       time: [ 428.94 µs  431.42 µs  433.83 µs]
-frame/cached_gpu       time: [  1.573 ms   1.654 ms   1.746 ms]
-frame/partial_cpu      time: [ 457.51 µs  458.78 µs  460.17 µs]
-frame/partial_gpu      time: [  3.476 ms   3.519 ms   3.560 ms]
-frame/resizing_cpu     time: [  2.113 ms   2.150 ms   2.179 ms]
-frame/resizing_gpu     time: [  8.950 ms   9.430 ms   9.911 ms]
+=== 2026-05-20 15:24:19Z ===
+frame/cached_cpu       time: [ 433.78 µs  436.78 µs  440.38 µs]
+frame/cached_gpu       time: [  1.958 ms   2.079 ms   2.202 ms]
+frame/partial_cpu      time: [ 458.27 µs  461.93 µs  465.77 µs]
+frame/partial_gpu      time: [  2.284 ms   2.406 ms   2.526 ms]
+frame/resizing_cpu     time: [  2.259 ms   2.286 ms   2.313 ms]
+frame/resizing_gpu     time: [  7.750 ms   7.948 ms   8.152 ms]
