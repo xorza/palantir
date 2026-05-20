@@ -1,7 +1,7 @@
 //! Per-frame aggregate benchmark — CPU + GPU.
 //!
 //! Drives the canonical public API: `Host::frame_offscreen` against an
-//! offscreen `wgpu::Texture`. Two arms × two sync modes:
+//! offscreen `wgpu::Texture`. Three arms × two sync modes:
 //!
 //! - **`frame/cached_*`** — fixed viewport, MeasureCache hits.
 //! - **`frame/partial_*`** — fixed viewport, mutates a single fixture
@@ -22,6 +22,11 @@
 //!   CPU side of submit, but not GPU exec. Useful for measuring
 //!   palantir's CPU pipeline without GPU variance dominating.
 //!
+//! After all arms run, each arm's criterion `mean` estimate is
+//! prepended to `benches/results/<machine>.txt` so per-machine history
+//! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
+//! filename derived from `hostname -s`.
+//!
 //! The `build_ui` workload lives in `benches/support/frame_fixture.rs`
 //! and is shared with `examples/frame_visual.rs`.
 
@@ -33,7 +38,10 @@ use fixture::{BENCH_SCALE, FormState, build_ui};
 use palantir::ui::frame_report::RenderPlan;
 use palantir::{Color, Display, Host};
 use pollster::FutureExt;
+use std::fs::OpenOptions;
 use std::hint::black_box;
+use std::io::Write;
+use std::path::PathBuf;
 use std::sync::OnceLock;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -130,27 +138,36 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
     })
 }
 
-fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
+/// Shared scaffolding for every arm: build a fresh `Host`, run 4
+/// warmup frames with `PollType::Wait`, then hand criterion the same
+/// closure for timing. Each arm's `iter` closure owns target selection
+/// and any per-iter state mutation.
+fn run_arm<F>(c: &mut Criterion, name: &str, sync: SyncMode, mut iter: F)
+where
+    F: FnMut(&mut Host, &mut FormState, SyncMode, &wgpu::Device),
+{
     let g = gpu();
     let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
     host.ui.theme.window_clear = Color::BLACK;
-    let target = make_target(&g.device, CACHED_SIZE, "palantir.frame_bench.cached");
     let mut state = FormState::default();
-    // Warmup with Wait to drain pre-bench setup work regardless of mode.
     for _ in 0..4 {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-        SyncMode::Gpu.poll(&g.device);
+        iter(&mut host, &mut state, SyncMode::Gpu, &g.device);
     }
     c.bench_function(name, |b| {
-        b.iter(|| {
-            host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-            sync.poll(&g.device);
-            black_box(&target);
-        });
+        b.iter(|| iter(&mut host, &mut state, sync, &g.device));
     });
     // Drain pipelined GPU work before the next bench function reuses
     // the device.
     SyncMode::Gpu.poll(&g.device);
+}
+
+fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.cached");
+    run_arm(c, name, sync, |host, state, sync, device| {
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        sync.poll(device);
+        black_box(&target);
+    });
 }
 
 /// Partial-damage arm. Same fixed target as `cached`; the only delta
@@ -160,22 +177,32 @@ fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
 /// damage resolves to one small rect over an otherwise-static tree,
 /// and the renderer hits the `LoadOp::Load + set_scissor_rect` path.
 fn run_partial(c: &mut Criterion, name: &str, sync: SyncMode) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
+    assert_partial_invariant(&target);
+    run_arm(c, name, sync, |host, state, sync, device| {
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        state.tick = state.tick.wrapping_add(1);
+        sync.poll(device);
+        black_box(&target);
+    });
+}
+
+/// Pin the Partial invariant before the timing loop: spin up a
+/// throwaway Host, do a couple of priming frames, then run one frame
+/// through the split API so we can inspect `report.plan`. If this
+/// ever silently regresses to `Full` (e.g. someone widens the text box
+/// and the digits drift the surrounding panel hash), the bench would
+/// still produce a number but be measuring the wrong thing.
+fn assert_partial_invariant(target: &wgpu::Texture) {
     let g = gpu();
     let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
     host.ui.theme.window_clear = Color::BLACK;
-    let target = make_target(&g.device, CACHED_SIZE, "palantir.frame_bench.partial");
     let mut state = FormState::default();
-    for _ in 0..4 {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+    for _ in 0..2 {
+        host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
         SyncMode::Gpu.poll(&g.device);
     }
-    // Pin the Partial invariant before the timing loop: run one frame
-    // through the split API so we can inspect `report.plan`. If this
-    // ever silently regresses to `Full` (e.g. someone widens the text
-    // box and the digits drift the surrounding panel hash), the bench
-    // would still produce a number, but it would be measuring the
-    // wrong thing — assert keeps the arm honest.
     let display = Display::from_physical(CACHED_SIZE, SCALE);
     let report = host.cpu_frame_for_test(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
     assert!(
@@ -184,64 +211,40 @@ fn run_partial(c: &mut Criterion, name: &str, sync: SyncMode) {
          (fixture's footer-status counter must produce a small damage rect)",
         report.plan(),
     );
-    host.render_to_texture_for_test(&target, &report);
-    state.tick = state.tick.wrapping_add(1);
-    SyncMode::Gpu.poll(&g.device);
-
-    c.bench_function(name, |b| {
-        b.iter(|| {
-            host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-            state.tick = state.tick.wrapping_add(1);
-            sync.poll(&g.device);
-            black_box(&target);
-        });
-    });
-    SyncMode::Gpu.poll(&g.device);
 }
 
 fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
-    let g = gpu();
-    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
-    host.ui.theme.window_clear = Color::BLACK;
     let targets: Vec<wgpu::Texture> = RESIZE_POOL
         .iter()
         .enumerate()
-        .map(|(i, s)| make_target(&g.device, *s, &format!("palantir.frame_bench.resize.{i}")))
+        .map(|(i, s)| {
+            make_target(
+                &gpu().device,
+                *s,
+                &format!("palantir.frame_bench.resize.{i}"),
+            )
+        })
         .collect();
-    let mut state = FormState::default();
     let mut idx = 0usize;
-    for _ in 0..4 {
-        host.frame_offscreen(&targets[idx % targets.len()], SCALE, |ui| {
-            build_ui(&mut state, BENCH_SCALE, ui)
-        });
-        SyncMode::Gpu.poll(&g.device);
-        idx += 1;
-    }
-    c.bench_function(name, |b| {
-        b.iter(|| {
-            let target = &targets[idx % targets.len()];
-            idx = idx.wrapping_add(1);
-            host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-            sync.poll(&g.device);
-            black_box(target);
-        });
+    run_arm(c, name, sync, |host, state, sync, device| {
+        let t = &targets[idx % targets.len()];
+        idx = idx.wrapping_add(1);
+        host.frame_offscreen(t, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        sync.poll(device);
+        black_box(t);
     });
-    SyncMode::Gpu.poll(&g.device);
 }
 
-/// Per-frame `queue.write_*` counts + GPU main-pass time for both
-/// arms, frames 0..=5, so the cold→warm transition is visible.
-/// Upload columns come from the counting [`Queue`] wrapper; the GPU
-/// pass column comes from `wgpu` timestamp queries surfaced via
-/// [`palantir::renderer::gpu_pass_stats::last_pass_ms`]. The pass
-/// readout is one frame lagged (the `map_async` callback fires
-/// after the next `device.poll`), so frame 0's column is omitted.
+/// Per-frame `queue.write_*` counts + GPU main-pass time for each
+/// arm, frames 0..=5, so the cold→warm transition is visible.
+/// Upload columns come from the counting [`palantir::renderer::Queue`]
+/// wrapper; the GPU pass column comes from `wgpu` timestamp queries
+/// surfaced via [`palantir::renderer::gpu_pass_stats::last_pass_ms`].
+/// The pass readout is one frame lagged (the `map_async` callback
+/// fires after the next `device.poll`), so frame 0's column is
+/// omitted.
 fn report_write_stats() {
-    fn run<F, M>(label: &str, mut pick: F, mut mutate: M)
-    where
-        F: FnMut(usize) -> &'static wgpu::Texture,
-        M: FnMut(&mut FormState, usize),
-    {
+    fn run(label: &str, targets: &[wgpu::Texture], mut mutate: impl FnMut(&mut FormState, usize)) {
         let g = gpu();
         let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
         host.ui.theme.window_clear = Color::BLACK;
@@ -250,9 +253,8 @@ fn report_write_stats() {
         for frame in 0..6 {
             mutate(&mut state, frame);
             let _ = palantir::renderer::write_stats::take();
-            host.frame_offscreen(pick(frame), SCALE, |ui| {
-                build_ui(&mut state, BENCH_SCALE, ui)
-            });
+            let target = &targets[frame % targets.len()];
+            host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
             SyncMode::Gpu.poll(&g.device);
             let s = palantir::renderer::write_stats::take();
             // The pass-time readout lags by one frame (the
@@ -273,38 +275,33 @@ fn report_write_stats() {
     }
 
     let g = gpu();
-    let cached: &'static wgpu::Texture = Box::leak(Box::new(make_target(
-        &g.device,
-        CACHED_SIZE,
-        "write_stats.cached",
-    )));
-    run("cached", |_| cached, |_, _| {});
+    let cached = [make_target(&g.device, CACHED_SIZE, "write_stats.cached")];
+    run("cached", &cached, |_, _| {});
 
-    let partial: &'static wgpu::Texture = Box::leak(Box::new(make_target(
-        &g.device,
-        CACHED_SIZE,
-        "write_stats.partial",
-    )));
-    run(
-        "partial",
-        |_| partial,
-        |state, frame| state.tick = frame as u32,
-    );
+    let partial = [make_target(&g.device, CACHED_SIZE, "write_stats.partial")];
+    run("partial", &partial, |state, frame| {
+        state.tick = frame as u32;
+    });
 
-    let pool: &'static [wgpu::Texture] = Box::leak(
-        RESIZE_POOL
-            .iter()
-            .enumerate()
-            .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
-            .collect::<Vec<_>>()
-            .into_boxed_slice(),
-    );
-    run(
-        "resizing",
-        move |frame| &pool[frame % pool.len()],
-        |_, _| {},
-    );
+    let pool: Vec<wgpu::Texture> = RESIZE_POOL
+        .iter()
+        .enumerate()
+        .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
+        .collect();
+    run("resizing", &pool, |_, _| {});
 }
+
+/// Names of every arm criterion runs, ordered as in `bench_frame`.
+/// Used by the per-machine results writer to know which criterion
+/// estimate files to read after all arms have finished.
+const ARM_NAMES: &[&str] = &[
+    "frame/cached_cpu",
+    "frame/cached_gpu",
+    "frame/partial_cpu",
+    "frame/partial_gpu",
+    "frame/resizing_cpu",
+    "frame/resizing_gpu",
+];
 
 fn bench_frame(c: &mut Criterion) {
     report_write_stats();
@@ -314,6 +311,155 @@ fn bench_frame(c: &mut Criterion) {
     run_partial(c, "frame/partial_gpu", SyncMode::Gpu);
     run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
     run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
+    prepend_machine_results();
+}
+
+/// Read criterion's `mean` estimate out of `target/criterion/<slug>/new/estimates.json`
+/// and write the `[lower mean upper]` triple — same source criterion's
+/// stdout prints — to a per-machine `.txt`. Newest run lives at the
+/// top of the file (`head` gives the latest). Best-effort: any I/O
+/// failure prints to stderr and continues.
+fn prepend_machine_results() {
+    let machine = machine_label();
+    let path = PathBuf::from("benches/results").join(format!("{machine}.txt"));
+    let mut block = String::new();
+    block.push_str(&format!("=== {} ===\n", now_label()));
+    for &name in ARM_NAMES {
+        let row = match read_criterion_mean(name) {
+            Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
+            None => format!("{name:<22} time: (criterion estimates not found)\n"),
+        };
+        block.push_str(&row);
+    }
+    block.push('\n');
+
+    let prior = std::fs::read_to_string(&path).unwrap_or_default();
+    // Atomic-enough rewrite: write to a sibling tempfile then rename
+    // over the destination. Avoids leaving the file half-written if
+    // the bench is interrupted mid-write.
+    let tmp_path = path.with_extension("txt.tmp");
+    let mut f = match OpenOptions::new()
+        .create(true)
+        .truncate(true)
+        .write(true)
+        .open(&tmp_path)
+    {
+        Ok(f) => f,
+        Err(e) => {
+            eprintln!("[machine-results] open {}: {e}", tmp_path.display());
+            return;
+        }
+    };
+    if let Err(e) = f
+        .write_all(block.as_bytes())
+        .and_then(|_| f.write_all(prior.as_bytes()))
+    {
+        eprintln!("[machine-results] write {}: {e}", tmp_path.display());
+        return;
+    }
+    drop(f);
+    if let Err(e) = std::fs::rename(&tmp_path, &path) {
+        eprintln!(
+            "[machine-results] rename {} -> {}: {e}",
+            tmp_path.display(),
+            path.display()
+        );
+        return;
+    }
+    eprintln!("[machine-results] prepended to {}", path.display());
+}
+
+#[derive(Clone, Copy)]
+struct Estimate {
+    lo_ns: f64,
+    mid_ns: f64,
+    hi_ns: f64,
+}
+
+/// Extract `mean.{lower_bound, point_estimate, upper_bound}` from
+/// criterion's `estimates.json`. The file is a single-line JSON blob
+/// with a stable layout: `"mean":{"confidence_interval":{...},
+/// "point_estimate":N,...}` — slice into the `"mean":` block and pick
+/// the three numbers in declaration order. Avoids pulling serde_json
+/// just for this.
+fn read_criterion_mean(name: &str) -> Option<Estimate> {
+    let slug = name.replace('/', "_");
+    let path = PathBuf::from("target/criterion")
+        .join(&slug)
+        .join("new/estimates.json");
+    let s = std::fs::read_to_string(&path).ok()?;
+    let after_mean = &s[s.find("\"mean\":")? + "\"mean\":".len()..];
+    let lo = extract_json_number(after_mean, "\"lower_bound\":")?;
+    let hi = extract_json_number(after_mean, "\"upper_bound\":")?;
+    let mid = extract_json_number(after_mean, "\"point_estimate\":")?;
+    Some(Estimate {
+        lo_ns: lo,
+        mid_ns: mid,
+        hi_ns: hi,
+    })
+}
+
+fn extract_json_number(s: &str, key: &str) -> Option<f64> {
+    let i = s.find(key)? + key.len();
+    let rest = &s[i..];
+    let end = rest
+        .find(|c: char| {
+            !c.is_ascii_digit() && c != '.' && c != '-' && c != '+' && c != 'e' && c != 'E'
+        })
+        .unwrap_or(rest.len());
+    rest[..end].parse().ok()
+}
+
+/// Render µs (sub-millisecond) or ms with two decimals, criterion
+/// stdout-style. Auto-picks the unit per-value (a column may mix —
+/// the median of `resizing_cpu` is ms while the CI radius is µs).
+fn fmt_estimate(e: Estimate) -> String {
+    fn one(ns: f64) -> String {
+        let us = ns / 1_000.0;
+        if us < 1000.0 {
+            format!("{us:7.2} µs")
+        } else {
+            format!("{:7.3} ms", us / 1000.0)
+        }
+    }
+    format!("[{} {} {}]", one(e.lo_ns), one(e.mid_ns), one(e.hi_ns))
+}
+
+/// `PALANTIR_BENCH_MACHINE` overrides the default `hostname -s`-derived
+/// label. Sanitized to lowercase alnum + `-_` so it's safe as a
+/// filename. Empty / failed → `unknown`.
+fn machine_label() -> String {
+    fn sanitize(raw: &str) -> String {
+        raw.trim()
+            .chars()
+            .filter(|c| c.is_alphanumeric() || *c == '-' || *c == '_')
+            .collect::<String>()
+            .to_lowercase()
+    }
+    if let Ok(s) = std::env::var("PALANTIR_BENCH_MACHINE") {
+        let n = sanitize(&s);
+        if !n.is_empty() {
+            return n;
+        }
+    }
+    let raw = std::process::Command::new("hostname")
+        .arg("-s")
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .unwrap_or_default();
+    let n = sanitize(&raw);
+    if n.is_empty() { "unknown".into() } else { n }
+}
+
+fn now_label() -> String {
+    std::process::Command::new("date")
+        .args(["-u", "+%Y-%m-%d %H:%M:%SZ"])
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_owned())
+        .unwrap_or_else(|| "unknown-time".into())
 }
 
 criterion_group!(benches, bench_frame);
