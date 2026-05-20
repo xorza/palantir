@@ -1046,6 +1046,13 @@ impl Ui {
         self.input.pointer_pos
     }
 
+    /// Currently-held modifier keys. State persists across frames —
+    /// only `ModifiersChanged` events mutate it. Read at the start of
+    /// a drag/click to gate behavior (Cmd+LMB shortcuts, etc.).
+    pub fn modifiers(&self) -> crate::input::keyboard::Modifiers {
+        self.input.modifiers
+    }
+
     pub fn focus_policy(&self) -> FocusPolicy {
         self.input.focus_policy
     }
