@@ -132,13 +132,11 @@ impl SubtreeRollups {
 #[cfg(test)]
 mod tests {
     use crate::common::frame_arena::FrameArena;
-    use crate::common::hash::Hasher;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;
     use crate::primitives::interned_str::InternedStr;
     use crate::shape::TextWrap;
-    use std::hash::{Hash, Hasher as _};
 
     fn text_shape(line_height_px: f32, local_origin: Option<glam::Vec2>) -> ShapeRecord {
         ShapeRecord::Text {
@@ -155,9 +153,7 @@ mod tests {
     }
 
     fn hash_shape(s: &ShapeRecord) -> u64 {
-        let mut h = Hasher::new();
-        s.hash(&mut h);
-        h.finish()
+        crate::forest::shapes::hash::compute_record_hash(s).0
     }
 
     /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
