@@ -79,7 +79,7 @@ pub(crate) enum ContentType {
     Color = 1,
 }
 
-pub(crate) struct TextBackend {
+pub struct TextBackend {
     shaper: TextShaper,
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
@@ -489,6 +489,108 @@ fn build_pipeline(
         cache: None,
         multiview_mask: None,
     })
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    //! Bench/test reach-in surface. Exposes `TextBackend` end-to-end so
+    //! `benches/text_atlas.rs` can drive prepare → flush → render
+    //! without going through `Host`'s full record/measure/cascade/encode
+    //! pipeline.
+
+    use super::StencilMode;
+    use crate::layout::types::align::HAlign;
+    use crate::primitives::color::ColorU8;
+    use crate::primitives::urect::URect;
+    use crate::text::{FontFamily, TextShaper};
+    use glam::{UVec2, Vec2};
+
+    pub use super::TextBackend;
+    /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
+    /// name it in their fixture slice.
+    pub use crate::renderer::render_buffer::TextRun;
+
+    impl TextBackend {
+        /// Construct a single-pipeline backend with no MSAA and no
+        /// depth/stencil — enough to render against an `Rgba8Unorm*`
+        /// color target.
+        pub fn new_for_bench(
+            device: &wgpu::Device,
+            format: wgpu::TextureFormat,
+            shaper: TextShaper,
+        ) -> Self {
+            Self::new(
+                device,
+                format,
+                wgpu::MultisampleState::default(),
+                &[None],
+                shaper,
+            )
+        }
+
+        pub fn set_viewport(&mut self, viewport_phys: UVec2) {
+            self.update_viewport(viewport_phys);
+        }
+
+        /// Append-mode prepare into batch 0.
+        pub fn prepare(
+            &mut self,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            scale: f32,
+            runs: &[TextRun],
+        ) -> bool {
+            self.prepare_batch(device, queue, scale, 0, runs)
+        }
+
+        pub fn flush(
+            &mut self,
+            device: &wgpu::Device,
+            queue: &wgpu::Queue,
+            encoder: &mut wgpu::CommandEncoder,
+        ) {
+            self.flush_atlas_uploads(device, queue, encoder);
+        }
+
+        pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+            self.render_batch(0, pass, StencilMode::Plain);
+        }
+
+        pub fn end_frame(&mut self) {
+            self.post_record();
+        }
+    }
+
+    /// Shape `text` via `shaper` (cosmic path required — mono fallback
+    /// returns the invalid sentinel that the encoder drops) and build a
+    /// `TextRun` placed at `origin` inside the given physical viewport.
+    #[allow(clippy::too_many_arguments)]
+    pub fn make_run(
+        shaper: &TextShaper,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        origin: Vec2,
+        viewport: UVec2,
+        scale: f32,
+        color: ColorU8,
+    ) -> TextRun {
+        let m = shaper.measure(
+            text,
+            font_size_px,
+            line_height_px,
+            None,
+            FontFamily::Sans,
+            HAlign::Auto,
+        );
+        TextRun {
+            key: m.key,
+            origin,
+            bounds: URect::new(0, 0, viewport.x, viewport.y),
+            color,
+            scale,
+        }
+    }
 }
 
 #[cfg(test)]

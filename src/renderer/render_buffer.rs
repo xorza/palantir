@@ -273,7 +273,7 @@ pub(crate) struct MeshInstance {
 /// and lets the backend hash whole `TextRun` slices via `bytemuck`).
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct TextRun {
+pub struct TextRun {
     pub(crate) key: TextCacheKey,
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
