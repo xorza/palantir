@@ -161,20 +161,31 @@ impl<'a> Response<'a> {
     pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
         self.state().drag_delta_by(button)
     }
-    /// Combined wheel + touchpad scroll delta this frame, in logical
-    /// pixels. Routes only to widgets with [`crate::Sense::SCROLL`]
-    /// that were the topmost scroll target under the pointer.
-    /// `Vec2::ZERO` otherwise — and also when the widget *is* the
-    /// target but no scroll event arrived this frame. Sign matches
-    /// "advance offset forward" (positive = scroll down/right); see
-    /// `widgets/scroll.rs` for the canonical `offset += delta`
-    /// consumer.
-    pub fn scroll_delta(&self) -> Vec2 {
-        self.state().scroll_delta
+    /// Pixel-precise scroll delta this frame, in logical pixels — the
+    /// touchpad / precision-wheel source (winit
+    /// `MouseScrollDelta::PixelDelta`). Routes only to widgets with
+    /// [`crate::Sense::SCROLL`] that were the topmost scroll target
+    /// under the pointer. `Vec2::ZERO` otherwise — and also when the
+    /// widget *is* the target but no scroll event arrived this frame.
+    /// Sign matches "advance offset forward" (positive = scroll
+    /// down/right). Use for "trackpad pan" intent (e.g. a graph
+    /// viewport that pans on touchpad and zooms on wheel).
+    pub fn scroll_pixels(&self) -> Vec2 {
+        self.state().scroll_pixels
+    }
+    /// Notched scroll delta this frame, in raw line units (NOT
+    /// pixels) — the classic-wheel source (winit
+    /// `MouseScrollDelta::LineDelta`). Same routing as
+    /// [`Self::scroll_pixels`]. Use for "mouse wheel" intent (e.g.
+    /// zoom-by-notches). To form a combined pan delta in pixels,
+    /// compute `scroll_pixels() + scroll_lines() * line_px` where
+    /// `line_px` is the caller's font-derived line step.
+    pub fn scroll_lines(&self) -> Vec2 {
+        self.state().scroll_lines
     }
     /// Multiplicative pinch zoom factor this frame (`1.0` = no
     /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
-    /// Independent of `scroll_delta` so a list can pan-via-scroll
+    /// Independent of the scroll routes so a list can pan-via-scroll
     /// without committing to pinch-to-zoom, and vice versa.
     pub fn zoom_factor(&self) -> f32 {
         self.state().zoom_factor
@@ -248,8 +259,11 @@ impl ResponseSnapshot {
     pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
         self.state.drag_delta_by(button)
     }
-    pub fn scroll_delta(&self) -> Vec2 {
-        self.state.scroll_delta
+    pub fn scroll_pixels(&self) -> Vec2 {
+        self.state.scroll_pixels
+    }
+    pub fn scroll_lines(&self) -> Vec2 {
+        self.state.scroll_lines
     }
     pub fn zoom_factor(&self) -> f32 {
         self.state.zoom_factor

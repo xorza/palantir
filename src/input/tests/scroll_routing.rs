@@ -117,16 +117,16 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     ui.on_input(InputEvent::Zoom(1.5));
-    let mut scroll_delta = Vec2::ZERO;
+    let mut scroll_pixels = Vec2::ZERO;
     let mut zoom_factor = f32::NAN;
     ui.run_at_acked(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
-        scroll_delta = resp.scroll_delta;
+        scroll_pixels = resp.scroll_pixels;
         zoom_factor = resp.zoom_factor;
     });
     assert_eq!(
-        scroll_delta,
+        scroll_pixels,
         Vec2::new(0.0, 9.0),
         "Sense::SCROLL must receive wheel/touchpad scroll deltas",
     );
@@ -156,16 +156,16 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 9.0)));
     ui.on_input(InputEvent::Zoom(1.5));
-    let mut scroll_delta = Vec2::new(1.0, 1.0);
+    let mut scroll_pixels = Vec2::new(1.0, 1.0);
     let mut zoom_factor = f32::NAN;
     ui.run_at_acked(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
-        scroll_delta = resp.scroll_delta;
+        scroll_pixels = resp.scroll_pixels;
         zoom_factor = resp.zoom_factor;
     });
     assert_eq!(
-        scroll_delta,
+        scroll_pixels,
         Vec2::ZERO,
         "Sense::PINCH alone (no SCROLL) must NOT receive wheel/touchpad \
          scroll deltas",
