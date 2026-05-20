@@ -411,6 +411,9 @@ impl WgpuBackend {
                     text_mode,
                 );
             }
+            // Re-push viewport uniform in case `prepare_batch` grew the
+            // atlas — shader reads atlas sizes from the uniform now.
+            self.text.sync_atlas_to_viewport(&self.queue);
         }
 
         let mut encoder = self

@@ -49,7 +49,11 @@ fn drag_delta_none_before_press() {
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
-    assert_eq!(delta(&ui, id(), PointerButton::Left), None, "no press → no drag");
+    assert_eq!(
+        delta(&ui, id(), PointerButton::Left),
+        None,
+        "no press → no drag"
+    );
 }
 
 #[test]
@@ -230,7 +234,11 @@ fn left_wins_over_simultaneously_latched_middle() {
 
     let r = ui.response_for(id());
     let d = r.drag.expect("a drag must be active");
-    assert_eq!(d.button, PointerButton::Left, "left has priority over middle");
+    assert_eq!(
+        d.button,
+        PointerButton::Left,
+        "left has priority over middle"
+    );
     // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d.delta, Vec2::new(80.0, 40.0));
     assert!(r.dragged_by(PointerButton::Left));
