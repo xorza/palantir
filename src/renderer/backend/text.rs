@@ -88,17 +88,6 @@ pub(crate) struct TextRenderer {
     /// use rounded clip never instantiate it. Shares the atlas with
     /// `plain`.
     stencil: Option<ModeState>,
-    /// Last viewport size pushed to glyphon's viewport uniform. `ZERO`
-    /// on construction; first non-zero `update_viewport` mismatches
-    /// and uploads. Saves a per-frame `viewport.update` call in steady
-    /// state.
-    ///
-    /// **Independent of [`super::viewport::ViewportUniform::last`].**
-    /// Both fields track the same logical signal but gate writes to
-    /// two *different* GPU buffers — glyphon owns its own uniform via
-    /// [`Viewport::update`] and isn't reachable through the shared
-    /// quad/mesh/image `ViewportUniform`.
-    last_viewport: UVec2,
     /// True if at least one `prepare_batch` succeeded this frame.
     /// Drives `has_prepared` (the wgpu backend skips `post_record`
     /// entirely when false).
@@ -124,7 +113,6 @@ impl TextRenderer {
             swash_cache,
             plain: ModeState::new(plain_renderer),
             stencil: None,
-            last_viewport: UVec2::ZERO,
             prepared_anything: false,
         }
     }
@@ -134,39 +122,35 @@ impl TextRenderer {
         self.prepared_anything
     }
 
-    /// Update the viewport uniform. Called once per frame before the
-    /// per-batch prepares so both renderers see the same viewport.
-    /// Skips the GPU upload when the viewport matches last frame's —
-    /// glyphon's uniform contents are pure functions of the resolution
-    /// and current atlas sizes; [`Viewport::update`] short-circuits on
-    /// no change.
+    /// Push the viewport uniform with `viewport_phys`. Cheap when
+    /// nothing changed — glyphon's [`Viewport::update`] short-circuits
+    /// when `(resolution, atlas_sizes)` matches the previous call
+    /// (`vendor/glyphon/src/viewport.rs:52`). Call once per frame
+    /// before the per-batch prepares.
     #[profiling::function]
     pub(crate) fn update_viewport(&mut self, queue: &wgpu::Queue, viewport_phys: UVec2) {
-        self.viewport.update(
+        self.upload_viewport(
             queue,
             Resolution {
                 width: viewport_phys.x,
                 height: viewport_phys.y,
             },
-            &self.atlas,
         );
-        self.last_viewport = viewport_phys;
     }
 
-    /// Re-push the viewport uniform if the atlas grew during the
-    /// frame's `prepare` calls. Cheap when nothing changed —
-    /// [`Viewport::update`] short-circuits on identical params.
-    /// Call once after all `prepare_batch`es, before any `render_batch`.
+    /// Re-push the viewport uniform after the frame's `prepare` calls
+    /// in case the atlas grew (atlas sizes feed the uniform). Reads
+    /// the resolution back from the viewport so it always matches the
+    /// last `update_viewport`. Short-circuits inside glyphon when
+    /// atlas + resolution are unchanged.
     #[profiling::function]
     pub(crate) fn sync_atlas_to_viewport(&mut self, queue: &wgpu::Queue) {
-        self.viewport.update(
-            queue,
-            Resolution {
-                width: self.last_viewport.x,
-                height: self.last_viewport.y,
-            },
-            &self.atlas,
-        );
+        let resolution = self.viewport.resolution();
+        self.upload_viewport(queue, resolution);
+    }
+
+    fn upload_viewport(&mut self, queue: &wgpu::Queue, resolution: Resolution) {
+        self.viewport.update(queue, resolution, &self.atlas);
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
