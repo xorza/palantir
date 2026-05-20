@@ -4,6 +4,10 @@
 //! offscreen `wgpu::Texture`. Two arms × two sync modes:
 //!
 //! - **`frame/cached_*`** — fixed viewport, MeasureCache hits.
+//! - **`frame/partial_*`** — fixed viewport, mutates a single fixture
+//!   counter per iter so damage resolves to one small `Partial` rect
+//!   over an otherwise-static tree. Models the steady-state of an
+//!   interactive UI (animating counter / blinking caret / hover).
 //! - **`frame/resizing_*`** — rotates a pool of differently-sized
 //!   targets so `available_q` busts each iter.
 //!
@@ -26,7 +30,8 @@ mod fixture;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
-use palantir::{Color, Host};
+use palantir::ui::frame_report::RenderPlan;
+use palantir::{Color, Display, Host};
 use pollster::FutureExt;
 use std::hint::black_box;
 use std::sync::OnceLock;
@@ -148,6 +153,52 @@ fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
     SyncMode::Gpu.poll(&g.device);
 }
 
+/// Partial-damage arm. Same fixed target as `cached`; the only delta
+/// vs. cached is that `state.tick` increments each iter, which mutates
+/// the footer "Frame NNNNNNNN" text content. The footer Text is
+/// `Sizing::Fixed(120.0)` so the changing digits don't shift siblings —
+/// damage resolves to one small rect over an otherwise-static tree,
+/// and the renderer hits the `LoadOp::Load + set_scissor_rect` path.
+fn run_partial(c: &mut Criterion, name: &str, sync: SyncMode) {
+    let g = gpu();
+    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    host.ui.theme.window_clear = Color::BLACK;
+    let target = make_target(&g.device, CACHED_SIZE, "palantir.frame_bench.partial");
+    let mut state = FormState::default();
+    for _ in 0..4 {
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+        state.tick = state.tick.wrapping_add(1);
+        SyncMode::Gpu.poll(&g.device);
+    }
+    // Pin the Partial invariant before the timing loop: run one frame
+    // through the split API so we can inspect `report.plan`. If this
+    // ever silently regresses to `Full` (e.g. someone widens the text
+    // box and the digits drift the surrounding panel hash), the bench
+    // would still produce a number, but it would be measuring the
+    // wrong thing — assert keeps the arm honest.
+    let display = Display::from_physical(CACHED_SIZE, SCALE);
+    let report = host.cpu_frame_for_test(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+    assert!(
+        matches!(report.plan(), Some(RenderPlan::Partial { .. })),
+        "frame/partial expected RenderPlan::Partial, got {:?} \
+         (fixture's footer-status counter must produce a small damage rect)",
+        report.plan(),
+    );
+    host.render_to_texture_for_test(&target, &report);
+    state.tick = state.tick.wrapping_add(1);
+    SyncMode::Gpu.poll(&g.device);
+
+    c.bench_function(name, |b| {
+        b.iter(|| {
+            host.frame_offscreen(&target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+            state.tick = state.tick.wrapping_add(1);
+            sync.poll(&g.device);
+            black_box(&target);
+        });
+    });
+    SyncMode::Gpu.poll(&g.device);
+}
+
 fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
     let g = gpu();
     let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
@@ -186,13 +237,18 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
 /// readout is one frame lagged (the `map_async` callback fires
 /// after the next `device.poll`), so frame 0's column is omitted.
 fn report_write_stats() {
-    fn run<F: FnMut(usize) -> &'static wgpu::Texture>(label: &str, mut pick: F) {
+    fn run<F, M>(label: &str, mut pick: F, mut mutate: M)
+    where
+        F: FnMut(usize) -> &'static wgpu::Texture,
+        M: FnMut(&mut FormState, usize),
+    {
         let g = gpu();
         let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
         host.ui.theme.window_clear = Color::BLACK;
         let mut state = FormState::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
+            mutate(&mut state, frame);
             let _ = palantir::renderer::write_stats::take();
             host.frame_offscreen(pick(frame), SCALE, |ui| {
                 build_ui(&mut state, BENCH_SCALE, ui)
@@ -222,7 +278,18 @@ fn report_write_stats() {
         CACHED_SIZE,
         "write_stats.cached",
     )));
-    run("cached", |_| cached);
+    run("cached", |_| cached, |_, _| {});
+
+    let partial: &'static wgpu::Texture = Box::leak(Box::new(make_target(
+        &g.device,
+        CACHED_SIZE,
+        "write_stats.partial",
+    )));
+    run(
+        "partial",
+        |_| partial,
+        |state, frame| state.tick = frame as u32,
+    );
 
     let pool: &'static [wgpu::Texture] = Box::leak(
         RESIZE_POOL
@@ -232,13 +299,19 @@ fn report_write_stats() {
             .collect::<Vec<_>>()
             .into_boxed_slice(),
     );
-    run("resizing", move |frame| &pool[frame % pool.len()]);
+    run(
+        "resizing",
+        move |frame| &pool[frame % pool.len()],
+        |_, _| {},
+    );
 }
 
 fn bench_frame(c: &mut Criterion) {
     report_write_stats();
     run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
     run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
+    run_partial(c, "frame/partial_cpu", SyncMode::Cpu);
+    run_partial(c, "frame/partial_gpu", SyncMode::Gpu);
     run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
     run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
 }

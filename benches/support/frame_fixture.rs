@@ -28,12 +28,19 @@ pub const VISUAL_SCALE: usize = 6;
 
 /// Persistent state for widgets that mutate user data (TextEdit needs
 /// a `&mut String`, Checkbox a `&mut bool`, RadioButton a `&mut T`).
+///
+/// `tick` drives the footer-status counter and is the **only** field
+/// the partial-damage arm mutates between iterations. The footer Text
+/// node is sized `Fixed(120.0)` so the changing digits don't shift
+/// sibling layout — the damage rect collapses to that single node's
+/// arranged box.
 #[derive(Default)]
 pub struct FormState {
     pub name: String,
     pub notes: String,
     pub enabled: bool,
     pub role: u8,
+    pub tick: u32,
 }
 
 pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
@@ -338,9 +345,15 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                         .child_align(Align::CENTER)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            Text::new("Ready")
+                            // Footer "live counter": the partial-damage
+                            // arm mutates `state.tick` each iter. Fixed
+                            // width pins layout so the changing digits
+                            // can't shift siblings — damage collapses to
+                            // this single Text node's arranged rect.
+                            Text::new(ui.fmt(format_args!("Frame {:08}", state.tick)))
                                 .id_salt("footer-status")
                                 .style(TextStyle::default().with_font_size(12.0))
+                                .size((Sizing::Fixed(120.0), Sizing::Hug))
                                 .show(ui);
                             Frame::new()
                                 .id_salt("footer-spacer")

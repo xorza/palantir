@@ -115,6 +115,13 @@ pub mod test_support {
     use crate::primitives::rect::Rect;
 
     impl FrameReport {
+        /// Read `self.plan`. Benches assert against this to pin the
+        /// damage outcome they intend to measure (e.g. `frame/partial`
+        /// asserts `Some(Partial)`).
+        pub fn plan(&self) -> Option<RenderPlan> {
+            self.plan
+        }
+
         /// Overwrite `self.plan`: empty ⇒ `Full { clear }`, otherwise `Partial`
         /// built by adding each rect.
         pub fn force_damage_to_rects(&mut self, rects: &[Rect], clear: Color) {
