@@ -10,11 +10,13 @@ mod quad_pipeline;
 mod queue;
 mod schedule;
 mod stencil;
+mod upload_ctx;
 mod viewport;
 #[cfg(feature = "internals")]
 pub(crate) mod write_stats;
 
 pub use self::queue::Queue;
+pub use self::upload_ctx::UploadCtx;
 
 use self::stencil::STENCIL_FORMAT;
 
@@ -76,6 +78,14 @@ struct StencilAttachment {
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: Queue,
+    /// All per-frame dynamic-buffer uploads route through this belt so
+    /// the resulting `copy_buffer_to_buffer` commands ride the main
+    /// encoder. On Metal that collapses N `queue.write_buffer` calls
+    /// (each spinning up a fresh `MTLBlitCommandEncoder`) down to one
+    /// blit encoder per submit. Chunk size sized to comfortably hold a
+    /// resizing-frame's worth of buffer uploads (~512 KB observed in
+    /// the frame bench).
+    staging_belt: wgpu::util::StagingBelt,
     viewport_uniform: ViewportUniform,
     quad: QuadPipeline,
     mesh: MeshPipeline,
@@ -169,9 +179,15 @@ impl WgpuBackend {
             shaper,
         );
         let debug = DebugOverlay::new(&device);
+        // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
+        // per-frame upload peak, so we land in 1-2 chunks during
+        // steady state. wgpu allocates a new chunk only when the
+        // active one can't fit a write.
+        let staging_belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 20);
         Self {
             device,
             queue: Queue::new(queue),
+            staging_belt,
             viewport_uniform,
             quad,
             mesh,
@@ -362,17 +378,14 @@ impl WgpuBackend {
         // jarring than the prior `LoadOp::Clear` flash and visually
         // pins which regions are actually repainting.
         let dim_undamaged = debug_overlay.dim_undamaged && !damage_scissors.is_empty();
-        if dim_undamaged {
-            self.debug
-                .upload_dim(&self.queue, buffer.viewport_phys_f, 0.4);
-        }
 
         // Stencil path activates whenever the encoded frame contains a
-        // `PushClip` with a non-zero radius. Lazy-init the stencil texture + pipeline
-        // variants the first time we land here; thereafter both stay
-        // warm. Apps that never round-clip never enter this branch.
-        // After staging, `self.quad.mask_indices` parallels
-        // `buffer.groups` and `render_groups` reads it directly.
+        // `PushClip` with a non-zero radius. Lazy-init the stencil
+        // texture + pipeline variants the first time we land here;
+        // thereafter both stay warm. Apps that never round-clip never
+        // enter this branch. The mask upload happens further down,
+        // after the encoder is open, alongside every other dynamic
+        // buffer upload.
         let text_mode = if use_stencil {
             TextStencilMode::Stencil
         } else {
@@ -384,73 +397,91 @@ impl WgpuBackend {
             self.mesh.ensure_stencil(&self.device);
             self.image.ensure_stencil(&self.device);
             self.curve.ensure_stencil(&self.device);
-            self.quad
-                .stage_masks(&self.device, &self.queue, &buffer.groups);
         }
 
-        self.viewport_uniform
-            .write(&self.queue, buffer.viewport_phys_f);
-        self.quad.upload(&self.device, &self.queue, &buffer.quads);
-
-        self.mesh.upload(
-            &self.device,
-            &self.queue,
-            &arena.meshes.vertices,
-            &arena.meshes.indices,
-            buffer.meshes.rows.instance(),
-        );
-
-        // Upload any newly registered images to GPU, then stream the
-        // per-instance buffer. Pending registry drain happens before
-        // the per-instance upload so first-frame images have a bind
-        // group ready for the schedule's draw call.
-        self.image
-            .drain_registry(&self.device, &self.queue, &self.caches.images);
-        self.image
-            .upload_instances(&self.device, &self.queue, buffer.images.rows.instance());
-
-        self.curve.upload(&self.device, &self.queue, &buffer.curves);
-
-        if !damage_scissors.is_empty() {
-            self.quad
-                .upload_clear(&self.queue, buffer.viewport_phys_f, clear);
-        }
-
-        // Prepare text per-batch outside the encoder/pass borrow scope so
-        // glyphon can upload to the atlas + per-renderer vertex buffer
-        // freely. Viewport uniform updated once for all renderers in the
-        // pool — they share the atlas-bound pipeline + viewport state.
-        // `prepare_batch` returns `false` (no-op) when the shaper
-        // passed at [`Self::new`] has no installed fonts, so the loop
-        // is safe to run unconditionally. One pool slot per batch
-        // (not per group) — coalescing N text groups into one batch
-        // means N→1 prepare/render calls.
-        self.text.update_viewport(buffer.viewport_phys);
-        {
-            profiling::scope!(
-                "text.prepare_batches",
-                &format!("count={}", buffer.text_batches.len())
-            );
-            for (i, b) in buffer.text_batches.iter().enumerate() {
-                let runs = &buffer.texts[b.texts.range()];
-                self.text
-                    .prepare_batch(&self.device, &self.queue, buffer.scale, i, runs);
-            }
-            // (TextBackend flushes its params buffer inside prepare_batch
-            // whenever resolution or atlas sizes change — no second sync needed.)
-        }
-
+        // Open the main encoder up front: every dynamic-buffer upload
+        // below routes through `staging_belt`, which schedules its
+        // `copy_buffer_to_buffer` commands on this encoder rather
+        // than allocating its own MTLBlitCommandEncoder per
+        // `queue.write_buffer`. Render passes are recorded on this
+        // same encoder later in the function; wgpu serialises
+        // commands in record order so the copies land before the
+        // passes that read from the destination buffers.
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.main"),
             });
 
-        // Drain glyph atlas uploads into this encoder so all
-        // per-glyph `copy_buffer_to_texture` commands share the
-        // main render submit — no second `queue.submit` for text.
-        self.text
-            .flush_atlas_uploads(&self.device, &self.queue, &mut encoder);
+        // Image-registry texture uploads: rare, hit `queue.write_texture`
+        // directly (StagingBelt's buffer-only path doesn't help here).
+        // Done before the upload phase so first-frame images have a
+        // bind group ready when the schedule's draw call lands.
+        self.image
+            .drain_registry(&self.device, &self.queue, &self.caches.images);
+
+        // Belt-routed upload phase. Scoped so the borrows release
+        // before the render-pass phase needs `&mut encoder` cleanly.
+        {
+            let mut ctx = UploadCtx::new(&self.device, &mut self.staging_belt, &mut encoder);
+
+            if dim_undamaged {
+                self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f, 0.4);
+            }
+            if use_stencil {
+                // After staging, `self.quad.mask_indices` parallels
+                // `buffer.groups` and `render_groups` reads it directly.
+                self.quad.stage_masks(&mut ctx, &buffer.groups);
+            }
+
+            self.viewport_uniform
+                .write(&mut ctx, buffer.viewport_phys_f);
+            self.quad.upload(&mut ctx, &buffer.quads);
+            self.mesh.upload(
+                &mut ctx,
+                &arena.meshes.vertices,
+                &arena.meshes.indices,
+                buffer.meshes.rows.instance(),
+            );
+            self.image
+                .upload_instances(&mut ctx, buffer.images.rows.instance());
+            self.curve.upload(&mut ctx, &buffer.curves);
+
+            if !damage_scissors.is_empty() {
+                self.quad
+                    .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
+            }
+
+            // Text prepare: viewport refresh + per-batch glyph
+            // encoding. Routes its vertex/params/atlas-staging writes
+            // through the same ctx so every text-backend write lands
+            // as `copy_buffer_to_buffer` on the main encoder.
+            self.text.update_viewport(buffer.viewport_phys);
+            {
+                profiling::scope!(
+                    "text.prepare_batches",
+                    &format!("count={}", buffer.text_batches.len())
+                );
+                for (i, b) in buffer.text_batches.iter().enumerate() {
+                    let runs = &buffer.texts[b.texts.range()];
+                    self.text.prepare_batch(&mut ctx, buffer.scale, i, runs);
+                }
+                // (TextBackend flushes its params buffer inside
+                // prepare_batch whenever resolution or atlas sizes
+                // change — no second sync needed.)
+            }
+
+            // Drain glyph atlas uploads (atlas-grow blits + per-glyph
+            // copy_buffer_to_texture) into the same encoder so they
+            // share the main render submit. The staging side of those
+            // copies also routes through the belt — see
+            // `atlas::flush_pending_uploads`.
+            self.text.flush_atlas_uploads(&mut ctx);
+        }
+        // (Belt stays open across the scope boundary —
+        // `draw_debug_overlay` reconstructs a short-lived ctx for its
+        // damage-rect outline upload. `belt.finish()` lives right
+        // before `queue.submit` below.)
 
         // Two paths, branching on whether the frame is a Full or
         // Partial repaint. Both go through one `begin_render_pass`:
@@ -518,7 +549,18 @@ impl WgpuBackend {
             t.resolve(&mut encoder);
         }
 
+        // Close the belt: no more `belt.write_buffer` calls allowed
+        // until after `submit + recall` below.
+        self.staging_belt.finish();
         self.queue.submit(std::iter::once(encoder.finish()));
+
+        // Return the just-used staging-belt chunks for remap. Closed
+        // chunks come back when their `map_async` callback fires off
+        // the next `device.poll` — `PollType::Wait` callers see them
+        // ready next frame; `PollType::Poll` callers may need to
+        // allocate one more chunk during the catch-up window. wgpu's
+        // own docs flag this as harmless.
+        self.staging_belt.recall();
 
         // Kick the map_async on this frame's staging slot and read
         // back any prior frame whose map has completed. Cheap (one
@@ -847,13 +889,20 @@ impl WgpuBackend {
             if overlay_rects.is_empty() {
                 return;
             }
-            self.debug.upload_overlays(
-                &self.device,
-                &self.queue,
-                &overlay_rects,
-                DAMAGE_OVERLAY_COLOR,
-                stroke_width,
-            );
+            // Short-lived ctx just for the overlay upload — the main
+            // upload phase in `submit` has already closed its ctx but
+            // the belt is still open until `belt.finish()`. Scoped so
+            // the encoder borrow releases before `begin_render_pass`
+            // below.
+            {
+                let mut ctx = UploadCtx::new(&self.device, &mut self.staging_belt, encoder);
+                self.debug.upload_overlays(
+                    &mut ctx,
+                    &overlay_rects,
+                    DAMAGE_OVERLAY_COLOR,
+                    stroke_width,
+                );
+            }
             let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("palantir.renderer.overlay.damage_rect"),

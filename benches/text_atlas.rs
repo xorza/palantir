@@ -46,7 +46,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::ColorU8;
 use palantir::TextShaper;
-use palantir::text_backend::test_support::{TextBackend, TextRun, make_run};
+use palantir::text_backend::test_support::{TextBackend, TextRun, UploadCtx, make_run};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -182,17 +182,21 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
 fn run_frame(
     g: &Gpu,
     backend: &mut TextBackend,
+    belt: &mut wgpu::util::StagingBelt,
     target_view: &wgpu::TextureView,
     runs: &[TextRun],
     scale: f32,
 ) {
-    backend.prepare(&g.device, &g.queue, scale, runs);
     let mut encoder = g
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("palantir.text_atlas.encoder"),
         });
-    backend.flush(&g.device, &g.queue, &mut encoder);
+    {
+        let mut ctx = UploadCtx::new(&g.device, belt, &mut encoder);
+        backend.prepare(&mut ctx, scale, runs);
+        backend.flush(&mut ctx);
+    }
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.text_atlas.pass"),
@@ -212,7 +216,9 @@ fn run_frame(
         });
         backend.draw(&mut pass);
     }
+    belt.finish();
     g.queue.submit([encoder.finish()]);
+    belt.recall();
     poll_drain(&g.device);
     backend.end_frame();
 }
@@ -235,22 +241,35 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
+        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
         // Two priming frames so every glyph is in the atlas.
         for _ in 0..2 {
-            run_frame(g, &mut backend, &view, &runs, BASE_SCALE);
+            run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
         }
         group.bench_function("steady_warm", |b| {
             b.iter(|| {
-                run_frame(g, &mut backend, &view, &runs, BASE_SCALE);
+                run_frame(g, &mut backend, &mut belt, &view, &runs, BASE_SCALE);
             });
         });
         // CPU-only: prepare + end_frame, no encoder/submit/poll.
         // Isolates text-backend CPU work from GPU sync — useful when
         // the full case looks GPU-bound and you want to see whether a
-        // change moved the CPU prepare cost.
+        // change moved the CPU prepare cost. Still needs a belt +
+        // throwaway encoder to satisfy `prepare`'s signature; the
+        // encoder is discarded.
         group.bench_function("steady_warm_cpu", |b| {
             b.iter(|| {
-                backend.prepare(&g.device, &g.queue, BASE_SCALE, &runs);
+                let mut encoder =
+                    g.device
+                        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                            label: Some("palantir.text_atlas.cpu_prepare"),
+                        });
+                {
+                    let mut ctx = UploadCtx::new(&g.device, &mut belt, &mut encoder);
+                    backend.prepare(&mut ctx, BASE_SCALE, &runs);
+                }
+                belt.finish();
+                belt.recall();
                 backend.end_frame();
             });
         });
@@ -258,18 +277,19 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
+        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
         // Prime the cycle so the LRU has all rungs resident before the
         // measured loop starts evicting + re-inserting.
         for step in 0..SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
-            run_frame(g, &mut backend, &view, &runs, scale);
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_smooth", |b| {
             b.iter(|| {
                 let step = (i % SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * TEXT_SCALE_STEP;
-                run_frame(g, &mut backend, &view, &runs, scale);
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
                 i = i.wrapping_add(1);
             });
         });
@@ -277,17 +297,18 @@ fn bench_text_atlas(c: &mut Criterion) {
 
     {
         let (mut backend, runs) = fresh_backend(g);
+        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
         let stride = 5.0 * TEXT_SCALE_STEP;
         for step in 0..SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * stride;
-            run_frame(g, &mut backend, &view, &runs, scale);
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_cold", |b| {
             b.iter(|| {
                 let step = (i % SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * stride;
-                run_frame(g, &mut backend, &view, &runs, scale);
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
                 i = i.wrapping_add(1);
             });
         });

@@ -11,7 +11,7 @@
 //! never enable debug overlays still allocate these buffers (cheap
 //! at ~92 B each) but never upload to them.
 
-use super::Queue;
+use super::UploadCtx;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
@@ -85,7 +85,7 @@ impl DebugOverlay {
     /// the showcase default. Premultiplied-alpha blending means the
     /// rgb channel doubles as the "remaining brightness" multiplier:
     /// 40% alpha → 60% of the underlying pixel survives.
-    pub(super) fn upload_dim(&self, queue: &Queue, viewport: Vec2, alpha: f32) {
+    pub(super) fn upload_dim(&self, ctx: &mut UploadCtx<'_>, viewport: Vec2, alpha: f32) {
         let q = Quad {
             rect: Rect {
                 min: Vec2::ZERO,
@@ -100,7 +100,7 @@ impl DebugOverlay {
             stroke_width: 0.0,
             ..Default::default()
         };
-        queue.write_buffer(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
+        ctx.write(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
 
     /// Bind the supplied quad pipeline's no-stencil base + dim buffer
@@ -124,8 +124,7 @@ impl DebugOverlay {
     /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
     pub(super) fn upload_overlays(
         &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
+        ctx: &mut UploadCtx<'_>,
         rects: &[Rect],
         stroke_color: Color,
         stroke_width: f32,
@@ -135,7 +134,7 @@ impl DebugOverlay {
         }
         if rects.len() > self.overlay_capacity {
             self.overlay_capacity = rects.len().next_power_of_two().max(8);
-            self.overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            self.overlay_buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir.quad.overlay"),
                 size: (self.overlay_capacity * std::mem::size_of::<Quad>()) as u64,
                 usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
@@ -154,7 +153,7 @@ impl DebugOverlay {
                 ..Default::default()
             });
         }
-        queue.write_buffer(
+        ctx.write(
             &self.overlay_buffer,
             0,
             bytemuck::cast_slice(quads.as_slice()),

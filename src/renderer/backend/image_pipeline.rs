@@ -6,6 +6,7 @@
 //! `GpuImage` by [`ImageHandle`] across frames.
 
 use super::Queue;
+use super::UploadCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
@@ -168,14 +169,8 @@ impl ImagePipeline {
             },
         );
 
-        let instance_buffer = DynamicBuffer::new(
-            device,
-            "palantir.image.instances",
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<ImageInstance>(),
-            16,
-            16,
-        );
+        let instance_buffer =
+            DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16, 16);
 
         Self {
             pipeline,
@@ -324,19 +319,14 @@ impl ImagePipeline {
     #[profiling::function]
     pub(crate) fn upload_instances(
         &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
+        ctx: &mut UploadCtx<'_>,
         instances: &[ImageInstance],
     ) {
         if instances.is_empty() {
             return;
         }
-        self.instance_buffer.upload(
-            device,
-            queue,
-            bytemuck::cast_slice(instances),
-            instances.len(),
-        );
+        self.instance_buffer
+            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
     }
 
     /// Bind once per pass before iterating image draws.

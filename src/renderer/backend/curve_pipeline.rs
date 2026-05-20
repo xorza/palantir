@@ -12,7 +12,7 @@
 //! [`MeshPipeline`]: super::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: super::image_pipeline::ImagePipeline
 
-use super::Queue;
+use super::UploadCtx;
 use super::dynamic_buffer::DynamicBuffer;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
@@ -133,14 +133,8 @@ impl CurvePipeline {
             },
         );
 
-        let instance_buffer = DynamicBuffer::new(
-            device,
-            "palantir.curve.instances",
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            std::mem::size_of::<CurveInstance>(),
-            64,
-            64,
-        );
+        let instance_buffer =
+            DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64, 64);
 
         Self {
             pipeline,
@@ -182,21 +176,12 @@ impl CurvePipeline {
     }
 
     #[profiling::function]
-    pub(crate) fn upload(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &Queue,
-        instances: &[CurveInstance],
-    ) {
+    pub(crate) fn upload(&mut self, ctx: &mut UploadCtx<'_>, instances: &[CurveInstance]) {
         if instances.is_empty() {
             return;
         }
-        self.instance_buffer.upload(
-            device,
-            queue,
-            bytemuck::cast_slice(instances),
-            instances.len(),
-        );
+        self.instance_buffer
+            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
