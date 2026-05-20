@@ -19,7 +19,7 @@ encase = "*"
 cosmic-text = "*"
 fixedbitset = "*"
 glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
-glyphon = { path = "vendor/glyphon" }
+etagere = "*"
 half = { version = "*", features = ["bytemuck"] }
 rustc-hash = "*"
 tracing = "*"
@@ -165,8 +165,6 @@ opt-level = 3
 [profile.dev.package.spirv]
 opt-level = 3
 [profile.dev.package.ash]
-opt-level = 3
-[profile.dev.package.glyphon]
 opt-level = 3
 [profile.dev.package.cosmic-text]
 opt-level = 3
