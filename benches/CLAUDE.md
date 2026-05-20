@@ -9,16 +9,21 @@ Filter at run-time with a criterion regex.
 ## Running
 
 ```sh
-PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all cases in frame.rs
-PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'post_record$'  # one case (regex, anchored)
+PALANTIR_BENCH_MODE=both PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all arms
+PALANTIR_BENCH_MODE=cpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
+PALANTIR_BENCH_MODE=gpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'cached$'  # filter
 cargo bench --bench caches --features internals        # gated benches
 ```
 
-`frame` refuses to run without `PALANTIR_BENCH_NOTE` set to a
-non-empty string. The value is inlined into the per-run header in
-`benches/results/<machine>.txt` (`=== <utc> — <note> ===`) so each
-appended row carries context for why it was measured (which branch,
-which change, which hypothesis).
+`frame` refuses to run without both:
+- `PALANTIR_BENCH_NOTE` — non-empty context string. Inlined into the
+  per-run header in `benches/results/<machine>.txt`
+  (`=== <utc> — [<mode>] <note> ===`) so each appended row carries
+  context for why it was measured.
+- `PALANTIR_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which
+  sync-mode arms run; `both` is the full ~90 s matrix, `cpu`/`gpu`
+  alone is ~45 s. Forces every invocation to be an explicit decision
+  rather than defaulting to the full matrix.
 
 `caches`, `cascade`, `damage`, `damage_merge_gpu` are gated behind
 `internals` / `bench-deep`. `cargo bench --no-run` without features only
