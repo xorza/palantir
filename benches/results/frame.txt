@@ -1,0 +1,15 @@
+Frame bench — 2026-05-20
+
+frame/cached    time: [78.842 µs 78.947 µs 79.067 µs]
+                change: [−0.5804% −0.3247% −0.0635%] (p = 0.01)  within noise
+
+frame/resizing  time: [85.034 µs 85.158 µs 85.288 µs]
+                change: [−0.6207% −0.2080% +0.2150%] (p = 0.33)  no change
+
+History (median):
+  cached   : 79.217 µs (baseline) -> 79.210 µs (post) -> 78.947 µs (now)
+  resizing : 85.505 µs (baseline) -> 85.426 µs (post) -> 85.158 µs (now)
+
+Verdict: statistically flat vs prior runs. No regression, no win.
+
+Command: cargo bench --bench frame --features internals
