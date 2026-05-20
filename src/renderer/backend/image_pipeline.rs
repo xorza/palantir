@@ -6,9 +6,8 @@
 //! `GpuImage` by [`ImageHandle`] across frames.
 
 use super::Queue;
-use super::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
-};
+use super::dynamic_buffer::DynamicBuffer;
+use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -42,8 +41,7 @@ pub(crate) struct ImagePipeline {
     /// Group 0 (viewport uniform). Group 1 (per-image texture +
     /// sampler) is built inside [`upload`] and stored in [`cache`].
     bind_group: wgpu::BindGroup,
-    instance_buffer: wgpu::Buffer,
-    instance_capacity: usize,
+    instance_buffer: DynamicBuffer,
     /// Stencil-test variant — lazy-built when the first rounded-clip
     /// frame uses an image.
     stencil_test: Option<wgpu::RenderPipeline>,
@@ -170,19 +168,19 @@ impl ImagePipeline {
             },
         );
 
-        let instance_capacity = 16;
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.image.instances"),
-            size: (instance_capacity * std::mem::size_of::<ImageInstance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let instance_buffer = DynamicBuffer::new(
+            device,
+            "palantir.image.instances",
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<ImageInstance>(),
+            16,
+            16,
+        );
 
         Self {
             pipeline,
             bind_group,
             instance_buffer,
-            instance_capacity,
             stencil_test: None,
             shader,
             color_format: format,
@@ -333,17 +331,12 @@ impl ImagePipeline {
         if instances.is_empty() {
             return;
         }
-        grow_instance_buffer(
+        self.instance_buffer.upload(
             device,
-            &mut self.instance_buffer,
-            &mut self.instance_capacity,
+            queue,
+            bytemuck::cast_slice(instances),
             instances.len(),
-            std::mem::size_of::<ImageInstance>(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.image.instances",
-            16,
         );
-        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
     }
 
     /// Bind once per pass before iterating image draws.
@@ -355,7 +348,7 @@ impl ImagePipeline {
             pass.set_pipeline(&self.pipeline);
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
     }
 
     /// Issue one image draw. `instance` indexes into the per-frame

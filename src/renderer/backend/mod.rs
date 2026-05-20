@@ -1,5 +1,6 @@
 mod curve_pipeline;
 mod debug_overlay;
+mod dynamic_buffer;
 pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
 mod image_pipeline;

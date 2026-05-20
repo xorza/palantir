@@ -13,9 +13,8 @@
 //! [`ImagePipeline`]: super::image_pipeline::ImagePipeline
 
 use super::Queue;
-use super::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
-};
+use super::dynamic_buffer::DynamicBuffer;
+use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::CurveInstance;
 use crate::shape::LineCap;
@@ -37,8 +36,7 @@ const _: () = {
 pub(crate) struct CurvePipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    instance_buffer: wgpu::Buffer,
-    instance_capacity: usize,
+    instance_buffer: DynamicBuffer,
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -135,19 +133,19 @@ impl CurvePipeline {
             },
         );
 
-        let instance_capacity = 64;
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.curve.instances"),
-            size: (instance_capacity * std::mem::size_of::<CurveInstance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let instance_buffer = DynamicBuffer::new(
+            device,
+            "palantir.curve.instances",
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<CurveInstance>(),
+            64,
+            64,
+        );
 
         Self {
             pipeline,
             bind_group,
             instance_buffer,
-            instance_capacity,
             stencil_test: None,
             shader,
             color_format: format,
@@ -193,17 +191,12 @@ impl CurvePipeline {
         if instances.is_empty() {
             return;
         }
-        grow_instance_buffer(
+        self.instance_buffer.upload(
             device,
-            &mut self.instance_buffer,
-            &mut self.instance_capacity,
+            queue,
+            bytemuck::cast_slice(instances),
             instances.len(),
-            std::mem::size_of::<CurveInstance>(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.curve.instances",
-            64,
         );
-        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
@@ -216,7 +209,7 @@ impl CurvePipeline {
             pass.set_pipeline(&self.pipeline);
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
     }
 
     /// Issue one non-indexed instanced draw covering every instance in

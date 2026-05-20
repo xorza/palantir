@@ -11,21 +11,17 @@
 //! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
 
 use super::Queue;
-use super::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout, grow_instance_buffer,
-};
+use super::dynamic_buffer::DynamicBuffer;
+use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
     pipeline: wgpu::RenderPipeline,
     bind_group: wgpu::BindGroup,
-    vertex_buffer: wgpu::Buffer,
-    vertex_capacity: usize,
-    index_buffer: wgpu::Buffer,
-    index_capacity: usize,
-    instance_buffer: wgpu::Buffer,
-    instance_capacity: usize,
+    vertex_buffer: DynamicBuffer,
+    index_buffer: DynamicBuffer,
+    instance_buffer: DynamicBuffer,
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
@@ -84,37 +80,37 @@ impl MeshPipeline {
             },
         );
 
-        let vertex_capacity = 256;
-        let vertex_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.mesh.vertices"),
-            size: (vertex_capacity * std::mem::size_of::<MeshVertex>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let index_capacity = 1024;
-        let index_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.mesh.indices"),
-            size: (index_capacity * std::mem::size_of::<u16>()) as u64,
-            usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
-        let instance_capacity = 64;
-        let instance_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.mesh.instances"),
-            size: (instance_capacity * std::mem::size_of::<MeshInstance>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let vertex_buffer = DynamicBuffer::new(
+            device,
+            "palantir.mesh.vertices",
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<MeshVertex>(),
+            256,
+            64,
+        );
+        let index_buffer = DynamicBuffer::new(
+            device,
+            "palantir.mesh.indices",
+            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<u16>(),
+            1024,
+            256,
+        );
+        let instance_buffer = DynamicBuffer::new(
+            device,
+            "palantir.mesh.instances",
+            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+            std::mem::size_of::<MeshInstance>(),
+            64,
+            16,
+        );
 
         Self {
             pipeline,
             bind_group,
             vertex_buffer,
-            vertex_capacity,
             index_buffer,
-            index_capacity,
             instance_buffer,
-            instance_capacity,
             stencil_test: None,
             shader,
             color_format: format,
@@ -163,61 +159,46 @@ impl MeshPipeline {
             return;
         }
 
-        grow_instance_buffer(
+        self.instance_buffer.upload(
             device,
-            &mut self.instance_buffer,
-            &mut self.instance_capacity,
+            queue,
+            bytemuck::cast_slice(instances),
             instances.len(),
-            std::mem::size_of::<MeshInstance>(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.mesh.instances",
-            16,
         );
-        queue.write_buffer(&self.instance_buffer, 0, bytemuck::cast_slice(instances));
-
-        grow_instance_buffer(
+        self.vertex_buffer.upload(
             device,
-            &mut self.vertex_buffer,
-            &mut self.vertex_capacity,
+            queue,
+            bytemuck::cast_slice(vertices),
             vertices.len(),
-            std::mem::size_of::<MeshVertex>(),
-            wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.mesh.vertices",
-            64,
         );
-        queue.write_buffer(&self.vertex_buffer, 0, bytemuck::cast_slice(vertices));
 
         // The index buffer's binding stride is 2 bytes (u16). wgpu
         // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
-        // so pad the upload to an even count.
+        // so pad the upload to an even count when the index list is
+        // odd-length: write the even prefix + a single padded tail u16.
+        // Hash incorporates the canonical padded form so the gate
+        // matches whether the same content arrives via the even or odd
+        // path next frame.
         let padded = (indices.len() + 1) & !1;
-        grow_instance_buffer(
-            device,
-            &mut self.index_buffer,
-            &mut self.index_capacity,
-            padded,
-            std::mem::size_of::<u16>(),
-            wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
-            "palantir.mesh.indices",
-            256,
-        );
         if indices.len() == padded {
-            queue.write_buffer(&self.index_buffer, 0, bytemuck::cast_slice(indices));
+            self.index_buffer
+                .upload(device, queue, bytemuck::cast_slice(indices), padded);
         } else {
-            // Odd length: copy into a small stack-bounded scratch is
-            // overkill; just write the even prefix + the trailing
-            // single u16 separately.
-            queue.write_buffer(
-                &self.index_buffer,
-                0,
-                bytemuck::cast_slice(&indices[..indices.len() - 1]),
-            );
-            let tail = [indices[indices.len() - 1], 0u16];
-            queue.write_buffer(
-                &self.index_buffer,
-                ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
-                bytemuck::cast_slice(&tail),
-            );
+            use std::hash::Hasher as _;
+            let mut h = crate::common::hash::Hasher::new();
+            h.write(bytemuck::cast_slice(indices));
+            h.write_u16(0);
+            let content_hash = h.finish();
+            self.index_buffer
+                .upload_with(device, padded, content_hash, |buf| {
+                    queue.write_buffer(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
+                    let tail = [indices[indices.len() - 1], 0u16];
+                    queue.write_buffer(
+                        buf,
+                        ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
+                        bytemuck::cast_slice(&tail),
+                    );
+                });
         }
     }
 
@@ -231,9 +212,12 @@ impl MeshPipeline {
             pass.set_pipeline(&self.pipeline);
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
-        pass.set_vertex_buffer(1, self.instance_buffer.slice(..));
-        pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
+        pass.set_vertex_buffer(0, self.vertex_buffer.buffer().slice(..));
+        pass.set_vertex_buffer(1, self.instance_buffer.buffer().slice(..));
+        pass.set_index_buffer(
+            self.index_buffer.buffer().slice(..),
+            wgpu::IndexFormat::Uint16,
+        );
     }
 
     /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::MeshDraw).
