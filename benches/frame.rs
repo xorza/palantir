@@ -462,5 +462,17 @@ fn now_label() -> String {
         .unwrap_or_else(|| "unknown-time".into())
 }
 
-criterion_group!(benches, bench_frame);
+// Longer per-arm measurement window than criterion's 5 s default —
+// the GPU arms (`*_gpu`) bounce ±15-25% on the M5 across back-to-back
+// runs because the fanless thermals + scheduler noise share budget
+// with everything else on the machine. Doubling the window roughly
+// halves the run-to-run spread; total bench wall time goes from ~50 s
+// to ~90 s, which is fine for an on-demand bench.
+criterion_group! {
+    name = benches;
+    config = Criterion::default()
+        .measurement_time(std::time::Duration::from_secs(12))
+        .warm_up_time(std::time::Duration::from_secs(3));
+    targets = bench_frame
+}
 criterion_main!(benches);
