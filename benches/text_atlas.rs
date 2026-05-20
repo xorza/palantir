@@ -1,89 +1,64 @@
-//! Text-backend throughput bench: steady state vs. text-scale changes.
+//! Text-backend microbench: prepare + flush + render directly against
+//! `TextBackend`, bypassing the full `Host` pipeline.
 //!
-//! Motivation: when a graph view zooms, every distinct text scale on
-//! the snap-ladder (`TEXT_SCALE_STEP = 0.025` in
-//! `renderer/frontend/composer/mod.rs`) mints a fresh per-glyph swash
-//! rasterization + atlas slot, which today goes through one
-//! `queue.write_texture` per glyph per frame. The visible symptom is a
-//! storm of small texture uploads on every frame of a zoom gesture.
-//! This bench gives us a baseline to drive a batched-upload
-//! optimization.
+//! The previous version drove `Host::frame_offscreen`, which mixed
+//! record/measure/cascade/encode noise into every sample —
+//! `CascadesEngine::run` was the top hotspot at ~7%, and the actual
+//! text path (`encode_batch` + atlas uploads) totalled <10%. This
+//! bench skips all of that: a fixed slice of `TextRun`s, shaped once
+//! at construction, fed into `TextBackend::prepare` →
+//! `flush_atlas_uploads` → `render_batch` each iteration.
 //!
-//! Two cases:
-//! - `text_atlas/steady_state` — fixed scale, atlas warm, every glyph
-//!   is a `GlyphAtlas::touch` cache hit. Measures the floor cost of
-//!   the prepare/encode/render path with text.
-//! - `text_atlas/scale_sweep` — scale advances by one ladder step
-//!   per frame, cycling through enough rungs that every glyph misses
-//!   the atlas each frame (the eviction LRU drops the previous rung
-//!   between iterations). This exposes the small-upload cost.
+//! Two motivating workloads:
 //!
-//! Each iteration submits a frame to an offscreen target and waits on
-//! `device.poll(Wait)` so queued GPU work drains before the next
-//! iteration — without the wait, criterion would just measure CPU
-//! submission lag while wgpu buffered work across iterations.
+//! - `text_atlas/steady_warm` — fixed scale, atlas warmed by two
+//!   priming iterations. Every glyph is an `atlas.touch` hit; the
+//!   measurement floor is `encode_batch` walking layout runs +
+//!   `swash_cache::CacheKey::new` + vertex buffer upload + draw.
+//! - `text_atlas/zoom_smooth` — scale advances by `TEXT_SCALE_STEP`
+//!   (0.025) each frame. Matches a real zoom gesture: each rung is a
+//!   fresh cosmic `CacheKey` (font_size × scale) → fresh swash
+//!   rasterization → fresh atlas slot → `queue.write_texture` per
+//!   glyph. Cycles through `SCALE_CYCLE` rungs so the LRU eventually
+//!   evicts old rungs.
+//! - `text_atlas/zoom_cold` — scale jumps `5 × TEXT_SCALE_STEP` each
+//!   frame across `SCALE_CYCLE` rungs. Worst-case miss-storm without
+//!   running off the ladder entirely.
+//!
+//! Each iteration:
+//!   1. begin command encoder
+//!   2. `prepare` (shape lookup + encode_batch into instance Vec +
+//!      potential atlas grow + vbuf upload + params reupload)
+//!   3. `flush_atlas_uploads` (drain pending glyph uploads into
+//!      encoder)
+//!   4. render pass: `render_batch` → submit → `poll(Wait)` so the
+//!      GPU work drains before the next iteration.
+//!   5. `end_frame` (atlas trim + clear instance Vec + reset ranges)
 //!
 //! Run with:
 //!   cargo bench --bench text_atlas --features internals
-//!   cargo bench --bench text_atlas --features internals -- 'scale_sweep$'
+//!   cargo bench --bench text_atlas --features internals -- 'zoom_smooth$'
 
 use std::sync::OnceLock;
 use std::time::Duration;
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use glam::UVec2;
-use palantir::{Configure, Host, Panel, Sizing, Text, TextStyle, Ui};
+use glam::{UVec2, Vec2};
+use palantir::ColorU8;
+use palantir::TextShaper;
+use palantir::text_backend::test_support::{TextBackend, TextRun, make_run};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
-const BASE_SCALE: f32 = 2.0;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
-/// Must exceed `TEXT_SCALE_STEP` (0.025) so each frame lands on a new
-/// ladder rung and every glyph misses the atlas. Five steps cycled
-/// keeps the cycle short enough that LRU eviction reclaims the slot
-/// before we revisit it.
-const SCALE_STEP: f32 = 0.04;
+const BASE_SCALE: f32 = 2.0;
+const TEXT_SCALE_STEP: f32 = 0.025;
 const SCALE_CYCLE: u32 = 5;
 
-/// Rows of short labels — graph-view-shaped (many small runs rather
-/// than a few wrapped paragraphs). The atlas footprint per scale is
-/// dominated by distinct glyphs, not run count, so this is also a
-/// realistic miss-storm fixture: ~ASCII letters + digits + a few
-/// symbols ≈ a few dozen unique cache keys per scale.
-fn build_text_ui(ui: &mut Ui) {
-    Panel::vstack()
-        .auto_id()
-        .gap(4.0)
-        .padding(8.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for row in 0..32 {
-                Panel::hstack()
-                    .id_salt(("row", row))
-                    .gap(12.0)
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui, |ui| {
-                        Text::new("node")
-                            .id_salt(("label", row))
-                            .style(TextStyle::default().with_font_size(13.0))
-                            .show(ui);
-                        Text::new("input: f32")
-                            .id_salt(("in", row))
-                            .style(TextStyle::default().with_font_size(11.0))
-                            .show(ui);
-                        Text::new("output: Vec3")
-                            .id_salt(("out", row))
-                            .style(TextStyle::default().with_font_size(11.0))
-                            .show(ui);
-                        Text::new("123.45")
-                            .id_salt(("val", row))
-                            .style(TextStyle::default().with_font_size(11.0))
-                            .show(ui);
-                    });
-            }
-        });
-}
+/// Per-frame text count. Graph-view-shaped: many small runs rather
+/// than a few wrapped paragraphs. 32 rows × 4 columns = 128 runs ≈
+/// what the showcase's node graph tab paints.
+const ROWS: u32 = 32;
 
 struct Gpu {
     device: wgpu::Device,
@@ -145,51 +120,167 @@ fn poll_drain(device: &wgpu::Device) {
         .expect("device poll");
 }
 
-fn warmed_host(g: &Gpu, target: &wgpu::Texture) -> Host {
-    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
-    // Two warmup frames at the steady scale so the atlas is populated
-    // and measure caches latch.
-    for _ in 0..2 {
-        host.frame_offscreen(target, BASE_SCALE, build_text_ui);
-        poll_drain(&g.device);
+/// Shape one frame's worth of runs against `shaper`. Stable layout so
+/// the same `TextRun` slice is reusable across iterations; only the
+/// per-iteration `scale` argument to `prepare` changes between frames.
+fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
+    let color = ColorU8::rgba(220, 220, 220, 255);
+    let mut runs = Vec::with_capacity((ROWS * 4) as usize);
+    for row in 0..ROWS {
+        let y = 16.0 + (row as f32) * 18.0;
+        // Four short labels per row at typical graph-node sizes.
+        let label_color = ColorU8::rgba(245, 245, 245, 255);
+        runs.push(make_run(
+            shaper,
+            "node",
+            13.0,
+            13.0 * 1.2,
+            Vec2::new(16.0, y),
+            PHYSICAL,
+            1.0,
+            label_color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "input: f32",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(80.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "output: Vec3",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(220.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
+        runs.push(make_run(
+            shaper,
+            "123.45",
+            11.0,
+            11.0 * 1.2,
+            Vec2::new(380.0, y),
+            PHYSICAL,
+            1.0,
+            color,
+        ));
     }
-    host
+    runs
+}
+
+/// One iteration: prepare → flush → render pass → submit → poll →
+/// post. Mirrors `Host::frame_offscreen`'s text-relevant slice.
+fn run_frame(
+    g: &Gpu,
+    backend: &mut TextBackend,
+    target_view: &wgpu::TextureView,
+    runs: &[TextRun],
+    scale: f32,
+) {
+    backend.prepare(&g.device, &g.queue, scale, runs);
+    let mut encoder = g
+        .device
+        .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("palantir.text_atlas.encoder"),
+        });
+    backend.flush(&g.device, &g.queue, &mut encoder);
+    {
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.text_atlas.pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: target_view,
+                depth_slice: None,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color::BLACK),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        backend.draw(&mut pass);
+    }
+    g.queue.submit([encoder.finish()]);
+    poll_drain(&g.device);
+    backend.end_frame();
+}
+
+fn fresh_backend(g: &Gpu) -> (TextBackend, Vec<TextRun>) {
+    let shaper = TextShaper::with_bundled_fonts();
+    let runs = build_runs(&shaper);
+    let mut backend = TextBackend::new_for_bench(&g.device, FORMAT, shaper);
+    backend.set_viewport(PHYSICAL);
+    (backend, runs)
 }
 
 fn bench_text_atlas(c: &mut Criterion) {
     let g = gpu();
+    let target = make_target(&g.device);
+    let view = target.create_view(&wgpu::TextureViewDescriptor::default());
+
+    let mut group = c.benchmark_group("text_atlas");
+    group.measurement_time(Duration::from_secs(5));
 
     {
-        let target = make_target(&g.device);
-        let mut host = warmed_host(g, &target);
-        let mut group = c.benchmark_group("text_atlas");
-        group.measurement_time(Duration::from_secs(5));
-        group.bench_function("steady_state", |b| {
+        let (mut backend, runs) = fresh_backend(g);
+        // Two priming frames so every glyph is in the atlas.
+        for _ in 0..2 {
+            run_frame(g, &mut backend, &view, &runs, BASE_SCALE);
+        }
+        group.bench_function("steady_warm", |b| {
             b.iter(|| {
-                host.frame_offscreen(&target, BASE_SCALE, build_text_ui);
-                poll_drain(&g.device);
+                run_frame(g, &mut backend, &view, &runs, BASE_SCALE);
             });
         });
-        group.finish();
     }
 
     {
-        let target = make_target(&g.device);
-        let mut host = warmed_host(g, &target);
+        let (mut backend, runs) = fresh_backend(g);
+        // Prime the cycle so the LRU has all rungs resident before the
+        // measured loop starts evicting + re-inserting.
+        for step in 0..SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_frame(g, &mut backend, &view, &runs, scale);
+        }
         let mut i: u32 = 0;
-        let mut group = c.benchmark_group("text_atlas");
-        group.measurement_time(Duration::from_secs(5));
-        group.bench_function("scale_sweep", |b| {
+        group.bench_function("zoom_smooth", |b| {
             b.iter(|| {
                 let step = (i % SCALE_CYCLE) as f32;
-                let scale = BASE_SCALE + step * SCALE_STEP;
-                host.frame_offscreen(&target, scale, build_text_ui);
-                poll_drain(&g.device);
+                let scale = BASE_SCALE + step * TEXT_SCALE_STEP;
+                run_frame(g, &mut backend, &view, &runs, scale);
                 i = i.wrapping_add(1);
             });
         });
-        group.finish();
     }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let stride = 5.0 * TEXT_SCALE_STEP;
+        for step in 0..SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * stride;
+            run_frame(g, &mut backend, &view, &runs, scale);
+        }
+        let mut i: u32 = 0;
+        group.bench_function("zoom_cold", |b| {
+            b.iter(|| {
+                let step = (i % SCALE_CYCLE) as f32;
+                let scale = BASE_SCALE + step * stride;
+                run_frame(g, &mut backend, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    group.finish();
 }
 
 criterion_group!(benches, bench_text_atlas);
