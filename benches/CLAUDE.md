@@ -9,10 +9,16 @@ Filter at run-time with a criterion regex.
 ## Running
 
 ```sh
-cargo bench --bench frame                              # all cases in frame.rs
-cargo bench --bench frame -- 'post_record$'              # one case (regex, anchored)
+PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all cases in frame.rs
+PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'post_record$'  # one case (regex, anchored)
 cargo bench --bench caches --features internals        # gated benches
 ```
+
+`frame` refuses to run without `PALANTIR_BENCH_NOTE` set to a
+non-empty string. The value is inlined into the per-run header in
+`benches/results/<machine>.txt` (`=== <utc> — <note> ===`) so each
+appended row carries context for why it was measured (which branch,
+which change, which hypothesis).
 
 `caches`, `cascade`, `damage`, `damage_merge_gpu` are gated behind
 `internals` / `bench-deep`. `cargo bench --no-run` without features only
