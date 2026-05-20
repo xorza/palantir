@@ -84,10 +84,17 @@ fn gpu() -> &'static Gpu {
             })
             .block_on()
             .expect("request adapter (headless)");
+        // Mirror the showcase host: request `TIMESTAMP_QUERY` when
+        // the adapter advertises it so the backend's
+        // `GpuTimings` runs and `gpu_pass_stats::last_pass_ms()`
+        // returns real values. The frame bench is `--features
+        // internals` only, so it's the right place to keep the
+        // instrumentation on by default.
+        let timing_features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("palantir.frame_bench.device"),
-                required_features: wgpu::Features::empty(),
+                required_features: timing_features,
                 required_limits: wgpu::Limits::default(),
                 experimental_features: wgpu::ExperimentalFeatures::default(),
                 memory_hints: wgpu::MemoryHints::default(),
@@ -171,10 +178,13 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
     SyncMode::Gpu.poll(&g.device);
 }
 
-/// Per-frame `queue.write_*` counts for both arms, frames 0..=5, so
-/// the cold→warm transition is visible. Reports buffer + texture
-/// calls and bytes attributed to palantir's backend (quad / mesh /
-/// curve / image / viewport / debug / text pipelines).
+/// Per-frame `queue.write_*` counts + GPU main-pass time for both
+/// arms, frames 0..=5, so the cold→warm transition is visible.
+/// Upload columns come from the counting [`Queue`] wrapper; the GPU
+/// pass column comes from `wgpu` timestamp queries surfaced via
+/// [`palantir::renderer::gpu_pass_stats::last_pass_ms`]. The pass
+/// readout is one frame lagged (the `map_async` callback fires
+/// after the next `device.poll`), so frame 0's column is omitted.
 fn report_write_stats() {
     fn run<F: FnMut(usize) -> &'static wgpu::Texture>(label: &str, mut pick: F) {
         let g = gpu();
@@ -189,8 +199,18 @@ fn report_write_stats() {
             });
             SyncMode::Gpu.poll(&g.device);
             let s = palantir::renderer::write_stats::take();
+            // The pass-time readout lags by one frame (the
+            // `map_async` callback that publishes a value fires off
+            // the *next* `device.poll`). One extra Poll here drains
+            // the just-submitted frame's resolve so the column
+            // matches the iteration we're printing rather than the
+            // previous one.
+            let _ = g.device.poll(wgpu::PollType::Poll);
+            let gpu = palantir::renderer::gpu_pass_stats::last_pass_ms()
+                .map(|ms| format!("{ms:>5.2} ms"))
+                .unwrap_or_else(|| "  n/a   ".into());
             eprintln!(
-                "  frame {frame}  buffer: {:>2} calls, {:>9} B   texture: {:>2} calls, {:>9} B",
+                "  frame {frame}  buffer: {:>2} calls, {:>9} B   texture: {:>2} calls, {:>9} B   gpu: {gpu}",
                 s.buffer_calls, s.buffer_bytes, s.texture_calls, s.texture_bytes,
             );
         }
