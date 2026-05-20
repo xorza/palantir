@@ -5,14 +5,14 @@
 //! the render pass calls [`TextRenderer::render_batch`] right after the
 //! batch's last group's quads draw.
 //!
-//! **One [`GlyphonRenderer`] per [`StencilMode`].** Glyphon's vertex
-//! buffer accumulates instances across batches via the vendored
-//! `prepare_append` / `render_range` API — each batch gets a
-//! `Range<u32>` of instances and `render_range` draws only that range,
-//! so per-batch interleaving with quads still works while sharing one
-//! buffer + one pipeline state across all batches. Stencil mode is a
-//! separate renderer because glyphon caches its pipeline by
-//! `(format, multisample, depth_stencil)`.
+//! **One [`GlyphonRenderer`] holding two pipelines.** The vertex
+//! buffer is shared across all batches regardless of [`StencilMode`];
+//! each batch gets a `Range<u32>` of instances from `prepare_append`,
+//! and `render_range(.., pipeline_idx, ..)` picks the matching
+//! pipeline at draw time (plain vs depth-stencil-aware). Stencil
+//! pipelines are needed because glyphon's pipeline state must match
+//! the surrounding render pass's attachments — using the no-stencil
+//! pipeline inside a stencil pass triggers wgpu validation errors.
 //!
 //! [`TextBatch`]: crate::renderer::render_buffer::TextBatch
 //!
@@ -26,52 +26,39 @@ use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use glam::UVec2;
 use glyphon::{
-    Cache, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
-    TextRenderer as GlyphonRenderer, Viewport,
+    Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer as GlyphonRenderer,
+    Viewport,
 };
 use std::ops::Range;
 
-/// Selects which renderer a `prepare_batch` / `render_batch` call
-/// targets. Plain frames stay on the no-stencil renderer (existing
-/// behavior). When the surrounding pass has a stencil attachment
-/// (rounded-clip path), text must use a depth-stencil-aware glyphon
-/// pipeline or wgpu validation errors — `Stencil` selects that one.
-/// Both share the underlying `TextAtlas` so glyph caches hit across
-/// modes for free.
+/// Selects which pipeline a `prepare_batch` / `render_batch` call
+/// targets. Plain frames use the no-stencil pipeline; rounded-clip
+/// frames need the stencil-aware pipeline so the per-pass stencil
+/// reference applies. Both share one vertex buffer + one atlas — only
+/// the [`RenderPipeline`] object differs.
+///
+/// [`RenderPipeline`]: wgpu::RenderPipeline
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum StencilMode {
     Plain,
-    /// Glyphon pipeline built with `depth_stencil = Some(...)` matching
-    /// the quad pipeline's `stencil_test` state. The render pass sets
-    /// `stencil_reference` per draw — text under a rounded clip
-    /// inherits the active reference and gets stencil-rounded.
     Stencil,
 }
 
-/// One renderer + the per-batch ranges it produced this frame.
-struct ModeState {
-    renderer: GlyphonRenderer,
-    /// `ranges[i]` = instance range returned by this frame's
-    /// `prepare_append` for batch `i`, or `None` if batch `i` wasn't
-    /// prepared in this mode this frame. Capacity retained across
-    /// frames; reset to all-`None` (not deallocated) in
-    /// [`TextRenderer::post_record`].
-    ranges: Vec<Option<Range<u32>>>,
-}
-
-impl ModeState {
-    fn new(renderer: GlyphonRenderer) -> Self {
-        Self {
-            renderer,
-            ranges: Vec::new(),
+impl StencilMode {
+    /// Index into the `depth_stencil_states` slice passed to
+    /// [`GlyphonRenderer::new`].
+    fn pipeline_idx(self) -> usize {
+        match self {
+            Self::Plain => 0,
+            Self::Stencil => 1,
         }
     }
 }
 
 /// Renderer-side encapsulation of the cosmic-text → glyphon path. Holds
-/// glyphon device-bound state (atlas + viewport + swash cache) plus one
-/// [`GlyphonRenderer`] per [`StencilMode`]. Renderers share the
-/// atlas — glyph cache hits across batches and across modes are free.
+/// glyphon device-bound state (atlas + viewport + swash cache) plus
+/// one [`GlyphonRenderer`] carrying both pipelines (`Plain`,
+/// `Stencil`) and one shared vertex buffer.
 pub(crate) struct TextRenderer {
     /// Shared shaper handle, installed at construction. Must be the
     /// *same* [`TextShaper`] the host installed on `Ui`, otherwise
@@ -81,13 +68,13 @@ pub(crate) struct TextRenderer {
     atlas: TextAtlas,
     viewport: Viewport,
     swash_cache: SwashCache,
-    /// No-stencil renderer. Built eagerly.
-    plain: ModeState,
-    /// Stencil-aware renderer. Lazy-built on the first
-    /// `prepare_batch(.., StencilMode::Stencil)` call. Apps that never
-    /// use rounded clip never instantiate it. Shares the atlas with
-    /// `plain`.
-    stencil: Option<ModeState>,
+    renderer: GlyphonRenderer,
+    /// `ranges[i]` = batch `i`'s instance range, or `None` if batch
+    /// `i` wasn't prepared this frame. The pipeline (plain vs
+    /// stencil) is passed at render time. Capacity retained across
+    /// frames; reset to all-`None` (not deallocated) in
+    /// [`Self::post_record`].
+    ranges: Vec<Option<Range<u32>>>,
     /// True if at least one `prepare_batch` succeeded this frame.
     /// Drives `has_prepared` (the wgpu backend skips `post_record`
     /// entirely when false).
@@ -100,19 +87,23 @@ impl TextRenderer {
         format: wgpu::TextureFormat,
         shaper: TextShaper,
     ) -> Self {
-        let cache = Cache::new(device);
-        let mut atlas = TextAtlas::new(device, &cache, format);
-        let viewport = Viewport::new(device, &cache);
+        let atlas = TextAtlas::new(device, format);
+        let viewport = Viewport::new(device, &atlas);
         let swash_cache = SwashCache::new();
-        let plain_renderer =
-            GlyphonRenderer::new(&mut atlas, device, wgpu::MultisampleState::default(), None);
+        let renderer = GlyphonRenderer::new(
+            &atlas,
+            device,
+            wgpu::MultisampleState::default(),
+            // Index 0 = Plain, index 1 = Stencil. See `StencilMode::pipeline_idx`.
+            &[None, Some(super::stencil::stencil_test_state())],
+        );
         Self {
             shaper,
             atlas,
             viewport,
             swash_cache,
-            plain: ModeState::new(plain_renderer),
-            stencil: None,
+            renderer,
+            ranges: Vec::new(),
             prepared_anything: false,
         }
     }
@@ -154,10 +145,10 @@ impl TextRenderer {
     }
 
     /// Build glyphon `TextArea`s from `runs` (looked up in the shared
-    /// shaper's buffer cache) and call `prepare_append` on the renderer
-    /// for `mode`. Returns `false` and skips work if no runs resolve to
+    /// shaper's buffer cache) and call `prepare_append` on the
+    /// renderer. Returns `false` and skips work if no runs resolve to
     /// a buffer. The per-batch `Range<u32>` returned by glyphon is
-    /// stashed at `batch_idx` for [`Self::render_batch`].
+    /// stashed at `batch_idx` along with `mode` for [`Self::render_batch`].
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -168,18 +159,6 @@ impl TextRenderer {
         runs: &[TextRun],
         mode: StencilMode,
     ) -> bool {
-        // Lazy-build the stencil-mode renderer on first use.
-        if matches!(mode, StencilMode::Stencil) && self.stencil.is_none() {
-            profiling::scope!("lazy_stencil_build");
-            let renderer = GlyphonRenderer::new(
-                &mut self.atlas,
-                device,
-                wgpu::MultisampleState::default(),
-                Some(super::stencil::stencil_test_state()),
-            );
-            self.stencil = Some(ModeState::new(renderer));
-        }
-
         // Clone to release the `&self.shaper` borrow for the closure
         // body — refcount bump, ~free. `with_render_split` returns
         // `None` when the shaper is mono (no cosmic to split), which
@@ -191,15 +170,6 @@ impl TextRenderer {
                     font_system,
                     lookup,
                 } = split;
-
-                // Inline match instead of a helper because we need
-                // disjoint field borrows: `renderer.prepare_append`
-                // also takes `&mut self.atlas`, `&self.viewport`,
-                // `&mut self.swash_cache`.
-                let state = match mode {
-                    StencilMode::Plain => &mut self.plain,
-                    StencilMode::Stencil => self.stencil.as_mut().unwrap(),
-                };
 
                 let text_areas = runs.iter().filter_map(|r| {
                     lookup.get(r.key).map(|buffer| TextArea {
@@ -213,11 +183,10 @@ impl TextRenderer {
                         scale: scale * r.scale,
                         bounds: text_bounds(r.bounds),
                         default_color: glyphon_color(r.color),
-                        custom_glyphs: &[],
                     })
                 });
 
-                let result = state.renderer.prepare_append(
+                let result = self.renderer.prepare_append(
                     device,
                     queue,
                     font_system,
@@ -225,17 +194,15 @@ impl TextRenderer {
                     &self.viewport,
                     text_areas,
                     &mut self.swash_cache,
-                    |_| 0.0,
-                    |_| None,
                 );
 
                 match result {
                     Ok(range) => {
-                        if state.ranges.len() <= batch_idx {
-                            state.ranges.resize(batch_idx + 1, None);
+                        if self.ranges.len() <= batch_idx {
+                            self.ranges.resize(batch_idx + 1, None);
                         }
                         let did_work = !range.is_empty();
-                        state.ranges[batch_idx] = Some(range);
+                        self.ranges[batch_idx] = Some(range);
                         did_work
                     }
                     Err(e) => {
@@ -252,31 +219,26 @@ impl TextRenderer {
             .unwrap_or(false)
     }
 
-    /// Render the prepared text for `batch_idx` from the `mode`
-    /// renderer. Silently no-ops if the batch wasn't prepared this
-    /// frame in that mode (no text, no shaper, prepare failed, or
-    /// wrong mode).
+    /// Render the prepared text for `batch_idx`. Silently no-ops if
+    /// the batch wasn't prepared this frame (no text, no shaper,
+    /// prepare failed). `mode` selects which pipeline draws — must
+    /// match the surrounding pass's stencil state.
     pub(crate) fn render_batch(
         &self,
         batch_idx: usize,
         pass: &mut wgpu::RenderPass<'_>,
         mode: StencilMode,
     ) {
-        let state = match mode {
-            StencilMode::Plain => &self.plain,
-            StencilMode::Stencil => {
-                let Some(s) = self.stencil.as_ref() else {
-                    return;
-                };
-                s
-            }
-        };
-        let Some(range) = state.ranges.get(batch_idx).cloned().flatten() else {
+        let Some(range) = self.ranges.get(batch_idx).cloned().flatten() else {
             return;
         };
-        state
-            .renderer
-            .render_range(range, &self.atlas, &self.viewport, pass);
+        self.renderer.render_range(
+            range,
+            mode.pipeline_idx(),
+            &self.atlas,
+            &self.viewport,
+            pass,
+        );
     }
 
     /// Reclaim atlas slots for glyphs unused this frame and reset
@@ -285,12 +247,8 @@ impl TextRenderer {
     /// encoder pass.
     pub(crate) fn post_record(&mut self) {
         self.atlas.trim();
-        self.plain.renderer.clear_frame();
-        self.plain.ranges.fill(None);
-        if let Some(s) = self.stencil.as_mut() {
-            s.renderer.clear_frame();
-            s.ranges.fill(None);
-        }
+        self.renderer.clear_frame();
+        self.ranges.fill(None);
         self.prepared_anything = false;
     }
 }
@@ -305,8 +263,8 @@ fn text_bounds(b: URect) -> TextBounds {
 }
 
 fn glyphon_color(c: ColorU8) -> glyphon::Color {
-    // Glyphon's default `ColorMode::Accurate` decodes the byte channels
-    // sRGB→linear inside its shader before writing to the sRGB target —
-    // `TextRun.color` is already sRGB-encoded at compose time.
+    // Glyphon's shader decodes the byte channels sRGB→linear before
+    // writing to the sRGB target — `TextRun.color` is already sRGB-
+    // encoded at compose time.
     glyphon::Color::rgba(c.r, c.g, c.b, c.a)
 }
