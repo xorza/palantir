@@ -72,21 +72,29 @@ impl Default for TextEditTheme {
         // Palette BORDER is ~2% above SURFACE — invisible. Derive edge from TEXT_MUTED alpha.
         let m = palette::TEXT_MUTED;
         let edge = m.with_alpha(0.18);
+        // Stroke width stays constant across states — color is the
+        // only thing that changes on focus. `Tree::open_node` folds
+        // stroke width into padding so a width change between
+        // normal/focused would shift the inner rect by half the
+        // delta on each side, jittering the text the instant focus
+        // lands. Picking 1.5 px gives focused its emphasis without
+        // the layout shift.
+        let stroke_w = 1.5;
         let normal_bg = Background {
             fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::solid(edge, 1.0),
+            stroke: Stroke::solid(edge, stroke_w),
             corners: radius,
             shadow: Shadow::NONE,
         };
         let focused_bg = Background {
             fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.5),
+            stroke: Stroke::solid(palette::BORDER_FOCUSED, stroke_w),
             corners: radius,
             shadow: Shadow::NONE,
         };
         let disabled_bg = Background {
             fill: palette::ELEM.into(),
-            stroke: Stroke::solid(edge, 1.0),
+            stroke: Stroke::solid(edge, stroke_w),
             corners: radius,
             shadow: Shadow::NONE,
         };

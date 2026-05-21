@@ -4,8 +4,8 @@ use super::*;
 /// to keep the caret visible once content overflows the inner width, and
 /// snaps back when the caret returns home. Mono fallback (8 px / char @
 /// 16 px font, 1.5 px caret) gives predictable math; the editor's inner
-/// width is `280 − 2·(5 + 1)` = 268 px (theme default padding 5 px each
-/// side, plus the 1 px chrome stroke that `Tree::open_node` folds into
+/// width is `280 − 2·(5 + 1.5)` = 267 px (theme default padding 5 px each
+/// side, plus the 1.5 px chrome stroke that `Tree::open_node` folds into
 /// padding — TextEdit mirrors that fold so glyph coords land on the
 /// encoder's clip rect).
 #[test]
@@ -33,13 +33,13 @@ fn scroll_keeps_caret_inside_visible_inner_rect() {
     // Long text past inner_w: caret at end (100) → x = 800 px.
     // Trailing clamp leaves a caret-width sliver inside the scissor:
     // scroll.x = caret_right (800 + 1.5) − (inner_w − caret_width) =
-    // 801.5 − (268 − 1.5) = 535.
+    // 801.5 − (267 − 1.5) = 536.
     let mut long = "a".repeat(100);
     ui.run_at_acked(NARROW, |ui| body(ui, &mut long));
     ui.state_mut::<TextEditState>(ed_id).caret = 100;
     ui.run_at_acked(NARROW, |ui| body(ui, &mut long));
     let scroll = ui.state_mut::<TextEditState>(ed_id).scroll;
-    assert!((scroll.x - 535.0).abs() < 0.5, "scroll.x = {}", scroll.x);
+    assert!((scroll.x - 536.0).abs() < 0.5, "scroll.x = {}", scroll.x);
     assert_eq!(scroll.y, 0.0, "single-line never scrolls y");
 
     // Caret home: scroll.x snaps back so the start of the text is
