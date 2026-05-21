@@ -109,11 +109,11 @@ impl LayoutScratch {
         arenas: &SubtreeArenas<'_>,
     ) {
         // `grid.hugs` is the only retained category-(2) field today.
-        // The `has_grid` bitset gates the dispatch so grid-free
-        // subtrees pay one bit-test instead of walking the subtree
-        // looking for grids — keeps the hot path cold for the common
-        // case.
-        if tree.has_grid.contains(subtree.start) {
+        // `Tree::subtree_has_grid` gates the dispatch so grid-free
+        // subtrees pay one bit-test (high bit of the same `subtree_end`
+        // word the caller already reads for the bound) instead of
+        // walking the subtree looking for grids.
+        if tree.subtree_has_grid(subtree.start) {
             self.grid.hugs.restore_subtree(tree, subtree, arenas.hugs);
         }
     }
@@ -376,7 +376,7 @@ impl LayoutEngine {
             let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
             // so a length mismatch here would mean the rollup is broken.
-            assert_eq!(curr_end, (tree.records.subtree_end()[curr_start]) as usize);
+            assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
             // Append the snapshot's flat text-shape range to the live
             // per-frame buffer, then rebase its subtree-local spans by
@@ -491,9 +491,9 @@ impl LayoutEngine {
         // empty for grid-free subtrees.
         {
             let start = node.idx();
-            let end = (tree.records.subtree_end()[start]) as usize;
+            let end = tree.subtree_end_of(start) as usize;
             self.scratch.tmp_hugs.clear();
-            if tree.has_grid.contains(start) {
+            if tree.subtree_has_grid(start) {
                 self.scratch.grid.hugs.snapshot_subtree(
                     tree,
                     start..end,

@@ -267,22 +267,36 @@ pub(crate) struct Tree {
 
     // -- Output (populated by `post_record`) -------------------------------
     pub(crate) rollups: SubtreeRollups,
-
-    /// Per-NodeId bit: `1` iff the subtree rooted at node `i` contains
-    /// any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s
-    /// grid-hug snapshot/restore walk. Recording-time lifecycle —
-    /// cleared by `pre_record`, grown by `open_node`, and propagated
-    /// up by `close_node` (so finished by the time `post_record` runs).
-    pub(crate) has_grid: fixedbitset::FixedBitSet,
 }
 
+/// High bit of `NodeRecord.subtree_end` — set iff the subtree rooted
+/// at this node (inclusive) contains a `LayoutMode::Grid` node
+/// somewhere. Packed alongside the pre-order end so the
+/// `MeasureCache` grid-hug fast-path test is one load against the
+/// same SoA column the caller already touches for the subtree bound,
+/// instead of a second cache line for a dedicated `has_grid` bitset.
+/// The remaining 31 bits hold the real end — arena will never approach
+/// 2^31 nodes.
+pub(crate) const SUBTREE_GRID_FLAG: u32 = 1 << 31;
+pub(crate) const SUBTREE_END_MASK: u32 = !SUBTREE_GRID_FLAG;
+
 impl Tree {
+    /// Masked `subtree_end` for node `i` — strips the grid flag
+    /// (`SUBTREE_GRID_FLAG`) so callers see the raw pre-order end.
+    #[inline]
+    pub(crate) fn subtree_end_of(&self, i: usize) -> u32 {
+        self.records.subtree_end()[i] & SUBTREE_END_MASK
+    }
+
+    /// `true` iff the subtree rooted at `i` (inclusive) contains any
+    /// `LayoutMode::Grid` node. Read from the high bit of
+    /// `subtree_end[i]`; populated incrementally by `close_node`.
+    #[inline]
+    pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
+        self.records.subtree_end()[i] & SUBTREE_GRID_FLAG != 0
+    }
+
     pub(crate) fn pre_record(&mut self) {
-        // Pre-size `has_grid` to last frame's node count before
-        // clearing records, so the per-`open_node` `has_grid.grow(...)`
-        // is a no-op in steady state (the bitset's bit-length already
-        // covers the incoming push).
-        let prev_node_count = self.records.len();
         self.records.clear();
         self.extras_idx.clear();
         self.bounds_table.clear();
@@ -291,8 +305,6 @@ impl Tree {
         self.shapes.clear();
         self.paint_anims.clear();
         self.grid.clear();
-        self.has_grid.clear();
-        self.has_grid.grow(prev_node_count);
         self.roots.clear();
     }
 
@@ -374,7 +386,7 @@ impl Tree {
             // time; fold it in as a u64 so we don't re-hash the record
             // fields here. The `0xFF` child marker is a domain
             // separator between adjacent shape-hash u64 writes.
-            let subtree_end = ends[i];
+            let subtree_end = ends[i] & SUBTREE_END_MASK;
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
@@ -396,7 +408,7 @@ impl Tree {
             let mut next = (i as u32) + 1;
             while next < subtree_end {
                 sh.write_u64(subtree_out[next as usize].0);
-                next = ends[next as usize];
+                next = ends[next as usize] & SUBTREE_END_MASK;
             }
             subtree_out[i] = NodeHash(sh.finish());
         }
@@ -513,6 +525,13 @@ impl Tree {
         }
         self.extras_idx.push(ex);
 
+        // High bit of `subtree_end` carries the `SUBTREE_GRID_FLAG` —
+        // pin the 31-bit arena ceiling here so a future overflow fails
+        // loudly instead of silently corrupting the flag.
+        assert!(
+            new_id.0 & SUBTREE_GRID_FLAG == 0,
+            "NodeId exhausted 31-bit arena (high bit is SUBTREE_GRID_FLAG)",
+        );
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
@@ -520,7 +539,6 @@ impl Tree {
             layout: cols.layout,
             attrs: cols.attrs,
         });
-        self.has_grid.grow(self.records.len());
         // Column length-equality. `records` + `extras_idx` must agree
         // on `len`; a missed push silently shifts every later node's
         // index. Invariant is structurally guarded by the unconditional
@@ -582,22 +600,33 @@ impl Tree {
         let shapes_len = self.shapes.records.len() as u32;
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
-        let end = self.records.subtree_end()[i];
 
-        if self.records.layout()[i].mode == LayoutMode::Grid {
-            self.has_grid.insert(i);
+        // `subtree_end[i]` may already carry the grid flag, set by a
+        // closed descendant. Split into clean end + flag and stamp the
+        // flag if this node is itself a Grid (first time only —
+        // descendants' close_node already merged theirs in).
+        let raw = self.records.subtree_end()[i];
+        let end = raw & SUBTREE_END_MASK;
+        let self_is_grid = self.records.layout()[i].mode == LayoutMode::Grid;
+        let descendant_has_grid = raw & SUBTREE_GRID_FLAG != 0;
+        let subtree_has_grid = self_is_grid || descendant_has_grid;
+        if self_is_grid && !descendant_has_grid {
+            self.records.subtree_end_mut()[i] = end | SUBTREE_GRID_FLAG;
         }
-        let i_has_grid = self.has_grid.contains(i);
 
         if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
             let pi = parent.idx();
             let ends = self.records.subtree_end_mut();
-            if ends[pi] < end {
-                ends[pi] = end;
-            }
-            if i_has_grid {
-                self.has_grid.insert(pi);
-            }
+            let parent_raw = ends[pi];
+            let parent_end = parent_raw & SUBTREE_END_MASK;
+            // Preserve the parent's already-set grid flag (from any
+            // earlier-closed sibling) and OR in this child's flag.
+            let child_flag = if subtree_has_grid {
+                SUBTREE_GRID_FLAG
+            } else {
+                0
+            };
+            ends[pi] = parent_end.max(end) | (parent_raw & SUBTREE_GRID_FLAG) | child_flag;
         }
     }
 
@@ -610,7 +639,7 @@ impl Tree {
         ChildIter {
             layouts: self.records.layout(),
             next: parent.0 + 1,
-            end: ends[parent.0 as usize],
+            end: ends[parent.0 as usize] & SUBTREE_END_MASK,
             ends,
         }
     }
@@ -711,7 +740,7 @@ impl<'a> Iterator for ChildIter<'a> {
         }
         let i = self.next as usize;
         let visibility = self.layouts[i].visibility();
-        self.next = self.ends[i];
+        self.next = self.ends[i] & SUBTREE_END_MASK;
         Some(Child {
             id: NodeId(i as u32),
             visibility,
@@ -747,7 +776,7 @@ impl<'a> TreeItems<'a> {
             cursor: parent.start as usize,
             parent_end: (parent.start + parent.len) as usize,
             next_child_id: node.0 + 1,
-            subtree_end: ends[node.idx()],
+            subtree_end: ends[node.idx()] & SUBTREE_END_MASK,
         }
     }
 }
@@ -770,7 +799,7 @@ impl<'a> Iterator for TreeItems<'a> {
                 visibility,
             };
             self.cursor = cs_start + cs.len as usize;
-            self.next_child_id = self.ends[self.next_child_id as usize];
+            self.next_child_id = self.ends[self.next_child_id as usize] & SUBTREE_END_MASK;
             return Some(TreeItem::Child(child));
         }
         if self.cursor < self.parent_end {

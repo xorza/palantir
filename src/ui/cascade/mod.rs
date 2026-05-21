@@ -16,7 +16,7 @@ use crate::forest::Layer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
-use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
+use crate::forest::tree::{NodeId, SUBTREE_END_MASK, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::size::Size;
@@ -583,7 +583,11 @@ fn run_tree(
         let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
 
         let layout_rect = layout.rect[iu];
-        let subtree_end = ends[iu];
+        // Mask off the grid flag (high bit of `subtree_end`) — downstream
+        // uses (cache span, walk cursor, `is_leaf` compare) need the
+        // clean end. `tree.subtree_has_grid(iu)` reads the same word
+        // separately when measure-cache needs it.
+        let subtree_end = ends[iu] & SUBTREE_END_MASK;
 
         // Cache lookup. Only build the probe key + probe when this
         // subtree is large enough to be worth caching — the size gate

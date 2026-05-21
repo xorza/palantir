@@ -30,6 +30,7 @@ use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
 #[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
+use crate::forest::tree::SUBTREE_END_MASK;
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -615,7 +616,7 @@ impl DamageEngine {
                         if prev.subtree_hash == curr_subtree_hash
                             && prev.cascade_input == curr_cascade_input
                         {
-                            let span = (subtree_end[i] as usize) - i;
+                            let span = ((subtree_end[i] & SUBTREE_END_MASK) as usize) - i;
                             #[cfg(any(test, feature = "internals"))]
                             if span > 1 {
                                 *subtree_skips_out += 1;
