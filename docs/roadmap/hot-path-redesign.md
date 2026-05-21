@@ -550,19 +550,63 @@ proof.
 
 # Re-prioritized recommendation
 
-**Post-`alloc_resize` re-ranking** — allocation hunt killed (resize is
-already alloc-free), big-win ideas concentrated on caching that
-survives resize:
+## Profile findings (5th pass — `perf record` on `scrolling_cpu`)
+
+Built the scrolling arm (`Panel::transform` shifts every frame, layout
+unchanged) specifically to test whether a cascade delta-cache would
+pay off. Profile breakdown at 357 µs/iter:
+
+| Function | Self % | Per-iter µs |
+|---|---|---|
+| `cascade::run` | 5.12% | ~18 µs |
+| `composer::compose` | 3.60% | ~13 µs |
+| `damage::compute` + `region::add` | 4.81% | ~17 µs |
+| `encoder::encode_node` | 2.27% | ~8 µs |
+| `forest::open_node` | 2.13% | ~8 µs |
+| `intrinsic::compute` | 1.66% | ~6 µs |
+| `post_record` (`compute_hashes`) | 1.38% | ~5 µs |
+| `arrange` | 1.16% | ~4 µs |
+| **palantir total** | ~22% | **~80 µs** |
+| **wgpu / nvidia / clock_gettime / external** | ~78% | **~280 µs** |
+
+**The cascade delta-cache target is smaller than the 4th-pass estimate
+implied.** Cascade is only 18 µs on scroll (not 100 µs like on resize)
+— text bboxes are pre-computed and stable across scroll frames, so
+`compute_paint_rect`'s per-shape work is fast. A delta-cache would
+save at most ~14 µs (the blittable fraction), well under the bench
+noise floor.
+
+**The 260 µs gap (cached → scroll) is dominated by GPU encoding,
+not palantir CPU work.** ~280 µs lives in unresolved nvidia/vulkan/
+wgpu callstacks plus clock_gettime — wgpu's per-frame command
+encoding and queue submission when the whole tree is "dirty" because
+the root transform changed.
+
+**Implication for next moves:**
+- Cascade delta-cache: drop to lower priority. Target is real but
+  small (~14 µs) on the workload that should have favored it most.
+- Damage's "everything dirty when root translates" decision is the
+  real cost driver — investigate whether damage could express
+  "screen-space scroll" rather than "full repaint" when the only
+  change is a uniform translation.
+- wgpu CPU-side encoding cost on a fully-dirty frame (~150 µs)
+  deserves a separate investigation — possibly outside palantir's
+  scope but worth a flamegraph drill.
+
+**Post-`scrolling` re-ranking** — delta-cache demoted, damage redesign
+elevated, walk-fusion still on the table:
 
 | Rank | Idea | Bench arm hit | Effort | Confidence |
 |---|---|---|---|---|
-| **1** | **Cascade delta-cache surviving `rect_q` changes** | resize (~80–150 µs) | heavy | high upside, hard |
-| **2** | **Pick 1 — fold `compute_hashes` into record** | all (~15 µs resize, ~5–10 µs cached) | small-mod | high |
-| **3** | **A — retained cosmic-text `Buffer` (CPU only, not alloc)** | resize (~30–50 µs) | moderate | spike first |
+| **1** | **Damage "screen-space scroll"** when root transform shifts | scroll (~150 µs potential) | heavy | high upside, needs design |
+| **2** | **Pick 1 — fold `compute_hashes` into record** | all (~5–15 µs) | small-mod | high |
+| **3** | **A — retained cosmic-text `Buffer`** | resize (~30–50 µs CPU) | moderate | spike first |
 | **4** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
-| 5 | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
-| 6 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
-| 7 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
+| 5 | **wgpu CPU-side encode investigation** | scroll/resize (~150 µs?) | unknown | needs flamegraph |
+| 6 | **Cascade delta-cache** | scroll (~14 µs) | heavy | low — target too small |
+| 7 | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
+| 8 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
+| 9 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
 | — | ~~"Hunt per-frame allocations"~~ | ~~resize~~ | — | killed by `alloc_resize` (0.02–0.04 blocks/frame) |
 | — | ~~E (drop `Cascade.paint_rect`)~~ | ~~all~~ | — | killed by cache key |
 | — | ~~Pick 2 (fuse arrange + cascade)~~ | ~~all~~ | — | killed by cascade cache |
