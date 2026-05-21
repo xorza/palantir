@@ -92,42 +92,51 @@ The top 5 functions (cascade, composer, measure, encode, intrinsic)
 account for ~25% combined. Halving any single one saves only ~5% of
 resize cost (~70 µs).
 
-**3. `libc` is 10% (mostly malloc/free) — and the hot-loop chunk is
-text shaping.**
+**3. `libc` was 10% in perf — but it's WARMUP, not steady state.**
 
-Filtering perf samples by stack content: most libc hits are warmup
-(font loading via `fontdb`, naga shader compile, wgpu setup,
-`dlopen`). The actual hot-loop allocation site is in
-`src/text/cosmic.rs:236-289`:
+Initial reading of the perf data flagged `libc` malloc/free at 10% of
+resize and traced it to `CosmicMeasure::measure` cache-miss creating
+fresh `Buffer`s when `max_w_q` changes. **That hypothesis was wrong.**
 
-```rust
-let key = key_for(text, ..., max_width_px, ...);  // includes max_w_q
-if let Some(entry) = self.cache.get(&key) { return ... }
-// Cache miss path:
-let mut buffer = Buffer::new(&mut self.font_system, metrics);
-buffer.set_size(max_width_px, None);
-buffer.set_text(text, ...);
-buffer.shape_until_scroll(...);
-self.cache.insert(key, CacheEntry { buffer, ... });
-```
+To get the real steady-state allocation count, wrote
+`benches/alloc_resize.rs` — dhat-instrumented, 32 warmup frames + 256
+measurement frames, two arms (pool rotation matching
+`frame/resizing_cpu` exactly, and continuous-drag with 256 unique
+widths). Results:
 
-The cache key includes `max_w_q` (quantized wrap width
-— `src/text/mod.rs:580`). On resize, the wrap width changes every
-frame → cache miss → **fresh `Buffer` allocated per text shape per
-frame**. With ~500 text shapes in the fixture, that's ~500 fresh
-`Buffer` allocations per resize iteration. Each `Buffer` contains a
-`Vec<BufferLine>` plus per-line shape buffers and layout runs.
+| Arm | Blocks/frame | Bytes/frame |
+|---|---|---|
+| Pool rotation (4-size cycle) | **0.04** | 17.6 KB |
+| Continuous-drag (unique width each frame) | **0.02** | 13.2 KB |
 
-**This refines Idea A:** the lever is *allocation churn*, not CPU.
-Cosmic-text's `Buffer::set_size` + `shape_until_scroll` should re-flow
-in place when only width changes (cached `BufferLine`s reuse cached
-glyph shaping); need to verify with the cosmic-text source. If it
-works, the fix is small:
-1. Key the cache by `(text, font, line_height, family, halign)` —
-   drop `max_w_q` from the key.
-2. Store `current_max_w` on the cache entry.
-3. On width-change hit, mutate the entry: `buffer.set_size(new_w)` +
-   `buffer.shape_until_scroll(false)`. No allocation.
+Total over 256 measurement frames: 9 and 4 blocks respectively. Those
+are intermittent Vec/HashMap growths, not per-frame churn. The
+17.6 KB/frame headline is a single ~500 KB Vec grow amortized.
+
+**The perf-record "10% libc" was warmup.** Symbols found leading into
+libc include `fontdb::Database::load_fonts_dir_impl`, `naga::valid::
+Validator`, `libloading::os::unix::Library::open`, `wgpu_hal::vulkan::
+adapter::open_with_callback`, `wgpu_core::device::map_buffer` — all
+one-time setup. The hot loop allocates ~0 blocks/frame on resize, same
+as the documented invariant for `cached`/`partial`.
+
+**Implication:** Idea A loses its allocation-lever rationale. cosmic-
+text's Buffer cache (in palantir's wrapping `TextShaper.reuse` keyed
+by `(WidgetId, ordinal)` validated by hash) must be mutating entries
+in place when wrap target changes, not allocating fresh ones. The
+specifics of how the per-WidgetId reuse cache survives `max_w_q`
+changes deserve a closer read but the allocation-free outcome stands.
+
+Idea A's pure-CPU portion is still ~3-4% of resize cost (~50 µs) —
+real but no longer transformative.
+
+**Re-revised lever for resize CPU:** there's no allocation churn to
+eliminate. The 1.4 ms of resize cost is pure compute distributed
+across the entire pipeline (cascade 7%, composer 5%, measure 5%,
+encode 4%, intrinsic 3%, …). The only way to meaningfully reduce it
+is **caching that survives `rect_q` / `available_q` changes** — i.e.,
+the "cascade delta-cache" idea — or **pipeline-wide work reduction
+via walk fusion**.
 
 **4. Cascade (7%) is the single biggest palantir hotspot.**
 `CascadeCache` exists but **misses on resize** because `rect_q` (the
@@ -536,18 +545,20 @@ proof.
 
 # Re-prioritized recommendation
 
-**Post-profile re-ranking** — A downgraded, allocation hunting elevated:
+**Post-`alloc_resize` re-ranking** — allocation hunt killed (resize is
+already alloc-free), big-win ideas concentrated on caching that
+survives resize:
 
 | Rank | Idea | Bench arm hit | Effort | Confidence |
 |---|---|---|---|---|
-| **1** | **Hunt per-frame allocations** (libc = 10% of resize) | resize (~tens of µs) | small per fix | high |
+| **1** | **Cascade delta-cache surviving `rect_q` changes** | resize (~80–150 µs) | heavy | high upside, hard |
 | **2** | **Pick 1 — fold `compute_hashes` into record** | all (~15 µs resize, ~5–10 µs cached) | small-mod | high |
-| **3** | **A — retained cosmic-text `Buffer`** | resize (~30–50 µs) | moderate | spike first |
-| **4** | **Cascade delta-cache surviving `rect_q` changes** | resize (~80 µs) | heavy | high upside, hard |
-| **5** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
-| 6 | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
-| 7 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
-| 8 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
+| **3** | **A — retained cosmic-text `Buffer` (CPU only, not alloc)** | resize (~30–50 µs) | moderate | spike first |
+| **4** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
+| 5 | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
+| 6 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
+| 7 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
+| — | ~~"Hunt per-frame allocations"~~ | ~~resize~~ | — | killed by `alloc_resize` (0.02–0.04 blocks/frame) |
 | — | ~~E (drop `Cascade.paint_rect`)~~ | ~~all~~ | — | killed by cache key |
 | — | ~~Pick 2 (fuse arrange + cascade)~~ | ~~all~~ | — | killed by cascade cache |
 
