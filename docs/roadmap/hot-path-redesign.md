@@ -599,7 +599,7 @@ elevated, walk-fusion still on the table:
 | Rank | Idea | Bench arm hit | Effort | Confidence |
 |---|---|---|---|---|
 | **1** | **Damage "screen-space scroll"** when root transform shifts | scroll (~150 µs potential) | heavy | high upside, needs design |
-| **2** | **Pick 1 — fold `compute_hashes` into record** | all (~5–15 µs) | small-mod | high |
+| — | ~~Pick 1 — fold `compute_hashes` into record~~ | ~~all~~ | — | **spiked, killed: net regression / noise (see E3.5)** |
 | **3** | **A — retained cosmic-text `Buffer`** | resize (~30–50 µs CPU) | moderate | spike first |
 | **4** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
 | 5 | **wgpu CPU-side encode investigation** | scroll/resize (~150 µs?) | unknown | needs flamegraph |
@@ -668,6 +668,56 @@ field uses are `Copy`-scalar reads that work fine through `&ChromeRow`.
 **Outcome:** within bench variance (±2% spread on identical code makes
 2-µs changes invisible). Kept as a cleanup — semantically the right
 thing.
+
+## E3.5 — Pick 1: fold `compute_hashes` into `open_node`/`close_node`
+
+**Hypothesis:** the post-record `compute_hashes` walk (1.38–2% of
+resize per profile, ~5–28 µs/frame) can be eliminated by hashing
+incrementally during record. All inputs are available at the right
+moments: own state + extras at `open_node`, shape hashes at
+`add_shape`, child markers at child's `open_node`, grid_def + finalize
+at `close_node`.
+
+**Implementation:**
+- New `HashFrame { node_hasher, children_hashes_start }` parallel to
+  `OpenFrame` in `RecordingScratch`.
+- Shared LIFO `children_hash_stack: Vec<u64>` for direct-children
+  subtree_hashes (alloc-free — one retained Vec).
+- `open_node`: push placeholder rollups, seed hasher with own state,
+  write 0xFF to parent's hasher.
+- `Forest::add_shape{,_animated}`: fold shape hash into top frame.
+- `close_node`: hash grid_def, finalize, drain children's hashes from
+  the stack, push subtree_hash up to parent.
+- `compute_hashes` deleted entirely.
+
+Diff size: ~150 LOC across `forest/tree/mod.rs`, `forest/mod.rs`,
+`forest/rollups.rs`.
+
+**Outcome:** all 768 lib tests pass (hash equivalence holds across
+MeasureCache / CascadeCache / damage). `alloc_free` still strict-zero.
+Two bench runs vs baseline (96.78 / 138.07 / 357.67 / 1387):
+
+| Arm | Run 1 | Run 2 | Avg Δ vs baseline |
+|---|---|---|---|
+| `cached_cpu` | 98.14 | 96.83 | +0.7% (noise) |
+| `partial_cpu` | 142.00 | 137.08 | +1.0% (noise) |
+| `scrolling_cpu` | 358.78 | 358.28 | +0.2% (noise) |
+| `resizing_cpu` | 1386.6 | 1396.0 | +0.3% (noise) |
+
+**Verdict: no measurable improvement.** The hashing-during-record
+cost (extra Vec pushes per `open_node`: 2 rollups placeholders + 1
+HashFrame) approximately cancels the saved post-record walk. Recording
+already does many Vec pushes; the additions disperse the work without
+net cycle savings.
+
+Stashed (`git stash` contains the full implementation). Resume only
+with a workload where compute_hashes is a measurable bottleneck (>5%
+of frame) — current fixture maxes out at ~2%.
+
+**Lesson:** at 5–10 µs predicted savings, walk-fusion ideas live at
+the bench noise floor (~3% spread on this fixture). Eliminating a
+pass conceptually doesn't help if the same operations get redistributed
+across the per-node hot path.
 
 ## E3 — `text_ordinal: u32` → `&mut u32` parameter on `emit_one_shape`
 
