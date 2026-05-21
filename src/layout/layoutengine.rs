@@ -9,20 +9,20 @@ use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
 use crate::layout::support::{
-    AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size, stretched_extent, zero_subtree,
+    AxisCtx, LeafTextShape, TextCtx, leaf_text_shapes, resolve_axis_size, stretched_extent,
+    zero_subtree,
 };
-use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
-    Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
+    LayerLayout, Layout, ShapedText, canvas, grid, intrinsic, scroll, stack, wrapstack, zstack,
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
-use crate::text::{FontFamily, TextShaper};
+use crate::text::TextShaper;
 use rustc_hash::FxHashSet;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -69,9 +69,9 @@ use rustc_hash::FxHashSet;
 /// **Adding a new field to category (2)** requires three coordinated
 /// edits: a snapshot writer into [`Self::tmp_hugs`]-style staging
 /// (or a new arena), a [`SubtreeArenas`] field carrying it through
-/// the cache, and a restore call inside
-/// [`Self::restore_after_cache_hit`]. Forgetting any one corrupts
-/// arrange silently — pinned per-driver by the fixtures in
+/// the cache, and a restore branch inside the free function
+/// [`restore_after_cache_hit`] in this module. Forgetting any one
+/// corrupts arrange silently — pinned per-driver by the fixtures in
 /// `src/layout/cache/integration_tests.rs`.
 #[derive(Default)]
 pub(crate) struct LayoutScratch {
@@ -91,33 +91,6 @@ impl LayoutScratch {
         self.intrinsics.clear();
         self.intrinsics.resize(n, [f32::NAN; SLOT_COUNT]);
         self.grid.hugs.reset_for(tree);
-    }
-
-    /// Splat every per-subtree side-state column carried by `arenas`
-    /// back into the live scratch pools. Called from `measure` after
-    /// the cache hit has already populated `desired` + text shapes;
-    /// owns the dispatch over category-(2) fields documented on
-    /// [`LayoutScratch`]. Adding a new retained driver column adds
-    /// one branch here so the engine's cache-hit path stays a single
-    /// method call. `#[inline]`-marked because it's hit on every
-    /// cache hit and the grid-free common path is a single bitset
-    /// test — folding it into the caller keeps the cold-path branch
-    /// predictor happy.
-    #[inline]
-    pub(crate) fn restore_after_cache_hit(
-        &mut self,
-        tree: &Tree,
-        subtree: std::ops::Range<usize>,
-        arenas: &SubtreeArenas<'_>,
-    ) {
-        // `grid.hugs` is the only retained category-(2) field today.
-        // `Tree::subtree_has_grid` gates the dispatch so grid-free
-        // subtrees pay one bit-test (high bit of the same `subtree_end`
-        // word the caller already reads for the bound) instead of
-        // walking the subtree looking for grids.
-        if tree.subtree_has_grid(subtree.start) {
-            self.grid.hugs.restore_subtree(tree, subtree, arenas.hugs);
-        }
     }
 }
 
@@ -163,6 +136,50 @@ fn quantize_wrap_target(v: f32) -> u32 {
     (v.max(0.0) * WRAP_QUANTUM_PX_INV).round() as u32
 }
 
+/// Splat every per-subtree side-state column carried by `arenas` back
+/// into the live pools after a measure-cache hit. Owns the dispatch
+/// over every retained category-(2) field: text shapes (appended to
+/// the live frame buffer with per-node spans rebased) and per-grid
+/// hug arrays. Adding a new retained driver column adds one branch
+/// here so the engine's cache-hit path stays a single call. Free fn
+/// (not a method on `LayoutEngine`) because the caller holds an
+/// immutable borrow of `self.cache` via the cached-subtree handle —
+/// passing disjoint `&mut LayoutScratch` and `&mut LayerLayout` keeps
+/// the borrow checker happy. Pinned by
+/// `cache::integration_tests::cache_hit_preserves_grid_cell_rects`
+/// and the per-driver `cache_hit_preserves_*_rects` fixtures.
+/// `#[inline]`-marked because every cache hit takes this path and the
+/// grid-free common path is a single bitset test.
+#[inline]
+fn restore_after_cache_hit(
+    scratch: &mut LayoutScratch,
+    tree: &Tree,
+    subtree: std::ops::Range<usize>,
+    arenas: &SubtreeArenas<'_>,
+    layer: &mut LayerLayout,
+) {
+    // Append the snapshot's flat text-shape range to the live
+    // per-frame buffer, then rebase its subtree-local spans by
+    // `dest_start` into the per-node `text_spans` column.
+    let dest_start = layer.text_shapes.len() as u32;
+    layer.text_shapes.extend_from_slice(arenas.text_shapes);
+    for (i, snap_span) in arenas.text_spans.iter().enumerate() {
+        layer.text_spans[subtree.start + i] = Span {
+            start: dest_start + snap_span.start,
+            len: snap_span.len,
+        };
+    }
+    // `grid.hugs` — gated on `Tree::subtree_has_grid` (one bit-test
+    // off the same `subtree_end` word the caller already read) so
+    // grid-free subtrees pay nothing.
+    if tree.subtree_has_grid(subtree.start) {
+        scratch
+            .grid
+            .hugs
+            .restore_subtree(tree, subtree, arenas.hugs);
+    }
+}
+
 /// Derive the driver-facing `inner_avail` size: outer = Fixed(v) for any
 /// `Sizing::Fixed` axis else `available - margin` (floored at 0), clamped
 /// to `[min_size, max_size]`, then deflated by padding. The outer
@@ -170,10 +187,8 @@ fn quantize_wrap_target(v: f32) -> u32 {
 /// parent's eventual arranged width even when `max_size` caps it.
 #[inline]
 fn compute_inner_avail(style: LayoutCore, available: Size, min_size: Size, max_size: Size) -> Size {
-    let [pl, pt, pr, pb] = style.padding.as_array();
-    let [ml, mt, mr, mb] = style.margin.as_array();
-    let (p_horiz, p_vert) = (pl + pr, pt + pb);
-    let (m_horiz, m_vert) = (ml + mr, mt + mb);
+    let (p_horiz, p_vert) = style.padding.sums();
+    let (m_horiz, m_vert) = style.margin.sums();
     let outer_w = match style.size.w() {
         Sizing::Fixed(v) => v,
         _ => (available.w - m_horiz).max(0.0),
@@ -201,14 +216,12 @@ fn resolve_desired(
     min_size: Size,
     max_size: Size,
 ) -> Size {
-    let [pl, pt, pr, pb] = style.padding.as_array();
-    let [ml, mt, mr, mb] = style.margin.as_array();
-    let (p_horiz, p_vert) = (pl + pr, pt + pb);
-    let (m_horiz, m_vert) = (ml + mr, mt + mb);
+    let (p_horiz, p_vert) = style.padding.sums();
+    let (m_horiz, m_vert) = style.margin.sums();
     Size::new(
         resolve_axis_size(AxisCtx {
             sizing: style.size.w(),
-            hug_with_margin: content.w + p_horiz + m_horiz,
+            content_plus_padding: content.w + p_horiz,
             available: available.w,
             intrinsic_min: intrinsic_min.w,
             margin: m_horiz,
@@ -217,7 +230,7 @@ fn resolve_desired(
         }),
         resolve_axis_size(AxisCtx {
             sizing: style.size.h(),
-            hug_with_margin: content.h + p_vert + m_vert,
+            content_plus_padding: content.h + p_vert,
             available: available.h,
             intrinsic_min: intrinsic_min.h,
             margin: m_vert,
@@ -391,28 +404,13 @@ impl LayoutEngine {
             // so a length mismatch here would mean the rollup is broken.
             assert_eq!(curr_end, tree.subtree_end_of(curr_start) as usize);
             self.scratch.desired[curr_start..curr_end].copy_from_slice(hit.arenas.desired);
-            // Append the snapshot's flat text-shape range to the live
-            // per-frame buffer, then rebase its subtree-local spans by
-            // `dest_start` into the per-node `text_spans` column.
-            let dest_start = out[self.active_layer].text_shapes.len() as u32;
-            out[self.active_layer]
-                .text_shapes
-                .extend_from_slice(hit.arenas.text_shapes);
-            for (i, snap_span) in hit.arenas.text_spans.iter().enumerate() {
-                out[self.active_layer].text_spans[curr_start + i] = Span {
-                    start: dest_start + snap_span.start,
-                    len: snap_span.len,
-                };
-            }
-            // Restore every category-(2) per-subtree column carried
-            // by the snapshot (today: per-grid hug arrays). The
-            // dispatch lives on `LayoutScratch` so adding a new
-            // retained driver column is one edit there, not here.
-            // Pinned by `cache::integration_tests::cache_hit_preserves_grid_cell_rects`
-            // and the per-driver `cache_hit_preserves_*_rects`
-            // fixtures.
-            self.scratch
-                .restore_after_cache_hit(tree, curr_start..curr_end, &hit.arenas);
+            restore_after_cache_hit(
+                &mut self.scratch,
+                tree,
+                curr_start..curr_end,
+                &hit.arenas,
+                &mut out[self.active_layer],
+            );
             return hit.root;
         }
 
@@ -670,20 +668,7 @@ impl LayoutEngine {
         let mut s = Size::ZERO;
         let mut ordinal: u16 = 0;
         for ts in leaf_text_shapes(tree, tc, node) {
-            let m = self.shape_text(
-                tree,
-                node,
-                ordinal,
-                ts.text,
-                ts.font_size_px,
-                ts.line_height_px,
-                ts.wrap,
-                ts.family,
-                ts.halign,
-                available_w,
-                tc.shaper,
-                out,
-            );
+            let m = self.shape_text(tree, node, ordinal, &ts, available_w, tc.shaper, out);
             s = s.max(m);
             ordinal = ordinal.checked_add(1).expect(
                 "more than 65535 ShapeRecord::Text per leaf — well past anything sane; \
@@ -704,12 +689,7 @@ impl LayoutEngine {
         tree: &Tree,
         node: NodeId,
         ordinal: u16,
-        src: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        wrap: TextWrap,
-        family: FontFamily,
-        halign: HAlign,
+        ts: &LeafTextShape<'_>,
         available_w: f32,
         text: &TextShaper,
         out: &mut Layout,
@@ -725,10 +705,10 @@ impl LayoutEngine {
             wid,
             ordinal,
             curr_hash,
-            src,
-            font_size_px,
-            line_height_px,
-            family,
+            ts.text,
+            ts.font_size_px,
+            ts.line_height_px,
+            ts.family,
         );
 
         // Always re-shape through `shape_wrap` for `TextWrap::Wrap` +
@@ -740,7 +720,7 @@ impl LayoutEngine {
         // would render left-aligned while the widget's `cursor_xy`
         // (always called with the wrap target) reads per-line-aligned
         // coords from a different cached buffer.
-        let want_wrap = matches!(wrap, TextWrap::Wrap) && available_w.is_finite();
+        let want_wrap = matches!(ts.wrap, TextWrap::Wrap) && available_w.is_finite();
 
         let result = if want_wrap {
             let target = available_w.max(unbounded.intrinsic_min);
@@ -748,13 +728,13 @@ impl LayoutEngine {
             text.shape_wrap(
                 wid,
                 ordinal,
-                src,
-                font_size_px,
-                line_height_px,
+                ts.text,
+                ts.font_size_px,
+                ts.line_height_px,
                 target,
                 target_q,
-                family,
-                halign,
+                ts.family,
+                ts.halign,
             )
         } else {
             unbounded

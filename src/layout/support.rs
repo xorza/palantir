@@ -94,13 +94,11 @@ pub(crate) fn leaf_text_shapes<'a>(
 }
 
 /// Resolve a node's outer slot size on one axis, given its sizing
-/// policy, hug-content size (margin-inclusive: content+padding+margin),
-/// parent-supplied available, own margin, and clamps. Each branch
-/// derives a *rendered* size (margin-exclusive) by subtracting margin,
-/// clamps once, then re-adds margin at the end so the return is
-/// margin-inclusive too. The margin round-trip exists so callers don't
-/// have to special-case Fixed (which doesn't read `hug_with_margin`)
-/// vs Hug/Fill (which do).
+/// policy, content+padding (margin-exclusive), parent-supplied
+/// available, own margin, and clamps. The function works in
+/// margin-exclusive space and adds margin once at the return so the
+/// returned value is margin-inclusive (matching `available`'s
+/// convention).
 ///
 /// Also reused by `intrinsic::compute` with `available = INFINITY`,
 /// which collapses Fill to its content size — the parent-independent
@@ -109,12 +107,12 @@ pub(crate) fn leaf_text_shapes<'a>(
 /// Per-axis inputs for [`resolve_axis_size`]. Bundles the seven
 /// numbers + `Sizing` into one struct so the call site reads as
 /// "given this axis context, resolve the outer size" rather than a
-/// 7-arg parameter cliff. Margin-inclusive convention: `available`
-/// and the returned value both include the node's own margin on this
-/// axis; `hug_with_margin` is `content + padding + margin`.
+/// 7-arg parameter cliff. `content_plus_padding` is the
+/// margin-exclusive hug size (`content + padding`); `available` and
+/// the returned value are margin-inclusive.
 pub(crate) struct AxisCtx {
     pub sizing: Sizing,
-    pub hug_with_margin: f32,
+    pub content_plus_padding: f32,
     pub available: f32,
     pub intrinsic_min: f32,
     pub margin: f32,
@@ -152,16 +150,15 @@ pub(crate) struct AxisCtx {
 /// `available = INFINITY`) collapses to its content size — matches
 /// CSS Grid's `1fr` track in an auto-context parent.
 pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
-    let content = ctx.hug_with_margin - ctx.margin;
     let rendered = match ctx.sizing {
         Sizing::Fixed(v) => v,
         Sizing::Hug => {
             if ctx.available.is_finite() {
-                content
+                ctx.content_plus_padding
                     .min(ctx.available - ctx.margin)
                     .max(ctx.intrinsic_min - ctx.margin)
             } else {
-                content
+                ctx.content_plus_padding
             }
         }
         // WPF Stretch: Fill returns content at measure-time. The
@@ -170,7 +167,7 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
         // proportionally. Returning `available` here would balloon
         // any Hug ancestor to its grandparent's allocation (CSS auto-
         // sizing's classic Hug+Fill bug).
-        Sizing::Fill(_) => content.max(ctx.intrinsic_min - ctx.margin),
+        Sizing::Fill(_) => ctx.content_plus_padding.max(ctx.intrinsic_min - ctx.margin),
     };
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }

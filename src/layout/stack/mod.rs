@@ -84,6 +84,40 @@ pub(crate) struct StackScratch {
     pub(crate) pool: Vec<FillEntry>,
 }
 
+/// Push one [`FillEntry`] per main-axis-`Fill` child onto
+/// `layout.scratch.stack_fill.pool`. Returns the pool index where this
+/// invocation's slice starts — pair with `pool.truncate(start)` after
+/// use to keep nested calls reentrant. `floor_for` produces each
+/// child's min-content floor: `measure` passes
+/// `intrinsic(MinContent)`, `arrange` passes the measured
+/// `desired.main`. Shared so the two phases can't drift on which
+/// children get pushed, what their cap is, or how the pool is keyed.
+fn push_fill_entries(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    mut floor_for: impl FnMut(&mut LayoutEngine, NodeId) -> f32,
+) -> usize {
+    let layouts = tree.records.layout();
+    let pool_start = layout.scratch.stack_fill.pool.len();
+    for c in tree.active_children(node) {
+        let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) else {
+            continue;
+        };
+        let cap = axis.main(tree.bounds(c).max_size);
+        let floor = floor_for(layout, c);
+        layout.scratch.stack_fill.pool.push(FillEntry {
+            node: c,
+            weight: w,
+            floor,
+            cap,
+            frozen_alloc: None,
+        });
+    }
+    pool_start
+}
+
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -160,21 +194,9 @@ pub(crate) fn measure(
             // Reentrancy-safe flat pool: record pool-end on entry,
             // push entries, slice through `[start..]`, truncate at
             // exit. Nested stacks reuse the tail capacity.
-            let pool_start = layout.scratch.stack_fill.pool.len();
-            for c in tree.active_children(node) {
-                let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) else {
-                    continue;
-                };
-                let cap = axis.main(tree.bounds(c).max_size);
-                let floor = layout.intrinsic(tree, c, axis, LenReq::MinContent, tc);
-                layout.scratch.stack_fill.pool.push(FillEntry {
-                    node: c,
-                    weight: w,
-                    floor,
-                    cap,
-                    frozen_alloc: None,
-                });
-            }
+            let pool_start = push_fill_entries(layout, tree, node, axis, |layout, c| {
+                layout.intrinsic(tree, c, axis, LenReq::MinContent, tc)
+            });
             let leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
             freeze_distribute(
                 &mut layout.scratch.stack_fill.pool[pool_start..],
@@ -249,32 +271,26 @@ pub(crate) fn arrange(
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut count = 0usize;
-    let pool_start = layout.scratch.stack_fill.pool.len();
+    // Non-Fill accounting in a first pass — Fill entries are pushed by
+    // `push_fill_entries` below so measure and arrange share the
+    // construction shape (the only difference is the floor source).
     for c in tree.active_children(node) {
         count += 1;
         let i = c.idx();
         let size = layouts[i].size;
-        if let Sizing::Fill(w) = axis.main_sizing(size) {
-            // Floor = measured content (Fill children's `desired.main`
-            // after the resolve_axis_size change pinned Fill at
-            // content). Cap = `max_size`. The freeze loop below
-            // mirrors `measure`'s flexbox-style distribution: a child
-            // whose share < floor freezes at floor, the rest re-share
-            // remaining.
-            let floor = axis.main(layout.scratch.desired[i]);
-            let cap = axis.main(tree.bounds(c).max_size);
-            total_weight += w;
-            layout.scratch.stack_fill.pool.push(FillEntry {
-                node: c,
-                weight: w,
-                floor,
-                cap,
-                frozen_alloc: None,
-            });
-        } else {
-            sum_non_fill_main += axis.main(layout.scratch.desired[i]);
+        match axis.main_sizing(size) {
+            Sizing::Fill(w) => total_weight += w,
+            _ => sum_non_fill_main += axis.main(layout.scratch.desired[i]),
         }
     }
+    // Floor = measured content (Fill children's `desired.main` after
+    // the resolve_axis_size change pinned Fill at content). Cap =
+    // `max_size`. The freeze loop below mirrors `measure`'s
+    // flexbox-style distribution: a child whose share < floor freezes
+    // at floor, the rest re-share remaining.
+    let pool_start = push_fill_entries(layout, tree, node, axis, |layout, c| {
+        axis.main(layout.scratch.desired[c.idx()])
+    });
     let total_gap = gap * count.saturating_sub(1) as f32;
     let main_total = axis.main(inner.size);
     let cross = axis.cross(inner.size);
