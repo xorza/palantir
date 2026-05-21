@@ -101,7 +101,9 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
             Panel::hstack()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
-                .transform(palantir::TranslateScale::from_translation(state.scroll_offset))
+                .transform(palantir::TranslateScale::from_translation(
+                    state.scroll_offset,
+                ))
                 .show(ui, |ui| {
                     Panel::vstack()
                         .gap(4.0)

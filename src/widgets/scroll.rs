@@ -86,11 +86,7 @@ impl Default for ZoomConfig {
 /// visible content. Returns 0 when the axis isn't panned.
 #[inline]
 fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
-    if panned {
-        theme.width + theme.gap
-    } else {
-        0.0
-    }
+    if panned { theme.width + theme.gap } else { 0.0 }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -142,20 +138,18 @@ fn bar_layout(
     pan: glam::BVec2,
     user_padding: Spacing,
     theme: &ScrollbarTheme,
+    bar_mode: BarMode,
 ) -> BarLayout {
     let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
-    // Gutter reservation is **constant** per pan axis: it doesn't
-    // depend on whether content currently overflows. This keeps the
-    // viewport's outer size — and therefore any Hug ancestor — stable
-    // across the overflow toggle (otherwise a Hug ancestor would shift
-    // by `bar_width` the first time content grew past the viewport).
-    // The bar thumb itself is still drawn conditionally on overflow
-    // via `bar_plan`, which gates on `content > viewport` inside
-    // `bar_geometry`. So when content fits, you see an empty gutter
-    // but no thumb; when it overflows, the thumb fills the same
-    // gutter without any size change.
-    let reserve_y = bar_reservation(pan.y, theme);
-    let reserve_x = bar_reservation(pan.x, theme);
+    // Only `Reserved` reserves the gutter on the pan axes. `Overlay`
+    // paints the bar over content without reservation; `Hidden` has
+    // no bar at all. Reservation is constant for `Reserved` (not
+    // toggled by overflow) so a Hug ancestor doesn't shift between
+    // frames; the bar thumb itself is still drawn conditionally on
+    // `content > viewport` via `bar_plan`.
+    let reserve = matches!(bar_mode, BarMode::Reserved);
+    let reserve_y = bar_reservation(pan.y && reserve, theme);
+    let reserve_x = bar_reservation(pan.x && reserve, theme);
     let bar_viewport = Size::new(
         (row.outer.w - reserve_y - user_padding.horiz()).max(0.0),
         (row.outer.h - reserve_x - user_padding.vert()).max(0.0),
@@ -270,6 +264,29 @@ fn push_bar_nodes(
 // Scroll widget
 // ---------------------------------------------------------------------------
 
+/// How the scrollbars relate to the content area on the pan axes.
+///
+/// - [`Self::Reserved`] (default): the gutter always takes a strip of
+///   the cross axis (`theme.scrollbar.width + gap`), and the bar is
+///   drawn inside that gutter only when content overflows. The
+///   reserved width is constant whether or not anything currently
+///   overflows — so a Hug ancestor of the scroll doesn't shift when
+///   overflow toggles.
+/// - [`Self::Overlay`]: no gutter is reserved. The content gets the
+///   full inner width, and the bar paints **over** the content's
+///   far-edge strip when overflow happens. Modern macOS-style scroll
+///   indicator behaviour.
+/// - [`Self::Hidden`]: no bar, no gutter. Wheel / touchpad / drag
+///   input still pans. Useful for canvas-style scopes (node graphs,
+///   infinite boards) where indicators would be noise.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub enum BarMode {
+    #[default]
+    Reserved,
+    Overlay,
+    Hidden,
+}
+
 /// Scroll viewport. Three flavors via constructor:
 /// - [`Scroll::vertical`]: pans on Y, lays children out as a `VStack`.
 /// - [`Scroll::horizontal`]: pans on X, lays children out as an
@@ -281,24 +298,14 @@ fn push_bar_nodes(
 /// their full natural extent; the viewport itself takes whatever its
 /// parent gave it. Wheel / touchpad input over the viewport pans
 /// children via a `transform` applied at record time using the
-/// previous frame's clamp.
-///
-/// **Reservation layout**: the widget reserves
-/// `theme.scrollbar.width + gap` of gutter on each panned axis's
-/// cross-axis far edge — **constant**, not state-driven. Keeping the
-/// gutter regardless of current overflow makes the viewport size
-/// stable across the overflow toggle, which matters when a Hug
-/// ancestor (e.g. a `Popup` body) hugs the Scroll: a state-driven
-/// gutter would change the ancestor's size by `bar_width` the first
-/// time content grew past the viewport. The bar thumb itself is
-/// still drawn conditionally on this-frame overflow via
-/// `bar_geometry`; the gutter just stays reserved either way (when
-/// content fits you see an empty gutter and no thumb).
+/// previous frame's clamp. The scrollbar's relationship to the
+/// content area — reserved gutter, overlay, or hidden — is selected
+/// via [`BarMode`].
 pub struct Scroll {
     element: Element,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
-    bars_hidden: bool,
+    bar_mode: BarMode,
     content_margin: Spacing,
 }
 
@@ -335,18 +342,30 @@ impl Scroll {
             element,
             zoom: None,
             chrome: None,
-            bars_hidden: false,
+            bar_mode: BarMode::Reserved,
             content_margin: Spacing::default(),
         }
     }
 
-    /// Suppress the scrollbar overlay entirely — no track, no thumb,
-    /// no cross-axis reservation. Pan/wheel/zoom input still work; the
+    /// Set the scrollbar layout mode. See [`BarMode`].
+    pub fn bar_mode(mut self, mode: BarMode) -> Self {
+        self.bar_mode = mode;
+        self
+    }
+
+    /// Sugar for `bar_mode(BarMode::Overlay)` — bar paints over
+    /// content when overflowing, no gutter reservation.
+    pub fn overlay_bars(self) -> Self {
+        self.bar_mode(BarMode::Overlay)
+    }
+
+    /// Sugar for `bar_mode(BarMode::Hidden)` — no track, no thumb, no
+    /// cross-axis reservation. Pan/wheel/zoom input still work; the
     /// viewport just doesn't paint indicators. Useful for canvas-style
     /// scopes (node graphs, infinite boards) where the bars would be
     /// noise.
     pub fn hide_bars(mut self) -> Self {
-        self.bars_hidden = true;
+        self.bar_mode = BarMode::Hidden;
         self
     }
 
@@ -476,13 +495,7 @@ impl Scroll {
         // were recorded, the cascade doesn't see them yet → all
         // fields default. Same one-frame settle as other scroll
         // bookkeeping.
-        let mut theme = ui.theme.scrollbar.clone();
-        if self.bars_hidden {
-            // Zero the reservation so the inner viewport gets the full
-            // outer rect; bar nodes are skipped below.
-            theme.width = 0.0;
-            theme.gap = 0.0;
-        }
+        let theme = ui.theme.scrollbar.clone();
         let thumb_id_v = scroll_id.with("__vthumb");
         let thumb_id_h = scroll_id.with("__hthumb");
         let track_id_v = scroll_id.with("__vtrack");
@@ -572,7 +585,7 @@ impl Scroll {
             //    Bars use the *scaled* content extent so dragging
             //    inside a zoomed-in viewport tracks the cursor at
             //    1:1 with the visible thumb.
-            let bl = bar_layout(row, pan, self.element.padding, &theme);
+            let bl = bar_layout(row, pan, self.element.padding, &theme, self.bar_mode);
             for (axis, resp) in [(Axis::Y, resp_v), (Axis::X, resp_h)] {
                 let panned = match axis {
                     Axis::Y => pan.y,
@@ -690,7 +703,7 @@ impl Scroll {
         // one arrange pass during cold-mount; this derivation is
         // stable at record time. Same helper feeds drag math inside
         // the state-mutation block above.
-        let bl = bar_layout(&scroll, pan, self.element.padding, &theme);
+        let bl = bar_layout(&scroll, pan, self.element.padding, &theme, self.bar_mode);
         let scaled_content = bl.scaled_content;
         let bar_viewport = bl.bar_viewport;
         let reserve_y = bl.reserve_y;
@@ -782,7 +795,7 @@ impl Scroll {
             // the overlay (paint first); thumbs are Sense::DRAG leaves
             // positioned absolutely on top. Painted after inner via
             // record order, hit-tested above inner via cascade order.
-            if !self.bars_hidden && (plan_v.is_some() || plan_h.is_some()) {
+            if !matches!(self.bar_mode, BarMode::Hidden) && (plan_v.is_some() || plan_h.is_some()) {
                 let bars_id = scroll_id.with("__bars");
                 let mut overlay = Element::new(LayoutMode::Canvas);
                 overlay.salt = Salt::Verbatim(bars_id);
