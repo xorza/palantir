@@ -99,7 +99,7 @@ pub(crate) struct Wake {
     pub(crate) reasons: WakeReasons,
 }
 
-/// What [`Ui::frame_inner`] should do this frame, decided at entry
+/// What [`Ui::frame`] should do this frame, decided at entry
 /// from fired wake reasons + input state + prior-frame validity.
 /// `PaintOnly` and `FullRecord` are mutually exclusive by construction
 /// — `paint_only ⇒ !force_full` is encoded in the variant shape
@@ -176,7 +176,7 @@ pub struct Ui {
     /// Drives `classify_frame` (surface-change detection)
     /// and the paint-anim damage gate
     /// (`anim.next_wake(prev.time) <= now`). Updated at the bottom
-    /// of `frame_inner` on every path.
+    /// of `frame` on every path.
     pub(crate) prev_stamp: Option<FrameStamp>,
     /// EMA of `1/raw_dt` across frames. Zero on the first frame
     /// (no prior `time` to diff against); updated in
@@ -285,15 +285,13 @@ impl Ui {
     /// the last pass. `stamp.time` is monotonic host time;
     /// `Ui::{dt,time,frame_id}` derive from it. See `docs/repaint.md`.
     pub fn frame(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
-        // The frame arena is shared via Rc so the renderer sees the
-        // same bytes. Clear it once at the top of the record cycle;
-        // capacity is retained.
-        self.frame_arena.clear();
-        self.frame_inner(stamp, &mut record)
-    }
-
-    fn frame_inner(&mut self, stamp: FrameStamp, mut record: impl FnMut(&mut Ui)) -> FrameReport {
         profiling::scope!("Ui::frame");
+        // Frame arena is cleared inside `record_pass` (the only path
+        // that repopulates it). PaintOnly frames must NOT clear: the
+        // live `tree.shapes` from last frame still references arena
+        // contents by index (gradients, polyline points/colors, mesh
+        // verts/indices, interned text spans). Clearing here would
+        // leave dangling indices the encoder then dereferences.
         assert!(
             stamp.display.scale_factor >= EPS,
             "Display::scale_factor must be ≥ EPSILON; got {}",
@@ -496,7 +494,7 @@ impl Ui {
     /// and one of the two input sticky bits (selected by
     /// [`Self::input_policy`]) from the prior frame's record; all must
     /// be observed BEFORE the per-frame clear that follows in
-    /// `frame_inner`.
+    /// `frame`.
     fn classify_frame(&mut self, display: Display) -> FramePlan {
         // `repaint_wakes` is sorted ascending, so fired = prefix slice.
         let fired_count = self
@@ -543,6 +541,11 @@ impl Ui {
     fn record_pass(&mut self, record: &mut impl FnMut(&mut Ui)) -> bool {
         {
             profiling::scope!("Ui::pre_record");
+            // Arena is per-record-pass storage: tree.shapes records
+            // index into it (gradients / polyline points+colors /
+            // meshes / interned text). Clear in lockstep with
+            // `forest.pre_record` — both refill during user record.
+            self.frame_arena.clear();
             self.forest.pre_record();
             // Subscription set is rebuilt from scratch each full record
             // pass — symmetric to `Sense` on a node. Widgets re-assert
@@ -1159,7 +1162,7 @@ pub mod test_support {
         }
 
         /// Synthesize a "previous submitted frame" sentinel so the
-        /// cold-start warmup record pass in `Ui::frame_inner` doesn't
+        /// cold-start warmup record pass in `Ui::frame` doesn't
         /// fire on the first user `run_at`. The warmup runs the user
         /// closure twice (blackout pass + real pass); most tests assert
         /// against one record pass worth of work, so they want the

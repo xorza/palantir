@@ -156,7 +156,7 @@ impl Forest {
     /// "available" room is passed straight to `LayoutEngine::run`.
     /// The paint-anim wake fold is centralised in
     /// [`Self::min_paint_anim_wake`] and run at the tail of
-    /// `Ui::frame_inner` for both record + paint-only paths.
+    /// `Ui::frame` for both record + paint-only paths.
     #[profiling::function]
     pub(crate) fn post_record(&mut self) {
         let active = self.current_layer();
@@ -178,7 +178,7 @@ impl Forest {
 
     /// Minimum `next_wake` across every layer's paint anims, or
     /// `Duration::MAX` when nothing wants a wake. Called from
-    /// `Ui::frame_inner` after both record and paint-only paths so the
+    /// `Ui::frame` after both record and paint-only paths so the
     /// next anim boundary is queued regardless of which path ran.
     pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Duration {
         let mut min_wake = Duration::MAX;

@@ -427,7 +427,7 @@ pub struct InputState {
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
     /// Frame-snapshot of the theme's default font line height in
-    /// logical px. Filled by [`crate::Ui::frame_inner`] before any
+    /// logical px. Filled by [`crate::Ui::frame`] before any
     /// `response_for` calls; read here to convert
     /// `frame_scroll_lines` into pixels for `scroll_delta_for` without
     /// each call dereffing `theme.text` again. Cached on `InputState`
@@ -468,7 +468,7 @@ pub struct InputState {
     /// is toward not missing real mutations.
     pub(crate) frame_had_action: bool,
     /// Sticky bit: set by every `on_input` call (any event, including
-    /// pointer moves and mod changes), cleared by `Ui::frame_inner`
+    /// pointer moves and mod changes), cleared by `Ui::frame`
     /// at the top of each frame after the paint-anim-only
     /// short-circuit gate has read it. Distinct from `frame_had_action`
     /// — that flag answers "did this *frame's* recording see a
@@ -518,7 +518,7 @@ impl InputState {
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
-            // Populated by `Ui::frame_inner` before record runs;
+            // Populated by `Ui::frame` before record runs;
             // 16.0 is a safe pre-frame fallback (matches the default
             // theme's body line height) so the rare "response_for
             // before first frame" path doesn't divide by zero.
@@ -599,7 +599,7 @@ impl InputState {
         // Any host-pushed event disqualifies the next frame from the
         // paint-anim-only short-circuit — the recording closure might
         // observe even a pointer move (hover styling) or modifier
-        // change (shortcut hint). Cleared at the top of `frame_inner`
+        // change (shortcut hint). Cleared at the top of `frame`
         // after the gate has read it.
         self.had_input_since_last_frame = true;
         if matches!(
@@ -811,7 +811,7 @@ impl InputState {
 
     /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
     /// `cascades` using the current `pointer_pos`. Used by the
-    /// cold-start warmup path in `Ui::frame_inner`: pre-frame-1 input
+    /// cold-start warmup path in `Ui::frame`: pre-frame-1 input
     /// events arrived with an empty cascade so their hit-tests
     /// resolved to nothing. After the warmup record pass has built
     /// a real cascade, this routes the held pointer position onto the

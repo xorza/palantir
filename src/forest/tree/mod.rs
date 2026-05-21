@@ -297,7 +297,7 @@ impl Tree {
     /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
     /// initialise `paint_anims` entries' `last_quantum`. Capacity
     /// retained across frames. The paint-anim wake fold lives on
-    /// [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame_inner`
+    /// [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {
