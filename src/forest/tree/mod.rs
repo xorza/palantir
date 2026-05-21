@@ -126,10 +126,12 @@ pub(crate) struct RootSlot {
     /// set by `Forest::push_layer` for side layers.
     pub(crate) anchor: Vec2,
     /// Caller-supplied size cap (side layers only). `None` means
-    /// "fill from `anchor` to the surface bottom-right". `Some(s)`
-    /// is clamped to the surface at layout time (`available =
-    /// min(s, surface - anchor)`), so a too-large cap never bleeds
-    /// past the viewport. Always `None` for `Main`.
+    /// "fill from `anchor` to the surface bottom-right" — the dropdown /
+    /// tooltip default. `Some(s)` is anchor-independent: `available =
+    /// min(s, surface)`, so the body can measure against its full
+    /// natural size regardless of where it'll paint. The caller takes
+    /// responsibility for placement in that mode (typically via a
+    /// popup's flip-then-clamp). Always `None` for `Main`.
     pub(crate) size: Option<Size>,
 }
 

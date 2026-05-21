@@ -6,9 +6,7 @@ use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
-use crate::primitives::rect::Rect;
 use crate::primitives::shadow::Shadow;
-use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
@@ -109,15 +107,8 @@ impl ContextMenu {
             return ContextMenuResponse::default();
         };
 
-        let surface = ui.display().logical_rect();
         let theme = ui.theme.context_menu.clone();
         let body_id = self.for_id.with("ctx_menu_body");
-
-        // First open has no prior cascade entry — record raw and
-        // request a relayout so pass B can clamp against measured size.
-        let prev_size = ui.response_for(body_id).rect.map(|r| r.size);
-        let clamped = clamp_anchor(raw_anchor, prev_size, surface);
-        let first_open = prev_size.is_none();
 
         let mut e = self.element;
         e.salt = Salt::Verbatim(body_id);
@@ -128,7 +119,10 @@ impl ContextMenu {
             e.min_size.w = theme.min_width;
         }
 
-        let mut popup = Popup::anchored_to(clamped).click_outside(ClickOutside::Dismiss);
+        // `Popup::show` handles surface-aware placement (flip when
+        // overflowing, clamp as a last resort, one-shot relayout on
+        // first open). ContextMenu just hands the raw anchor through.
+        let mut popup = Popup::anchored_to(raw_anchor).click_outside(ClickOutside::Dismiss);
         *popup.element_mut() = e;
         popup.chrome = Some(self.chrome.unwrap_or(theme.panel));
         let PopupResponse {
@@ -138,8 +132,6 @@ impl ContextMenu {
 
         if dismissed || item_clicked {
             ContextMenu::close(ui, self.for_id);
-        } else if first_open {
-            ui.request_relayout();
         }
 
         ContextMenuResponse {
@@ -178,18 +170,6 @@ impl Configure for ContextMenu {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
-}
-
-pub(crate) fn clamp_anchor(raw: Vec2, size: Option<Size>, surface: Rect) -> Vec2 {
-    let Some(s) = size else {
-        return raw;
-    };
-    let max_x = (surface.min.x + surface.size.w - s.w).max(surface.min.x);
-    let max_y = (surface.min.y + surface.size.h - s.h).max(surface.min.y);
-    Vec2::new(
-        raw.x.min(max_x).max(surface.min.x),
-        raw.y.min(max_y).max(surface.min.y),
-    )
 }
 
 // ── MenuItem ────────────────────────────────────────────────────────

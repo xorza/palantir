@@ -299,19 +299,36 @@ impl LayoutEngine {
                 let root = NodeId(slot.first_node);
                 // Main: implicit root paints the full surface (Fill
                 // semantic; arrange uses `available.max(desired)` so
-                // overflow grows past it). Side layers: `anchor` is a
-                // placement and `slot.size` is an optional cap; both
-                // axes clamp to the surface bottom-right so an
-                // oversized cap can't bleed past the viewport. The
-                // root's own `Sizing` governs the painted size within
-                // that available.
+                // overflow grows past it). Side layers: `slot.anchor`
+                // is the paint placement. `slot.size` controls the
+                // measurement available:
+                //   - `None` → "fill from anchor to bottom-right", so
+                //     `available = surface - anchor`. The dropdown /
+                //     tooltip default: body never overflows past the
+                //     viewport regardless of how its own `Sizing`
+                //     resolves.
+                //   - `Some(s)` → anchor-independent cap clamped to
+                //     the surface size. The caller takes responsibility
+                //     for placement (typically via the popup's smart
+                //     flip-then-clamp). Decouples measurement from
+                //     anchor so a popup near the bottom edge can still
+                //     measure against its full content height and flip
+                //     upward on the next frame.
+                // The root's own `Sizing` governs the painted size
+                // within that available.
                 let (origin, available) = if layer == Layer::Main {
                     (surface.min, surface.size)
                 } else {
-                    let rem = (surface_end - slot.anchor).max(glam::Vec2::ZERO);
-                    let avail_w = slot.size.map_or(rem.x, |s| s.w.min(rem.x));
-                    let avail_h = slot.size.map_or(rem.y, |s| s.h.min(rem.y));
-                    (slot.anchor, Size::new(avail_w, avail_h))
+                    let available = match slot.size {
+                        None => {
+                            let rem = (surface_end - slot.anchor).max(glam::Vec2::ZERO);
+                            Size::new(rem.x, rem.y)
+                        }
+                        Some(s) => {
+                            Size::new(s.w.min(surface.size.w), s.h.min(surface.size.h))
+                        }
+                    };
+                    (slot.anchor, available)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
                 let size = if layer == Layer::Main {

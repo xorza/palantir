@@ -137,25 +137,34 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     );
 }
 
-/// Pin popup-body sizing under each `Sizing` mode.
+/// Pin popup-body sizing + anchor placement under each `Sizing` mode.
+/// `Popup::show` passes `Some(surface)` to `Ui::layer` for an anchor-
+/// independent measure, then runs `place_anchor` (flip-then-clamp).
+///
+/// - `Hug` / `Fixed` bodies fit at the raw anchor with room to spare.
+/// - `FILL` fills the full surface and `place_anchor`'s safety clamp
+///   shifts it to `(0, 0)` — the body is the size of the surface and
+///   can't sit at the anchor without overflowing.
 #[test]
 fn popup_body_sizing_matches_sizing_mode() {
     use crate::forest::Layer;
     let anchor = Vec2::new(20.0, 30.0);
-    let cases: &[(Sizing, Sizing, Size)] = &[
-        (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0)),
+    let cases: &[(Sizing, Sizing, Size, Vec2)] = &[
+        (Sizing::Hug, Sizing::Hug, Size::new(100.0, 60.0), anchor),
         (
             Sizing::FILL,
             Sizing::FILL,
-            Size::new(SURFACE.x as f32 - anchor.x, SURFACE.y as f32 - anchor.y),
+            Size::new(SURFACE.x as f32, SURFACE.y as f32),
+            Vec2::ZERO,
         ),
         (
             Sizing::Fixed(80.0),
             Sizing::Fixed(40.0),
             Size::new(80.0, 40.0),
+            anchor,
         ),
     ];
-    for &(sw, sh, expected) in cases {
+    for &(sw, sh, expected_size, expected_min) in cases {
         let mut ui = Ui::for_test();
         ui.run_at(SURFACE, |ui| {
             Panel::vstack()
@@ -178,12 +187,179 @@ fn popup_body_sizing_matches_sizing_mode() {
         let body_root = popup_tree.roots[1].first_node as usize;
         let body_rect = ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
-            body_rect.size, expected,
+            body_rect.size, expected_size,
             "size=({:?},{:?}) → expected {:?}, got {:?}",
-            sw, sh, expected, body_rect.size,
+            sw, sh, expected_size, body_rect.size,
         );
-        assert_eq!(body_rect.min, anchor, "anchor placement preserved");
+        assert_eq!(
+            body_rect.min, expected_min,
+            "size=({:?},{:?}) → expected anchor {:?}, got {:?}",
+            sw, sh, expected_min, body_rect.min,
+        );
     }
+}
+
+/// Pin: a popup whose content wouldn't fit below a near-bottom anchor
+/// must flip and paint *above* the anchor instead of squeezing into
+/// the few pixels of remaining vertical space. Earlier the layout
+/// engine clamped `available` to `surface − anchor`, so the body
+/// measured into the tiny slot, `place_anchor` saw the squeezed size
+/// and decided no flip was needed — feedback loop. `Ui::layer` now
+/// passes `Some(surface)` for anchor-independent measurement, which
+/// lets the body keep its full size and `place_anchor` flip cleanly.
+#[test]
+fn popup_near_bottom_flips_upward() {
+    use crate::forest::Layer;
+    const SURF: UVec2 = UVec2::new(400, 300);
+    let anchor = Vec2::new(20.0, 280.0); // 20 px of room below.
+    let content = Size::new(120.0, 200.0); // Body wants ~200 tall.
+    let mut ui = Ui::for_test();
+    let scene = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::anchored_to(anchor)
+                    .id(WidgetId::from_hash("flip-popup"))
+                    .padding(0.0)
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui, _popup| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("flip-content"))
+                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .show(ui, |_| {});
+                    });
+            });
+    };
+    // `Ui::frame` honours the popup's first-open relayout request, so
+    // pass B in this very call places against pass A's measured size.
+    ui.run_at(SURF, scene);
+
+    let popup_tree = ui.forest.tree(Layer::Popup);
+    let body_root = popup_tree.roots[1].first_node as usize;
+    let body_rect = ui.layout[Layer::Popup].rect[body_root];
+    assert_eq!(
+        body_rect.size, content,
+        "body measured at full content size (anchor-independent available)",
+    );
+    // Flip upward: anchor.y − body.h = 280 − 200 = 80, well inside
+    // the surface. The popup's top-left sits at `(anchor.x, 80)`.
+    assert_eq!(
+        body_rect.min,
+        Vec2::new(anchor.x, anchor.y - content.h),
+        "popup near bottom anchor flipped above the anchor",
+    );
+}
+
+/// Pin: a popup whose body contains a [`crate::Scroll`] with
+/// `always_reserve` placed near a surface edge settles on the very
+/// first frame — the gutter is reserved on both pass A and pass B,
+/// so the Hugged popup body has the same outer width in both passes
+/// and `place_anchor` lands the body in the same spot. Without
+/// `always_reserve` the popup would shift by `bar_width` on frame 2
+/// when the scroll's `overflow` flag flips on after its first arrange.
+///
+/// Stays within the engine's standard 2-pass-per-frame budget — no
+/// retry loops, no cross-frame relayout carryover.
+#[test]
+fn popup_with_always_reserve_scroll_settles_in_one_frame() {
+    use crate::Scroll;
+    const SURF: UVec2 = UVec2::new(400, 400);
+    // Anchor near the right edge so any body-width change between
+    // passes would drift the placement.
+    let anchor = Vec2::new(380.0, 20.0);
+    let mut ui = Ui::for_test();
+    let scene = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::anchored_to(anchor)
+                    .id(WidgetId::from_hash("scroll-popup"))
+                    .padding(0.0)
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .max_size((f32::INFINITY, 100.0))
+                    .show(ui, |ui, _| {
+                        Scroll::vertical()
+                            .id(WidgetId::from_hash("popup-scroll"))
+                            .size((Sizing::Hug, Sizing::Fill(1.0)))
+                            .always_reserve()
+                            .show(ui, |ui| {
+                                Panel::vstack()
+                                    .id(WidgetId::from_hash("scroll-content"))
+                                    .size((Sizing::Fixed(80.0), Sizing::Fixed(300.0)))
+                                    .show(ui, |_| {});
+                            });
+                    });
+            });
+    };
+    let body_id = WidgetId::from_hash("scroll-popup");
+    let body_rect = |ui: &Ui| {
+        ui.response_for(body_id)
+            .rect
+            .expect("popup body has a rect")
+    };
+    // First frame opens the popup. With `always_reserve`, pass A and
+    // pass B both measure the body at `content + bar_width`, so pass
+    // B's placement matches pass B's measured rect.
+    ui.run_at_acked(SURF, scene);
+    let first = body_rect(&ui);
+    // Subsequent input frames must hit the same rect — no drift.
+    for _ in 0..3 {
+        ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        ui.run_at_acked(SURF, scene);
+        assert_eq!(
+            body_rect(&ui),
+            first,
+            "popup must hold its settled position from the opening frame on",
+        );
+    }
+}
+
+/// Pin: once the popup has settled into its flipped position on the
+/// opening frame, subsequent frames (input or no input) must leave
+/// the placement unchanged — the user reported a 1-frame shift on
+/// mouse-move, which would happen if pass B never fired on the
+/// opening frame and the popup landed at the raw anchor first.
+#[test]
+fn popup_placement_is_stable_across_frames() {
+    const SURF: UVec2 = UVec2::new(400, 300);
+    let anchor = Vec2::new(20.0, 280.0);
+    let content = Size::new(120.0, 200.0);
+    let mut ui = Ui::for_test();
+    let scene = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::anchored_to(anchor)
+                    .id(WidgetId::from_hash("stable-popup"))
+                    .padding(0.0)
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui, _popup| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("stable-content"))
+                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .show(ui, |_| {});
+                    });
+            });
+    };
+    let body_id = WidgetId::from_hash("stable-popup");
+    let body_rect_of = |ui: &Ui| {
+        ui.response_for(body_id)
+            .rect
+            .expect("popup body has an arranged rect after the opening frame")
+    };
+    ui.run_at_acked(SURF, scene);
+    let first = body_rect_of(&ui);
+    // Pretend an input arrived (cursor move over the popup).
+    ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
+    ui.run_at_acked(SURF, scene);
+    let second = body_rect_of(&ui);
+    assert_eq!(
+        first, second,
+        "popup must not shift between opening frame and the next input-triggered frame",
+    );
 }
 
 /// Pin: pointer gestures over the area outside the popup body must be
