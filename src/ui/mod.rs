@@ -643,7 +643,15 @@ impl Ui {
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
     /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
     /// stateful logic, iterate directly instead.
-    pub fn key_pressed(&self, sc: Shortcut) -> bool {
+    ///
+    /// Side-effect: auto-subscribes the chord for wake-up. Without
+    /// this, palantir's keyboard wake-gate ([`crate::input::InputState`]'s
+    /// `KeyDown` arm) parks off-focus presses until the next unrelated
+    /// frame, and the caller sees the event one user gesture late.
+    /// Pair with the call-it-every-frame discipline that the
+    /// subscription system already requires.
+    pub fn key_pressed(&mut self, sc: Shortcut) -> bool {
+        self.input.subs.subscribe_key(sc);
         self.input.frame_keyboard_events.iter().any(|e| match e {
             KeyboardEvent::Down(kp) => sc.matches(*kp),
             _ => false,
@@ -653,7 +661,7 @@ impl Ui {
     /// Sugar for `key_pressed(Shortcut::key(Key::Escape))`.
     /// Used by [`crate::widgets::context_menu::ContextMenu`] to
     /// dismiss on Esc.
-    pub fn escape_pressed(&self) -> bool {
+    pub fn escape_pressed(&mut self) -> bool {
         use crate::input::keyboard::Key;
         self.key_pressed(Shortcut::key(Key::Escape))
     }
