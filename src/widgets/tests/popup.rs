@@ -251,18 +251,17 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
-/// Pin: a popup whose body contains a [`crate::Scroll`] with
-/// `always_reserve` placed near a surface edge settles on the very
-/// first frame — the gutter is reserved on both pass A and pass B,
-/// so the Hugged popup body has the same outer width in both passes
-/// and `place_anchor` lands the body in the same spot. Without
-/// `always_reserve` the popup would shift by `bar_width` on frame 2
-/// when the scroll's `overflow` flag flips on after its first arrange.
+/// Pin: a popup whose body contains a [`crate::Scroll`] placed near a
+/// surface edge settles on the very first frame. `Scroll`'s bar
+/// gutter reservation is constant (not state-driven), so the Hugged
+/// popup body has the same outer width in pass A and pass B, and
+/// `place_anchor` lands the body in one shot. Bar visibility (thumb +
+/// track drawn or not) toggles separately based on this-frame's
+/// overflow; the gutter is reserved either way.
 ///
-/// Stays within the engine's standard 2-pass-per-frame budget — no
-/// retry loops, no cross-frame relayout carryover.
+/// Stays within the engine's standard 2-pass-per-frame budget.
 #[test]
-fn popup_with_always_reserve_scroll_settles_in_one_frame() {
+fn popup_with_scroll_settles_in_one_frame() {
     use crate::Scroll;
     const SURF: UVec2 = UVec2::new(400, 400);
     // Anchor near the right edge so any body-width change between
@@ -283,7 +282,6 @@ fn popup_with_always_reserve_scroll_settles_in_one_frame() {
                         Scroll::vertical()
                             .id(WidgetId::from_hash("popup-scroll"))
                             .size((Sizing::Hug, Sizing::Fill(1.0)))
-                            .always_reserve()
                             .show(ui, |ui| {
                                 Panel::vstack()
                                     .id(WidgetId::from_hash("scroll-content"))
@@ -299,9 +297,9 @@ fn popup_with_always_reserve_scroll_settles_in_one_frame() {
             .rect
             .expect("popup body has a rect")
     };
-    // First frame opens the popup. With `always_reserve`, pass A and
-    // pass B both measure the body at `content + bar_width`, so pass
-    // B's placement matches pass B's measured rect.
+    // First frame opens the popup. Body's hugged width is
+    // `content + bar_w` in both passes (constant reservation), so
+    // pass B's placement matches pass B's measured rect.
     ui.run_at_acked(SURF, scene);
     let first = body_rect(&ui);
     // Subsequent input frames must hit the same rect — no drift.
