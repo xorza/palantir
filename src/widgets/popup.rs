@@ -125,11 +125,20 @@ impl Popup {
         let eater_id = body_id.with("eater");
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
+        //
+        // Senses all four pointer interactions so the popup is truly
+        // modal-over-`Main`: pan-drag, scroll, and pinch over the
+        // surrounding area can't leak through to the host (e.g. a
+        // graph canvas underneath that pans on middle-drag and zooms
+        // on scroll/pinch). `Sense::CLICK` is the dismiss trigger;
+        // the other three never produce visible behavior on the
+        // eater itself — they're absorbed and discarded so the host
+        // doesn't see them.
         ui.layer(Layer::Popup, Vec2::ZERO, None, |ui| {
             Frame::new()
                 .id(eater_id)
                 .size((Sizing::FILL, Sizing::FILL))
-                .sense(Sense::CLICK)
+                .sense(Sense::CLICK | Sense::DRAG | Sense::SCROLL | Sense::PINCH)
                 .show(ui);
         });
         let mut element = self.element;

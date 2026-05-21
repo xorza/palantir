@@ -11,6 +11,7 @@
 
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -183,6 +184,73 @@ fn popup_body_sizing_matches_sizing_mode() {
         );
         assert_eq!(body_rect.min, anchor, "anchor placement preserved");
     }
+}
+
+/// Pin: pointer gestures over the area outside the popup body must be
+/// absorbed by the eater — not leak through to a `Main` widget below
+/// that senses the same gesture. Earlier the eater only sensed
+/// `CLICK`, so a graph canvas underneath would still receive scroll /
+/// pinch / drag while the popup was open.
+#[test]
+fn outside_pointer_gestures_do_not_leak_to_main() {
+    let mut ui = Ui::for_test();
+    let bg_id = WidgetId::from_hash("scroll-bg");
+    let scene = |ui: &mut Ui| {
+        // Main-layer background that senses everything pan/zoom-shaped.
+        Panel::vstack()
+            .id(bg_id)
+            .size((Sizing::FILL, Sizing::FILL))
+            .sense(crate::Sense::DRAG | crate::Sense::SCROLL | crate::Sense::PINCH)
+            .show(ui, |ui| {
+                Popup::anchored_to(ANCHOR)
+                    .id(WidgetId::from_hash("test-popup"))
+                    .click_outside(ClickOutside::Block)
+                    .padding(4.0)
+                    .show(ui, |ui, _| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("popup-content"))
+                            .size((Sizing::Fixed(BODY_W), Sizing::Fixed(BODY_H)))
+                            .show(ui, |_| {});
+                    });
+            });
+    };
+    ui.run_at_acked(SURFACE, scene);
+
+    // Move pointer well outside the popup body, then send a scroll
+    // + zoom + middle-drag burst.
+    let outside = Vec2::new(300.0, 300.0);
+    ui.on_input(InputEvent::PointerMoved(outside));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
+    ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
+    ui.on_input(InputEvent::Zoom(1.4));
+    ui.on_input(InputEvent::PointerPressed(
+        crate::input::pointer::PointerButton::Middle,
+    ));
+    ui.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
+    ui.on_input(InputEvent::PointerReleased(
+        crate::input::pointer::PointerButton::Middle,
+    ));
+
+    ui.run_at(SURFACE, scene);
+    let bg = ui.response_for(bg_id);
+    assert_eq!(
+        bg.scroll_pixels,
+        Vec2::ZERO,
+        "scroll-pixels under popup must not reach Main",
+    );
+    assert_eq!(
+        bg.scroll_lines,
+        Vec2::ZERO,
+        "scroll-lines under popup must not reach Main",
+    );
+    assert_eq!(
+        bg.zoom_factor, 1.0,
+        "pinch zoom under popup must not reach Main",
+    );
+    assert!(
+        bg.drag.is_none(),
+        "middle-drag under popup must not latch on Main",
+    );
 }
 
 #[test]
