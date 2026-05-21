@@ -793,6 +793,69 @@ fn compose_coalesces_text_across_distinct_scissor_groups() {
     assert_eq!(buf.text_batches[0].texts.len, 2);
 }
 
+/// Pin: a text run whose ancestor clip cuts its full extent must end
+/// up in a batch whose GPU scissor equals exactly its clipped bounds —
+/// the text shader has no per-instance clip, so a merged scissor would
+/// let glyphs paint past the intended clip. Wider neighbour text on
+/// the other side of the strict clip forces a split.
+#[test]
+fn compose_clipped_text_overflow_does_not_widen_batch_scissor() {
+    let buf = run(
+        |b, _arena| {
+            // Wide outer text — unclipped, full bbox.
+            text(b, rect(0.0, 0.0, 200.0, 20.0));
+            // Narrow clip (20px wide) wrapping a wide text run (100px).
+            // The run's intended visible region is 20px, but its
+            // measured rect is 100px — the clip is the only thing
+            // keeping the glyphs inside.
+            b.push_clip(rect(40.0, 40.0, 20.0, 20.0));
+            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(300, 300)),
+    );
+    // Two batches: one for the unclipped run, one for the strict one.
+    // The strict batch's scissor must be the 20×20 clip rect — not
+    // the union with the wide neighbour.
+    assert_eq!(
+        buf.text_batches.len(),
+        2,
+        "strict (clipped-narrower) text must not coalesce with wider neighbours",
+    );
+    let strict = buf
+        .text_batches
+        .iter()
+        .find(|tb| tb.scissor.w == 20)
+        .expect("expected a batch with 20px-wide scissor");
+    assert_eq!(strict.scissor.w, 20);
+    assert_eq!(strict.scissor.h, 20);
+}
+
+/// Pin: two strict runs whose clips happen to be IDENTICAL rects can
+/// coalesce into one batch — the GPU scissor matches both. Important
+/// for repeated strict clips (e.g. a column of clipped numeric inputs
+/// all the same width).
+#[test]
+fn compose_strict_text_with_matching_clip_coalesces() {
+    let clip = rect(40.0, 40.0, 20.0, 20.0);
+    let buf = run(
+        |b, _arena| {
+            b.push_clip(clip);
+            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            b.pop_clip();
+            b.push_clip(clip);
+            text(b, rect(40.0, 40.0, 100.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(300, 300)),
+    );
+    assert_eq!(
+        buf.text_batches.len(),
+        1,
+        "two strict runs with identical clip bounds should share a batch",
+    );
+}
+
 /// Pin: a rounded-clip change splits the text batch even when text
 /// across the change wouldn't otherwise overlap. Different rounded
 /// clips → different stencil refs at render time; one merged prepare

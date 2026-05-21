@@ -110,6 +110,14 @@ struct OpenBatch {
     /// batch. The first reject for a new quad's overlap test — O(1)
     /// before falling through to the grid lookup.
     text_union: URect,
+    /// `true` once a "strict" run has joined this batch — one whose
+    /// ancestor clip cuts its full unclipped extent in X. The batch's
+    /// GPU scissor (= `text_union`) must then stay equal to that
+    /// strict bound; subsequent runs can only join if their `bounds`
+    /// match exactly. Otherwise the merged scissor would let the
+    /// strict run's glyphs paint past their intended clip (the text
+    /// shader has no per-instance clip).
+    strict: bool,
 }
 
 impl Composer {
@@ -215,6 +223,7 @@ impl Composer {
             texts_start: out.texts.len() as u32,
             last_group: 0,
             text_union: URect::default(),
+            strict: false,
         });
         b.last_group = out.groups.len() as u32;
         b
@@ -722,10 +731,11 @@ impl Composer {
                     // `clip = true` panels actually clip glyphs; an empty
                     // intersection means the run can't reach pixels — skip
                     // the push entirely (cull).
-                    let mut bounds = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                    if let Some(parent) = self.clip_stack.last() {
-                        bounds = bounds.clamp_to(parent.scissor);
-                    }
+                    let unclipped = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    let bounds = match self.clip_stack.last() {
+                        Some(parent) => unclipped.clamp_to(parent.scissor),
+                        None => unclipped,
+                    };
                     if bounds.w == 0 || bounds.h == 0 {
                         continue;
                     }
@@ -736,10 +746,26 @@ impl Composer {
                     if any_overlap(&self.above_text_rects, bounds) {
                         self.flush(out);
                     }
+                    // Batch GPU scissor = `text_union` (union of every
+                    // run's `bounds` in the batch). The text shader has
+                    // no per-instance clip, so a "strict" run — one
+                    // whose ancestor clip cuts the unclipped extent —
+                    // can only batch with peers whose `bounds` matches
+                    // exactly; anything wider would let the strict
+                    // run's glyphs paint past their intended clip.
+                    // Non-strict-with-non-strict coalesces freely.
+                    let new_strict = bounds != unclipped;
+                    if let Some(b) = self.open_batch.as_ref()
+                        && (b.strict || new_strict)
+                        && b.text_union != bounds
+                    {
+                        self.close_batch(out);
+                    }
                     // open_batch must run BEFORE the text push so the
                     // batch's `texts_start` captures this run's index.
                     let b = self.open_batch(out);
                     b.text_union = b.text_union.union(bounds);
+                    b.strict |= new_strict;
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
