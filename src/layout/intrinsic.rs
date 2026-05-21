@@ -90,11 +90,11 @@ pub(crate) fn compute(
     // Hug + Fill both report content-driven intrinsic. Per `intrinsic.md`
     // (next to this file): Fill in intrinsic context returns its content's
     // intrinsic, ignoring weight — `resolve_axis_size` with `available =
-    // INFINITY` enforces exactly that (Fill falls back to `hug_with_margin`).
-    // Skip the content query and padding read for Fixed:
-    // `resolve_axis_size` short-circuits Fixed and never reads
-    // `hug_with_margin`.
-    let hug_with_margin = match sizing {
+    // INFINITY` enforces exactly that (Fill falls back to
+    // `content_plus_padding`). Skip the content query and padding read
+    // for Fixed: `resolve_axis_size` short-circuits Fixed and never
+    // reads `content_plus_padding`.
+    let content_plus_padding = match sizing {
         Sizing::Fixed(_) => 0.0,
         Sizing::Hug | Sizing::Fill(_) => {
             let pad = axis.spacing(style.padding);
@@ -108,13 +108,12 @@ pub(crate) fn compute(
                 style.mode,
                 style.mode_payload,
             ) + pad
-                + margin
         }
     };
 
     resolve_axis_size(AxisCtx {
         sizing,
-        hug_with_margin,
+        content_plus_padding,
         available: f32::INFINITY,
         // Intrinsic queries run with `available = INFINITY`; the
         // min-content floor is irrelevant in that branch (no

@@ -5,7 +5,7 @@ use super::support::{AxisAlignPair, TextCtx, place_axis, resolved_axis_align, ze
 use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
-use crate::layout::types::{align::AxisAlign, sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use fixedbitset::FixedBitSet;
@@ -464,14 +464,10 @@ fn measure_inner(
     // Phase 2: measure cells with resolved col widths. Rows are still
     // unresolved (only Fixed is known); cells get INF on row axis as
     // before. Cell desired heights feed row Hug resolution next.
-    for child in tree.children(node) {
-        let c = child.id;
-        if child.visibility.is_collapsed() {
-            // Still measure so the subtree's `desired` is zeroed
-            // (LayoutEngine::measure short-circuits on collapsed).
-            layout.measure(tree, c, Size::ZERO, tc, out);
-            continue;
-        }
+    // Collapsed children skipped — `LayoutScratch::resize_for` already
+    // zeroed `desired` for the whole frame, and arrange anchors
+    // collapsed subtrees via `zero_subtree`.
+    for c in tree.active_children(node) {
         let cell = tree.bounds(c).grid;
 
         let avail = {
@@ -668,22 +664,12 @@ fn arrange_inner(
         };
 
         // Grid: a child with no explicit alignment stretches to fill its cell
-        // (WPF default). Substitute `Auto → Stretch` on each resolved axis
-        // before placing — same effect as the deleted `AutoBias::AlwaysStretch`
-        // flag had, but local to the one driver that needs it.
+        // (WPF default). `or_stretch_if_auto` on each axis encodes the rule
+        // next to the enum so the next reader finds it there, not in this
+        // call site.
         let AxisAlignPair { h, v } = resolved_axis_align(&s_node, parent_child_align);
-        let h = if matches!(h, AxisAlign::Auto) {
-            AxisAlign::Stretch
-        } else {
-            h
-        };
-        let v = if matches!(v, AxisAlign::Auto) {
-            AxisAlign::Stretch
-        } else {
-            v
-        };
-        let x = place_axis(h, s_node.size.w(), d.w, slot_w);
-        let y = place_axis(v, s_node.size.h(), d.h, slot_h);
+        let x = place_axis(h.or_stretch_if_auto(), s_node.size.w(), d.w, slot_w);
+        let y = place_axis(v.or_stretch_if_auto(), s_node.size.h(), d.h, slot_h);
         let child_rect = Rect {
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),

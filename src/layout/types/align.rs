@@ -108,6 +108,20 @@ pub(crate) enum AxisAlign {
     Stretch,
 }
 
+impl AxisAlign {
+    /// `Auto → Stretch`, otherwise unchanged. Grid's per-cell default
+    /// is stretch (WPF semantics): a child with no explicit alignment
+    /// fills its cell on each axis. Other drivers leave `Auto` alone
+    /// (`place_axis` resolves it via the child's `Sizing`).
+    #[inline]
+    pub(crate) const fn or_stretch_if_auto(self) -> AxisAlign {
+        match self {
+            AxisAlign::Auto => AxisAlign::Stretch,
+            other => other,
+        }
+    }
+}
+
 impl HAlign {
     pub(crate) const fn to_axis(self) -> AxisAlign {
         match self {

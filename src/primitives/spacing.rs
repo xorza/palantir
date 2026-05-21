@@ -219,6 +219,13 @@ impl Spacing {
         let [_l, t, _r, b] = self.as_array();
         t + b
     }
+    /// `(horiz, vert)` — both totals in a single SIMD unpack. Use when
+    /// both axes are needed; otherwise prefer `horiz()` / `vert()`.
+    #[inline]
+    pub fn sums(&self) -> (f32, f32) {
+        let [l, t, r, b] = self.as_array();
+        (l + r, t + b)
+    }
 }
 
 impl std::ops::Add for Spacing {
