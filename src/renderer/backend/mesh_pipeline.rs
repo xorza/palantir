@@ -148,29 +148,20 @@ impl MeshPipeline {
         // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
         // so pad the upload to an even count when the index list is
         // odd-length: write the even prefix + a single padded tail u16.
-        // Hash incorporates the canonical padded form so the gate
-        // matches whether the same content arrives via the even or odd
-        // path next frame.
         let padded = (indices.len() + 1) & !1;
         if indices.len() == padded {
             self.index_buffer
                 .upload(ctx, bytemuck::cast_slice(indices), padded);
         } else {
-            use std::hash::Hasher as _;
-            let mut h = crate::common::hash::Hasher::new();
-            h.write(bytemuck::cast_slice(indices));
-            h.write_u16(0);
-            let content_hash = h.finish();
-            self.index_buffer
-                .upload_with(ctx, padded, content_hash, |buf, ctx| {
-                    ctx.write(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
-                    let tail = [indices[indices.len() - 1], 0u16];
-                    ctx.write(
-                        buf,
-                        ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
-                        bytemuck::cast_slice(&tail),
-                    );
-                });
+            self.index_buffer.upload_with(ctx, padded, |buf, ctx| {
+                ctx.write(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
+                let tail = [indices[indices.len() - 1], 0u16];
+                ctx.write(
+                    buf,
+                    ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
+                    bytemuck::cast_slice(&tail),
+                );
+            });
         }
     }
 
@@ -184,10 +175,10 @@ impl MeshPipeline {
             pass.set_pipeline(&self.pipeline);
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.vertex_buffer.buffer().slice(..));
-        pass.set_vertex_buffer(1, self.instance_buffer.buffer().slice(..));
+        pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
+        pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(
-            self.index_buffer.buffer().slice(..),
+            self.index_buffer.buffer.slice(..),
             wgpu::IndexFormat::Uint16,
         );
     }

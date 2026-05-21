@@ -1,19 +1,10 @@
-//! `DynamicBuffer` — a `wgpu::Buffer` plus growth metadata plus a
-//! per-frame content-hash gate.
+//! `DynamicBuffer` — a `wgpu::Buffer` plus power-of-two growth.
 //!
-//! Each per-frame upload is `buf.upload(ctx, bytes, count)`:
-//! - hashes `bytes`,
-//! - grows the underlying buffer when `count` exceeds capacity,
-//! - skips the belt write entirely when the hash matches last frame's
-//!   (and the buffer wasn't just reallocated).
-//!
-//! On Metal each `queue.write_buffer` allocates a fresh
-//! `MTLBlitCommandEncoder` (~26% self-time in `begin_encoding` per the
-//! frame-bench profile). Routing through the
-//! [`GpuCtx`](super::gpu_ctx::GpuCtx)'s staging belt collapses
-//! N writes into N `copy_buffer_to_buffer` commands on one encoder.
-//! The hash gate stays valuable on top — a content match skips the
-//! belt allocation + copy command + memcpy.
+//! `buf.upload(ctx, bytes, count)` grows the underlying buffer when
+//! `count` exceeds capacity, then schedules a belt-backed
+//! `copy_buffer_to_buffer` to offset 0. No content-hash deduplication:
+//! staging-belt memcpy is cheaper than FxHash of the same bytes, so
+//! gating by hash is always net-negative.
 //!
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) plus
 //! `text_backend`'s vbuf.
@@ -21,9 +12,8 @@
 use super::gpu_ctx::GpuCtx;
 
 pub(crate) struct DynamicBuffer {
-    buffer: wgpu::Buffer,
+    pub(crate) buffer: wgpu::Buffer,
     capacity: usize,
-    last_hash: Option<u64>,
     item_size: usize,
     usage: wgpu::BufferUsages,
     label: &'static str,
@@ -87,7 +77,6 @@ impl DynamicBuffer {
         Self {
             buffer,
             capacity,
-            last_hash: None,
             item_size,
             usage,
             label,
@@ -95,54 +84,32 @@ impl DynamicBuffer {
         }
     }
 
-    /// Handle for binding into render passes / index slots.
-    pub(crate) fn buffer(&self) -> &wgpu::Buffer {
-        &self.buffer
-    }
-
-    /// Common case: hash `bytes`, grow if needed, schedule a belt
-    /// write to offset 0. Returns `true` when a belt write actually
-    /// fired. `bytes.len()` must equal `item_count * self.item_size`.
-    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) -> bool {
-        self.upload_with(ctx, item_count, hash_bytes(bytes), |dst, ctx| {
+    /// Common case: grow if needed, schedule a belt write to offset 0.
+    /// `bytes.len()` must equal `item_count * self.item_size`.
+    pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
+        self.upload_with(ctx, item_count, |dst, ctx| {
             ctx.write(dst, 0, bytes);
-        })
+        });
     }
 
     /// Generic upload path for callers that need more than one belt
     /// write per logical upload (e.g. the mesh index buffer's
     /// odd-length padded path schedules two copies to honor wgpu's
-    /// 4-byte copy alignment). `content_hash` must reflect the full
-    /// logical payload so the gate is correct across calling shapes.
-    /// The `write` closure receives `(&dst_buffer, &mut ctx)` and is
-    /// invoked only when the gate decides a write is needed.
-    pub(crate) fn upload_with<F>(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        item_count: usize,
-        content_hash: u64,
-        write: F,
-    ) -> bool
+    /// 4-byte copy alignment). The `write` closure receives
+    /// `(&dst_buffer, &mut ctx)`.
+    pub(crate) fn upload_with<F>(&mut self, ctx: &mut GpuCtx<'_>, item_count: usize, write: F)
     where
         F: FnOnce(&wgpu::Buffer, &mut GpuCtx<'_>),
     {
-        let grew = self.grow(ctx.device, item_count);
-        if !grew && self.last_hash == Some(content_hash) {
-            return false;
-        }
+        self.grow(ctx.device, item_count);
         write(&self.buffer, ctx);
-        self.last_hash = Some(content_hash);
-        true
     }
 
     /// Grow to fit `needed_len` items, rounding up to the next power
-    /// of two (floored at `min_capacity`). Returns `true` when the
-    /// buffer was reallocated — the gate uses this to force the next
-    /// write through (fresh buffer = undefined contents, hash match
-    /// would be a stale skip).
-    fn grow(&mut self, device: &wgpu::Device, needed_len: usize) -> bool {
+    /// of two (floored at `min_capacity`).
+    fn grow(&mut self, device: &wgpu::Device, needed_len: usize) {
         if needed_len <= self.capacity {
-            return false;
+            return;
         }
         self.capacity = needed_len.next_power_of_two().max(self.min_capacity);
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
@@ -151,13 +118,5 @@ impl DynamicBuffer {
             usage: self.usage,
             mapped_at_creation: false,
         });
-        true
     }
-}
-
-fn hash_bytes(bytes: &[u8]) -> u64 {
-    use std::hash::Hasher as _;
-    let mut h = crate::common::hash::Hasher::new();
-    h.write(bytes);
-    h.finish()
 }

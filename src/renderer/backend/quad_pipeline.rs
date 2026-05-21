@@ -373,7 +373,7 @@ impl QuadPipeline {
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
     /// Bind pipeline + viewport bind group **without** the instance
@@ -501,7 +501,7 @@ impl QuadPipeline {
         let stencil = self.stencil.as_ref().expect("ensure_stencil first");
         pass.set_pipeline(&stencil.stencil_test);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
     /// Bind the mask-write pipeline + mask instance buffer. Caller sets
@@ -511,7 +511,7 @@ impl QuadPipeline {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         pass.set_pipeline(&stencil.mask_write);
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, buf.buffer().slice(..));
+        pass.set_vertex_buffer(0, buf.buffer.slice(..));
     }
 
     /// Draw the single mask `Quad` at `mask_idx` in the mask buffer.
