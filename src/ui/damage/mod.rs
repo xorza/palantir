@@ -104,6 +104,11 @@ pub(crate) struct PaintSnapArena {
     /// Reusable destination for compaction (and a swap target). Same
     /// invariants as `snaps` after a `swap`.
     scratch: Vec<Paint>,
+    /// Retained "which prev paints have been claimed?" bitmap for the
+    /// content-keyed slow path in [`Self::diff_changed_leg`]. Sized to
+    /// `prev_span.len` per call; capacity is reused so steady-state
+    /// content reshuffles don't allocate.
+    prev_matched: Vec<bool>,
     /// Count of `Paint` entries in `snaps` that no live
     /// `NodeSnapshot::paint_span` points into. Drives the compaction
     /// trigger.
@@ -304,13 +309,29 @@ impl PaintSnapArena {
         }
     }
 
-    /// Per-paint diff leg for the changed-paints arm. In-place
-    /// compare against `prev_span`; spill to the tail (orphaning the
-    /// prev slots) when the paint count grew. Shrink shortens the
-    /// span in place. Returns the new paint span. Pushes prev+curr
-    /// screen rects into `out` for every changed paint and bumps
-    /// `self.orphaned` for prev slots no live snapshot references
-    /// after the diff.
+    /// Per-paint diff leg for the changed-paints arm. Two strategies
+    /// in order of cost:
+    ///
+    /// **Fast path** — bit-identical positional match across the whole
+    /// span. Common when only ancestor state changed: the per-node hash
+    /// flipped but the paints themselves carry the same `(screen, hash)`
+    /// in the same order. Zero damage rects, span reused in place.
+    ///
+    /// **Slow path** — content-keyed multiset match. For each curr
+    /// paint, claim the first unmatched prev paint with the same
+    /// `(screen, hash)`; otherwise the curr rect enters damage as
+    /// "added or content-changed." Prev paints left unclaimed at the
+    /// end enter damage as "removed." This is the correct symmetric-
+    /// difference behaviour for a user who authored N shapes and then
+    /// inserted or removed one in the middle: positional ordinals
+    /// shift, but identical-content shapes don't damage. Linear scan
+    /// per curr paint is O(n·m); typical authoring nodes have a
+    /// handful of paints, and the retained `prev_matched` bitmap
+    /// keeps the slow path alloc-free across frames.
+    ///
+    /// The slow path spills `curr_paints` to the tail of `snaps` and
+    /// orphans the prev slot; `maybe_compact` reclaims the tail once
+    /// orphans accumulate.
     pub(crate) fn diff_changed_leg(
         &mut self,
         out: &mut Vec<Rect>,
@@ -319,44 +340,48 @@ impl PaintSnapArena {
     ) -> Span {
         let prev_start = prev_span.start as usize;
         let prev_len = prev_span.len as usize;
-        let mut spilled_start: Option<u32> = None;
-        for (ord, &curr_paint) in curr_paints.iter().enumerate() {
-            if spilled_start.is_some() {
-                self.snaps.push(curr_paint);
-                out.push(curr_paint.screen);
-            } else if ord < prev_len {
-                let slot = &mut self.snaps[prev_start + ord];
-                if *slot != curr_paint {
-                    out.push(slot.screen);
-                    out.push(curr_paint.screen);
-                    *slot = curr_paint;
+        let prev_slice = &self.snaps[prev_start..prev_start + prev_len];
+
+        if prev_len == curr_paints.len() && prev_slice.iter().zip(curr_paints).all(|(p, c)| p == c)
+        {
+            return prev_span;
+        }
+
+        // Split-borrow so the inner loop can read prev_slice (& self.snaps)
+        // and write self.prev_matched simultaneously.
+        let Self {
+            snaps,
+            prev_matched,
+            orphaned,
+            ..
+        } = self;
+        let prev_slice = &snaps[prev_start..prev_start + prev_len];
+
+        prev_matched.clear();
+        prev_matched.resize(prev_len, false);
+        for &c in curr_paints {
+            let mut matched = false;
+            for (i, &p) in prev_slice.iter().enumerate() {
+                if !prev_matched[i] && p == c {
+                    prev_matched[i] = true;
+                    matched = true;
+                    break;
                 }
-            } else {
-                // Growth: lift the in-place-updated prev_len entries to
-                // the tail, append curr, switch to push-mode.
-                let start = self.snaps.len() as u32;
-                self.snaps
-                    .extend_from_within(prev_start..prev_start + prev_len);
-                self.snaps.push(curr_paint);
-                out.push(curr_paint.screen);
-                spilled_start = Some(start);
+            }
+            if !matched {
+                out.push(c.screen);
             }
         }
-        let ord = curr_paints.len();
-        match spilled_start {
-            Some(start) => {
-                self.orphaned = self.orphaned.saturating_add(prev_len as u32);
-                Span::new(start, ord as u32)
+        for (i, &p) in prev_slice.iter().enumerate() {
+            if !prev_matched[i] {
+                out.push(p.screen);
             }
-            None if ord < prev_len => {
-                for o in ord..prev_len {
-                    out.push(self.snaps[prev_start + o].screen);
-                }
-                self.orphaned = self.orphaned.saturating_add((prev_len - ord) as u32);
-                Span::new(prev_span.start, ord as u32)
-            }
-            None => prev_span,
         }
+
+        let new_start = snaps.len() as u32;
+        snaps.extend_from_slice(curr_paints);
+        *orphaned = orphaned.saturating_add(prev_len as u32);
+        Span::new(new_start, curr_paints.len() as u32)
     }
 
     /// Mark `n` paint entries as orphaned (their owning snapshot was

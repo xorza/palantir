@@ -1971,12 +1971,10 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
     let prev_middle_rect = prev_shapes[1].screen;
     let prev_blue_rect = prev_shapes[2].screen;
 
-    // Delete the middle shape. Now ord 0 still maps to red, but
-    // ord 1 — previously green — is now blue. The diff sees:
-    //   ord 0: red == red          → no push.
-    //   ord 1: green (prev) vs blue (curr) → push both.
-    //   ord 2: blue (prev) vs none → push prev (trailing tail).
-    // Net: union of all three "moved" rects in damage.
+    // Delete the middle shape. Content-keyed matching pairs red→red
+    // and blue→blue between frames (same `(screen, hash)` despite the
+    // ordinal shift); only the green paint is unmatched. Damage covers
+    // green's prev rect and nothing else.
     frame(&mut ui, |ui| build(false, ui));
 
     let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
@@ -1995,15 +1993,102 @@ fn shape_removed_from_middle_evicts_trailing_ordinals() {
         "deleted shape's prev rect must enter damage; \
          prev_middle = {prev_middle_rect:?}, region = {rects:?}",
     );
-    // The blue shape's old position must be in damage (mismatch push).
+    // The blue shape never moved (positioned absolutely via local_rect)
+    // and its content is unchanged — content-keyed matching detects
+    // this and excludes it from damage. The damaged region must NOT
+    // intersect blue's rect.
     assert!(
-        intersects(prev_blue_rect),
-        "shifted shape's prev rect must enter damage; \
+        !intersects(prev_blue_rect),
+        "unmoved blue shape must not enter damage; \
          prev_blue = {prev_blue_rect:?}, region = {rects:?}",
     );
-    // ord 0 (red) stayed put — its rect doesn't have to be in damage.
-    // We don't assert absence (region merging may absorb it); we only
-    // pin that the *deleted* and *shifted* rects are present.
+}
+
+/// Symmetric to `shape_removed_from_middle_…`: inserting a new shape
+/// between two existing ones shifts every trailing ordinal, but with
+/// content-keyed matching the existing shapes pair with their prev
+/// counterparts and only the new shape contributes damage.
+#[test]
+fn shape_added_in_middle_damages_only_new() {
+    use crate::Shape;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+
+    let mut ui = Ui::for_test();
+    let red_rect = Rect::new(0.0, 0.0, 20.0, 20.0);
+    let green_rect = Rect::new(60.0, 0.0, 20.0, 20.0);
+    let blue_rect = Rect::new(120.0, 0.0, 20.0, 20.0);
+    let build = |include_middle: bool, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::Fixed(180.0), Sizing::Fixed(60.0)))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(red_rect),
+                    corners: Corners::ZERO,
+                    fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+                if include_middle {
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(green_rect),
+                        corners: Corners::ZERO,
+                        fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                }
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(blue_rect),
+                    corners: Corners::ZERO,
+                    fill: Color::rgb(0.0, 0.0, 1.0).into(),
+                    stroke: Stroke::ZERO,
+                });
+            });
+    };
+
+    frame(&mut ui, |ui| build(false, ui)); // red + blue
+    frame(&mut ui, |ui| build(false, ui)); // settle
+
+    let prev = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_shapes: Vec<_> = ui.damage_engine.arena.snaps[prev.paint_span.range()].to_vec();
+    assert_eq!(prev_shapes.len(), 2);
+    let prev_red_screen = prev_shapes[0].screen;
+    let prev_blue_screen = prev_shapes[1].screen;
+
+    frame(&mut ui, |ui| build(true, ui)); // insert green between
+
+    let post = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    assert_eq!(post.paint_span.len, 3);
+
+    let curr_shapes: Vec<_> = ui.damage_engine.arena.snaps[post.paint_span.range()].to_vec();
+    let region = ui.damage_region();
+    let rects: Vec<_> = region.iter_rects().collect();
+    let intersects = |r: Rect| rects.iter().any(|d| d.intersects(r));
+
+    // Green has no prev counterpart — its curr screen rect enters
+    // damage as "added."
+    let green_screen = curr_shapes
+        .iter()
+        .find(|p| !prev_shapes.iter().any(|pp| pp == *p))
+        .expect("inserted paint must appear in current span")
+        .screen;
+    assert!(
+        intersects(green_screen),
+        "newly inserted shape must enter damage; \
+         green = {green_screen:?}, region = {rects:?}",
+    );
+    // Red and blue paints are bit-identical between frames (same
+    // `(screen, hash)`); content-keyed matching pairs them off and
+    // they must not enter damage despite their ordinal shifting.
+    assert!(
+        !intersects(prev_red_screen),
+        "unmoved red shape must not enter damage; region = {rects:?}",
+    );
+    assert!(
+        !intersects(prev_blue_screen),
+        "ordinal-shifted-but-unchanged blue shape must not enter damage; \
+         region = {rects:?}",
+    );
 }
 
 /// Painting-only invariant: every `DamageEngine.prev` entry covers
