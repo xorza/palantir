@@ -10,6 +10,7 @@
 //! Pulled into both targets via `#[path]` so the bench measures the
 //! same workload a human can eyeball through the visual example.
 
+use std::cell::OnceCell;
 use std::rc::Rc;
 
 use palantir::{
@@ -138,15 +139,38 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                         .gap(10.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            let rows: Vec<Track> = (0..prop_rows).map(|_| Track::hug()).collect();
+                            // Per-frame `Rc::from([...])` / `Vec::collect()` would each
+                            // allocate; the strict-zero `alloc_free` bench catches it.
+                            // Cache the canonical `Rc<[Track]>`s once per thread so the
+                            // hot path is a refcount bump. Each bench process feeds a
+                            // single `scale`, so keying on it isn't needed.
+                            thread_local! {
+                                static GRID_COLS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
+                                static GRID_ROWS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
+                            }
+                            let cols = GRID_COLS.with(|c| {
+                                c.get_or_init(|| {
+                                    Rc::from([
+                                        Track::hug().min(80.0),
+                                        Track::fill(),
+                                        Track::fixed(60.0),
+                                    ])
+                                })
+                                .clone()
+                            });
+                            let rows = GRID_ROWS.with(|c| {
+                                c.get_or_init(|| {
+                                    (0..prop_rows)
+                                        .map(|_| Track::hug())
+                                        .collect::<Vec<_>>()
+                                        .into()
+                                })
+                                .clone()
+                            });
                             Grid::new()
                                 .id_salt("props")
-                                .cols(Rc::from([
-                                    Track::hug().min(80.0),
-                                    Track::fill(),
-                                    Track::fixed(60.0),
-                                ]))
-                                .rows(Rc::<[Track]>::from(rows))
+                                .cols(cols)
+                                .rows(rows)
                                 .gap(6.0)
                                 .padding(4.0)
                                 .size((Sizing::FILL, Sizing::Hug))
