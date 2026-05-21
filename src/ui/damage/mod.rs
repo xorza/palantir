@@ -27,6 +27,7 @@
 
 use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
+use crate::forest::seen_ids::WidgetIdMap;
 #[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
 use crate::primitives::approx::EPS;
@@ -35,7 +36,7 @@ use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::{Cascades, Paint};
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
@@ -139,7 +140,7 @@ pub(crate) struct DamageEngine {
     /// in place per node. Cross-layer uniqueness of `WidgetId` is
     /// already enforced by `SeenIds::record` at recording time, so
     /// the bare `WidgetId` key is safe.
-    pub(crate) prev: FxHashMap<WidgetId, NodeSnapshot>,
+    pub(crate) prev: WidgetIdMap<NodeSnapshot>,
     /// Paint-snap arena referenced by every `NodeSnapshot.paint_span`.
     /// See [`PaintSnapArena`] for the lifecycle.
     pub(crate) arena: PaintSnapArena,
@@ -169,7 +170,7 @@ impl Default for DamageEngine {
             #[cfg(any(test, feature = "internals"))]
             dirty: Vec::new(),
             budget_px: DEFAULT_PASS_BUDGET_PX,
-            prev: FxHashMap::default(),
+            prev: WidgetIdMap::default(),
             arena: PaintSnapArena::default(),
             raw_rects: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
@@ -368,11 +369,7 @@ impl PaintSnapArena {
 
     /// Walk live `NodeSnapshot::paint_span`s in pre-order paint
     /// order and reseat into `scratch`, then swap.
-    pub(crate) fn compact(
-        &mut self,
-        forest: &Forest,
-        prev: &mut FxHashMap<WidgetId, NodeSnapshot>,
-    ) {
+    pub(crate) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         self.scratch.clear();
         for (_layer, tree) in forest.iter_paint_order() {
             for wid in tree.records.widget_id() {
@@ -408,11 +405,7 @@ impl PaintSnapArena {
     /// Trigger compaction when the arena is large enough
     /// ([`COMPACT_MIN_TOTAL`]) and orphaned entries are ≥ 75 % of the
     /// buffer ([`COMPACT_ORPHAN_RATIO_NUM`]/4).
-    pub(crate) fn maybe_compact(
-        &mut self,
-        forest: &Forest,
-        prev: &mut FxHashMap<WidgetId, NodeSnapshot>,
-    ) {
+    pub(crate) fn maybe_compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         let total = self.snaps.len() as u32;
         if total >= COMPACT_MIN_TOTAL
             && self.orphaned.saturating_mul(4) >= total * COMPACT_ORPHAN_RATIO_NUM
