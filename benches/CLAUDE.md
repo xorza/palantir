@@ -327,8 +327,12 @@ allocation attribution use the `alloc_free*` benches with `DHAT_DUMP=1`.
   (E-cores 16-31). The script prefixes every hardware event with
   `cpu_core/.../` and pins with `taskset -c 0`. Don't strip the
   prefix — `-e cycles` reports per-PMU and looks halved.
-- TMA metric groups only resolve on `cpu_core`. The `--cpu 0` arg on
-  the topdown pass is required, not cosmetic.
+- TMA metric groups only resolve on `cpu_core`; the cpu_atom event
+  variants come back as `<not counted>` on a P-core run, which is
+  fine. **Don't pass `--cpu` to the topdown `perf stat`** — it makes
+  perf try to attach the cpu_atom event variants to the named CPU,
+  and on a P-core target that fails the whole group with "no
+  supported events found." `taskset -c 0` alone is sufficient.
 - **Multiplexing**: 8 general counters + fixed counters per P-core.
   The HW event group above stays under that limit so measurement
   coverage reads `[100.00%]`. If you add events, split into multiple
@@ -347,7 +351,7 @@ cargo bench --bench frame --features internals --no-run
 BIN=$(ls -t target/release/deps/frame-* | grep -v '\.d$' | head -1)
 
 # TMA L1
-taskset -c 0 perf stat -M TopdownL1 --cpu 0 -- "$BIN" --bench --profile-time 5
+taskset -c 0 perf stat -M TopdownL1 -- "$BIN" --bench --profile-time 5
 
 # Drill: e.g. backend_bound -> memory_bound -> l3_bound
 taskset -c 0 perf stat -M tma_memory_bound_group -- "$BIN" --bench --profile-time 5

@@ -137,9 +137,14 @@ taskset -c "$PIN_CPU" \
     "$BENCH_BIN" "${BENCH_ARGS[@]}" >/dev/null 2>&1 || true
 
 if [ -z "${SKIP_TOPDOWN:-}" ]; then
+    # Don't pass --cpu here: on hybrid CPUs perf tries to attach the
+    # cpu_atom variants of the topdown events to whatever --cpu names,
+    # and on a P-core target that fails the whole group with "no
+    # supported events found." taskset alone pins; the cpu_atom rows
+    # come back as "<not counted>" and the cpu_core metrics resolve.
     echo "==> perf stat -M TopdownL1 (TMA microarchitectural buckets)"
     taskset -c "$PIN_CPU" \
-        perf stat -M TopdownL1 --cpu "$PIN_CPU" -o "$PERF_TOPDOWN" -- \
+        perf stat -M TopdownL1 -o "$PERF_TOPDOWN" -- \
         "$BENCH_BIN" "${BENCH_ARGS[@]}" >/dev/null 2>&1 || \
         echo "    (TopdownL1 metric group unavailable — kernel too old or PMU access denied)"
 fi
