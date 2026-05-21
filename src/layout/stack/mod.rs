@@ -17,6 +17,14 @@ use crate::primitives::{rect::Rect, size::Size};
 pub(crate) struct FillEntry {
     node: NodeId,
     weight: f32,
+    /// Minimum main-axis extent this entry will accept. The freeze
+    /// loop pins an entry at `floor` when its weighted share would be
+    /// lower. Source depends on phase: `measure` uses the child's
+    /// `intrinsic(MinContent)` (largest non-shrinkable descendant);
+    /// `arrange` uses the child's measured `desired.main` (post-WPF
+    /// Stretch this is the child's content size). Invariant:
+    /// arrange-floor ≥ measure-floor for the same child, since
+    /// `resolve_axis_size` floors `desired` by `intrinsic_min`.
     floor: f32,
     cap: f32,
     frozen_alloc: Option<f32>,
@@ -278,10 +286,12 @@ pub(crate) fn arrange(
     );
     // The sum we report to `justify` is the post-redistribute total —
     // i.e., what the children will *actually* occupy after arrange.
+    // unwrap: `freeze_distribute` post-condition guarantees every
+    // entry's `frozen_alloc` is `Some(_)`.
     let sum_main_arranged = sum_non_fill_main
         + layout.scratch.stack_fill.pool[pool_start..]
             .iter()
-            .map(|e| e.frozen_alloc.unwrap_or(e.floor))
+            .map(|e| e.frozen_alloc.unwrap())
             .sum::<f32>();
     let leftover_for_justify = (main_total - sum_main_arranged - total_gap).max(0.0);
 
