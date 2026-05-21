@@ -162,18 +162,12 @@ fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonThe
 }
 
 /// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
-/// F9 toggles the frame/FPS readout. Subscribes via the canonical
-/// `Ui::subscribe_key` so off-focus presses still wake the loop.
+/// F9 toggles the frame/FPS readout. `key_pressed` auto-subscribes so
+/// off-focus presses still wake the loop.
 fn handle_debug_keys(ui: &mut Ui) {
-    let f12 = Shortcut::key(Key::F12);
-    let f10 = Shortcut::key(Key::F10);
-    let f9 = Shortcut::key(Key::F9);
-    ui.subscribe_key(f12);
-    ui.subscribe_key(f10);
-    ui.subscribe_key(f9);
-    let toggle_damage = ui.key_pressed(f12);
-    let toggle_dim = ui.key_pressed(f10);
-    let toggle_stats = ui.key_pressed(f9);
+    let toggle_damage = ui.key_pressed(Shortcut::key(Key::F12));
+    let toggle_dim = ui.key_pressed(Shortcut::key(Key::F10));
+    let toggle_stats = ui.key_pressed(Shortcut::key(Key::F9));
     let o = &mut ui.debug_overlay;
     if toggle_damage {
         o.damage_rect = !o.damage_rect;
