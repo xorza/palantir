@@ -27,10 +27,9 @@ cargo bench --bench caches --features internals        # gated benches
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`):
 - **No features needed**: `alloc_free`, `input_throughput`.
-- **`internals`**: `frame`, `alloc_free_gpu`, `stroke_tessellate`,
-  `scrollzoom`, `text_atlas`, `half_simd`.
-- **`internals` + `bench-deep`**: `caches`, `cascade`, `damage`,
-  `damage_merge_gpu`.
+- **`internals`**: `frame`, `alloc_free_gpu`, `scrollzoom`,
+  `text_atlas`.
+- **`internals` + `bench-deep`**: `caches`, `damage`.
 
 `cargo bench --no-run` without features only builds `alloc_free` and
 `input_throughput`; everything else requires `--features internals`

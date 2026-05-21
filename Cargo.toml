@@ -74,11 +74,6 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
-name = "stroke_tessellate"
-harness = false
-required-features = ["internals"]
-
-[[bench]]
 name = "scrollzoom"
 harness = false
 required-features = ["internals"]
@@ -98,24 +93,9 @@ harness = false
 required-features = ["internals", "bench-deep"]
 
 [[bench]]
-name = "cascade"
-harness = false
-required-features = ["internals", "bench-deep"]
-
-[[bench]]
 name = "damage"
 harness = false
 required-features = ["internals", "bench-deep"]
-
-[[bench]]
-name = "damage_merge_gpu"
-harness = false
-required-features = ["internals", "bench-deep"]
-
-[[bench]]
-name = "half_simd"
-harness = false
-required-features = ["internals"]
 
 [features]
 # Exposes `internals::*` (cache reset + introspection helpers used by
