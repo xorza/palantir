@@ -128,7 +128,7 @@ fn build_heavy(ui: &mut Ui) {
                     .gap(4.0)
                     .padding(8.0)
                     .size((Sizing::FILL, Sizing::Hug))
-                    .background(group_bg)
+                    .background(group_bg.clone())
                     .clip_rounded()
                     .show(ui, |ui| {
                         Text::new("Group header — interesting copy that wraps")
@@ -141,7 +141,7 @@ fn build_heavy(ui: &mut Ui) {
                                 .gap(8.0)
                                 .padding(6.0)
                                 .size((Sizing::FILL, Sizing::Hug))
-                                .background(row_bg)
+                                .background(row_bg.clone())
                                 .clip_rounded()
                                 .show(ui, |ui| {
                                     // Inner zstack adds a nesting level — exercises
@@ -153,7 +153,7 @@ fn build_heavy(ui: &mut Ui) {
                                             Frame::new()
                                                 .id_salt(("h-avatar", g, r))
                                                 .size((Sizing::FILL, Sizing::FILL))
-                                                .background(avatar_bg)
+                                                .background(avatar_bg.clone())
                                                 .show(ui);
                                         });
                                     Text::new("row name with longer text content")
@@ -220,7 +220,7 @@ fn build_dense(ui: &mut Ui) {
                                     Frame::new()
                                         .id_salt(("d-avatar", g, r))
                                         .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
-                                        .background(avatar_bg)
+                                        .background(avatar_bg.clone())
                                         .show(ui);
                                     Text::new("name")
                                         .id_salt(("d-name", g, r))
