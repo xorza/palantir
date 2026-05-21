@@ -29,12 +29,12 @@
 
 use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
 use crate::forest::rollups::NodeHash;
+use crate::forest::seen_ids::WidgetIdMap;
 use crate::layout::ShapedText;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use glam::IVec2;
-use rustc_hash::FxHashMap;
 use std::ops::Range;
 
 /// Snapshot index entry. `nodes` indexes the [`NodeArenas`] columns;
@@ -233,7 +233,7 @@ pub(crate) struct MeasureCache {
     pub(crate) text_shapes_arena: LiveArena<ShapedText>,
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the arenas above.
-    pub(crate) snapshots: FxHashMap<WidgetId, ArenaSnapshot>,
+    pub(crate) snapshots: WidgetIdMap<ArenaSnapshot>,
 }
 
 impl MeasureCache {

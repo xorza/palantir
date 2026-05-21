@@ -14,7 +14,7 @@ use crate::common::per_layer::PerLayer;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
-use crate::forest::seen_ids::Endpoint;
+use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::{NodeId, Tree, TreeItem, TreeItems};
 use crate::input::sense::Sense;
@@ -25,7 +25,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
 use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
-use rustc_hash::FxHashMap;
 use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
 
@@ -276,7 +275,7 @@ pub(crate) struct Cascades {
     /// wrong fallback: it carries the previous *frame*'s data, not
     /// the previous *pass*'s. Pays one O(N) memcpy per cascade run
     /// in exchange for not paying an O(N) hashmap insert per widget.
-    pub(crate) by_id: FxHashMap<WidgetId, Endpoint>,
+    pub(crate) by_id: WidgetIdMap<Endpoint>,
 }
 
 impl Cascades {

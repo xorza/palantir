@@ -21,12 +21,13 @@
 
 use crate::common::cache_arena::LiveArena;
 use crate::forest::rollups::NodeHash;
+use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::tree::Tree;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::{Cascade, EntryRow, LayerCascades, Paint};
-use rustc_hash::{FxHashMap, FxHashSet};
+use rustc_hash::FxHashSet;
 use soa_rs::Soa;
 
 /// Cache key. Same fields as the prior instrumentation probe, now
@@ -140,8 +141,8 @@ enum ChurnDecision {
 
 #[derive(Default)]
 pub struct CascadeCache {
-    snapshots: FxHashMap<WidgetId, Snapshot>,
-    churn: FxHashMap<WidgetId, Churn>,
+    snapshots: WidgetIdMap<Snapshot>,
+    churn: WidgetIdMap<Churn>,
     /// Monotonic frame counter, incremented in `reset_counters`. Lets
     /// `Churn::last_capture_frame` detect a "we hit on at least one
     /// intermediate frame" gap without an explicit hit flag.

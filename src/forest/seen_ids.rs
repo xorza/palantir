@@ -32,6 +32,33 @@ use crate::forest::Layer;
 use crate::forest::tree::NodeId;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
+use std::collections::HashMap;
+use std::hash::{BuildHasherDefault, Hasher};
+
+/// Passthrough `Hasher` for `WidgetId`. `WidgetId` is already a 64-bit
+/// FxHash, so re-running it through `FxHasher` adds ~20 cycles per
+/// insert with no distribution benefit (the input bits are already
+/// avalanche-mixed). This stores the single `write_u64` call and
+/// returns it from `finish`. Other `write*` paths are unreachable
+/// because `WidgetId`'s derived `Hash` impl only writes its `u64`.
+#[derive(Default)]
+pub(crate) struct IdHasher(u64);
+
+impl Hasher for IdHasher {
+    #[inline]
+    fn finish(&self) -> u64 {
+        self.0
+    }
+    #[inline]
+    fn write_u64(&mut self, n: u64) {
+        self.0 = n;
+    }
+    fn write(&mut self, _bytes: &[u8]) {
+        unreachable!("IdHasher only sees write_u64 from WidgetId's derived Hash impl");
+    }
+}
+
+pub(crate) type WidgetIdMap<V> = HashMap<WidgetId, V, BuildHasherDefault<IdHasher>>;
 
 /// One collision endpoint — a node together with its originating
 /// layer. Both halves of a `CollisionRecord` are `Endpoint`s so the
@@ -89,11 +116,11 @@ pub(crate) struct SeenIds {
     /// keys feed the [`Self::rollover`] removed-diff and the
     /// [`crate::ui::cascade::Cascades::by_id`] snapshot taken at
     /// the end of each `CascadesEngine::run`.
-    pub(crate) curr: FxHashMap<WidgetId, Endpoint>,
+    pub(crate) curr: WidgetIdMap<Endpoint>,
     /// Last *painted* frame's `curr`. Only the keys matter for the
     /// rollover diff — values are stale across frames. Same type as
     /// `curr` so `std::mem::swap` is alloc-free.
-    prev: FxHashMap<WidgetId, Endpoint>,
+    prev: WidgetIdMap<Endpoint>,
     /// Diff output: widgets present in `prev` but not in `curr`.
     /// Repopulated by [`Self::rollover`]; consumers iterate via a
     /// shared borrow on the field. Public-in-crate so callers can
