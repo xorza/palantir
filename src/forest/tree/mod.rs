@@ -532,10 +532,18 @@ impl Tree {
             new_id.0 & SUBTREE_GRID_FLAG == 0,
             "NodeId exhausted 31-bit arena (high bit is SUBTREE_GRID_FLAG)",
         );
+        // Stamp the self-Grid bit at open time — `cols.layout.mode` is
+        // already in registers here. Lets `close_node` drop its
+        // `layout[i].mode` read (3 record columns → 2).
+        let init_end = if cols.layout.mode == LayoutMode::Grid {
+            (new_id.0 + 1) | SUBTREE_GRID_FLAG
+        } else {
+            new_id.0 + 1
+        };
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
-            subtree_end: new_id.0 + 1,
+            subtree_end: init_end,
             layout: cols.layout,
             attrs: cols.attrs,
         });
@@ -601,32 +609,24 @@ impl Tree {
         let shapes = &mut self.records.shape_span_mut()[i];
         shapes.len = shapes_len - shapes.start;
 
-        // `subtree_end[i]` may already carry the grid flag, set by a
-        // closed descendant. Split into clean end + flag and stamp the
-        // flag if this node is itself a Grid (first time only —
-        // descendants' close_node already merged theirs in).
+        // `subtree_end[i]` is already the finalized "subtree contains
+        // Grid" answer: self-Grid was stamped at `open_node`, and
+        // descendants merged their flags up via this same code at
+        // close. No `layout[i].mode` read needed — drops close_node
+        // from 3 record-column touches to 2.
         let raw = self.records.subtree_end()[i];
-        let end = raw & SUBTREE_END_MASK;
-        let self_is_grid = self.records.layout()[i].mode == LayoutMode::Grid;
-        let descendant_has_grid = raw & SUBTREE_GRID_FLAG != 0;
-        let subtree_has_grid = self_is_grid || descendant_has_grid;
-        if self_is_grid && !descendant_has_grid {
-            self.records.subtree_end_mut()[i] = end | SUBTREE_GRID_FLAG;
-        }
 
         if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
             let pi = parent.idx();
             let ends = self.records.subtree_end_mut();
             let parent_raw = ends[pi];
-            let parent_end = parent_raw & SUBTREE_END_MASK;
-            // Preserve the parent's already-set grid flag (from any
-            // earlier-closed sibling) and OR in this child's flag.
-            let child_flag = if subtree_has_grid {
-                SUBTREE_GRID_FLAG
-            } else {
-                0
-            };
-            ends[pi] = parent_end.max(end) | (parent_raw & SUBTREE_GRID_FLAG) | child_flag;
+            // Take the max of the two ends and OR the union of both
+            // grid flags. Bit-level: low 31 bits are always ≤
+            // SUBTREE_END_MASK so `.max` on the masked words gives the
+            // right end; high bit is the flag and `(a | b) & FLAG`
+            // unions cleanly.
+            ends[pi] = (parent_raw & SUBTREE_END_MASK).max(raw & SUBTREE_END_MASK)
+                | ((parent_raw | raw) & SUBTREE_GRID_FLAG);
         }
     }
 
