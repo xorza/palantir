@@ -48,6 +48,116 @@ takes more than 200 µs.
   Lever: cache more aggressively across frames; eliminate redundant
   tree walks.
 
+## Profile findings (4th pass — `perf record` on `resizing_cpu`)
+
+**Major reframe: the "cosmic-text dominates resize" hypothesis was
+wrong.** A 10-second `perf record -F 3000 --call-graph dwarf` of the
+`resizing_cpu` bench arm (11K samples on cpu_core) shows:
+
+**Self-% in palantir code (Rust binary, 78% of total cycles):**
+
+| Function | Self % | Estimated µs/frame at 1.4 ms |
+|---|---|---|
+| `cascade::CascadesEngine::run` | 7.12% | ~100 µs |
+| `composer::Composer::compose` | 5.43% | ~76 µs |
+| `layoutengine::LayoutEngine::measure` | 5.42% | ~76 µs |
+| `encoder::encode_node` | 3.70% | ~52 µs |
+| `layout::intrinsic::compute` | 3.03% | ~42 µs |
+| `forest::Forest::open_node` | 2.69% | ~38 µs |
+| `Tree::post_record` (compute_hashes) | 2.01% | ~28 µs |
+| `damage::DamageEngine::compute` | 1.88% | ~26 µs |
+| `composer::quad_forces_flush` | 1.73% | ~24 µs |
+| `text_backend::encode::try_emit_cached` (glyphon) | 1.62% | ~23 µs |
+| `frame_arena::lower_background` | 1.43% | ~20 µs |
+| `Shapes::add` | 1.36% | ~19 µs |
+| `layoutengine::arrange` | 1.31% | ~18 µs |
+| `soa_rs::Soa::push` | 1.26% | ~18 µs |
+| `text::shape_unbounded` | 1.11% | ~16 µs |
+
+**Distribution by DSO (entire process):**
+- `frame-*` (palantir code) — 77.6%
+- `libnvidia-eglcore` (driver via wgpu) — 11.6%
+- `libc.so.6` (malloc/free) — 10.0%
+
+### Implications
+
+**1. Text shaping is NOT the resize bottleneck.**
+Combined `shape_unbounded` + `text_backend::encode` + glyphon = ~3–4%
+of resize cost. Idea A's predicted savings drop from "hundreds of µs"
+to **~30–50 µs**. Still worth doing but no longer the single most
+leveraged item.
+
+**2. No single hotspot — the pipeline is evenly distributed.**
+The top 5 functions (cascade, composer, measure, encode, intrinsic)
+account for ~25% combined. Halving any single one saves only ~5% of
+resize cost (~70 µs).
+
+**3. `libc` is 10% (mostly malloc/free) — and the hot-loop chunk is
+text shaping.**
+
+Filtering perf samples by stack content: most libc hits are warmup
+(font loading via `fontdb`, naga shader compile, wgpu setup,
+`dlopen`). The actual hot-loop allocation site is in
+`src/text/cosmic.rs:236-289`:
+
+```rust
+let key = key_for(text, ..., max_width_px, ...);  // includes max_w_q
+if let Some(entry) = self.cache.get(&key) { return ... }
+// Cache miss path:
+let mut buffer = Buffer::new(&mut self.font_system, metrics);
+buffer.set_size(max_width_px, None);
+buffer.set_text(text, ...);
+buffer.shape_until_scroll(...);
+self.cache.insert(key, CacheEntry { buffer, ... });
+```
+
+The cache key includes `max_w_q` (quantized wrap width
+— `src/text/mod.rs:580`). On resize, the wrap width changes every
+frame → cache miss → **fresh `Buffer` allocated per text shape per
+frame**. With ~500 text shapes in the fixture, that's ~500 fresh
+`Buffer` allocations per resize iteration. Each `Buffer` contains a
+`Vec<BufferLine>` plus per-line shape buffers and layout runs.
+
+**This refines Idea A:** the lever is *allocation churn*, not CPU.
+Cosmic-text's `Buffer::set_size` + `shape_until_scroll` should re-flow
+in place when only width changes (cached `BufferLine`s reuse cached
+glyph shaping); need to verify with the cosmic-text source. If it
+works, the fix is small:
+1. Key the cache by `(text, font, line_height, family, halign)` —
+   drop `max_w_q` from the key.
+2. Store `current_max_w` on the cache entry.
+3. On width-change hit, mutate the entry: `buffer.set_size(new_w)` +
+   `buffer.shape_until_scroll(false)`. No allocation.
+
+**4. Cascade (7%) is the single biggest palantir hotspot.**
+`CascadeCache` exists but **misses on resize** because `rect_q` (the
+quantized root rect) changes every frame. The cache that's "~99%
+effective on cached/partial" is mostly dead weight on resize.
+
+**5. `compute_hashes` is 2% (28 µs) on resize.**
+Pick 1 (fold into record) saves ~half of that → ~15 µs. On a 1.4 ms
+budget that's 1%. Still useful but not transformative.
+
+**6. wgpu/Vulkan CPU-side work is 12%.**
+Out of palantir's direct control. The composer's CPU-side cmd-buffer
+encoding (`compose` + `quad_forces_flush` = 7.2%) feeds wgpu's CPU
+queue submission. Reducing per-frame quad count would reduce both.
+
+### Revised resize attack surface
+
+No silver bullet. Each pass costs roughly the same. The path to a
+meaningfully faster resize requires either:
+
+- **A. Across-the-board work reduction via aggressive caching that
+  survives `rect_q` changes.** The Cascade cache key includes `rect_q`
+  — if cascade output could be expressed *relative* to the root rect
+  (a delta cache), resize would preserve hits. Big architecture change.
+- **B. Eliminate the libc 10%.** Find per-frame allocations in the hot
+  loop. Cheap if discoverable.
+- **C. Compress the entire pipeline by ~10% via walk fusion** (Pick 1
+  + Pick 2 + Pick 3 collectively). Saves walk overhead across all
+  passes.
+
 ## Validation findings (3rd pass — read the code)
 
 Key discoveries that re-shaped the ranking:
@@ -426,14 +536,18 @@ proof.
 
 # Re-prioritized recommendation
 
+**Post-profile re-ranking** — A downgraded, allocation hunting elevated:
+
 | Rank | Idea | Bench arm hit | Effort | Confidence |
 |---|---|---|---|---|
-| **1** | **A — retained cosmic-text `Buffer`** | `resizing_cpu` (~hundreds of µs) | moderate | spike first |
-| **2** | **Pick 1 — fold `compute_hashes` into record** | all (~5–10 µs) | small-mod | high |
-| **3** | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
-| **4** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
-| 5 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
-| 6 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
+| **1** | **Hunt per-frame allocations** (libc = 10% of resize) | resize (~tens of µs) | small per fix | high |
+| **2** | **Pick 1 — fold `compute_hashes` into record** | all (~15 µs resize, ~5–10 µs cached) | small-mod | high |
+| **3** | **A — retained cosmic-text `Buffer`** | resize (~30–50 µs) | moderate | spike first |
+| **4** | **Cascade delta-cache surviving `rect_q` changes** | resize (~80 µs) | heavy | high upside, hard |
+| **5** | **C — cache arranged rects in MeasureCache** | `cached_cpu` (~5–10 µs) | moderate | medium |
+| 6 | **D — interleave leaf measure into record** | all (~3–5 µs) | small | medium |
+| 7 | **B — retain shape lowering** | `cached_cpu` + `partial_cpu` (~5–10 µs) | heavy | medium-low |
+| 8 | **Pick 3 — drop cmd buffer** | all (~5–15 µs) | heavy | moderate |
 | — | ~~E (drop `Cascade.paint_rect`)~~ | ~~all~~ | — | killed by cache key |
 | — | ~~Pick 2 (fuse arrange + cascade)~~ | ~~all~~ | — | killed by cascade cache |
 
