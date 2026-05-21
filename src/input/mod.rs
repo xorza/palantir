@@ -757,9 +757,9 @@ impl InputState {
                         // doesn't pair with the second.
                         let now = std::time::Instant::now();
                         let is_double = cap.last_click_id == Some(a)
-                            && cap
-                                .last_click_at
-                                .is_some_and(|prev| now.duration_since(prev) <= DOUBLE_CLICK_WINDOW);
+                            && cap.last_click_at.is_some_and(|prev| {
+                                now.duration_since(prev) <= DOUBLE_CLICK_WINDOW
+                            });
                         if is_double {
                             cap.frame_double_click = Some(a);
                             cap.last_click_at = None;
@@ -1025,8 +1025,8 @@ impl InputState {
         let secondary_clicked = right.frame_click == Some(id);
         let focused = self.focused == Some(id);
         let drag = self.active_drag(id);
-        let double_click = PointerButton::all()
-            .find(|b| self.capture(*b).frame_double_click == Some(id));
+        let double_click =
+            PointerButton::all().find(|b| self.capture(*b).frame_double_click == Some(id));
 
         // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
         // Both gates fire even when the routed delta is `Vec2::ZERO`

@@ -304,7 +304,9 @@ fn popup_with_scroll_settles_in_one_frame() {
     let first = body_rect(&ui);
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
-        ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+        ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(
+            50.0, 50.0,
+        )));
         ui.run_at_acked(SURF, scene);
         assert_eq!(
             body_rect(&ui),
@@ -351,7 +353,9 @@ fn popup_placement_is_stable_across_frames() {
     ui.run_at_acked(SURF, scene);
     let first = body_rect_of(&ui);
     // Pretend an input arrived (cursor move over the popup).
-    ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
+    ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(
+        50.0, 100.0,
+    )));
     ui.run_at_acked(SURF, scene);
     let second = body_rect_of(&ui);
     assert_eq!(

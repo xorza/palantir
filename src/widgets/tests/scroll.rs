@@ -1201,6 +1201,50 @@ mod bars {
         );
     }
 
+    /// `BarMode::Overlay`: no gutter is reserved. Viewport gets the
+    /// full outer width regardless of content/overflow. The bar
+    /// (when drawn) paints over the content's far-edge strip — same
+    /// geometry as Reserved mode, but no space taken from the
+    /// content area. Pinned with overflowing content so the bar
+    /// would actually appear.
+    #[test]
+    fn overlay_mode_skips_gutter_reservation() {
+        use crate::BarMode;
+        use crate::primitives::size::Size;
+        let surface = UVec2::new(400, 600);
+        let mut ui = Ui::for_test();
+        let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
+        let scene = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("root"))
+                .show(ui, |ui| {
+                    Scroll::vertical()
+                        .id(WidgetId::from_hash("scroll"))
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
+                        .bar_mode(BarMode::Overlay)
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("tall"))
+                                .size((Sizing::Fixed(180.0), Sizing::Fixed(800.0)))
+                                .show(ui);
+                        });
+                });
+        };
+        ui.run_at_acked(surface, scene);
+        ui.run_at_acked(surface, scene);
+        let row = *ui.scroll_state(scroll_id);
+        assert_eq!(
+            row.viewport,
+            Size::new(200.0, 200.0),
+            "Overlay: viewport = full outer (no gutter reservation), \
+             even when content overflows and the bar is drawn",
+        );
+        assert!(
+            row.overflow.1,
+            "content > viewport on Y — bar should be drawn"
+        );
+    }
+
     /// Cold-mount with content that fits in the viewport: the gutter
     /// is still reserved (constant), the bar thumb just isn't drawn.
     /// Overflow stays `false`.

@@ -324,9 +324,7 @@ impl LayoutEngine {
                             let rem = (surface_end - slot.anchor).max(glam::Vec2::ZERO);
                             Size::new(rem.x, rem.y)
                         }
-                        Some(s) => {
-                            Size::new(s.w.min(surface.size.w), s.h.min(surface.size.h))
-                        }
+                        Some(s) => Size::new(s.w.min(surface.size.w), s.h.min(surface.size.h)),
                     };
                     (slot.anchor, available)
                 };
