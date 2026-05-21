@@ -69,7 +69,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/debug_overlay.rs` — `DebugOverlayConfig` on `Ui` (damage-rect / clear-damage / frame-stats visualizations)
 - `src/showcase/` — multi-page demo content; `src/main.rs` — showcase binary (uses `WinitHost`)
 - `examples/` — `dump_theme` (theme TOML round-trip)
-- `benches/` — criterion (alloc_free, alloc_free_gpu, caches, cascade, damage, damage_merge_gpu, frame, half_simd, input_throughput, scrollzoom, stroke_tessellate); `docs/` — in-flight notes + `roadmap/` (per-feature design notes) + `cache-history/` (post-mortem on removed caches); `DESIGN.md` — full rationale
+- `benches/` — criterion (alloc_free, alloc_free_gpu, caches, damage, frame, input_throughput, scrollzoom, text_atlas); `docs/` — in-flight notes + `roadmap/` (per-feature design notes) + `cache-history/` (post-mortem on removed caches); `DESIGN.md` — full rationale
 
 Key deps: `wgpu`+`winit`, `cosmic-text` (glyphon is inlined as `src/text_backend/`, not an external dep), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
 
