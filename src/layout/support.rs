@@ -63,7 +63,7 @@ pub(crate) fn leaf_text_shapes<'a>(
     // so the `records.shape_span()[i]` span is exactly the leaf's own direct
     // shapes — contiguous, no child boundaries to skip.
     assert_eq!(
-        tree.records.subtree_end()[node.idx()],
+        tree.subtree_end_of(node.idx()),
         node.0 + 1,
         "leaf_text_shapes called on non-leaf node {node:?}",
     );
@@ -192,7 +192,7 @@ pub(crate) fn zero_subtree(
         size: Size::ZERO,
     };
     let start = node.idx();
-    let end = (tree.records.subtree_end()[start]) as usize;
+    let end = tree.subtree_end_of(start) as usize;
     out[layout.active_layer].rect[start..end].fill(zero);
 }
 
