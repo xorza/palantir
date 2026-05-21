@@ -329,11 +329,23 @@ impl LayoutEngine {
                     (slot.anchor, available)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
-                let size = if layer == Layer::Main {
-                    available.max(desired)
-                } else {
-                    desired
+                // The layer engine *is* the parent for the root, so it
+                // does WPF Stretch's arrange-time grow here. Per axis:
+                // `Fill` → `available.max(desired)` (stretch to the
+                // layer's slot, but let rigid descendants overflow
+                // past it); `Hug`/`Fixed` → `desired`. Main's implicit
+                // viewport root is `Fill × Fill`, so both axes resolve
+                // to `available.max(desired)` — same as the prior
+                // surface-fill behavior.
+                let root_size = tree.records.layout()[root.idx()].size;
+                let pick = |sizing, avail: f32, des: f32| match sizing {
+                    Sizing::Fill(_) => avail.max(des),
+                    _ => des,
                 };
+                let size = Size::new(
+                    pick(root_size.w(), available.w, desired.w),
+                    pick(root_size.h(), available.h, desired.h),
+                );
                 self.arrange(tree, root, None, Rect { min: origin, size }, out);
             }
         }

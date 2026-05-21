@@ -69,6 +69,14 @@ pub(crate) fn arrange(
     inner: Rect,
     out: &mut Layout,
 ) {
+    let layouts = tree.records.layout();
+    let canvas_size = layouts[node.idx()].size;
+    // Hug canvas: don't stretch Fill children; they'd inflate to the
+    // canvas's own intrinsic which already counts `position`. Stretch
+    // only when the canvas is constrained (Fixed/Fill), where Fill
+    // children should fill the canvas's actual slot.
+    let stretch_w = !matches!(canvas_size.w(), Sizing::Hug);
+    let stretch_h = !matches!(canvas_size.h(), Sizing::Hug);
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -77,9 +85,17 @@ pub(crate) fn arrange(
         }
         let d = layout.scratch.desired[c.idx()];
         let pos = tree.bounds(c).position;
+        let s = layouts[c.idx()].size;
+        let pick = |sizing: Sizing, des: f32, full: f32, stretch: bool| match sizing {
+            Sizing::Fill(_) if stretch => full,
+            _ => des,
+        };
         let child_rect = Rect {
             min: inner.min + pos,
-            size: d,
+            size: Size::new(
+                pick(s.w(), d.w, inner.size.w, stretch_w),
+                pick(s.h(), d.h, inner.size.h, stretch_h),
+            ),
         };
         layout.arrange(tree, c, Some(node), child_rect, out);
     }

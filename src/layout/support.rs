@@ -164,15 +164,13 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
                 content
             }
         }
-        Sizing::Fill(_) => {
-            if ctx.available.is_finite() {
-                (ctx.available - ctx.margin)
-                    .max(content)
-                    .max(ctx.intrinsic_min - ctx.margin)
-            } else {
-                content
-            }
-        }
+        // WPF Stretch: Fill returns content at measure-time. The
+        // "fill the slot" expansion happens at *arrange* — driver
+        // arrange code redistributes leftover to Fill children
+        // proportionally. Returning `available` here would balloon
+        // any Hug ancestor to its grandparent's allocation (CSS auto-
+        // sizing's classic Hug+Fill bug).
+        Sizing::Fill(_) => content.max(ctx.intrinsic_min - ctx.margin),
     };
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }

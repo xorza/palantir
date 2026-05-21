@@ -61,6 +61,7 @@ fn collapsed_does_not_consume_fill_weight() {
     ui.run_at(UVec2::new(400, 100), |ui| {
         root = Panel::hstack()
             .auto_id()
+            .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
                 Frame::new()
                     .id(WidgetId::from_hash("a"))

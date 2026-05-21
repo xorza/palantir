@@ -10,5 +10,6 @@
 mod convergence;
 mod fill_propagation;
 mod no_overlap;
+mod stretch_semantics;
 mod support;
 mod text_wrap;

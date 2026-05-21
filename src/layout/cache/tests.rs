@@ -182,27 +182,41 @@ fn cache_hit_replays_same_desired_size() {
 
 #[test]
 fn changing_available_forces_miss_and_remeasure() {
-    // Same authoring (Fill child) but the parent's available size
-    // shrinks between frames → `available_q` arm of the cache key
-    // diverges. The snapshot must be replaced, not stale.
+    // Same authoring but the parent's available size shrinks between
+    // frames → `available_q` arm of the cache key diverges. The
+    // snapshot must be replaced, not stale.
+    //
+    // Use a wrapping Text child: its desired height depends on the
+    // available width (more wrap = taller). A pure `Fill` child would
+    // return content (0×0 for an empty frame) regardless of available
+    // under WPF Stretch semantics — a poor proxy for remeasurement.
+    use crate::TextStyle;
+    use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
-    let mut ui = Ui::for_test();
+    use crate::widgets::text::Text;
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let build = |ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("inner"))
+            .size((Sizing::FILL, Sizing::Hug))
             .show(ui, |ui| {
-                Frame::new()
-                    .id(WidgetId::from_hash("fill"))
-                    .size((Sizing::Fill(1.0), Sizing::Fill(1.0)))
-                    .show(ui);
+                Text::new(
+                    "the quick brown fox jumps over the lazy dog \
+                     pack my box with five dozen liquor jugs",
+                )
+                .id(WidgetId::from_hash("fill"))
+                .size((Sizing::FILL, Sizing::Hug))
+                .style(TextStyle::default().with_font_size(16.0))
+                .wrapping()
+                .show(ui);
             });
     };
-    run_frame_at(&mut ui, UVec2::new(200, 200), build);
+    run_frame_at(&mut ui, UVec2::new(400, 400), build);
     let wid = WidgetId::from_hash("fill");
     let avail1 = snap_for(&ui, wid).unwrap().avail;
     let d1 = snap_for(&ui, wid).unwrap().desired[0];
 
-    run_frame_at(&mut ui, UVec2::new(80, 80), build);
+    run_frame_at(&mut ui, UVec2::new(100, 400), build);
     let avail2 = snap_for(&ui, wid).unwrap().avail;
     let desired2 = snap_for(&ui, wid).unwrap().desired[0];
     assert_ne!(
@@ -211,7 +225,7 @@ fn changing_available_forces_miss_and_remeasure() {
     );
     assert_ne!(
         d1, desired2,
-        "remeasure must produce a different desired for a Fill child",
+        "remeasure must produce a different desired for a wrapping child",
     );
 }
 

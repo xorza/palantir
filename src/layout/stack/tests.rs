@@ -66,6 +66,7 @@ fn vstack_with_fill_distributes_remainder() {
         root = Some(
             Panel::vstack()
                 .auto_id()
+                .size((Sizing::Hug, Sizing::FILL))
                 .show(ui, |ui| {
                     Button::new().auto_id().size((Sizing::Hug, 50.0)).show(ui);
                     Button::new()
@@ -90,6 +91,7 @@ fn hstack_fill_weights_split_remainder_proportionally() {
         root = Some(
             Panel::hstack()
                 .auto_id()
+                .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     Frame::new()
                         .id(WidgetId::from_hash("a"))
@@ -110,6 +112,11 @@ fn hstack_fill_weights_split_remainder_proportionally() {
     assert_eq!(kids[1].min.x, 100.0);
 }
 
+/// Two equal-weight Fill buttons inside a Fill-width HStack split the
+/// 400 px slot evenly at arrange — independent of their label widths.
+/// (Was set up against a Hug HStack which hugs to content per WPF
+/// semantics; that case is covered by
+/// `cross_driver_tests::stretch_semantics::hug_hstack_with_fill_spacer_hugs_to_button`.)
 #[test]
 fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
     let mut ui = Ui::for_test();
@@ -118,6 +125,7 @@ fn hstack_equal_fill_siblings_are_equal_width_regardless_of_content() {
         root = Some(
             Panel::hstack()
                 .auto_id()
+                .size((Sizing::FILL, Sizing::Hug))
                 .show(ui, |ui| {
                     Button::new()
                         .id(WidgetId::from_hash("wide"))
@@ -188,6 +196,7 @@ fn hstack_justify_is_noop_when_fill_child_consumes_leftover() {
         root = Some(
             Panel::hstack()
                 .auto_id()
+                .size((Sizing::FILL, Sizing::Hug))
                 .justify(Justify::Center)
                 .show(ui, |ui| {
                     Frame::new()
@@ -298,18 +307,23 @@ fn negative_left_margin_spills_outside_slot() {
 }
 
 /// Pass-2 must not double-count non-Fill children in `total_main`. A Hug
-/// HStack with a Hug button and a Fill frame in a 200-wide parent should
-/// hug to 200 (button + Fill share), not 216.
+/// HStack with a Hug button and a Fill frame in a 200-wide parent hugs
+/// to the button's content width (WPF Stretch semantics: the Fill
+/// frame contributes its content — zero, here — to the measure, then
+/// expands at arrange). Pre-WPF behavior reported 200 (parent's
+/// available); a buggy double-count would have reported ~242
+/// (button + Fill's measured share).
 #[test]
 fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
     let mut ui = Ui::for_test();
+    let mut button_node = None;
     let mut root = None;
     ui.run_at(UVec2::new(200, 100), |ui| {
         root = Some(
             Panel::hstack()
                 .auto_id()
                 .show(ui, |ui| {
-                    Button::new().auto_id().label("Hi").show(ui);
+                    button_node = Some(Button::new().auto_id().label("Hi").show(ui).node());
                     Frame::new()
                         .id(WidgetId::from_hash("filler"))
                         .size((Sizing::FILL, Sizing::Hug))
@@ -318,10 +332,11 @@ fn hug_hstack_pass2_does_not_double_count_non_fill_children() {
                 .node(),
         );
     });
-    assert_eq!(
-        ui.layout_engine.scratch.desired[root.unwrap().idx()].w,
-        200.0
-    );
+    let button_w = ui.layout_engine.scratch.desired[button_node.unwrap().idx()].w;
+    let root_w = ui.layout_engine.scratch.desired[root.unwrap().idx()].w;
+    // Hug HStack tracks the button's content width — no inflation from
+    // the Fill filler, and no double-count (would be > root_w).
+    assert_eq!(root_w, button_w);
 }
 
 /// Pin: a collapsed child between two active children does not advance
@@ -364,9 +379,12 @@ fn hstack_collapsed_child_neither_advances_cursor_nor_consumes_gap() {
     assert_eq!((b.min.x, b.size.w), (25.0, 30.0));
 }
 
-/// Pin: a Fill child's `max_size` clamps the measure-time main share.
+/// Pin: a Fill child's `max_size` caps its arranged width when the
+/// freeze loop's share would otherwise exceed the cap. (Measure-time
+/// Fill returns content per WPF Stretch; the `max_size` clamp applies
+/// in the arrange freeze loop.)
 #[test]
-fn hstack_fill_max_size_caps_measured_share() {
+fn hstack_fill_max_size_caps_arranged_share() {
     use crate::primitives::size::Size;
 
     let mut ui = Ui::for_test();
@@ -390,10 +408,10 @@ fn hstack_fill_max_size_caps_measured_share() {
                 );
             });
     });
-    let desired = ui.layout_engine.scratch.desired[fill_node.unwrap().idx()];
+    let arranged = ui.layout[Layer::Main].rect[fill_node.unwrap().idx()];
     assert_eq!(
-        desired.w, 50.0,
-        "Fill measure must clamp to max_size when leftover share > cap"
+        arranged.size.w, 50.0,
+        "Fill arrange must clamp to max_size when leftover share > cap"
     );
 }
 
