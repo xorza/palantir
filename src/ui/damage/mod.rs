@@ -109,6 +109,12 @@ pub(crate) struct PaintSnapArena {
     /// `prev_span.len` per call; capacity is reused so steady-state
     /// content reshuffles don't allocate.
     prev_matched: Vec<bool>,
+    /// Curr indices that pass 1 of [`Self::diff_changed_leg`] couldn't
+    /// pair on exact `(screen, hash)`. Empty after pass 1 → pass 2 is
+    /// skipped entirely (the common "shapes reshuffled but content
+    /// unchanged" case). Capacity retained across frames so the slow
+    /// path stays alloc-free.
+    pending_curr: Vec<u32>,
     /// Count of `Paint` entries in `snaps` that no live
     /// `NodeSnapshot::paint_span` points into. Drives the compaction
     /// trigger.
@@ -244,10 +250,10 @@ const COMPACT_ORPHAN_RATIO_NUM: u32 = 3;
 /// damage outcome is lifted into a host-facing report.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Damage {
-    None,
+    Skip,
     Full,
     /// **Invariant:** the wrapped region is non-empty. [`Damage::new`]
-    /// is the only constructor and returns [`Damage::None`] when the
+    /// is the only constructor and returns [`Damage::Skip`] when the
     /// region is empty, so consumers can iterate `region.iter_rects()`
     /// without checking `is_empty` first.
     Partial(DamageRegion),
@@ -257,13 +263,13 @@ impl Damage {
     /// True iff this is the skip signal — caller can short-circuit
     /// the renderer entirely.
     #[inline]
-    pub(crate) fn is_none(self) -> bool {
-        matches!(self, Damage::None)
+    pub(crate) fn is_skip(self) -> bool {
+        matches!(self, Damage::Skip)
     }
 
     pub(crate) fn new(surface: Rect, region: DamageRegion) -> Damage {
         if region.is_empty() {
-            return Damage::None;
+            return Damage::Skip;
         }
         let surface_area = surface.area();
         assert!(surface_area > EPS);
@@ -298,18 +304,21 @@ impl PaintSnapArena {
     }
 
     /// Same-count refresh: overwrite the slots `prev_span` points to
-    /// with `paints[..prev_span.len]`. Caller has already verified
-    /// counts are equal and no per-paint hash changed; only screens
-    /// shifted with the ancestor transform.
+    /// with each `paints[i].screen`. Caller is the
+    /// `Entry::Occupied(e) if e.get().hash == curr_node_hash` arm of
+    /// [`DamageEngine::compute`], so identical per-node hashes
+    /// guarantee `prev_span.len == paints.len()` — debug asserted
+    /// rather than silently truncated, so a future rollup-hash
+    /// collision surfaces as a panic in tests.
     pub(crate) fn refresh_screens(&mut self, prev_span: Span, paints: &[Paint]) {
+        debug_assert_eq!(prev_span.len as usize, paints.len());
         let start = prev_span.start as usize;
-        let n = (prev_span.len as usize).min(paints.len());
-        for (ord, p) in paints.iter().take(n).enumerate() {
+        for (ord, p) in paints.iter().enumerate() {
             self.snaps[start + ord].screen = p.screen;
         }
     }
 
-    /// Per-paint diff leg for the changed-paints arm. Two strategies
+    /// Per-paint diff leg for the changed-paints arm. Three strategies
     /// in order of cost:
     ///
     /// **Fast path** — bit-identical positional match across the whole
@@ -317,21 +326,32 @@ impl PaintSnapArena {
     /// flipped but the paints themselves carry the same `(screen, hash)`
     /// in the same order. Zero damage rects, span reused in place.
     ///
-    /// **Slow path** — content-keyed multiset match. For each curr
-    /// paint, claim the first unmatched prev paint with the same
-    /// `(screen, hash)`; otherwise the curr rect enters damage as
-    /// "added or content-changed." Prev paints left unclaimed at the
-    /// end enter damage as "removed." This is the correct symmetric-
-    /// difference behaviour for a user who authored N shapes and then
-    /// inserted or removed one in the middle: positional ordinals
-    /// shift, but identical-content shapes don't damage. Linear scan
-    /// per curr paint is O(n·m); typical authoring nodes have a
-    /// handful of paints, and the retained `prev_matched` bitmap
-    /// keeps the slow path alloc-free across frames.
+    /// **Slow path** — two-pass content-keyed match. Pass 1 pairs
+    /// each curr paint with the first unclaimed prev paint of identical
+    /// `(screen, hash)` (no damage — same shape, same place). Pass 2
+    /// handles still-unmatched curr paints by looking for an unclaimed
+    /// prev with matching `hash` only: if found, emit *both* rects as
+    /// move damage; otherwise emit the curr rect alone (added or
+    /// content-changed). Prev paints left unclaimed are removals.
+    /// Exact-first ordering matters: it preserves the "shape stayed
+    /// put" pairing even when another shape with the same `hash`
+    /// moved within the same node, avoiding the spurious move-damage
+    /// a single-pass matcher would emit.
     ///
-    /// The slow path spills `curr_paints` to the tail of `snaps` and
-    /// orphans the prev slot; `maybe_compact` reclaims the tail once
-    /// orphans accumulate.
+    /// Sub-pixel float wobble on `Paint.screen` (composer's pixel
+    /// snapping runs downstream) makes strict `==` brittle; the
+    /// hash-only fallback recovers the move signal without losing the
+    /// exact-match optimisation.
+    ///
+    /// Linear scan per curr paint is O(n·m); the retained
+    /// `prev_matched` bitmap and `pending_curr` index list keep both
+    /// passes alloc-free across frames. Pass 1 collects unmatched
+    /// curr indices into `pending_curr`; pass 2 walks only those —
+    /// `pending_curr.is_empty()` (every shape paired exactly) skips
+    /// pass 2 outright. The slow path spills `curr_paints` to the
+    /// tail of `snaps` and routes the prev span through
+    /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail
+    /// once orphans accumulate.
     pub(crate) fn diff_changed_leg(
         &mut self,
         out: &mut Vec<Rect>,
@@ -347,19 +367,23 @@ impl PaintSnapArena {
             return prev_span;
         }
 
-        // Split-borrow so the inner loop can read prev_slice (& self.snaps)
-        // and write self.prev_matched simultaneously.
+        // Split-borrow: the matching passes read prev_slice (& self.snaps)
+        // and write the scratch bitmap + pending-index list simultaneously.
         let Self {
             snaps,
             prev_matched,
-            orphaned,
+            pending_curr,
             ..
         } = self;
         let prev_slice = &snaps[prev_start..prev_start + prev_len];
 
         prev_matched.clear();
         prev_matched.resize(prev_len, false);
-        for &c in curr_paints {
+        pending_curr.clear();
+
+        // Pass 1 — exact (screen, hash) pairs. No damage. Curr indices
+        // that didn't pair queue up for pass 2.
+        for (j, &c) in curr_paints.iter().enumerate() {
             let mut matched = false;
             for (i, &p) in prev_slice.iter().enumerate() {
                 if !prev_matched[i] && p == c {
@@ -369,9 +393,30 @@ impl PaintSnapArena {
                 }
             }
             if !matched {
+                pending_curr.push(j as u32);
+            }
+        }
+        // Pass 2 — hash-only pairs surface as moves; unmatched curr
+        // surfaces as adds. Skipped entirely when pass 1 paired every
+        // curr paint (the common "reshuffled but content unchanged"
+        // case).
+        for &j in pending_curr.iter() {
+            let c = curr_paints[j as usize];
+            let mut moved = false;
+            for (i, &p) in prev_slice.iter().enumerate() {
+                if !prev_matched[i] && p.hash == c.hash {
+                    out.push(p.screen);
+                    out.push(c.screen);
+                    prev_matched[i] = true;
+                    moved = true;
+                    break;
+                }
+            }
+            if !moved {
                 out.push(c.screen);
             }
         }
+        // Remaining prev paints — removals.
         for (i, &p) in prev_slice.iter().enumerate() {
             if !prev_matched[i] {
                 out.push(p.screen);
@@ -380,7 +425,7 @@ impl PaintSnapArena {
 
         let new_start = snaps.len() as u32;
         snaps.extend_from_slice(curr_paints);
-        *orphaned = orphaned.saturating_add(prev_len as u32);
+        self.mark_orphaned(prev_len as u32);
         Span::new(new_start, curr_paints.len() as u32)
     }
 
@@ -552,7 +597,7 @@ impl DamageEngine {
                     Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => 1,
                     Entry::Vacant(e) => {
                         let paint_span = arena.append(curr_paints_slice);
-                        push_screens(raw_rects, &arena.snaps[paint_span.range()]);
+                        push_screens(raw_rects, curr_paints_slice);
                         e.insert(NodeSnapshot {
                             rect: curr_rect,
                             paint_span,
@@ -690,9 +735,6 @@ impl DamageEngine {
     }
 }
 
-/// Unified per-paint diff leg. In-place compare against the prev
-/// span; spill to the tail (and orphan the prev slots) when the paint
-/// count grew. Shrink shortens the span in place. Returns the new
 /// Drain every paint's screen rect into the raw-rect buffer. Used by
 /// the Vacant-insert arm (everything's new), the eviction arm
 /// (everything's going), and the removed-widget tail.

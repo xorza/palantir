@@ -428,7 +428,7 @@ impl Ui {
         // Skip frames have nothing for the host to submit, so ack
         // here — otherwise `frame_state` stays `Pending` and the next
         // paint frame's `classify_frame` escalates to `Full`.
-        if damage.is_none() {
+        if damage.is_skip() {
             self.frame_state.mark_submitted();
         }
 
@@ -1309,7 +1309,7 @@ pub mod test_support {
         /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
         pub fn damage_paint_kind(&self) -> &'static str {
             match Damage::new(self.display.logical_rect(), self.damage_region()) {
-                Damage::None => "skip",
+                Damage::Skip => "skip",
                 Damage::Full => "full",
                 Damage::Partial(_) => "partial",
             }
