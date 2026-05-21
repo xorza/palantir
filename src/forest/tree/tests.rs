@@ -805,21 +805,28 @@ fn ui_layer_records_popup_into_separate_tree() {
     );
 }
 
-/// `Ui::layer`'s optional size cap rides through to `LayoutEngine::run` and
-/// selects the overlay's `available`: `None` fills from anchor to surface
-/// bottom-right; smaller cap wins; oversized cap clamps to viewport so
-/// it never bleeds past the surface.
+/// `Ui::layer`'s optional size cap selects the overlay's `available`.
+/// `None` fills from anchor to surface bottom-right (anchor-clamped —
+/// the dropdown/tooltip default). `Some(s)` is anchor-independent and
+/// clamped to the surface; the caller takes placement responsibility
+/// in that mode (typically via a popup's flip-then-clamp). Anchor here
+/// is (50, 40) on a 400×300 surface; remaining viewport from that
+/// anchor is (350, 260).
 #[test]
 fn ui_layer_size_caps_overlay_available() {
     use crate::primitives::size::Size;
     const SURF: UVec2 = UVec2::new(400, 300);
     let anchor = glam::Vec2::new(50.0, 40.0);
-    // Remaining viewport = (350, 260).
     let cases: &[(Option<Size>, Size)] = &[
+        // None → anchor-clamped: surface − anchor.
         (None, Size::new(350.0, 260.0)),
+        // Some(s) → anchor-independent: cap unchanged when ≤ surface.
         (Some(Size::new(120.0, 80.0)), Size::new(120.0, 80.0)),
-        (Some(Size::new(9999.0, 9999.0)), Size::new(350.0, 260.0)),
-        (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 260.0)),
+        // Some(huge) → clamped to the full surface size, not to
+        // `surface − anchor` (the caller picks the position).
+        (Some(Size::new(9999.0, 9999.0)), Size::new(400.0, 300.0)),
+        // Some(mixed) → each axis clamps independently to surface.
+        (Some(Size::new(100.0, 9999.0)), Size::new(100.0, 300.0)),
     ];
     let mut ui = Ui::for_test();
     for (cap, expected) in cases {

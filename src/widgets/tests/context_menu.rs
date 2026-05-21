@@ -204,26 +204,38 @@ fn menu_body_width_does_not_span_surface() {
     );
 }
 
-/// Pure-function pin for `clamp_anchor`. Off-edge raw anchors get
-/// pulled back inside surface so `anchor + size <= surface_max`;
-/// surface-origin raw anchors are unchanged.
+/// Pure-function pin for `place_anchor`. Off-edge raw anchors flip to
+/// the opposite side of themselves when there's room there; surface-
+/// origin raw anchors are unchanged; a body taller/wider than the
+/// surface clamps inward.
 #[test]
-fn clamp_anchor_pins_to_surface() {
+fn place_anchor_flips_then_clamps() {
     use crate::primitives::rect::Rect;
     use crate::primitives::size::Size;
-    use crate::widgets::context_menu::clamp_anchor;
+    use crate::widgets::popup::place_anchor;
     let surface = Rect::new(0.0, 0.0, 400.0, 400.0);
     let size = Size::new(160.0, 120.0);
 
-    // Bottom-right overflow → clamp to (240, 280).
-    let p = clamp_anchor(Vec2::new(395.0, 395.0), Some(size), surface);
-    assert_eq!(p, Vec2::new(240.0, 280.0));
+    // Bottom-right overflow with room above/left → flip both axes.
+    // Anchor at (395, 395): anchor.y+h = 515 > 400 and anchor.y-h =
+    // 275 ≥ 0, so y flips to 275; same logic gives x = 235.
+    let p = place_anchor(Vec2::new(395.0, 395.0), Some(size), surface);
+    assert_eq!(p, Vec2::new(235.0, 275.0));
 
-    // Inside → unchanged.
-    let p = clamp_anchor(Vec2::new(50.0, 50.0), Some(size), surface);
+    // Inside → unchanged on both axes.
+    let p = place_anchor(Vec2::new(50.0, 50.0), Some(size), surface);
     assert_eq!(p, Vec2::new(50.0, 50.0));
 
-    // Unknown size → pass-through.
-    let p = clamp_anchor(Vec2::new(395.0, 395.0), None, surface);
+    // Unknown size (first frame before measure) → pass-through;
+    // `Popup::show` pairs this with a one-shot relayout so the
+    // next pass places against measured size.
+    let p = place_anchor(Vec2::new(395.0, 395.0), None, surface);
     assert_eq!(p, Vec2::new(395.0, 395.0));
+
+    // Body taller than the surface — neither side fits the flip
+    // constraint, so the safety clamp shifts inward as far as it
+    // can without leaving the top-left off-surface.
+    let too_tall = Size::new(50.0, 500.0);
+    let p = place_anchor(Vec2::new(50.0, 200.0), Some(too_tall), surface);
+    assert_eq!(p, Vec2::new(50.0, 0.0));
 }
