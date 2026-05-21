@@ -942,9 +942,14 @@ mod bars {
         }
     }
 
-    /// Reservation must collapse when overflow goes away.
+    /// Reservation is **constant** across the overflow toggle — the
+    /// viewport stays at `outer - bar_w` whether or not content
+    /// overflows. Keeping the viewport size stable prevents Hug
+    /// ancestors (e.g. a `Popup` body) from shifting by `bar_w` when
+    /// overflow first appears. Bar visibility (thumb + track drawn or
+    /// not) still toggles with overflow; only the gutter stays.
     #[test]
-    fn bar_reservation_collapses_when_overflow_disappears() {
+    fn bar_reservation_stays_constant_across_overflow_toggle() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
         let scroll_id = WidgetId::from_hash("scroll").with("__viewport");
@@ -972,15 +977,15 @@ mod bars {
         assert_eq!(
             read_viewport(&mut ui),
             Size::new(188.0, 200.0),
-            "frame 2: reservation active, viewport = 200 - (width + gap)"
+            "viewport = 200 - (width + gap) when content overflows",
         );
 
         ui.run_at_acked(surface, |ui| build(ui, 50.0));
         ui.run_at_acked(surface, |ui| build(ui, 50.0));
         assert_eq!(
             read_viewport(&mut ui),
-            Size::new(200.0, 200.0),
-            "after content shrinks, reservation collapses; viewport = full outer"
+            Size::new(188.0, 200.0),
+            "viewport stays the same when content fits — gutter is constant",
         );
     }
 
@@ -1196,10 +1201,11 @@ mod bars {
         );
     }
 
-    /// Cold-mount with content that fits in the viewport: NO gutter
-    /// reservation, viewport stays at full outer.
+    /// Cold-mount with content that fits in the viewport: the gutter
+    /// is still reserved (constant), the bar thumb just isn't drawn.
+    /// Overflow stays `false`.
     #[test]
-    fn cold_mount_fits_paints_without_gutter_on_first_frame() {
+    fn cold_mount_fits_reserves_gutter_but_paints_no_thumb() {
         use crate::primitives::size::Size;
         let surface = UVec2::new(400, 600);
         let mut ui = Ui::for_test();
@@ -1223,8 +1229,8 @@ mod bars {
         let row = *ui.scroll_state(scroll_id);
         assert_eq!(
             row.viewport,
-            Size::new(200.0, 200.0),
-            "cold-mount with no overflow: full outer viewport, no strip",
+            Size::new(188.0, 200.0),
+            "gutter is constant — viewport = outer - (width + gap) even with no overflow",
         );
         assert_eq!(row.overflow, (false, false));
     }

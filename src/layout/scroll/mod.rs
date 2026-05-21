@@ -48,30 +48,31 @@ mod tests;
 ///
 /// The widget at record time:
 /// - Reads the snapshot via [`Ui::scroll_state`](crate::Ui::scroll_state)
-///   for offset clamp + reservation guess + bar geometry.
+///   for offset clamp + bar thumb geometry.
 /// - Mutates `offset` from input (via the same entry).
 ///
 /// The driver writes layout-derived fields:
 /// - `measure` records `content` (the panned-axis extent).
-/// - `arrange` records `viewport` (inner rect post user-padding),
-///   `overflow`, `seen`, and re-clamps `offset` to the new bounds.
+/// - `arrange` records `viewport` (inner rect post user-padding +
+///   constant bar-gutter reservation), `overflow`, `seen`, and
+///   re-clamps `offset` to the new bounds.
 ///
 /// - `offset` — input-accumulated pan position (next frame's start).
 /// - `viewport` — INNER (user-padding-deflated) size: what children
 ///   see. Drives `content > viewport` overflow checks.
 /// - `outer` — full arranged rect size of the scroll node including
-///   any reservation gutter. Drives bar positioning so the bar sits
-///   flush with the OUTER far edge. Parent-allocated and stable
-///   across reservation flips (unlike `viewport`, which shrinks when
-///   a gutter appears) — that's why we store it instead of deriving
-///   from `viewport + padding + reservation` at record time.
+///   the bar gutter. Drives bar positioning so the bar sits flush
+///   with the OUTER far edge. Parent-allocated and stable across
+///   frames (reservation is constant on the pan axes, not toggled by
+///   overflow).
 /// - `content` — measured content extent on the panned axes.
 /// - `overflow` — `(x, y)` per-axis: did this axis's content overflow
-///   the viewport on the most recent measure? Read at record time
-///   to decide whether to reserve a bar gutter on the cross axis.
+///   the viewport on the most recent measure? Read at record time to
+///   decide whether to **draw** the bar thumb (the gutter is reserved
+///   either way).
 /// - `seen` — set true by `arrange` after the first frame. Read by
 ///   the widget to detect a cold-mount and trigger a relayout pass
-///   so pass B records with the measured reservation in place.
+///   so pass B records with correct overflow-driven thumb visibility.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct ScrollLayoutState {
     pub(crate) offset: Vec2,
@@ -205,12 +206,11 @@ pub(crate) fn arrange(
 
     let wid = tree.records.widget_id()[node.idx()];
     // `outer` = the scroll widget's outer ZStack rect. `Scroll::show`
-    // builds it as a wrapper that owns the bar-gutter reservation
-    // padding, so its size is parent-allocated and stable across
-    // reservation flips (unlike viewport, which shrinks when a gutter
-    // appears). Used at record time to position bars flush with the
-    // outer far edge. Falls back to `inner.size` for a root-mounted
-    // scroll (no wrapper).
+    // builds it as a wrapper around the inner viewport — the inner
+    // carries the constant bar-gutter reservation in its margin, so
+    // `viewport = outer - margin - user_padding`. Used at record time
+    // to position bars flush with the outer far edge. Falls back to
+    // `inner.size` for a root-mounted scroll (no wrapper).
     let outer = match parent {
         Some(p) => out[layout.active_layer].rect[p.idx()].size,
         None => inner.size,

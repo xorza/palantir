@@ -83,11 +83,10 @@ impl Default for ZoomConfig {
 
 /// Cross-axis space stolen from children when an axis's bar is shown:
 /// the bar's `width` plus a `gap` strip so the bar doesn't touch the
-/// visible content. Returns 0 when the axis isn't currently
-/// overflowing (or isn't panned at all).
+/// visible content. Returns 0 when the axis isn't panned.
 #[inline]
-fn bar_reservation(visible: bool, theme: &ScrollbarTheme) -> f32 {
-    if visible {
+fn bar_reservation(panned: bool, theme: &ScrollbarTheme) -> f32 {
+    if panned {
         theme.width + theme.gap
     } else {
         0.0
@@ -143,18 +142,20 @@ fn bar_layout(
     pan: glam::BVec2,
     user_padding: Spacing,
     theme: &ScrollbarTheme,
-    always_reserve: bool,
 ) -> BarLayout {
     let scaled_content = Size::new(row.content.w * row.zoom, row.content.h * row.zoom);
-    // `always_reserve` keeps the gutter on the pan axes whether or not
-    // content currently overflows — it stabilises the viewport's
-    // outer size across the overflow toggle so a Hug ancestor doesn't
-    // shift by `bar_width` the first time content grows past the
-    // viewport.
-    let visible_y = pan.y && (always_reserve || row.overflow.1);
-    let visible_x = pan.x && (always_reserve || row.overflow.0);
-    let reserve_y = bar_reservation(visible_y, theme);
-    let reserve_x = bar_reservation(visible_x, theme);
+    // Gutter reservation is **constant** per pan axis: it doesn't
+    // depend on whether content currently overflows. This keeps the
+    // viewport's outer size — and therefore any Hug ancestor — stable
+    // across the overflow toggle (otherwise a Hug ancestor would shift
+    // by `bar_width` the first time content grew past the viewport).
+    // The bar thumb itself is still drawn conditionally on overflow
+    // via `bar_plan`, which gates on `content > viewport` inside
+    // `bar_geometry`. So when content fits, you see an empty gutter
+    // but no thumb; when it overflows, the thumb fills the same
+    // gutter without any size change.
+    let reserve_y = bar_reservation(pan.y, theme);
+    let reserve_x = bar_reservation(pan.x, theme);
     let bar_viewport = Size::new(
         (row.outer.w - reserve_y - user_padding.horiz()).max(0.0),
         (row.outer.h - reserve_x - user_padding.vert()).max(0.0),
@@ -282,29 +283,22 @@ fn push_bar_nodes(
 /// children via a `transform` applied at record time using the
 /// previous frame's clamp.
 ///
-/// **Reservation layout**: when content overflows on a panned axis,
-/// the widget reserves `theme.scrollbar.width + gap` of padding on
-/// the cross-axis far edge and paints the bar in the reserved strip.
-/// The reservation decision is record-time, sourced from last frame's
-/// `ScrollState.overflow`. When `refresh` detects the overflow flag
-/// flipped after measure, it returns `true` and `Ui` retries the
-/// frame with the corrected reservation — same model as
-/// `Ui::request_relayout`. v1 is indicator-only; drag-to-pan and
-/// click-on-track come in a follow-up.
+/// **Reservation layout**: the widget reserves
+/// `theme.scrollbar.width + gap` of gutter on each panned axis's
+/// cross-axis far edge — **constant**, not state-driven. Keeping the
+/// gutter regardless of current overflow makes the viewport size
+/// stable across the overflow toggle, which matters when a Hug
+/// ancestor (e.g. a `Popup` body) hugs the Scroll: a state-driven
+/// gutter would change the ancestor's size by `bar_width` the first
+/// time content grew past the viewport. The bar thumb itself is
+/// still drawn conditionally on this-frame overflow via
+/// `bar_geometry`; the gutter just stays reserved either way (when
+/// content fits you see an empty gutter and no thumb).
 pub struct Scroll {
     element: Element,
     zoom: Option<ZoomConfig>,
     chrome: Option<Background>,
     bars_hidden: bool,
-    /// Always reserve the bar gutter on the pan axes, even when content
-    /// doesn't overflow. The default is a state-driven flip between
-    /// "no bar, no gutter" (fits) and "bar + gutter" (overflows), which
-    /// changes the viewport's intrinsic size between record passes and
-    /// nudges any Hug ancestor (e.g. a `Popup` body hugging the Scroll)
-    /// by `bar_width` when overflow flips on. Opting in keeps the
-    /// gutter constant across both states so the ancestor's measured
-    /// size doesn't shift.
-    always_reserve: bool,
     content_margin: Spacing,
 }
 
@@ -342,24 +336,8 @@ impl Scroll {
             zoom: None,
             chrome: None,
             bars_hidden: false,
-            always_reserve: false,
             content_margin: Spacing::default(),
         }
-    }
-
-    /// Reserve the bar gutter on the pan axes unconditionally — the
-    /// viewport's outer size is `content + gutter` whether or not the
-    /// content overflows. Use this when an outer Hug ancestor must
-    /// stay the same size across the overflow toggle (a `Popup` body
-    /// that hugs its content, for example: without this, the popup
-    /// shifts by `bar_width` the first time the scroll's overflow
-    /// flag flips from false to true).
-    ///
-    /// Cost is one bar-width of empty gutter when no overflow exists.
-    /// For scrolls whose content reliably overflows, this is a no-op.
-    pub fn always_reserve(mut self) -> Self {
-        self.always_reserve = true;
-        self
     }
 
     /// Suppress the scrollbar overlay entirely — no track, no thumb,
@@ -427,19 +405,11 @@ impl Scroll {
             );
         }
 
-        // Record-time clamp + reservation-guess: both use *last*
-        // frame's `viewport`/`content`/`overflow`. The matching
-        // re-clamp in `scroll::arrange` corrects with fresh numbers
-        // post-arrange. Off-axis offsets stay at 0 for single-axis
-        // scrolls.
+        // Record-time clamp uses last frame's `viewport`/`content`/
+        // `offset`. The matching re-clamp in `scroll::arrange`
+        // corrects with fresh numbers post-arrange. Off-axis offsets
+        // stay at 0 for single-axis scrolls.
         //
-        // Cold-mount: state is default (`seen == false`) → the
-        // reservation guess defaults to `(false, false)`, wrong, so
-        // we request a relayout. After this pass's record + measure
-        // + arrange, `seen` is true and pass B records with the
-        // measured reservation in place. Subsequent overflow flips
-        // mid-life produce a one-frame visual blip — accepted on
-        // the same tier as the wheel-pan clamp's staleness.
         // Input routes by `Sense::SCROLL`, which sits on the outer
         // ZStack (so wheel events over the bar gutter still pan the
         // viewport). Layout state, however, is keyed by the inner
@@ -602,7 +572,7 @@ impl Scroll {
             //    Bars use the *scaled* content extent so dragging
             //    inside a zoomed-in viewport tracks the cursor at
             //    1:1 with the visible thumb.
-            let bl = bar_layout(row, pan, self.element.padding, &theme, self.always_reserve);
+            let bl = bar_layout(row, pan, self.element.padding, &theme);
             for (axis, resp) in [(Axis::Y, resp_v), (Axis::X, resp_h)] {
                 let panned = match axis {
                     Axis::Y => pan.y,
@@ -701,6 +671,14 @@ impl Scroll {
         };
 
         if !scroll.seen {
+            // Cold-mount: state is default, so `bar_plan` below will
+            // see `content = 0`, decide "no overflow", and skip the
+            // thumb. After this pass's arrange the row is filled in
+            // with measured content + overflow; requesting a relayout
+            // re-records with the right thumb visibility on pass B.
+            // The viewport size itself is already correct on pass A
+            // because the gutter reservation is constant — only the
+            // thumb-or-no-thumb decision is stale.
             ui.request_relayout();
         }
         let outer_size = scroll.outer;
@@ -712,13 +690,7 @@ impl Scroll {
         // one arrange pass during cold-mount; this derivation is
         // stable at record time. Same helper feeds drag math inside
         // the state-mutation block above.
-        let bl = bar_layout(
-            &scroll,
-            pan,
-            self.element.padding,
-            &theme,
-            self.always_reserve,
-        );
+        let bl = bar_layout(&scroll, pan, self.element.padding, &theme);
         let scaled_content = bl.scaled_content;
         let bar_viewport = bl.bar_viewport;
         let reserve_y = bl.reserve_y;
