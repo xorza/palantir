@@ -11,7 +11,7 @@
 //! fundamentally allocates: a `CommandEncoder` Arc, a `CommandBuffer`
 //! Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
 //! `wgpu_hal::metal`. Current measured floor on this fixture is
-//! ~22 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
+//! ~27 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
 //! beneath `Host::render` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
@@ -24,12 +24,14 @@
 //! Run with: `cargo bench --bench alloc_free_gpu`
 //! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_free_gpu`
 
+#[path = "support/frame_fixture.rs"]
+mod fixture;
+
 use std::sync::OnceLock;
 
+use fixture::{FormState, build_ui};
 use glam::UVec2;
-use palantir::{
-    Align, Button, Color, Configure, Frame, Host, Justify, Panel, Sizing, Text, TextStyle, Ui,
-};
+use palantir::{Color, Host};
 use pollster::FutureExt;
 
 #[global_allocator]
@@ -46,87 +48,10 @@ const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const SCALE: f32 = 2.0;
+// Smaller than `frame.rs`'s BENCH_SCALE=32 because the alloc-free
+// viewport is 1280x800 instead of 3840x4800 — matches `examples/frame_visual.rs`.
+const NODE_SCALE: usize = 6;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
-fn build_ui(ui: &mut Ui) {
-    Panel::vstack()
-        .auto_id()
-        .gap(8.0)
-        .padding(12.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Panel::hstack()
-                .auto_id()
-                .gap(8.0)
-                .size((Sizing::FILL, Sizing::Hug))
-                .child_align(Align::CENTER)
-                .show(ui, |ui| {
-                    Text::new("Alloc-free pinning fixture")
-                        .id_salt("title")
-                        .style(TextStyle::default().with_font_size(18.0))
-                        .show(ui);
-                    Frame::new()
-                        .id_salt("title-spacer")
-                        .size((Sizing::FILL, Sizing::Fixed(1.0)))
-                        .show(ui);
-                    for i in 0..3 {
-                        Button::new().id_salt(("act", i)).label("Action").show(ui);
-                    }
-                });
-
-            for i in 0..32 {
-                Panel::hstack()
-                    .id_salt(("row", i))
-                    .gap(8.0)
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui, |ui| {
-                        Frame::new()
-                            .id_salt(("avatar", i))
-                            .size((Sizing::Fixed(28.0), Sizing::Fixed(28.0)))
-                            .show(ui);
-                        Panel::vstack()
-                            .id_salt(("col", i))
-                            .gap(2.0)
-                            .size((Sizing::FILL, Sizing::Hug))
-                            .show(ui, |ui| {
-                                Text::new("name")
-                                    .id_salt(("name", i))
-                                    .style(TextStyle::default().with_font_size(12.0))
-                                    .show(ui);
-                                Text::new(
-                                    "longer message body that should wrap inside the Fill column",
-                                )
-                                .id_salt(("body", i))
-                                .style(TextStyle::default().with_font_size(13.0))
-                                .wrapping()
-                                .size((Sizing::FILL, Sizing::Hug))
-                                .show(ui);
-                            });
-                    });
-            }
-
-            Panel::zstack()
-                .auto_id()
-                .size((Sizing::FILL, Sizing::Fixed(28.0)))
-                .show(ui, |ui| {
-                    Frame::new()
-                        .id_salt("footer-bg")
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui);
-                    Panel::hstack()
-                        .auto_id()
-                        .padding(4.0)
-                        .justify(Justify::Center)
-                        .size((Sizing::FILL, Sizing::FILL))
-                        .show(ui, |ui| {
-                            Text::new("Ready")
-                                .id_salt("status")
-                                .style(TextStyle::default().with_font_size(11.0))
-                                .show(ui);
-                        });
-                });
-        });
-}
 
 struct Gpu {
     device: wgpu::Device,
@@ -170,6 +95,7 @@ fn main() {
 
     let g = gpu();
     let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    let mut state = FormState::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
         label: Some("palantir.alloc_free_gpu.target"),
@@ -187,9 +113,9 @@ fn main() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let run = |host: &mut Host| {
+    let run = |host: &mut Host, state: &mut FormState| {
         host.ui.theme.window_clear = Color::TRANSPARENT;
-        host.frame_offscreen(&target, SCALE, build_ui);
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, NODE_SCALE, ui));
         g.device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,
@@ -199,11 +125,11 @@ fn main() {
     };
 
     for _ in 0..WARMUP_FRAMES {
-        run(&mut host);
+        run(&mut host, &mut state);
     }
     let before = dhat::HeapStats::get();
     for _ in 0..MEASURE_FRAMES {
-        run(&mut host);
+        run(&mut host, &mut state);
     }
     let after = dhat::HeapStats::get();
 
@@ -213,7 +139,7 @@ fn main() {
 
     println!(
         "alloc_free_gpu: warmup={WARMUP_FRAMES} measure={MEASURE_FRAMES} \
-         ({PHYSICAL:?} @ {SCALE}x)"
+         ({PHYSICAL:?} @ {SCALE}x, node_scale={NODE_SCALE})"
     );
     println!(
         "  record + render       {block_delta:6} blocks  {byte_delta:10} bytes  \
