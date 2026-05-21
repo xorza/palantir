@@ -31,11 +31,11 @@ pub enum RenderPlan {
 
 impl RenderPlan {
     /// Build a render plan from `DamageEngine`'s output plus the
-    /// surface clear colour. `Damage::None` ⇒ `None` (skip frame);
+    /// surface clear colour. `Damage::Skip` ⇒ `None` (skip frame);
     /// `Full` / `Partial` ⇒ `Some(plan)`.
     pub(crate) fn from_damage(damage: Damage, clear: Color) -> Option<Self> {
         match damage {
-            Damage::None => None,
+            Damage::Skip => None,
             Damage::Full => Some(RenderPlan::Full { clear }),
             Damage::Partial(region) => Some(RenderPlan::Partial { clear, region }),
         }

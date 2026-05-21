@@ -33,7 +33,7 @@ fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
     let report = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), f);
     ui.frame_state.mark_submitted();
     match report.plan {
-        None => Damage::None,
+        None => Damage::Skip,
         Some(RenderPlan::Full { .. }) => Damage::Full,
         Some(RenderPlan::Partial { region, .. }) => Damage::Partial(region),
     }
@@ -101,7 +101,7 @@ fn unchanged_authoring_produces_no_damage() {
     assert!(ui.damage_region().is_empty());
     assert_eq!(
         Damage::new(ui.display.logical_rect(), ui.damage_region()),
-        Damage::None,
+        Damage::Skip,
     );
 }
 
@@ -930,7 +930,7 @@ fn no_damage_means_skip() {
             TEST_SURFACE,
             DamageRegion::collapse_from(&d.raw_rects, d.budget_px, TEST_SURFACE)
         ),
-        Damage::None,
+        Damage::Skip,
     );
 }
 
@@ -1648,7 +1648,7 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     let region = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
     assert!(
         region.is_empty(),
-        "wholly-off-surface rect must produce an empty region (no Damage::None vs Partial drift)",
+        "wholly-off-surface rect must produce an empty region (no Damage::Skip vs Partial drift)",
     );
 }
 

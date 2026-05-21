@@ -287,7 +287,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(ui.damage_region().is_empty());
     assert_eq!(
         Damage::new(ui.display.logical_rect(), ui.damage_region()),
-        Damage::None,
+        Damage::Skip,
     );
 }
 
