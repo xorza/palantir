@@ -1250,7 +1250,7 @@ fn input_policy_routes_paint_only_gate() {
 
 // --- Cold-start warmup record -----------------------------------------
 //
-// Pin the first-frame behavior added to `Ui::frame_inner`: when the
+// Pin the first-frame behavior added to `Ui::frame`: when the
 // recorder has never run before, do a blackout record pass (input
 // swapped for `InputState::default()`) to build the cascade, then
 // re-route the held `pointer_pos` against it before the user-visible
@@ -1381,7 +1381,7 @@ fn cold_start_warmup_relayout_does_not_trigger_pass_b() {
         if calls == 1 {
             // Simulate a widget whose first-frame measure depends on
             // state that wasn't seeded yet — fires once during warmup,
-            // then is satisfied. Without the reset in `frame_inner`,
+            // then is satisfied. Without the reset in `frame`,
             // this leaks into the real pass's `double_layout` arm and
             // we'd see calls == 3 below.
             ui.request_relayout();
