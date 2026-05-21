@@ -650,7 +650,22 @@ impl<'a> TextEdit<'a> {
         // `-scroll` so the caret/text/selection wash track the
         // visible viewport; the editor's `ClipMode::Rect` (set in
         // `new()`) scissors anything that slips past the edge.
-        let element = self.element;
+        //
+        // Floor the editor's outer height at one shaped line plus
+        // top+bottom padding so a `Sizing::Hug` editor with an empty
+        // buffer still reserves a row's worth of space — without this
+        // floor, Hug resolves to `0` (no content) and the editor
+        // visually collapses, taking its clip rect (and any future
+        // caret/text painted into it) with it. Single-line only;
+        // multi-line callers usually set their own min_size and the
+        // wrap target already gives them height per line.
+        let mut element = self.element;
+        if !self.multiline {
+            let row_min_h = ctx.line_height_px + ctx.padding.vert();
+            if element.min_size.h < row_min_h {
+                element.min_size.h = row_min_h;
+            }
+        }
         let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
