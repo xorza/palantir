@@ -9,7 +9,7 @@ use crate::input::keyboard::{
     Key, KeyPress, KeyboardEvent, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
 use crate::input::pointer::{PointerButton, PointerEvent};
-use crate::input::sense::{DRAG_THRESHOLD, Sense};
+use crate::input::sense::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -20,7 +20,7 @@ use strum::EnumCount as _;
 /// Per-button press/drag/click capture. One slot per [`PointerButton`].
 /// Cleared on release, on cascade-eviction of the captured widget, and
 /// on [`InputState::post_record`] for the one-frame edges
-/// (`frame_drag_started`, `frame_click`).
+/// (`frame_drag_started`, `frame_click`, `frame_double_click`).
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct Capture {
     /// Widget the press latched onto, or `None` if the press missed.
@@ -40,6 +40,17 @@ pub(crate) struct Capture {
     /// onto when the release landed on the same id and no drag was
     /// latched. Cleared by `post_record`.
     pub(crate) frame_click: Option<WidgetId>,
+    /// One-frame edge: widget on which two consecutive clicks landed
+    /// within [`DOUBLE_CLICK_WINDOW`]. Cleared by `post_record`.
+    pub(crate) frame_double_click: Option<WidgetId>,
+    /// Instant of the most recent click on this button, used to detect
+    /// a follow-up click within [`DOUBLE_CLICK_WINDOW`]. Cleared once
+    /// a double-click fires so a third click within the same window
+    /// doesn't fire a second double-click.
+    pub(crate) last_click_at: Option<std::time::Instant>,
+    /// Widget id of the most recent click on this button. A double-
+    /// click only fires when the follow-up click lands on the same id.
+    pub(crate) last_click_id: Option<WidgetId>,
 }
 
 impl Capture {
@@ -287,6 +298,12 @@ pub struct ResponseState {
     /// through [`Self::drag_delta`] / [`Self::drag_started`] /
     /// [`Self::dragged_by`] etc. rather than reading this field.
     pub drag: Option<DragState>,
+    /// One-frame edge: the button that just fired a double-click on
+    /// this widget (two clicks on the same id within
+    /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]). `None` outside
+    /// that frame. Callers use [`Self::double_clicked`] /
+    /// [`Self::double_clicked_by`] rather than reading this field.
+    pub double_click: Option<PointerButton>,
     /// Pixel-precise scroll delta this frame, in logical pixels — the
     /// touchpad / precision-wheel source (winit
     /// `MouseScrollDelta::PixelDelta`). Already negated at ingest so
@@ -333,6 +350,7 @@ impl Default for ResponseState {
             disabled: false,
             focused: false,
             drag: None,
+            double_click: None,
             scroll_pixels: Vec2::ZERO,
             scroll_lines: Vec2::ZERO,
             zoom_factor: 1.0,
@@ -383,6 +401,21 @@ impl ResponseState {
     #[inline]
     pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
         self.drag.filter(|d| d.button == button).map(|d| d.delta)
+    }
+
+    /// One-frame edge: any pointer button double-clicked this widget
+    /// this frame. Mirror of [`Self::dragged`] for two-click gestures.
+    #[inline]
+    pub fn double_clicked(&self) -> bool {
+        self.double_click.is_some()
+    }
+
+    /// One-frame edge filtered by button. `double_clicked_by(Left)`
+    /// is the standard "open / activate" gesture; right- or middle-
+    /// double-clicks are rarer but available without extra plumbing.
+    #[inline]
+    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
+        self.double_click == Some(button)
     }
 }
 
@@ -716,7 +749,25 @@ impl InputState {
                 if let Some(a) = captured {
                     let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
                     if hit == Some(a) && !drag_suppressed_click {
-                        self.capture_mut(btn).frame_click = Some(a);
+                        let cap = self.capture_mut(btn);
+                        cap.frame_click = Some(a);
+                        // Double-click detection: two clicks on the same
+                        // widget within `DOUBLE_CLICK_WINDOW`. Resets the
+                        // last-click slot on a fire so a third click
+                        // doesn't pair with the second.
+                        let now = std::time::Instant::now();
+                        let is_double = cap.last_click_id == Some(a)
+                            && cap
+                                .last_click_at
+                                .is_some_and(|prev| now.duration_since(prev) <= DOUBLE_CLICK_WINDOW);
+                        if is_double {
+                            cap.frame_double_click = Some(a);
+                            cap.last_click_at = None;
+                            cap.last_click_id = None;
+                        } else {
+                            cap.last_click_at = Some(now);
+                            cap.last_click_id = Some(a);
+                        }
                     }
                 }
                 let buttons_subbed = self.record_pointer_up(pointer_pos, btn);
@@ -798,6 +849,7 @@ impl InputState {
     pub(crate) fn drain_per_frame_queues(&mut self) {
         for cap in &mut self.captures {
             cap.frame_click = None;
+            cap.frame_double_click = None;
             cap.frame_drag_started = None;
         }
         self.had_input_since_last_frame = false;
@@ -973,6 +1025,8 @@ impl InputState {
         let secondary_clicked = right.frame_click == Some(id);
         let focused = self.focused == Some(id);
         let drag = self.active_drag(id);
+        let double_click = PointerButton::all()
+            .find(|b| self.capture(*b).frame_double_click == Some(id));
 
         // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
         // Both gates fire even when the routed delta is `Vec2::ZERO`
@@ -993,6 +1047,7 @@ impl InputState {
             disabled,
             focused,
             drag,
+            double_click,
             scroll_pixels,
             scroll_lines,
             zoom_factor,
