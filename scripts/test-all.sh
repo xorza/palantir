@@ -9,11 +9,7 @@
 # Combos covered:
 #   - no features        (production-shaped build)
 #   - internals          (cache helpers + render-debug knobs +
-#                         damage fixtures)
-#   - bench-deep         (criterion `caches.rs` bench gating; needs
-#                         `internals` to actually run, but should
-#                         still type-check standalone)
-#   - internals + bench-deep (the full superset)
+#                         damage fixtures + the deeper bench targets)
 #
 # Each combo runs:
 #   1. cargo fmt --all -- --check          (once, up front)
@@ -41,8 +37,6 @@ step()   { printf '%s-> %s%s\n' "$dim" "$1" "$reset"; }
 COMBOS=(
   ""                       # no features
   "internals"
-  "bench-deep"
-  "internals bench-deep"
 )
 
 if [[ "${FAST:-0}" != "1" ]]; then
