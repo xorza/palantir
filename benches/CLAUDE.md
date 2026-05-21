@@ -349,6 +349,8 @@ allocation attribution use the `alloc_free*` benches with `DHAT_DUMP=1`.
 ```sh
 cargo bench --bench frame --features internals --no-run
 BIN=$(ls -t target/release/deps/frame-* | grep -v '\.d$' | head -1)
+# frame bench requires PALANTIR_BENCH_MODE + PALANTIR_BENCH_NOTE in env.
+export PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='drill note'
 
 # TMA L1
 taskset -c 0 perf stat -M TopdownL1 -- "$BIN" --bench --profile-time 5
@@ -361,6 +363,88 @@ taskset -c 0 perf record -e cpu_core/mem_load_retired.l3_miss/ppp \
     --call-graph lbr -- "$BIN" --bench --profile-time 5
 perf annotate -M intel <hot_sym>
 ```
+
+### Top-down drill recipe (worked example)
+
+The TMA hierarchy drills four levels: L1 bucket → memory sub-bucket →
+cache-level sub-bucket → specific event with source-line attribution.
+Each step narrows the search before the next:
+
+```sh
+# L1 — which of the 4 buckets dominates?
+taskset -c 0 perf stat -M TopdownL1 -- "$BIN" --bench cached_cpu --profile-time 4
+
+# If backend_bound dominates: split it into memory vs core.
+# memory_bound itself splits into L1/L2/L3/DRAM/Store sub-levels.
+taskset -c 0 perf stat -M tma_memory_bound_group -- "$BIN" --bench cached_cpu --profile-time 4
+
+# If e.g. tma_l1_bound dominates (i.e. loads stalling but hitting L1):
+# split into store-forwarding / split-loads / fb-full / dtlb.
+taskset -c 0 perf stat -M tma_l1_bound_group -- "$BIN" --bench cached_cpu --profile-time 4
+
+# Symmetric for stores:
+taskset -c 0 perf stat -M tma_store_bound_group -- "$BIN" --bench cached_cpu --profile-time 4
+```
+
+Each `tma_*_group` lists the specific events its metrics derive from
+(e.g. `LD_BLOCKS.STORE_FORWARD` for `tma_store_fwd_blk`,
+`MEM_LOAD_RETIRED.L3_MISS` for `tma_dram_bound`). Once one leaf
+metric is clearly the cost driver, sample that exact event with PEBS
+to attribute it to source lines:
+
+```sh
+# :ppp suffix = max-precision PEBS — IP attribution lands on the
+# offending instruction, not skid-shifted past it. LBR callgraph is
+# essentially free; dwarf here would distort the very stalls being
+# measured.
+taskset -c 0 perf record -e cpu_core/LD_BLOCKS.STORE_FORWARD/ppp \
+    --call-graph lbr -o tmp/perf-stfwd.data -- \
+    "$BIN" --bench cached_cpu --profile-time 4
+
+perf report -i tmp/perf-stfwd.data --stdio --no-children -g none \
+    --percent-limit 1.0 | head -40
+
+# Drill to the exact instruction in the worst symbol:
+perf annotate -i tmp/perf-stfwd.data -M intel palantir::forest::Forest::open_node
+```
+
+**Reading the L1-bound sub-leaves** (Raptor Cove):
+
+- **`tma_store_fwd_blk`** (`LD_BLOCKS.STORE_FORWARD`) — a load can't
+  fast-path from an in-flight store. Causes: narrower load from a
+  wider store, wider load from multiple narrow stores, partial
+  overlap. ~10-20 cycles per block. Common in `Vec::push` /
+  arena-bump append patterns (cursor stored then immediately re-read)
+  and SoA pushes where each column is written separately.
+- **`tma_split_loads`** (`MEM_INST_RETIRED.SPLIT_LOADS`) — load spans
+  two cache lines. Misaligned `#[repr(packed)]` reads, `bytemuck`
+  from a non-aligned buffer. Fix: align the source.
+- **`tma_fb_full`** (`L1D_PEND_MISS.FB_FULL`) — fill buffers full,
+  L1 can't dispatch more misses. Indicates a burst of L1 misses
+  exceeding the ~12 fill buffers — bandwidth-bound, not latency-bound.
+- **`tma_dtlb_load`** (`DTLB_LOAD_MISSES.WALK_ACTIVE`) — TLB walks.
+  Anything >1% MPKI is worth investigating huge pages.
+
+**Reading the store-bound sub-leaves:**
+
+- **`tma_split_stores`** — store spans two cache lines. Same fix as
+  split_loads: align the destination.
+- **`tma_streaming_stores`** — non-temporal stores active.
+  Informational only; usually 0% unless code uses `_mm_stream_*`.
+- The unbroken remainder is "store-buffer-full" — too many stores
+  in flight. Combine adjacent stores into wider writes
+  (`copy_nonoverlapping` of a whole row vs field-by-field).
+
+**Reading the memory-level sub-leaves:**
+
+- **`tma_l1_bound`** — loads stall but eventually hit L1. Not a
+  capacity miss; usually store-fwd or split.
+- **`tma_l2_bound`** — L1 missed, L2 served. Working set spills L1
+  (~48 KiB per core on Raptor Cove). Acceptable for short hot loops.
+- **`tma_l3_bound`** — L2 missed, L3 served. Working set spills L2
+  (1.25 MiB). Tighter packing or blocking helps.
+- **`tma_dram_bound`** — L3 missed. The real "memory locality"
+  problem. >5% is worth a `perf mem`-driven layout investigation.
 
 ## When to use what
 
