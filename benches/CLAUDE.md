@@ -27,13 +27,11 @@ cargo bench --bench caches --features internals        # gated benches
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`):
 - **No features needed**: `alloc_free`, `input_throughput`.
-- **`internals`**: `frame`, `alloc_free_gpu`, `scrollzoom`,
-  `text_atlas`.
-- **`internals` + `bench-deep`**: `caches`, `damage`.
+- **`internals`**: everything else (`frame`, `alloc_free_gpu`,
+  `scrollzoom`, `text_atlas`, `caches`, `damage`).
 
 `cargo bench --no-run` without features only builds `alloc_free` and
-`input_throughput`; everything else requires `--features internals`
-(plus `bench-deep` for the deep-cache benches).
+`input_throughput`; everything else requires `--features internals`.
 
 ## Allocation-free invariants (two benches)
 
@@ -267,7 +265,7 @@ BENCH=damage FILTER='damage/full' scripts/bench-perf.sh
 CALLGRAPH=lbr scripts/bench-perf.sh                  # low-overhead callgraph
 LDLAT=30 scripts/bench-perf.sh                       # finer load-latency cutoff
 SKIP_MEM=1 SKIP_TOPDOWN=1 scripts/bench-perf.sh      # skip optional passes
-FEATURES=internals,bench-deep BENCH=caches scripts/bench-perf.sh
+FEATURES=internals BENCH=caches scripts/bench-perf.sh
 ```
 
 Env: `BENCH` (default `frame`), `FILTER` (criterion regex),

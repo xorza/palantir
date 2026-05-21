@@ -228,9 +228,8 @@ pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
 /// considers running. Below this the arena is small enough that the
 /// reseat walk costs more than the orphaned-slot memory it would
 /// reclaim — capacity is `Vec`-amortised and these entries stay hot
-/// in cache. Empirically tuned against `bench-deep` (TODO: link
-/// docs/roadmap entry once added); change with a benchmark on the
-/// damage-merge fixture.
+/// in cache. Empirically tuned against `benches/damage.rs`; change
+/// with a benchmark on the damage-merge fixture.
 const COMPACT_MIN_TOTAL: u32 = 256;
 
 /// Orphan-ratio threshold (in 1/4 units) above which compaction

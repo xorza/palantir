@@ -109,7 +109,7 @@ cargo test
 
 For changes that touch feature-gated code (anything under
 `#[cfg(feature = ...)]`, exposed via `support::internals`, or that
-might be affected by `internals`/`bench-deep`), run the full feature
+might be affected by `internals`), run the full feature
 matrix instead:
 
 ```sh

@@ -15,9 +15,9 @@
 //! turned out to be < 1% — see `docs/cache-history/encode.md` and
 //! `docs/cache-history/compose.md`.
 //!
-//! Gated behind the `bench-deep` feature so default `cargo bench` runs
-//! only the steady-state aggregate in `frame.rs`. Run with
-//! `cargo bench --features "internals bench-deep"` to exercise these.
+//! Requires the `internals` feature for reach-in helpers like
+//! `Ui::clear_measure_cache`. Run with
+//! `cargo bench --features internals --bench caches`.
 //!
 //! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement runs
 //! through the mono fallback — same shaper-free path as `benches/frame.rs`.
