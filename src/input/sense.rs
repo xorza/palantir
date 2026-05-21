@@ -83,6 +83,9 @@ impl Sense {
 pub const DRAG_THRESHOLD: f32 = 4.0;
 
 /// Maximum interval between two clicks on the same widget for the
-/// second one to be reported as a double-click. Matches the typical
-/// platform default; tracked per-button on [`crate::input::Capture`].
-pub const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(400);
+/// second one to be reported as a double-click. 500 ms matches the
+/// Windows / Chromium default; macOS's `NSEvent.doubleClickInterval`
+/// is user-configurable but defaults to the same neighborhood, and
+/// Linux has no system-wide value to read. Tracked per-button on
+/// [`crate::input::Capture`].
+pub const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
