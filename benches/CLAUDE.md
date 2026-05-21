@@ -25,9 +25,16 @@ cargo bench --bench caches --features internals        # gated benches
   alone is ~45 s. Forces every invocation to be an explicit decision
   rather than defaulting to the full matrix.
 
-`caches`, `cascade`, `damage`, `damage_merge_gpu` are gated behind
-`internals` / `bench-deep`. `cargo bench --no-run` without features only
-builds `frame`.
+Feature gating (see `[[bench]]` entries in `Cargo.toml`):
+- **No features needed**: `alloc_free`, `input_throughput`.
+- **`internals`**: `frame`, `alloc_free_gpu`, `stroke_tessellate`,
+  `scrollzoom`, `text_atlas`, `half_simd`.
+- **`internals` + `bench-deep`**: `caches`, `cascade`, `damage`,
+  `damage_merge_gpu`.
+
+`cargo bench --no-run` without features only builds `alloc_free` and
+`input_throughput`; everything else requires `--features internals`
+(plus `bench-deep` for the deep-cache benches).
 
 ## Allocation-free invariants (two benches)
 
@@ -170,7 +177,7 @@ RVAs; symbolication normally happens at `samply load` time):
    when `samples.weightType !== 'samples'` — honor it.
 7. Wall-time = `samples × meta.interval` (ms).
 
-`scripts/profile-bench.sh` is ~150 lines doing exactly this; copy it.
+`scripts/profile-bench.sh` is ~275 lines doing exactly this; copy it.
 
 ### Profiler config notes
 
