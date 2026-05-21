@@ -213,6 +213,26 @@ fn assert_partial_invariant(target: &wgpu::Texture) {
     );
 }
 
+/// Scrolling arm: fixed viewport (so `MeasureCache` hits trivially)
+/// but mutate `state.scroll_offset` per iter so the main content
+/// panel's `Panel::transform` shifts every frame. Tests the cascade
+/// walk cost when only position changes — the target workload for a
+/// cascade delta-cache. If this arm is significantly faster than
+/// `resizing_cpu` it means cascade is already cheap on pure-translate;
+/// if it's comparable it means the delta-cache has a real target.
+fn run_scrolling(c: &mut Criterion, name: &str, sync: SyncMode) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.scrolling");
+    run_arm(c, name, sync, |host, state, sync, device| {
+        // Wraparound after a viewport's worth of pixels so the
+        // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
+        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        sync.poll(device);
+        black_box(&target);
+    });
+}
+
 fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
     let targets: Vec<wgpu::Texture> = RESIZE_POOL
         .iter()
@@ -361,6 +381,12 @@ fn arm_names(mode: BenchMode) -> Vec<&'static str> {
     if mode.includes_gpu() {
         v.push("frame/resizing_gpu");
     }
+    if mode.includes_cpu() {
+        v.push("frame/scrolling_cpu");
+    }
+    if mode.includes_gpu() {
+        v.push("frame/scrolling_gpu");
+    }
     v
 }
 
@@ -387,6 +413,12 @@ fn bench_frame(c: &mut Criterion) {
     }
     if mode.includes_gpu() {
         run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
+    }
+    if mode.includes_cpu() {
+        run_scrolling(c, "frame/scrolling_cpu", SyncMode::Cpu);
+    }
+    if mode.includes_gpu() {
+        run_scrolling(c, "frame/scrolling_gpu", SyncMode::Gpu);
     }
     prepend_machine_results(mode);
 }
