@@ -383,7 +383,7 @@ impl TextBackend {
 
         if did_work {
             self.prepared_anything = true;
-            self.upload_vbuf(ctx);
+            self.upload_vbuf(ctx, start);
         }
         did_work
     }
@@ -425,10 +425,19 @@ impl TextBackend {
         self.prepared_anything = false;
     }
 
-    fn upload_vbuf(&mut self, ctx: &mut GpuCtx<'_>) {
-        let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
-        let needed = bytes.len() as u64;
-        if needed > self.vbuf_capacity {
+    /// Upload glyph instances appended by this batch to `self.vbuf`.
+    /// `start` is the `self.instances.len()` captured before this
+    /// batch began emitting — so `[start..len]` is the batch's
+    /// just-appended slice. On the common no-grow path we belt-write
+    /// only that slice to its corresponding byte offset, leaving
+    /// prior batches' bytes (already on the GPU) untouched. On the
+    /// rare grow path the buffer is replaced with undefined contents,
+    /// so we re-upload the full `self.instances`.
+    fn upload_vbuf(&mut self, ctx: &mut GpuCtx<'_>, start: u32) {
+        let stride = std::mem::size_of::<GlyphInstance>();
+        let needed = (self.instances.len() * stride) as u64;
+        let grew = needed > self.vbuf_capacity;
+        if grew {
             let new_cap = needed.next_power_of_two().max(self.vbuf_capacity * 2);
             self.vbuf = ctx.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("palantir text vbuf"),
@@ -437,8 +446,13 @@ impl TextBackend {
                 mapped_at_creation: false,
             });
             self.vbuf_capacity = new_cap;
+            let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
+            ctx.write(&self.vbuf, 0, bytes);
+        } else {
+            let new_bytes: &[u8] = bytemuck::cast_slice(&self.instances[start as usize..]);
+            let offset = u64::from(start) * stride as u64;
+            ctx.write(&self.vbuf, offset, new_bytes);
         }
-        ctx.write(&self.vbuf, 0, bytes);
     }
 }
 
