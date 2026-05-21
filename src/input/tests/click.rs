@@ -270,6 +270,94 @@ fn secondary_click_press_release_emits_secondary_clicked() {
 }
 
 #[test]
+fn two_left_clicks_within_window_emit_double_clicked() {
+    // Two clicks on the same widget within DOUBLE_CLICK_WINDOW must
+    // set `double_clicked` on the second-click frame. The first click
+    // alone must not fire it (otherwise every click would double).
+    let mut ui = Ui::for_test();
+    let surface = UVec2::new(200, 80);
+    let build = |ui: &mut Ui, single: &mut bool, double: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let r = Button::new()
+                .id(WidgetId::from_hash("dc_target"))
+                .label("dc")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            *single |= r.clicked();
+            *double |= r.double_clicked();
+        });
+    };
+    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+
+    // First click — must report clicked but not double_clicked.
+    ui.click_at(Vec2::new(50.0, 20.0));
+    let mut single = false;
+    let mut double = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    assert!(single, "first click should fire `clicked`");
+    assert!(!double, "first click must not fire `double_clicked`");
+
+    // Second click — must report both. Tests run in real time but
+    // well under the 400ms window.
+    ui.click_at(Vec2::new(50.0, 20.0));
+    let mut single = false;
+    let mut double = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    assert!(single, "second click should still fire `clicked`");
+    assert!(double, "second click should fire `double_clicked`");
+
+    // One-shot: a follow-up frame with no input clears the flag.
+    let mut still = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut still));
+    assert!(!still, "double_clicked is one-shot");
+
+    // Third click within the window must NOT re-fire double_clicked —
+    // the timer reset on the previous fire so the third click is the
+    // first half of a potential new pair.
+    ui.click_at(Vec2::new(50.0, 20.0));
+    let mut single = false;
+    let mut double = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut single, &mut double));
+    assert!(single, "third click should fire `clicked`");
+    assert!(!double, "third click must not chain another double");
+}
+
+#[test]
+fn click_on_different_widget_resets_double_click() {
+    // Two clicks within the window but on different widgets must NOT
+    // fire double_clicked — the gesture is per-id.
+    let mut ui = Ui::for_test();
+    let surface = UVec2::new(300, 80);
+    let build = |ui: &mut Ui, a: &mut bool, b: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            *a |= Button::new()
+                .id(WidgetId::from_hash("dc_a"))
+                .label("a")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .double_clicked();
+            *b |= Button::new()
+                .id(WidgetId::from_hash("dc_b"))
+                .label("b")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui)
+                .double_clicked();
+        });
+    };
+    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+
+    ui.click_at(Vec2::new(50.0, 20.0)); // hits A
+    ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
+    ui.click_at(Vec2::new(150.0, 20.0)); // hits B
+
+    let mut got_a = false;
+    let mut got_b = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut got_a, &mut got_b));
+    assert!(!got_a, "A must not fire double_clicked");
+    assert!(!got_b, "B must not fire double_clicked (different target)");
+}
+
+#[test]
 fn left_and_right_click_are_independent() {
     use crate::input::pointer::PointerButton;
     let mut ui = Ui::for_test();

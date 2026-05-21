@@ -134,6 +134,16 @@ impl<'a> Response<'a> {
     pub fn secondary_clicked(&self) -> bool {
         self.state().secondary_clicked
     }
+    /// One-frame edge: any pointer button just double-clicked this
+    /// widget (two clicks on the same id within
+    /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]).
+    pub fn double_clicked(&self) -> bool {
+        self.state().double_clicked()
+    }
+    /// One-frame edge filtered by button.
+    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
+        self.state().double_clicked_by(button)
+    }
     /// Any button is currently dragging this widget.
     pub fn dragged(&self) -> bool {
         self.state().dragged()
@@ -240,6 +250,12 @@ impl ResponseSnapshot {
     }
     pub fn secondary_clicked(&self) -> bool {
         self.state.secondary_clicked
+    }
+    pub fn double_clicked(&self) -> bool {
+        self.state.double_clicked()
+    }
+    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
+        self.state.double_clicked_by(button)
     }
     pub fn dragged(&self) -> bool {
         self.state.dragged()
