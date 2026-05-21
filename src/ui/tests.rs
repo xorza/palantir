@@ -1068,6 +1068,93 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r2.processing(), FrameProcessing::PaintOnly);
 }
 
+/// Regression: `Ui::frame` used to clear `frame_arena` unconditionally
+/// at entry, including on `PaintOnly` frames. But on PaintOnly the
+/// record pass is skipped, so `tree.shapes` retains last frame's
+/// `ShapeRecord`s — which reference arena contents by index
+/// (`ShapeBrush::Gradient(id)`, polyline/mesh spans, `InternedStr`
+/// spans). Clearing left those indices dangling; the encoder then
+/// panicked on the first gradient lookup with
+/// `index out of bounds: the len is 0 but the index is N`.
+/// Fix: clear inside `record_pass` instead (only fires when we're
+/// rebuilding shapes). This test pins it by recording a gradient
+/// background + an animated shape (to force PaintOnly on frame 1)
+/// and then re-running the encoder against the retained shapes.
+#[test]
+fn paint_only_preserves_gradient_arena_for_retained_shapes() {
+    use crate::animation::paint::PaintAnim;
+    use crate::primitives::brush::{Brush, LinearGradient};
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+    use crate::ui::frame_report::FrameProcessing;
+
+    let half = Duration::from_millis(500);
+
+    fn body(ui: &mut Ui, half: Duration) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            // Gradient-filled chrome: `lower_background` pushes a
+            // `LoweredGradient` into `arena.gradients` every record
+            // pass, and the resulting `ChromeRow` stores the index.
+            Frame::new()
+                .id(WidgetId::from_hash("grad_bg"))
+                .size(50.0)
+                .background(Background {
+                    fill: Brush::Linear(LinearGradient::two_stop(
+                        0.0,
+                        Color::rgb(1.0, 0.0, 0.0),
+                        Color::rgb(0.0, 0.0, 1.0),
+                    )),
+                    ..Default::default()
+                })
+                .show(ui);
+            // Animated shape, drives the PaintOnly wake on frame 1.
+            ui.add_shape_animated(
+                Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+                    corners: Corners::ZERO,
+                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+                    stroke: Stroke::default(),
+                },
+                PaintAnim::BlinkOpacity {
+                    half_period: half,
+                    started_at: Duration::ZERO,
+                },
+            );
+        });
+    }
+
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    // Frame 0: full record. Populates `arena.gradients` and stamps
+    // `ShapeBrush::Gradient(0)` into the chrome row for the frame.
+    let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+        body(ui, half)
+    });
+    ui.frame_state.mark_submitted();
+    assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
+
+    // Frame 1 at the blink boundary: only the anim wake fires →
+    // PaintOnly. With the old (buggy) clear, `arena.gradients`
+    // would be empty here and the encoder below would panic.
+    let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
+    assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
+
+    // Direct pin: the gradient pushed during frame 0's record must
+    // still be live for the encoder on a PaintOnly frame.
+    assert_eq!(
+        ui.frame_arena.inner().gradients.len(),
+        1,
+        "PaintOnly must preserve arena.gradients so retained \
+         ShapeBrush::Gradient indices remain valid",
+    );
+
+    // Indirect pin: re-run the encoder against the retained tree
+    // + arena. With the bug, this panicked on `gradients[id]`.
+    let _ = ui.encode_cmds();
+}
+
 /// `request_repaint` co-firing with an anim wake produces the
 /// `REAL | ANIM` mix, so the classifier picks Full.
 #[test]
