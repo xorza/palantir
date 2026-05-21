@@ -55,6 +55,11 @@ use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
 struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
+    /// Cached at creation: lets `ensure_backbuffer` skip the
+    /// `wgpu::Texture::size()` round-trip on every frame. The Arc
+    /// traversal that call walks is ~15 µs/frame at this bench
+    /// shape — small but visible in Tracy at 14% of trace time.
+    size: wgpu::Extent3d,
     /// Lazy stencil attachment, allocated on first frame with rounded
     /// clipping (`FrameOutput::has_rounded_clip == true`). Apps that
     /// never use rounded clip never allocate this. Recreated alongside
@@ -221,7 +226,7 @@ impl WgpuBackend {
         );
         let needs_new = match &self.backbuffer {
             None => true,
-            Some(b) => b.tex.size() != size,
+            Some(b) => b.size != size,
         };
         if !needs_new {
             return false;
@@ -240,6 +245,7 @@ impl WgpuBackend {
         self.backbuffer = Some(Backbuffer {
             tex,
             view,
+            size,
             // Drop any stale stencil — it was sized to the old
             // backbuffer; `ensure_stencil` lazily allocates a fresh
             // one matching the new size on the next rounded-clip
@@ -265,7 +271,7 @@ impl WgpuBackend {
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
-            size: bb.tex.size(),
+            size: bb.size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
