@@ -180,44 +180,71 @@ fn restore_after_cache_hit(
     }
 }
 
-/// Derive the driver-facing `inner_avail` size: outer = Fixed(v) for any
-/// `Sizing::Fixed` axis else `available - margin` (floored at 0), clamped
-/// to `[min_size, max_size]`, then deflated by padding. The outer
-/// clamp matches `resolve_axis_size` so children's `available` tracks the
-/// parent's eventual arranged width even when `max_size` caps it.
+/// Full per-node sizing pipeline: derive `inner_avail` from the parent-
+/// supplied `available` + `style` + clamps, hand it to the driver via
+/// `dispatch`, fold the driver's raw `content` into a margin-inclusive
+/// `desired`. Returns `desired`.
+///
+/// Per-node padding/margin sums are unpacked once and threaded through
+/// both halves of the pipeline (was two unpacks across two free fns
+/// before the merge; the grow-detection path that justified the split
+/// is gone — single dispatch, no re-measure).
+///
+/// `available` is the parent-supplied slot (margin-inclusive).
+/// `intrinsic_min` floors `available` so children measure against the
+/// parent's actual outer size (`max(available, intrinsic_min)` per
+/// `resolve_axis_size`) — without this, a Hug grid inside a FILL panel
+/// whose own intrinsic_min is pinned by a long sibling would shape
+/// children against the smaller surface width. INFINITY-on-Hug-axis
+/// preserved (`INF.max(x) == INF`); Fixed axes ignore both inputs in
+/// `resolve_axis_size`.
+///
+/// Single dispatch: when `desired` exceeds `available` on a non-Fixed
+/// axis it's because a rigid descendant pinned the floor; a re-dispatch
+/// against the grown outer would converge to the same value because
+/// every driver's content size is monotone in `available` and pass-1
+/// already saturated at the floor. Pinned by
+/// `cross_driver_tests::convergence`.
 #[inline]
-fn compute_inner_avail(style: LayoutCore, available: Size, min_size: Size, max_size: Size) -> Size {
-    let (p_horiz, p_vert) = style.padding.sums();
-    let (m_horiz, m_vert) = style.margin.sums();
-    let outer_w = match style.size.w() {
-        Sizing::Fixed(v) => v,
-        _ => (available.w - m_horiz).max(0.0),
-    }
-    .clamp(min_size.w, max_size.w);
-    let outer_h = match style.size.h() {
-        Sizing::Fixed(v) => v,
-        _ => (available.h - m_vert).max(0.0),
-    }
-    .clamp(min_size.h, max_size.h);
-    Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0))
-}
-
-/// Fold a driver's raw `content` size into a margin-inclusive `desired`,
-/// applying `style.size` (Fixed/Hug/Fill), padding, margin, and the
-/// node's `[min, max]` clamp. Pulled out of `measure_dispatch` so the
-/// grow-detection path can resolve once per dispatch without re-reading
-/// `extras` between passes.
-#[inline]
-fn resolve_desired(
+fn resolve_sizing(
     style: LayoutCore,
-    content: Size,
     available: Size,
     intrinsic_min: Size,
     min_size: Size,
     max_size: Size,
+    dispatch: impl FnOnce(Size) -> Size,
 ) -> Size {
     let (p_horiz, p_vert) = style.padding.sums();
     let (m_horiz, m_vert) = style.margin.sums();
+
+    let dispatch_avail = Size::new(
+        available.w.max(intrinsic_min.w),
+        available.h.max(intrinsic_min.h),
+    );
+
+    // `inner_avail`: outer = `Fixed(v)` on Fixed axes else
+    // `dispatch_avail - margin`; clamp outer to `[min_size, max_size]`
+    // so a `max_size`-capped parent doesn't grant children more room
+    // than it can later arrange; deflate by padding. The clamp matches
+    // `resolve_axis_size` below so children's `available` tracks the
+    // parent's eventual arranged width.
+    let outer_w = match style.size.w() {
+        Sizing::Fixed(v) => v,
+        _ => (dispatch_avail.w - m_horiz).max(0.0),
+    }
+    .clamp(min_size.w, max_size.w);
+    let outer_h = match style.size.h() {
+        Sizing::Fixed(v) => v,
+        _ => (dispatch_avail.h - m_vert).max(0.0),
+    }
+    .clamp(min_size.h, max_size.h);
+    let inner_avail = Size::new((outer_w - p_horiz).max(0.0), (outer_h - p_vert).max(0.0));
+
+    let content = dispatch(inner_avail);
+
+    // Fold content into margin-inclusive desired. Margin is added once
+    // at the end inside `resolve_axis_size`; this function works in
+    // margin-exclusive space (`content_plus_padding = content + p_*`).
     Size::new(
         resolve_axis_size(AxisCtx {
             sizing: style.size.w(),
@@ -450,46 +477,18 @@ impl LayoutEngine {
             },
         );
 
-        // Floor `available` at `intrinsic_min` before dispatch: the
-        // node's actual outer size is `max(available, intrinsic_min)`
-        // (per `resolve_axis_size`), so children must measure against
-        // *that* width, not the smaller surface-derived value the
-        // parent passed down. Without this, a Hug grid inside a
-        // FILL panel whose own intrinsic_min is pinned by a long
-        // sibling (e.g. a non-wrapping section title) keeps shrinking
-        // with the surface even after the panel itself has stopped —
-        // the panel arranges at its floor, but its measure dispatch
-        // shaped the grid against the smaller surface width. Pinned
-        // by `text_wrap::two_hug_cols_nonwrapping_label_floors_at_full_width`.
-        //
-        // Finite-only: `INFINITY.max(intrinsic_min)` is a no-op for
-        // unbounded axes (Hug parent), preserving the WPF intrinsic
-        // trick. Fixed axes ignore both inputs in `resolve_axis_size`,
-        // so flooring here is harmless for them.
-        let dispatch_avail = Size::new(
-            available.w.max(intrinsic_min.w),
-            available.h.max(intrinsic_min.h),
+        // Derive `inner_avail`, dispatch to the driver, fold its raw
+        // content into a margin-inclusive `desired`. `resolve_sizing`
+        // contains the rationale for each step (intrinsic_min floor,
+        // outer clamp to `[min, max]`, single-dispatch monotonicity).
+        let desired = resolve_sizing(
+            style,
+            available,
+            intrinsic_min,
+            min_size,
+            max_size,
+            |inner_avail| self.measure_dispatch(tree, node, style, inner_avail, tc, out),
         );
-
-        // Derive the driver-facing `inner_avail` from the same `style`/
-        // `bounds`/`dispatch_avail` set we already have on hand. Fixed
-        // axes commit to the declared size; Hug/Fill propagate
-        // `dispatch_avail - margin`. The outer is clamped to
-        // `[min_size, max_size]` so a `max_size`-capped parent doesn't
-        // grant children more room than it can later arrange (matches
-        // the clamp in `resolve_axis_size` so the child's `available`
-        // tracks the parent's eventual arranged width).
-        let inner_avail = compute_inner_avail(style, dispatch_avail, min_size, max_size);
-
-        // Single dispatch. When `desired` exceeds `available` on a
-        // non-Fixed axis it's because a rigid descendant pinned the
-        // floor (`intrinsic_min` / `min_size` / `Sizing::Fixed`); a
-        // re-dispatch against the grown outer would converge to the
-        // same value because every driver's content size is monotone
-        // in `available` and pass-1 already saturated at the floor.
-        // Pinned by `cross_driver_tests::convergence`.
-        let content = self.measure_dispatch(tree, node, style, inner_avail, tc, out);
-        let desired = resolve_desired(style, content, available, intrinsic_min, min_size, max_size);
 
         self.scratch.desired[node.idx()] = desired;
 
