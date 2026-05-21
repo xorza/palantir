@@ -69,6 +69,10 @@ name = "alloc_free"
 harness = false
 
 [[bench]]
+name = "alloc_resize"
+harness = false
+
+[[bench]]
 name = "alloc_free_gpu"
 harness = false
 required-features = ["internals"]
