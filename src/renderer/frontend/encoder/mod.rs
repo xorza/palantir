@@ -391,7 +391,7 @@ fn encode_node(
     // interior.
     let mode = tree.records.attrs()[id.idx()].clip_mode();
     let clip = mode.is_clip();
-    let chrome = tree.chrome(id).copied();
+    let chrome = tree.chrome(id);
 
     // Chrome paints BEFORE the clip is pushed. The clip rect is
     // deflated by the chrome's stroke width (so children don't paint
