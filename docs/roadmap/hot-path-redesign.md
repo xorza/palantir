@@ -473,9 +473,70 @@ moves' payoffs don't show on the current fixture.
 
 ---
 
+# Experiment log
+
+Concrete things tried + outcomes. Useful for future trial-and-error
+calibration.
+
+## E1 — Hoist `Shape::is_noop` from `Shapes::add` to `Ui::add_shape`
+
+**Hypothesis:** filter noop shapes one indirection earlier.
+
+**Outcome:** cached_cpu +1.3% (within noise), partial/resizing
+unchanged. Reverted. Bench fixture has effectively zero noop shapes in
+steady state, so the hoist's early-exit never fires on the hot path.
+
+## E2 — `chrome: tree.chrome(id).copied()` → `tree.chrome(id)`
+
+**Hypothesis:** avoid the 48-byte `ChromeRow` copy per chromed node;
+field uses are `Copy`-scalar reads that work fine through `&ChromeRow`.
+
+**Outcome:** within bench variance (±2% spread on identical code makes
+2-µs changes invisible). Kept as a cleanup — semantically the right
+thing.
+
+## E3 — `text_ordinal: u32` → `&mut u32` parameter on `emit_one_shape`
+
+**Hypothesis:** fold the post-emit `matches!(shape, ShapeRecord::Text)`
+check into the function body, eliminating one match per shape.
+
+**Outcome:** **partial_cpu regressed +4.3% (significant), reverted.**
+The mutable reference parameter appears to defeat register allocation
+for `text_ordinal` across the call site. The `matches!` cost was
+already trivial (~1 cycle) and clearly not worth disturbing the
+optimizer.
+
+**Lesson:** micro-changes that *touch the hot loop's call signatures*
+can regress more than they save. Future small-experiment candidates
+should stick to data-flow changes that the compiler can clearly
+absorb.
+
+## Bench variance calibration
+
+Across ~7 runs of the unchanged code on the current machine:
+- `cached_cpu`: 95.7 – 98.4 µs (~3% spread)
+- `partial_cpu`: 134 – 143 µs (~7% spread)
+- `resizing_cpu`: 1.38 – 1.41 ms (~2% spread)
+
+**Conclusion: measurable wins need to be >5% on cached/resizing,
+>8% on partial.** Changes smaller than that vanish in run-to-run
+noise. Any future "small experiment" expecting <5 µs savings on
+cached_cpu is below the detection floor — chase the bigger ideas (A,
+Pick 1, C) where the predicted savings clear the noise floor.
+
 # Status
 
-Brainstorm. No implementation started. Baseline bench committed to
+Brainstorm + small experiments. No production-affecting changes
+committed yet. Chrome borrow cleanup applied (E2) — kept as
+semantic-clarity win even though too small to measure.
+
+Baseline bench committed to `benches/results/asus-rog-arch.txt` under
+the note "baseline before small redesign experiments" — see the file
+for the full machine-history strip.
+
+Especially: do not start on **A** without confirming that resizing's
+cost is in cosmic-text shaping (perf record + flamegraph on
+`resizing_cpu`). The 1 ms estimate is back-of-the-envelope. Baseline bench committed to
 `benches/results/asus-rog-arch.txt` under the note "baseline before
 is_noop early-exit in Ui::add_shape" — that prior hoist experiment is
 documented in this branch's history but was reverted because it
