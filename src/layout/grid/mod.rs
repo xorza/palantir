@@ -197,21 +197,37 @@ impl GridDepthStack {
     }
 }
 
-/// Flat per-track hug-size pool with one `(rows, cols)` slot per recorded
-/// `GridDef`. Carries both `max` (max-content) and `min` (min-content) per
-/// track so the Hug-track constraint solver can range-distribute Hug
-/// tracks. Measure pass writes; arrange pass reads. Per-depth scratch in
-/// `depth_stack` gets clobbered by sibling grids before arrange runs, so
-/// the pool persists for the whole layout pass instead.
+/// Flat per-track pool with one `(rows, cols)` slot per recorded
+/// `GridDef`. Carries hug ranges (`max`/`min`, fed by Phase-1 cell
+/// intrinsics and Phase-2 cell-height accumulation), measure-resolved
+/// track sizes (`sizes`, the output of `resolve_axis`), and the input
+/// `total` each axis was resolved against (`totals`). Measure pass
+/// writes; arrange pass reads. Per-depth scratch in `depth_stack`
+/// gets clobbered by sibling grids before arrange runs, so the pool
+/// persists for the whole layout pass instead.
 ///
-/// `reset_for` zeroes every slot at the top of each pass — load-bearing,
-/// because the Phase 1 column loop and the Phase 2 cell-height accumulator
-/// both merge via `slot[i] = slot[i].max(...)` and assume a 0.0 starting
-/// state. Capacity retained across frames.
+/// `reset_for` zeroes every slot at the top of each pass — load-bearing
+/// for `max`/`min`/`sizes` because the Phase 1 column loop and the
+/// Phase 2 cell-height accumulator both merge via `slot[i] =
+/// slot[i].max(...)` and assume a 0.0 starting state. `totals` is also
+/// zeroed; arrange interprets `total == 0.0` (combined with non-zero
+/// arrange slot) as "measure didn't run this frame for this grid" and
+/// falls back to re-resolving (the cache-hit-ancestor path).
+///
+/// Capacity retained across frames.
 #[derive(Default)]
 pub(crate) struct GridHugStore {
     max_pool: Vec<f32>,
     min_pool: Vec<f32>,
+    /// Resolved track sizes from the last measure of each grid. Parallel
+    /// indexing to `max_pool`/`min_pool` via the same per-slot spans.
+    /// Read by arrange to skip a redundant `resolve_axis` call when the
+    /// arrange-time slot matches the measure-time total.
+    sizes_pool: Vec<f32>,
+    /// `[col_total, row_total]` per grid slot — the `total` each axis
+    /// was last resolved against. Arrange compares against the
+    /// arrange-time slot extent and reuses persisted sizes on match.
+    totals_pool: Vec<[f32; 2]>,
     slots: Vec<GridHugSlot>,
 }
 
@@ -225,11 +241,14 @@ impl GridHugStore {
     pub(crate) fn reset_for(&mut self, tree: &Tree) {
         self.max_pool.clear();
         self.min_pool.clear();
+        self.sizes_pool.clear();
+        self.totals_pool.clear();
         self.slots.clear();
         for def in &tree.grid.defs {
             let rows = self.alloc(def.rows.len());
             let cols = self.alloc(def.cols.len());
             self.slots.push(GridHugSlot { rows, cols });
+            self.totals_pool.push([0.0, 0.0]);
         }
     }
 
@@ -237,6 +256,7 @@ impl GridHugStore {
         let start = self.max_pool.len() as u32;
         self.max_pool.resize(start as usize + n, 0.0);
         self.min_pool.resize(start as usize + n, 0.0);
+        self.sizes_pool.resize(start as usize + n, 0.0);
         Span::new(start, n as u32)
     }
 
@@ -271,6 +291,40 @@ impl GridHugStore {
     pub(crate) fn slice_mut_pair(&mut self, idx: u16, axis: Axis) -> (&mut [f32], &mut [f32]) {
         let r = self.axis_slice(idx, axis);
         (&mut self.min_pool[r.clone()], &mut self.max_pool[r])
+    }
+
+    fn axis_total_idx(axis: Axis) -> usize {
+        match axis {
+            Axis::X => 0,
+            Axis::Y => 1,
+        }
+    }
+
+    /// Persisted resolved track sizes for `(idx, axis)` from the last
+    /// measure. Empty-equivalent until measure writes via
+    /// `record_resolution`.
+    pub(crate) fn sizes_slice(&self, idx: u16, axis: Axis) -> &[f32] {
+        let r = self.axis_slice(idx, axis);
+        &self.sizes_pool[r]
+    }
+
+    /// `total` (measure-time `resolve_axis` input) for `(idx, axis)`.
+    /// Returns `0.0` for grids that haven't been measured this frame
+    /// (e.g. cache-hit descendants); arrange treats that as "no
+    /// persisted state" and re-resolves.
+    pub(crate) fn total_used(&self, idx: u16, axis: Axis) -> f32 {
+        self.totals_pool[idx as usize][Self::axis_total_idx(axis)]
+    }
+
+    /// Snapshot the just-resolved `(sizes, total)` for `(idx, axis)`
+    /// so a sibling-clobber-resistant arrange can read them back
+    /// without re-running `resolve_axis`. Caller passes the same
+    /// `total` it just handed to `resolve_axis` plus the resolved
+    /// `sizes` slice from the per-depth scratch.
+    pub(crate) fn record_resolution(&mut self, idx: u16, axis: Axis, total: f32, sizes: &[f32]) {
+        let r = self.axis_slice(idx, axis);
+        self.sizes_pool[r].copy_from_slice(sizes);
+        self.totals_pool[idx as usize][Self::axis_total_idx(axis)] = total;
     }
 
     /// Pack per-grid hug arrays for every `LayoutMode::Grid` descendant
@@ -455,6 +509,9 @@ fn measure_inner(
             col_gap,
             grid_sizing_w,
         );
+        // Stash col sizes for arrange's reuse path (skips a redundant
+        // `resolve_axis` when the arrange-time slot matches `inner_avail.w`).
+        hugs.record_resolution(idx, Axis::X, inner_avail.w, &s.col.sizes);
         // Resolve Fixed rows once before the per-cell loop — values are
         // constant per GridDef and `resolve_fixed` is idempotent, so
         // calling it inside the loop just re-set the same slots.
@@ -534,6 +591,7 @@ fn measure_inner(
             row_gap,
             grid_sizing_h,
         );
+        hugs.record_resolution(idx, Axis::Y, inner_avail.h, &s.row.sizes);
     }
 
     // Returned content size: sum of non-Fill track sizes + gaps. Fill
@@ -613,26 +671,41 @@ fn arrange_inner(
     let grid_size = tree.records.layout()[node.idx()].size;
 
     // Resolve track sizes (Fixed + Hug + Fill) and compute offsets.
-    // Arrange ignores `resolved` flags but `resolve_axis` requires
-    // `grid_sizing` for its Phase-4 commit (no-op on arrange's read
-    // path; passing the real value keeps the call self-consistent).
+    // Fast path: when measure already resolved this axis against the
+    // same `total` (recorded in `hugs.total_used`), copy the persisted
+    // sizes instead of re-running the constraint solver. The path is
+    // safe when:
+    //   - measure ran for this grid this frame (`total_used != 0` —
+    //     cache-hit-ancestor descendants have 0 since `reset_for`
+    //     zeros them and we never wrote);
+    //   - arrange's `inner.size.X` matches measure's `inner_avail.X`
+    //     (no WPF Stretch grow on this axis since measure committed).
+    // Hug grids never hit the fast path: measure used INF or a
+    // computed inner that arrange's actual slot won't match.
+    //
+    // The `track_offsets` cumulative-sum is cheap relative to
+    // `resolve_axis` (O(n_tracks), no constraint solving) so we re-run
+    // it unconditionally — keeps the offsets in sync regardless of
+    // which path produced `sizes`.
     {
         let GridContext {
             depth_stack, hugs, ..
         } = &mut layout.scratch.grid;
         let s = depth_stack.at(depth);
-        resolve_axis(
+        resolve_or_reuse(
             &mut s.col,
-            hugs.slice(idx, Axis::X, HugKind::Min),
-            hugs.slice(idx, Axis::X, HugKind::Max),
+            hugs,
+            idx,
+            Axis::X,
             inner.size.w,
             col_gap,
             grid_size.w(),
         );
-        resolve_axis(
+        resolve_or_reuse(
             &mut s.row,
-            hugs.slice(idx, Axis::Y, HugKind::Min),
-            hugs.slice(idx, Axis::Y, HugKind::Max),
+            hugs,
+            idx,
+            Axis::Y,
             inner.size.h,
             row_gap,
             grid_size.h(),
@@ -714,6 +787,37 @@ fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
         total += gap * (n - 1) as f32;
     }
     total
+}
+
+/// Either copy persisted resolved sizes from the last measure or
+/// re-run [`resolve_axis`] — whichever is sound for arrange's
+/// `(grid, axis, slot)`. See the call-site comment for the
+/// soundness conditions; the predicate here is just the boolean
+/// version of those.
+fn resolve_or_reuse(
+    a: &mut AxisScratch,
+    hugs: &mut GridHugStore,
+    idx: u16,
+    axis: Axis,
+    total: f32,
+    gap: f32,
+    grid_sizing: Sizing,
+) {
+    let recorded_total = hugs.total_used(idx, axis);
+    let can_reuse =
+        !matches!(grid_sizing, Sizing::Hug) && recorded_total != 0.0 && recorded_total == total;
+    if can_reuse {
+        a.sizes.copy_from_slice(hugs.sizes_slice(idx, axis));
+        return;
+    }
+    resolve_axis(
+        a,
+        hugs.slice(idx, axis, HugKind::Min),
+        hugs.slice(idx, axis, HugKind::Max),
+        total,
+        gap,
+        grid_sizing,
+    );
 }
 
 /// Resolve track sizes on one axis into `a.sizes` for a grid with
