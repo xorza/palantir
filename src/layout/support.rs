@@ -175,6 +175,28 @@ pub(crate) fn resolve_axis_size(ctx: AxisCtx) -> f32 {
     rendered.max(0.0).clamp(ctx.min, ctx.max) + ctx.margin
 }
 
+/// Per-axis WPF Stretch arrange-time grow. `Fill` returns the parent's
+/// slot extent (`available`) when the parent is constrained on this
+/// axis (`Fill`/`Fixed`); otherwise it stays at content (`desired`) so a
+/// Hug parent doesn't balloon. Anything not-`Fill` always returns
+/// `desired`. Single source of truth shared by `canvas::arrange` and
+/// the root-arrange in `LayoutEngine::run` so the rule can't drift.
+/// Stack does the equivalent via `freeze_distribute` (which also
+/// honors per-child weights and `max_size` caps), and zstack via
+/// `place_axis`.
+#[inline]
+pub(crate) fn stretched_extent(
+    child_sizing: Sizing,
+    desired: f32,
+    available: f32,
+    parent_sizing: Sizing,
+) -> f32 {
+    match (child_sizing, parent_sizing) {
+        (Sizing::Fill(_), Sizing::Fill(_) | Sizing::Fixed(_)) => available.max(desired),
+        _ => desired,
+    }
+}
+
 /// Set this node and every descendant to a zero-size rect anchored at
 /// `anchor`. Walks the contiguous pre-order span `[node, subtree_end[node])`
 /// directly — no recursion, no child cursors.

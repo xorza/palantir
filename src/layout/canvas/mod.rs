@@ -1,7 +1,9 @@
 use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
-use super::support::{TextCtx, children_max_intrinsic, measure_per_axis_hug, zero_subtree};
+use super::support::{
+    TextCtx, children_max_intrinsic, measure_per_axis_hug, stretched_extent, zero_subtree,
+};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::sizing::Sizing;
@@ -71,12 +73,11 @@ pub(crate) fn arrange(
 ) {
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
-    // Hug canvas: don't stretch Fill children; they'd inflate to the
-    // canvas's own intrinsic which already counts `position`. Stretch
-    // only when the canvas is constrained (Fixed/Fill), where Fill
-    // children should fill the canvas's actual slot.
-    let stretch_w = !matches!(canvas_size.w(), Sizing::Hug);
-    let stretch_h = !matches!(canvas_size.h(), Sizing::Hug);
+    // Hug canvas: `stretched_extent` returns `desired` for Fill
+    // children here — stretching them to `inner.size` would inflate
+    // them to the canvas's own intrinsic, which already counts
+    // `position`. Constrained (Fixed/Fill) canvases let Fill children
+    // fill the canvas's actual slot.
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -86,15 +87,11 @@ pub(crate) fn arrange(
         let d = layout.scratch.desired[c.idx()];
         let pos = tree.bounds(c).position;
         let s = layouts[c.idx()].size;
-        let pick = |sizing: Sizing, des: f32, full: f32, stretch: bool| match sizing {
-            Sizing::Fill(_) if stretch => full,
-            _ => des,
-        };
         let child_rect = Rect {
             min: inner.min + pos,
             size: Size::new(
-                pick(s.w(), d.w, inner.size.w, stretch_w),
-                pick(s.h(), d.h, inner.size.h, stretch_h),
+                stretched_extent(s.w(), d.w, inner.size.w, canvas_size.w()),
+                stretched_extent(s.h(), d.h, inner.size.h, canvas_size.h()),
             ),
         };
         layout.arrange(tree, c, Some(node), child_rect, out);

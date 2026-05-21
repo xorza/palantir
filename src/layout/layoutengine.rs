@@ -8,7 +8,9 @@ use crate::layout::grid::GridContext;
 use crate::layout::intrinsic::{LenReq, SLOT_COUNT};
 use crate::layout::scroll::ScrollStates;
 use crate::layout::stack::StackScratch;
-use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size, zero_subtree};
+use crate::layout::support::{
+    AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size, stretched_extent, zero_subtree,
+};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
@@ -297,11 +299,9 @@ impl LayoutEngine {
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
                 let root = NodeId(slot.first_node);
-                // Main: implicit root paints the full surface (Fill
-                // semantic; arrange uses `available.max(desired)` so
-                // overflow grows past it). Side layers: `slot.anchor`
-                // is the paint placement. `slot.size` controls the
-                // measurement available:
+                // Main: implicit root spans the surface. Side layers:
+                // `slot.anchor` is the paint placement. `slot.size`
+                // controls the measurement available:
                 //   - `None` → "fill from anchor to bottom-right", so
                 //     `available = surface - anchor`. The dropdown /
                 //     tooltip default: body never overflows past the
@@ -315,7 +315,8 @@ impl LayoutEngine {
                 //     measure against its full content height and flip
                 //     upward on the next frame.
                 // The root's own `Sizing` governs the painted size
-                // within that available.
+                // within that available — see the `stretched_extent`
+                // call below.
                 let (origin, available) = if layer == Layer::Main {
                     (surface.min, surface.size)
                 } else {
@@ -330,21 +331,21 @@ impl LayoutEngine {
                 };
                 let desired = self.measure(tree, root, available, tc, out);
                 // The layer engine *is* the parent for the root, so it
-                // does WPF Stretch's arrange-time grow here. Per axis:
-                // `Fill` → `available.max(desired)` (stretch to the
-                // layer's slot, but let rigid descendants overflow
-                // past it); `Hug`/`Fixed` → `desired`. Main's implicit
-                // viewport root is `Fill × Fill`, so both axes resolve
-                // to `available.max(desired)` — same as the prior
-                // surface-fill behavior.
+                // does WPF Stretch's arrange-time grow here. Modeled
+                // as a synthetic `Fixed`-sized parent of size
+                // `available` so `stretched_extent` returns
+                // `available.max(desired)` for Fill roots (stretch to
+                // the layer's slot, rigid descendants overflow past
+                // it) and `desired` for Hug/Fixed roots. Main's
+                // implicit viewport root is `Fill × Fill`, so both
+                // axes resolve to `available.max(desired)` — same as
+                // the prior surface-fill behavior.
                 let root_size = tree.records.layout()[root.idx()].size;
-                let pick = |sizing, avail: f32, des: f32| match sizing {
-                    Sizing::Fill(_) => avail.max(des),
-                    _ => des,
-                };
+                let synth_parent_w = Sizing::Fixed(available.w);
+                let synth_parent_h = Sizing::Fixed(available.h);
                 let size = Size::new(
-                    pick(root_size.w(), available.w, desired.w),
-                    pick(root_size.h(), available.h, desired.h),
+                    stretched_extent(root_size.w(), desired.w, available.w, synth_parent_w),
+                    stretched_extent(root_size.h(), desired.h, available.h, synth_parent_h),
                 );
                 self.arrange(tree, root, None, Rect { min: origin, size }, out);
             }
