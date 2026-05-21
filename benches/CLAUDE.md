@@ -3,15 +3,16 @@
 Criterion benches for the layout/measure/frame/cascade/damage pipeline.
 
 Each `*.rs` file is a criterion target; cases inside are named like
-`<group>/<case>` (e.g. `frame/post_record`, `frame/post_record_resizing`).
-Filter at run-time with a criterion regex.
+`<group>/<case>` (e.g. `frame/cached_cpu`, `frame/partial_gpu`,
+`damage/full`, `caches/measure/cached`). Filter at run-time with a
+criterion regex.
 
 ## Running
 
 ```sh
 PALANTIR_BENCH_MODE=both PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all arms
 PALANTIR_BENCH_MODE=cpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
-PALANTIR_BENCH_MODE=gpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'cached$'  # filter
+PALANTIR_BENCH_MODE=gpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
 cargo bench --bench caches --features internals        # gated benches
 ```
 
@@ -261,7 +262,7 @@ pinned run):
 
 ```sh
 scripts/bench-perf.sh                                # frame bench, 5s
-BENCH=damage FILTER='damage/full' scripts/bench-perf.sh
+BENCH=damage FILTER='damage/workload' scripts/bench-perf.sh
 CALLGRAPH=lbr scripts/bench-perf.sh                  # low-overhead callgraph
 LDLAT=30 scripts/bench-perf.sh                       # finer load-latency cutoff
 SKIP_MEM=1 SKIP_TOPDOWN=1 scripts/bench-perf.sh      # skip optional passes
@@ -487,9 +488,12 @@ thermal — re-run on power, lid open, with other apps closed.
 
 1. Drop a file under `benches/`, register it in `Cargo.toml`'s
    `[[bench]]` table.
-2. If it needs `support::internals` reach-in, add
+2. If it needs `test_support` reach-in helpers from a production
+   module (e.g. `palantir::ui::damage::region::test_support::…`), add
    `required-features = ["internals"]` to the `[[bench]]` entry and
-   profile with `FEATURES=internals scripts/profile-bench.sh`.
+   profile with `FEATURES=internals scripts/profile-bench.sh`. Reach
+   in via the canonical per-module `test_support` path — there is no
+   `support::internals` aggregator.
 3. Name cases `<group>/<case>` so criterion filters work consistently
    with the profile-bench script.
 4. After landing, profile once and paste the text report into the PR
