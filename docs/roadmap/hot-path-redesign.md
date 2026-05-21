@@ -11,14 +11,19 @@ doc is the second-pass conclusion.
 
 `PALANTIR_BENCH_MODE=cpu cargo bench --bench frame --features internals`
 
-| Arm | Mean (latest) |
-|---|---|
-| `frame/cached_cpu` | 95.74 µs |
-| `frame/partial_cpu` | 137.31 µs |
-| `frame/resizing_cpu` | **1.385 ms** |
+| Arm | Mean (latest) | Δ from cached | Notes |
+|---|---|---|---|
+| `frame/cached_cpu` | 96.78 µs | — | record + measure cache hits + cascade cache hits; damage = None → skip paint |
+| `frame/partial_cpu` | 138.07 µs | +41 µs | one counter mutates → small damage rect → minimal paint |
+| `frame/scrolling_cpu` | **357.67 µs** | **+261 µs** | `Panel::transform` shifts every frame → cascade misses, full paint pass, layout cache hits |
+| `frame/resizing_cpu` | 1387 µs | +1290 µs | viewport size changes → measure + cascade + everything misses |
 
 Bench variance is ~2–4 µs frame-to-frame on the cached/partial arms;
-treat anything under 5% as noise on those, and ~5% on resizing.
+treat anything under 5% as noise on those, and ~5% on resize/scroll.
+
+The `scrolling_cpu` arm exists specifically to expose the
+cascade-cache-miss-on-position-change pattern. See "Investigation"
+section near the bottom.
 
 `cached_cpu` is the steady-state floor (record + measure-cache hits +
 arrange + cascade + encode + compose, no real damage). `partial_cpu`

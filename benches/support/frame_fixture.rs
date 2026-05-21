@@ -42,6 +42,13 @@ pub struct FormState {
     pub enabled: bool,
     pub role: u8,
     pub tick: u32,
+    /// Post-arrange translate applied to the main content panel. Used
+    /// by the `frame/scrolling_cpu` bench arm to model continuous
+    /// position change WITHOUT changing layout — the cascade walks the
+    /// full subtree but layout/measure cache hits trivially. Tests
+    /// whether a cascade delta-cache (cached output translated by
+    /// `parent_transform`) would meaningfully reduce cascade cost.
+    pub scroll_offset: glam::Vec2,
 }
 
 pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
@@ -94,6 +101,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
             Panel::hstack()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
+                .transform(palantir::TranslateScale::from_translation(state.scroll_offset))
                 .show(ui, |ui| {
                     Panel::vstack()
                         .gap(4.0)
