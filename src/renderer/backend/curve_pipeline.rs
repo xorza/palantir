@@ -194,7 +194,7 @@ impl CurvePipeline {
             pass.set_pipeline(&self.pipeline);
         }
         pass.set_bind_group(0, &self.bind_group, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer().slice(..));
+        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
     /// Issue one non-indexed instanced draw covering every instance in
