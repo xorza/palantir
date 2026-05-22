@@ -17,6 +17,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
+use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -710,6 +711,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
         TextShaper::with_bundled_fonts(),
         FrameArena::default(),
         crate::renderer::caches::RenderCaches::default(),
+        GpuPassStats::default(),
     );
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {

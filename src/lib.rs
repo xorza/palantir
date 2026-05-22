@@ -23,7 +23,7 @@ pub mod clipboard;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 pub mod forest;
-pub(crate) mod host;
+pub mod host;
 pub mod input;
 pub mod layout;
 pub mod primitives;
@@ -50,6 +50,7 @@ pub use forest::visibility::Visibility;
 pub use host::FramePresent;
 #[cfg(any(test, feature = "internals"))]
 pub use host::Host;
+pub use host::HostConfig;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::InputPolicy;
@@ -113,7 +114,7 @@ pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot};
-pub use winit_host::{App, WinitHost, WinitHostConfig};
+pub use winit_host::{App, FrameLatency, WinitHost, WinitHostConfig};
 
 #[cfg(test)]
 mod hot_struct_sizes {

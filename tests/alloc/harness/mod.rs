@@ -20,6 +20,7 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
+use palantir::renderer::gpu_pass_stats::GpuPassStats;
 use palantir::{Display, FrameArena, FrameStamp, TextShaper, Ui};
 
 /// Local mono-fallback Ui constructor. Alloc tests don't enable the
@@ -29,6 +30,7 @@ pub(crate) fn new_ui() -> Ui {
         TextShaper::default(),
         FrameArena::default(),
         palantir::RenderCaches::default(),
+        GpuPassStats::default(),
     )
 }
 
