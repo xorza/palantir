@@ -46,6 +46,22 @@ pub(crate) const fn noop_f16_bits(bits: u16) -> bool {
     (bits & ABS_MASK) <= EPS_BITS
 }
 
+/// True if an f16 stored as `u16` bits is within `EPS` below 1.0 (or
+/// above). Mirror of `noop_f16_bits` for the opacity end of the
+/// scale: positive f16 values are monotonic in their bit
+/// representation, so `>= f16(1.0 - EPS).to_bits()` catches every
+/// value visually indistinguishable from fully opaque. The upper
+/// bound `< 0x7C00` rejects NaN (NaN exponent starts at `0x7C01`+)
+/// — a NaN alpha is a loud bug, not a silent opaque pass. Negative
+/// f16s carry the sign bit (`>= 0x8000`), well above the NaN
+/// threshold, so they're rejected too.
+#[inline]
+pub(crate) const fn opaque_f16_bits(bits: u16) -> bool {
+    const ONE_MINUS_EPS_BITS: u16 = half::f16::from_f32_const(1.0 - EPS).to_bits();
+    const NAN_EXP: u16 = 0x7C00;
+    bits >= ONE_MINUS_EPS_BITS && bits < NAN_EXP
+}
+
 /// True if two 2D points are within `EPS` of each other (Euclidean
 /// distance). Compares squared distance against `EPS²` to avoid a
 /// `sqrt`. Use when two points should be treated as coincident

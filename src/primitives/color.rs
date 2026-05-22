@@ -407,6 +407,17 @@ impl ColorF16 {
         noop_f16_bits(self.0[3])
     }
 
+    /// True when alpha is within `EPS` of 1.0 — paints with full
+    /// coverage. Mirror of `is_noop` at the opposite end of the
+    /// scale; same bit-trick, no f16→f32 conversion. Used by the
+    /// composer to flag solid-fill quads as occlusion-pruning
+    /// candidates.
+    #[inline]
+    pub fn is_opaque(self) -> bool {
+        use crate::primitives::approx::opaque_f16_bits;
+        opaque_f16_bits(self.0[3])
+    }
+
     /// All four lanes unpacked to f32 at once via the batched f16→f32
     /// slice path. Single instruction on F16C/fp16 targets.
     #[inline]
