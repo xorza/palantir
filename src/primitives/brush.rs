@@ -47,11 +47,6 @@ impl FillAxis {
         f16x4_to_f32x4(self.0)
     }
 
-    #[inline]
-    pub fn t0(self) -> f32 {
-        half::f16::from_bits(self.0[2]).to_f32()
-    }
-
     /// Per-lane f32 setter helper for the composer's
     /// `current_transform.scale` multiply path. Re-quantizes via the
     /// scalar f16 round-trip.

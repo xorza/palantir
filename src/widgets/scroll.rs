@@ -552,15 +552,15 @@ impl Scroll {
             // user-set `content_margin`. Margin is invisible
             // overscroll — doesn't show up in bars, just lets the
             // user wheel/drag past the natural bounds.
-            let cm = row.content_margin;
-            let neg_x = cm.left() * row.zoom;
-            let neg_y = cm.top() * row.zoom;
+            let [cml, cmt, cmr, cmb] = row.content_margin.as_array();
+            let neg_x = cml * row.zoom;
+            let neg_y = cmt * row.zoom;
             let slack_x = row.content.w * row.zoom - row.viewport.w;
             let slack_y = row.content.h * row.zoom - row.viewport.h;
             let min_x = -neg_x;
-            let max_x = slack_x + cm.right() * row.zoom;
+            let max_x = slack_x + cmr * row.zoom;
             let min_y = -neg_y;
-            let max_y = slack_y + cm.bottom() * row.zoom;
+            let max_y = slack_y + cmb * row.zoom;
             if pan.x && pan_delta.x != 0.0 {
                 let lo = row.offset.x.min(min_x.min(max_x));
                 let hi = row.offset.x.max(min_x.max(max_x));
