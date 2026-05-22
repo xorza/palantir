@@ -542,11 +542,16 @@ impl WgpuBackend {
         //   schedule walk per damage rect inside it. Rects are
         //   pairwise disjoint, so the per-pass stencil clear is
         //   sufficient — no per-rect stencil reset needed.
+        // Force alpha to 1: the surface clear is the bottom-most
+        // paint layer of the frame, so any sub-1 alpha would let the
+        // host's desktop show through the framebuffer's transparent
+        // regions. Palantir doesn't support transparent windows
+        // (and the occlusion-prune assumes the clear is opaque).
         let clear_color = wgpu::Color {
             r: clear.r as f64,
             g: clear.g as f64,
             b: clear.b as f64,
-            a: clear.a as f64,
+            a: 1.0,
         };
         if damage_scissors.is_empty() {
             tracing::trace!("wgpu_backend.submit.pass.full");
