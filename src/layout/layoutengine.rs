@@ -503,7 +503,18 @@ impl LayoutEngine {
         // inside `MeasureCache::write_subtree`. Per-grid hug arrays
         // for descendant Grids land in `scratch.tmp_hugs` first;
         // empty for grid-free subtrees.
-        {
+        //
+        // Skip leaves: on a fully-cached frame the root's try_lookup
+        // hits and the whole subtree is restored in one shot —
+        // descendant leaves are never visited, so caching them costs
+        // a `WidgetIdMap` insert + three arena copy/acquire pairs
+        // per leaf per miss frame for work that the lower-level
+        // `TextShaper` cache (`shape_unbounded` keyed on
+        // `(WidgetId, ordinal, node_hash)`) already covers.
+        // Bench: `caches/{measure,heavy/measure,dense/measure}/forced_miss`
+        // improves 4.5–6.6%, `cached` arms neutral (the leaf entries
+        // they used to populate are never read on the hit path).
+        if style.mode != LayoutMode::Leaf {
             let start = node.idx();
             let end = tree.subtree_end_of(start) as usize;
             self.scratch.tmp_hugs.clear();
