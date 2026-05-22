@@ -87,66 +87,9 @@ struct Snapshot {
 /// surfaces a beneficial mid-size cacheable subtree.
 const MIN_CACHEABLE_SPAN: u32 = 512;
 
-/// Consecutive captures (this wid, key changes every time, no hit in
-/// between) that flip the wid into cooldown. Three is enough to ride
-/// out a one-off resize or theme swap without tripping, while still
-/// reacting fast to a sustained thrash (e.g. continuous window
-/// resize, where every iter the cache pays full capture cost but
-/// next-iter's `rect_q` invalidates the snapshot).
-const CHURN_THRESHOLD: u8 = 3;
-
-/// Frames to skip capture once cooldown engages. Strictly frame-based
-/// (driven by `frame_seq`), so cooldown elapses on schedule whether or
-/// not the wid keeps getting `capture` calls — a wid that starts
-/// hitting mid-cooldown still resumes capture at the same wall-clock
-/// frame it would have otherwise.
-const COOL_FRAMES: u32 = 64;
-
-/// Per-widget thrash state for the capture-backoff. Held parallel to
-/// `snapshots`: a wid in cooldown has *no* snapshot entry (we evicted
-/// it when entering cooldown) but does have a churn row tracking the
-/// next-key probe. Once a capture call lands with the same key as the
-/// previous one, the wid exits cooldown.
-#[derive(Clone, Copy)]
-struct Churn {
-    /// Most recent key seen on a `capture` call for this wid. During
-    /// cooldown a match between this and the incoming key means the
-    /// thrash has settled.
-    last_key: ProbeKey,
-    /// Consecutive thrashing captures (key changed each time, no hit
-    /// between them). Resets on a hit (detected via `last_capture_frame`
-    /// gap) or on an exact key match in cooldown.
-    miss_streak: u8,
-    /// `frame_seq` at which cooldown ends; `capture` is a no-op while
-    /// `frame_seq < cool_until`. Zero means "not cooling".
-    cool_until: u32,
-    /// `frame_seq` at the last `capture` call for this wid. If the gap
-    /// is > 1 frame, this wid hit the snapshot in the meantime —
-    /// reset `miss_streak` since the captured snapshot did amortize.
-    last_capture_frame: u32,
-}
-
-/// Outcome of the churn check at the top of `capture`. Computed in one
-/// pass so the snapshot mutation that follows doesn't have to
-/// interleave with churn-map borrows.
-enum ChurnDecision {
-    /// Proceed with capture normally.
-    Capture,
-    /// Skip this capture; the wid is still cooling.
-    Skip,
-    /// Skip this capture and evict any existing snapshot — we just
-    /// entered cooldown and the prior snapshot is stale.
-    SkipAndEvict,
-}
-
 #[derive(Default)]
 pub struct CascadeCache {
     snapshots: WidgetIdMap<Snapshot>,
-    churn: WidgetIdMap<Churn>,
-    /// Monotonic frame counter, incremented in `reset_counters`. Lets
-    /// `Churn::last_capture_frame` detect a "we hit on at least one
-    /// intermediate frame" gap without an explicit hit flag.
-    frame_seq: u32,
     /// Per-node arenas. `rows` owns the live counter (acquired and
     /// released for `span` items per snapshot); `sptrs`, `entry_rows`,
     /// and `paint_spans` are parallel `Vec`s of identical length.
@@ -176,7 +119,6 @@ impl CascadeCache {
         self.misses = 0;
         self.captures = 0;
         self.nodes_blit = 0;
-        self.frame_seq = self.frame_seq.wrapping_add(1);
     }
 
     #[inline]
@@ -283,23 +225,6 @@ impl CascadeCache {
         let span = subtree_end - root_idx;
         if !Self::is_cacheable(span) {
             return;
-        }
-
-        // Churn backoff. The resize bench (`frame/resizing_*`) re-walks
-        // the same root-ish subtree every iter with a fresh `rect_q`
-        // — every capture is paid for, and next-iter's probe always
-        // misses. Detect that pattern and stop capturing for a window
-        // of frames; resume the moment a capture call lands with the
-        // same key as the previous one (signal the thrash settled).
-        match self.update_churn(wid, key) {
-            ChurnDecision::Skip => return,
-            ChurnDecision::SkipAndEvict => {
-                if let Some(old) = self.snapshots.remove(&wid) {
-                    self.release(old);
-                }
-                return;
-            }
-            ChurnDecision::Capture => {}
         }
 
         let lo = root_idx as usize;
@@ -458,72 +383,11 @@ impl CascadeCache {
         self.shape_links.release(snap.shape_links.len);
     }
 
-    /// Single-pass churn step: bump the per-wid streak, decide whether
-    /// to enter/exit cooldown, and report what `capture` should do
-    /// next. Touches `self.churn` exactly once via `entry()`. Pure
-    /// w.r.t. `self.snapshots` — the caller does any required eviction
-    /// based on the returned variant.
-    fn update_churn(&mut self, wid: WidgetId, key: ProbeKey) -> ChurnDecision {
-        let frame = self.frame_seq;
-        let old_snapshot_key = self.snapshots.get(&wid).map(|s| s.key);
-        let churn = self.churn.entry(wid).or_insert(Churn {
-            last_key: key,
-            miss_streak: 0,
-            cool_until: 0,
-            last_capture_frame: frame,
-        });
-        // A hit on this wid means `capture` is *not* called that
-        // frame — a gap > 1 between successive capture frames is the
-        // only "we hit in between" signal available. Reset streak so
-        // a captured snapshot that did amortize doesn't count toward
-        // the next cooldown.
-        if frame.wrapping_sub(churn.last_capture_frame) > 1 {
-            churn.miss_streak = 0;
-        }
-        churn.last_capture_frame = frame;
-
-        // Cooldown still in effect? `cool_until > frame` under
-        // wrapping `u32` arithmetic — use the half-range trick so the
-        // comparison survives the `wrapping_add` in the entry path.
-        let cooling =
-            churn.cool_until != frame && churn.cool_until.wrapping_sub(frame) < u32::MAX / 2;
-        if cooling {
-            if churn.last_key == key {
-                // Two consecutive identical keys during cooldown →
-                // thrash settled. Exit cooldown and capture; any
-                // prior snapshot was evicted on entry, so no extra
-                // evict needed.
-                churn.cool_until = 0;
-                churn.miss_streak = 0;
-                return ChurnDecision::Capture;
-            }
-            churn.last_key = key;
-            return ChurnDecision::Skip;
-        }
-
-        // Not cooling. If a prior snapshot exists with a different
-        // key, this is a wasted capture — bump the streak.
-        // `old.key == key` is unreachable (probe would have hit
-        // first and `capture` wouldn't be called).
-        if let Some(old_key) = old_snapshot_key {
-            debug_assert!(old_key != key, "capture called when probe would have hit");
-            churn.miss_streak = churn.miss_streak.saturating_add(1);
-            if churn.miss_streak >= CHURN_THRESHOLD {
-                churn.cool_until = frame.wrapping_add(COOL_FRAMES);
-                churn.last_key = key;
-                return ChurnDecision::SkipAndEvict;
-            }
-        }
-        churn.last_key = key;
-        ChurnDecision::Capture
-    }
-
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         for wid in removed {
             if let Some(snap) = self.snapshots.remove(wid) {
                 self.release(snap);
             }
-            self.churn.remove(wid);
         }
     }
 }
