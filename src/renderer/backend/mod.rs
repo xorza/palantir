@@ -782,22 +782,8 @@ impl WgpuBackend {
             }
             t.begin_pipeline_stats(&mut pass);
         }
-        // The shared `Immediates.viewport` rides immediates — but
-        // wgpu requires a pipeline to be bound before `set_immediates`,
-        // so we defer the push to the first drawing step inside
-        // `render_groups`. Once written it stays valid across every
-        // pipeline switch in the pass because all pipelines declare
-        // the same `IMMEDIATES_BYTES` region.
-        let mut viewport_pushed = false;
         match partial_scissors {
-            None => self.render_groups(
-                &mut pass,
-                buffer,
-                None,
-                use_stencil,
-                text_mode,
-                &mut viewport_pushed,
-            ),
+            None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
             Some(rects) => {
                 for (i, &r) in rects.iter().enumerate() {
                     tracing::trace!(
@@ -806,14 +792,7 @@ impl WgpuBackend {
                         scissor = ?r,
                         "wgpu_backend.submit.pass.partial_rect"
                     );
-                    self.render_groups(
-                        &mut pass,
-                        buffer,
-                        Some(r),
-                        use_stencil,
-                        text_mode,
-                        &mut viewport_pushed,
-                    );
+                    self.render_groups(&mut pass, buffer, Some(r), use_stencil, text_mode);
                 }
             }
         }
@@ -839,7 +818,6 @@ impl WgpuBackend {
         damage_scissor: Option<URect>,
         use_stencil: bool,
         text_mode: TextStencilMode,
-        viewport_pushed: &mut bool,
     ) {
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
@@ -858,11 +836,6 @@ impl WgpuBackend {
             MaskWrite,
         }
         let mut bound = Bound::None;
-        // The shared viewport immediate is set lazily, after the
-        // first pipeline binding (wgpu validation: `set_immediates`
-        // requires an active pipeline). Once written, the value
-        // stays valid across pipeline switches because every palantir
-        // pipeline declares the same `IMMEDIATES_BYTES` region.
         let viewport = ViewportPush {
             size: self.viewport_size,
         };
@@ -877,19 +850,13 @@ impl WgpuBackend {
             }
         };
 
-        // Inline at the bottom of each drawing step so the very first
-        // pipeline-bound step in the pass pushes viewport once. After
-        // that the flag stays true for the rest of the pass (multiple
-        // damage rects share the same `RenderPass` and the same
-        // immediate state).
-        macro_rules! push_viewport {
-            ($pass:expr) => {
-                if !*viewport_pushed {
-                    viewport.push_into($pass);
-                    *viewport_pushed = true;
-                }
-            };
-        }
+        // `viewport.push_into(pass)` is called after every (re)bind
+        // below. Cheap (register-mapped `set_immediates`, no buffer
+        // round-trip) and dodges the immediate-state-survives-pipeline-
+        // switch contract entirely — wgpu's IMMEDIATES feature claims
+        // it does, but the symptom of a missed push is silent NDC
+        // corruption (wrong-scaled quads painting outside their
+        // damage scissor). Re-push is the unambiguous fix.
 
         for_each_step(
             buffer,
@@ -900,11 +867,17 @@ impl WgpuBackend {
                 RenderStep::PreClear => {
                     mark(pass, BatchKind::PreClear);
                     pass.push_debug_group("preclear");
-                    self.quad.draw_clear(pass, use_stencil);
-                    push_viewport!(pass);
-                    // draw_clear binds its own pipeline + vertex buffer
-                    // (clear_buffer, not instance_buffer); next non-clear
-                    // step has to re-bind.
+                    // bind → push viewport → draw. Pushing after the
+                    // draw (or skipping it) leaves the clear quad
+                    // reading whatever's in the immediate region —
+                    // zero on the first PreClear of a partial pass,
+                    // which lands the quad at garbage NDC and skips
+                    // the damage-region clear.
+                    self.quad.bind_clear(pass, use_stencil);
+                    viewport.push_into(pass);
+                    pass.draw(0..4, 0..1);
+                    // Distinct vertex buffer (clear_buffer); next
+                    // non-clear step re-binds.
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
@@ -919,7 +892,7 @@ impl WgpuBackend {
                     pass.push_debug_group("mask");
                     if bound != Bound::MaskWrite {
                         self.quad.bind_mask_write(pass);
-                        push_viewport!(pass);
+                        viewport.push_into(pass);
                         bound = Bound::MaskWrite;
                     }
                     self.quad.draw_mask(pass, mi);
@@ -934,7 +907,7 @@ impl WgpuBackend {
                         } else {
                             self.quad.bind(pass);
                         }
-                        push_viewport!(pass);
+                        viewport.push_into(pass);
                         bound = Bound::QuadInstance;
                     }
                     self.quad.draw_range(pass, range);
@@ -943,13 +916,12 @@ impl WgpuBackend {
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
                     pass.push_debug_group("text");
-                    // `render_batch` sets its own pipeline then writes
-                    // BOTH halves of the immediate region (viewport at
-                    // offset 0, params at offset 8); the cross-pipeline
-                    // immediate state stays valid for any subsequent
-                    // non-text bind.
+                    // `render_batch` pushes both halves of the
+                    // immediate region (viewport at offset 0, params
+                    // at offset 8) itself. Subsequent non-text steps
+                    // re-push viewport via `viewport.push_into(pass)`
+                    // after their bind.
                     self.text.render_batch(batch, pass, text_mode, &viewport);
-                    *viewport_pushed = true;
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
@@ -958,7 +930,7 @@ impl WgpuBackend {
                     pass.push_debug_group("meshes");
                     if bound != Bound::Mesh {
                         self.mesh.bind(pass, use_stencil);
-                        push_viewport!(pass);
+                        viewport.push_into(pass);
                         bound = Bound::Mesh;
                     }
                     let range = buffer.mesh_batches[batch].meshes;
@@ -984,7 +956,7 @@ impl WgpuBackend {
                     pass.push_debug_group("images");
                     if bound != Bound::Image {
                         self.image.bind(pass, use_stencil);
-                        push_viewport!(pass);
+                        viewport.push_into(pass);
                         bound = Bound::Image;
                     }
                     let range = buffer.image_batches[batch].images;
@@ -1002,7 +974,7 @@ impl WgpuBackend {
                     pass.push_debug_group("curves");
                     if bound != Bound::Curve {
                         self.curve.bind(pass, use_stencil, &self.quad.gradient_bg);
-                        push_viewport!(pass);
+                        viewport.push_into(pass);
                         bound = Bound::Curve;
                     }
                     let range = buffer.curve_batches[batch].instances;

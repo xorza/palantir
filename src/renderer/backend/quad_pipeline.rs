@@ -417,16 +417,20 @@ impl QuadPipeline {
         self.last_clear = Some((viewport, color));
     }
 
-    /// Bind the appropriate pipeline + clear buffer and draw one
-    /// instance. In `stencil` mode the pass has a stencil attachment,
-    /// so the no-stencil base pipeline can't run; uses `stencil_test`
-    /// at reference 0 instead — the stencil is cleared to 0 each pass,
+    /// Bind the pipeline + clear vertex buffer for the partial-repaint
+    /// pre-clear quad. Caller follows with `viewport.push_into(pass)`
+    /// then `pass.draw(0..4, 0..1)` — see the PreClear arm in
+    /// `WgpuBackend::render_groups`.
+    ///
+    /// In `stencil` mode the pass has a stencil attachment, so the
+    /// no-stencil base pipeline can't run; uses `stencil_test` at
+    /// reference 0 instead — the stencil is cleared to 0 each pass,
     /// so `Equal(0)` matches every pixel and `write_mask=0` keeps
     /// stencil intact.
-    pub(crate) fn draw_clear<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
+    pub(crate) fn bind_clear<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         debug_assert!(
             self.last_clear.is_some(),
-            "draw_clear without upload_clear this frame: the schedule's \
+            "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
         if stencil {
@@ -438,7 +442,6 @@ impl QuadPipeline {
         }
         pass.set_bind_group(0, &self.gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
-        pass.draw(0..4, 0..1);
     }
 
     /// Reset per-frame state. Called from `WgpuBackend::submit` after
