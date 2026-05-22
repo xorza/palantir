@@ -38,6 +38,7 @@ fn dashboard_matches_golden() {
                     .id_salt("header")
                     .grid_cell((0, 0))
                     .grid_span((1, 2))
+                    .size((Sizing::FILL, Sizing::FILL))
                     .padding((10.0, 14.0, 10.0, 14.0))
                     .gap(8.0)
                     .background(Background {

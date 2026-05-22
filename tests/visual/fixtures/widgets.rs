@@ -32,18 +32,22 @@ fn button_hello_matches_golden() {
 fn frame_filled_with_stroke_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
-            Frame::new()
-                .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
-                .background(Background {
-                    fill: Color::rgb(0.20, 0.30, 0.55).into(),
-                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
-                    corners: Corners::all(16.0),
-                    shadow: Shadow::NONE,
-                })
-                .show(ui);
-        });
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("card")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(Background {
+                        fill: Color::rgb(0.20, 0.30, 0.55).into(),
+                        stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
+                        corners: Corners::all(16.0),
+                        shadow: Shadow::NONE,
+                    })
+                    .show(ui);
+            });
     });
     assert_matches_golden("frame_filled_with_stroke", &img, Tolerance::default());
 }
@@ -58,21 +62,25 @@ fn frame_filled_with_stroke_matches_golden() {
 fn frame_linear_gradient_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
-            Frame::new()
-                .id_salt("card")
-                .size((Sizing::FILL, Sizing::FILL))
-                .background(Background {
-                    fill: Brush::Linear(LinearGradient::two_stop(
-                        std::f32::consts::FRAC_PI_2,
-                        ColorU8::hex(0x1a1a2e),
-                        ColorU8::hex(0x4c5cdb),
-                    )),
-                    corners: Corners::all(16.0),
-                    ..Default::default()
-                })
-                .show(ui);
-        });
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Frame::new()
+                    .id_salt("card")
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .background(Background {
+                        fill: Brush::Linear(LinearGradient::two_stop(
+                            std::f32::consts::FRAC_PI_2,
+                            ColorU8::hex(0x1a1a2e),
+                            ColorU8::hex(0x4c5cdb),
+                        )),
+                        corners: Corners::all(16.0),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
     });
     assert_matches_golden("frame_linear_gradient", &img, Tolerance::default());
 }
@@ -86,18 +94,22 @@ fn frame_linear_gradient_matches_golden() {
 fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
-        Panel::vstack().auto_id().padding(20.0).show(ui, |ui| {
-            ui.add_shape(Shape::RoundedRect {
-                local_rect: Some(Rect::new(0.0, 0.0, 180.0, 100.0)),
-                corners: Corners::all(12.0),
-                fill: Brush::Linear(LinearGradient::two_stop(
-                    0.0,
-                    ColorU8::hex(0xff5e44),
-                    ColorU8::hex(0xfacc15),
-                )),
-                stroke: Stroke::ZERO,
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(Rect::new(0.0, 0.0, 180.0, 100.0)),
+                    corners: Corners::all(12.0),
+                    fill: Brush::Linear(LinearGradient::two_stop(
+                        0.0,
+                        ColorU8::hex(0xff5e44),
+                        ColorU8::hex(0xfacc15),
+                    )),
+                    stroke: Stroke::ZERO,
+                });
             });
-        });
     });
     assert_matches_golden(
         "add_shape_rounded_rect_linear_gradient",
