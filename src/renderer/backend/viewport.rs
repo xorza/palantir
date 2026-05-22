@@ -76,9 +76,11 @@ impl ViewportUniformData {
     }
 }
 
-/// Shared viewport uniform buffer. `QuadPipeline` and `MeshPipeline`
-/// each reference this single buffer in their (otherwise distinct)
-/// bind groups, so one `queue.write_buffer` per frame syncs both.
+/// Shared viewport uniform — buffer + the single `BindGroupLayout` /
+/// `BindGroup` every pipeline references as `@group(0)`. Built once
+/// at backend construction; pipelines borrow `bgl` for their pipeline
+/// layouts and the backend binds `bg` once per main pass instead of
+/// each pipeline calling `set_bind_group(0)` on its own clone.
 pub(crate) struct ViewportUniform {
     pub(crate) buffer: wgpu::Buffer,
     /// Last size uploaded. The uniform is initialized to `Vec2::ZERO`
@@ -86,6 +88,8 @@ pub(crate) struct ViewportUniform {
     /// upload. Tracking this avoids a per-frame `queue.write_buffer`
     /// when the viewport hasn't actually changed (steady state).
     last: Vec2,
+    pub(crate) bgl: wgpu::BindGroupLayout,
+    pub(crate) bg: wgpu::BindGroup,
 }
 
 impl ViewportUniform {
@@ -95,9 +99,35 @@ impl ViewportUniform {
             contents: &ViewportUniformData { size: Vec2::ZERO }.encode(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
+        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("palantir.viewport.bgl"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                // Visible to both stages so it serves quad/curve's
+                // fragment math too (gradient brushes sample fragment-
+                // side and read `vp.size` for normalization).
+                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: false,
+                    min_binding_size: None,
+                },
+                count: None,
+            }],
+        });
+        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("palantir.viewport.bg"),
+            layout: &bgl,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: buffer.as_entire_binding(),
+            }],
+        });
         Self {
             buffer,
             last: Vec2::ZERO,
+            bgl,
+            bg,
         }
     }
 

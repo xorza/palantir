@@ -28,8 +28,8 @@ struct Viewport { size: vec2<f32> };
 // fragment when `fill_kind != 0`. Same `Rgba8Unorm` (linear) format
 // + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
 // `t` is already in [0, 1] by construction, so spread is a no-op.
-@group(0) @binding(1) var gradient_tex:     texture_2d<f32>;
-@group(0) @binding(2) var gradient_sampler: sampler;
+@group(1) @binding(0) var gradient_tex:     texture_2d<f32>;
+@group(1) @binding(1) var gradient_sampler: sampler;
 const ATLAS_ROWS_F: f32 = 256.0;
 
 // `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction

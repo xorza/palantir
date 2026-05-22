@@ -39,9 +39,6 @@ struct GpuImage {
 
 pub(crate) struct ImagePipeline {
     pipeline: wgpu::RenderPipeline,
-    /// Group 0 (viewport uniform). Group 1 (per-image texture +
-    /// sampler) is built inside [`upload`] and stored in [`cache`].
-    bind_group: wgpu::BindGroup,
     instance_buffer: DynamicBuffer,
     /// Stencil-test variant — lazy-built when the first rounded-clip
     /// frame uses an image.
@@ -49,7 +46,8 @@ pub(crate) struct ImagePipeline {
     /// Cached creation inputs needed to lazy-build `stencil_test`.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    viewport_bgl: wgpu::BindGroupLayout,
+    /// Group 1 layout (per-image texture + sampler). Built once;
+    /// every cached `GpuImage` references it through its bind group.
     image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// `id → GpuImage`. Keyed across frames; entries are reused until
@@ -85,7 +83,7 @@ impl ImagePipeline {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        viewport_buffer: &wgpu::Buffer,
+        viewport_bgl: &wgpu::BindGroupLayout,
         budget_bytes: u64,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -93,19 +91,6 @@ impl ImagePipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
         });
 
-        let viewport_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.image.viewport.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
         let image_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.image.tex.bgl"),
             entries: &[
@@ -128,15 +113,6 @@ impl ImagePipeline {
             ],
         });
 
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.image.viewport.bg"),
-            layout: &viewport_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: viewport_buffer.as_entire_binding(),
-            }],
-        });
-
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir.image.sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -151,7 +127,7 @@ impl ImagePipeline {
         let pipeline_layout = build_pipeline_layout(
             device,
             "palantir.image.pl",
-            &[Some(&viewport_bgl), Some(&image_bgl)],
+            &[Some(viewport_bgl), Some(&image_bgl)],
         );
         let pipeline = build_pipeline(
             device,
@@ -174,12 +150,10 @@ impl ImagePipeline {
 
         Self {
             pipeline,
-            bind_group,
             instance_buffer,
             stencil_test: None,
             shader,
             color_format: format,
-            viewport_bgl,
             image_bgl,
             sampler,
             cache: FxHashMap::default(),
@@ -191,16 +165,22 @@ impl ImagePipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Idempotent.
+    /// Idempotent. Caller passes the shared `viewport_bgl` so the
+    /// stencil variant matches the base pipeline's layout — the
+    /// backend owns the only copy.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
+    pub(crate) fn ensure_stencil(
+        &mut self,
+        device: &wgpu::Device,
+        viewport_bgl: &wgpu::BindGroupLayout,
+    ) {
         if self.stencil_test.is_some() {
             return;
         }
         let layout = build_pipeline_layout(
             device,
             "palantir.image.pl.stencil",
-            &[Some(&self.viewport_bgl), Some(&self.image_bgl)],
+            &[Some(viewport_bgl), Some(&self.image_bgl)],
         );
         self.stencil_test = Some(build_pipeline(
             device,
@@ -321,6 +301,9 @@ impl ImagePipeline {
     }
 
     /// Bind once per pass before iterating image draws.
+    /// Bind once per pass. Group 0 (shared viewport) is bound by
+    /// `WgpuBackend::run_main_pass`; per-image group 1 is set in
+    /// [`Self::draw`] from the cached `GpuImage`.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         if stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
@@ -328,7 +311,6 @@ impl ImagePipeline {
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 

@@ -35,21 +35,18 @@ const _: () = {
 
 pub(crate) struct CurvePipeline {
     pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
     instance_buffer: DynamicBuffer,
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    bind_layout: wgpu::BindGroupLayout,
 }
 
 impl CurvePipeline {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        viewport_buffer: &wgpu::Buffer,
-        gradient_texture_view: &wgpu::TextureView,
-        gradient_sampler: &wgpu::Sampler,
+        viewport_bgl: &wgpu::BindGroupLayout,
+        gradient_bgl: &wgpu::BindGroupLayout,
     ) -> Self {
         // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
         // source so the shader can't drift out of lockstep with the
@@ -64,59 +61,11 @@ impl CurvePipeline {
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.curve.bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 2,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.curve.bg"),
-            layout: &bind_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: viewport_buffer.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(gradient_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::Sampler(gradient_sampler),
-                },
-            ],
-        });
-
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.curve.pl", &[Some(&bind_layout)]);
+        let pipeline_layout = build_pipeline_layout(
+            device,
+            "palantir.curve.pl",
+            &[Some(viewport_bgl), Some(gradient_bgl)],
+        );
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -138,25 +87,31 @@ impl CurvePipeline {
 
         Self {
             pipeline,
-            bind_group,
             instance_buffer,
             stencil_test: None,
             shader,
             color_format: format,
-            bind_layout,
         }
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
+    /// Caller passes the shared `viewport_bgl` and the shared
+    /// `gradient_bgl` (owned by the quad pipeline) so the variant
+    /// matches the base pipeline's layout.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
+    pub(crate) fn ensure_stencil(
+        &mut self,
+        device: &wgpu::Device,
+        viewport_bgl: &wgpu::BindGroupLayout,
+        gradient_bgl: &wgpu::BindGroupLayout,
+    ) {
         if self.stencil_test.is_some() {
             return;
         }
         let layout = build_pipeline_layout(
             device,
             "palantir.curve.pl.stencil",
-            &[Some(&self.bind_layout)],
+            &[Some(viewport_bgl), Some(gradient_bgl)],
         );
         self.stencil_test = Some(build_pipeline(
             device,
@@ -185,15 +140,23 @@ impl CurvePipeline {
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
-    /// `CurveBatch`.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
+    /// `CurveBatch`. Group 0 (shared viewport) is bound by
+    /// `WgpuBackend::run_main_pass`; `gradient_bg` is the shared
+    /// group-1 handle owned by `QuadPipeline` (one allocation, used
+    /// by both pipelines).
+    pub(crate) fn bind<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        stencil: bool,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
         if stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
             pass.set_pipeline(p);
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(0, &self.bind_group, &[]);
+        pass.set_bind_group(1, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
