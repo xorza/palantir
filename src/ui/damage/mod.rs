@@ -28,7 +28,6 @@
 use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
-#[cfg(any(test, feature = "internals"))]
 use crate::forest::tree::NodeId;
 use crate::forest::tree::SUBTREE_END_MASK;
 use crate::primitives::approx::EPS;
@@ -759,13 +758,31 @@ fn extend_predamaged(
     for (layer, tree) in forest.iter_paint_order() {
         let arena = &cascades.layers[layer].paint_arena;
         let paints = &arena.rows;
-        let shape_to_paint = &arena.shape_to_paint;
+        let node_spans = &arena.node_spans;
+        let shape_spans = tree.records.shape_span();
         for e in &tree.paint_anims.entries {
-            if e.anim.next_wake(prev) <= now {
-                let paint_idx = shape_to_paint[e.shape_idx as usize];
-                if paint_idx != u32::MAX {
-                    out.push(paints[paint_idx as usize].screen);
-                }
+            if e.anim.next_wake(prev) > now {
+                continue;
+            }
+            // shape ordinal within the owner's `shape_span`, then map
+            // to a paint slot inside the owner's `node_span`. Chrome
+            // (when present) sits at row 0 of the node span, shape
+            // paints follow in record order, so the chrome offset is
+            // `1` when this node has chrome — same layout
+            // `compute_paint_rect` emits.
+            let node_idx = e.node_idx as usize;
+            let owner_shapes = shape_spans[node_idx];
+            let ordinal = e.shape_idx - owner_shapes.start;
+            let chrome_offset = u32::from(tree.chrome(NodeId(e.node_idx)).is_some());
+            let node_span = node_spans[node_idx];
+            let want = chrome_offset + ordinal;
+            // Cascade may not have emitted a paint for this shape —
+            // `compute_paint_rect` skips the per-shape Paint row when
+            // the subtree's cascade walk did so (e.g. invisible-subtree
+            // owners with `len == 0`). Treat that as "no anim damage".
+            if want < node_span.len {
+                let paint_idx = node_span.start + want;
+                out.push(paints[paint_idx as usize].screen);
             }
         }
     }

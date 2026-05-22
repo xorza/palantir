@@ -44,8 +44,9 @@ fn shape_rect_composes_self_transform() {
 
     let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
-    let paint_idx = cascades.layers[layer].paint_arena.shape_to_paint[0] as usize;
-    let shape_rect = cascades.layers[layer].paint_arena.rows[paint_idx].screen;
+    let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
+    let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
+    let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
     // The Panel sits at the hstack origin (0, 0). Owner-local
     // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
     //   min = (0, 0) * 3 + (10, 20) = (10, 20)
@@ -101,8 +102,9 @@ fn self_transform_anchors_scale_at_panel_origin() {
 
     let layer = Layer::Main;
     let cascades = &ui.layout.cascades;
-    let paint_idx = cascades.layers[layer].paint_arena.shape_to_paint[0] as usize;
-    let shape_rect = cascades.layers[layer].paint_arena.rows[paint_idx].screen;
+    let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
+    let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
+    let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
     // Panel sits at (50, 0). Shape's panel-local (0, 0) should
     // map to screen (50, 0) under the anchor — the panel's own
     // top-left is the fixed point of its scale. Size is

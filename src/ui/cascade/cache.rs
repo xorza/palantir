@@ -52,15 +52,6 @@ pub(crate) fn quantize_rect(r: Rect) -> [i32; 4] {
     ]
 }
 
-/// `shape_to_paint` link in subtree-relative form. `rel_shape_idx` is
-/// relative to the subtree's first shape; `rel_paint_idx` is relative
-/// to the snapshot's `paints` base. Both rebased on blit.
-#[derive(Clone, Copy)]
-struct ShapeLink {
-    rel_shape_idx: u32,
-    rel_paint_idx: u32,
-}
-
 #[derive(Clone, Copy)]
 struct Snapshot {
     key: ProbeKey,
@@ -69,8 +60,6 @@ struct Snapshot {
     nodes: Span,
     /// Slice in `paints` arena.
     paints: Span,
-    /// Slice in `shape_links` arena.
-    shape_links: Span,
     /// `subtree_paint_rect[root]` after the original walk's rollup
     /// completed — fed into the parent stack's running union on hit.
     /// Equal to the first entry of this snapshot's per-node `sptrs`
@@ -104,7 +93,6 @@ pub struct CascadeCache {
     /// paint base — rebased on blit.
     paint_spans: Vec<Span>,
     paints: LiveArena<Paint>,
-    shape_links: LiveArena<ShapeLink>,
     /// Stats for the most recent `CascadesEngine::run`. Reset at the
     /// top of each run.
     pub hits: u32,
@@ -142,7 +130,7 @@ impl CascadeCache {
     pub(crate) fn blit(
         &mut self,
         wid: WidgetId,
-        tree: &Tree,
+        _tree: &Tree,
         root_idx: u32,
         subtree_end: u32,
         cascades: &mut LayerCascades,
@@ -181,17 +169,6 @@ impl CascadeCache {
             cascades.paint_arena.node_spans[(root_idx as usize) + offset] =
                 Span::new(paint_base + ps.start, ps.len);
         }
-        // Subtree's shape range is contiguous in `tree.shapes.records`,
-        // anchored at the root's `shape_span.start`. Stored
-        // shape-relative on capture so identical subtrees at different
-        // tree positions hit the same snapshot.
-        let shape_base = tree.records.shape_span()[root_idx as usize].start;
-        let l_lo = snap.shape_links.start as usize;
-        let l_hi = l_lo + snap.shape_links.len as usize;
-        for link in &self.shape_links.items[l_lo..l_hi] {
-            cascades.paint_arena.shape_to_paint[(shape_base + link.rel_shape_idx) as usize] =
-                paint_base + link.rel_paint_idx;
-        }
         self.hits += 1;
         self.nodes_blit += span;
         snap.root_paint_rect
@@ -202,18 +179,16 @@ impl CascadeCache {
     /// completes. No-op when `span < MIN_CACHEABLE_SPAN`.
     ///
     /// In-place rewrite path: when an existing snapshot for `wid` has
-    /// the same node / paint / shape-link counts as the new capture,
-    /// overwrite its arena slots rather than evict-and-append. Without
-    /// this, an animated widget whose authoring hash shifts every
-    /// frame would grow the arenas monotonically and violate the
-    /// alloc-free invariant (`alloc_free` test pins zero blocks in
-    /// steady state).
+    /// the same node + paint counts as the new capture, overwrite its
+    /// arena slots rather than evict-and-append. Without this, an
+    /// animated widget whose authoring hash shifts every frame would
+    /// grow the arenas monotonically and violate the alloc-free
+    /// invariant (`alloc_free` test pins zero blocks in steady state).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn capture(
         &mut self,
         wid: WidgetId,
         key: ProbeKey,
-        tree: &Tree,
         root_idx: u32,
         subtree_end: u32,
         root_paint_rect: Rect,
@@ -232,42 +207,24 @@ impl CascadeCache {
         let paint_capture_end = cascades.paint_arena.rows.len() as u32;
         let paints_len = paint_capture_end - paint_capture_start;
 
-        // Count emitted shape→paint links up front so the in-place
-        // path can decide before any writes.
-        let shapes_col = tree.records.shape_span();
-        let shape_base = shapes_col[root_idx as usize].start;
-        let last = shapes_col[(subtree_end - 1) as usize];
-        let shape_end = last.start + last.len;
-        let shape_to_paint = &cascades.paint_arena.shape_to_paint;
-        let mut links_len: u32 = 0;
-        for abs_shape in shape_base..shape_end {
-            if shape_to_paint[abs_shape as usize] != u32::MAX {
-                links_len += 1;
-            }
-        }
-
         // Decide in-place reuse vs evict-and-append. The reuse
-        // predicate matches on shape (length triple) — same widget,
+        // predicate matches on shape (length pair) — same widget,
         // same per-frame footprint. The key itself differs (that's
         // why we're capturing instead of hitting), but the
         // out-arena offsets remain valid.
-        let reuse = self.snapshots.get(&wid).copied().filter(|old| {
-            old.nodes.len == span
-                && old.paints.len == paints_len
-                && old.shape_links.len == links_len
-        });
+        let reuse = self
+            .snapshots
+            .get(&wid)
+            .copied()
+            .filter(|old| old.nodes.len == span && old.paints.len == paints_len);
 
-        let (nodes_start, paints_start, links_start) = if let Some(old) = reuse {
-            (old.nodes.start, old.paints.start, old.shape_links.start)
+        let (nodes_start, paints_start) = if let Some(old) = reuse {
+            (old.nodes.start, old.paints.start)
         } else {
             if let Some(old) = self.snapshots.remove(&wid) {
                 self.release(old);
             }
-            (
-                self.rows.items.len() as u32,
-                self.paints.items.len() as u32,
-                self.shape_links.items.len() as u32,
-            )
+            (self.rows.items.len() as u32, self.paints.items.len() as u32)
         };
 
         let node_spans = &cascades.paint_arena.node_spans;
@@ -336,41 +293,12 @@ impl CascadeCache {
             self.paints.acquire(paints_len);
         }
 
-        if reuse.is_some() {
-            let base = links_start as usize;
-            let mut idx = 0usize;
-            for abs_shape in shape_base..shape_end {
-                let abs_paint = shape_to_paint[abs_shape as usize];
-                if abs_paint == u32::MAX {
-                    continue;
-                }
-                self.shape_links.items[base + idx] = ShapeLink {
-                    rel_shape_idx: abs_shape - shape_base,
-                    rel_paint_idx: abs_paint - paint_capture_start,
-                };
-                idx += 1;
-            }
-        } else {
-            for abs_shape in shape_base..shape_end {
-                let abs_paint = shape_to_paint[abs_shape as usize];
-                if abs_paint == u32::MAX {
-                    continue;
-                }
-                self.shape_links.items.push(ShapeLink {
-                    rel_shape_idx: abs_shape - shape_base,
-                    rel_paint_idx: abs_paint - paint_capture_start,
-                });
-            }
-            self.shape_links.acquire(links_len);
-        }
-
         self.snapshots.insert(
             wid,
             Snapshot {
                 key,
                 nodes: Span::new(nodes_start, span),
                 paints: Span::new(paints_start, paints_len),
-                shape_links: Span::new(links_start, links_len),
                 root_paint_rect,
             },
         );
@@ -380,7 +308,6 @@ impl CascadeCache {
     fn release(&mut self, snap: Snapshot) {
         self.rows.release(snap.nodes.len);
         self.paints.release(snap.paints.len);
-        self.shape_links.release(snap.shape_links.len);
     }
 
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {

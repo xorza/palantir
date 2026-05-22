@@ -280,12 +280,16 @@ impl Forest {
             !self.scratch[layer].open_frames.is_empty(),
             "add_shape_animated called with no open node",
         );
+        let node_idx = self.scratch[layer].open_frames.last().unwrap().node.0;
         let tree = &mut self.trees[layer];
         let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
             return;
         };
-        tree.paint_anims
-            .push_entry(PaintAnimEntry { anim, shape_idx });
+        tree.paint_anims.push_entry(PaintAnimEntry {
+            anim,
+            shape_idx,
+            node_idx,
+        });
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
