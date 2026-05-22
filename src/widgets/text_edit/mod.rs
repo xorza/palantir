@@ -494,12 +494,12 @@ impl<'a> TextEdit<'a> {
         } else {
             look.background.stroke.width
         };
-        let raw_padding = self.element.padding;
+        let [rpl, rpt, rpr, rpb] = self.element.padding.as_array();
         let padding = Spacing::new(
-            raw_padding.left() + stroke_w,
-            raw_padding.top() + stroke_w,
-            raw_padding.right() + stroke_w,
-            raw_padding.bottom() + stroke_w,
+            rpl + stroke_w,
+            rpt + stroke_w,
+            rpr + stroke_w,
+            rpb + stroke_w,
         );
         // Reserve a caret-width sliver at the trailing edge of every
         // line so a caret sitting at end-of-line on right/center-
@@ -670,6 +670,7 @@ impl<'a> TextEdit<'a> {
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
         ui.node_with_chrome(id, element, &chrome, |ui| {
+            let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is
             // actually live (anchor != caret — collapsed selections are
@@ -690,8 +691,8 @@ impl<'a> TextEdit<'a> {
                     ctx.halign,
                     &mut rects,
                 );
-                let dx = ctx.padding.left() + offset.x - scroll.x;
-                let dy = ctx.padding.top() + offset.y - scroll.y;
+                let dx = pad_l + offset.x - scroll.x;
+                let dy = pad_t + offset.y - scroll.y;
                 for r in rects {
                     ui.add_shape(Shape::RoundedRect {
                         local_rect: Some(Rect {
@@ -720,8 +721,8 @@ impl<'a> TextEdit<'a> {
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: Some(Vec2::new(
-                        ctx.padding.left() + offset.x - scroll.x,
-                        ctx.padding.top() + offset.y - scroll.y,
+                        pad_l + offset.x - scroll.x,
+                        pad_t + offset.y - scroll.y,
                     )),
                     text: display.into(),
                     brush: color.into(),
@@ -755,8 +756,8 @@ impl<'a> TextEdit<'a> {
             // anyway since callers gate on the same is_focused.
             if is_focused {
                 let caret_rect = Rect::new(
-                    ctx.padding.left() + offset.x + caret_pos.x - scroll.x,
-                    ctx.padding.top() + offset.y + caret_pos.y_top - scroll.y,
+                    pad_l + offset.x + caret_pos.x - scroll.x,
+                    pad_t + offset.y + caret_pos.y_top - scroll.y,
                     theme.caret_width,
                     caret_pos.line_height,
                 );
@@ -923,8 +924,9 @@ fn handle_input(
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
-        let local_x = ptr.x - rect.min.x - ctx.padding.left() - align_offset.x + state.scroll.x;
-        let local_y = ptr.y - rect.min.y - ctx.padding.top() - align_offset.y + state.scroll.y;
+        let [pad_l, pad_t, _, _] = ctx.padding.as_array();
+        let local_x = ptr.x - rect.min.x - pad_l - align_offset.x + state.scroll.x;
+        let local_y = ptr.y - rect.min.y - pad_t - align_offset.y + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.

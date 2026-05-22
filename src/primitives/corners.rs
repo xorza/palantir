@@ -2,7 +2,6 @@ use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 use super::num::Num;
 use super::size::Size;
 use glam::Vec2;
-use half::f16;
 
 /// Per-corner radii, packed as four f16 lanes in a `u64` (8 bytes).
 ///
@@ -28,11 +27,12 @@ impl std::hash::Hash for Corners {
 
 impl std::fmt::Debug for Corners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [tl, tr, br, bl] = self.as_array();
         f.debug_struct("Corners")
-            .field("tl", &self.tl())
-            .field("tr", &self.tr())
-            .field("br", &self.br())
-            .field("bl", &self.bl())
+            .field("tl", &tl)
+            .field("tr", &tr)
+            .field("br", &br)
+            .field("bl", &bl)
             .finish()
     }
 }
@@ -45,11 +45,6 @@ fn pack(tl: f32, tr: f32, br: f32, bl: f32) -> [u16; 4] {
     f16x4_from_f32x4([tl, tr, br, bl])
 }
 
-#[inline]
-fn lane(bits: u16) -> f32 {
-    f16::from_bits(bits).to_f32()
-}
-
 // Serialize Corners compactly:
 // - all four equal     → bare scalar `4.0`
 // - tl=tr, br=bl       → 2-element array `[top, bottom]` (CSS-style shorthand)
@@ -59,7 +54,7 @@ fn lane(bits: u16) -> f32 {
 impl serde::Serialize for Corners {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
-        let (tl, tr, br, bl) = (self.tl(), self.tr(), self.br(), self.bl());
+        let [tl, tr, br, bl] = self.as_array();
         if tl == tr && tr == br && br == bl {
             return s.serialize_f32(tl);
         }
@@ -206,23 +201,6 @@ impl Corners {
         Self(pack(0.0, r, 0.0, r))
     }
 
-    #[inline]
-    pub fn tl(&self) -> f32 {
-        lane(self.0[0])
-    }
-    #[inline]
-    pub fn tr(&self) -> f32 {
-        lane(self.0[1])
-    }
-    #[inline]
-    pub fn br(&self) -> f32 {
-        lane(self.0[2])
-    }
-    #[inline]
-    pub fn bl(&self) -> f32 {
-        lane(self.0[3])
-    }
-
     /// All four lanes unpacked at once. See `Spacing::as_array` for the
     /// SIMD rationale — same `half` slice path.
     #[inline]
@@ -310,10 +288,7 @@ mod tests {
     #[test]
     fn lanes_round_trip_integer_values_exactly() {
         let c = Corners::new(1.0, 2.0, 3.0, 4.0);
-        assert_eq!(c.tl(), 1.0);
-        assert_eq!(c.tr(), 2.0);
-        assert_eq!(c.br(), 3.0);
-        assert_eq!(c.bl(), 4.0);
+        assert_eq!(c.as_array(), [1.0, 2.0, 3.0, 4.0]);
     }
 
     /// Documents the f16 precision contract: lossless for integer
@@ -322,8 +297,8 @@ mod tests {
     /// trip these.
     #[test]
     fn f16_precision_contract() {
-        assert_eq!(Corners::all(2048.0).tl(), 2048.0);
-        let big = Corners::all(4096.0).tl();
+        assert_eq!(Corners::all(2048.0).as_array()[0], 2048.0);
+        let big = Corners::all(4096.0).as_array()[0];
         assert!(
             (big - 4096.0).abs() <= 0.25,
             "expected ≤0.25 px error at 4096, got {} -> {big}",

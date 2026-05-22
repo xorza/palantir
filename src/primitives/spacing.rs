@@ -1,6 +1,5 @@
 use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 use super::num::Num;
-use half::f16;
 
 /// Runtime f32→f16 pack — single F16C / fp16 instruction on supported
 /// targets, scalar fallback elsewhere. Used by every public constructor
@@ -43,18 +42,14 @@ impl std::hash::Hash for Spacing {
 
 impl std::fmt::Debug for Spacing {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let [left, top, right, bottom] = self.as_array();
         f.debug_struct("Spacing")
-            .field("left", &self.left())
-            .field("top", &self.top())
-            .field("right", &self.right())
-            .field("bottom", &self.bottom())
+            .field("left", &left)
+            .field("top", &top)
+            .field("right", &right)
+            .field("bottom", &bottom)
             .finish()
     }
-}
-
-#[inline]
-fn lane(bits: u16) -> f32 {
-    f16::from_bits(bits).to_f32()
 }
 
 // Serialize Spacing compactly:
@@ -66,7 +61,7 @@ fn lane(bits: u16) -> f32 {
 impl serde::Serialize for Spacing {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeSeq;
-        let (l, t, r, b) = (self.left(), self.top(), self.right(), self.bottom());
+        let [l, t, r, b] = self.as_array();
         if l == r && t == b && l == t {
             return s.serialize_f32(l);
         }
@@ -176,23 +171,6 @@ impl Spacing {
         Self(pack(left, top, right, bottom))
     }
 
-    #[inline]
-    pub fn left(&self) -> f32 {
-        lane(self.0[0])
-    }
-    #[inline]
-    pub fn top(&self) -> f32 {
-        lane(self.0[1])
-    }
-    #[inline]
-    pub fn right(&self) -> f32 {
-        lane(self.0[2])
-    }
-    #[inline]
-    pub fn bottom(&self) -> f32 {
-        lane(self.0[3])
-    }
-
     /// All four lanes unpacked at once. Routes through `half`'s
     /// platform-specific batched f16→f32 path (single `fcvtl` on
     /// aarch64-fp16, `vcvtph2ps` on x86-f16c, scalar fallback elsewhere).
@@ -286,10 +264,7 @@ mod tests {
     #[test]
     fn lanes_round_trip_integer_values_exactly() {
         let s = Spacing::new(1.0, 2.0, 3.0, 4.0);
-        assert_eq!(s.left(), 1.0);
-        assert_eq!(s.top(), 2.0);
-        assert_eq!(s.right(), 3.0);
-        assert_eq!(s.bottom(), 4.0);
+        assert_eq!(s.as_array(), [1.0, 2.0, 3.0, 4.0]);
         assert_eq!(s.horiz(), 4.0);
         assert_eq!(s.vert(), 6.0);
     }
@@ -298,8 +273,8 @@ mod tests {
     /// values ≤ 2048, ~0.25 px quantization at 4096.
     #[test]
     fn f16_precision_contract() {
-        assert_eq!(Spacing::all(2048.0).left(), 2048.0);
-        let big = Spacing::all(4096.0).left();
+        assert_eq!(Spacing::all(2048.0).as_array()[0], 2048.0);
+        let big = Spacing::all(4096.0).as_array()[0];
         assert!(
             (big - 4096.0).abs() <= 0.25,
             "expected ≤0.25 px error at 4096, got {big}",
@@ -432,9 +407,6 @@ typo = 2.0
         let a = Spacing::new(1.0, 2.0, 3.0, 4.0);
         let b = Spacing::new(10.0, 20.0, 30.0, 40.0);
         let c = a + b;
-        assert_eq!(c.left(), 11.0);
-        assert_eq!(c.top(), 22.0);
-        assert_eq!(c.right(), 33.0);
-        assert_eq!(c.bottom(), 44.0);
+        assert_eq!(c.as_array(), [11.0, 22.0, 33.0, 44.0]);
     }
 }
