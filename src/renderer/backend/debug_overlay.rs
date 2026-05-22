@@ -111,8 +111,13 @@ impl DebugOverlay {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad: &'a super::QuadPipeline,
+        viewport: &super::ViewportPush,
     ) {
         quad.bind_debug(pass);
+        // Pipeline is now bound — safe to push the shared viewport
+        // immediate. (Dim runs in its own `RenderPass`, separate from
+        // the main pass, so it must self-push.)
+        viewport.push_into(pass);
         pass.set_vertex_buffer(0, self.dim_buffer.slice(..));
         pass.draw(0..4, 0..1);
     }
@@ -168,9 +173,14 @@ impl DebugOverlay {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad: &'a super::QuadPipeline,
+        viewport: &super::ViewportPush,
         count: u32,
     ) {
         quad.bind_debug(pass);
+        // Pipeline is now bound — safe to push viewport. (Overlay
+        // runs in its own swapchain-targeted `RenderPass`, no
+        // inherited immediate state.)
+        viewport.push_into(pass);
         pass.set_vertex_buffer(0, self.overlay_buffer.slice(..));
         pass.draw(0..4, 0..count);
     }

@@ -46,7 +46,7 @@ pub(crate) struct ImagePipeline {
     /// Cached creation inputs needed to lazy-build `stencil_test`.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    /// Group 1 layout (per-image texture + sampler). Built once;
+    /// Group 0 layout (per-image texture + sampler). Built once;
     /// every cached `GpuImage` references it through its bind group.
     image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
@@ -83,7 +83,6 @@ impl ImagePipeline {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        viewport_bgl: &wgpu::BindGroupLayout,
         budget_bytes: u64,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -124,11 +123,10 @@ impl ImagePipeline {
             ..Default::default()
         });
 
-        let pipeline_layout = build_pipeline_layout(
-            device,
-            "palantir.image.pl",
-            &[Some(viewport_bgl), Some(&image_bgl)],
-        );
+        // Per-image tex+sampler at group 0 — viewport rides the
+        // shared immediate region.
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.image.pl", &[Some(&image_bgl)]);
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -165,22 +163,16 @@ impl ImagePipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Idempotent. Caller passes the shared `viewport_bgl` so the
-    /// stencil variant matches the base pipeline's layout — the
-    /// backend owns the only copy.
+    /// Idempotent.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) {
+    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil_test.is_some() {
             return;
         }
         let layout = build_pipeline_layout(
             device,
             "palantir.image.pl.stencil",
-            &[Some(viewport_bgl), Some(&self.image_bgl)],
+            &[Some(&self.image_bgl)],
         );
         self.stencil_test = Some(build_pipeline(
             device,
@@ -300,10 +292,8 @@ impl ImagePipeline {
             .upload(ctx, bytemuck::cast_slice(instances), instances.len());
     }
 
-    /// Bind once per pass before iterating image draws.
-    /// Bind once per pass. Group 0 (shared viewport) is bound by
-    /// `WgpuBackend::run_main_pass`; per-image group 1 is set in
-    /// [`Self::draw`] from the cached `GpuImage`.
+    /// Bind once per pass. Viewport rides immediates; per-image
+    /// group 0 is set in [`Self::draw`] from the cached `GpuImage`.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         if stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
@@ -338,7 +328,7 @@ impl ImagePipeline {
         // mutation would need `&mut self`, which the schedule walk
         // can't provide. See `touched` doc.
         self.touched.borrow_mut().push(handle.id);
-        pass.set_bind_group(1, &entry.bind_group, &[]);
+        pass.set_bind_group(0, &entry.bind_group, &[]);
         pass.draw(0..4, instance..instance + 1);
     }
 

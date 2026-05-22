@@ -19,11 +19,11 @@ pub(crate) struct QuadPipeline {
     /// entrypoint) own the `set_pipeline` / `set_bind_group` pair so
     /// the public surface is "what to do", not "what to bind."
     pipeline: wgpu::RenderPipeline,
-    /// Group 1 (gradient atlas + sampler). Group 0 (shared viewport)
-    /// is set once per pass by the backend, not here. Exposed
-    /// `pub(crate)` so the curve pipeline can reuse the same bind
-    /// group instead of allocating its own — both share the same
-    /// gradient texture + sampler resources anyway.
+    /// Group 0 (gradient atlas + sampler). The shared viewport
+    /// uniform rides immediates — no bind-group slot for it.
+    /// Exposed `pub(crate)` so the curve pipeline can reuse the same
+    /// bind group instead of allocating its own — both share the same
+    /// gradient texture + sampler resources.
     pub(crate) gradient_bg: wgpu::BindGroup,
     instance_buffer: DynamicBuffer,
     /// Lazy stencil-aware pipeline variants — built on first need
@@ -64,7 +64,7 @@ pub(crate) struct QuadPipeline {
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    /// Layout for group 1 (gradient atlas + sampler). Cached so the
+    /// Layout for group 0 (gradient atlas + sampler). Cached so the
     /// stencil-variant builder can compose its own pipeline layout
     /// against the same shape. Exposed `pub(crate)` so the curve
     /// pipeline composes against the identical layout — they share
@@ -107,20 +107,15 @@ struct StencilPipelines {
 }
 
 impl QuadPipeline {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
 
-        // Group 1 = gradient LUT atlas + sampler. Group 0 (viewport
-        // uniform) is shared with every other pipeline and lives on
-        // the backend; we only receive its layout to compose our
-        // pipeline layout.
+        // Group 0 = gradient LUT atlas + sampler. Viewport rides
+        // immediates (shared with every pipeline) — no bind-group
+        // slot for it.
         let gradient_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("palantir.quad.gradient.bgl"),
             entries: &[
@@ -193,11 +188,10 @@ impl QuadPipeline {
             ],
         });
 
-        let pipeline_layout = build_pipeline_layout(
-            device,
-            "palantir.quad.pl",
-            &[Some(viewport_bgl), Some(&gradient_bgl)],
-        );
+        // Gradient atlas at group 0 (viewport rides the shared
+        // immediate region, no bind-group slot needed).
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.quad.pl", &[Some(&gradient_bgl)]);
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -276,25 +270,17 @@ impl QuadPipeline {
     /// Lazy-build the stencil-aware variants. Idempotent; called from
     /// the rounded-clip render path before the first `set_pipeline`.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) {
+    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil.is_none() {
-            self.stencil = Some(self.build_stencil_pipelines(device, viewport_bgl));
+            self.stencil = Some(self.build_stencil_pipelines(device));
         }
     }
 
-    fn build_stencil_pipelines(
-        &self,
-        device: &wgpu::Device,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) -> StencilPipelines {
+    fn build_stencil_pipelines(&self, device: &wgpu::Device) -> StencilPipelines {
         let layout = build_pipeline_layout(
             device,
             "palantir.quad.pl.stencil",
-            &[Some(viewport_bgl), Some(&self.gradient_bgl)],
+            &[Some(&self.gradient_bgl)],
         );
         let instance = quad_instance_layout();
         let vertex_buffers = std::slice::from_ref(&instance);
@@ -373,7 +359,7 @@ impl QuadPipeline {
     /// `WgpuBackend::run_main_pass`.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(1, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, &self.gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
@@ -384,7 +370,7 @@ impl QuadPipeline {
     /// pass's pre-bound viewport.
     pub(crate) fn bind_debug<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(1, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, &self.gradient_bg, &[]);
     }
 
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
@@ -450,7 +436,7 @@ impl QuadPipeline {
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(1, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, &self.gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
         pass.draw(0..4, 0..1);
     }
@@ -502,7 +488,7 @@ impl QuadPipeline {
     pub(crate) fn bind_stencil_test<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
         let stencil = self.stencil.as_ref().expect("ensure_stencil first");
         pass.set_pipeline(&stencil.stencil_test);
-        pass.set_bind_group(1, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, &self.gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
@@ -513,7 +499,7 @@ impl QuadPipeline {
         let stencil = self.stencil.as_ref().expect("ensure_stencil first");
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         pass.set_pipeline(&stencil.mask_write);
-        pass.set_bind_group(1, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, &self.gradient_bg, &[]);
         pass.set_vertex_buffer(0, buf.buffer.slice(..));
     }
 

@@ -1,5 +1,9 @@
+// Viewport via the shared immediate region (offset 0). See `quad.wgsl`
+// for the layout rationale — same `Immediates` shape across every
+// pipeline keeps the immediate state valid across pipeline switches.
 struct Viewport { size: vec2<f32> };
-@group(0) @binding(0) var<uniform> vp: Viewport;
+struct Immediates { viewport: Viewport };
+var<immediate> imm: Immediates;
 
 struct VsIn {
     @location(0) pos: vec2<f32>,
@@ -30,8 +34,8 @@ struct VsOut {
 fn vs(in: VsIn) -> VsOut {
     let phys = in.pos * in.scale + in.translate;
     let ndc = vec2<f32>(
-        phys.x / vp.size.x * 2.0 - 1.0,
-        1.0 - phys.y / vp.size.y * 2.0,
+        phys.x / imm.viewport.size.x * 2.0 - 1.0,
+        1.0 - phys.y / imm.viewport.size.y * 2.0,
     );
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);

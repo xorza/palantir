@@ -45,7 +45,6 @@ impl CurvePipeline {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        viewport_bgl: &wgpu::BindGroupLayout,
         gradient_bgl: &wgpu::BindGroupLayout,
     ) -> Self {
         // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
@@ -61,11 +60,10 @@ impl CurvePipeline {
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        let pipeline_layout = build_pipeline_layout(
-            device,
-            "palantir.curve.pl",
-            &[Some(viewport_bgl), Some(gradient_bgl)],
-        );
+        // Gradient at group 0 — viewport rides the shared immediate
+        // region, no bind-group slot needed for it.
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -95,24 +93,19 @@ impl CurvePipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Caller passes the shared `viewport_bgl` and the shared
-    /// `gradient_bgl` (owned by the quad pipeline) so the variant
-    /// matches the base pipeline's layout.
+    /// Caller passes the shared `gradient_bgl` (owned by the quad
+    /// pipeline) so the variant matches the base pipeline's layout.
     #[profiling::function]
     pub(crate) fn ensure_stencil(
         &mut self,
         device: &wgpu::Device,
-        viewport_bgl: &wgpu::BindGroupLayout,
         gradient_bgl: &wgpu::BindGroupLayout,
     ) {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout = build_pipeline_layout(
-            device,
-            "palantir.curve.pl.stencil",
-            &[Some(viewport_bgl), Some(gradient_bgl)],
-        );
+        let layout =
+            build_pipeline_layout(device, "palantir.curve.pl.stencil", &[Some(gradient_bgl)]);
         self.stencil_test = Some(build_pipeline(
             device,
             PipelineRecipe {
@@ -140,10 +133,9 @@ impl CurvePipeline {
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
-    /// `CurveBatch`. Group 0 (shared viewport) is bound by
-    /// `WgpuBackend::run_main_pass`; `gradient_bg` is the shared
-    /// group-1 handle owned by `QuadPipeline` (one allocation, used
-    /// by both pipelines).
+    /// `CurveBatch`. Viewport rides the shared immediate region;
+    /// `gradient_bg` is the group-0 handle owned by `QuadPipeline`
+    /// (one allocation, used by both pipelines).
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
@@ -156,7 +148,7 @@ impl CurvePipeline {
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(1, gradient_bg, &[]);
+        pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 

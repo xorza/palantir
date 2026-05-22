@@ -114,11 +114,16 @@ fn gpu() -> &'static Gpu {
             timing_features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
             timing_features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
         );
+        // Match the production host: text Params is carried via
+        // immediates (push constants), so the feature + 16-byte
+        // immediate budget are required.
+        let mut limits = wgpu::Limits::default();
+        limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("palantir.frame_bench.device"),
-                required_features: timing_features,
-                required_limits: wgpu::Limits::default(),
+                required_features: timing_features | wgpu::Features::IMMEDIATES,
+                required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,

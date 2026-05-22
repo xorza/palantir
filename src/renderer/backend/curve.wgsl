@@ -22,14 +22,17 @@
 // — same as mesh.wgsl / quad.wgsl. The pipeline uses
 // PREMULTIPLIED_ALPHA_BLENDING.
 
+// Viewport via the shared immediate region (offset 0). See
+// `quad.wgsl` for the cross-pipeline layout rationale.
 struct Viewport { size: vec2<f32> };
-@group(0) @binding(0) var<uniform> vp: Viewport;
+struct Immediates { viewport: Viewport };
+var<immediate> imm: Immediates;
 // Gradient LUT atlas, shared with the quad pipeline. Sampled per
 // fragment when `fill_kind != 0`. Same `Rgba8Unorm` (linear) format
 // + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
 // `t` is already in [0, 1] by construction, so spread is a no-op.
-@group(1) @binding(0) var gradient_tex:     texture_2d<f32>;
-@group(1) @binding(1) var gradient_sampler: sampler;
+@group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
+@group(0) @binding(1) var gradient_sampler: sampler;
 const ATLAS_ROWS_F: f32 = 256.0;
 
 // `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction
@@ -176,7 +179,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 
     let offset = side * half_w;
     let phys = pos + normal * offset + tan_n * cap_shift;
-    let inv_size_2 = 2.0 / vp.size;
+    let inv_size_2 = 2.0 / imm.viewport.size;
     let ndc = vec2<f32>(
         phys.x * inv_size_2.x - 1.0,
         1.0 - phys.y * inv_size_2.y,
