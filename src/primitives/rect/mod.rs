@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::primitives::{size::Size, spacing::Spacing};
+use crate::primitives::{corners::Corners, size::Size, spacing::Spacing};
 use glam::Vec2;
 
 #[repr(C)]
@@ -91,6 +91,41 @@ impl Rect {
         Self {
             min: Vec2::new(self.min.x - amount, self.min.y - amount),
             size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
+        }
+    }
+
+    /// Largest axis-aligned rect that fits inside `self` when `self`
+    /// is the bounding box of a rounded-rect paint with the given
+    /// corner radii. Each side is inset by
+    /// `max(adjacent_radii) * (1 - 1/√2)` — the 45° point of the
+    /// corner arc, the deepest the inscribed rect can reach without
+    /// crossing the rounded cutout. Returned size is clamped at
+    /// zero; a sharp-cornered input passes through unchanged. Used
+    /// by the renderer's occlusion-prune to derive the opaque cover
+    /// area of a rounded fill.
+    #[inline]
+    pub fn inscribed_for_corners(&self, corners: Corners) -> Self {
+        if corners.approx_zero() {
+            return *self;
+        }
+        // `1 - 1/√2 ≈ 0.2929`: the inscribed-square offset per unit
+        // radius for a quarter-circle arc. Multiplying a corner
+        // radius by this gives the distance from the bounding-box
+        // corner inward to the arc's 45° point.
+        const KAPPA: f32 = 1.0 - core::f32::consts::FRAC_1_SQRT_2;
+        // Single SIMD f16x4→f32x4 unpack — `tl()`/`tr()`/`br()`/`bl()`
+        // would each issue an independent f16→f32 conversion.
+        let [tl, tr, br, bl] = corners.as_array();
+        let top = tl.max(tr) * KAPPA;
+        let bottom = bl.max(br) * KAPPA;
+        let left = tl.max(bl) * KAPPA;
+        let right = tr.max(br) * KAPPA;
+        Self {
+            min: Vec2::new(self.min.x + left, self.min.y + top),
+            size: Size::new(
+                (self.size.w - left - right).max(0.0),
+                (self.size.h - top - bottom).max(0.0),
+            ),
         }
     }
 
