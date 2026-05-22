@@ -8,6 +8,13 @@ use crate::primitives::{color::Color, size::Size};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
+// Note: `MeasureCache::write_subtree` skips `LayoutMode::Leaf` nodes
+// (see `LayoutEngine::measure`). Tests that previously pinned the
+// "leaf is cached" contract are reframed onto the smallest cached
+// shape — a `Panel` wrapping a `Frame`. The snapshot then carries
+// two nodes (panel + leaf) in pre-order; assertions index `desired[1]`
+// for the leaf and `desired[0]` for the wrapper.
+
 fn run_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
     run_frame_at(ui, UVec2::new(200, 200), record);
 }
@@ -51,40 +58,47 @@ fn assert_node_columns_aligned(ui: &Ui) {
     assert!(n.live <= len, "live {} > total {}", n.live, len);
 }
 
-#[test]
-fn leaf_snapshot_populated_after_first_frame() {
-    let mut ui = Ui::for_test();
-    run_frame(&mut ui, |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
-    });
-    let wid = WidgetId::from_hash("a");
-    let SnapView { snap, desired, .. } =
-        snap_for(&ui, wid).expect("leaf snapshot must be inserted");
-    assert_eq!(snap.nodes.len, 1, "leaf subtree spans one node");
-    assert_eq!(desired[0].w, 50.0);
-    assert_eq!(desired[0].h, 50.0);
+/// Build a Panel-wrapped Frame: smallest cached subtree shape under the
+/// leaf-skip gate. The panel carries the assertion id; the frame
+/// occupies index 1 in the snapshot's pre-order arrays.
+fn build_wrapped_frame(ui: &mut Ui, panel_id: &str, frame_size: f32, fill: Color) {
+    Panel::vstack()
+        .id(WidgetId::from_hash(panel_id))
+        .show(ui, |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash((panel_id, "leaf")))
+                .size(frame_size)
+                .background(Background {
+                    fill: fill.into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
 }
 
 #[test]
-fn unchanged_leaf_keeps_subtree_hash_across_frames() {
+fn wrapped_frame_snapshot_populated_after_first_frame() {
     let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
-    };
+    run_frame(&mut ui, |ui| {
+        build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
+    });
+    let wid = WidgetId::from_hash("a");
+    let SnapView { snap, desired, .. } =
+        snap_for(&ui, wid).expect("panel snapshot must be inserted");
+    // panel + 1 leaf child = 2 entries in pre-order.
+    assert_eq!(snap.nodes.len, 2, "wrapped subtree spans two nodes");
+    // Panel hugs to the leaf's size on both axes.
+    assert_eq!(desired[0].w, 50.0);
+    assert_eq!(desired[0].h, 50.0);
+    // Leaf at index 1 has its own size.
+    assert_eq!(desired[1].w, 50.0);
+    assert_eq!(desired[1].h, 50.0);
+}
+
+#[test]
+fn unchanged_subtree_keeps_hash_across_frames() {
+    let mut ui = Ui::for_test();
+    let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
     run_frame(&mut ui, build);
     let wid = WidgetId::from_hash("a");
     let h1 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
@@ -94,34 +108,23 @@ fn unchanged_leaf_keeps_subtree_hash_across_frames() {
 }
 
 #[test]
-fn changing_leaf_authoring_replaces_snapshot() {
+fn changing_descendant_authoring_replaces_snapshot() {
+    // The wrapping panel's subtree_hash rolls up its descendant's
+    // hash, so changing the leaf's authoring busts the cached
+    // ancestor.
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
+        build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
     });
     let wid = WidgetId::from_hash("a");
     let h1 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     run_frame(&mut ui, |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.9, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
+        build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.9, 0.4, 0.8));
     });
     let h2 = snap_for(&ui, wid).unwrap().snap.subtree_hash;
     assert_ne!(
         h1, h2,
-        "changed authoring must update the leaf's snapshot hash",
+        "changed descendant authoring must roll up and replace the ancestor's snapshot hash",
     );
 }
 
@@ -129,14 +132,8 @@ fn changing_leaf_authoring_replaces_snapshot() {
 fn removed_widget_is_evicted() {
     let mut ui = Ui::for_test();
     run_frame(&mut ui, |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("gone"))
-            .size(40.0)
-            .show(ui);
-        Frame::new()
-            .id(WidgetId::from_hash("kept"))
-            .size(40.0)
-            .show(ui);
+        build_wrapped_frame(ui, "gone", 40.0, Color::rgb(0.5, 0.5, 0.5));
+        build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
     });
     let gone = WidgetId::from_hash("gone");
     let kept = WidgetId::from_hash("kept");
@@ -144,14 +141,11 @@ fn removed_widget_is_evicted() {
     assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
 
     run_frame(&mut ui, |ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("kept"))
-            .size(40.0)
-            .show(ui);
+        build_wrapped_frame(ui, "kept", 40.0, Color::rgb(0.5, 0.5, 0.5));
     });
     assert!(
         !ui.layout_engine.cache.snapshots.contains_key(&gone),
-        "vanished widget must be evicted via SeenIds.removed",
+        "vanished panel must be evicted via SeenIds.removed",
     );
     assert!(ui.layout_engine.cache.snapshots.contains_key(&kept));
 }
@@ -162,16 +156,7 @@ fn cache_hit_replays_same_desired_size() {
     // as the first. Correctness contract for the short-circuit — a
     // hit must not perturb layout output.
     let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(0.2, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
-    };
+    let build = |ui: &mut Ui| build_wrapped_frame(ui, "a", 50.0, Color::rgb(0.2, 0.4, 0.8));
     run_frame(&mut ui, build);
     let wid = WidgetId::from_hash("a");
     let d1 = snap_for(&ui, wid).unwrap().desired[0];
@@ -190,6 +175,9 @@ fn changing_available_forces_miss_and_remeasure() {
     // available width (more wrap = taller). A pure `Fill` child would
     // return content (0×0 for an empty frame) regardless of available
     // under WPF Stretch semantics — a poor proxy for remeasurement.
+    // Inspect the wrapping panel's snapshot rather than the inner
+    // text leaf (leaves aren't cached; the panel is). Index 1 in the
+    // snapshot's pre-order desired is the leaf's measured size.
     use crate::TextStyle;
     use crate::forest::element::Configure;
     use crate::layout::types::sizing::Sizing;
@@ -212,19 +200,19 @@ fn changing_available_forces_miss_and_remeasure() {
             });
     };
     run_frame_at(&mut ui, UVec2::new(400, 400), build);
-    let wid = WidgetId::from_hash("fill");
+    let wid = WidgetId::from_hash("inner");
     let avail1 = snap_for(&ui, wid).unwrap().avail;
-    let d1 = snap_for(&ui, wid).unwrap().desired[0];
+    let leaf_d1 = snap_for(&ui, wid).unwrap().desired[1];
 
     run_frame_at(&mut ui, UVec2::new(100, 400), build);
     let avail2 = snap_for(&ui, wid).unwrap().avail;
-    let desired2 = snap_for(&ui, wid).unwrap().desired[0];
+    let leaf_d2 = snap_for(&ui, wid).unwrap().desired[1];
     assert_ne!(
         avail1, avail2,
         "shrinking the surface must change the cache's available key",
     );
     assert_ne!(
-        d1, desired2,
+        leaf_d1, leaf_d2,
         "remeasure must produce a different desired for a wrapping child",
     );
 }
@@ -325,18 +313,11 @@ fn quantize_available_axis_invariants() {
 fn in_place_rewrite_preserves_arena_position() {
     // Steady-state hot path: same WidgetId, same subtree size → the
     // arena range must be reused in place, never appended. Verifies
-    // the optimization that lets us amortize allocations.
+    // the optimization that lets us amortize allocations. Use a
+    // panel-wrapped frame so the subtree itself is cached
+    // (post-leaf-skip gate, bare leaves aren't).
     let mut ui = Ui::for_test();
-    let build = |ui: &mut Ui, c: f32| {
-        Frame::new()
-            .id(WidgetId::from_hash("a"))
-            .size(50.0)
-            .background(Background {
-                fill: Color::rgb(c, 0.4, 0.8).into(),
-                ..Default::default()
-            })
-            .show(ui);
-    };
+    let build = |ui: &mut Ui, c: f32| build_wrapped_frame(ui, "a", 50.0, Color::rgb(c, 0.4, 0.8));
 
     run_frame_at(&mut ui, UVec2::new(200, 200), |ui| build(ui, 0.2));
     let start1 = snap_for(&ui, WidgetId::from_hash("a"))
@@ -345,8 +326,8 @@ fn in_place_rewrite_preserves_arena_position() {
         .nodes
         .start;
 
-    // Different fill → different hash, but same subtree size (still 1
-    // leaf). In-place path should reuse the slot.
+    // Different fill → different hash, but same subtree size (panel +
+    // 1 leaf). In-place path should reuse the slot.
     run_frame_at(&mut ui, UVec2::new(200, 200), |ui| build(ui, 0.9));
     let start2 = snap_for(&ui, WidgetId::from_hash("a"))
         .unwrap()
@@ -375,19 +356,30 @@ fn arena_invariant_holds_under_fragmentation() {
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
-            Frame::new()
+            // Each item is a cached subtree (panel + leaf) so the
+            // arena accumulates the per-WidgetId entries we need to
+            // trigger compaction.
+            Panel::vstack()
                 .id(WidgetId::from_hash(("a", i)))
-                .size(10.0)
-                .show(ui);
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("a-leaf", i)))
+                        .size(10.0)
+                        .show(ui);
+                });
         }
     });
     // Drop all but one and add a fresh subtree to force append-path
     // writes; expect compaction to trigger somewhere along the way.
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        Frame::new()
+        Panel::vstack()
             .id(WidgetId::from_hash(("a", 0usize)))
-            .size(10.0)
-            .show(ui);
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash(("a-leaf", 0usize)))
+                    .size(10.0)
+                    .show(ui);
+            });
         Panel::vstack()
             .id(WidgetId::from_hash("new-group"))
             .show(ui, |ui| {
@@ -421,15 +413,19 @@ fn cache_hits_remain_valid_after_compaction() {
     use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
     let mut ui = Ui::for_test();
 
-    // Frame 1: enough widgets to clear the floor; remember one that
-    // we'll keep across frames.
+    // Frame 1: enough wrapping panels to clear the floor; remember
+    // one that we'll keep across frames.
     let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
         for i in 0..n_first {
-            Frame::new()
+            Panel::vstack()
                 .id(WidgetId::from_hash(("a", i)))
-                .size(11.0)
-                .show(ui);
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("a-leaf", i)))
+                        .size(11.0)
+                        .show(ui);
+                });
         }
     });
     let kept_wid = WidgetId::from_hash(("a", 0usize));
@@ -437,10 +433,14 @@ fn cache_hits_remain_valid_after_compaction() {
 
     // Frame 2: drop most, add fresh subtree to drive compaction.
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        Frame::new()
+        Panel::vstack()
             .id(WidgetId::from_hash(("a", 0usize)))
-            .size(11.0)
-            .show(ui);
+            .show(ui, |ui| {
+                Frame::new()
+                    .id(WidgetId::from_hash(("a-leaf", 0usize)))
+                    .size(11.0)
+                    .show(ui);
+            });
         Panel::vstack()
             .id(WidgetId::from_hash("new-group"))
             .show(ui, |ui| {
@@ -474,12 +474,15 @@ fn cache_hits_remain_valid_after_compaction() {
 }
 
 /// Partial-invalidation contract: changing one leaf must bust the
-/// `subtree_hash` for that leaf and every ancestor (so they miss
-/// the cache and re-measure), but a sibling subtree must keep its
-/// hash AND its arena slot — no spurious replace, no spurious
-/// rewrite. Catches regressions where the rollup over-invalidates
-/// (siblings re-measure for free, perf cliff invisible to rect
-/// tests) or under-invalidates (ancestors hit with stale data).
+/// `subtree_hash` for that leaf's nearest cached ancestor and every
+/// ancestor above it (so they miss the cache and re-measure), but a
+/// sibling subtree must keep its hash AND its arena slot — no
+/// spurious replace, no spurious rewrite. Catches regressions where
+/// the rollup over-invalidates (siblings re-measure for free, perf
+/// cliff invisible to rect tests) or under-invalidates (ancestors
+/// hit with stale data). Under the leaf-skip gate the leaf itself
+/// has no snapshot, so the propagation observable starts at the
+/// nearest cached ancestor (the `changing-branch` panel).
 #[test]
 fn partial_invalidation_busts_ancestors_preserves_siblings() {
     let build = |ui: &mut Ui, leaf_color: Color| {
@@ -528,9 +531,7 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
 
     let root_1 = snap(&ui, "root");
     let branch_1 = snap(&ui, "changing-branch");
-    let leaf_1 = snap(&ui, "changing-leaf");
     let sib_branch_1 = snap(&ui, "stable-sibling");
-    let sib_leaf_1 = snap(&ui, "stable-leaf");
 
     // Frame 2: only the changing leaf's color flips. Hash rollup
     // must propagate the change all the way to `root`; the stable
@@ -540,18 +541,12 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
     });
     let root_2 = snap(&ui, "root");
     let branch_2 = snap(&ui, "changing-branch");
-    let leaf_2 = snap(&ui, "changing-leaf");
     let sib_branch_2 = snap(&ui, "stable-sibling");
-    let sib_leaf_2 = snap(&ui, "stable-leaf");
 
     // Changed path: hashes must differ (caches missed and rewrote).
     assert_ne!(
-        leaf_1.subtree_hash, leaf_2.subtree_hash,
-        "changed leaf must bust its own subtree_hash",
-    );
-    assert_ne!(
         branch_1.subtree_hash, branch_2.subtree_hash,
-        "ancestor of changed leaf must bust its subtree_hash via rollup",
+        "nearest cached ancestor of the changed leaf must bust its subtree_hash via rollup",
     );
     assert_ne!(
         root_1.subtree_hash, root_2.subtree_hash,
@@ -565,16 +560,8 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
         "sibling subtree hash must not change when an unrelated leaf changes",
     );
     assert_eq!(
-        sib_leaf_1.subtree_hash, sib_leaf_2.subtree_hash,
-        "sibling leaf hash must not change",
-    );
-    assert_eq!(
         sib_branch_1.nodes.start, sib_branch_2.nodes.start,
         "sibling's arena slot must be untouched (no replace, no rewrite)",
-    );
-    assert_eq!(
-        sib_leaf_1.nodes.start, sib_leaf_2.nodes.start,
-        "sibling leaf's arena slot must be untouched",
     );
 }
 
@@ -582,22 +569,29 @@ fn partial_invalidation_busts_ancestors_preserves_siblings() {
 /// snapshot, arena slot becomes garbage) and reappear with the same
 /// id. Re-insertion exercises the append-on-no-prev branch of
 /// `write_subtree`, distinct from the steady-state in-place
-/// rewrite. The reappeared widget must measure correctly and the
+/// rewrite. The reappeared subtree must measure correctly and the
 /// cache's `live_entries` accounting must stay consistent.
+///
+/// Tracked at the wrapping panel — leaves aren't cached under the
+/// leaf-skip gate, so the eviction path needs a non-leaf observable.
 #[test]
 fn cache_handles_widget_reappearance_after_eviction() {
     let with_widget = |ui: &mut Ui| {
         Panel::vstack()
             .id(WidgetId::from_hash("inner"))
             .show(ui, |ui| {
-                Frame::new()
+                Panel::vstack()
                     .id(WidgetId::from_hash("blip"))
-                    .size(40.0)
-                    .background(Background {
-                        fill: Color::rgb(0.5, 0.2, 0.7).into(),
-                        ..Default::default()
-                    })
-                    .show(ui);
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("blip-leaf"))
+                            .size(40.0)
+                            .background(Background {
+                                fill: Color::rgb(0.5, 0.2, 0.7).into(),
+                                ..Default::default()
+                            })
+                            .show(ui);
+                    });
             });
     };
     let without_widget = |ui: &mut Ui| {
@@ -614,14 +608,14 @@ fn cache_handles_widget_reappearance_after_eviction() {
     let live_before = ui.layout_engine.cache.nodes.live;
     assert!(
         ui.layout_engine.cache.snapshots.contains_key(&blip),
-        "widget must be cached after first frame",
+        "panel-wrapped widget must be cached after first frame",
     );
 
     // Frame 2: vanished — sweep_removed evicts via SeenIds.removed.
     run_frame(&mut ui, without_widget);
     assert!(
         !ui.layout_engine.cache.snapshots.contains_key(&blip),
-        "vanished widget must be evicted via sweep_removed",
+        "vanished panel must be evicted via sweep_removed",
     );
     let live_after_evict = ui.layout_engine.cache.nodes.live;
     assert!(
@@ -636,7 +630,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
     run_frame(&mut ui, with_widget);
     assert!(
         ui.layout_engine.cache.snapshots.contains_key(&blip),
-        "reappeared widget must be re-cached",
+        "reappeared panel must be re-cached",
     );
 
     // Cold oracle: clear and run again. live_entries and the
