@@ -84,19 +84,34 @@ impl DynamicBuffer {
         }
     }
 
-    /// Common case: grow if needed, schedule a belt write to offset 0.
+    /// Common case: grow if needed, write `bytes` to offset 0. On a
+    /// grow frame the destination is brand-new — we ride
+    /// `mapped_at_creation: true` and `memcpy` straight into the
+    /// mapped range, dodging one belt copy per grow. Steady-state
+    /// (no grow) takes the normal belt path.
     /// `bytes.len()` must equal `item_count * self.item_size`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
-        self.upload_with(ctx, item_count, |dst, ctx| {
-            ctx.write(dst, 0, bytes);
-        });
+        if self.grow_mapped(ctx.device, item_count) {
+            // Buffer was just created mapped-at-creation; write
+            // directly into the mapped range and unmap. No belt
+            // staging copy, no `copy_buffer_to_buffer` recorded.
+            self.buffer
+                .slice(..bytes.len() as u64)
+                .get_mapped_range_mut()
+                .copy_from_slice(bytes);
+            self.buffer.unmap();
+            return;
+        }
+        ctx.write(&self.buffer, 0, bytes);
     }
 
     /// Generic upload path for callers that need more than one belt
     /// write per logical upload (e.g. the mesh index buffer's
     /// odd-length padded path schedules two copies to honor wgpu's
     /// 4-byte copy alignment). The `write` closure receives
-    /// `(&dst_buffer, &mut ctx)`.
+    /// `(&dst_buffer, &mut ctx)`. Always takes the belt path —
+    /// the mapped-at-creation fast path can't run a caller-supplied
+    /// multi-write closure without leaking the mapped state.
     pub(crate) fn upload_with<F>(&mut self, ctx: &mut GpuCtx<'_>, item_count: usize, write: F)
     where
         F: FnOnce(&wgpu::Buffer, &mut GpuCtx<'_>),
@@ -106,17 +121,35 @@ impl DynamicBuffer {
     }
 
     /// Grow to fit `needed_len` items, rounding up to the next power
-    /// of two (floored at `min_capacity`).
+    /// of two (floored at `min_capacity`). `mapped_at_creation: false`
+    /// — the caller writes via the belt.
     fn grow(&mut self, device: &wgpu::Device, needed_len: usize) {
         if needed_len <= self.capacity {
             return;
         }
+        self.realloc(device, needed_len, false);
+    }
+
+    /// Grow to fit `needed_len` items with the new buffer
+    /// `mapped_at_creation: true`. Returns `true` when the buffer was
+    /// recreated (caller must write into the mapped range then call
+    /// `unmap`); `false` when the existing buffer's capacity already
+    /// fit (caller takes the belt path).
+    fn grow_mapped(&mut self, device: &wgpu::Device, needed_len: usize) -> bool {
+        if needed_len <= self.capacity {
+            return false;
+        }
+        self.realloc(device, needed_len, true);
+        true
+    }
+
+    fn realloc(&mut self, device: &wgpu::Device, needed_len: usize, mapped_at_creation: bool) {
         self.capacity = needed_len.next_power_of_two().max(self.min_capacity);
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(self.label),
             size: (self.capacity * self.item_size) as u64,
             usage: self.usage,
-            mapped_at_creation: false,
+            mapped_at_creation,
         });
     }
 }
