@@ -223,6 +223,25 @@ the active scissor. If the result is paint-empty, drop the occluder
 This is the load-bearing correctness step the rest of the design
 hangs on; don't skip it because "current prune doesn't need it."
 
+## Baseline (pre-prepass)
+
+Captured 2026-05-22 on asus-rog-arch via `frame` bench's
+`report_write_stats` pass (frames 0..=5, frame 0 dropped — pass-time
+readback lags one frame). Fragment-shader invocations per frame,
+`PALANTIR_BENCH_MODE=both`:
+
+| Arm       | Frame 1 fs | Frames 2-5 fs                     |
+|-----------|------------|-----------------------------------|
+| cached    | (no pass — frame-skip path) | —                |
+| partial   | 23,026,656 | 17,045 / 17,117 / 17,148 / 17,135 |
+| resizing  | 22,110,813 | 23,026,656 / 24,705,109 / 29,873,729 / 22,316,521 |
+
+VS / clipper figures alongside in the bench output. Slices 1-3 land
+no main-pass `LessEqual` so these counts must stay byte-identical
+after the prepass plumbing is in. Slice 4 is the measurement point;
+≥30% FS reduction on the worst-case scene is the gate per the
+procedure below.
+
 ## Cost / benefit gate
 
 Land this only if a benchmark moves. Procedure:
