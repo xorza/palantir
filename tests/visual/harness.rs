@@ -66,7 +66,13 @@ impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = Host::with_text(g.device.clone(), g.queue.clone(), FORMAT, shaper);
+        let host = Host::with_options(
+            g.device.clone(),
+            g.queue.clone(),
+            FORMAT,
+            shaper,
+            palantir::HostConfig::default(),
+        );
 
         Self {
             device: g.device.clone(),

@@ -94,7 +94,13 @@ fn main() {
     };
 
     let g = gpu();
-    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    let mut host = Host::with_options(
+        g.device.clone(),
+        g.queue.clone(),
+        FORMAT,
+        palantir::TextShaper::with_bundled_fonts(),
+        palantir::HostConfig::default(),
+    );
     let mut state = FormState::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {

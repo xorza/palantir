@@ -97,13 +97,23 @@ fn gpu() -> &'static Gpu {
             })
             .block_on()
             .expect("request adapter (headless)");
-        // Mirror the showcase host: request `TIMESTAMP_QUERY` when
-        // the adapter advertises it so the backend's
-        // `GpuTimings` runs and `gpu_pass_stats::last_pass_ms()`
-        // returns real values. The frame bench is `--features
-        // internals` only, so it's the right place to keep the
-        // instrumentation on by default.
-        let timing_features = adapter.features() & wgpu::Features::TIMESTAMP_QUERY;
+        // Request the full instrumentation feature set so the
+        // backend's `GpuTimings` can publish whole-pass + per-batch
+        // durations + pipeline statistics. The intersection with
+        // `adapter.features()` drops bits the adapter doesn't
+        // advertise; missing features degrade individually. The
+        // frame bench is `--features internals` only — the right
+        // place to keep instrumentation on by default.
+        let timing_features = adapter.features()
+            & (wgpu::Features::TIMESTAMP_QUERY
+                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
+                | wgpu::Features::PIPELINE_STATISTICS_QUERY);
+        eprintln!(
+            "[frame_bench] timing features: TIMESTAMP_QUERY={} INSIDE_PASSES={} PIPELINE_STATS={}",
+            timing_features.contains(wgpu::Features::TIMESTAMP_QUERY),
+            timing_features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+            timing_features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
+        );
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("palantir.frame_bench.device"),
@@ -117,6 +127,23 @@ fn gpu() -> &'static Gpu {
             .expect("request device");
         Gpu { device, queue }
     })
+}
+
+/// Build a `Host` from the shared bench device with GPU
+/// instrumentation on. Every bench arm wants the same shape — bundled
+/// fonts, default image budget, `collect_gpu_stats: true` — so the
+/// helper keeps `Host::with_options` call sites from drifting.
+fn bench_host(g: &Gpu) -> Host {
+    Host::with_options(
+        g.device.clone(),
+        g.queue.clone(),
+        FORMAT,
+        palantir::TextShaper::with_bundled_fonts(),
+        palantir::HostConfig {
+            collect_gpu_stats: true,
+            ..Default::default()
+        },
+    )
 }
 
 fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::Texture {
@@ -147,7 +174,7 @@ where
     F: FnMut(&mut Host, &mut FormState, SyncMode, &wgpu::Device),
 {
     let g = gpu();
-    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    let mut host = bench_host(g);
     host.ui.theme.window_clear = Color::BLACK;
     let mut state = FormState::default();
     for _ in 0..4 {
@@ -195,7 +222,7 @@ fn run_partial(c: &mut Criterion, name: &str, sync: SyncMode) {
 /// still produce a number but be measuring the wrong thing.
 fn assert_partial_invariant(target: &wgpu::Texture) {
     let g = gpu();
-    let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+    let mut host = bench_host(g);
     host.ui.theme.window_clear = Color::BLACK;
     let mut state = FormState::default();
     for _ in 0..2 {
@@ -266,7 +293,7 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
 fn report_write_stats() {
     fn run(label: &str, targets: &[wgpu::Texture], mut mutate: impl FnMut(&mut FormState, usize)) {
         let g = gpu();
-        let mut host = Host::new(g.device.clone(), g.queue.clone(), FORMAT);
+        let mut host = bench_host(g);
         host.ui.theme.window_clear = Color::BLACK;
         let mut state = FormState::default();
         eprintln!("[write_stats] {label}:");
@@ -284,7 +311,9 @@ fn report_write_stats() {
             // matches the iteration we're printing rather than the
             // previous one.
             let _ = g.device.poll(wgpu::PollType::Poll);
-            let gpu = palantir::renderer::gpu_pass_stats::last_pass_ms()
+            let stats = host.gpu_pass_stats();
+            let gpu = stats
+                .last_pass_ms()
                 .map(|ms| format!("{ms:>5.2} ms"))
                 .unwrap_or_else(|| "  n/a   ".into());
             let cc = host.ui.cascade_cache();
@@ -299,6 +328,28 @@ fn report_write_stats() {
                 cc.captures,
                 cc.nodes_blit,
             );
+            // Per-kind attribution (TIMESTAMP_QUERY_INSIDE_PASSES) and
+            // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
+            // when at least one value resolved, so adapters that lack
+            // the feature stay quiet.
+            use palantir::renderer::gpu_pass_stats::BatchKind;
+            use strum::IntoEnumIterator;
+            let per_kind: Vec<String> = BatchKind::iter()
+                .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
+                .map(|(k, ms)| format!("{}={ms:.2}", k.label()))
+                .collect();
+            if !per_kind.is_empty() {
+                eprintln!("           kinds: {}", per_kind.join(" "));
+            }
+            if let Some(p) = stats.last_pipeline_stats() {
+                eprintln!(
+                    "           pipeline: vs={} clip_in={} clip_out={} fs={}",
+                    p.vertex_shader_invocations,
+                    p.clipper_invocations,
+                    p.clipper_primitives_out,
+                    p.fragment_shader_invocations,
+                );
+            }
         }
     }
 

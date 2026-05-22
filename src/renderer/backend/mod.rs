@@ -18,18 +18,19 @@ pub(crate) mod write_stats;
 pub use self::gpu_ctx::GpuCtx;
 pub use self::queue::Queue;
 
-use self::stencil::STENCIL_FORMAT;
-
 use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
+use self::gpu_pass_stats::BatchKind;
+pub(crate) use self::gpu_pass_stats::GpuPassStats;
 use self::gpu_timings::GpuTimings;
 pub use self::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
+use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportUniform, build_damage_scissors};
 use crate::common::frame_arena::FrameArena;
 use crate::debug_overlay::DebugOverlayConfig;
@@ -37,10 +38,27 @@ use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
+use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
 
-use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
+/// Construction-time knobs for [`WgpuBackend::new`]. Grouped so the
+/// `Host` / `WinitHost` call sites don't grow a long positional
+/// signature each time a new GPU-side setting is exposed.
+pub(crate) struct WgpuBackendConfig {
+    /// GPU texture cache budget; eviction kicks in past this. See
+    /// [`DEFAULT_IMAGE_BUDGET_BYTES`].
+    pub(crate) image_budget_bytes: u64,
+    /// `Some(stats)` opts the backend into GPU instrumentation: the
+    /// backend writes resolved samples through the shared handle and
+    /// pays the per-frame `resolve_query_set` + `map_async` +
+    /// `device.poll(Poll)` + readback cost. `None` skips the whole
+    /// path — `GpuTimings` is never constructed. Adapter features
+    /// (`TIMESTAMP_QUERY`, `+TIMESTAMP_QUERY_INSIDE_PASSES`,
+    /// `+PIPELINE_STATISTICS_QUERY`) still gate what actually gets
+    /// collected; missing features degrade individually.
+    pub(crate) pass_stats: Option<GpuPassStats>,
+}
 
 /// Persistent off-screen target that the render pass paints into.
 /// We render to this texture (not to the swapchain view directly)
@@ -120,11 +138,11 @@ pub(crate) struct WgpuBackend {
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
     caches: RenderCaches,
-    /// Main-pass timestamp queries. `Some` when the device was
-    /// created with [`wgpu::Features::TIMESTAMP_QUERY`] enabled
-    /// (host opportunistically requests it — see `winit_host.rs`).
-    /// Surfaces per-frame GPU pass duration into
-    /// [`gpu_pass_stats`] for the debug overlay and benches.
+    /// Main-pass timestamp queries. `Some` when the host opted into
+    /// instrumentation (see `WinitHostConfig::collect_gpu_stats`) AND
+    /// the adapter advertises `TIMESTAMP_QUERY`. Resolved values
+    /// publish through the `GpuPassStats` handle the backend got at
+    /// construction; `Host` keeps the canonical clone.
     gpu_timings: Option<GpuTimings>,
 }
 
@@ -148,16 +166,36 @@ impl WgpuBackend {
         shaper: TextShaper,
         frame_arena: FrameArena,
         caches: RenderCaches,
-        image_budget_bytes: u64,
+        config: WgpuBackendConfig,
     ) -> Self {
-        // Opportunistic GPU pass timing. Requires both the feature
-        // bit (host requests it when the adapter advertises it — see
-        // `winit_host.rs`) and a non-zero timestamp period (some
-        // headless / software queues advertise the feature but can't
-        // actually time submissions).
-        let gpu_timings = (device.features().contains(wgpu::Features::TIMESTAMP_QUERY)
-            && queue.get_timestamp_period() > 0.0)
-            .then(|| GpuTimings::new(&device, queue.get_timestamp_period()));
+        let WgpuBackendConfig {
+            image_budget_bytes,
+            pass_stats,
+        } = config;
+        // GPU pass timing collection is opt-in via `pass_stats`:
+        // `Some(handle)` → wire up `GpuTimings` and write samples
+        // through the handle; `None` → skip the whole readback path.
+        // Adapter features then degrade what gets collected:
+        // `TIMESTAMP_QUERY` is required at all; `+
+        // TIMESTAMP_QUERY_INSIDE_PASSES` enables per-batch
+        // attribution; `+PIPELINE_STATISTICS_QUERY` adds VS/FS
+        // invocation counts. The non-zero `period` check guards
+        // against headless / software queues that advertise the
+        // feature but can't actually time submissions.
+        let features = device.features();
+        let gpu_timings = pass_stats.and_then(|sink| {
+            (features.contains(wgpu::Features::TIMESTAMP_QUERY)
+                && queue.get_timestamp_period() > 0.0)
+                .then(|| {
+                    GpuTimings::new(
+                        &device,
+                        queue.get_timestamp_period(),
+                        features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                        features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
+                        sink,
+                    )
+                })
+        });
         let viewport_uniform = ViewportUniform::new(&device);
         let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
         let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
@@ -682,7 +720,13 @@ impl WgpuBackend {
             None => wgpu::LoadOp::Clear(clear),
             Some(_) => wgpu::LoadOp::Load,
         };
-        let timestamp_writes = self.gpu_timings.as_ref().map(|t| t.pass_writes());
+        // Timestamp writes via the descriptor cover the basic mode
+        // (TIMESTAMP_QUERY only — pass begin / end). In per-batch
+        // mode (TIMESTAMP_QUERY_INSIDE_PASSES additionally on) we
+        // skip the descriptor and write begin/end inline via
+        // `pass_begin` / `pass_end` so a single sequential timestamp
+        // stream covers begin → midpoints → end without index gaps.
+        let timestamp_writes = self.gpu_timings.as_ref().and_then(|t| t.pass_writes());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -699,6 +743,12 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        if let Some(t) = &self.gpu_timings {
+            if t.inside_passes() {
+                t.pass_begin(&mut pass);
+            }
+            t.begin_pipeline_stats(&mut pass);
+        }
         match partial_scissors {
             None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
             Some(rects) => {
@@ -711,6 +761,12 @@ impl WgpuBackend {
                     );
                     self.render_groups(&mut pass, buffer, Some(r), use_stencil, text_mode);
                 }
+            }
+        }
+        if let Some(t) = &self.gpu_timings {
+            t.end_pipeline_stats(&mut pass);
+            if t.inside_passes() {
+                t.pass_end(&mut pass);
             }
         }
     }
@@ -748,6 +804,16 @@ impl WgpuBackend {
         }
         let mut bound = Bound::None;
 
+        // Helper: thread a `BatchKind` marker through to `GpuTimings`
+        // when per-batch timestamps are enabled. Coalesced inside
+        // `GpuTimings::mark` — same-kind repeats are free, only true
+        // transitions write a `RenderPass::write_timestamp`.
+        let mark = |pass: &mut wgpu::RenderPass<'a>, kind: BatchKind| {
+            if let Some(t) = self.gpu_timings.as_ref() {
+                t.mark(pass, kind);
+            }
+        };
+
         for_each_step(
             buffer,
             damage_scissor,
@@ -755,6 +821,7 @@ impl WgpuBackend {
             use_stencil,
             |step| match step {
                 RenderStep::PreClear => {
+                    mark(pass, BatchKind::PreClear);
                     pass.push_debug_group("preclear");
                     self.quad.draw_clear(pass, use_stencil);
                     // draw_clear binds its own pipeline + vertex buffer
@@ -770,6 +837,7 @@ impl WgpuBackend {
                     pass.set_stencil_reference(v);
                 }
                 RenderStep::MaskQuad(mi) => {
+                    mark(pass, BatchKind::Mask);
                     pass.push_debug_group("mask");
                     if bound != Bound::MaskWrite {
                         self.quad.bind_mask_write(pass);
@@ -779,6 +847,7 @@ impl WgpuBackend {
                     pass.pop_debug_group();
                 }
                 RenderStep::Quads { range, .. } => {
+                    mark(pass, BatchKind::Quads);
                     pass.push_debug_group("quads");
                     if bound != Bound::QuadInstance {
                         if use_stencil {
@@ -792,6 +861,7 @@ impl WgpuBackend {
                     pass.pop_debug_group();
                 }
                 RenderStep::Text { batch } => {
+                    mark(pass, BatchKind::Text);
                     pass.push_debug_group("text");
                     self.text.render_batch(batch, pass, text_mode);
                     // glyphon sets its own pipeline + bindings.
@@ -799,6 +869,7 @@ impl WgpuBackend {
                     pass.pop_debug_group();
                 }
                 RenderStep::MeshBatch { batch } => {
+                    mark(pass, BatchKind::Mesh);
                     pass.push_debug_group("meshes");
                     if bound != Bound::Mesh {
                         self.mesh.bind(pass, use_stencil);
@@ -823,6 +894,7 @@ impl WgpuBackend {
                     pass.pop_debug_group();
                 }
                 RenderStep::ImageBatch { batch } => {
+                    mark(pass, BatchKind::Image);
                     pass.push_debug_group("images");
                     if bound != Bound::Image {
                         self.image.bind(pass, use_stencil);
@@ -839,6 +911,7 @@ impl WgpuBackend {
                     pass.pop_debug_group();
                 }
                 RenderStep::CurveBatch { batch } => {
+                    mark(pass, BatchKind::Curve);
                     pass.push_debug_group("curves");
                     if bound != Bound::Curve {
                         self.curve.bind(pass, use_stencil);

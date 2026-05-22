@@ -14,12 +14,39 @@
 
 use std::time::Instant;
 
-use crate::renderer::backend::{DEFAULT_IMAGE_BUDGET_BYTES, WgpuBackend};
+use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
+use crate::renderer::backend::{DEFAULT_IMAGE_BUDGET_BYTES, WgpuBackend, WgpuBackendConfig};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::{Display, FrameReport, FrameStamp};
+use crate::{Display, FrameArena, FrameReport, FrameStamp};
+
+/// Host-level construction knobs. Grouped so [`Host::with_options`]
+/// has a fixed signature as new GPU-side settings get exposed.
+/// `Default`: 256 MB image budget, GPU instrumentation off.
+/// `WinitHostConfig` forwards its corresponding fields here.
+#[derive(Clone, Copy, Debug)]
+pub struct HostConfig {
+    /// GPU texture cache budget; eviction kicks in past this. See
+    /// [`DEFAULT_IMAGE_BUDGET_BYTES`].
+    pub image_budget_bytes: u64,
+    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
+    /// queries). Off by default because the per-frame readback
+    /// round-trip is non-trivial. See
+    /// [`WinitHostConfig::collect_gpu_stats`](crate::WinitHostConfig::collect_gpu_stats)
+    /// — `WinitHost` forwards its flag through to this one.
+    pub collect_gpu_stats: bool,
+}
+
+impl Default for HostConfig {
+    fn default() -> Self {
+        Self {
+            image_budget_bytes: DEFAULT_IMAGE_BUDGET_BYTES,
+            collect_gpu_stats: false,
+        }
+    }
+}
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
@@ -55,45 +82,39 @@ pub struct Host {
 }
 
 impl Host {
-    /// Construct with a bundled-fonts shaper shared between the `Ui`
-    /// (measurement) and the backend (rasterization) so they hit one
-    /// buffer cache.
-    pub fn new(device: wgpu::Device, queue: wgpu::Queue, format: wgpu::TextureFormat) -> Self {
-        Self::with_text(device, queue, format, TextShaper::with_bundled_fonts())
-    }
-
-    /// Construct with a caller-supplied shaper. Tests that want to
-    /// amortize font loading across many `Host` instances pass a
-    /// `clone()` of a shared `TextShaper`. The handle is installed on
-    /// both the `Ui` (measurement) and the backend (rasterization).
-    pub fn with_text(
+    /// Canonical ctor: caller supplies the shaper and a [`HostConfig`]
+    /// holding every other knob (image budget, GPU instrumentation
+    /// opt-in). `WinitHost` delegates here from `WinitHostConfig`.
+    pub fn with_options(
         device: wgpu::Device,
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
+        config: HostConfig,
     ) -> Self {
-        Self::with_text_and_image_budget(device, queue, format, shaper, DEFAULT_IMAGE_BUDGET_BYTES)
-    }
-
-    /// Like [`Self::with_text`] but lets the host pick a GPU image
-    /// cache budget up front. Default ([`DEFAULT_IMAGE_BUDGET_BYTES`])
-    /// is 256 MB. Can also be adjusted later via
-    /// [`Self::set_image_budget_bytes`].
-    pub fn with_text_and_image_budget(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        format: wgpu::TextureFormat,
-        shaper: TextShaper,
-        image_budget_bytes: u64,
-    ) -> Self {
+        let HostConfig {
+            image_budget_bytes,
+            collect_gpu_stats,
+        } = config;
         // One canonical frame arena, cloned into every subsystem that
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
         // wiring mistake that would double-borrow.
         let caches = RenderCaches::default();
-        let frame_arena = crate::common::frame_arena::FrameArena::default();
+        let frame_arena = FrameArena::default();
+        // Single canonical `GpuPassStats` handle — `Ui` owns it (the
+        // debug overlay reads through it), and the backend gets a
+        // clone only when `collect_gpu_stats` is on. When off, no
+        // backend ever writes; readers always see `None`.
+        let pass_stats = GpuPassStats::default();
+        let backend_sink = collect_gpu_stats.then(|| pass_stats.clone());
         Self {
-            ui: Ui::new(shaper.clone(), frame_arena.clone(), caches.clone()),
+            ui: Ui::new(
+                shaper.clone(),
+                frame_arena.clone(),
+                caches.clone(),
+                pass_stats,
+            ),
             frontend: Frontend::new(frame_arena.clone()),
             backend: WgpuBackend::new(
                 device,
@@ -102,7 +123,10 @@ impl Host {
                 shaper,
                 frame_arena,
                 caches,
-                image_budget_bytes,
+                WgpuBackendConfig {
+                    image_budget_bytes,
+                    pass_stats: backend_sink,
+                },
             ),
             start: Instant::now(),
             occluded: false,
@@ -323,5 +347,26 @@ impl Host {
             Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
         let report = self.cpu_frame(display, record);
         self.render_to_texture(target, &report);
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    //! Test/bench reach-in surface for `Host`. Production code uses
+    //! the `frame_stats` debug overlay on `Ui` to surface GPU timings;
+    //! this module exposes the underlying `GpuPassStats` handle so
+    //! benches can sample it directly without going through the
+    //! overlay layout pass.
+
+    use super::*;
+
+    impl Host {
+        /// Cloneable handle to the most-recent GPU instrumentation
+        /// sample — same handle the `Ui` debug overlay reads from.
+        /// Returns a live handle even when instrumentation is off:
+        /// readers just see `None`.
+        pub fn gpu_pass_stats(&self) -> &GpuPassStats {
+            &self.ui.gpu_pass_stats
+        }
     }
 }

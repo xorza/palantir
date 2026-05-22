@@ -26,11 +26,35 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::{Window, WindowId};
 
-use crate::host::{FramePresent, Host};
+use crate::host::{FramePresent, Host, HostConfig};
 use crate::input::InputEvent;
+use crate::text::TextShaper;
 use crate::ui::Ui;
 
 type SetupFn = Box<dyn FnOnce(&mut Ui)>;
+
+/// How many frames may be in flight between CPU record and GPU
+/// present. Maps 1:1 to wgpu's `desired_maximum_frame_latency`. Two
+/// variants because the only sane choices on every supported platform
+/// are 1 and 2 — extend the enum if a real use case for 3+ shows up.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum FrameLatency {
+    /// 1 frame in flight — lowest input-to-photon latency, less
+    /// pacing headroom. Default.
+    Low,
+    /// 2 frames in flight — smoother pacing under bursty frames at
+    /// the cost of one extra frame of input lag.
+    Buffered,
+}
+
+impl FrameLatency {
+    fn frames(self) -> u32 {
+        match self {
+            FrameLatency::Low => 1,
+            FrameLatency::Buffered => 2,
+        }
+    }
+}
 
 /// Tunables forwarded to winit + wgpu at startup. All fields are
 /// optional with sensible defaults; override what you care about.
@@ -43,9 +67,23 @@ pub struct WinitHostConfig {
     pub min_inner_size: Option<LogicalSize<u32>>,
     pub present_mode: wgpu::PresentMode,
     pub power_preference: wgpu::PowerPreference,
-    /// 1 = lowest input latency, 2 = more pacing headroom under bursty
-    /// frames. wgpu clamps to the platform's allowed range.
-    pub max_frame_latency: u32,
+    /// How many frames may be in flight on the GPU at once. See
+    /// [`FrameLatency`].
+    pub max_frame_latency: FrameLatency,
+    /// GPU texture cache budget; eviction kicks in past this. See
+    /// [`crate::renderer::DEFAULT_IMAGE_BUDGET_BYTES`].
+    pub image_budget_bytes: u64,
+    /// Opt into GPU instrumentation (`wgpu::Features::TIMESTAMP_QUERY`,
+    /// `+TIMESTAMP_QUERY_INSIDE_PASSES`, `+PIPELINE_STATISTICS_QUERY`).
+    /// Features still degrade independently per adapter advertisement;
+    /// this flag controls intent, not capability. Off by default —
+    /// even on builds with the `internals` cargo feature, the host
+    /// only collects stats when the caller explicitly asks for them.
+    /// The per-frame cost is `resolve_query_set` + `map_async` +
+    /// `device.poll(Poll)` + readback on every submit, so the price
+    /// is non-trivial — flip it on for benches / debug overlays, off
+    /// for production timing runs.
+    pub collect_gpu_stats: bool,
 }
 
 impl Default for WinitHostConfig {
@@ -56,7 +94,9 @@ impl Default for WinitHostConfig {
             min_inner_size: None,
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
-            max_frame_latency: 1,
+            max_frame_latency: FrameLatency::Low,
+            image_budget_bytes: crate::renderer::DEFAULT_IMAGE_BUDGET_BYTES,
+            collect_gpu_stats: false,
         }
     }
 }
@@ -175,16 +215,21 @@ where
         }))
         .expect("request adapter");
 
-        // Gate timing collection behind the `internals` feature.
-        // Without it, requesting `TIMESTAMP_QUERY` would still cost
-        // per-frame work (`resolve_query_set` + `map_async` +
-        // `device.poll(Poll)` + readback in `GpuTimings::after_submit`).
-        // Matches the `write_stats` gating posture: instrumentation
-        // off in production builds, opt-in for benches / debug
-        // overlays. `cfg!` folds to a const; the intersection drops
-        // the bit on adapters that don't advertise it.
-        let timing_features = if cfg!(feature = "internals") {
+        // Caller-driven opt-in via `WinitHostConfig::collect_gpu_stats`
+        // — see field doc. When off, none of the timing-query features
+        // are requested, so the per-frame `resolve_query_set` +
+        // `map_async` + `device.poll(Poll)` + readback are all
+        // dead-stripped. When on, the three optional features
+        // degrade independently per adapter advertisement: the
+        // intersection with `adapter.features()` below drops bits
+        // the adapter doesn't support. `TIMESTAMP_QUERY` alone →
+        // pass begin/end only; `+ TIMESTAMP_QUERY_INSIDE_PASSES` →
+        // per-batch attribution; `+ PIPELINE_STATISTICS_QUERY` →
+        // vert/frag invocation counts.
+        let timing_features = if cfg.collect_gpu_stats {
             wgpu::Features::TIMESTAMP_QUERY
+                | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
+                | wgpu::Features::PIPELINE_STATISTICS_QUERY
         } else {
             wgpu::Features::empty()
         };
@@ -220,14 +265,28 @@ where
                 caps.alpha_modes[0]
             },
             view_formats: vec![],
-            desired_maximum_frame_latency: cfg.max_frame_latency,
+            desired_maximum_frame_latency: cfg.max_frame_latency.frames(),
         };
         // `Host::frame` configures the surface lazily when it spots
         // `(config.width, config.height)` differing from the last
         // configured pair — first paint hits that path because the
         // baseline is `None`. No eager configure here.
 
-        let mut host = Host::new(device.clone(), queue.clone(), format);
+        // Forward `collect_gpu_stats` through to the Host so the
+        // backend's `GpuTimings` actually runs. Without this the
+        // adapter would advertise the feature (we requested it above)
+        // but the backend would never opt in — `last_pass_ms()` would
+        // always be `None` even though the device supports timing.
+        let mut host = Host::with_options(
+            device.clone(),
+            queue.clone(),
+            format,
+            TextShaper::with_bundled_fonts(),
+            HostConfig {
+                image_budget_bytes: cfg.image_budget_bytes,
+                collect_gpu_stats: cfg.collect_gpu_stats,
+            },
+        );
         if let Some(setup) = self.setup.take() {
             setup(&mut host.ui);
         }

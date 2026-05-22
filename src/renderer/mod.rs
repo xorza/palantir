@@ -23,13 +23,14 @@ pub use backend::DEFAULT_IMAGE_BUDGET_BYTES;
 /// counters under [`write_stats`] (gated on `internals`). Production
 /// builds compile to a zero-cost passthrough.
 pub use backend::Queue;
-/// Latest main-pass GPU duration in milliseconds, refreshed each
-/// frame by the backend's timestamp-query readback. `last_pass_ms()`
-/// returns `None` until the first frame's resolve has landed (or
-/// always `None` on adapters without `wgpu::Features::TIMESTAMP_QUERY`).
-/// Consumed by the `frame_stats` debug overlay and benches.
+/// Shared handle types for the most recent GPU instrumentation
+/// sample, refreshed each frame by the backend's timestamp-query +
+/// pipeline-statistics readback. Consumers (debug overlay, benches)
+/// hold a `Clone` of the same `GpuPassStats` the backend writes into
+/// — no global state. `Host::gpu_pass_stats` exposes the canonical
+/// handle.
 pub mod gpu_pass_stats {
-    pub use crate::renderer::backend::gpu_pass_stats::last_pass_ms;
+    pub use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 }
 /// Per-frame counters for `queue.write_buffer` / `write_texture` calls
 /// issued through [`Queue`]. Gated behind `internals` for the frame

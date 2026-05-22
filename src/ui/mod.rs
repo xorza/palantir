@@ -26,6 +26,7 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
+use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 
 use crate::primitives::widget_id::WidgetId;
@@ -218,6 +219,13 @@ pub struct Ui {
     /// frame; gradient atlas registration is internal (driven from
     /// shape lowering, not user code).
     pub caches: RenderCaches,
+    /// Cloneable handle to the most recent GPU instrumentation sample
+    /// published by `WgpuBackend`. `Host` clones the same handle into
+    /// both `Ui` and the backend so the debug overlay reads exactly
+    /// what the backend just wrote, with no global static. Standalone
+    /// `Ui::default()` holds a fresh handle that no backend writes to
+    /// (every reader sees `None`).
+    pub(crate) gpu_pass_stats: GpuPassStats,
 }
 
 impl Default for Ui {
@@ -248,6 +256,7 @@ impl Default for Ui {
             relayout_requested: false,
             frame_arena: Default::default(),
             caches: Default::default(),
+            gpu_pass_stats: Default::default(),
         }
     }
 }
@@ -269,11 +278,17 @@ impl Ui {
     /// Tests / standalone callers usually want [`Self::default`],
     /// which builds an isolated `Ui` with mono fallback shaper + its
     /// own private arena.
-    pub fn new(text: TextShaper, frame_arena: FrameArena, caches: RenderCaches) -> Self {
+    pub fn new(
+        text: TextShaper,
+        frame_arena: FrameArena,
+        caches: RenderCaches,
+        gpu_pass_stats: GpuPassStats,
+    ) -> Self {
         Self {
             text,
             frame_arena,
             caches,
+            gpu_pass_stats,
             ..Self::default()
         }
     }
@@ -1137,6 +1152,7 @@ pub mod test_support {
                 SHARED.with(|c| c.clone()),
                 FrameArena::default(),
                 RenderCaches::default(),
+                GpuPassStats::default(),
             );
             ui.mark_warm_for_test();
             ui
