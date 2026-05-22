@@ -104,6 +104,17 @@ impl Color {
         super::approx::noop_f32(self.a)
     }
 
+    /// Alpha is at least `1.0 - EPS` (and not NaN) — paints with
+    /// full coverage. Symmetric counterpart to `is_noop`; matches
+    /// `ColorF16::is_opaque`. Used by the renderer to gate the
+    /// occlusion-prune sweep on the surface clear (transparent
+    /// windows can't drop covered bgs). HDR-shaped alphas (>1) are
+    /// treated as opaque — the visible result clips to 1.0 anyway.
+    #[inline]
+    pub const fn is_opaque(self) -> bool {
+        !self.a.is_nan() && self.a >= 1.0 - super::approx::EPS
+    }
+
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).
     /// Linearized internally so blending and SDF AA happen correctly in linear space.
     pub const fn rgb(r: f32, g: f32, b: f32) -> Self {
