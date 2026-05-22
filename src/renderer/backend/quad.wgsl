@@ -6,8 +6,8 @@ struct Viewport {
 // Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
 // fragment time for `Brush::Linear`. Format is sRGB so the sampler
 // returns linear-RGB on read; matches the rest of the pipeline.
-@group(0) @binding(1) var gradient_tex:     texture_2d<f32>;
-@group(0) @binding(2) var gradient_sampler: sampler;
+@group(1) @binding(0) var gradient_tex:     texture_2d<f32>;
+@group(1) @binding(1) var gradient_sampler: sampler;
 
 const ATLAS_ROWS_F: f32 = 256.0;
 

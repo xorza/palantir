@@ -197,21 +197,17 @@ impl WgpuBackend {
                 })
         });
         let viewport_uniform = ViewportUniform::new(&device);
-        let quad = QuadPipeline::new(&device, format, &viewport_uniform.buffer);
-        let mesh = MeshPipeline::new(&device, format, &viewport_uniform.buffer);
-        let image = ImagePipeline::new(
-            &device,
-            format,
-            &viewport_uniform.buffer,
-            image_budget_bytes,
-        );
-        let curve = CurvePipeline::new(
-            &device,
-            format,
-            &viewport_uniform.buffer,
-            &quad.gradient_texture_view,
-            &quad.gradient_sampler,
-        );
+        // All four pipelines share the same `@group(0) = viewport`
+        // layout, so the backend can bind viewport_uniform.bg once
+        // per pass and the binding stays valid across pipeline
+        // switches.
+        let quad = QuadPipeline::new(&device, format, &viewport_uniform.bgl);
+        let mesh = MeshPipeline::new(&device, format, &viewport_uniform.bgl);
+        let image = ImagePipeline::new(&device, format, &viewport_uniform.bgl, image_budget_bytes);
+        // Curve reuses quad's `gradient_bgl` + `gradient_bg` — same
+        // texture + sampler resources, identical layout, one bind
+        // group total instead of two.
+        let curve = CurvePipeline::new(&device, format, &viewport_uniform.bgl, &quad.gradient_bgl);
         let text = TextBackend::new(
             &device,
             format,
@@ -220,6 +216,7 @@ impl WgpuBackend {
             // `text_backend::StencilMode::pipeline_idx`.
             &[None, Some(stencil::stencil_test_state())],
             shaper,
+            &viewport_uniform.bgl,
         );
         let debug = DebugOverlay::new(&device);
         // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
@@ -429,10 +426,12 @@ impl WgpuBackend {
         };
         if use_stencil {
             self.ensure_stencil();
-            self.quad.ensure_stencil(&self.device);
-            self.mesh.ensure_stencil(&self.device);
-            self.image.ensure_stencil(&self.device);
-            self.curve.ensure_stencil(&self.device);
+            let viewport_bgl = &self.viewport_uniform.bgl;
+            self.quad.ensure_stencil(&self.device, viewport_bgl);
+            self.mesh.ensure_stencil(&self.device, viewport_bgl);
+            self.image.ensure_stencil(&self.device, viewport_bgl);
+            self.curve
+                .ensure_stencil(&self.device, viewport_bgl, &self.quad.gradient_bgl);
         }
 
         // Open the main encoder up front: every dynamic-buffer upload
@@ -498,11 +497,12 @@ impl WgpuBackend {
                     .upload_clear(&mut ctx, buffer.viewport_phys_f, clear);
             }
 
-            // Text prepare: viewport refresh + per-batch glyph
-            // encoding. Routes its vertex/params/atlas-staging writes
-            // through the same ctx so every text-backend write lands
-            // as `copy_buffer_to_buffer` on the main encoder.
-            self.text.update_viewport(buffer.viewport_phys);
+            // Text prepare: per-batch glyph encoding. Routes its
+            // vertex/params/atlas-staging writes through the same
+            // ctx so every text-backend write lands as
+            // `copy_buffer_to_buffer` on the main encoder. Viewport
+            // size is read by the text shader from the shared
+            // `@group(0)` uniform — no per-frame push from here.
             {
                 profiling::scope!(
                     "text.prepare_batches",
@@ -655,6 +655,9 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
+        // Dim pass uses the quad pipeline outside the main pass, so
+        // bind the shared viewport group here too.
+        pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
         self.debug.draw_dim(&mut pass, &self.quad);
     }
 
@@ -749,6 +752,12 @@ impl WgpuBackend {
             }
             t.begin_pipeline_stats(&mut pass);
         }
+        // Bind the shared `@group(0) = viewport` once for the whole
+        // pass. Every pipeline used inside the main pass (quad,
+        // mesh, image, curve, text) shares the same layout-0, so
+        // this binding stays valid across `set_pipeline` calls —
+        // saving one `set_bind_group(0)` per pipeline switch.
+        pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
         match partial_scissors {
             None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
             Some(rects) => {
@@ -914,7 +923,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Curve);
                     pass.push_debug_group("curves");
                     if bound != Bound::Curve {
-                        self.curve.bind(pass, use_stencil);
+                        self.curve.bind(pass, use_stencil, &self.quad.gradient_bg);
                         bound = Bound::Curve;
                     }
                     let range = buffer.curve_batches[batch].instances;
@@ -1002,6 +1011,10 @@ impl WgpuBackend {
                 occlusion_query_set: None,
                 multiview_mask: None,
             });
+            // Damage-overlay pass uses the quad pipeline against the
+            // swapchain — separate pass, no inherited bindings, so
+            // bind the shared viewport group here.
+            pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
             self.debug
                 .draw_overlays(&mut pass, &self.quad, overlay_rects.len() as u32);
         }

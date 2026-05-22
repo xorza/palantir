@@ -28,8 +28,6 @@ use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
-use glam::UVec2;
-use std::num::NonZeroU64;
 use std::ops::Range;
 use wgpu::util::DeviceExt;
 
@@ -72,13 +70,28 @@ pub(crate) struct GlyphInstance {
     pub(crate) color: u32,
 }
 
-/// Uniform params: viewport resolution + atlas sizes. 16 bytes.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+/// Uniform params: atlas sizes only. Viewport resolution comes from
+/// the shared `@group(0) = viewport` binding every pipeline in the
+/// main pass has bound — no need to duplicate. `encase::ShaderType`
+/// handles WGSL's 16-byte struct rounding; consumers go through
+/// [`Self::encode`] instead of `bytemuck::bytes_of` (same pattern as
+/// `ViewportUniformData` in `renderer/backend/viewport.rs`).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, encase::ShaderType)]
 pub(crate) struct Params {
-    pub(crate) screen_px: UVec2,
     /// `[color_atlas_size, mask_atlas_size]`.
-    pub(crate) atlas_px: [u32; 2],
+    pub(crate) atlas_px: glam::UVec2,
+}
+
+impl Params {
+    const BYTES: usize = <Self as encase::ShaderSize>::SHADER_SIZE.get() as usize;
+
+    fn encode(&self) -> [u8; Self::BYTES] {
+        let mut out = [0u8; Self::BYTES];
+        encase::UniformBuffer::new(&mut out[..])
+            .write(self)
+            .unwrap();
+        out
+    }
 }
 
 /// 0 = mask, 1 = color. Encoded in the high bit of `uv.u`.
@@ -100,8 +113,9 @@ pub struct TextBackend {
     params_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
-    /// Pending state. Mutated by `update_viewport` (screen size) and
-    /// by `prepare_batch` after atlas grow (atlas sizes).
+    /// Pending atlas-size state. Mutated by `prepare_batch` after
+    /// atlas grow and flushed alongside other belt writes when it
+    /// diverges from `uploaded_params`.
     params: Params,
     /// What the GPU buffer currently holds. Reupload on mismatch.
     uploaded_params: Params,
@@ -135,6 +149,7 @@ impl TextBackend {
         multisample: wgpu::MultisampleState,
         depth_stencil_states: &[Option<wgpu::DepthStencilState>],
         shaper: TextShaper,
+        viewport_bgl: &wgpu::BindGroupLayout,
     ) -> Self {
         assert!(
             !depth_stencil_states.is_empty(),
@@ -173,19 +188,22 @@ impl TextBackend {
                 ty: wgpu::BindingType::Buffer {
                     ty: wgpu::BufferBindingType::Uniform,
                     has_dynamic_offset: false,
-                    min_binding_size: NonZeroU64::new(std::mem::size_of::<Params>() as u64),
+                    // WGSL-aware size from `encase::ShaderSize`,
+                    // rounded up to the uniform-struct minimum
+                    // (16 bytes here). `size_of::<Params>()` is the
+                    // *Rust* size, which is smaller.
+                    min_binding_size: Some(<Params as encase::ShaderSize>::SHADER_SIZE),
                 },
                 count: None,
             }],
         });
 
         let params = Params {
-            screen_px: UVec2::ZERO,
-            atlas_px: [atlas.color_size(), atlas.mask_size()],
+            atlas_px: glam::UVec2::new(atlas.color_size(), atlas.mask_size()),
         };
         let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("palantir text params"),
-            contents: bytemuck::bytes_of(&params),
+            contents: &params.encode(),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });
 
@@ -215,7 +233,10 @@ impl TextBackend {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("palantir text pipeline layout"),
-            bind_group_layouts: &[Some(&atlas_bgl), Some(&params_bgl)],
+            // group(0) = shared viewport (the backend binds it once
+            // per pass, valid across every pipeline). group(1) =
+            // atlas textures + sampler. group(2) = atlas-size params.
+            bind_group_layouts: &[Some(viewport_bgl), Some(&atlas_bgl), Some(&params_bgl)],
             immediate_size: 0,
         });
 
@@ -261,12 +282,6 @@ impl TextBackend {
             encoded_cache: EncodedCache::default(),
             misses: Vec::new(),
         }
-    }
-
-    /// Set the viewport resolution. Lazy-flushed in `prepare_batch`
-    /// alongside atlas-size changes.
-    pub(crate) fn update_viewport(&mut self, viewport_phys: UVec2) {
-        self.params.screen_px = viewport_phys;
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
@@ -365,14 +380,12 @@ impl TextBackend {
             self.atlas.bind_group_dirty = false;
         }
 
-        // Flush params if pending state diverged from what's on the
-        // GPU. `screen_px` is mutated by `update_viewport` and
-        // `atlas_px` by atlas grow; both write through `self.params`
-        // and rely on this comparison against `uploaded_params` to
-        // schedule the write.
-        self.params.atlas_px = [self.atlas.color_size(), self.atlas.mask_size()];
+        // Flush params if `atlas_px` (mutated by atlas grow) diverged
+        // from what's on the GPU. The comparison against
+        // `uploaded_params` schedules the write.
+        self.params.atlas_px = glam::UVec2::new(self.atlas.color_size(), self.atlas.mask_size());
         if self.params != self.uploaded_params {
-            ctx.write(&self.params_buffer, 0, bytemuck::bytes_of(&self.params));
+            ctx.write(&self.params_buffer, 0, &self.params.encode());
             self.uploaded_params = self.params;
         }
 
@@ -410,8 +423,10 @@ impl TextBackend {
             return;
         }
         pass.set_pipeline(&self.pipelines[mode.pipeline_idx()]);
-        pass.set_bind_group(0, &self.atlas_bg, &[]);
-        pass.set_bind_group(1, &self.params_bg, &[]);
+        // group(0) = shared viewport, pre-bound by the backend at
+        // pass open. group(1) = atlas; group(2) = params.
+        pass.set_bind_group(1, &self.atlas_bg, &[]);
+        pass.set_bind_group(2, &self.params_bg, &[]);
         pass.set_vertex_buffer(0, self.vbuf.slice(..));
         pass.draw(0..4, range);
     }
@@ -596,17 +611,30 @@ pub mod test_support {
             format: wgpu::TextureFormat,
             shaper: TextShaper,
         ) -> Self {
+            // Standalone helper — build a private viewport bgl with
+            // the same shape the backend uses. (Production hosts get
+            // it from `WgpuBackend::viewport_uniform.bgl`.)
+            let viewport_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("palantir.text_backend.bench.viewport.bgl"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
             Self::new(
                 device,
                 format,
                 wgpu::MultisampleState::default(),
                 &[None],
                 shaper,
+                &viewport_bgl,
             )
-        }
-
-        pub fn set_viewport(&mut self, viewport_phys: UVec2) {
-            self.update_viewport(viewport_phys);
         }
 
         /// Append-mode prepare into batch 0.
@@ -675,8 +703,12 @@ mod tests {
     }
 
     #[test]
-    fn params_is_16_bytes() {
-        assert_eq!(size_of::<Params>(), 16);
-        assert_eq!(align_of::<Params>(), 4);
+    fn params_shader_size_matches_a_vec2_u32() {
+        // Pinned: with a single `UVec2` member, `encase::ShaderSize`
+        // reports 8 bytes — matches WGSL's `vec2<u32>` layout. If
+        // this trips, the struct shape changed and `Params::encode`
+        // / the shader binding need re-checking.
+        assert_eq!(<Params as encase::ShaderSize>::SHADER_SIZE.get(), 8);
+        assert_eq!(Params::BYTES, 8);
     }
 }

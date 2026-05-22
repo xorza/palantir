@@ -18,52 +18,27 @@ use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
     pipeline: wgpu::RenderPipeline,
-    bind_group: wgpu::BindGroup,
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
     instance_buffer: DynamicBuffer,
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    bind_layout: wgpu::BindGroupLayout,
 }
 
 impl MeshPipeline {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        viewport_buffer: &wgpu::Buffer,
+        viewport_bgl: &wgpu::BindGroupLayout,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
         });
 
-        let bind_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.mesh.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-
-        let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.mesh.bg"),
-            layout: &bind_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: viewport_buffer.as_entire_binding(),
-            }],
-        });
-
         let pipeline_layout =
-            build_pipeline_layout(device, "palantir.mesh.pl", &[Some(&bind_layout)]);
+            build_pipeline_layout(device, "palantir.mesh.pl", &[Some(viewport_bgl)]);
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -88,28 +63,29 @@ impl MeshPipeline {
 
         Self {
             pipeline,
-            bind_group,
             vertex_buffer,
             index_buffer,
             instance_buffer,
             stencil_test: None,
             shader,
             color_format: format,
-            bind_layout,
         }
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
+    /// Caller passes the shared `viewport_bgl` so the variant matches
+    /// the base pipeline's layout — the backend owns the only copy.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
+    pub(crate) fn ensure_stencil(
+        &mut self,
+        device: &wgpu::Device,
+        viewport_bgl: &wgpu::BindGroupLayout,
+    ) {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout = build_pipeline_layout(
-            device,
-            "palantir.mesh.pl.stencil",
-            &[Some(&self.bind_layout)],
-        );
+        let layout =
+            build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[Some(viewport_bgl)]);
         self.stencil_test = Some(build_pipeline(
             device,
             PipelineRecipe {
@@ -166,7 +142,10 @@ impl MeshPipeline {
     }
 
     /// Bind once per pass, before iterating `meshes` and issuing
-    /// `draw_range` per group entry.
+    /// `draw_range` per group entry. The shared viewport bind group
+    /// at slot 0 is set once per pass by `WgpuBackend::run_main_pass`
+    /// — switching pipelines doesn't invalidate it because all four
+    /// pipelines share the same `@group(0)` layout.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
         if stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
@@ -174,7 +153,6 @@ impl MeshPipeline {
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(0, &self.bind_group, &[]);
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(

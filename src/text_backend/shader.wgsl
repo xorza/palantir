@@ -22,15 +22,22 @@ struct VertexOut {
     @location(2) @interpolate(flat) kind: u32, // 0=mask, 1=color
 }
 
+// Group(0) = shared viewport uniform (same handle every pipeline in
+// the main pass uses). Group(1) = text-specific atlas textures +
+// sampler. Group(2) = text params (atlas dimensions).
+struct Viewport {
+    size: vec2<f32>,
+};
+@group(0) @binding(0) var<uniform> viewport: Viewport;
+
+@group(1) @binding(0) var mask_atlas: texture_2d<f32>;
+@group(1) @binding(1) var color_atlas: texture_2d<f32>;
+@group(1) @binding(2) var atlas_sampler: sampler;
+
 struct Params {
-    screen_px: vec2<u32>,
     atlas_px: vec2<u32>, // [color, mask]
 };
-
-@group(0) @binding(0) var mask_atlas: texture_2d<f32>;
-@group(0) @binding(1) var color_atlas: texture_2d<f32>;
-@group(0) @binding(2) var atlas_sampler: sampler;
-@group(1) @binding(0) var<uniform> params: Params;
+@group(2) @binding(0) var<uniform> params: Params;
 
 @vertex
 fn vs_main(in: VertexIn) -> VertexOut {
@@ -50,7 +57,7 @@ fn vs_main(in: VertexIn) -> VertexOut {
     let atlas_size_texels = select(params.atlas_px.y, params.atlas_px.x, kind == 1u);
 
     var out: VertexOut;
-    let ndc = vec2<f32>(pos) * (vec2<f32>(2.0, -2.0) / vec2<f32>(params.screen_px))
+    let ndc = vec2<f32>(pos) * (vec2<f32>(2.0, -2.0) / viewport.size)
         + vec2<f32>(-1.0, 1.0);
     out.position = vec4<f32>(ndc, 0.0, 1.0);
 

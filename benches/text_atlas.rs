@@ -226,8 +226,12 @@ fn run_frame(
 fn fresh_backend(g: &Gpu) -> (TextBackend, Vec<TextRun>) {
     let shaper = TextShaper::with_bundled_fonts();
     let runs = build_runs(&shaper);
-    let mut backend = TextBackend::new_for_bench(&g.device, FORMAT, shaper);
-    backend.set_viewport(PHYSICAL);
+    let backend = TextBackend::new_for_bench(&g.device, FORMAT, shaper);
+    // Viewport is no longer the text backend's concern — it reads
+    // from the shared `@group(0)` uniform the production host binds.
+    // The bench's atlas-only fixture doesn't actually issue draws
+    // that need it, so leaving it unset is safe.
+    let _ = PHYSICAL;
     (backend, runs)
 }
 
