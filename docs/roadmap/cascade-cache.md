@@ -27,7 +27,7 @@ GPU arms within ±5% noise band.
 
 ### Eligibility
 
-Only subtrees with `span >= MIN_CACHEABLE_SPAN` (currently 256) are
+Only subtrees with `span >= MIN_CACHEABLE_SPAN` (currently 512) are
 probed and captured. The threshold is calibrated against the bench
 fixture (~840-node tree): one root-ish subtree (~820 nodes) clears
 the bar and accounts for nearly every hit; intermediate ancestors
@@ -112,7 +112,7 @@ the cache replaces with `extend_from_slice` of pre-computed rows.
 
 What the postmortem *did* correctly predict: a naive cache that
 captures every miss balloons the bookkeeping cost above the savings.
-The `MIN_CACHEABLE_SPAN = 256` gate plus the hit-poisoning rule are
+The `MIN_CACHEABLE_SPAN = 512` gate plus the hit-poisoning rule are
 what made the bench cross from "marginal speedup + partial
 regression" into "clean win on every CPU arm".
 
