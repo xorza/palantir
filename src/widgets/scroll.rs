@@ -312,22 +312,23 @@ pub struct Scroll {
 impl Scroll {
     #[track_caller]
     pub fn vertical() -> Self {
-        Self::with_axes(LayoutMode::ScrollVertical)
+        Self::with_axes(LayoutMode::SCROLL_PAN_Y)
     }
 
     #[track_caller]
     pub fn horizontal() -> Self {
-        Self::with_axes(LayoutMode::ScrollHorizontal)
+        Self::with_axes(LayoutMode::SCROLL_PAN_X)
     }
 
     #[track_caller]
     pub fn both() -> Self {
-        Self::with_axes(LayoutMode::ScrollBoth)
+        Self::with_axes(LayoutMode::SCROLL_PAN_X | LayoutMode::SCROLL_PAN_Y)
     }
 
     #[track_caller]
-    fn with_axes(mode: LayoutMode) -> Self {
-        let mut element = Element::new(mode);
+    fn with_axes(pan_mask: u16) -> Self {
+        let mut element = Element::new(LayoutMode::Scroll);
+        element.mode_payload = pan_mask;
         // Both bits: `SCROLL` for pan, `PINCH` for touchpad zoom.
         // Zoom is gated again at consumption time by
         // `self.zoom.is_some()`, but the routing has to be on
@@ -409,17 +410,15 @@ impl Scroll {
     ) -> crate::widgets::InnerResponse<'_, R> {
         let id = ui.make_persistent_id(self.element.salt);
         let mode = self.element.mode;
+        let pan_payload = self.element.mode_payload;
         assert!(
-            matches!(
-                mode,
-                LayoutMode::ScrollVertical | LayoutMode::ScrollHorizontal | LayoutMode::ScrollBoth
-            ),
-            "Scroll widget must carry a LayoutMode::Scroll* variant",
+            matches!(mode, LayoutMode::Scroll),
+            "Scroll widget must carry LayoutMode::Scroll",
         );
-        let pan = mode.pan_mask();
+        let pan = LayoutMode::pan_mask_from_payload(pan_payload);
         if self.zoom.is_some() {
             assert!(
-                matches!(mode, LayoutMode::ScrollBoth),
+                pan.x && pan.y,
                 "Scroll::with_zoom requires Scroll::both — single-axis scroll has no clean zoom semantics",
             );
         }
@@ -738,6 +737,9 @@ impl Scroll {
         // margin, so inner's rendered rect = outer.rect minus the
         // reserved strip on the cross axes.
         let mut inner = Element::new(self.element.mode);
+        // Carry the pan mask payload onto the inner viewport — that's
+        // the node the dispatcher sees with mode = Scroll.
+        inner.mode_payload = self.element.mode_payload;
         inner.salt = Salt::Verbatim(scroll_id);
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;

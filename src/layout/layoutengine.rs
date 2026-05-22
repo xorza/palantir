@@ -387,7 +387,11 @@ impl LayoutEngine {
                     stretched_extent(root_size.w(), desired.w, available.w, synth_parent_w),
                     stretched_extent(root_size.h(), desired.h, available.h, synth_parent_h),
                 );
-                self.arrange(tree, root, None, Rect { min: origin, size }, out);
+                // Root has no parent — pass its own outer size as a
+                // sensible default for any driver that reads
+                // `parent_outer` (today only scroll, when mounted as
+                // root with no wrapper ZStack).
+                self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
         }
         assert_eq!(
@@ -602,11 +606,9 @@ impl LayoutEngine {
             // Scroll viewport. INF-axis measure of children; the
             // driver also writes the panned-axis content extent into
             // the persistent `ScrollLayoutState` row (see
-            // `scroll::measure`).
-            mode @ (LayoutMode::ScrollVertical
-            | LayoutMode::ScrollHorizontal
-            | LayoutMode::ScrollBoth) => {
-                scroll::measure(self, tree, node, inner_avail, mode, tc, out)
+            // `scroll::measure`). Pan mask carried in `mode_payload`.
+            LayoutMode::Scroll => {
+                scroll::measure(self, tree, node, inner_avail, style.mode_payload, tc, out)
             }
         }
     }
@@ -618,7 +620,7 @@ impl LayoutEngine {
         &mut self,
         tree: &Tree,
         node: NodeId,
-        parent: Option<NodeId>,
+        parent_outer: Size,
         slot: Rect,
         out: &mut Layout,
     ) {
@@ -642,11 +644,15 @@ impl LayoutEngine {
             LayoutMode::ZStack => zstack::arrange(self, tree, node, inner, out),
             LayoutMode::Canvas => canvas::arrange(self, tree, node, inner, out),
             LayoutMode::Grid => grid::arrange(self, tree, node, inner, style.mode_payload, out),
-            mode @ (LayoutMode::ScrollVertical
-            | LayoutMode::ScrollHorizontal
-            | LayoutMode::ScrollBoth) => {
-                scroll::arrange(self, tree, node, parent, inner, mode, out)
-            }
+            LayoutMode::Scroll => scroll::arrange(
+                self,
+                tree,
+                node,
+                parent_outer,
+                inner,
+                style.mode_payload,
+                out,
+            ),
         }
     }
 
