@@ -149,14 +149,27 @@ struct Frame {
     /// fold in their own `layout_rect`, avoiding a re-hash of the 32 B
     /// ancestor prefix per node. See `hash_cascade_input`.
     cascade_prefix: Hasher,
-    /// `paint_arena.rows.len()` snapshotted at push time. Subtree's
-    /// paint range is `[paint_capture_start..paint_arena.rows.len()]`
-    /// once this frame pops. `u32::MAX` is the "skip capture for
-    /// this subtree" sentinel — set at push when `is_cacheable`
-    /// rejected the subtree, or overwritten mid-walk when a
-    /// descendant cache hit poisoned this ancestor (see the poison
-    /// loop in `run_tree`).
-    paint_capture_start: u32,
+    /// Whether this subtree should be captured into the cache when its
+    /// frame pops, and where its paint range starts. See [`CaptureState`].
+    capture: CaptureState,
+}
+
+/// What `finalize_and_capture` should do when this frame pops.
+///
+/// Two states reach `Skip`: the subtree was sub-threshold at push time
+/// (`!CascadeCache::is_cacheable(span)`), or a descendant cache hit
+/// mid-walk poisoned this ancestor (a subtree that contains a static
+/// cache-hitting child *and* arrived through a miss is itself dynamic
+/// and a snapshot of it would be dead weight). The two states are
+/// observationally identical to `finalize_and_capture`, so they share
+/// one variant.
+#[derive(Clone, Copy)]
+enum CaptureState {
+    /// Don't capture this subtree on pop.
+    Skip,
+    /// Capture this subtree on pop; the per-paint range starts at
+    /// `paint_arena.rows.len()` as of push time.
+    Capturing(u32),
 }
 
 /// All per-layer cascade state grouped on one struct. `rows` +
@@ -477,17 +490,12 @@ fn finalize_and_capture(
     popped: Frame,
 ) {
     let node_idx = popped.node_idx;
-    let root_paint_rect = popped.subtree_paint_rect;
     let subtree_end = popped.subtree_end;
-    let paint_capture_start = popped.paint_capture_start;
-    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
-    // `u32::MAX` is the "skip capture" sentinel — set at push time
-    // when the subtree was sub-threshold, or mid-walk when a
-    // descendant cache hit poisoned this ancestor (see the poison
-    // loop in `run_tree`).
-    if paint_capture_start == u32::MAX {
+    let CaptureState::Capturing(paint_capture_start) = popped.capture else {
+        finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
         return;
-    }
+    };
+    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
     let widget_id = entries.widget_id()[entries_base as usize + node_idx];
     // Recompute the probe key at capture time — the parent's
     // cascade_prefix is `stack.last()` (we already popped) or the root
@@ -508,7 +516,6 @@ fn finalize_and_capture(
         key,
         node_idx as u32,
         subtree_end,
-        root_paint_rect,
         layer_cascades,
         entries,
         entries_base,
@@ -610,10 +617,10 @@ fn run_tree(
                 // workload re-captures root-ish ancestors every frame
                 // and the cache becomes a net loss.
                 for ancestor in stack.iter_mut().rev() {
-                    if ancestor.paint_capture_start == u32::MAX {
+                    if matches!(ancestor.capture, CaptureState::Skip) {
                         break;
                     }
-                    ancestor.paint_capture_start = u32::MAX;
+                    ancestor.capture = CaptureState::Skip;
                 }
                 // Fold the subtree's contribution into the parent's
                 // running rollup — the path the original walk's pop
@@ -628,7 +635,7 @@ fn run_tree(
         }
 
         let screen_rect = parent_transform.apply_rect(layout_rect);
-        let visible_rect = clip_to(screen_rect, parent_clip);
+        let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
         // Self-transform is read once here and threaded into both
         // descendant transform composition (below) and
         // `compute_paint_rect`'s shape-transform composition —
@@ -649,33 +656,32 @@ fn run_tree(
         let shape_clip = if clips {
             let padding = layout_col[iu].padding;
             let mask_local = layout_rect.deflated_by(padding);
-            Some(clip_to(
-                parent_transform.apply_rect(mask_local),
-                parent_clip,
-            ))
+            let mask_screen = parent_transform.apply_rect(mask_local);
+            Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
         } else {
             parent_clip
         };
         // Snapshot the paint-arena cursor *before* `compute_paint_rect`
         // runs so the popped frame captures every paint row emitted by
-        // this node's subtree. `u32::MAX` is the "don't capture this
-        // subtree" sentinel — skips the recompute + insert in
-        // `finalize_and_capture` for non-cacheable subtrees.
-        let paint_capture_start = if cacheable {
-            cascades.layers[layer].paint_arena.rows.len() as u32
+        // this node's subtree. Non-cacheable subtrees push `Skip` so
+        // `finalize_and_capture` short-circuits at pop time.
+        let capture = if cacheable {
+            CaptureState::Capturing(cascades.layers[layer].paint_arena.rows.len() as u32)
         } else {
-            u32::MAX
+            CaptureState::Skip
         };
         let paint_rect = compute_paint_rect(
-            tree,
-            layout,
-            id,
-            layout_rect,
-            parent_transform,
-            parent_clip,
-            shape_clip,
-            self_transform,
-            clips,
+            PaintRectCtx {
+                tree,
+                layout,
+                node: id,
+                layout_rect,
+                parent_transform,
+                parent_clip,
+                shape_clip,
+                self_transform,
+                clips,
+            },
             &mut cascades.layers[layer].paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
@@ -747,7 +753,7 @@ fn run_tree(
             node_idx: iu,
             subtree_paint_rect: subtree_seed,
             cascade_prefix,
-            paint_capture_start,
+            capture,
         });
         i += 1;
     }
@@ -814,14 +820,6 @@ fn finish_cascade_input(prefix: &Hasher, layout_rect: Rect, invisible: bool) -> 
     CascadeInputHash::pack(h.finish(), invisible)
 }
 
-#[inline]
-fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
-    match clip {
-        Some(c) => rect.intersect(c),
-        None => rect,
-    }
-}
-
 /// Lift an owner-local rect into screen space: translate by the owner's
 /// arranged origin, apply the relevant transform (`parent_transform`
 /// for chrome / clip lift, `shape_transform` for shapes), then clip
@@ -829,13 +827,11 @@ fn clip_to(rect: Rect, clip: Option<Rect>) -> Rect {
 /// space hops the paint emit does.
 #[inline]
 fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rect>) -> Rect {
-    clip_to(
-        t.apply_rect(Rect {
-            min: origin + local.min,
-            size: local.size,
-        }),
-        clip,
-    )
+    let r = t.apply_rect(Rect {
+        min: origin + local.min,
+        size: local.size,
+    });
+    clip.map_or(r, |c| r.intersect(c))
 }
 
 /// Pad a text shape's screen rect by half a `TEXT_SCALE_STEP` of its
@@ -868,14 +864,6 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
     }
 }
 
-#[inline]
-fn union_in(acc: &mut Option<Rect>, screen: Rect) {
-    *acc = Some(match *acc {
-        Some(a) => a.union(screen),
-        None => screen,
-    });
-}
-
 /// Emit every paint row for `node` (chrome at row 0 when present,
 /// then direct shapes in record order), stamp each shape's paint
 /// index into `shape_to_paint` for the paint-anim reverse lookup,
@@ -900,23 +888,36 @@ fn union_in(acc: &mut Option<Rect>, screen: Rect) {
 /// Touching the union accumulator without also updating the per-paint
 /// `screen` (or vice versa) breaks the damage fast path silently —
 /// keep both legs in lockstep when adding new paint contributions.
-#[allow(clippy::too_many_arguments)]
-fn compute_paint_rect(
-    tree: &Tree,
-    layout: &LayerLayout,
+/// Inputs to [`compute_paint_rect`] threaded from `run_tree`.
+///
+/// `self_transform` and `clips` are computed once at the call site and
+/// passed in so we don't re-probe the sparse `transform_of` column and
+/// the SoA `attrs` column — both showed up as duplicate work in cascade
+/// profiling.
+struct PaintRectCtx<'a> {
+    tree: &'a Tree,
+    layout: &'a LayerLayout,
     node: NodeId,
     layout_rect: Rect,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
-    // `self_transform` and `clips` are computed once in `run_tree`
-    // and threaded in to avoid re-probing the sparse `transform_of`
-    // column and the SoA `attrs` column for the same node here —
-    // both showed up as duplicate work in cascade profiling.
     self_transform: TranslateScale,
     clips: bool,
-    arena: &mut PaintArena,
-) -> Rect {
+}
+
+fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
+    let PaintRectCtx {
+        tree,
+        layout,
+        node,
+        layout_rect,
+        parent_transform,
+        parent_clip,
+        shape_clip,
+        self_transform,
+        clips,
+    } = ctx;
     let paints_start = arena.rows.len() as u32;
     let shape_transform = parent_transform.compose(self_transform);
 
@@ -945,7 +946,7 @@ fn compute_paint_rect(
             ))
         };
         let screen = lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip);
-        union_in(&mut union, screen);
+        union = Some(union.map_or(screen, |a| a.union(screen)));
         arena.rows.push(Paint {
             screen,
             hash: bg.hash,
@@ -956,7 +957,7 @@ fn compute_paint_rect(
         // pair even when the subtree paints nothing (empty scroll
         // host, etc.). No Paint row — the node contributes no pixels.
         let screen = lift_to_screen(owner_local, layout_rect.min, parent_transform, parent_clip);
-        union_in(&mut union, screen);
+        union = Some(union.map_or(screen, |a| a.union(screen)));
     }
 
     if tree.records.shape_span()[node.idx()].len > 0 {
@@ -1000,7 +1001,7 @@ fn compute_paint_rect(
             if let Some(measured) = text_measured {
                 screen = inflate_text_damage(screen, measured, shape_clip);
             }
-            union_in(&mut union, screen);
+            union = Some(union.map_or(screen, |a| a.union(screen)));
             arena.rows.push(Paint {
                 screen,
                 hash: shape_hashes[idx as usize],

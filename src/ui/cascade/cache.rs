@@ -56,16 +56,12 @@ pub(crate) fn quantize_rect(r: Rect) -> [i32; 4] {
 struct Snapshot {
     key: ProbeKey,
     /// Slice in per-node arenas (`rows`, `sptrs`, `entries`,
-    /// `paint_spans`). Length equals the subtree's node count.
+    /// `paint_spans`). Length equals the subtree's node count. The
+    /// root's `subtree_paint_rect` (folded into the parent stack on
+    /// hit) is `sptrs[nodes.start]` — read at blit time, no field.
     nodes: Span,
     /// Slice in `paints` arena.
     paints: Span,
-    /// `subtree_paint_rect[root]` after the original walk's rollup
-    /// completed — fed into the parent stack's running union on hit.
-    /// Equal to the first entry of this snapshot's per-node `sptrs`
-    /// slice; stashed explicitly so the hit path doesn't need a
-    /// second arena read.
-    root_paint_rect: Rect,
 }
 
 /// Floor on the size of a cacheable subtree. The bench shows one
@@ -94,19 +90,27 @@ pub struct CascadeCache {
     paint_spans: Vec<Span>,
     paints: LiveArena<Paint>,
     /// Stats for the most recent `CascadesEngine::run`. Reset at the
-    /// top of each run.
+    /// top of each run. Gated behind `internals` so production builds
+    /// don't carry per-blit / per-capture increments.
+    #[cfg(any(test, feature = "internals"))]
     pub hits: u32,
+    #[cfg(any(test, feature = "internals"))]
     pub misses: u32,
+    #[cfg(any(test, feature = "internals"))]
     pub captures: u32,
+    #[cfg(any(test, feature = "internals"))]
     pub nodes_blit: u32,
 }
 
 impl CascadeCache {
     pub(crate) fn reset_counters(&mut self) {
-        self.hits = 0;
-        self.misses = 0;
-        self.captures = 0;
-        self.nodes_blit = 0;
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.hits = 0;
+            self.misses = 0;
+            self.captures = 0;
+            self.nodes_blit = 0;
+        }
     }
 
     #[inline]
@@ -169,9 +173,12 @@ impl CascadeCache {
             cascades.paint_arena.node_spans[(root_idx as usize) + offset] =
                 Span::new(paint_base + ps.start, ps.len);
         }
-        self.hits += 1;
-        self.nodes_blit += span;
-        snap.root_paint_rect
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.hits += 1;
+            self.nodes_blit += span;
+        }
+        self.sptrs[n_lo]
     }
 
     /// Capture a freshly-walked subtree. Called from `run_tree`'s pop
@@ -191,7 +198,6 @@ impl CascadeCache {
         key: ProbeKey,
         root_idx: u32,
         subtree_end: u32,
-        root_paint_rect: Rect,
         cascades: &LayerCascades,
         entries: &Soa<EntryRow>,
         entries_base: u32,
@@ -299,10 +305,12 @@ impl CascadeCache {
                 key,
                 nodes: Span::new(nodes_start, span),
                 paints: Span::new(paints_start, paints_len),
-                root_paint_rect,
             },
         );
-        self.captures += 1;
+        #[cfg(any(test, feature = "internals"))]
+        {
+            self.captures += 1;
+        }
     }
 
     fn release(&mut self, snap: Snapshot) {
