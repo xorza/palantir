@@ -80,6 +80,20 @@ impl Rect {
             && other_max.y <= self_max.y
     }
 
+    /// Outset by `amount` on each side, growing both edges. Symmetric
+    /// counterpart to `deflated_by` for the common "uniform expansion"
+    /// case (centred stroke painted-extent, AABB-around-circle, etc.).
+    /// Negative input mirrors `deflated_by(Spacing::all(-amount))`
+    /// without clamping — callers needing the size clamp should use
+    /// `deflated_by` instead.
+    #[inline]
+    pub fn inflated(&self, amount: f32) -> Self {
+        Self {
+            min: Vec2::new(self.min.x - amount, self.min.y - amount),
+            size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
+        }
+    }
+
     /// Inset by `s` on each side, clamping the resulting size at zero. Used for
     /// margin / padding insets in the layout pass.
     #[inline]
