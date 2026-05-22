@@ -41,11 +41,9 @@ pub(crate) struct Paint {
     pub(crate) hash: NodeHash,
 }
 
-/// Per-layer paint state: the unified [`Paint`] arena plus the two
-/// index columns into it. The three vectors have different lengths
-/// (per-row, per-node, per-shape) but share a lifecycle — written
-/// during [`compute_paint_rect`], reset together each frame in
-/// [`Self::reset_for`].
+/// Per-layer paint state: the unified [`Paint`] arena plus a per-node
+/// index into it. Written during [`compute_paint_rect`], reset together
+/// each frame in [`Self::reset_for`].
 #[derive(Default)]
 pub(crate) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
@@ -56,25 +54,17 @@ pub(crate) struct PaintArena {
     /// (`Span::default()`) means the node paints nothing — replaces
     /// the old `rollups.paints` bitset.
     pub(crate) node_spans: Vec<Span>,
-    /// `shape_idx → paint_idx` translation. Lets the paint-anim damage
-    /// path recover a shape's screen rect via
-    /// `rows[shape_to_paint[shape_idx] as usize].screen`. `u32::MAX`
-    /// for shapes never visited by the cascade walk.
-    pub(crate) shape_to_paint: Vec<u32>,
 }
 
 impl PaintArena {
-    /// Reset all three columns for a new frame. `n_nodes` sizes
-    /// `node_spans` (zero-init to `Span::default()`); `n_shapes` sizes
-    /// `shape_to_paint` (zero-init to `u32::MAX`); `rows` is cleared
+    /// Reset both columns for a new frame. `n_nodes` sizes
+    /// `node_spans` (zero-init to `Span::default()`); `rows` is cleared
     /// and reserved for the expected upper bound.
-    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize) {
+    pub(crate) fn reset_for(&mut self, n_nodes: usize) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.node_spans.clear();
         self.node_spans.resize(n_nodes, Span::default());
-        self.shape_to_paint.clear();
-        self.shape_to_paint.resize(n_shapes, u32::MAX);
     }
 }
 
@@ -237,12 +227,12 @@ impl LayerCascades {
     /// `rows` and `subtree_paint_rects` are cleared and reserved
     /// (filled by per-node pushes during the walk); `paint_arena`
     /// columns reset according to their own sizing rules.
-    pub(crate) fn reset_for(&mut self, n_nodes: usize, n_shapes: usize, entries_base: u32) {
+    pub(crate) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
         self.subtree_paint_rects.clear();
         self.subtree_paint_rects.reserve(n_nodes);
-        self.paint_arena.reset_for(n_nodes, n_shapes);
+        self.paint_arena.reset_for(n_nodes);
         self.entries_base = entries_base;
     }
 }
@@ -416,7 +406,7 @@ impl CascadesEngine {
             let r = &mut layout.cascades;
             let n = tree.records.len();
             let entries_base = r.entries.len() as u32;
-            r.layers[layer].reset_for(n, tree.shapes.records.len(), entries_base);
+            r.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
             run_tree(
                 tree,
@@ -516,7 +506,6 @@ fn finalize_and_capture(
     cache.capture(
         widget_id,
         key,
-        tree,
         node_idx as u32,
         subtree_end,
         root_paint_rect,
@@ -1012,7 +1001,6 @@ fn compute_paint_rect(
                 screen = inflate_text_damage(screen, measured, shape_clip);
             }
             union_in(&mut union, screen);
-            arena.shape_to_paint[idx as usize] = arena.rows.len() as u32;
             arena.rows.push(Paint {
                 screen,
                 hash: shape_hashes[idx as usize],
