@@ -7,11 +7,14 @@
 // alpha) and premultiply at write time to match the rest of the
 // premultiplied-blend pipeline.
 
+// Viewport via the shared immediate region (offset 0). See
+// `quad.wgsl` for the cross-pipeline layout rationale.
 struct Viewport { size: vec2<f32> };
-@group(0) @binding(0) var<uniform> vp: Viewport;
+struct Immediates { viewport: Viewport };
+var<immediate> imm: Immediates;
 
-@group(1) @binding(0) var tex:     texture_2d<f32>;
-@group(1) @binding(1) var tex_smp: sampler;
+@group(0) @binding(0) var tex:     texture_2d<f32>;
+@group(0) @binding(1) var tex_smp: sampler;
 
 struct VsIn {
     // Per-instance.
@@ -40,8 +43,8 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     let c = corners[vi];
     let phys = in.rect_min + c * in.rect_size;
     let ndc = vec2<f32>(
-        phys.x / vp.size.x * 2.0 - 1.0,
-        1.0 - phys.y / vp.size.y * 2.0,
+        phys.x / imm.viewport.size.x * 2.0 - 1.0,
+        1.0 - phys.y / imm.viewport.size.y * 2.0,
     );
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);

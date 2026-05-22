@@ -60,8 +60,11 @@ pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
     })
 }
 
-/// Build a pipeline layout. Trivial but kills the three-way repeat of
-/// `PipelineLayoutDescriptor { label, bind_group_layouts, immediate_size: 0 }`.
+/// Build a pipeline layout. Every palantir pipeline declares the same
+/// immediate-region size ([`super::IMMEDIATES_BYTES`]) so the
+/// immediate state set by the backend at pass open (viewport) stays
+/// valid as pipelines switch, and the text pipeline can additionally
+/// write its `Params` at offset 8.
 pub(super) fn build_pipeline_layout(
     device: &wgpu::Device,
     label: &'static str,
@@ -70,6 +73,6 @@ pub(super) fn build_pipeline_layout(
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(label),
         bind_group_layouts,
-        immediate_size: 0,
+        immediate_size: super::IMMEDIATES_BYTES,
     })
 }

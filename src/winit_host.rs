@@ -233,10 +233,20 @@ where
         } else {
             wgpu::Features::empty()
         };
+        // `IMMEDIATES` carries the text backend's atlas-size params
+        // (`text_backend::Params`) — register-mapped per-pass instead
+        // of a uniform buffer + bind group. Unconditionally required
+        // because every Metal/Vulkan/DX12 adapter exposes it
+        // (WebGPU-only adapters are off-target for palantir).
+        let required_features = (adapter.features() & timing_features) | wgpu::Features::IMMEDIATES;
+        let mut required_limits = wgpu::Limits::default().using_resolution(adapter.limits());
+        // 16 bytes covers `text_backend::Params` (vec2<u32>) with room
+        // for the WGSL 16-byte uniform-struct rounding.
+        required_limits.max_immediate_size = required_limits.max_immediate_size.max(16);
         let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
             label: Some("palantir.device"),
-            required_features: adapter.features() & timing_features,
-            required_limits: wgpu::Limits::default().using_resolution(adapter.limits()),
+            required_features,
+            required_limits,
             experimental_features: wgpu::ExperimentalFeatures::default(),
             memory_hints: wgpu::MemoryHints::Performance,
             trace: wgpu::Trace::Off,

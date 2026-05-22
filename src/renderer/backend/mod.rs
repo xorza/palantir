@@ -31,7 +31,8 @@ use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
-use self::viewport::{ViewportUniform, build_damage_scissors};
+pub(crate) use self::viewport::ViewportPush;
+use self::viewport::build_damage_scissors;
 use crate::common::frame_arena::FrameArena;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
@@ -41,6 +42,22 @@ use crate::text::TextShaper;
 use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
+
+/// Size of the per-pipeline immediate (push-constant) region every
+/// palantir shader's `var<immediate> imm: Immediates` reads. Locked
+/// at the maximum used by any pipeline so a `set_immediates` for one
+/// shader stays valid across pipeline switches:
+///
+/// - offset 0 (8 bytes): [`ViewportPush`] — viewport size, written
+///   once per pass by `WgpuBackend`.
+/// - offset 8 (8 bytes): `text_backend::Params` — atlas dimensions,
+///   written per text batch by `TextBackend::render_batch`.
+///
+/// Pipelines that don't use the tail (quad/mesh/image/curve) still
+/// declare `immediate_size = IMMEDIATES_BYTES` so the immediate-state
+/// layout matches and bytes written by other pipelines stay valid
+/// after a pipeline switch.
+pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 
 /// Construction-time knobs for [`WgpuBackend::new`]. Grouped so the
 /// `Host` / `WinitHost` call sites don't grow a long positional
@@ -109,7 +126,13 @@ pub(crate) struct WgpuBackend {
     /// resizing-frame's worth of buffer uploads (~512 KB observed in
     /// the frame bench).
     staging_belt: wgpu::util::StagingBelt,
-    viewport_uniform: ViewportUniform,
+    /// Latest viewport size (physical px) consumed by every pipeline
+    /// via the shared immediate region. Refreshed at the top of
+    /// `submit` from the current `RenderBuffer`; pushed by each pass
+    /// open via `pass.set_immediates(0, ..)`. There's no GPU buffer
+    /// or bind group anymore — the value rides command-buffer record
+    /// state directly.
+    viewport_size: glam::Vec2,
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
@@ -196,18 +219,18 @@ impl WgpuBackend {
                     )
                 })
         });
-        let viewport_uniform = ViewportUniform::new(&device);
-        // All four pipelines share the same `@group(0) = viewport`
-        // layout, so the backend can bind viewport_uniform.bg once
-        // per pass and the binding stays valid across pipeline
-        // switches.
-        let quad = QuadPipeline::new(&device, format, &viewport_uniform.bgl);
-        let mesh = MeshPipeline::new(&device, format, &viewport_uniform.bgl);
-        let image = ImagePipeline::new(&device, format, &viewport_uniform.bgl, image_budget_bytes);
+        // Viewport now rides immediates (push constants) — no bind
+        // group, no buffer. Pipelines all declare the same
+        // `IMMEDIATES_BYTES` region so the immediate state stays
+        // valid across pipeline switches; the backend pushes it once
+        // per pass open.
+        let quad = QuadPipeline::new(&device, format);
+        let mesh = MeshPipeline::new(&device, format);
+        let image = ImagePipeline::new(&device, format, image_budget_bytes);
         // Curve reuses quad's `gradient_bgl` + `gradient_bg` — same
         // texture + sampler resources, identical layout, one bind
         // group total instead of two.
-        let curve = CurvePipeline::new(&device, format, &viewport_uniform.bgl, &quad.gradient_bgl);
+        let curve = CurvePipeline::new(&device, format, &quad.gradient_bgl);
         let text = TextBackend::new(
             &device,
             format,
@@ -216,7 +239,6 @@ impl WgpuBackend {
             // `text_backend::StencilMode::pipeline_idx`.
             &[None, Some(stencil::stencil_test_state())],
             shaper,
-            &viewport_uniform.bgl,
         );
         let debug = DebugOverlay::new(&device);
         // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
@@ -228,7 +250,7 @@ impl WgpuBackend {
             device,
             queue: Queue::new(queue),
             staging_belt,
-            viewport_uniform,
+            viewport_size: glam::Vec2::ZERO,
             quad,
             mesh,
             image,
@@ -426,12 +448,11 @@ impl WgpuBackend {
         };
         if use_stencil {
             self.ensure_stencil();
-            let viewport_bgl = &self.viewport_uniform.bgl;
-            self.quad.ensure_stencil(&self.device, viewport_bgl);
-            self.mesh.ensure_stencil(&self.device, viewport_bgl);
-            self.image.ensure_stencil(&self.device, viewport_bgl);
+            self.quad.ensure_stencil(&self.device);
+            self.mesh.ensure_stencil(&self.device);
+            self.image.ensure_stencil(&self.device);
             self.curve
-                .ensure_stencil(&self.device, viewport_bgl, &self.quad.gradient_bgl);
+                .ensure_stencil(&self.device, &self.quad.gradient_bgl);
         }
 
         // Open the main encoder up front: every dynamic-buffer upload
@@ -479,8 +500,9 @@ impl WgpuBackend {
                 self.quad.stage_masks(&mut ctx, &buffer.groups);
             }
 
-            self.viewport_uniform
-                .write(&mut ctx, buffer.viewport_phys_f);
+            // Cache the size for `set_immediates` at each pass open
+            // — no buffer write, no bind group, no dirty tracking.
+            self.viewport_size = buffer.viewport_phys_f;
             self.quad.upload(&mut ctx, &buffer.quads);
             self.mesh.upload(
                 &mut ctx,
@@ -660,10 +682,13 @@ impl WgpuBackend {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // Dim pass uses the quad pipeline outside the main pass, so
-        // bind the shared viewport group here too.
-        pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
-        self.debug.draw_dim(&mut pass, &self.quad);
+        // Dim pass uses the quad pipeline outside the main pass.
+        // `draw_dim` binds the pipeline first; immediately after, push
+        // the shared viewport immediate.
+        let viewport = ViewportPush {
+            size: self.viewport_size,
+        };
+        self.debug.draw_dim(&mut pass, &self.quad, &viewport);
     }
 
     /// Open the main render pass against the backbuffer and walk the
@@ -757,14 +782,22 @@ impl WgpuBackend {
             }
             t.begin_pipeline_stats(&mut pass);
         }
-        // Bind the shared `@group(0) = viewport` once for the whole
-        // pass. Every pipeline used inside the main pass (quad,
-        // mesh, image, curve, text) shares the same layout-0, so
-        // this binding stays valid across `set_pipeline` calls —
-        // saving one `set_bind_group(0)` per pipeline switch.
-        pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
+        // The shared `Immediates.viewport` rides immediates — but
+        // wgpu requires a pipeline to be bound before `set_immediates`,
+        // so we defer the push to the first drawing step inside
+        // `render_groups`. Once written it stays valid across every
+        // pipeline switch in the pass because all pipelines declare
+        // the same `IMMEDIATES_BYTES` region.
+        let mut viewport_pushed = false;
         match partial_scissors {
-            None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
+            None => self.render_groups(
+                &mut pass,
+                buffer,
+                None,
+                use_stencil,
+                text_mode,
+                &mut viewport_pushed,
+            ),
             Some(rects) => {
                 for (i, &r) in rects.iter().enumerate() {
                     tracing::trace!(
@@ -773,7 +806,14 @@ impl WgpuBackend {
                         scissor = ?r,
                         "wgpu_backend.submit.pass.partial_rect"
                     );
-                    self.render_groups(&mut pass, buffer, Some(r), use_stencil, text_mode);
+                    self.render_groups(
+                        &mut pass,
+                        buffer,
+                        Some(r),
+                        use_stencil,
+                        text_mode,
+                        &mut viewport_pushed,
+                    );
                 }
             }
         }
@@ -799,6 +839,7 @@ impl WgpuBackend {
         damage_scissor: Option<URect>,
         use_stencil: bool,
         text_mode: TextStencilMode,
+        viewport_pushed: &mut bool,
     ) {
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
@@ -817,6 +858,14 @@ impl WgpuBackend {
             MaskWrite,
         }
         let mut bound = Bound::None;
+        // The shared viewport immediate is set lazily, after the
+        // first pipeline binding (wgpu validation: `set_immediates`
+        // requires an active pipeline). Once written, the value
+        // stays valid across pipeline switches because every palantir
+        // pipeline declares the same `IMMEDIATES_BYTES` region.
+        let viewport = ViewportPush {
+            size: self.viewport_size,
+        };
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
         // when per-batch timestamps are enabled. Coalesced inside
@@ -828,6 +877,20 @@ impl WgpuBackend {
             }
         };
 
+        // Inline at the bottom of each drawing step so the very first
+        // pipeline-bound step in the pass pushes viewport once. After
+        // that the flag stays true for the rest of the pass (multiple
+        // damage rects share the same `RenderPass` and the same
+        // immediate state).
+        macro_rules! push_viewport {
+            ($pass:expr) => {
+                if !*viewport_pushed {
+                    viewport.push_into($pass);
+                    *viewport_pushed = true;
+                }
+            };
+        }
+
         for_each_step(
             buffer,
             damage_scissor,
@@ -838,6 +901,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::PreClear);
                     pass.push_debug_group("preclear");
                     self.quad.draw_clear(pass, use_stencil);
+                    push_viewport!(pass);
                     // draw_clear binds its own pipeline + vertex buffer
                     // (clear_buffer, not instance_buffer); next non-clear
                     // step has to re-bind.
@@ -855,6 +919,7 @@ impl WgpuBackend {
                     pass.push_debug_group("mask");
                     if bound != Bound::MaskWrite {
                         self.quad.bind_mask_write(pass);
+                        push_viewport!(pass);
                         bound = Bound::MaskWrite;
                     }
                     self.quad.draw_mask(pass, mi);
@@ -869,6 +934,7 @@ impl WgpuBackend {
                         } else {
                             self.quad.bind(pass);
                         }
+                        push_viewport!(pass);
                         bound = Bound::QuadInstance;
                     }
                     self.quad.draw_range(pass, range);
@@ -877,8 +943,13 @@ impl WgpuBackend {
                 RenderStep::Text { batch } => {
                     mark(pass, BatchKind::Text);
                     pass.push_debug_group("text");
-                    self.text.render_batch(batch, pass, text_mode);
-                    // glyphon sets its own pipeline + bindings.
+                    // `render_batch` sets its own pipeline then writes
+                    // BOTH halves of the immediate region (viewport at
+                    // offset 0, params at offset 8); the cross-pipeline
+                    // immediate state stays valid for any subsequent
+                    // non-text bind.
+                    self.text.render_batch(batch, pass, text_mode, &viewport);
+                    *viewport_pushed = true;
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
@@ -887,6 +958,7 @@ impl WgpuBackend {
                     pass.push_debug_group("meshes");
                     if bound != Bound::Mesh {
                         self.mesh.bind(pass, use_stencil);
+                        push_viewport!(pass);
                         bound = Bound::Mesh;
                     }
                     let range = buffer.mesh_batches[batch].meshes;
@@ -912,6 +984,7 @@ impl WgpuBackend {
                     pass.push_debug_group("images");
                     if bound != Bound::Image {
                         self.image.bind(pass, use_stencil);
+                        push_viewport!(pass);
                         bound = Bound::Image;
                     }
                     let range = buffer.image_batches[batch].images;
@@ -929,6 +1002,7 @@ impl WgpuBackend {
                     pass.push_debug_group("curves");
                     if bound != Bound::Curve {
                         self.curve.bind(pass, use_stencil, &self.quad.gradient_bg);
+                        push_viewport!(pass);
                         bound = Bound::Curve;
                     }
                     let range = buffer.curve_batches[batch].instances;
@@ -1017,11 +1091,13 @@ impl WgpuBackend {
                 multiview_mask: None,
             });
             // Damage-overlay pass uses the quad pipeline against the
-            // swapchain — separate pass, no inherited bindings, so
-            // bind the shared viewport group here.
-            pass.set_bind_group(0, &self.viewport_uniform.bg, &[]);
+            // swapchain — separate pass, no inherited state. `draw_overlays`
+            // binds the pipeline and pushes viewport in the right order.
+            let viewport = ViewportPush {
+                size: self.viewport_size,
+            };
             self.debug
-                .draw_overlays(&mut pass, &self.quad, overlay_rects.len() as u32);
+                .draw_overlays(&mut pass, &self.quad, &viewport, overlay_rects.len() as u32);
         }
     }
 

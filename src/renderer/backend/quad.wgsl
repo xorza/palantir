@@ -1,13 +1,19 @@
+// Viewport lives in the shared immediate region (set by the backend
+// once per pass via `set_immediates(0, ..)`). Same struct shape lands
+// at offset 0 of every palantir shader, so the immediate state stays
+// valid across pipeline switches.
 struct Viewport {
     size: vec2<f32>,
 };
-
-@group(0) @binding(0) var<uniform> viewport: Viewport;
+struct Immediates {
+    viewport: Viewport,
+};
+var<immediate> imm: Immediates;
 // Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
 // fragment time for `Brush::Linear`. Format is sRGB so the sampler
 // returns linear-RGB on read; matches the rest of the pipeline.
-@group(1) @binding(0) var gradient_tex:     texture_2d<f32>;
-@group(1) @binding(1) var gradient_sampler: sampler;
+@group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
+@group(0) @binding(1) var gradient_sampler: sampler;
 
 const ATLAS_ROWS_F: f32 = 256.0;
 
@@ -107,7 +113,7 @@ fn vs(
     let c = CORNERS[vi];
     let local = c * size;
     let pixel = pos + local;
-    let inv_vp_2 = 2.0 / viewport.size;
+    let inv_vp_2 = 2.0 / imm.viewport.size;
     let clip = vec2<f32>(
         pixel.x * inv_vp_2.x - 1.0,
         1.0 - pixel.y * inv_vp_2.y,

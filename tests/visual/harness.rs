@@ -33,11 +33,15 @@ fn gpu() -> &'static Gpu {
             })
             .block_on()
             .expect("request adapter (headless)");
+        // Text Params is carried via immediates (push constants),
+        // so the feature + a 16-byte immediate budget are required.
+        let mut limits = wgpu::Limits::default();
+        limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
                 label: Some("palantir.visual_test.device"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
+                required_features: wgpu::Features::IMMEDIATES,
+                required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
                 memory_hints: wgpu::MemoryHints::default(),
                 trace: wgpu::Trace::Off,

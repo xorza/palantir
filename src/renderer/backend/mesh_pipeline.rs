@@ -27,18 +27,15 @@ pub(crate) struct MeshPipeline {
 }
 
 impl MeshPipeline {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
         });
 
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.mesh.pl", &[Some(viewport_bgl)]);
+        // Mesh shader uses no bind groups — only the shared immediate
+        // region for viewport. Empty bind-group-layout list.
+        let pipeline_layout = build_pipeline_layout(device, "palantir.mesh.pl", &[]);
         let pipeline = build_pipeline(
             device,
             PipelineRecipe {
@@ -73,19 +70,12 @@ impl MeshPipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Caller passes the shared `viewport_bgl` so the variant matches
-    /// the base pipeline's layout — the backend owns the only copy.
     #[profiling::function]
-    pub(crate) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        viewport_bgl: &wgpu::BindGroupLayout,
-    ) {
+    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
         if self.stencil_test.is_some() {
             return;
         }
-        let layout =
-            build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[Some(viewport_bgl)]);
+        let layout = build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[]);
         self.stencil_test = Some(build_pipeline(
             device,
             PipelineRecipe {

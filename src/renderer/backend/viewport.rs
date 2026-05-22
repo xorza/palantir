@@ -1,9 +1,10 @@
-//! Viewport: CPU damage-rect → physical scissor math, plus the GPU
-//! uniform buffer shared by quad + mesh pipelines.
-//! No GPU handles in the math; the uniform is a thin wrapper around
-//! `wgpu::Buffer` that skips redundant writes when size hasn't changed.
+//! Viewport: CPU damage-rect → physical scissor math, plus the
+//! [`ViewportPush`] carrier every shader's shared `Immediates`
+//! region reads as `imm.viewport` (offset 0). The whole quad / curve
+//! / mesh / image / text family shares the same immediate layout
+//! ([`super::IMMEDIATES_BYTES`]), so a single `set_immediates(0, ..)`
+//! per pass covers all of them — no bind group, no uniform buffer.
 
-use super::GpuCtx;
 use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -11,7 +12,6 @@ use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
-use wgpu::util::DeviceExt;
 
 /// Pad the damage scissor by this many physical pixels on every
 /// side. Quads and glyphs may anti-alias slightly outside their
@@ -61,81 +61,31 @@ pub(super) fn build_damage_scissors(
     }
 }
 
+/// Viewport size as it appears in the shared immediate. 8 bytes;
+/// occupies offset 0 of every pipeline's immediate region (see
+/// `Immediates` in each shader). Encodes through `encase` to follow
+/// WGSL alignment rules.
 #[derive(Copy, Clone, Debug, ShaderType)]
-struct ViewportUniformData {
-    size: Vec2,
+pub(crate) struct ViewportPush {
+    pub(crate) size: Vec2,
 }
 
-impl ViewportUniformData {
-    const BYTES: usize = Self::SHADER_SIZE.get() as usize;
+impl ViewportPush {
+    pub(crate) const BYTES: usize = Self::SHADER_SIZE.get() as usize;
+    /// Offset inside the per-pipeline immediate region. Locked at 0
+    /// because every shader puts `viewport` first.
+    pub(crate) const OFFSET: u32 = 0;
 
-    fn encode(&self) -> [u8; Self::BYTES] {
+    pub(crate) fn encode(&self) -> [u8; Self::BYTES] {
         let mut out = [0u8; Self::BYTES];
         UniformBuffer::new(&mut out[..]).write(self).unwrap();
         out
     }
-}
 
-/// Shared viewport uniform — buffer + the single `BindGroupLayout` /
-/// `BindGroup` every pipeline references as `@group(0)`. Built once
-/// at backend construction; pipelines borrow `bgl` for their pipeline
-/// layouts and the backend binds `bg` once per main pass instead of
-/// each pipeline calling `set_bind_group(0)` on its own clone.
-pub(crate) struct ViewportUniform {
-    pub(crate) buffer: wgpu::Buffer,
-    /// Last size uploaded. The uniform is initialized to `Vec2::ZERO`
-    /// at construction; the first non-zero `write` will mismatch and
-    /// upload. Tracking this avoids a per-frame `queue.write_buffer`
-    /// when the viewport hasn't actually changed (steady state).
-    last: Vec2,
-    pub(crate) bgl: wgpu::BindGroupLayout,
-    pub(crate) bg: wgpu::BindGroup,
-}
-
-impl ViewportUniform {
-    pub(crate) fn new(device: &wgpu::Device) -> Self {
-        let buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir.viewport"),
-            contents: &ViewportUniformData { size: Vec2::ZERO }.encode(),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
-        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.viewport.bgl"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                // Visible to both stages so it serves quad/curve's
-                // fragment math too (gradient brushes sample fragment-
-                // side and read `vp.size` for normalization).
-                visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    min_binding_size: None,
-                },
-                count: None,
-            }],
-        });
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.viewport.bg"),
-            layout: &bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: buffer.as_entire_binding(),
-            }],
-        });
-        Self {
-            buffer,
-            last: Vec2::ZERO,
-            bgl,
-            bg,
-        }
-    }
-
-    pub(crate) fn write(&mut self, ctx: &mut GpuCtx<'_>, size: Vec2) {
-        if self.last == size {
-            return;
-        }
-        ctx.write(&self.buffer, 0, &ViewportUniformData { size }.encode());
-        self.last = size;
+    /// Push this viewport into the active pipeline's immediate region.
+    /// Caller must ensure a pipeline is already bound — wgpu's
+    /// `set_immediates` validation rejects an unbound pipeline.
+    pub(crate) fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_immediates(Self::OFFSET, &self.encode());
     }
 }

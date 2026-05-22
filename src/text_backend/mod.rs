@@ -23,13 +23,12 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
-use crate::renderer::backend::GpuCtx;
+use crate::renderer::backend::{GpuCtx, ViewportPush};
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
 use std::ops::Range;
-use wgpu::util::DeviceExt;
 
 pub(crate) use atlas::GlyphAtlas;
 use encode::{
@@ -70,12 +69,10 @@ pub(crate) struct GlyphInstance {
     pub(crate) color: u32,
 }
 
-/// Uniform params: atlas sizes only. Viewport resolution comes from
-/// the shared `@group(0) = viewport` binding every pipeline in the
-/// main pass has bound — no need to duplicate. `encase::ShaderType`
-/// handles WGSL's 16-byte struct rounding; consumers go through
-/// [`Self::encode`] instead of `bytemuck::bytes_of` (same pattern as
-/// `ViewportUniformData` in `renderer/backend/viewport.rs`).
+/// Atlas-size params (text-only). Lives in the shared immediate
+/// region at offset 8 (right after `ViewportPush` at offset 0).
+/// `encase::ShaderType` handles WGSL alignment; `push_into` writes
+/// the encoded bytes through `set_immediates`.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, encase::ShaderType)]
 pub(crate) struct Params {
     /// `[color_atlas_size, mask_atlas_size]`.
@@ -83,6 +80,11 @@ pub(crate) struct Params {
 }
 
 impl Params {
+    /// Offset inside the shared immediate region. 8 = right after
+    /// `ViewportPush::BYTES`. Hard-coded rather than computed so a
+    /// drift between this and the shader's `Immediates` struct trips
+    /// the `params_offset_follows_viewport` test, not silent mis-reads.
+    const OFFSET: u32 = 8;
     const BYTES: usize = <Self as encase::ShaderSize>::SHADER_SIZE.get() as usize;
 
     fn encode(&self) -> [u8; Self::BYTES] {
@@ -91,6 +93,13 @@ impl Params {
             .write(self)
             .unwrap();
         out
+    }
+
+    /// Push these atlas sizes into the active pipeline's immediate
+    /// region at [`Self::OFFSET`]. Caller must ensure a pipeline is
+    /// already bound (wgpu's `set_immediates` validation).
+    fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pass.set_immediates(Self::OFFSET, &self.encode());
     }
 }
 
@@ -110,16 +119,13 @@ pub struct TextBackend {
     pipelines: Vec<wgpu::RenderPipeline>,
     atlas_bgl: wgpu::BindGroupLayout,
     atlas_bg: wgpu::BindGroup,
-    params_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
-    /// Pending atlas-size state. Mutated by `prepare_batch` after
-    /// atlas grow and flushed alongside other belt writes when it
-    /// diverges from `uploaded_params`.
+    /// Atlas-size params. Mutated by `prepare_batch` after atlas
+    /// grow, pushed per-pass via `RenderPass::set_immediates` in
+    /// `render_batch` — no uniform buffer, no bind group, no dirty
+    /// flushing.
     params: Params,
-    /// What the GPU buffer currently holds. Reupload on mismatch.
-    uploaded_params: Params,
-    params_buffer: wgpu::Buffer,
 
     instances: Vec<GlyphInstance>,
     vbuf: wgpu::Buffer,
@@ -149,7 +155,6 @@ impl TextBackend {
         multisample: wgpu::MultisampleState,
         depth_stencil_states: &[Option<wgpu::DepthStencilState>],
         shaper: TextShaper,
-        viewport_bgl: &wgpu::BindGroupLayout,
     ) -> Self {
         assert!(
             !depth_stencil_states.is_empty(),
@@ -180,32 +185,9 @@ impl TextBackend {
             ],
         });
 
-        let params_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir text params layout"),
-            entries: &[wgpu::BindGroupLayoutEntry {
-                binding: 0,
-                visibility: wgpu::ShaderStages::VERTEX,
-                ty: wgpu::BindingType::Buffer {
-                    ty: wgpu::BufferBindingType::Uniform,
-                    has_dynamic_offset: false,
-                    // WGSL-aware size from `encase::ShaderSize`,
-                    // rounded up to the uniform-struct minimum
-                    // (16 bytes here). `size_of::<Params>()` is the
-                    // *Rust* size, which is smaller.
-                    min_binding_size: Some(<Params as encase::ShaderSize>::SHADER_SIZE),
-                },
-                count: None,
-            }],
-        });
-
         let params = Params {
             atlas_px: glam::UVec2::new(atlas.color_size(), atlas.mask_size()),
         };
-        let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("palantir text params"),
-            contents: &params.encode(),
-            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
-        });
 
         let atlas_bg = build_atlas_bg(
             device,
@@ -214,17 +196,6 @@ impl TextBackend {
             atlas.color_view(),
             &sampler,
         );
-        let params_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir text params bg"),
-            layout: &params_bgl,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: params_buffer.as_entire_binding(),
-            }],
-        });
-        // `params_bgl` is consumed by `pipeline_layout`; wgpu Arc-counts
-        // bind-group layouts internally so the local goes out of scope
-        // safely after pipeline construction.
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir text shader"),
@@ -233,11 +204,10 @@ impl TextBackend {
 
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
             label: Some("palantir text pipeline layout"),
-            // group(0) = shared viewport (the backend binds it once
-            // per pass, valid across every pipeline). group(1) =
-            // atlas textures + sampler. group(2) = atlas-size params.
-            bind_group_layouts: &[Some(viewport_bgl), Some(&atlas_bgl), Some(&params_bgl)],
-            immediate_size: 0,
+            // Group 0 = atlas textures + sampler. Viewport + atlas-
+            // size `Params` ride the shared immediate region.
+            bind_group_layouts: &[Some(&atlas_bgl)],
+            immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
         });
 
         let pipelines = depth_stencil_states
@@ -269,11 +239,8 @@ impl TextBackend {
             pipelines,
             atlas_bgl,
             atlas_bg,
-            params_bg,
             sampler,
             params,
-            uploaded_params: params,
-            params_buffer,
             instances: Vec::new(),
             vbuf,
             vbuf_capacity,
@@ -380,14 +347,11 @@ impl TextBackend {
             self.atlas.bind_group_dirty = false;
         }
 
-        // Flush params if `atlas_px` (mutated by atlas grow) diverged
-        // from what's on the GPU. The comparison against
-        // `uploaded_params` schedules the write.
+        // Track atlas-size changes on `self.params`; `render_batch`
+        // pushes the value via `set_immediates` each draw — no
+        // buffer write, no bind-group rebind. Same `Params`-only
+        // dirty tracking; consumers see the freshest value.
         self.params.atlas_px = glam::UVec2::new(self.atlas.color_size(), self.atlas.mask_size());
-        if self.params != self.uploaded_params {
-            ctx.write(&self.params_buffer, 0, &self.params.encode());
-            self.uploaded_params = self.params;
-        }
 
         if self.ranges.len() <= batch_idx {
             self.ranges.resize(batch_idx + 1, None);
@@ -415,6 +379,7 @@ impl TextBackend {
         batch_idx: usize,
         pass: &mut wgpu::RenderPass<'_>,
         mode: StencilMode,
+        viewport: &ViewportPush,
     ) {
         let Some(range) = self.ranges.get(batch_idx).cloned().flatten() else {
             return;
@@ -423,10 +388,14 @@ impl TextBackend {
             return;
         }
         pass.set_pipeline(&self.pipelines[mode.pipeline_idx()]);
-        // group(0) = shared viewport, pre-bound by the backend at
-        // pass open. group(1) = atlas; group(2) = params.
-        pass.set_bind_group(1, &self.atlas_bg, &[]);
-        pass.set_bind_group(2, &self.params_bg, &[]);
+        pass.set_bind_group(0, &self.atlas_bg, &[]);
+        // Both halves of the shared immediate region — write
+        // viewport (offset 0) here as well as params (offset 8)
+        // because text can be the very first pipeline bound in the
+        // pass, so the backend hasn't pushed viewport elsewhere yet.
+        // Cheap: register-mapped, no buffer round-trip.
+        viewport.push_into(pass);
+        self.params.push_into(pass);
         pass.set_vertex_buffer(0, self.vbuf.slice(..));
         pass.draw(0..4, range);
     }
@@ -584,7 +553,7 @@ pub mod test_support {
     //! without going through `Host`'s full record/measure/cascade/encode
     //! pipeline.
 
-    use super::StencilMode;
+    use super::{StencilMode, ViewportPush};
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
@@ -611,29 +580,12 @@ pub mod test_support {
             format: wgpu::TextureFormat,
             shaper: TextShaper,
         ) -> Self {
-            // Standalone helper — build a private viewport bgl with
-            // the same shape the backend uses. (Production hosts get
-            // it from `WgpuBackend::viewport_uniform.bgl`.)
-            let viewport_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("palantir.text_backend.bench.viewport.bgl"),
-                entries: &[wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::VERTEX_FRAGMENT,
-                    ty: wgpu::BindingType::Buffer {
-                        ty: wgpu::BufferBindingType::Uniform,
-                        has_dynamic_offset: false,
-                        min_binding_size: None,
-                    },
-                    count: None,
-                }],
-            });
             Self::new(
                 device,
                 format,
                 wgpu::MultisampleState::default(),
                 &[None],
                 shaper,
-                &viewport_bgl,
             )
         }
 
@@ -647,7 +599,13 @@ pub mod test_support {
         }
 
         pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
-            self.render_batch(0, pass, StencilMode::Plain);
+            // Standalone bench helper: zero-sized viewport is fine
+            // because the atlas bench doesn't read the value (we
+            // don't validate visual output here).
+            let viewport = ViewportPush {
+                size: glam::Vec2::ZERO,
+            };
+            self.render_batch(0, pass, StencilMode::Plain, &viewport);
         }
 
         pub fn end_frame(&mut self) {
@@ -710,5 +668,17 @@ mod tests {
         // / the shader binding need re-checking.
         assert_eq!(<Params as encase::ShaderSize>::SHADER_SIZE.get(), 8);
         assert_eq!(Params::BYTES, 8);
+    }
+
+    #[test]
+    fn params_offset_follows_viewport() {
+        // Pinned: `Params` lives in the shared immediate region right
+        // after `ViewportPush` (8 bytes). If `ViewportPush` grows or
+        // `Params::OFFSET` drifts, the shader's `imm.params` would
+        // read the wrong bytes. Total 16 must also still fit inside
+        // `IMMEDIATES_BYTES`.
+        use crate::renderer::backend::{IMMEDIATES_BYTES, ViewportPush};
+        assert_eq!(Params::OFFSET as usize, ViewportPush::BYTES);
+        assert!(Params::OFFSET as usize + Params::BYTES <= IMMEDIATES_BYTES as usize);
     }
 }
