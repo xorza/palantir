@@ -12,9 +12,17 @@
 /// Compact when arena length exceeds `live × COMPACT_RATIO` — i.e. at
 /// least half the arena is garbage.
 pub(crate) const COMPACT_RATIO: usize = 2;
-/// Floor below which compaction never triggers — small caches don't
-/// repay the rebuild cost.
-pub(crate) const COMPACT_FLOOR: usize = 64;
+/// Lower bound on `live` for compaction to fire. `0` means "any
+/// non-empty arena with ratio breached." A non-zero floor was
+/// originally intended to "skip rebuild on tiny caches," but in
+/// practice the rebuild on a tiny live count is also tiny (`O(live)`
+/// copies + one alloc), and the *worst* behavior was its opposite:
+/// small apps with a few thrashing widgets never crossed the floor
+/// and accumulated unbounded garbage. The `live > 0` guard avoids the
+/// edge case of compacting an arena that's been fully released.
+/// Pinned by
+/// `src/layout/cache/tests::write_subtree_thrashes_under_small_oscillating_subtree`.
+pub(crate) const COMPACT_FLOOR: usize = 0;
 
 pub(crate) struct LiveArena<T> {
     pub(crate) items: Vec<T>,
@@ -111,7 +119,14 @@ mod tests {
         let live_above = COMPACT_FLOOR + 10;
         // (label, items_len, live, expected)
         let cases: &[(&str, usize, usize, bool)] = &[
-            ("below_floor_heavy_garbage", 10_000, COMPACT_FLOOR, false),
+            // `live > 0` guard: empty arena never compacts even with
+            // garbage in items (caller already released everything).
+            ("empty_live_with_garbage", 10_000, 0, false),
+            // Small live + ratio breached → compact fires under
+            // `COMPACT_FLOOR = 0`. Previously this would have been
+            // skipped; the change is the whole point of the new floor
+            // value. Pinned by the small-tree thrash probe.
+            ("small_live_heavy_garbage", 10_000, 4, true),
             (
                 "ratio_boundary_not_crossed",
                 live_above * COMPACT_RATIO,

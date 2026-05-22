@@ -346,16 +346,17 @@ fn in_place_rewrite_preserves_arena_position() {
 fn arena_invariant_holds_under_fragmentation() {
     // Force fragmentation by inserting widgets, dropping most, then
     // appending a fresh subtree. After everything settles, the
-    // arena's invariant must hold: `arena.len <= live * COMPACT_RATIO`
-    // once we're past the floor. Compaction is triggered lazily
-    // inside `write_subtree`; we don't assert *which* write fired
-    // it, only that the invariant holds at the end.
-    use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
+    // arena's invariant must hold: `arena.len <= live * COMPACT_RATIO`.
+    // Compaction is triggered lazily inside `write_subtree`; we don't
+    // assert *which* write fired it, only that the invariant holds at
+    // the end.
+    use crate::common::cache_arena::COMPACT_RATIO;
+    const N_FIRST: usize = 256;
+    const N_INNER: usize = 68;
     let mut ui = Ui::for_test();
 
-    let n_first = (COMPACT_FLOOR) * 4;
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        for i in 0..n_first {
+        for i in 0..N_FIRST {
             // Each item is a cached subtree (panel + leaf) so the
             // arena accumulates the per-WidgetId entries we need to
             // trigger compaction.
@@ -383,7 +384,7 @@ fn arena_invariant_holds_under_fragmentation() {
         Panel::vstack()
             .id(WidgetId::from_hash("new-group"))
             .show(ui, |ui| {
-                for j in 0..(COMPACT_FLOOR + 4) {
+                for j in 0..N_INNER {
                     Frame::new()
                         .id(WidgetId::from_hash(("inner", j)))
                         .size(5.0)
@@ -392,7 +393,7 @@ fn arena_invariant_holds_under_fragmentation() {
             });
     });
     let cache = &ui.layout_engine.cache;
-    if cache.nodes.live > COMPACT_FLOOR {
+    if cache.nodes.live > 0 {
         assert!(
             cache.nodes.desired.len() <= cache.nodes.live.saturating_mul(COMPACT_RATIO),
             "arena {} > live {} × {}x",
@@ -410,14 +411,15 @@ fn cache_hits_remain_valid_after_compaction() {
     // widget which survives compaction still produces correct
     // `desired` data on subsequent cache hits — i.e. the snapshot's
     // new arena range still contains the right bytes.
-    use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO};
+    use crate::common::cache_arena::COMPACT_RATIO;
+    const N_FIRST: usize = 256;
+    const N_INNER: usize = 68;
     let mut ui = Ui::for_test();
 
-    // Frame 1: enough wrapping panels to clear the floor; remember
-    // one that we'll keep across frames.
-    let n_first = (COMPACT_FLOOR) * 4;
+    // Frame 1: many wrapping panels so the arena has real
+    // fragmentation surface; remember one we'll keep across frames.
     run_frame_at(&mut ui, UVec2::new(800, 800), |ui| {
-        for i in 0..n_first {
+        for i in 0..N_FIRST {
             Panel::vstack()
                 .id(WidgetId::from_hash(("a", i)))
                 .show(ui, |ui| {
@@ -444,7 +446,7 @@ fn cache_hits_remain_valid_after_compaction() {
         Panel::vstack()
             .id(WidgetId::from_hash("new-group"))
             .show(ui, |ui| {
-                for j in 0..(COMPACT_FLOOR + 4) {
+                for j in 0..N_INNER {
                     Frame::new()
                         .id(WidgetId::from_hash(("inner", j)))
                         .size(5.0)
@@ -466,8 +468,8 @@ fn cache_hits_remain_valid_after_compaction() {
         "kept widget's `desired` must survive compaction unchanged",
     );
 
-    // And the global invariant should still hold past the floor.
-    if cache.nodes.live > COMPACT_FLOOR {
+    // And the global invariant should still hold.
+    if cache.nodes.live > 0 {
         assert!(cache.nodes.desired.len() <= cache.nodes.live.saturating_mul(COMPACT_RATIO),);
     }
     assert_node_columns_aligned(&ui);
@@ -659,4 +661,137 @@ fn cache_handles_widget_reappearance_after_eviction() {
         "reappeared snapshot's desired payload must equal cold-rebuild's",
     );
     assert_eq!(warm_live, cold_live, "live count must match cold rebuild",);
+}
+
+// ---------------------------------------------------------------------------
+// Cache-write thrash containment under oscillating subtree size.
+//
+// `MeasureCache::write_subtree`'s in-place fit predicate
+// (`cache/mod.rs:290`) requires `prev.nodes.len == new_len` exactly.
+// Any size delta — even +1 — falls to the append-and-mark-garbage
+// branch. The pre-existing safety net is `compact()` (called from
+// `sweep_removed`), which historically only fired when `arena.len >
+// live × COMPACT_RATIO` AND `live > COMPACT_FLOOR`. Setting
+// `COMPACT_FLOOR > 0` left small apps without reclamation forever
+// (live never crossed the floor under thrash).
+//
+// `COMPACT_FLOOR` is now `0` (see `src/common/cache_arena.rs`); these
+// two probes characterize the resulting bounded behavior for both
+// small and large workloads.
+// ---------------------------------------------------------------------------
+
+/// Small-tree thrash: one Panel whose child count alternates between
+/// 10 and 11 leaves per frame. Live entry count stays at single
+/// digits (the panel itself is cached; row Frames are leaves and
+/// skip the cache under the leaf-skip gate). Pre-fix this was
+/// unbounded; post-fix `compact()` fires whenever the ratio crosses
+/// 2× and the arena stays well within 4× live.
+#[test]
+fn write_subtree_small_oscillating_subtree_stays_bounded() {
+    let mut ui = Ui::for_test();
+    let n_frames = 100usize;
+    let thrash_panel = WidgetId::from_hash("thrash");
+    let mut arena_lens = Vec::with_capacity(n_frames);
+
+    for frame in 0..n_frames {
+        let extra = frame % 2;
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            Panel::vstack().id(thrash_panel).show(ui, |ui| {
+                for i in 0..10 {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("row", i)))
+                        .size(20.0)
+                        .show(ui);
+                }
+                if extra == 1 {
+                    Frame::new()
+                        .id(WidgetId::from_hash("extra"))
+                        .size(20.0)
+                        .show(ui);
+                }
+            });
+        });
+        arena_lens.push(ui.layout_engine.cache.nodes.desired.len());
+    }
+
+    let live = ui.layout_engine.cache.nodes.live;
+    let arena_len = ui.layout_engine.cache.nodes.desired.len();
+    // Compact shrinks the arena. Count frame-to-frame decreases.
+    let compact_runs = arena_lens.windows(2).filter(|w| w[1] < w[0]).count();
+
+    assert!(
+        compact_runs > 0,
+        "compact() must fire to bound a small thrashing workload — \
+         pre-fix this was zero. arena_len={arena_len}, live={live}",
+    );
+
+    let ratio = arena_len as f32 / live.max(1) as f32;
+    assert!(
+        ratio < 8.0,
+        "compact failed to contain arena growth in small workload: \
+         arena_len={arena_len}, live={live}, ratio={ratio:.2}. \
+         Pre-fix this was ~96×.",
+    );
+
+    eprintln!(
+        "small-tree thrash: arena_len={arena_len}, live={live}, ratio={ratio:.2}, \
+         compact_runs={compact_runs}",
+    );
+}
+
+/// Large-tree thrash: many independent toggling panels. Same
+/// containment contract as the small workload — `compact()` fires
+/// whenever the ratio crosses 2× live. Always held pre-fix too;
+/// pinned here to ensure the `COMPACT_FLOOR = 0` change didn't
+/// regress the large-app case.
+#[test]
+fn write_subtree_large_oscillating_subtree_stays_bounded() {
+    let mut ui = Ui::for_test();
+    let n_frames = 60usize;
+    let n_panels = 50usize;
+    let mut arena_lens = Vec::with_capacity(n_frames);
+
+    for frame in 0..n_frames {
+        let extra = frame % 2;
+        ui.run_at_acked(UVec2::new(800, 800), |ui| {
+            for p in 0..n_panels {
+                Panel::vstack()
+                    .id(WidgetId::from_hash(("panel", p)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash(("base", p)))
+                            .size(8.0)
+                            .show(ui);
+                        if extra == 1 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("extra", p)))
+                                .size(8.0)
+                                .show(ui);
+                        }
+                    });
+            }
+        });
+        arena_lens.push(ui.layout_engine.cache.nodes.desired.len());
+    }
+
+    let live = ui.layout_engine.cache.nodes.live;
+    let arena_len = ui.layout_engine.cache.nodes.desired.len();
+    let compact_runs = arena_lens.windows(2).filter(|w| w[1] < w[0]).count();
+
+    assert!(
+        compact_runs > 0,
+        "compact() must fire when the ratio exceeds 2×",
+    );
+
+    let ratio = arena_len as f32 / live.max(1) as f32;
+    assert!(
+        ratio < 8.0,
+        "compact failed to contain arena growth: arena_len={arena_len}, live={live}, \
+         ratio={ratio:.2}",
+    );
+
+    eprintln!(
+        "large-tree thrash: arena_len={arena_len}, live={live}, ratio={ratio:.2}, \
+         compact_runs={compact_runs}",
+    );
 }
