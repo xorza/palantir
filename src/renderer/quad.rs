@@ -63,6 +63,16 @@ impl FillKind {
     /// Inset-shadow marker. Same packing as `SHADOW_DROP`; the
     /// shader inverts coverage and clips to inside the source rect.
     pub(crate) const SHADOW_INSET: Self = Self(5);
+
+    /// True iff this `FillKind` marks a shadow draw. Shadow blur
+    /// extends visually past the stored rect, so shadows are never
+    /// safe to drop in the occlusion-prune sweep — checked at
+    /// `Composer::flush` time before marking a quad for removal.
+    #[inline]
+    pub(crate) const fn is_shadow(self) -> bool {
+        let kind = self.0 & 0xFF;
+        kind == Self::SHADOW_DROP.0 || kind == Self::SHADOW_INSET.0
+    }
 }
 
 // Compile-time pins for the shader↔CPU discriminant contract. Mirrors
