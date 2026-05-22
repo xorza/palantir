@@ -424,7 +424,11 @@ fn measure_inner(
     reset_hugs_for(layout, idx);
 
     if n_rows == 0 || n_cols == 0 {
-        // Still measure children so their `desired` is set.
+        // Recurse with `Size::ZERO` so leaves still run `leaf_content_size`
+        // and push `ShapedText` entries for every `ShapeRecord::Text` —
+        // the cascade walks shape records and asserts a matching shaped
+        // entry per text record, regardless of whether the rect is zero.
+        // Skipping the walk breaks `text_reshape_skipped_when_unchanged`.
         for c in tree.children(node).map(|c| c.id) {
             layout.measure(tree, c, Size::ZERO, tc, out);
         }
@@ -716,6 +720,7 @@ fn arrange_inner(
 
     let parent_child_align = tree.panel(node).child_align;
     let layouts = tree.records.layout();
+    let self_outer = out[layout.active_layer].rect[node.idx()].size;
     for child in tree.children(node) {
         let c = child.id;
         if child.visibility.is_collapsed() {
@@ -747,7 +752,7 @@ fn arrange_inner(
             min: inner.min + Vec2::new(slot_x + x.offset, slot_y + y.offset),
             size: Size::new(x.size, y.size),
         };
-        layout.arrange(tree, c, Some(node), child_rect, out);
+        layout.arrange(tree, c, self_outer, child_rect, out);
     }
 }
 

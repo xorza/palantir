@@ -145,11 +145,11 @@ pub(crate) fn measure(
     tree: &Tree,
     node: NodeId,
     inner_avail: Size,
-    mode: LayoutMode,
+    mode_payload: u16,
     tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
-    let pan = mode.pan_mask();
+    let pan = LayoutMode::pan_mask_from_payload(mode_payload);
     let child_avail = Size::new(
         if pan.x { f32::INFINITY } else { inner_avail.w },
         if pan.y { f32::INFINITY } else { inner_avail.h },
@@ -190,12 +190,12 @@ pub(crate) fn arrange(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    parent: Option<NodeId>,
+    parent_outer: Size,
     inner: Rect,
-    mode: LayoutMode,
+    mode_payload: u16,
     out: &mut Layout,
 ) {
-    let pan = mode.pan_mask();
+    let pan = LayoutMode::pan_mask_from_payload(mode_payload);
     if pan.x && pan.y {
         zstack::arrange(layout, tree, node, inner, out);
     } else if pan.y {
@@ -205,16 +205,15 @@ pub(crate) fn arrange(
     }
 
     let wid = tree.records.widget_id()[node.idx()];
-    // `outer` = the scroll widget's outer ZStack rect. `Scroll::show`
-    // builds it as a wrapper around the inner viewport — the inner
+    // `outer` = the scroll widget's outer ZStack rect (the wrapper
+    // `Scroll::show` builds around the inner viewport). The inner
     // carries the constant bar-gutter reservation in its margin, so
     // `viewport = outer - margin - user_padding`. Used at record time
-    // to position bars flush with the outer far edge. Falls back to
-    // `inner.size` for a root-mounted scroll (no wrapper).
-    let outer = match parent {
-        Some(p) => out[layout.active_layer].rect[p.idx()].size,
-        None => inner.size,
-    };
+    // to position bars flush with the outer far edge. Engine passes
+    // the parent's outer size directly; for a root-mounted scroll
+    // (no wrapper), the engine forwards the root's own slot size,
+    // which is a sensible fallback.
+    let outer = parent_outer;
     let entry = layout.scroll_states.entry(wid).or_default();
     let viewport = inner.size;
     let zoom = entry.zoom;

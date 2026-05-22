@@ -122,31 +122,41 @@ pub enum LayoutMode {
     /// mode tag is `Grid`). Cap is 65 535 grids per frame (`grid_defs`
     /// is cleared each frame).
     Grid = 7,
-    /// Vertical-scroll viewport. Children laid out as VStack with the
-    /// Y axis measured as `INF`. The widget builder sets a `transform`
-    /// to pan and enables `clip` so children render within the rect.
-    ScrollVertical = 8,
-    /// Horizontal-scroll viewport. Children laid out as HStack with
-    /// the X axis measured as `INF`. Same record-time pan/clip setup
-    /// as `ScrollVertical`.
-    ScrollHorizontal = 9,
-    /// Two-axis scroll viewport. Children laid out as `ZStack` with
-    /// both axes unbounded. Same record-time pan/clip setup as the
-    /// single-axis variants.
-    ScrollBoth = 10,
+    /// Scroll viewport. Pan mask rides in `LayoutCore.mode_payload`:
+    /// bit 0 = pan X, bit 1 = pan Y. Three legal payloads
+    /// (`0b01` H-only, `0b10` V-only, `0b11` both) — encoded via
+    /// [`Self::SCROLL_PAN_X`] / [`Self::SCROLL_PAN_Y`]. Children laid
+    /// out as Stack on the non-panned axis (single-axis) or ZStack
+    /// (both-axes pan). The widget builder sets `transform` for pan
+    /// and `clip` so children render within the rect.
+    ///
+    /// **Hashing caveat**: `mode_payload` is intentionally not part
+    /// of the subtree hash (see [`LayoutCore::hash_with_flags`]).
+    /// A widget that swaps pan mask at runtime won't bust the
+    /// MeasureCache. In practice every `Scroll::*` constructor picks
+    /// a variant at instantiation and the widget is re-mounted with
+    /// a fresh `WidgetId` if the surrounding code rebuilds, so this
+    /// is a documented constraint rather than a live bug.
+    Scroll = 8,
 }
 
 impl LayoutMode {
-    /// Mask of axes that consume scroll deltas. Returns `(false, false)`
-    /// for non-scroll modes — callers gate on `is_scroll()` first.
+    /// `mode_payload` bit for pan-on-X under [`Self::Scroll`].
+    pub(crate) const SCROLL_PAN_X: u16 = 0b01;
+    /// `mode_payload` bit for pan-on-Y under [`Self::Scroll`].
+    pub(crate) const SCROLL_PAN_Y: u16 = 0b10;
+
+    /// Decode a [`Self::Scroll`] `mode_payload` into the per-axis
+    /// pan mask. Caller is responsible for gating on `mode ==
+    /// LayoutMode::Scroll` first; passing a Grid payload returns
+    /// nonsense (it'd interpret the low bits of the def idx as a
+    /// pan mask).
     #[inline]
-    pub(crate) fn pan_mask(self) -> glam::BVec2 {
-        match self {
-            Self::ScrollVertical => glam::BVec2::new(false, true),
-            Self::ScrollHorizontal => glam::BVec2::new(true, false),
-            Self::ScrollBoth => glam::BVec2::TRUE,
-            _ => glam::BVec2::FALSE,
-        }
+    pub(crate) fn pan_mask_from_payload(payload: u16) -> glam::BVec2 {
+        glam::BVec2::new(
+            payload & Self::SCROLL_PAN_X != 0,
+            payload & Self::SCROLL_PAN_Y != 0,
+        )
     }
 }
 

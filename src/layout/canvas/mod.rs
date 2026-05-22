@@ -73,6 +73,7 @@ pub(crate) fn arrange(
 ) {
     let layouts = tree.records.layout();
     let canvas_size = layouts[node.idx()].size;
+    let self_outer = out[layout.active_layer].rect[node.idx()].size;
     // Hug canvas: `stretched_extent` returns `desired` for Fill
     // children here — stretching them to `inner.size` would inflate
     // them to the canvas's own intrinsic, which already counts
@@ -94,7 +95,7 @@ pub(crate) fn arrange(
                 stretched_extent(s.h(), d.h, inner.size.h, canvas_size.h()),
             ),
         };
-        layout.arrange(tree, c, Some(node), child_rect, out);
+        layout.arrange(tree, c, self_outer, child_rect, out);
     }
 }
 
