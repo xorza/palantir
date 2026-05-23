@@ -26,6 +26,7 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
+use crate::primitives::image::{Image, ImageHandle};
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 
@@ -213,12 +214,11 @@ pub struct Ui {
     /// [`Host`]: crate::Host
     pub(crate) frame_arena: FrameArena,
     /// Cross-frame GPU resource caches (image registry + gradient
-    /// atlas) shared with the wgpu backend. Users call
-    /// `ui.caches.images.register(key, image)` to stage bytes once,
-    /// then reference the returned handle in [`Shape::Image`] every
-    /// frame; gradient atlas registration is internal (driven from
-    /// shape lowering, not user code).
-    pub caches: RenderCaches,
+    /// atlas) shared with the wgpu backend. Reached only from inside
+    /// the crate; the user-facing door is [`Self::register_image`]
+    /// (gradient atlas registration is internal, driven from shape
+    /// lowering).
+    pub(crate) caches: RenderCaches,
     /// Cloneable handle to the most recent GPU instrumentation sample
     /// published by `WgpuBackend`. `Host` clones the same handle into
     /// both `Ui` and the backend so the debug overlay reads exactly
@@ -278,7 +278,7 @@ impl Ui {
     /// Tests / standalone callers usually want [`Self::default`],
     /// which builds an isolated `Ui` with mono fallback shaper + its
     /// own private arena.
-    pub fn new(
+    pub(crate) fn new(
         text: TextShaper,
         frame_arena: FrameArena,
         caches: RenderCaches,
@@ -819,6 +819,15 @@ impl Ui {
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         self.forest
             .add_shape(shape, &self.frame_arena, &self.caches.gradients);
+    }
+
+    /// Register an image once under a stable, hashable `key`; returns a
+    /// handle to reference in [`Shape::Image`] every frame without
+    /// re-passing the bytes. Idempotent on the key — re-registering the
+    /// same key keeps the original bytes, so version the key (e.g.
+    /// `("logo", 2)`) to replace them.
+    pub fn register_image<K: std::hash::Hash>(&self, key: K, image: Image) -> ImageHandle {
+        self.caches.images.register(key, image)
     }
 
     /// Format `args` directly into the per-frame text arena and return

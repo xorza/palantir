@@ -39,14 +39,8 @@ fn gradient() -> Image {
 }
 
 fn register(ui: &Ui) -> (ImageHandle, ImageHandle) {
-    let checker = ui
-        .caches
-        .images
-        .register("showcase.image.checker", checker());
-    let gradient = ui
-        .caches
-        .images
-        .register("showcase.image.gradient", gradient());
+    let checker = ui.register_image("showcase.image.checker", checker());
+    let gradient = ui.register_image("showcase.image.gradient", gradient());
     (checker, gradient)
 }
 

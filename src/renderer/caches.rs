@@ -11,11 +11,12 @@ use crate::primitives::image::ImageRegistry;
 use crate::renderer::gradient_atlas::GradientAtlas;
 
 #[derive(Clone, Default)]
-pub struct RenderCaches {
-    /// User-facing image cache. Authoring code calls
-    /// `ui.caches.images.register(key, image)` to stage bytes once
-    /// and reference the returned handle in [`crate::Shape::Image`].
-    pub images: ImageRegistry,
+pub(crate) struct RenderCaches {
+    /// Image cache. Authoring code stages bytes once via
+    /// [`crate::Ui::register_image`] and references the returned handle
+    /// in [`crate::Shape::Image`]; this field is reached only from
+    /// inside the crate (the `Ui` method + the backend upload path).
+    pub(crate) images: ImageRegistry,
     /// Internal gradient LUT cache. Registration is driven from
     /// shape lowering — users never touch this directly.
     pub(crate) gradients: GradientAtlas,
