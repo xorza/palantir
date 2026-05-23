@@ -18,6 +18,7 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
@@ -57,11 +58,101 @@ pub struct Theme {
     /// rounded-clip mask geometry.
     #[serde(default, skip_serializing_if = "is_clip_none")]
     pub panel_clip: ClipMode,
+    /// Global text-size multiplier (1.0 = unscaled). Read-only — it's
+    /// kept in sync with the stored font sizes, which are *already
+    /// scaled*. Change it through [`Theme::set_text_scale`]; a direct
+    /// write would desync the recorded sizes from the factor.
+    #[serde(default = "default_text_scale")]
+    text_scale: f32,
 }
 
 #[inline]
 fn is_clip_none(c: &ClipMode) -> bool {
     matches!(c, ClipMode::None)
+}
+
+#[inline]
+fn default_text_scale() -> f32 {
+    1.0
+}
+
+impl Theme {
+    /// Current global text scale (1.0 = unscaled).
+    #[inline]
+    pub fn text_scale(&self) -> f32 {
+        self.text_scale
+    }
+
+    /// Set the global text scale, rescaling every `TextStyle` in the
+    /// theme by the delta from the current scale (`new / old`). So
+    /// `set_text_scale(1.25)` then `set_text_scale(2.0)` ends at a 2.0×
+    /// size (not 2.5×) — it's an absolute target, not cumulative.
+    /// Affects only font sizes; colors / spacing / chrome are
+    /// untouched. The theme is the single owner of this; widgets read
+    /// the already-scaled sizes and know nothing about the factor.
+    pub fn set_text_scale(&mut self, scale: f32) {
+        assert!(
+            scale.is_finite() && scale > 0.0,
+            "text scale must be finite and positive"
+        );
+        let ratio = scale / self.text_scale;
+        self.text_scale = scale;
+        scale_text(&mut self.text, ratio);
+        scale_button(&mut self.button, ratio);
+        scale_button(&mut self.menu_button, ratio);
+        scale_toggle(&mut self.checkbox, ratio);
+        scale_toggle(&mut self.radio, ratio);
+        scale_text_edit(&mut self.text_edit, ratio);
+        scale_context_menu(&mut self.context_menu, ratio);
+        scale_text(&mut self.tooltip.text, ratio);
+    }
+}
+
+// Text-size walk for `Theme::set_text_scale`. Lives here — only the
+// theme module reaches into the sub-themes' looks; the widgets and
+// their per-widget theme types stay unaware of any global scale.
+fn scale_text(t: &mut TextStyle, ratio: f32) {
+    t.font_size_px *= ratio;
+}
+
+fn scale_look(look: &mut WidgetLook, ratio: f32) {
+    // `None` text inherits `Theme::text` (already scaled above), so an
+    // unset look carries no size of its own.
+    if let Some(t) = &mut look.text {
+        scale_text(t, ratio);
+    }
+}
+
+fn scale_stateful(s: &mut StatefulLook, ratio: f32) {
+    scale_look(&mut s.normal, ratio);
+    scale_look(&mut s.hovered, ratio);
+    scale_look(&mut s.pressed, ratio);
+    scale_look(&mut s.disabled, ratio);
+}
+
+fn scale_button(b: &mut ButtonTheme, ratio: f32) {
+    scale_look(&mut b.normal, ratio);
+    scale_look(&mut b.hovered, ratio);
+    scale_look(&mut b.pressed, ratio);
+    scale_look(&mut b.disabled, ratio);
+}
+
+fn scale_toggle(t: &mut ToggleTheme, ratio: f32) {
+    scale_stateful(&mut t.unchecked, ratio);
+    scale_stateful(&mut t.checked, ratio);
+}
+
+fn scale_text_edit(t: &mut TextEditTheme, ratio: f32) {
+    scale_look(&mut t.normal, ratio);
+    scale_look(&mut t.focused, ratio);
+    scale_look(&mut t.disabled, ratio);
+}
+
+fn scale_context_menu(c: &mut ContextMenuTheme, ratio: f32) {
+    // `panel` is chrome only; the rows carry the text.
+    scale_look(&mut c.item.normal, ratio);
+    scale_look(&mut c.item.hovered, ratio);
+    scale_look(&mut c.item.disabled, ratio);
 }
 
 impl Default for Theme {
@@ -79,6 +170,7 @@ impl Default for Theme {
             window_clear: palette::TERMINAL_BG,
             panel_background: None,
             panel_clip: ClipMode::None,
+            text_scale: default_text_scale(),
         }
     }
 }
@@ -92,6 +184,41 @@ mod tests {
     use crate::primitives::stroke::Stroke;
     use crate::text::FontFamily;
     use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
+
+    /// `set_text_scale` multiplies every font size by `new/old` (so
+    /// it's an absolute target, not cumulative), touches both the
+    /// inherited `Theme::text` and explicit overrides (tooltip /
+    /// disabled looks), and round-trips back to the originals at 1.0.
+    #[test]
+    fn set_text_scale_is_absolute_and_total() {
+        let mut t = Theme::default();
+        let body = t.text.font_size_px; // 16
+        let tip = t.tooltip.text.font_size_px; // 13
+        // Button disabled is an explicit `Some(TextStyle)` override.
+        let disabled = t
+            .button
+            .disabled
+            .text
+            .expect("button disabled has a text override")
+            .font_size_px;
+
+        t.set_text_scale(2.0);
+        assert_eq!(t.text_scale(), 2.0);
+        assert!((t.text.font_size_px - body * 2.0).abs() < 1e-3);
+        assert!((t.tooltip.text.font_size_px - tip * 2.0).abs() < 1e-3);
+        assert!((t.button.disabled.text.unwrap().font_size_px - disabled * 2.0).abs() < 1e-3);
+
+        // Absolute: 2.0 → 1.5 lands at 1.5×, not 3.0×.
+        t.set_text_scale(1.5);
+        assert_eq!(t.text_scale(), 1.5);
+        assert!((t.text.font_size_px - body * 1.5).abs() < 1e-3);
+
+        // Back to 1.0 restores the originals.
+        t.set_text_scale(1.0);
+        assert!((t.text.font_size_px - body).abs() < 1e-3);
+        assert!((t.tooltip.text.font_size_px - tip).abs() < 1e-3);
+        assert!((t.button.disabled.text.unwrap().font_size_px - disabled).abs() < 1e-3);
+    }
 
     #[test]
     fn default_theme_roundtrips_through_toml() {
