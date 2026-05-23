@@ -359,19 +359,19 @@ pub(crate) fn resolved_axis_align(child: &LayoutCore, parent_child_align: Align)
 /// declared sizing, intrinsic desired size, and the inner span available.
 /// Used for stack cross-axis, ZStack per-axis, and Grid per-cell placement.
 ///
-/// `Auto` stretches only when the child is `Sizing::Fill` — the default
-/// for stack / wrapstack / zstack. Grid wants `Auto` to stretch
-/// unconditionally (WPF cell default); it pre-substitutes `Auto →
-/// Stretch` at its call site rather than threading a per-driver flag
-/// here.
+/// `Sizing::Fill` always stretches — `align` only positions Hug/Fixed
+/// children inside their slot, since there's nothing to offset when the
+/// child already fills the slot. `AxisAlign::Stretch` is the explicit
+/// override that forces a Hug/Fixed child to stretch too (used by Grid
+/// to make its WPF-cell-default behavior work without threading a
+/// per-driver flag here).
 pub(crate) fn place_axis(
     align: AxisAlign,
     sizing: Sizing,
     desired: f32,
     inner: f32,
 ) -> AxisPlacement {
-    let stretch = matches!(align, AxisAlign::Stretch)
-        || matches!(align, AxisAlign::Auto) && matches!(sizing, Sizing::Fill(_));
+    let stretch = matches!(sizing, Sizing::Fill(_)) || matches!(align, AxisAlign::Stretch);
     let size = if stretch { inner } else { desired };
     let offset = match align {
         AxisAlign::Center => ((inner - size) * 0.5).max(0.0),

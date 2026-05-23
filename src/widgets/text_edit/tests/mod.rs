@@ -154,6 +154,7 @@ mod blink;
 mod click;
 mod context_menu;
 mod grapheme;
+mod measure;
 mod multi_click;
 mod multiline;
 mod scroll;
