@@ -8,8 +8,8 @@ use showcase::app_state::{self, AppState};
 use showcase::{
     alignment, animations, bezier, buttons, checkbox, clip, context_menu, disabled, drag, gap,
     gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels,
-    popup, radio, scroll, shadow, sizing, spacing, text, text_edit, text_zorder, tooltips,
-    transform, visibility, wrap,
+    popup, radio, rect_demo, scroll, shadow, sizing, spacing, text, text_edit, text_zorder,
+    tooltips, transform, visibility, wrap,
 };
 
 /// State the showcase binary carries across frames: which tab is
@@ -64,6 +64,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("gradients", gradients::build),
     ("shadow", shadow::build),
     ("id collisions", id_collisions::build),
+    ("rect demo", rect_demo::build),
 ];
 
 fn main() {
