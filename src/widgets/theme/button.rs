@@ -90,6 +90,35 @@ impl Default for ButtonTheme {
 }
 
 impl ButtonTheme {
+    /// Flat "menu-trigger" preset. Use for `Button`s that act as
+    /// menu-bar entries (File / Edit / View etc.) — transparent at
+    /// rest, hover-only background, no border or shadow, tighter
+    /// padding than the default chunky `Button`. The trigger reads as
+    /// plain text until the pointer is over it; matches the
+    /// conventional menu-bar look (Figma / VS Code / macOS).
+    /// Distinct from a popup-row `MenuItem`, which lives inside a
+    /// `ContextMenu` and is themed via `theme.context_menu.item`.
+    pub fn menu_button() -> Self {
+        let flat = |fill: crate::primitives::brush::Brush| WidgetLook {
+            background: Some(Background {
+                fill,
+                stroke: Stroke::ZERO,
+                corners: Corners::all(4.0),
+                shadow: Shadow::NONE,
+            }),
+            text: None,
+        };
+        Self {
+            normal: flat(crate::primitives::brush::Brush::TRANSPARENT),
+            hovered: flat(palette::ELEM_HOVER.into()),
+            pressed: flat(palette::ELEM_ACTIVE.into()),
+            disabled: flat(crate::primitives::brush::Brush::TRANSPARENT),
+            padding: Spacing::xy(8.0, 4.0),
+            margin: Spacing::ZERO,
+            anim: None,
+        }
+    }
+
     /// Pick the visual state for `state`. Disabled wins over
     /// hover/press; pressed wins over hover; otherwise normal.
     /// `state.disabled` is the cascaded ancestor-or-self flag — if
