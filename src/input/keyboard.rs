@@ -61,9 +61,14 @@ pub enum Key {
 /// `ctrl` is the **primary command modifier**, already normalized at
 /// the input boundary ([`modifiers_from_winit`]): it's the Cmd (⌘)
 /// key on macOS and the physical Ctrl key on Windows/Linux. Consumers
-/// never disambiguate platforms — there's one command bit. (The raw
-/// macOS Control key is intentionally not surfaced; it's vanishingly
-/// rare in a GUI and would reintroduce the split this hides.)
+/// never disambiguate platforms for normal shortcuts — there's one
+/// command bit.
+///
+/// `mac_ctrl` is the **raw macOS Control key**, surfaced separately
+/// for the rare Mac-specific binding (Ctrl-click → context menu,
+/// emacs-style Ctrl-A in a field). It's only ever set on macOS; on
+/// Windows/Linux the physical Ctrl *is* the primary, so it lands in
+/// `ctrl` and `mac_ctrl` stays `false`. Most code should ignore it.
 ///
 /// [`InputEvent::ModifiersChanged`]: crate::input::InputEvent::ModifiersChanged
 /// [`InputState`]: crate::input::InputState
@@ -72,6 +77,7 @@ pub struct Modifiers {
     pub shift: bool,
     pub ctrl: bool,
     pub alt: bool,
+    pub mac_ctrl: bool,
 }
 
 impl Modifiers {
@@ -79,13 +85,15 @@ impl Modifiers {
         shift: false,
         ctrl: false,
         alt: false,
+        mac_ctrl: false,
     };
 
-    /// True if ctrl or alt is held — the canonical "this is a shortcut,
-    /// not text" predicate. Shift alone doesn't count (shift+letter is
-    /// just the capitalized letter).
+    /// True if any command modifier (primary ctrl, alt, or raw macOS
+    /// Control) is held — the canonical "this is a shortcut, not text"
+    /// predicate. Shift alone doesn't count (shift+letter is just the
+    /// capitalized letter).
     pub const fn any_command(self) -> bool {
-        self.ctrl || self.alt
+        self.ctrl || self.alt || self.mac_ctrl
     }
 }
 
@@ -214,16 +222,15 @@ pub(crate) fn key_from_winit(k: &winit::keyboard::Key) -> Key {
 pub(crate) fn modifiers_from_winit(m: &winit::keyboard::ModifiersState) -> Modifiers {
     // Normalize the platform's primary command key into `ctrl` here, at
     // the boundary, so nothing downstream branches on platform: Cmd
-    // (super) on macOS, physical Ctrl elsewhere.
-    let ctrl = if matches!(PLATFORM, Platform::Mac) {
-        m.super_key()
-    } else {
-        m.control_key()
-    };
+    // (super) on macOS, physical Ctrl elsewhere. On macOS the physical
+    // Control key is kept separately in `mac_ctrl` for the rare binding
+    // that wants it.
+    let mac = matches!(PLATFORM, Platform::Mac);
     Modifiers {
         shift: m.shift_key(),
-        ctrl,
+        ctrl: if mac { m.super_key() } else { m.control_key() },
         alt: m.alt_key(),
+        mac_ctrl: mac && m.control_key(),
     }
 }
 
