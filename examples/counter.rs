@@ -1,0 +1,26 @@
+use palantir::{App, Button, Configure, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
+
+struct Counter {
+    clicks: u32,
+}
+
+impl App for Counter {
+    fn frame(&mut self, ui: &mut Ui) {
+        Panel::vstack()
+            .auto_id()
+            .gap(8.0)
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Text::new(format!("clicks: {}", self.clicks))
+                    .auto_id()
+                    .show(ui);
+                if Button::new().label("click me").show(ui).clicked() {
+                    self.clicks += 1;
+                }
+            });
+    }
+}
+
+fn main() {
+    WinitHost::new(WinitHostConfig::new("counter"), Counter { clicks: 0 }).run();
+}

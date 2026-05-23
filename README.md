@@ -44,7 +44,7 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 ## Example
 
 ```rust
-use palantir::{App, Button, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
+use palantir::{App, Button, Configure, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
 
 struct Counter { clicks: u32 }
 
@@ -53,7 +53,7 @@ impl App for Counter {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
-            .size((Sizing::HUG, Sizing::HUG))
+            .size((Sizing::Hug, Sizing::Hug))
             .show(ui, |ui| {
                 Text::new(format!("clicks: {}", self.clicks)).auto_id().show(ui);
                 if Button::new().label("click me").show(ui).clicked() {
