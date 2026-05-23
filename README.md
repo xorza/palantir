@@ -11,6 +11,10 @@ Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
 ![Frame 146 profile](docs/frame-146-profile.png)
 
+Steady-state cost per frame on `frame/cached_cpu` (ASUS ROG, i9-13980HX
+P-core, 5.4 GHz): **~1.75 M instructions retired**, **~586 K cycles**,
+**IPC ≈ 2.99** — measured via `perf stat -e cpu_core/instructions/`.
+
 A short screen recording of the showcase tabs lives at
 [`docs/Screen Recording 2026-05-23 at 15.06.44.mov`](docs/Screen%20Recording%202026-05-23%20at%2015.06.44.mov).
 
