@@ -29,6 +29,12 @@ use crate::widgets::theme::tooltip::TooltipTheme;
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Theme {
     pub button: ButtonTheme,
+    /// Theme slot for `Button`s used as menu-bar triggers — flat,
+    /// hover-on-only, opens a popup on click. Distinct from `button`
+    /// so apps can restyle one without affecting in-flow buttons,
+    /// and from `context_menu.item` which is for *rows inside* the
+    /// popup. Default built by [`ButtonTheme::menu_button`].
+    pub menu_button: ButtonTheme,
     pub checkbox: ToggleTheme,
     pub radio: ToggleTheme,
     pub scrollbar: ScrollbarTheme,
@@ -62,6 +68,7 @@ impl Default for Theme {
     fn default() -> Self {
         Self {
             button: ButtonTheme::default(),
+            menu_button: ButtonTheme::menu_button(),
             checkbox: ToggleTheme::checkbox(),
             radio: ToggleTheme::radio(),
             scrollbar: ScrollbarTheme::default(),
