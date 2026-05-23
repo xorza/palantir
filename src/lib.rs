@@ -97,7 +97,7 @@ pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem};
 pub use widgets::frame::Frame;
 pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
-pub use widgets::popup::{ClickOutside, Popup};
+pub use widgets::popup::{ClickOutside, Popup, PopupHandle};
 pub use widgets::radio::RadioButton;
 pub use widgets::scroll::{BarMode, Scroll};
 pub use widgets::text::Text;
