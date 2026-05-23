@@ -80,9 +80,10 @@ pub fn build(ui: &mut Ui) {
     let resp = Popup::anchored_to(anchor)
         .id_salt("popup-showcase.menu")
         .padding(6.0)
-        .size((Sizing::FILL, Sizing::Hug))
-        // Buttons set `Sizing::FILL` width — give them a min so the
-        // Hug popup doesn't collapse to label width.
+        .size((Sizing::Hug, Sizing::Hug))
+        // `min_size` floors the body so the popup doesn't collapse to
+        // bare label width — the inner Fill buttons then expand to the
+        // floored width.
         .min_size((220.0, 110.0))
         .max_size((280, 200))
         .justify(palantir::Justify::Center)
