@@ -229,10 +229,14 @@ pub(crate) struct ImageInstance {
     pub(crate) rect: Rect,
     /// UV crop top-left (0..1 texture coords).
     pub(crate) uv_min: glam::Vec2,
-    /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop).
+    /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop,
+    /// `> 1` for `Tile` repeats).
     pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
+    /// `1` → shader wraps UV with `fract` (`ImageFit::Tile`); `0` →
+    /// sample directly. `u32` for a clean `Uint32` vertex attr.
+    pub(crate) tiled: u32,
 }
 
 /// One mesh draw within a group. Vertex/index slices live in the

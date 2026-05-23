@@ -1003,6 +1003,20 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     let r = resolve_fit(base, UVec2::ZERO, ImageFit::Contain);
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_size, Vec2::ONE);
+
+    // Tile: raw caller UV, full rect, intrinsic size ignored. `scale`
+    // (3×2 repeats) → uv_size; `offset` (0.5, 0.25) → uv_min.
+    let r = resolve_fit(
+        base,
+        img,
+        ImageFit::Tile {
+            offset: Vec2::new(0.5, 0.25),
+            scale: Vec2::new(3.0, 2.0),
+        },
+    );
+    assert_eq!(r.rect, base);
+    assert_eq!(r.uv_min, Vec2::new(0.5, 0.25));
+    assert_eq!(r.uv_size, Vec2::new(3.0, 2.0));
 }
 
 /// `Panel::transform` applies to the panel's body — both direct
