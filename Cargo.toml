@@ -13,43 +13,43 @@ doctest = false
 
 [dependencies]
 palantir-anim-derive = { path = "anim-derive" }
-arboard = "*"
-bitflags = "*"
-bytemuck = { version = "*", features = ["derive"] }
-encase = "*"
-cosmic-text = "*"
-fixedbitset = "*"
-glam = { version = "*", features = ["bytemuck", "encase", "serde"] }
-etagere = "*"
-half = { version = "*", features = ["bytemuck"] }
-rustc-hash = "*"
-tracing = "*"
-pollster = "*"
-thiserror = "*"
-wgpu = { version = "*", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
-winit = "*"
-rayon = "*"
-padding-struct = "*"
-soa-rs = "*"
-strum = { version = "*", features = ["derive"] }
-serde = { version = "*", features = ["derive"] }
-toml = "*"
-tinyvec = { version = "*", features = ["serde"] }
-smol_str = "*"
-unicode-segmentation = "*"
-profiling = { version = "1.0.18", default-features = false, features = ["procmacros"] }
+arboard = "3.6"
+bitflags = "2.11"
+bytemuck = { version = "1.25", features = ["derive"] }
+encase = "0.12"
+cosmic-text = "0.19"
+fixedbitset = "0.5"
+glam = { version = "0.33", features = ["bytemuck", "encase", "serde"] }
+etagere = "0.3"
+half = { version = "2.7", features = ["bytemuck"] }
+rustc-hash = "2.1"
+tracing = "0.1"
+pollster = "0.4"
+thiserror = "2.0"
+wgpu = { version = "29.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
+winit = "0.30"
+rayon = "1.12"
+padding-struct = "0.2"
+soa-rs = "0.9"
+strum = { version = "0.28", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }
+toml = "1.1"
+tinyvec = { version = "1.11", features = ["serde"] }
+smol_str = "0.3"
+unicode-segmentation = "1.13"
+profiling = { version = "1.0", default-features = false, features = ["procmacros"] }
 # Pinned to whatever `profiling/profile-with-tracy` resolves to so cargo
 # dedupes to one tracy-client instance (one FFI connection). Bump in
 # lockstep with `profiling`.
 tracy-client = { version = "0.18", default-features = false, optional = true }
-tracing-subscriber = { version = "*", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 
 [dev-dependencies]
-backtrace = "*"
-criterion = "*"
-dhat = "*"
-gethostname = "*"
-image = { version = "*", default-features = false, features = ["png"] }
+backtrace = "0.3"
+criterion = "0.8"
+dhat = "0.3"
+gethostname = "1.1"
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [[test]]
 name = "visual"
