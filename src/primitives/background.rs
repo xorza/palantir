@@ -33,7 +33,13 @@ use palantir_anim_derive::Animatable;
 )]
 pub struct Background {
     pub fill: Brush,
+    /// `Stroke::ZERO` (the `Default`) omitted from serialized output —
+    /// the common "fill-only, no border" case stays compact.
+    #[serde(default, skip_serializing_if = "Stroke::is_noop")]
     pub stroke: Stroke,
+    /// Zero (or sub-`EPS`) radii — the `Default` — omitted from
+    /// serialized output.
+    #[serde(default, skip_serializing_if = "Corners::approx_zero")]
     #[animate(snap)]
     pub corners: Corners,
     /// Single drop / inset shadow. `Shadow::NONE` (the `Default`) is
@@ -43,6 +49,9 @@ pub struct Background {
     /// the paint-time `is_noop` filter catching authored or
     /// animation-decayed no-ops. Multi-shadow stacks: push
     /// `Shape::Shadow` records directly via `Ui::add_shape`.
+    /// `Shadow::NONE` (the `Default`) omitted from serialized output —
+    /// a noop shadow shouldn't bloat exported themes.
+    #[serde(default, skip_serializing_if = "Shadow::is_noop")]
     pub shadow: Shadow,
 }
 
