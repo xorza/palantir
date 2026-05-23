@@ -53,7 +53,7 @@ pub enum UserEvent {
 /// to background threads so they can poke the UI without owning it.
 ///
 /// Obtain one via [`WinitHost::handle`] before calling `run`.
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct HostHandle {
     proxy: EventLoopProxy<UserEvent>,
 }
