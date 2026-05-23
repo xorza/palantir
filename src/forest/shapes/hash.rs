@@ -11,6 +11,7 @@
 use crate::common::hash::Hasher;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::{ShapeBrush, ShapeRecord};
+use crate::primitives::image::ImageFit;
 use std::hash::{Hash, Hasher as _};
 
 /// Hash a fully-lowered `ShapeRecord` into a stable `NodeHash`.
@@ -123,12 +124,12 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             }
             tint.hash(&mut h);
             // Hash `id` + `size` — handle's own `Hash` keys on `id` only,
-            // but cache identity needs both. Pack `size.x | size.y | fit`
-            // into one u64 so this is two writes total.
+            // but cache identity needs both. Pack `size.x | size.y` into
+            // one u64, then fold in the fit (incl. `Tile`'s UV transform,
+            // which changes every pan/zoom frame and must repaint).
             h.write_u64(handle.id);
-            let packed =
-                (handle.size.x as u64) | ((handle.size.y as u64) << 16) | ((*fit as u64) << 32);
-            h.write_u64(packed);
+            h.write_u64((handle.size.x as u64) | ((handle.size.y as u64) << 16));
+            hash_fit(fit, &mut h);
         }
         // `content_hash` summarizes p0..p3 + width + cap + (solid)
         // inline colour. Brush variant folded in separately so curves
@@ -153,4 +154,23 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
         }
     }
     NodeHash(h.finish())
+}
+
+/// Fold an [`ImageFit`] into the shape hash: a discriminant tag plus,
+/// for `Tile`, the UV transform bits (these vary per pan/zoom frame, so
+/// they must drive a repaint). The other variants carry no payload.
+fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
+    let tag = match fit {
+        ImageFit::Fill => 0u8,
+        ImageFit::Contain => 1,
+        ImageFit::Cover => 2,
+        ImageFit::None => 3,
+        ImageFit::Tile { .. } => 4,
+    };
+    h.write_u8(tag);
+    if let ImageFit::Tile { offset, scale } = fit {
+        for v in [offset.x, offset.y, scale.x, scale.y] {
+            h.write_u32(v.to_bits());
+        }
+    }
 }

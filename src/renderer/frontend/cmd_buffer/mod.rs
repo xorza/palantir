@@ -296,6 +296,9 @@ pub(crate) struct DrawImagePayload {
     /// the wrapper isn't `repr(transparent)` (carries the `NONE`
     /// sentinel sourcing API contract on the wrapper type).
     pub(crate) handle: u64,
+    /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
+    /// `0` (the common case) samples the UV directly.
+    pub(crate) tiled: u32,
 }
 
 impl DrawImagePayload {

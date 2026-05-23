@@ -327,6 +327,7 @@ fn emit_one_shape(
                 uv_size,
                 tint: *tint,
                 handle: handle.id,
+                tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
                 ..bytemuck::Zeroable::zeroed()
             });
         }
@@ -648,6 +649,14 @@ fn resolve_fit(base: Rect, image_size: glam::UVec2, fit: ImageFit) -> Resolved {
                 uv_size: FULL_UV_SIZE,
             }
         }
+        // Raw caller-driven UV; the shader wraps with `fract`. The
+        // intrinsic image size is irrelevant — `scale`/`offset` already
+        // express the repeat count and phase against the full rect.
+        ImageFit::Tile { offset, scale } => Resolved {
+            rect: base,
+            uv_min: offset,
+            uv_size: scale,
+        },
     }
 }
 

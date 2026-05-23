@@ -1015,6 +1015,42 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 }
 
 #[test]
+fn compose_forwards_tiled_flag_and_repeat_uv() {
+    use super::super::cmd_buffer::DrawImagePayload;
+    let buf = run(
+        |b, _arena| {
+            // Non-tiled draw: flag stays 0.
+            b.draw_image(DrawImagePayload {
+                rect: rect(0.0, 0.0, 50.0, 50.0),
+                uv_min: glam::Vec2::ZERO,
+                uv_size: glam::Vec2::ONE,
+                tint: Color::WHITE.into(),
+                handle: 1,
+                tiled: 0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+            // Tiled draw: UV size > 1 (3×2 repeats) + flag 1.
+            b.draw_image(DrawImagePayload {
+                rect: rect(0.0, 0.0, 50.0, 50.0),
+                uv_min: glam::Vec2::ZERO,
+                uv_size: glam::Vec2::new(3.0, 2.0),
+                tint: Color::WHITE.into(),
+                handle: 2,
+                tiled: 1,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.images.rows.instance()[0].tiled, 0);
+    assert_eq!(buf.images.rows.instance()[1].tiled, 1);
+    assert_eq!(
+        buf.images.rows.instance()[1].uv_size,
+        glam::Vec2::new(3.0, 2.0)
+    );
+}
+
+#[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
     use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
     let buf = run(

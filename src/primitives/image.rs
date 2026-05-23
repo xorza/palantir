@@ -78,9 +78,8 @@ impl std::hash::Hash for ImageHandle {
 /// image to exactly fill the rect — fastest, no UV crop needed.
 /// `Contain` / `None` produce a smaller paint rect inside the owner;
 /// `Cover` produces a UV crop so the full rect is painted with the
-/// image's centered portion.
-#[repr(u8)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+/// image's centered portion. `Tile` repeats the image across the rect.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub enum ImageFit {
     /// Stretch the image to fill the rect exactly. Aspect ratio not
     /// preserved. Default — matches the legacy "no fit" behaviour.
@@ -96,6 +95,16 @@ pub enum ImageFit {
     /// Larger-than-rect images overflow the rect (currently uncropped —
     /// future slice can add per-image scissor).
     None,
+    /// Repeat the image across the paint rect. The UV is taken raw from
+    /// `offset`/`scale` (intrinsic image size ignored) and wrapped with
+    /// `fract()` in the shader: `scale` is the number of repeats across
+    /// the rect (`uv_size`), `offset` the scroll phase (`uv_min`). The
+    /// caller drives both — e.g. a pannable/zoomable dotted backdrop
+    /// sets `scale = viewport / tile_px`, `offset = -pan / tile_px`.
+    Tile {
+        offset: glam::Vec2,
+        scale: glam::Vec2,
+    },
 }
 
 impl Default for ImageHandle {

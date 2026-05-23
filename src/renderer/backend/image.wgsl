@@ -23,12 +23,14 @@ struct VsIn {
     @location(2) uv_min:    vec2<f32>,
     @location(3) uv_size:   vec2<f32>,
     @location(4) tint:      vec4<f32>,
+    @location(5) tiled:     u32,
 };
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0)        uv:   vec2<f32>,
     @location(1) @interpolate(flat) tint: vec4<f32>,
+    @location(2) @interpolate(flat) tiled: u32,
 };
 
 @vertex
@@ -50,13 +52,23 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
+    out.tiled = in.tiled;
     return out;
 }
 
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
+    // `ImageFit::Tile` ships UVs spanning [0, repeats]; wrap into the
+    // [0,1) tile with `fract` (the ClampToEdge sampler would otherwise
+    // clamp). Per-fragment, so each repeat samples the full tile. Other
+    // fits keep UVs in [0,1] and sample directly — `fract(1.0)=0.0`
+    // would wrap a Cover crop's far edge, so it must stay gated.
+    var uv = in.uv;
+    if (in.tiled != 0u) {
+        uv = fract(in.uv);
+    }
     // sRGB-format texture decodes to linear on read; tint is linear
     // straight-alpha. Multiply, then premultiply for the blend.
-    let s = textureSample(tex, tex_smp, in.uv) * in.tint;
+    let s = textureSample(tex, tex_smp, uv) * in.tint;
     return vec4<f32>(s.rgb * s.a, s.a);
 }

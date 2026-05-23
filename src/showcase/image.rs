@@ -1,3 +1,4 @@
+use glam::Vec2;
 use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 
 /// Synthesize a 64×64 sRGB checkerboard once, register it under a
@@ -92,6 +93,27 @@ pub fn build(ui: &mut Ui) {
                             ImageFit::Fill,
                             Color::rgba(1.0, 1.0, 1.0, 0.5),
                         );
+                    });
+                });
+            // Row 3: tiled repeat (UV wrapped with `fract` in-shader).
+            Panel::hstack()
+                .id_salt("tiles")
+                .gap(16.0)
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    cell(ui, "tile 3×3", |ui| {
+                        let fit = ImageFit::Tile {
+                            offset: Vec2::ZERO,
+                            scale: Vec2::splat(3.0),
+                        };
+                        image(ui, checker, fit, Color::WHITE);
+                    });
+                    cell(ui, "tile 2×4 + offset", |ui| {
+                        let fit = ImageFit::Tile {
+                            offset: Vec2::new(0.25, 0.0),
+                            scale: Vec2::new(2.0, 4.0),
+                        };
+                        image(ui, gradient, fit, Color::WHITE);
                     });
                 });
         });
