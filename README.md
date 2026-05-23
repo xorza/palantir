@@ -5,6 +5,67 @@ wgpu renderer.
 
 Status: pre-1.0, under active development. APIs break freely.
 
+![Showcase screenshot](docs/Screenshot%202026-05-23%20at%2014.48.49.png)
+
+A short screen recording of the showcase tabs lives at
+[`docs/Screen Recording 2026-05-23 at 15.06.44.mov`](docs/Screen%20Recording%202026-05-23%20at%2015.06.44.mov).
+
+## Highlights
+
+- **Immediate-mode authoring**, builder-style widgets that read like prose.
+- **WPF-contract two-pass layout** (measure → arrange) with flex-shrink
+  sizing and a min-content floor.
+- **wgpu rendering** with premultiplied-alpha linear-RGB throughout;
+  sRGB encode happens on the swapchain.
+- **Layered recording** — `Main` / `Popup` / `Modal` / `Tooltip` / `Debug`
+  arenas painted bottom-up, hit-tested top-down.
+- **Cross-frame work-skip cache** keyed on `(WidgetId, subtree_hash,
+  available_q)`; subtree hits blit last frame's measure result and skip
+  recursion.
+- **In-house text backend** on top of `cosmic-text` so the GPU upload
+  path routes through palantir's staging belt.
+
+## Zero per-frame allocation
+
+Steady-state frames are heap-alloc-free after warmup. Per-frame data lives
+on retained scratch (`FrameArena`, SoA columns on `Tree`, `CacheArena`)
+that reuses capacity across frames; any new per-frame `Vec::new()` /
+`HashMap` rebuild is treated as a regression and caught by the
+`alloc_free` / `alloc_free_gpu` benches under `benches/`.
+
+## Example
+
+```rust
+use palantir::{App, Button, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
+
+struct Counter { clicks: u32 }
+
+impl App for Counter {
+    fn frame(&mut self, ui: &mut Ui) {
+        Panel::vstack()
+            .auto_id()
+            .gap(8.0)
+            .size((Sizing::HUG, Sizing::HUG))
+            .show(ui, |ui| {
+                Text::new(format!("clicks: {}", self.clicks)).auto_id().show(ui);
+                if Button::new().label("click me").show(ui).clicked() {
+                    self.clicks += 1;
+                }
+            });
+    }
+}
+
+fn main() {
+    WinitHost::new(WinitHostConfig::new("counter"), Counter { clicks: 0 }).run();
+}
+```
+
+Run the bundled showcase for a tour of every widget:
+
+```sh
+cargo run --release
+```
+
 ## License
 
 Palantir is dual-licensed:

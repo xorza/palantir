@@ -49,7 +49,7 @@ Two pinning benches, different floors:
   scratch). Current floor ~22 blocks/frame, all attributed to
   `wgpu_core` / `wgpu_hal` (verified via `DHAT_DUMP=1` + dh_view).
   Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
-  is either a palantir bug or a wgpu/glyphon version drift.
+  is either a palantir bug or a wgpu/cosmic-text version drift.
 
 ```sh
 cargo bench --bench alloc_free                          # strict CPU invariant
@@ -63,7 +63,7 @@ If either fails, load `dhat-heap.json` at
 blocks. Don't use these benches for timing — dhat adds 10-30×
 allocator overhead.
 
-When the GPU baseline legitimately moves (wgpu/glyphon upgrade,
+When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
 intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
 `benches/alloc_free_gpu.rs` and note the new floor in the PR.
 
