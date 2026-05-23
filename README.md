@@ -7,6 +7,10 @@ Status: pre-1.0, under active development. APIs break freely.
 
 ![Showcase screenshot](docs/Screenshot%202026-05-23%20at%2014.48.49.png)
 
+Worst-case frame timing captured while resizing the window on a MacBook Air M5.
+
+![Frame 146 profile](docs/frame-146-profile.png)
+
 A short screen recording of the showcase tabs lives at
 [`docs/Screen Recording 2026-05-23 at 15.06.44.mov`](docs/Screen%20Recording%202026-05-23%20at%2015.06.44.mov).
 
@@ -20,7 +24,7 @@ A short screen recording of the showcase tabs lives at
 - **Layered recording** — `Main` / `Popup` / `Modal` / `Tooltip` / `Debug`
   arenas painted bottom-up, hit-tested top-down.
 - **Cross-frame work-skip cache** keyed on `(WidgetId, subtree_hash,
-  available_q)`; subtree hits blit last frame's measure result and skip
+available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
