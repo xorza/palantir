@@ -421,7 +421,7 @@ impl ResponseState {
 
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
-/// (last-frame rects, cascade scratch) lives in [`HitIndex`].
+/// (last-frame rects, cascade scratch) lives in [`crate::ui::cascade::Cascade`].
 pub struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,

@@ -28,7 +28,7 @@ user closures ──► [1] Record    (append per-node columns + Shapes; no layo
                   [*] Hit-test next frame's input against last frame's cascade
 ```
 
-The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames. Cross-frame *work skipping* lives in the `MeasureCache`, keyed on `(WidgetId, subtree_hash, available_q)`: identical authoring + identical incoming `available` ⇒ blit last frame's `desired` and skip recursion. Encode and compose used to mirror the same key; both caches contributed <1% of frame time and were removed (see `docs/cache-history/encode.md`). The tree itself stays throwaway.
+The tree is rebuilt every frame but laid out fresh — no stale cached sizes, no jitter. Identity is by stable IDs (`WidgetId`, hashed call-site + user key) so animation/state/focus survive across frames. Cross-frame *work skipping* lives in the `MeasureCache`, keyed on `(WidgetId, subtree_hash, available_q)`: identical authoring + identical incoming `available` ⇒ blit last frame's `desired` and skip recursion. Encode and compose used to mirror the same key; both caches contributed <1% of frame time and were removed. The tree itself stays throwaway.
 
 **Cascade is its own pass** (not folded into encoder or hit-test) precisely so the encoder *and* the hit-index read the same flattened state — they can't drift on disabled/clipped/transformed subtrees. The hit index is built inside the cascade walk so they share one allocation.
 
@@ -49,10 +49,10 @@ Adjacent storage on the tree, not part of the SoA:
 - `bounds_table: Vec<BoundsExtras>` — rare positioning fields (`transform`, absolute `position`).
 - `panel_table: Vec<PanelExtras>` — panel-only fields (grid cell + span, scroll axes).
 - `chrome_table: Vec<ChromeRow>` — panel chrome (fill + radius). A `ChromeRow` is also allocated for any node with `ClipMode::Rounded` even when paint is fully `is_noop`, so the encoder can read `radius` for the stencil-mask path without a separate `clip_radius` column. Per-emit gates in `cmd_buffer::draw_*` drop the visually no-op slices; the radius survives.
-- `paint_anims: PaintAnims` — shape-keyed paint-only animation registry (alpha mods today via `PaintAnim::BlinkOpacity`; rotation/pulse/marquee land once the encoder grows transform-mod plumbing — see `docs/roadmap/paint-tick.md`). `Forest::min_paint_anim_wake` folds each anim's `next_wake` into `Ui::repaint_wakes` at the tail of every frame, so widget code never calls `request_repaint_after` for these shapes.
+- `paint_anims: PaintAnims` — shape-keyed paint-only animation registry (alpha mods today via `PaintAnim::BlinkOpacity`; rotation/pulse/marquee land once the encoder grows transform-mod plumbing). `Forest::min_paint_anim_wake` folds each anim's `next_wake` into `Ui::repaint_wakes` at the tail of every frame, so widget code never calls `request_repaint_after` for these shapes.
 - `grid: GridArena` — frame-scoped `Vec<GridDef>` for `LayoutMode::Grid(idx)` panels.
 - `roots: Vec<RootSlot>` — top-level root slots in this tree, in record order. Empty when no nodes were recorded into this tree this frame.
-- `rollups: SubtreeRollups` — per-node + subtree hashes + `paints` bitset. Populated in `post_record` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
+- `rollups: SubtreeRollups` — per-node + subtree hashes. Populated in `post_record` after `subtree_end` rolls up. Keys the cross-frame `MeasureCache`.
 - `has_grid: FixedBitSet` — per-node bit set iff the subtree rooted at node `i` contains any `LayoutMode::Grid` node. Fast-path skip for `MeasureCache`'s grid-hug snapshot/restore walk.
 
 Parent lookups are not stored as a column — passes that need a parent walk back via `subtree_end` (rare; almost everything is post-order or pre-order over the dense `records`).
@@ -83,7 +83,7 @@ Canonical impl: `resolve_axis_size` in `src/layout/support.rs` (the per-axis mat
 
 ## Layout dispatch
 
-No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid(u16)`/`Scroll(ScrollAxes)`) into per-driver modules under `src/layout/` (`stack`, `wrapstack`, `zstack`, `canvas`, `grid`, `scroll`). Each driver exports three free `pub(crate) fn`s — `measure`, `arrange`, `intrinsic` — matched into `LayoutEngine::measure_dispatch`, `arrange`, and `intrinsic::compute`. Adding a driver = new variant + new module + match arms; exhaustive matches catch the missing arms at compile time.
+No `trait Layout`. A `LayoutEngine` dispatches on a `LayoutMode` enum (`Leaf`/`HStack`/`VStack`/`WrapHStack`/`WrapVStack`/`ZStack`/`Canvas`/`Grid`/`Scroll` — all unit variants; mode-specific payload lives in `LayoutCore.mode_payload`) into per-driver modules under `src/layout/` (`stack`, `wrapstack`, `zstack`, `canvas`, `grid`, `scroll`). Each driver exports three free `pub(crate) fn`s — `measure`, `arrange`, `intrinsic` — matched into `LayoutEngine::measure_dispatch`, `arrange`, and `intrinsic::compute`. Adding a driver = new variant + new module + match arms; exhaustive matches catch the missing arms at compile time.
 
 **Single dispatch.** `measure` runs the driver once. The old WPF-style "grow loop" (re-dispatch when content exceeds available) is gone — under flex-shrink semantics, `intrinsic_min` is computed up front, `available` is floored at `intrinsic_min` before dispatch, and `resolve_axis_size` clamps the result. Every driver's content size is monotone in `available`, so a re-dispatch would converge to the same value. Pinned by `cross_driver_tests::convergence`.
 
@@ -154,11 +154,11 @@ Cases handled:
 
 ## Rendering
 
-Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via the in-house wgpu text backend on top of `cosmic-text`, interleaved with quads inside each scissor group and sharing one `TextAtlas` + `SwashCache`. A single `TextShaper` handle (mono fallback for tests, real cosmic shaper for hosts) is shared between `Ui` (via `set_text_shaper`) and `WgpuBackend` so layout-time measurement and render-time shaping hit the same buffer cache; wrapping leaves reshape against the parent-committed width during the bottom-up measure pass, and a `(WidgetId, ordinal)`-keyed reuse cache short-circuits unchanged leaves.
+Paint pass walks the cascade and emits a `RenderCmdBuffer` (logical-px). The composer turns commands into physical-px instanced quads grouped by scissor; `WgpuBackend` submits one render pass per surface. Text runs via the in-house wgpu text backend on top of `cosmic-text`, interleaved with quads inside each scissor group and sharing one `TextAtlas` + `SwashCache`. A single `TextShaper` handle (mono fallback for tests, real cosmic shaper for hosts) is constructor-injected into `Ui::new` and shared with `WgpuBackend` so layout-time measurement and render-time shaping hit the same buffer cache; wrapping leaves reshape against the parent-committed width during the bottom-up measure pass, and a `(WidgetId, ordinal)`-keyed reuse cache short-circuits unchanged leaves.
 
-**No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. Full investigation lives in `docs/cache-history/encode.md`. The `MeasureCache` (~35% on the same workloads) stays.
+**No encode or compose cache.** Both were implemented mirroring the measure cache (same `(WidgetId, subtree_hash, available_q)` key) and removed after profiling — encode contributed 0.06%–0.9% of frame time across four workloads, compose was in the same range. The encoder + composer are memcpy-shaped over flat SoA columns; a per-frame rebuild is already at the floor and a cache replay didn't beat it. The `MeasureCache` (~35% on the same workloads) stays.
 
-**Damage** is `enum Damage { None, Full, Partial(DamageRegion) }`. `Full` re-paints everything, `Partial(region)` lets the encoder filter cmds whose screen rect intersects, and `None` is the "no diff vs prev frame, just present" skip signal. `Ui::invalidate_prev_frame` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
+**Damage** is `enum Damage { Skip, Full, Partial(DamageRegion) }`. `Full` re-paints everything, `Partial(region)` lets the encoder filter cmds whose screen rect intersects, and `Skip` is the "no diff vs prev frame, just present" skip signal. `Ui::invalidate_prev` rewinds the prev-frame snapshot when the host failed to actually present (surface lost / occluded / outdated) so the next `post_record` is forced to `Full`.
 
 **Debug overlay.** `Ui::debug_overlay: Option<DebugOverlayConfig>` (in `src/debug_overlay.rs`) gates per-frame visualizations: `damage_rect` strokes the damaged region, `clear_damage` flips `Partial` frames' main-pass `LoadOp::Clear` so the undamaged region flashes the clear color (damage scissor still narrows draws). Drawn after the backbuffer→surface copy so they don't ghost across frames.
 
@@ -169,7 +169,7 @@ Single render pass per surface, instanced draws.
 Two types divide the runtime concerns so the pipeline stays usable without winit (benches, visual-diff tests, embedding inside a host that owns its own window):
 
 - **`Host<T>`** (`src/host.rs`) owns the recorder (`Ui`), the CPU `Frontend`, and the GPU `WgpuBackend`. Single public entry `Host::frame(surface, config, scale, &mut app, build)` runs the five passes, acquires the swapchain texture, submits, and returns a `FramePresent { Immediate, At(Instant), Idle }` summarising what wake-up cadence the recorder wants next (animation tickers, pending input, surface state).
-- **`WinitHost<T, F>`** (`src/winit_host.rs`) is the reference event-loop integration: a winit `ApplicationHandler` wrapping a `Host` + `Window` + `wgpu::Surface`. Picks an sRGB swapchain, maps `FramePresent` → winit `ControlFlow`, translates `WindowEvent`s through `InputEvent::from_winit` into `Ui::on_input`, and forwards resize / occlusion / scale-factor changes. Constructor takes a `WinitHostConfig` (title, initial/min `LogicalSize<u32>`, `wgpu::PresentMode` — default `AutoVsync` — `PowerPreference`, `max_frame_latency`); all fields are public.
+- **`WinitHost<T>`** (`src/winit_host.rs`) is the reference event-loop integration: a winit `ApplicationHandler` wrapping a `Host` + `Window` + `wgpu::Surface`. Picks an sRGB swapchain, maps `FramePresent` → winit `ControlFlow`, translates `WindowEvent`s through `InputEvent::from_winit` into `Ui::on_input`, and forwards resize / occlusion / scale-factor changes. Constructor takes a `WinitHostConfig` (title, initial/min `LogicalSize<u32>`, `wgpu::PresentMode` — default `AutoVsync` — `PowerPreference`, `max_frame_latency`); all fields are public.
 
 The split keeps `Host` reusable: benches drive it via `test_support` reach-ins without spinning up a real window, and a downstream embedder can wrap `Host` in their own event loop while still getting the `FramePresent` scheduling hints.
 
@@ -185,7 +185,7 @@ The split keeps `Host` reusable: benches drive it via `test_support` reach-ins w
 
 - **Re-measure on size mismatch during arrange.** WPF allows constrained re-measure. Currently one pass each. If a widget reports a measured-vs-arranged mismatch in practice, add an egui-style `request_discard` second-frame fallback. Not yet motivated.
 - **Hit shapes + layers.** Both proposed above. Adding them is straightforward; deferred until a workload demands non-rect hit-testing or explicit popup ordering.
-- **Render bundles.** `wgpu::RenderBundle` for unchanged subtrees is a possible future direction if a workload makes the per-frame submit cost matter. Would need a fresh keying scheme — the encode/compose caches that previously underpinned it are gone (see `docs/cache-history/encode.md`).
+- **Render bundles.** `wgpu::RenderBundle` for unchanged subtrees is a possible future direction if a workload makes the per-frame submit cost matter. Would need a fresh keying scheme — the encode/compose caches that previously underpinned it are gone.
 
 ## Prior Art Worth Studying
 
