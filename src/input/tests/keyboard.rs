@@ -50,9 +50,9 @@ fn modifiers_from_winit_translates_each_bit() {
     assert_eq!(modifiers_from_winit(&ModifiersState::empty()), Modifiers::NONE);
 
     let m = modifiers_from_winit(&ModifiersState::SHIFT);
-    assert!(m.shift && !m.ctrl && !m.alt);
+    assert!(m.shift && !m.ctrl && !m.alt && !m.mac_ctrl);
     let m = modifiers_from_winit(&ModifiersState::ALT);
-    assert!(m.alt && !m.shift && !m.ctrl);
+    assert!(m.alt && !m.shift && !m.ctrl && !m.mac_ctrl);
 
     // The primary command bit (`ctrl`) is normalized from the platform
     // key: Cmd (super) on macOS, physical Ctrl elsewhere.
@@ -62,16 +62,24 @@ fn modifiers_from_winit_translates_each_bit() {
         ModifiersState::CONTROL
     };
     let m = modifiers_from_winit(&primary);
-    assert!(m.ctrl && !m.shift && !m.alt);
+    assert!(m.ctrl && !m.shift && !m.alt && !m.mac_ctrl);
 
-    // The *other* of control/super is not surfaced as a command bit.
-    let other = if mac {
-        ModifiersState::CONTROL
+    // Physical Control: on macOS it's the raw `mac_ctrl` (NOT the
+    // primary `ctrl`); on Win/Linux it *is* the primary.
+    let m = modifiers_from_winit(&ModifiersState::CONTROL);
+    if mac {
+        assert!(m.mac_ctrl && !m.ctrl);
     } else {
-        ModifiersState::SUPER
-    };
-    let m = modifiers_from_winit(&other);
-    assert!(!m.ctrl && !m.shift && !m.alt);
+        assert!(m.ctrl && !m.mac_ctrl);
+    }
+
+    // Super on macOS is the primary and never sets `mac_ctrl`.
+    let m = modifiers_from_winit(&ModifiersState::SUPER);
+    if mac {
+        assert!(m.ctrl && !m.mac_ctrl);
+    } else {
+        assert!(!m.ctrl && !m.mac_ctrl);
+    }
 
     let m = modifiers_from_winit(&(ModifiersState::SHIFT | primary));
     assert!(m.shift && m.ctrl && !m.alt);
