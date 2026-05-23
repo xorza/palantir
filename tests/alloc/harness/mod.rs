@@ -20,18 +20,13 @@ mod format;
 pub(crate) use format::user_frames;
 
 use crate::allocator::{AuditResult, with_audit};
-use palantir::renderer::gpu_pass_stats::GpuPassStats;
-use palantir::{Display, FrameArena, FrameStamp, TextShaper, Ui};
+use palantir::{Display, FrameStamp, Ui};
 
-/// Local mono-fallback Ui constructor. Alloc tests don't enable the
-/// `internals` feature so they can't call `new_ui()`.
+/// Mono-fallback `Ui` for the alloc audits — `Ui::default` is the
+/// self-contained constructor (mono shaper + private arena + fresh
+/// caches), exactly what these GPU-less tests want.
 pub(crate) fn new_ui() -> Ui {
-    Ui::new(
-        TextShaper::default(),
-        FrameArena::default(),
-        palantir::RenderCaches::default(),
-        GpuPassStats::default(),
-    )
+    Ui::default()
 }
 
 const DISPLAY: Display = Display {
