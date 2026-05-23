@@ -77,9 +77,15 @@ impl Default for ContextMenuTheme {
 
 impl Default for MenuItemTheme {
     fn default() -> Self {
-        // Rows are transparent at rest; hover paints accent-tinted fill.
+        // Rows are transparent at rest; hover paints one surface-step
+        // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses
+        // (`ButtonTheme::menu_button`), so the bar and the popup that
+        // drops out of it feel like one continuous surface. Rows have
+        // no visible pressed state (the click auto-closes the menu),
+        // so the bar's louder `ELEM_ACTIVE` pressed slot doesn't have
+        // a counterpart here.
         let hover_bg = Background {
-            fill: palette::ELEM_ACTIVE.into(),
+            fill: palette::ELEM_HOVER.into(),
             stroke: Stroke::ZERO,
             corners: Corners::all(4.0),
             shadow: Shadow::NONE,
