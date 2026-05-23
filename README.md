@@ -16,3 +16,10 @@ Palantir is dual-licensed:
 - **Commercial use** — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
   If you want to ship Palantir as part of a proprietary, closed-source
   product, contact xxorza@gmail.com for a commercial license.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). All contributions are accepted
+under the [Contributor License Agreement](CLA.md), which preserves the
+dual-license model by granting the maintainer the right to relicense
+contributions (including commercially).
