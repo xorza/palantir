@@ -23,9 +23,10 @@ use std::ops::RangeInclusive;
 /// What kind of input triggers a zoom step. See [`ZoomConfig::modifier`].
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ZoomModifier {
-    /// Hold `Ctrl` (or `Cmd` on macOS) and turn the wheel. Default.
-    /// Bare wheel pans as today.
-    CtrlOrCmd,
+    /// Hold `Ctrl` and turn the wheel. Default. Bare wheel pans as
+    /// today. Ctrl is the zoom modifier on every platform (macOS Cmd
+    /// is not honored — matches the shortcut layer).
+    Ctrl,
     /// Plain wheel always zooms (rare; for image viewers without pan).
     Always,
     /// Wheel always pans; only pinch gestures zoom. Touch-first apps.
@@ -52,7 +53,7 @@ pub struct ZoomConfig {
     /// Multiplicative factor per wheel notch; `step.powf(notches)`.
     /// Default `1.1` (10% per notch).
     pub step: f32,
-    /// Wheel-vs-pinch routing. Default [`ZoomModifier::CtrlOrCmd`].
+    /// Wheel-vs-pinch routing. Default [`ZoomModifier::Ctrl`].
     pub modifier: ZoomModifier,
     /// Where the zoom step pivots. Default [`ZoomPivot::Pointer`].
     pub pivot: ZoomPivot,
@@ -63,7 +64,7 @@ impl Default for ZoomConfig {
         Self {
             range: 0.1..=10.0,
             step: 1.03,
-            modifier: ZoomModifier::CtrlOrCmd,
+            modifier: ZoomModifier::Ctrl,
             pivot: ZoomPivot::Pointer,
         }
     }
@@ -444,10 +445,11 @@ impl Scroll {
         let wheel_notches = ui.input.scroll_notches_for(id, line_px);
         let pinch_delta = ui.input.zoom_delta_for(id);
         let mods = ui.input.modifiers;
-        // `mods.ctrl || mods.meta` rather than `Modifiers::any_command`,
-        // which folds `alt` in too — alt-wheel shouldn't zoom.
+        // Gate on `mods.ctrl` only — Ctrl is the zoom modifier on every
+        // platform (macOS Cmd not honored), and `alt`-wheel shouldn't
+        // zoom.
         let wheel_zoom_gate = self.zoom.as_ref().is_some_and(|cfg| match cfg.modifier {
-            ZoomModifier::CtrlOrCmd => mods.ctrl || mods.meta,
+            ZoomModifier::Ctrl => mods.ctrl,
             ZoomModifier::Always => true,
             ZoomModifier::PinchOnly => false,
         });

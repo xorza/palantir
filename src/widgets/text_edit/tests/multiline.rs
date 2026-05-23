@@ -58,22 +58,16 @@ fn multiline_paste_keeps_newlines() {
         key: Key::Char('v'),
         repeat: false,
     });
-    // Inject the platform-primary modifier (Cmd on macOS, Ctrl
-    // elsewhere) via the key event — InputState reads modifiers
-    // from a separate `ModifiersChanged` queue, but for this test
-    // we drive the synthesizer directly.
+    // Inject the primary modifier (Ctrl on every platform) via the
+    // key event — InputState reads modifiers from a separate
+    // `ModifiersChanged` queue, but for this test we drive the
+    // synthesizer directly.
     if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
         ui.input.frame_keyboard_events.last_mut()
     {
-        kp.mods = match PLATFORM {
-            Platform::Mac => Modifiers {
-                meta: true,
-                ..Modifiers::NONE
-            },
-            _ => Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
+        kp.mods = Modifiers {
+            ctrl: true,
+            ..Modifiers::NONE
         };
     }
     ui.run_at_acked(UVec2::new(300, 200), multiline_editor(&mut buf));

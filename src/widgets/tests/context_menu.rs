@@ -1,7 +1,6 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
 use crate::Ui;
-use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
@@ -33,7 +32,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 .snapshot();
             ContextMenu::attach(ui, &trigger).show(ui, |ui, popup| {
                 if MenuItem::new("Copy")
-                    .shortcut(Shortcut::cmd('C'))
+                    .shortcut(Shortcut::ctrl('C'))
                     .show(ui, popup)
                     .clicked()
                 {
@@ -124,17 +123,11 @@ fn shortcut_press_fires_item_and_dismisses() {
     ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
-    // Inject the platform-primary modifier + 'C' — matches
-    // `Shortcut::cmd('C')` on the Copy item.
-    let primary_mods = match PLATFORM {
-        Platform::Mac => Modifiers {
-            meta: true,
-            ..Modifiers::NONE
-        },
-        _ => Modifiers {
-            ctrl: true,
-            ..Modifiers::NONE
-        },
+    // Inject the primary modifier (Ctrl on every platform) + 'C' —
+    // matches `Shortcut::ctrl('C')` on the Copy item.
+    let primary_mods = Modifiers {
+        ctrl: true,
+        ..Modifiers::NONE
     };
     ui.on_input(InputEvent::ModifiersChanged(primary_mods));
     ui.on_input(InputEvent::KeyDown {
