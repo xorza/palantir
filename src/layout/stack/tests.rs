@@ -451,3 +451,48 @@ fn parent_max_size_clamps_children_available() {
         "Fill child must not bleed past parent's max_size cap",
     );
 }
+
+/// `Sizing::Fill` stretches to the parent's cross-axis slot regardless
+/// of the child's `align`. Setting `.align(Align::LEFT/CENTER/RIGHT)` on a
+/// Fill child used to silently downgrade it to its content size (since
+/// `place_axis` only stretched when `align == Auto && Fill`); now Fill
+/// is sufficient on its own. `align` is meaningful only for Hug/Fixed
+/// children, which actually have room to be offset inside their slot.
+#[test]
+fn fill_cross_axis_stretches_regardless_of_align() {
+    use crate::Sizing;
+    use crate::layout::types::align::Align;
+
+    for align in [Align::LEFT, Align::CENTER, Align::RIGHT] {
+        let mut ui = Ui::for_test();
+        let mut child = None;
+        ui.run_at(UVec2::new(400, 100), |ui| {
+            Panel::vstack()
+                .auto_id()
+                .size((Sizing::Fixed(400.0), Sizing::Fixed(100.0)))
+                .show(ui, |ui| {
+                    child = Some(
+                        Frame::new()
+                            .auto_id()
+                            .size((Sizing::FILL, Sizing::Fixed(20.0)))
+                            .align(align)
+                            .show(ui)
+                            .node(),
+                    );
+                });
+        });
+        let r = ui.layout[Layer::Main].rect[child.unwrap().idx()];
+        assert_eq!(
+            r.size.w, 400.0,
+            "Fill child with align={align:?} must still stretch to parent's full width \
+             (got {})",
+            r.size.w,
+        );
+        assert_eq!(
+            r.min.x, 0.0,
+            "Fill child with align={align:?} must sit at parent origin (no leftover offset \
+             when fully stretched), got x={}",
+            r.min.x,
+        );
+    }
+}

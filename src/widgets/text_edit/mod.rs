@@ -706,14 +706,21 @@ impl<'a> TextEdit<'a> {
                 }
             }
 
-            // Text or placeholder. Empty buffer + unfocused shows the
-            // placeholder; focused shows the buffer (even if empty)
-            // because we still want the caret to render flush-left.
-            // `local_rect: Some(...)` positions the shaped text at
-            // owner-local `(padding − scroll)`; the size is unused
-            // under `Align::Auto` (text origin sits at `leaf.min`
-            // and the painted extent is the shaped glyph bbox).
-            let (display, color) = if text_ptr.is_empty() && !is_focused {
+            // Text or placeholder. Empty buffer always renders the
+            // placeholder — focused or not — so the leaf's
+            // content-driven desired width stays stable across focus
+            // transitions; a Hug parent (or any non-stretching parent)
+            // would otherwise see the editor's width snap between
+            // placeholder-width and zero on every focus change. The
+            // caret position comes from `cursor_xy(self.text, ...)` on
+            // the *buffer* (not the recorded shape), so a focused empty
+            // editor still gets a caret at column 0 even though the
+            // placeholder text sits behind it. `local_rect: Some(...)`
+            // positions the shaped text at owner-local `(padding −
+            // scroll)`; the size is unused under `Align::Auto` (text
+            // origin sits at `leaf.min` and the painted extent is the
+            // shaped glyph bbox).
+            let (display, color) = if text_ptr.is_empty() {
                 (placeholder.clone(), theme.placeholder)
             } else {
                 (Cow::Owned(text_ptr.clone()), look.text.color)
