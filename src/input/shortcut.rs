@@ -4,11 +4,14 @@
 //!
 //! ## Conventions
 //!
-//! - The primary command modifier is **Ctrl on every platform**,
-//!   including macOS. (macOS `Cmd`/`meta` is intentionally not modelled
-//!   — apps targeting it can match a `KeyboardEvent::Down` directly.)
+//! - The primary command modifier (`Mods::ctrl`) maps to the
+//!   platform's convention: **Cmd on macOS, Ctrl on Win/Linux** — one
+//!   binding fires on ⌘S on a Mac and Ctrl+S elsewhere. Raw Ctrl on
+//!   macOS is the rare case; match a `KeyboardEvent::Down` directly
+//!   for it.
 //! - [`Mods`] is the *shortcut* vocabulary, distinct from [`Modifiers`]
-//!   (the event-state vocabulary).
+//!   (the event-state vocabulary, which keeps `ctrl` and `cmd` as
+//!   separate physical keys).
 //! - [`Shortcut::matches`] compares the modifier set *exactly*: Ctrl+A
 //!   does NOT match Ctrl+Shift+A. `Char` keys compare ignore-case
 //!   because [`Key::Char`] arrives post-shift-layout.
@@ -24,7 +27,8 @@ use std::borrow::Cow;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
-/// key on every platform; `shift` and `alt` are literal.
+/// key — Cmd on macOS, Ctrl on Win/Linux (see [`Mods::from_event`]);
+/// `shift` and `alt` are literal.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
     pub ctrl: bool,
@@ -64,9 +68,11 @@ impl Mods {
         alt: true,
     };
 
-    /// Project event-state [`Modifiers`] into shortcut vocabulary.
-    /// `meta` (macOS Cmd) is ignored — Ctrl is the primary modifier
-    /// everywhere.
+    /// Project event-state [`Modifiers`] into shortcut vocabulary. A
+    /// 1:1 copy — `Modifiers::ctrl` is already the platform-normalized
+    /// primary command bit (Cmd on macOS, Ctrl elsewhere), folded in at
+    /// the input boundary by `modifiers_from_winit`, so there's nothing
+    /// to disambiguate here.
     pub fn from_event(m: Modifiers) -> Self {
         Self {
             ctrl: m.ctrl,
@@ -133,12 +139,11 @@ impl Shortcut {
         }
     }
 
-    /// Platform-native label. macOS uses glyph notation (`⌃⌥⇧<key>`);
-    /// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The matched modifier is
-    /// always Ctrl — on macOS it renders as the Control glyph `⌃`, not
-    /// Command `⌘`. The `ctrl[+shift] + ASCII letter` hot set is a
-    /// borrowed const; rarer combinations format via [`Display`] and
-    /// allocate once.
+    /// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
+    /// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier
+    /// renders as ⌘ on macOS (it *is* Cmd there). The `ctrl[+shift] +
+    /// ASCII letter` hot set is a borrowed const; rarer combinations
+    /// format via [`Display`] and allocate once.
     pub fn label(self) -> Cow<'static, str> {
         if let Some(s) = label_const(self) {
             return Cow::Borrowed(s);
@@ -150,16 +155,17 @@ impl Shortcut {
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if matches!(PLATFORM, Platform::Mac) {
-            // Canonical macOS order: ⌃ ⌥ ⇧ <key>. Ctrl renders as the
-            // Control glyph ⌃ (not ⌘ — Ctrl is the primary modifier).
-            if self.mods.ctrl {
-                f.write_str("⌃")?;
-            }
+            // Canonical macOS order: ⌥ ⇧ ⌘ <key>. The primary command
+            // modifier (`mods.ctrl`) is Cmd on macOS, so it renders as
+            // ⌘ and sits last (right before the key).
             if self.mods.alt {
                 f.write_str("⌥")?;
             }
             if self.mods.shift {
                 f.write_str("⇧")?;
+            }
+            if self.mods.ctrl {
+                f.write_str("⌘")?;
             }
             return write_key(f, self.key);
         }
@@ -243,32 +249,32 @@ const fn label_const(s: Shortcut) -> Option<&'static str> {
 const fn ctrl_label(c: char) -> &'static str {
     if matches!(PLATFORM, Platform::Mac) {
         match c {
-            'A' => "⌃A",
-            'B' => "⌃B",
-            'C' => "⌃C",
-            'D' => "⌃D",
-            'E' => "⌃E",
-            'F' => "⌃F",
-            'G' => "⌃G",
-            'H' => "⌃H",
-            'I' => "⌃I",
-            'J' => "⌃J",
-            'K' => "⌃K",
-            'L' => "⌃L",
-            'M' => "⌃M",
-            'N' => "⌃N",
-            'O' => "⌃O",
-            'P' => "⌃P",
-            'Q' => "⌃Q",
-            'R' => "⌃R",
-            'S' => "⌃S",
-            'T' => "⌃T",
-            'U' => "⌃U",
-            'V' => "⌃V",
-            'W' => "⌃W",
-            'X' => "⌃X",
-            'Y' => "⌃Y",
-            'Z' => "⌃Z",
+            'A' => "⌘A",
+            'B' => "⌘B",
+            'C' => "⌘C",
+            'D' => "⌘D",
+            'E' => "⌘E",
+            'F' => "⌘F",
+            'G' => "⌘G",
+            'H' => "⌘H",
+            'I' => "⌘I",
+            'J' => "⌘J",
+            'K' => "⌘K",
+            'L' => "⌘L",
+            'M' => "⌘M",
+            'N' => "⌘N",
+            'O' => "⌘O",
+            'P' => "⌘P",
+            'Q' => "⌘Q",
+            'R' => "⌘R",
+            'S' => "⌘S",
+            'T' => "⌘T",
+            'U' => "⌘U",
+            'V' => "⌘V",
+            'W' => "⌘W",
+            'X' => "⌘X",
+            'Y' => "⌘Y",
+            'Z' => "⌘Z",
             _ => "?",
         }
     } else {
@@ -307,32 +313,32 @@ const fn ctrl_label(c: char) -> &'static str {
 const fn ctrl_shift_label(c: char) -> &'static str {
     if matches!(PLATFORM, Platform::Mac) {
         match c {
-            'A' => "⌃⇧A",
-            'B' => "⌃⇧B",
-            'C' => "⌃⇧C",
-            'D' => "⌃⇧D",
-            'E' => "⌃⇧E",
-            'F' => "⌃⇧F",
-            'G' => "⌃⇧G",
-            'H' => "⌃⇧H",
-            'I' => "⌃⇧I",
-            'J' => "⌃⇧J",
-            'K' => "⌃⇧K",
-            'L' => "⌃⇧L",
-            'M' => "⌃⇧M",
-            'N' => "⌃⇧N",
-            'O' => "⌃⇧O",
-            'P' => "⌃⇧P",
-            'Q' => "⌃⇧Q",
-            'R' => "⌃⇧R",
-            'S' => "⌃⇧S",
-            'T' => "⌃⇧T",
-            'U' => "⌃⇧U",
-            'V' => "⌃⇧V",
-            'W' => "⌃⇧W",
-            'X' => "⌃⇧X",
-            'Y' => "⌃⇧Y",
-            'Z' => "⌃⇧Z",
+            'A' => "⇧⌘A",
+            'B' => "⇧⌘B",
+            'C' => "⇧⌘C",
+            'D' => "⇧⌘D",
+            'E' => "⇧⌘E",
+            'F' => "⇧⌘F",
+            'G' => "⇧⌘G",
+            'H' => "⇧⌘H",
+            'I' => "⇧⌘I",
+            'J' => "⇧⌘J",
+            'K' => "⇧⌘K",
+            'L' => "⇧⌘L",
+            'M' => "⇧⌘M",
+            'N' => "⇧⌘N",
+            'O' => "⇧⌘O",
+            'P' => "⇧⌘P",
+            'Q' => "⇧⌘Q",
+            'R' => "⇧⌘R",
+            'S' => "⇧⌘S",
+            'T' => "⇧⌘T",
+            'U' => "⇧⌘U",
+            'V' => "⇧⌘V",
+            'W' => "⇧⌘W",
+            'X' => "⇧⌘X",
+            'Y' => "⇧⌘Y",
+            'Z' => "⇧⌘Z",
             _ => "?",
         }
     } else {
@@ -380,43 +386,47 @@ mod tests {
         }
     }
 
-    fn ctrl_mod() -> Modifiers {
+    /// The primary command modifier held. `Modifiers::ctrl` is already
+    /// the platform-normalized command bit (the winit boundary maps Cmd
+    /// → ctrl on macOS), so tests construct it directly with no
+    /// platform branch.
+    fn primary_mod() -> Modifiers {
         Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         }
     }
 
-    fn ctrl_shift_mod() -> Modifiers {
+    fn primary_shift_mod() -> Modifiers {
         Modifiers {
             shift: true,
-            ..ctrl_mod()
+            ..primary_mod()
         }
     }
 
     #[test]
-    fn ctrl_matches_ctrl_modifier() {
+    fn primary_modifier_matches() {
         let cut = Shortcut::ctrl('X');
-        assert!(cut.matches(kp(ctrl_mod(), Key::Char('x'))));
-        assert!(cut.matches(kp(ctrl_mod(), Key::Char('X'))));
+        assert!(cut.matches(kp(primary_mod(), Key::Char('x'))));
+        assert!(cut.matches(kp(primary_mod(), Key::Char('X'))));
     }
 
     #[test]
-    fn meta_does_not_match() {
+    fn alt_alone_does_not_match_ctrl() {
         let cut = Shortcut::ctrl('X');
-        // macOS Cmd (meta) is not the primary modifier — must not match.
-        let meta = Modifiers {
-            meta: true,
+        // A non-command modifier must not satisfy a ctrl shortcut.
+        let alt = Modifiers {
+            alt: true,
             ..Modifiers::NONE
         };
-        assert!(!cut.matches(kp(meta, Key::Char('x'))));
+        assert!(!cut.matches(kp(alt, Key::Char('x'))));
     }
 
     #[test]
     fn extra_modifier_rejects_match() {
         let cut = Shortcut::ctrl('A');
         // Ctrl+Shift+A must not match plain Ctrl+A.
-        let mods = ctrl_shift_mod();
+        let mods = primary_shift_mod();
         assert_eq!(Mods::from_event(mods), Mods::CTRL_SHIFT);
         assert!(!cut.matches(kp(mods, Key::Char('A'))));
         assert_eq!(cut.mods, Mods::CTRL);
@@ -425,7 +435,7 @@ mod tests {
     #[test]
     fn ctrl_shift_matches() {
         let s = Shortcut::ctrl_shift('K');
-        assert!(s.matches(kp(ctrl_shift_mod(), Key::Char('K'))));
+        assert!(s.matches(kp(primary_shift_mod(), Key::Char('K'))));
     }
 
     #[test]
@@ -433,7 +443,7 @@ mod tests {
         let s = Shortcut::ctrl('C').label();
         assert!(matches!(s, Cow::Borrowed(_)));
         let expected = match PLATFORM {
-            Platform::Mac => "⌃C",
+            Platform::Mac => "⌘C",
             _ => "Ctrl+C",
         };
         assert_eq!(s, expected);
@@ -444,7 +454,7 @@ mod tests {
         let s = Shortcut::ctrl_shift('K').label();
         assert!(matches!(s, Cow::Borrowed(_)));
         let expected = match PLATFORM {
-            Platform::Mac => "⌃⇧K",
+            Platform::Mac => "⇧⌘K",
             _ => "Ctrl+Shift+K",
         };
         assert_eq!(s, expected);
@@ -455,7 +465,7 @@ mod tests {
         let s = Shortcut::new(Mods::CTRL, Key::ArrowLeft).label();
         assert!(matches!(s, Cow::Owned(_)));
         let expected = match PLATFORM {
-            Platform::Mac => "⌃←",
+            Platform::Mac => "⌘←",
             _ => "Ctrl+←",
         };
         assert_eq!(s, expected);
@@ -463,7 +473,8 @@ mod tests {
 
     #[test]
     fn modifier_order_is_canonical() {
-        // Ctrl+Shift+Alt+K. Mac: ⌃ ⌥ ⇧ then key. Else: Ctrl+Shift+Alt+K.
+        // Ctrl+Shift+Alt+K. Mac order ⌥ ⇧ ⌘ then key (primary=⌘ last).
+        // Else: Ctrl+Shift+Alt+K.
         let s = Shortcut::new(
             Mods {
                 ctrl: true,
@@ -473,7 +484,7 @@ mod tests {
             Key::Char('K'),
         );
         let expected = match PLATFORM {
-            Platform::Mac => "⌃⌥⇧K",
+            Platform::Mac => "⌥⇧⌘K",
             _ => "Ctrl+Shift+Alt+K",
         };
         assert_eq!(s.to_string(), expected);

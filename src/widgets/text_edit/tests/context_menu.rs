@@ -116,8 +116,9 @@ fn context_menu_cut_copy_paste_clear() {
 fn clipboard_shortcuts_apply_keypresses() {
     let _cb_guard = crate::clipboard::test_serialize_guard();
 
+    // Primary command modifier (`Modifiers::ctrl` is platform-
+    // normalized — Cmd on macOS, Ctrl elsewhere).
     fn primary(c: char) -> KeyPress {
-        // Ctrl is the primary modifier on every platform.
         KeyPress {
             key: Key::Char(c),
             mods: Modifiers {
@@ -128,12 +129,12 @@ fn clipboard_shortcuts_apply_keypresses() {
         }
     }
 
+    // A non-command modifier — must NOT trigger clipboard shortcuts.
     fn non_primary(c: char) -> KeyPress {
-        // macOS Cmd (meta) is NOT primary — must not trigger shortcuts.
         KeyPress {
             key: Key::Char(c),
             mods: Modifiers {
-                meta: true,
+                alt: true,
                 ..Modifiers::NONE
             },
             repeat: false,
@@ -241,7 +242,7 @@ fn clipboard_shortcut_does_not_insert_char() {
             repeat: false,
         },
     );
-    assert_eq!(text, "ab", "ctrl+c without a selection is a no-op");
+    assert_eq!(text, "ab", "primary+c without a selection is a no-op");
     assert_eq!(state.caret, 2);
 }
 

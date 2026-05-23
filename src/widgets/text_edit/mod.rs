@@ -1286,9 +1286,12 @@ fn apply_key(
 /// the platform conventions every desktop text field follows. Shift may
 /// be held in addition (selection-extending word nav).
 fn is_word_nav(m: Modifiers) -> bool {
+    // `m.ctrl` is the platform primary command bit (= Cmd on macOS).
     match PLATFORM {
-        Platform::Mac => m.alt && !m.ctrl && !m.meta,
-        _ => m.ctrl && !m.alt && !m.meta,
+        // macOS: Option (Alt) + arrow, with Cmd not held.
+        Platform::Mac => m.alt && !m.ctrl,
+        // Elsewhere: Ctrl + arrow, with Alt not held.
+        _ => m.ctrl && !m.alt,
     }
 }
 
