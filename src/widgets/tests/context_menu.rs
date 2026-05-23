@@ -123,8 +123,9 @@ fn shortcut_press_fires_item_and_dismisses() {
     ui.run_at(SURFACE, |ui| build(ui, &mut copied, &mut dismissed));
     assert!(menu_open(&ui));
 
-    // Inject the primary modifier (Ctrl on every platform) + 'C' —
-    // matches `Shortcut::ctrl('C')` on the Copy item.
+    // Inject the primary command modifier + 'C' — matches
+    // `Shortcut::ctrl('C')` on the Copy item. `Modifiers::ctrl` is
+    // platform-normalized (Cmd on macOS, Ctrl elsewhere).
     let primary_mods = Modifiers {
         ctrl: true,
         ..Modifiers::NONE

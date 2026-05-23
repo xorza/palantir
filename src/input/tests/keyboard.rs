@@ -41,23 +41,40 @@ fn key_from_winit_character_carries_first_char() {
 
 #[test]
 fn modifiers_from_winit_translates_each_bit() {
+    use crate::common::platform::{PLATFORM, Platform};
     use crate::input::keyboard::modifiers_from_winit;
     use winit::keyboard::ModifiersState;
 
-    let m = modifiers_from_winit(&ModifiersState::empty());
-    assert_eq!(m, Modifiers::NONE);
+    let mac = matches!(PLATFORM, Platform::Mac);
+
+    assert_eq!(modifiers_from_winit(&ModifiersState::empty()), Modifiers::NONE);
 
     let m = modifiers_from_winit(&ModifiersState::SHIFT);
-    assert!(m.shift && !m.ctrl && !m.alt && !m.meta);
-    let m = modifiers_from_winit(&ModifiersState::CONTROL);
-    assert!(!m.shift && m.ctrl && !m.alt && !m.meta);
+    assert!(m.shift && !m.ctrl && !m.alt);
     let m = modifiers_from_winit(&ModifiersState::ALT);
-    assert!(!m.shift && !m.ctrl && m.alt && !m.meta);
-    let m = modifiers_from_winit(&ModifiersState::SUPER);
-    assert!(!m.shift && !m.ctrl && !m.alt && m.meta);
+    assert!(m.alt && !m.shift && !m.ctrl);
 
-    let m = modifiers_from_winit(&(ModifiersState::SHIFT | ModifiersState::SUPER));
-    assert!(m.shift && m.meta && !m.ctrl && !m.alt);
+    // The primary command bit (`ctrl`) is normalized from the platform
+    // key: Cmd (super) on macOS, physical Ctrl elsewhere.
+    let primary = if mac {
+        ModifiersState::SUPER
+    } else {
+        ModifiersState::CONTROL
+    };
+    let m = modifiers_from_winit(&primary);
+    assert!(m.ctrl && !m.shift && !m.alt);
+
+    // The *other* of control/super is not surfaced as a command bit.
+    let other = if mac {
+        ModifiersState::CONTROL
+    } else {
+        ModifiersState::SUPER
+    };
+    let m = modifiers_from_winit(&other);
+    assert!(!m.ctrl && !m.shift && !m.alt);
+
+    let m = modifiers_from_winit(&(ModifiersState::SHIFT | primary));
+    assert!(m.shift && m.ctrl && !m.alt);
 }
 
 #[test]

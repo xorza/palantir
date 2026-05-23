@@ -58,10 +58,10 @@ fn multiline_paste_keeps_newlines() {
         key: Key::Char('v'),
         repeat: false,
     });
-    // Inject the primary modifier (Ctrl on every platform) via the
-    // key event — InputState reads modifiers from a separate
-    // `ModifiersChanged` queue, but for this test we drive the
-    // synthesizer directly.
+    // Inject the primary command modifier via the key event —
+    // InputState reads modifiers from a separate `ModifiersChanged`
+    // queue, but for this test we drive the synthesizer directly.
+    // `Modifiers::ctrl` is the platform-normalized command bit.
     if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
         ui.input.frame_keyboard_events.last_mut()
     {

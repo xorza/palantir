@@ -8,6 +8,8 @@
 //! [`crate::input::InputState::on_input`] silently. Step 2 (frame
 //! queues) and step 3 (focus) wire the consumers.
 
+use crate::common::platform::{PLATFORM, Platform};
+
 /// Logical key, after the keyboard layout has been applied. Shift+'a'
 /// arrives as `Char('A')`, not `Char('a')` — same convention as winit.
 ///
@@ -56,8 +58,12 @@ pub enum Key {
 /// whenever the held set changes; widgets read the latest snapshot from
 /// [`InputState`] (wiring in step 2).
 ///
-/// `meta` is Cmd on macOS, Super on Linux, Win on Windows — single
-/// "platform modifier" slot, same convention as egui.
+/// `ctrl` is the **primary command modifier**, already normalized at
+/// the input boundary ([`modifiers_from_winit`]): it's the Cmd (⌘)
+/// key on macOS and the physical Ctrl key on Windows/Linux. Consumers
+/// never disambiguate platforms — there's one command bit. (The raw
+/// macOS Control key is intentionally not surfaced; it's vanishingly
+/// rare in a GUI and would reintroduce the split this hides.)
 ///
 /// [`InputEvent::ModifiersChanged`]: crate::input::InputEvent::ModifiersChanged
 /// [`InputState`]: crate::input::InputState
@@ -66,7 +72,6 @@ pub struct Modifiers {
     pub shift: bool,
     pub ctrl: bool,
     pub alt: bool,
-    pub meta: bool,
 }
 
 impl Modifiers {
@@ -74,14 +79,13 @@ impl Modifiers {
         shift: false,
         ctrl: false,
         alt: false,
-        meta: false,
     };
 
-    /// True if any of ctrl/alt/meta is held — the canonical "this is a
-    /// shortcut, not text" predicate. Shift alone doesn't count
-    /// (shift+letter is just the capitalized letter).
+    /// True if ctrl or alt is held — the canonical "this is a shortcut,
+    /// not text" predicate. Shift alone doesn't count (shift+letter is
+    /// just the capitalized letter).
     pub const fn any_command(self) -> bool {
-        self.ctrl || self.alt || self.meta
+        self.ctrl || self.alt
     }
 }
 
@@ -208,11 +212,18 @@ pub(crate) fn key_from_winit(k: &winit::keyboard::Key) -> Key {
 }
 
 pub(crate) fn modifiers_from_winit(m: &winit::keyboard::ModifiersState) -> Modifiers {
+    // Normalize the platform's primary command key into `ctrl` here, at
+    // the boundary, so nothing downstream branches on platform: Cmd
+    // (super) on macOS, physical Ctrl elsewhere.
+    let ctrl = if matches!(PLATFORM, Platform::Mac) {
+        m.super_key()
+    } else {
+        m.control_key()
+    };
     Modifiers {
         shift: m.shift_key(),
-        ctrl: m.control_key(),
+        ctrl,
         alt: m.alt_key(),
-        meta: m.super_key(),
     }
 }
 
@@ -257,7 +268,7 @@ mod tests {
         );
         assert!(
             Modifiers {
-                meta: true,
+                alt: true,
                 ..Modifiers::NONE
             }
             .any_command()

@@ -64,8 +64,10 @@ fn shift(key: Key) -> KeyPress {
     }
 }
 
-/// `Ctrl+key` — the primary modifier under which shortcuts like
-/// select-all / copy / cut / paste fire (Ctrl on every platform).
+/// Primary-modifier + key — the chord under which shortcuts like
+/// select-all / copy / cut / paste fire. `Modifiers::ctrl` is the
+/// platform-normalized command bit (Cmd on macOS, Ctrl elsewhere), so
+/// tests just set `ctrl`.
 fn ctrl_press(key: Key) -> KeyPress {
     KeyPress {
         key,
