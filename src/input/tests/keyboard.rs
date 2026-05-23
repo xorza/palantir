@@ -47,7 +47,10 @@ fn modifiers_from_winit_translates_each_bit() {
 
     let mac = matches!(PLATFORM, Platform::Mac);
 
-    assert_eq!(modifiers_from_winit(&ModifiersState::empty()), Modifiers::NONE);
+    assert_eq!(
+        modifiers_from_winit(&ModifiersState::empty()),
+        Modifiers::NONE
+    );
 
     let m = modifiers_from_winit(&ModifiersState::SHIFT);
     assert!(m.shift && !m.ctrl && !m.alt && !m.mac_ctrl);
