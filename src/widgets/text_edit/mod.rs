@@ -834,7 +834,7 @@ impl<'a> TextEdit<'a> {
         let text = self.text;
         ContextMenu::attach(ui, &snapshot).show(ui, |ui, popup| {
             if MenuItem::new("Cut")
-                .shortcut(Shortcut::cmd('X'))
+                .shortcut(Shortcut::ctrl('X'))
                 .enabled(has_sel)
                 .show(ui, popup)
                 .clicked()
@@ -842,7 +842,7 @@ impl<'a> TextEdit<'a> {
                 cut_selection(text, ui.state_mut::<TextEditState>(id));
             }
             if MenuItem::new("Copy")
-                .shortcut(Shortcut::cmd('C'))
+                .shortcut(Shortcut::ctrl('C'))
                 .enabled(has_sel)
                 .show(ui, popup)
                 .clicked()
@@ -852,7 +852,7 @@ impl<'a> TextEdit<'a> {
             }
             let cb_has = !crate::clipboard::get().is_empty();
             if MenuItem::new("Paste")
-                .shortcut(Shortcut::cmd('V'))
+                .shortcut(Shortcut::ctrl('V'))
                 .enabled(cb_has)
                 .show(ui, popup)
                 .clicked()
@@ -1129,12 +1129,12 @@ fn dispatch_shortcut(
     multiline: bool,
     menu_open: bool,
 ) -> bool {
-    const SELECT_ALL: Shortcut = Shortcut::cmd('A');
-    const COPY: Shortcut = Shortcut::cmd('C');
-    const CUT: Shortcut = Shortcut::cmd('X');
-    const PASTE: Shortcut = Shortcut::cmd('V');
-    const UNDO: Shortcut = Shortcut::cmd('Z');
-    const REDO: Shortcut = Shortcut::cmd_shift('Z');
+    const SELECT_ALL: Shortcut = Shortcut::ctrl('A');
+    const COPY: Shortcut = Shortcut::ctrl('C');
+    const CUT: Shortcut = Shortcut::ctrl('X');
+    const PASTE: Shortcut = Shortcut::ctrl('V');
+    const UNDO: Shortcut = Shortcut::ctrl('Z');
+    const REDO: Shortcut = Shortcut::ctrl_shift('Z');
 
     if UNDO.matches(kp) {
         apply_undo(text, state);

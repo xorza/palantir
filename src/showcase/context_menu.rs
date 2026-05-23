@@ -106,21 +106,21 @@ fn attach_menu(
     }
     menu.show(ui, |ui, popup| {
         if MenuItem::new("Copy")
-            .shortcut(Shortcut::cmd('C'))
+            .shortcut(Shortcut::ctrl('C'))
             .show(ui, popup)
             .clicked()
         {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Copy");
         }
         if MenuItem::new("Cut")
-            .shortcut(Shortcut::cmd('X'))
+            .shortcut(Shortcut::ctrl('X'))
             .show(ui, popup)
             .clicked()
         {
             ui.state_mut::<State>(state_id).last_action = Some("last action: Cut");
         }
         if MenuItem::new("Paste")
-            .shortcut(Shortcut::cmd('V'))
+            .shortcut(Shortcut::ctrl('V'))
             .show(ui, popup)
             .clicked()
         {

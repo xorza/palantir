@@ -64,29 +64,21 @@ fn shift(key: Key) -> KeyPress {
     }
 }
 
-/// `Cmd+key` on macOS, `Ctrl+key` elsewhere — the platform primary
-/// modifier under which shortcuts like select-all / copy / cut /
-/// paste fire.
-fn cmd_press(key: Key) -> KeyPress {
-    let mods = match PLATFORM {
-        Platform::Mac => Modifiers {
-            meta: true,
-            ..Modifiers::NONE
-        },
-        _ => Modifiers {
+/// `Ctrl+key` — the primary modifier under which shortcuts like
+/// select-all / copy / cut / paste fire (Ctrl on every platform).
+fn ctrl_press(key: Key) -> KeyPress {
+    KeyPress {
+        key,
+        mods: Modifiers {
             ctrl: true,
             ..Modifiers::NONE
         },
-    };
-    KeyPress {
-        key,
-        mods,
         repeat: false,
     }
 }
 
-fn cmd_shift_press(key: Key) -> KeyPress {
-    let mut kp = cmd_press(key);
+fn ctrl_shift_press(key: Key) -> KeyPress {
+    let mut kp = ctrl_press(key);
     kp.mods.shift = true;
     kp
 }

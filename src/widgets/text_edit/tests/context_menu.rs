@@ -117,37 +117,25 @@ fn clipboard_shortcuts_apply_keypresses() {
     let _cb_guard = crate::clipboard::test_serialize_guard();
 
     fn primary(c: char) -> KeyPress {
-        let mods = match PLATFORM {
-            Platform::Mac => Modifiers {
-                meta: true,
-                ..Modifiers::NONE
-            },
-            _ => Modifiers {
+        // Ctrl is the primary modifier on every platform.
+        KeyPress {
+            key: Key::Char(c),
+            mods: Modifiers {
                 ctrl: true,
                 ..Modifiers::NONE
             },
-        };
-        KeyPress {
-            key: Key::Char(c),
-            mods,
             repeat: false,
         }
     }
 
     fn non_primary(c: char) -> KeyPress {
-        let mods = match PLATFORM {
-            Platform::Mac => Modifiers {
-                ctrl: true,
-                ..Modifiers::NONE
-            },
-            _ => Modifiers {
+        // macOS Cmd (meta) is NOT primary — must not trigger shortcuts.
+        KeyPress {
+            key: Key::Char(c),
+            mods: Modifiers {
                 meta: true,
                 ..Modifiers::NONE
             },
-        };
-        KeyPress {
-            key: Key::Char(c),
-            mods,
             repeat: false,
         }
     }
@@ -224,7 +212,7 @@ fn paste_strips_newlines() {
     crate::clipboard::set("first\r\nsecond\nthird");
     let mut text = String::new();
     let mut state = TextEditState::default();
-    apply_key(&mut text, &mut state, cmd_press(Key::Char('v')));
+    apply_key(&mut text, &mut state, ctrl_press(Key::Char('v')));
     assert_eq!(text, "first second third");
     assert_eq!(state.caret, text.len());
 }

@@ -632,7 +632,7 @@ impl Ui {
     }
 
     /// Declare interest in one specific shortcut (e.g.
-    /// `Shortcut::key(Key::Escape)`, `Shortcut::cmd('K')`).
+    /// `Shortcut::key(Key::Escape)`, `Shortcut::ctrl('K')`).
     /// Duplicate subscribers collapse.
     pub fn subscribe_key(&mut self, sc: Shortcut) {
         self.input.subs.subscribe_key(sc);
