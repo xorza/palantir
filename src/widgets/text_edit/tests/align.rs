@@ -13,6 +13,7 @@ use crate::Align;
 use crate::forest::Layer;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::NodeId;
+use crate::primitives::transform::TranslateScale;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -789,4 +790,61 @@ fn multiline_default_is_top_left() {
     let o = origin.expect("text shape");
     assert!((o.x - PAD_L).abs() < 1e-3, "x = {}", o.x);
     assert!((o.y - PAD_T).abs() < 1e-3, "y = {}", o.y);
+}
+
+/// Regression: an ancestor `Panel::transform` zoom must not drift the
+/// text origin. The widget computes vcenter as
+/// `(inner_h − measured_h) / 2`; `measured_h` comes from the shaper in
+/// logical units, so `inner_h` must come from `response.layout_rect`
+/// (pre-transform) — not `response.rect` (post-transform). Reading
+/// `rect` instead inflates `inner_h` by the zoom factor, pushing the
+/// text down by `(scale − 1) · line_height / 2` and clipping it at the
+/// editor's bottom edge. Repro is the darkroom graph view: a static
+/// `TextEdit` inside `Panel::canvas().transform(TranslateScale::new(pan,
+/// zoom))` drifts text down as the user zooms in.
+#[test]
+fn text_origin_invariant_under_ancestor_transform_zoom() {
+    fn run(scale: f32) -> glam::Vec2 {
+        let mut ui = ui_at_no_cosmic(NARROW);
+        let mut buf = String::from("abcd");
+        let mut node: Option<NodeId> = None;
+        let mut record = |ui: &mut Ui| {
+            Panel::canvas()
+                .auto_id()
+                .transform(TranslateScale::new(glam::Vec2::ZERO, scale))
+                .show(ui, |ui| {
+                    node = Some(
+                        TextEdit::new(&mut buf)
+                            .id(WidgetId::from_hash("zoom-ed"))
+                            .size((Sizing::Fixed(EDIT_W), Sizing::Fixed(EDIT_H)))
+                            .show(ui)
+                            .node(),
+                    );
+                });
+        };
+        // Two frames: cascade lags one frame, so the second frame is
+        // the one whose `response.layout_rect` drives the offset math.
+        ui.run_at_acked(NARROW, &mut record);
+        ui.run_at_acked(NARROW, &mut record);
+        let (origin, _) = shape_origins(&ui, node.unwrap());
+        origin.expect("text shape emitted for non-empty buffer")
+    }
+    let unscaled = run(1.0);
+    for &scale in &[2.0_f32, 0.5, 1.7] {
+        let zoomed = run(scale);
+        assert!(
+            (zoomed.x - unscaled.x).abs() < 1e-3,
+            "scale {scale}: text.x = {} drifted from {} (Δ = {})",
+            zoomed.x,
+            unscaled.x,
+            zoomed.x - unscaled.x,
+        );
+        assert!(
+            (zoomed.y - unscaled.y).abs() < 1e-3,
+            "scale {scale}: text.y = {} drifted from {} (Δ = {})",
+            zoomed.y,
+            unscaled.y,
+            zoomed.y - unscaled.y,
+        );
+    }
 }
