@@ -46,7 +46,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::ColorU8;
 use palantir::TextShaper;
-use palantir::text_backend::test_support::{GpuCtx, TextBackend, TextRun, make_run};
+use palantir::renderer::backend::text::test_support::{GpuCtx, TextBackend, TextRun, make_run};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);

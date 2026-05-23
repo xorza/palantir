@@ -16,7 +16,7 @@
 //!
 //! Both halves are owned and driven from [`Host`](crate::host::Host),
 //! the public top-level handle.
-pub(crate) mod backend;
+pub mod backend;
 pub use backend::DEFAULT_IMAGE_BUDGET_BYTES;
 /// Counting wrapper around `wgpu::Queue` — every `write_buffer` /
 /// `write_texture` call routed through this type bumps the per-frame

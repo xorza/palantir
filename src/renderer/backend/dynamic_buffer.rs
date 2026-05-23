@@ -7,7 +7,7 @@
 //! gating by hash is always net-negative.
 //!
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) plus
-//! `text_backend`'s vbuf.
+//! the `text` backend's vbuf.
 
 use super::gpu_ctx::GpuCtx;
 

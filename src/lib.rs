@@ -30,7 +30,6 @@ pub mod primitives;
 pub mod renderer;
 pub(crate) mod shape;
 pub mod text;
-pub mod text_backend;
 pub mod ui;
 pub mod widgets;
 pub mod winit_host;
