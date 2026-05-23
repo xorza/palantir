@@ -512,14 +512,20 @@ impl<'a> TextEdit<'a> {
 
         // Wrap target for multi-line: editor's inner width (outer −
         // padding − caret room). Read from the previous arrange via
-        // `response.rect` — cascade runs in `post_record` so the value
-        // is up-to-date both in steady state and across
+        // `response.layout_rect` — cascade runs in `post_record` so the
+        // value is up-to-date both in steady state and across
         // `request_relayout` passes. `None` on the first frame the
         // widget is recorded; cosmic then lays out unbounded (single
         // visual line per `\n` chunk) until the next frame catches up.
+        // **Must be `layout_rect`, not `rect`** — text shapes and the
+        // shaper's measured sizes are in logical (pre-transform) units;
+        // under an ancestor `Panel::transform` zoom, `rect.size`
+        // includes the scale factor and would inflate the wrap target,
+        // drifting the cached buffer's `TextCacheKey` off the one the
+        // widget queries via `cursor_xy` / `selection_rects`.
         let wrap_target: Option<f32> = if self.multiline {
             response
-                .rect
+                .layout_rect
                 .map(|r| (r.size.w - padding.horiz() - caret_room).max(1.0))
         } else {
             None
@@ -552,7 +558,12 @@ impl<'a> TextEdit<'a> {
         } else {
             text_align
         };
-        let offset = if let Some(r) = response.rect {
+        // `layout_rect` (pre-transform) — `align_offset` math has to
+        // stay in the same units as `measured` (logical, from the
+        // shaper). Reading `rect` would mix post-transform widget
+        // height with logical text height and drift the vertical center
+        // by `(scale - 1) * line_height / 2` under any ancestor zoom.
+        let offset = if let Some(r) = response.layout_rect {
             let measure_str: &str = if !self.text.is_empty() || is_focused {
                 self.text
             } else {
@@ -616,7 +627,13 @@ impl<'a> TextEdit<'a> {
                 || sel_before != state.selection
                 || text_len_before != self.text.len();
             let focus_gained = is_focused && !state.prev_focused;
-            update_scroll(state, response.rect, &ctx, caret_pos, theme.caret_width);
+            update_scroll(
+                state,
+                response.layout_rect,
+                &ctx,
+                caret_pos,
+                theme.caret_width,
+            );
             if is_focused && (caret_changed || focus_gained) {
                 state.last_caret_change = now;
             }
