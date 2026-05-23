@@ -14,7 +14,7 @@
 //!     fn frame(&mut self, ui: &mut Ui) { /* build ui */ }
 //! }
 //! WinitHost::new(WinitHostConfig::new("title"), MyApp)
-//!     .with_setup(|ui| ui.theme.button.anim = Some(AnimSpec::SPRING))
+//!     .with_setup(|ui, _app, _handle| ui.theme.button.anim = Some(AnimSpec::SPRING))
 //!     .run();
 //! ```
 
@@ -23,7 +23,7 @@ use std::sync::Arc;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 use crate::host::{FramePresent, Host, HostConfig};
@@ -31,7 +31,48 @@ use crate::input::InputEvent;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 
-type SetupFn = Box<dyn FnOnce(&mut Ui)>;
+type SetupFn<T> = Box<dyn FnOnce(&mut Ui, &mut T, &HostHandle)>;
+type MainTask = Box<dyn FnOnce(&mut Ui) -> bool + Send>;
+
+/// Events delivered to the host through [`HostHandle`] — cross-thread
+/// pokes that the winit event loop turns into a redraw or a run-on-main
+/// callback. Public only as the type parameter of `EventLoopProxy`;
+/// construct via the methods on [`HostHandle`].
+pub enum UserEvent {
+    /// Wake the loop and request one redraw. Coalesced — many in a
+    /// row collapse to one frame.
+    Repaint,
+    /// Run a closure on the main (event-loop) thread with `&mut Ui`,
+    /// then request a redraw.
+    RunOnMain(MainTask),
+}
+
+/// Thread-safe handle to a running [`WinitHost`]. Cheaply `Clone`; send
+/// to background threads so they can poke the UI without owning it.
+///
+/// Obtain one via [`WinitHost::handle`] before calling `run`.
+#[derive(Clone)]
+pub struct HostHandle {
+    proxy: EventLoopProxy<UserEvent>,
+}
+
+impl HostHandle {
+    /// Request the host paint one frame. Cheap and lock-free; safe to
+    /// call from any thread. Drops silently if the event loop has
+    /// already exited.
+    pub fn request_repaint(&self) {
+        let _ = self.proxy.send_event(UserEvent::Repaint);
+    }
+
+    /// Schedule `f` to run on the main thread with `&mut Ui` before
+    /// the next frame. Use for state mutations that aren't safe to
+    /// perform off-thread (touching the recorder, the wgpu device,
+    /// etc.). Return `true` from `f` to request a repaint, `false`
+    /// to leave the present schedule unchanged.
+    pub fn run_on_main(&self, f: impl FnOnce(&mut Ui) -> bool + Send + 'static) {
+        let _ = self.proxy.send_event(UserEvent::RunOnMain(Box::new(f)));
+    }
+}
 
 /// How many frames may be in flight between CPU record and GPU
 /// present. Maps 1:1 to wgpu's `desired_maximum_frame_latency`. Two
@@ -70,20 +111,9 @@ pub struct WinitHostConfig {
     /// How many frames may be in flight on the GPU at once. See
     /// [`FrameLatency`].
     pub max_frame_latency: FrameLatency,
-    /// GPU texture cache budget; eviction kicks in past this. See
-    /// [`crate::renderer::DEFAULT_IMAGE_BUDGET_BYTES`].
-    pub image_budget_bytes: u64,
-    /// Opt into GPU instrumentation (`wgpu::Features::TIMESTAMP_QUERY`,
-    /// `+TIMESTAMP_QUERY_INSIDE_PASSES`, `+PIPELINE_STATISTICS_QUERY`).
-    /// Features still degrade independently per adapter advertisement;
-    /// this flag controls intent, not capability. Off by default —
-    /// even on builds with the `internals` cargo feature, the host
-    /// only collects stats when the caller explicitly asks for them.
-    /// The per-frame cost is `resolve_query_set` + `map_async` +
-    /// `device.poll(Poll)` + readback on every submit, so the price
-    /// is non-trivial — flip it on for benches / debug overlays, off
-    /// for production timing runs.
-    pub collect_gpu_stats: bool,
+    /// Forwarded verbatim to [`Host::with_options`] — owns the
+    /// image-cache budget and GPU-stats opt-in.
+    pub host: HostConfig,
 }
 
 impl Default for WinitHostConfig {
@@ -95,8 +125,7 @@ impl Default for WinitHostConfig {
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
             max_frame_latency: FrameLatency::Low,
-            image_budget_bytes: crate::renderer::DEFAULT_IMAGE_BUDGET_BYTES,
-            collect_gpu_stats: false,
+            host: HostConfig::default(),
         }
     }
 }
@@ -122,8 +151,10 @@ pub trait App {
 pub struct WinitHost<T> {
     config: WinitHostConfig,
     app: T,
-    setup: Option<SetupFn>,
+    setup: Option<SetupFn<T>>,
     state: Option<RuntimeState>,
+    event_loop: Option<EventLoop<UserEvent>>,
+    proxy: EventLoopProxy<UserEvent>,
 }
 
 struct RuntimeState {
@@ -144,11 +175,30 @@ where
     T: App + 'static,
 {
     pub fn new(config: WinitHostConfig, app: T) -> Self {
+        // EventLoop is built up front so `handle()` can hand out a
+        // proxy before `run()` is called — that's the whole point of
+        // letting threads spawn knowing where to send their pokes.
+        let event_loop = EventLoop::<UserEvent>::with_user_event()
+            .build()
+            .expect("event loop");
+        let proxy = event_loop.create_proxy();
         Self {
             config,
             app,
             setup: None,
             state: None,
+            event_loop: Some(event_loop),
+            proxy,
+        }
+    }
+
+    /// Return a cheap-to-clone, `Send` handle for cross-thread
+    /// repaint requests and run-on-main scheduling. Stable for the
+    /// lifetime of the host — call before `run()` and ship the
+    /// handle to worker threads.
+    pub fn handle(&self) -> HostHandle {
+        HostHandle {
+            proxy: self.proxy.clone(),
         }
     }
 
@@ -156,14 +206,17 @@ where
     /// `Ui` (after device + surface are up). Use for theme tweaks
     /// and any other `Ui` mutation that needs to happen before the
     /// first frame.
-    pub fn with_setup(mut self, setup: impl FnOnce(&mut Ui) + 'static) -> Self {
+    pub fn with_setup(
+        mut self,
+        setup: impl FnOnce(&mut Ui, &mut T, &HostHandle) + 'static,
+    ) -> Self {
         self.setup = Some(Box::new(setup));
         self
     }
 
-    /// Construct the event loop and drive it to completion.
+    /// Drive the (already-constructed) event loop to completion.
     pub fn run(mut self) {
-        let event_loop = EventLoop::new().expect("event loop");
+        let event_loop = self.event_loop.take().expect("event loop already consumed");
         event_loop.run_app(&mut self).expect("run app");
     }
 
@@ -183,10 +236,23 @@ where
     }
 }
 
-impl<T> ApplicationHandler for WinitHost<T>
+impl<T> ApplicationHandler<UserEvent> for WinitHost<T>
 where
     T: App + 'static,
 {
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+        let Some(rt) = self.state.as_mut() else {
+            return;
+        };
+        let repaint = match event {
+            UserEvent::Repaint => true,
+            UserEvent::RunOnMain(task) => task(&mut rt.host.ui),
+        };
+        if repaint {
+            rt.next = FramePresent::Immediate;
+        }
+    }
+
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
             return;
@@ -226,7 +292,7 @@ where
         // pass begin/end only; `+ TIMESTAMP_QUERY_INSIDE_PASSES` →
         // per-batch attribution; `+ PIPELINE_STATISTICS_QUERY` →
         // vert/frag invocation counts.
-        let timing_features = if cfg.collect_gpu_stats {
+        let timing_features = if cfg.host.collect_gpu_stats {
             wgpu::Features::TIMESTAMP_QUERY
                 | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
                 | wgpu::Features::PIPELINE_STATISTICS_QUERY
@@ -292,13 +358,13 @@ where
             queue.clone(),
             format,
             TextShaper::with_bundled_fonts(),
-            HostConfig {
-                image_budget_bytes: cfg.image_budget_bytes,
-                collect_gpu_stats: cfg.collect_gpu_stats,
-            },
+            cfg.host,
         );
         if let Some(setup) = self.setup.take() {
-            setup(&mut host.ui);
+            let handle = HostHandle {
+                proxy: self.proxy.clone(),
+            };
+            setup(&mut host.ui, &mut self.app, &handle);
         }
         let scale_factor = window.scale_factor() as f32;
 
