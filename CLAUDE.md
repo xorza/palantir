@@ -53,11 +53,10 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/primitives/` — pure geometry + leaf types: Rect/Size/Color/Stroke/Corners/Spacing/Transform/Background/Brush/Shadow/Image/Mesh/WidgetId/bezier/num/approx/urect/span/half_simd/interned_str
 - `src/shape.rs` — Shape enum (RoundedRect, Line, Polyline, CubicBezier, QuadraticBezier, Text, Mesh, Image, Shadow)
 - `src/forest/` — `Forest` (per-layer arenas, `mod.rs`), `tree/` (per-layer `Tree`: SoA records + packed `ExtrasIdx` + dense `bounds_table`/`panel_table`/`chrome_table` (`ChromeRow` holds chrome+`ClipMode::Rounded` radius) + `Shapes` + `GridArena` + `SubtreeRollups` + `PaintAnims`, `NodeId`, `Layer`), `element/` (Element builder, `LayoutCore`/`NodeFlags`/`LayoutMode`, `Configure`), `node.rs` (`NodeRecord`), `rollups.rs` (per-node + subtree hashes + `paints` bitset), `shapes/` (`ShapeRecord` + add/clear), `seen_ids.rs`, `visibility.rs`
-- `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + the rendering glue against `src/text_backend/`; mono fallback for headless
-- `src/text_backend/` — **custom wgpu text rendering backend** (`atlas.rs`, `mod.rs`, `shader.wgsl`, `encode.rs`). Owns the glyph atlas, batch shape, and GPU upload path; routes writes through palantir's staging belt and integrates with `DynamicBuffer`. Only `cosmic-text` is an external dep.
+- `src/text/` — `TextShaper` (cosmic-text measurement + per-`(WidgetId, ordinal)` reuse cache) + the rendering glue against `src/renderer/backend/text/`; mono fallback for headless
 - `src/layout/` — LayoutEngine + drivers (stack/wrapstack/zstack/canvas/grid/scroll), intrinsic, cache; `layout/types/` (Sizing/Align/Justify/Sense/Visibility/Display/Track/Span/GridCell/ClipMode — layout vocabulary)
 - `src/input/` — InputState, HitIndex (O(1) by-id lookup over Cascades), keyboard/pointer/sense/shortcut/subscriptions/policy
-- `src/renderer/` — frontend (encode/compose) + backend (wgpu) + gpu (Quad/RenderBuffer/GradientAtlas) + `stroke_tessellate/` (polyline → fringe-AA mesh)
+- `src/renderer/` — frontend (encode/compose) + backend (wgpu, including `backend/text/` — the **custom wgpu text rendering backend**: glyph atlas, batch shape, GPU upload path through palantir's staging belt + `DynamicBuffer`) + gpu (Quad/RenderBuffer/GradientAtlas) + `stroke_tessellate/` (polyline → fringe-AA mesh)
 - `src/ui/` — Ui recorder, cascade pass, seen-id tracking, damage, frame state/report/stats, state map
 - `src/widgets/` — Button, Checkbox, Radio, Frame, Panel (HStack/VStack/ZStack/Canvas), Grid, Text, TextEdit, Scroll, Popup, Tooltip, ContextMenu, Theme; `widgets/tests/` (cross-widget integration tests)
 - `src/animation/` — `Animatable` trait + tween/spring drivers (state-map keyed) + `paint.rs` (`PaintAnim` shape-keyed alpha mods); `anim-derive/` workspace member provides `#[derive(Animatable)]`
@@ -71,7 +70,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `examples/` — `dump_theme` (theme TOML round-trip)
 - `benches/` — criterion (alloc_free, alloc_free_gpu, caches, damage, frame, input_throughput, scrollzoom, text_atlas); `docs/` — in-flight notes + `roadmap/` (per-feature design notes) + `cache-history/` (post-mortem on removed caches); `DESIGN.md` — full rationale
 
-Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/text_backend/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
+Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
 
 ## References
 

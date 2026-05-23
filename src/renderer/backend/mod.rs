@@ -11,6 +11,7 @@ mod quad_pipeline;
 mod queue;
 mod schedule;
 mod stencil;
+pub mod text;
 mod viewport;
 #[cfg(feature = "internals")]
 pub(crate) mod write_stats;
@@ -36,10 +37,10 @@ use self::viewport::build_damage_scissors;
 use crate::common::frame_arena::FrameArena;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
+use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
-use crate::text_backend::{StencilMode as TextStencilMode, TextBackend};
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
 
@@ -50,7 +51,7 @@ use crate::ui::frame_report::RenderPlan;
 ///
 /// - offset 0 (8 bytes): [`ViewportPush`] — viewport size, written
 ///   once per pass by `WgpuBackend`.
-/// - offset 8 (8 bytes): `text_backend::Params` — atlas dimensions,
+/// - offset 8 (8 bytes): `text::Params` — atlas dimensions,
 ///   written per text batch by `TextBackend::render_batch`.
 ///
 /// Pipelines that don't use the tail (quad/mesh/image/curve) still
@@ -236,7 +237,7 @@ impl WgpuBackend {
             format,
             wgpu::MultisampleState::default(),
             // Index 0 = Plain, index 1 = Stencil — matches
-            // `text_backend::StencilMode::pipeline_idx`.
+            // `text::StencilMode::pipeline_idx`.
             &[None, Some(stencil::stencil_test_state())],
             shaper,
         );

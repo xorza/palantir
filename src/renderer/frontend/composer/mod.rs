@@ -948,10 +948,11 @@ impl Composer {
                         origin: phys_rect.min,
                         bounds,
                         // Linear ColorU8 straight to the text backend.
-                        // Palantir's native text shader (replaced glyphon,
-                        // see `src/text_backend/`) consumes linear bytes
-                        // and premultiplies at output — matching the rest
-                        // of the renderer's pipelines. No sRGB roundtrip.
+                        // Palantir's native text shader (see
+                        // `src/renderer/backend/text/`) consumes linear
+                        // bytes and premultiplies at output — matching
+                        // the rest of the renderer's pipelines. No sRGB
+                        // roundtrip.
                         color: ColorU8::from(Color::from(t.color)),
                         key: t.key,
                         // Snap the ancestor-transform component of the
