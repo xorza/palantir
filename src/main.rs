@@ -81,7 +81,7 @@ fn main() {
             app: AppState { counter: 0 },
         },
     )
-    .with_setup(|ui| {
+    .with_setup(|ui, _app, _handle| {
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
         ui.theme.button.anim = Some(AnimSpec::SPRING);
