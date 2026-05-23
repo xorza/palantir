@@ -45,6 +45,8 @@ pub enum UserEvent {
     /// Run a closure on the main (event-loop) thread with `&mut Ui`,
     /// then request a redraw.
     RunOnMain(MainTask),
+    /// Ask the event loop to exit at the next opportunity.
+    Quit,
 }
 
 /// Thread-safe handle to a running [`WinitHost`]. Cheaply `Clone`; send
@@ -71,6 +73,12 @@ impl HostHandle {
     /// to leave the present schedule unchanged.
     pub fn run_on_main(&self, f: impl FnOnce(&mut Ui) -> bool + Send + 'static) {
         let _ = self.proxy.send_event(UserEvent::RunOnMain(Box::new(f)));
+    }
+
+    /// Ask the host's event loop to exit. The current frame finishes;
+    /// no further frames are scheduled.
+    pub fn quit(&self) {
+        let _ = self.proxy.send_event(UserEvent::Quit);
     }
 }
 
@@ -240,13 +248,18 @@ impl<T> ApplicationHandler<UserEvent> for WinitHost<T>
 where
     T: App + 'static,
 {
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: UserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
+        if matches!(event, UserEvent::Quit) {
+            event_loop.exit();
+            return;
+        }
         let Some(rt) = self.state.as_mut() else {
             return;
         };
         let repaint = match event {
             UserEvent::Repaint => true,
             UserEvent::RunOnMain(task) => task(&mut rt.host.ui),
+            UserEvent::Quit => unreachable!(),
         };
         if repaint {
             rt.next = FramePresent::Immediate;
