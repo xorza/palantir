@@ -121,9 +121,13 @@ pub struct WinitHostConfig {
     /// How many frames may be in flight on the GPU at once. See
     /// [`FrameLatency`].
     pub max_frame_latency: FrameLatency,
-    /// Forwarded verbatim to [`Host::with_options`] — owns the
-    /// image-cache budget and GPU-stats opt-in.
-    pub host: HostConfig,
+    /// GPU texture cache budget; eviction kicks in past this. See
+    /// [`DEFAULT_IMAGE_BUDGET_BYTES`](crate::DEFAULT_IMAGE_BUDGET_BYTES).
+    pub image_budget_bytes: u64,
+    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
+    /// queries). Off by default because the per-frame readback
+    /// round-trip is non-trivial.
+    pub collect_gpu_stats: bool,
 }
 
 impl Default for WinitHostConfig {
@@ -135,7 +139,8 @@ impl Default for WinitHostConfig {
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
             max_frame_latency: FrameLatency::Low,
-            host: HostConfig::default(),
+            image_budget_bytes: HostConfig::default().image_budget_bytes,
+            collect_gpu_stats: false,
         }
     }
 }
@@ -303,7 +308,7 @@ where
         // pass begin/end only; `+ TIMESTAMP_QUERY_INSIDE_PASSES` →
         // per-batch attribution; `+ PIPELINE_STATISTICS_QUERY` →
         // vert/frag invocation counts.
-        let timing_features = if cfg.host.collect_gpu_stats {
+        let timing_features = if cfg.collect_gpu_stats {
             wgpu::Features::TIMESTAMP_QUERY
                 | wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES
                 | wgpu::Features::PIPELINE_STATISTICS_QUERY
@@ -369,7 +374,10 @@ where
             queue.clone(),
             format,
             TextShaper::with_bundled_fonts(),
-            cfg.host,
+            HostConfig {
+                image_budget_bytes: cfg.image_budget_bytes,
+                collect_gpu_stats: cfg.collect_gpu_stats,
+            },
         );
         // Build the app now that the `Ui` exists. `resumed` can fire
         // again after a suspend; only construct on the first pass so a
