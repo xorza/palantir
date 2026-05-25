@@ -104,6 +104,43 @@ fn apply_key_cases() {
     }
 }
 
+/// Type one char via the real (cap-aware) `apply_key`.
+fn type_char(s: &mut String, state: &mut TextEditState, c: char, max: Option<usize>) {
+    let mut vert = None;
+    super::super::apply_key(s, state, press(Key::Char(c)), false, max, &mut vert);
+}
+
+#[test]
+fn max_chars_caps_typed_input() {
+    // Cap at 3: the first three land, the fourth is dropped.
+    let mut s = String::new();
+    let mut state = TextEditState::default();
+    for c in "abcd".chars() {
+        type_char(&mut s, &mut state, c, Some(3));
+    }
+    assert_eq!(s, "abc");
+    assert_eq!(state.caret, 3);
+
+    // At the cap, inserting in the *middle* is rejected outright — it
+    // must not steal a slot by dropping some other char.
+    state.caret = 0;
+    type_char(&mut s, &mut state, 'X', Some(3));
+    assert_eq!(s, "abc", "insertion at the cap is dropped, not shifted");
+    assert_eq!(state.caret, 0);
+}
+
+#[test]
+fn max_chars_counts_chars_not_bytes() {
+    // Multi-byte chars: the cap is 3 scalar values, not 3 bytes.
+    let mut s = String::new();
+    let mut state = TextEditState::default();
+    for c in "éééé".chars() {
+        type_char(&mut s, &mut state, c, Some(3));
+    }
+    assert_eq!(s, "ééé");
+    assert_eq!(s.chars().count(), 3);
+}
+
 #[test]
 fn escape_with_selection_does_not_blur() {
     let mut s = String::from("hello");
