@@ -30,7 +30,7 @@ wgpu = { version = "29.0", default-features = false, features = ["std", "parking
 winit = "0.30"
 rayon = "1.12"
 padding-struct = "0.2"
-soa-rs = "0.9"
+soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
 toml = "1.1"
