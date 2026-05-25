@@ -178,10 +178,42 @@ fn cut_selection(text: &mut String, state: &mut TextEditState) {
     state.selection = None;
 }
 
+/// Insert `s` at the caret, capped so the buffer holds at most
+/// `max_chars` characters (`None` = unbounded). Trailing chars of `s`
+/// that don't fit are dropped; the caret advances past what landed.
+/// Call *after* `delete_selection` so the freed room counts. The cap is
+/// by char count (not bytes) and only ever inserts on a char boundary.
+fn insert_capped(text: &mut String, state: &mut TextEditState, s: &str, max_chars: Option<usize>) {
+    let fit: &str = match max_chars {
+        Some(max) => {
+            let room = max.saturating_sub(text.chars().count());
+            if room == 0 {
+                return;
+            }
+            match s.char_indices().nth(room) {
+                Some((byte, _)) => &s[..byte],
+                None => s,
+            }
+        }
+        None => s,
+    };
+    if fit.is_empty() {
+        return;
+    }
+    text.insert_str(state.caret, fit);
+    state.caret += fit.len();
+}
+
 /// Paste `raw` at the caret, replacing any live selection. Sanitizes
 /// line breaks for single-line editors so `\n` / `\r` never enter the
-/// buffer. No-op on an empty clipboard.
-fn paste_at_caret(text: &mut String, state: &mut TextEditState, raw: &str, multiline: bool) {
+/// buffer. No-op on an empty clipboard. Honors `max_chars`.
+fn paste_at_caret(
+    text: &mut String,
+    state: &mut TextEditState,
+    raw: &str,
+    multiline: bool,
+    max_chars: Option<usize>,
+) {
     let cleaned: Cow<'_, str> = if multiline {
         Cow::Borrowed(raw)
     } else {
@@ -192,8 +224,7 @@ fn paste_at_caret(text: &mut String, state: &mut TextEditState, raw: &str, multi
     }
     record_edit(text, state, EditKind::Other);
     delete_selection(text, state);
-    text.insert_str(state.caret, &cleaned);
-    state.caret += cleaned.len();
+    insert_capped(text, state, &cleaned, max_chars);
 }
 
 fn clear_buffer(text: &mut String, state: &mut TextEditState) {
@@ -387,6 +418,10 @@ pub struct TextEdit<'a> {
     /// for multi-line. Caret and selection rects derive from the same
     /// offset, so any alignment keeps them tracking the glyphs.
     text_align: Option<Align>,
+    /// Max characters (Unicode scalar values) the buffer may hold.
+    /// `None` = unbounded. Enforced at every insertion path (typing,
+    /// IME/text, paste, newline): input that would overflow is dropped.
+    max_chars: Option<usize>,
 }
 
 impl<'a> TextEdit<'a> {
@@ -411,7 +446,16 @@ impl<'a> TextEdit<'a> {
             placeholder: Cow::Borrowed(""),
             multiline: false,
             text_align: None,
+            max_chars: None,
         }
+    }
+
+    /// Cap the buffer at `n` characters. Insertions are truncated to
+    /// what fits; content already longer than `n` is left alone (the
+    /// cap only gates growth). `n == 0` makes the field read-only.
+    pub fn max_chars(mut self, n: usize) -> Self {
+        self.max_chars = Some(n);
+        self
     }
 
     /// Position of the text inside the editor's inner rect (the rect
@@ -601,7 +645,16 @@ impl<'a> TextEdit<'a> {
             (s.caret, s.selection)
         };
         let mut blur_after = false;
-        let input = handle_input(ui, id, is_focused, self.text, &ctx, offset, &mut blur_after);
+        let input = handle_input(
+            ui,
+            id,
+            is_focused,
+            self.text,
+            &ctx,
+            offset,
+            self.max_chars,
+            &mut blur_after,
+        );
         let caret_byte = input.caret;
         let selection = input.selection;
 
@@ -862,6 +915,7 @@ impl<'a> TextEdit<'a> {
                     ui.state_mut::<TextEditState>(id),
                     &crate::clipboard::get(),
                     ctx.multiline,
+                    self.max_chars,
                 );
             }
             MenuItem::separator(ui);
@@ -898,6 +952,7 @@ struct InputResult {
 /// out of `show()` keeps the borrow choreography contained: we touch
 /// `ui.state`, `ui.input`, and `ui.text` here, but never the
 /// shape/tree storage.
+#[allow(clippy::too_many_arguments)]
 fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
@@ -905,6 +960,7 @@ fn handle_input(
     text: &mut String,
     ctx: &ShapeCtx,
     align_offset: Vec2,
+    max_chars: Option<usize>,
     blur_after: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
@@ -1049,15 +1105,14 @@ fn handle_input(
                 if !to_insert.is_empty() {
                     record_edit(text, state, EditKind::Typing);
                     delete_selection(text, state);
-                    text.insert_str(state.caret, &to_insert);
-                    state.caret += to_insert.len();
+                    insert_capped(text, state, &to_insert, max_chars);
                 }
             }
             KeyboardEvent::Down(kp) => {
-                if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open) {
+                if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open, max_chars) {
                     continue;
                 }
-                if apply_key(text, state, kp, ctx.multiline, &mut vert) {
+                if apply_key(text, state, kp, ctx.multiline, max_chars, &mut vert) {
                     *blur_after = true;
                 }
                 if let Some(v) = vert.take() {
@@ -1128,6 +1183,7 @@ fn dispatch_shortcut(
     kp: KeyPress,
     multiline: bool,
     menu_open: bool,
+    max_chars: Option<usize>,
 ) -> bool {
     const SELECT_ALL: Shortcut = Shortcut::ctrl('A');
     const COPY: Shortcut = Shortcut::ctrl('C');
@@ -1166,7 +1222,7 @@ fn dispatch_shortcut(
         return true;
     }
     if PASTE.matches(kp) {
-        paste_at_caret(text, state, &crate::clipboard::get(), multiline);
+        paste_at_caret(text, state, &crate::clipboard::get(), multiline, max_chars);
         return true;
     }
     false
@@ -1186,6 +1242,7 @@ fn apply_key(
     state: &mut TextEditState,
     kp: KeyPress,
     multiline: bool,
+    max_chars: Option<usize>,
     out_vertical: &mut Option<VerticalMotion>,
 ) -> bool {
     let shift = kp.mods.shift;
@@ -1195,8 +1252,7 @@ fn apply_key(
             delete_selection(text, state);
             let mut buf = [0u8; 4];
             let s = c.encode_utf8(&mut buf);
-            text.insert_str(state.caret, s);
-            state.caret += s.len();
+            insert_capped(text, state, s, max_chars);
         }
         Key::Backspace => {
             let has_sel = state.sel_range().is_some();
@@ -1262,8 +1318,7 @@ fn apply_key(
         Key::Enter if multiline => {
             record_edit(text, state, EditKind::Other);
             delete_selection(text, state);
-            text.insert(state.caret, '\n');
-            state.caret += 1;
+            insert_capped(text, state, "\n", max_chars);
         }
         Key::Home => move_caret(state, 0, shift),
         Key::End => move_caret(state, text.len(), shift),
