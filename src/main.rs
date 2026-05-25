@@ -1,6 +1,6 @@
 use palantir::{
-    AnimSpec, App, Background, Button, Color, Configure, Key, Panel, Shadow, Shortcut, Sizing, Ui,
-    WinitHost, WinitHostConfig,
+    AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shadow, Shortcut,
+    Sizing, Ui, WinitHost, WinitHostConfig,
 };
 
 mod showcase;
@@ -75,22 +75,20 @@ fn main() {
         )
         .init();
 
-    WinitHost::new(
-        WinitHostConfig::new("palantir showcase"),
-        State {
-            active: 0,
-            app: AppState { counter: 0 },
-        },
-    )
-    .with_setup(|ui, _app, _handle| {
-        // Library default is no button animation (`anim = None`).
-        // Showcase exists to demo the animation primitive — opt in.
-        ui.theme.button.anim = Some(AnimSpec::SPRING);
-    })
-    .run();
+    WinitHost::<State>::new(WinitHostConfig::new("palantir showcase")).run();
 }
 
 impl App for State {
+    fn new(ui: &mut Ui, _handle: HostHandle) -> Self {
+        // Library default is no button animation (`anim = None`).
+        // Showcase exists to demo the animation primitive — opt in.
+        ui.theme.button.anim = Some(AnimSpec::SPRING);
+        State {
+            active: 0,
+            app: AppState { counter: 0 },
+        }
+    }
+
     fn frame(&mut self, ui: &mut Ui) {
         build_ui(ui, self);
     }

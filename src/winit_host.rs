@@ -3,19 +3,22 @@
 //! user's app: window creation, swapchain config, resize / scale /
 //! occlusion handling, and the `FramePresent` scheduling state machine.
 //!
-//! The caller-supplied app implements the [`App`] trait — one method,
-//! `frame(&mut self, ui: &mut Ui)`, called once per frame.
+//! The caller-supplied app implements the [`App`] trait: `new` builds it
+//! once the `Ui` + host handle are ready (before the first frame), and
+//! `frame(&mut self, ui: &mut Ui)` runs once per frame.
 //!
 //! Usage:
 //!
 //! ```ignore
 //! struct MyApp;
 //! impl palantir::App for MyApp {
+//!     fn new(ui: &mut Ui, _handle: HostHandle) -> Self {
+//!         ui.theme.button.anim = Some(AnimSpec::SPRING);
+//!         MyApp
+//!     }
 //!     fn frame(&mut self, ui: &mut Ui) { /* build ui */ }
 //! }
-//! WinitHost::new(WinitHostConfig::new("title"), MyApp)
-//!     .with_setup(|ui, _app, _handle| ui.theme.button.anim = Some(AnimSpec::SPRING))
-//!     .run();
+//! WinitHost::<MyApp>::new(WinitHostConfig::new("title")).run();
 //! ```
 
 use std::sync::Arc;
@@ -31,7 +34,6 @@ use crate::input::InputEvent;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 
-type SetupFn<T> = Box<dyn FnOnce(&mut Ui, &mut T, &HostHandle)>;
 type MainTask = Box<dyn FnOnce(&mut Ui) -> bool + Send>;
 
 /// Events delivered to the host through [`HostHandle`] — cross-thread
@@ -147,9 +149,16 @@ impl WinitHostConfig {
     }
 }
 
-/// Per-frame user hook. `WinitHost` calls `frame` once per redraw with
-/// the recording `Ui`; implementors mutate themselves and emit widgets.
+/// The caller-supplied app. `WinitHost` builds it via [`App::new`] once
+/// the `Ui` and [`HostHandle`] exist (after device + surface are up,
+/// before the first frame), then calls [`App::frame`] once per redraw.
 pub trait App {
+    /// One-shot startup wiring against the freshly-built `Ui`. Use for
+    /// theme tweaks, restoring persisted state, and stashing the
+    /// `HostHandle` — anything that must happen before the first frame.
+    fn new(ui: &mut Ui, handle: HostHandle) -> Self;
+
+    /// Build one frame: implementors mutate themselves and emit widgets.
     fn frame(&mut self, ui: &mut Ui);
 }
 
@@ -158,8 +167,10 @@ pub trait App {
 /// to manage) and calls `T::frame` once per redraw with `&mut Ui`.
 pub struct WinitHost<T> {
     config: WinitHostConfig,
-    app: T,
-    setup: Option<SetupFn<T>>,
+    /// `None` until `resumed` builds the `Ui`, then `App::new` runs and
+    /// the app lands here. The app can't exist before the `Ui` does, so
+    /// construction is necessarily deferred.
+    app: Option<T>,
     state: Option<RuntimeState>,
     event_loop: Option<EventLoop<UserEvent>>,
     proxy: EventLoopProxy<UserEvent>,
@@ -182,7 +193,7 @@ impl<T> WinitHost<T>
 where
     T: App + 'static,
 {
-    pub fn new(config: WinitHostConfig, app: T) -> Self {
+    pub fn new(config: WinitHostConfig) -> Self {
         // EventLoop is built up front so `handle()` can hand out a
         // proxy before `run()` is called — that's the whole point of
         // letting threads spawn knowing where to send their pokes.
@@ -192,8 +203,7 @@ where
         let proxy = event_loop.create_proxy();
         Self {
             config,
-            app,
-            setup: None,
+            app: None,
             state: None,
             event_loop: Some(event_loop),
             proxy,
@@ -210,18 +220,6 @@ where
         }
     }
 
-    /// Run a one-shot configuration step against the freshly-built
-    /// `Ui` (after device + surface are up). Use for theme tweaks
-    /// and any other `Ui` mutation that needs to happen before the
-    /// first frame.
-    pub fn with_setup(
-        mut self,
-        setup: impl FnOnce(&mut Ui, &mut T, &HostHandle) + 'static,
-    ) -> Self {
-        self.setup = Some(Box::new(setup));
-        self
-    }
-
     /// Drive the (already-constructed) event loop to completion.
     pub fn run(mut self) {
         let event_loop = self.event_loop.take().expect("event loop already consumed");
@@ -230,7 +228,7 @@ where
 
     fn draw(&mut self) {
         let Self { state, app, .. } = self;
-        let Some(rt) = state.as_mut() else {
+        let (Some(rt), Some(app)) = (state.as_mut(), app.as_mut()) else {
             return;
         };
         let window = rt.window.clone();
@@ -373,11 +371,14 @@ where
             TextShaper::with_bundled_fonts(),
             cfg.host,
         );
-        if let Some(setup) = self.setup.take() {
+        // Build the app now that the `Ui` exists. `resumed` can fire
+        // again after a suspend; only construct on the first pass so a
+        // resume doesn't wipe accumulated app state.
+        if self.app.is_none() {
             let handle = HostHandle {
                 proxy: self.proxy.clone(),
             };
-            setup(&mut host.ui, &mut self.app, &handle);
+            self.app = Some(T::new(&mut host.ui, handle));
         }
         let scale_factor = window.scale_factor() as f32;
 

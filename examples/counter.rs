@@ -1,10 +1,16 @@
-use palantir::{App, Button, Configure, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
+use palantir::{
+    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig,
+};
 
 struct Counter {
     clicks: u32,
 }
 
 impl App for Counter {
+    fn new(_ui: &mut Ui, _handle: HostHandle) -> Self {
+        Counter { clicks: 0 }
+    }
+
     fn frame(&mut self, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
@@ -22,5 +28,5 @@ impl App for Counter {
 }
 
 fn main() {
-    WinitHost::new(WinitHostConfig::new("counter"), Counter { clicks: 0 }).run();
+    WinitHost::<Counter>::new(WinitHostConfig::new("counter")).run();
 }
