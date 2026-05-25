@@ -159,9 +159,7 @@ impl CascadeCache {
         cascades
             .subtree_paint_rects
             .extend_from_slice(&self.sptrs[n_lo..n_hi]);
-        for entry in &self.entry_rows[n_lo..n_hi] {
-            entries.push(*entry);
-        }
+        entries.extend(self.entry_rows[n_lo..n_hi].iter().copied());
         let paint_base = cascades.paint_arena.rows.len() as u32;
         let p_lo = snap.paints.start as usize;
         let p_hi = p_lo + snap.paints.len as usize;
