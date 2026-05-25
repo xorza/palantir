@@ -1235,9 +1235,9 @@ dependencies = [
 
 [[package]]
 name = "log"
-version = "0.4.29"
+version = "0.4.30"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
+checksum = "616ec5685824bcc94416c6d4a7a446eea774a31efd7062c8480ba6fd06d7a6e5"
 
 [[package]]
 name = "loom"
@@ -1717,9 +1717,9 @@ checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
 name = "orbclient"
-version = "0.3.54"
+version = "0.3.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a570f6bca41d29acb2139229a7c873ec99bc9a313bd10804081d89bfac8ff329"
+checksum = "5df339f526ea9a60e371768d50efc2f2508c7203290731565d1f7a6f71d21747"
 dependencies = [
  "libc",
  "libredox",
@@ -2449,18 +2449,18 @@ dependencies = [
 
 [[package]]
 name = "soa-rs"
-version = "0.9.1"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf20e367c4676b712916633bc735e97d18cf4d7c2a88b0e29a43446790d029d6"
+checksum = "2db6129491886267d03760559b431de98bc92d64f0c09cf567fb137949085a1f"
 dependencies = [
  "soa-rs-derive",
 ]
 
 [[package]]
 name = "soa-rs-derive"
-version = "0.9.0"
+version = "1.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3de734b144ae71c89c91cdc45de3bd22e99e4efb1098e2635797fc0ee0566172"
+checksum = "5f685a127d0edd3b04f4f7e22c1be60ecc00a3b7300920d7e510cb1b062e178e"
 dependencies = [
  "proc-macro2",
  "quote",
