@@ -471,3 +471,59 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
         }
     }
 }
+
+/// A `wrap_vstack` nested inside a `vstack` (same main axis) is measured
+/// with `INF` main-axis available by the parent stack, so on its own it
+/// would never wrap. An explicit `max_size` height gives it a finite wrap
+/// budget — `resolve_sizing` clamps the `INF` down to the cap — so the
+/// children pack into columns. Drives the darkroom new-node popup, where
+/// each category's function list is a capped `wrap_vstack`.
+#[test]
+fn wrap_vstack_wraps_under_max_size_inside_vstack() {
+    let mut ui = Ui::for_test();
+    let mut nodes = Vec::new();
+    ui.run_at(UVec2::new(400, 600), |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("col"))
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Panel::wrap_vstack()
+                    .id(WidgetId::from_hash("wrap"))
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .max_size((f32::INFINITY, 100.0))
+                    .gap(10.0)
+                    .line_gap(12.0)
+                    .show(ui, |ui| {
+                        // 50×40 cells: a 100px column fits 2 (40 + 10 + 40 = 90);
+                        // the 3rd (140 > 100) wraps to the next column.
+                        for i in 0..5u32 {
+                            nodes.push(
+                                Frame::new()
+                                    .id(WidgetId::from_hash(("c", i)))
+                                    .size((Sizing::Fixed(50.0), Sizing::Fixed(40.0)))
+                                    .show(ui)
+                                    .node(),
+                            );
+                        }
+                    });
+            });
+    });
+    let rect = |n: NodeId| ui.layout[Layer::Main].rect[n.idx()];
+    // Column 0 holds cells 0 and 1 (x = 0); cell 2 wraps to column 1.
+    assert_eq!(rect(nodes[0]).min.x, 0.0);
+    assert_eq!(rect(nodes[1]).min.x, 0.0);
+    assert_eq!(
+        rect(nodes[1]).min.y,
+        50.0,
+        "second cell stacks below the first"
+    );
+    assert!(
+        rect(nodes[2]).min.x > 0.0,
+        "third cell wraps to a new column (max_size bounded the INF main-axis)",
+    );
+    assert_eq!(
+        rect(nodes[2]).min.y,
+        0.0,
+        "the new column starts at the top"
+    );
+}
