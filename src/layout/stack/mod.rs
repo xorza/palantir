@@ -131,14 +131,24 @@ pub(crate) fn measure(
     let gap = tree.panel(node).gaps.gap();
     let cross_avail = axis.cross(inner);
 
-    // Pass 1: measure non-Fill children at `INF` main with the stack's
-    // committed cross. This is *height-given-width* (or width-given-
-    // height): the child shapes/wraps under the finite cross and
-    // reports the resulting main-axis size. `intrinsic(MaxContent)`
-    // would return the unbounded answer, ignoring the cross — wrong
-    // for any child whose main depends on cross (Grid with wrapping
-    // cells, VStack of wrapping leaves, etc.).
+    // Pass 1: measure non-Fill children with the stack's committed
+    // cross *and* its committed main extent. This is *height-given-width*
+    // (or width-given-height): the child shapes/wraps under the finite
+    // cross and reports the resulting main-axis size.
+    //
+    // `main_avail` is the stack's own main extent — `resolve_sizing` has
+    // already clamped it to the stack's `Fixed`/`max_size`/inherited
+    // bound. When the stack is unbounded on its main axis it's `INF`
+    // (the common Hug-in-Hug case: children report their natural main
+    // size and the stack grows to fit). When the stack *is* bounded, the
+    // bound flows down — so a `max_size` on any ancestor constrains its
+    // descendants (CSS `max-height` semantics), and content that wraps or
+    // scrolls against the main axis respects it instead of overrunning a
+    // box the cap only shrank. Children still clamp at arrange; a rigid
+    // child whose content exceeds the bound overflows, same as on the
+    // cross axis.
     let layouts = tree.records.layout();
+    let main_avail = axis.main(inner);
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -149,13 +159,7 @@ pub(crate) fn measure(
             total_weight += w;
             continue;
         }
-        let d = layout.measure(
-            tree,
-            c,
-            axis.compose_size(f32::INFINITY, cross_avail),
-            tc,
-            out,
-        );
+        let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), tc, out);
         sum_non_fill_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
     }
