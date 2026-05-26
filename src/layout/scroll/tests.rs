@@ -4,6 +4,7 @@
 //! (driver doesn't fire; row keeps last frame's `content`).
 
 use crate::Ui;
+use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::layout::scroll::ScrollLayoutState as ScrollState;
 use crate::layout::types::sizing::Sizing;
@@ -150,4 +151,155 @@ fn content_margin_leaves_content_size_unchanged() {
             });
     });
     assert_eq!(state_for(&mut ui, "scroll").content, Size::new(80.0, 160.0));
+}
+
+/// Arranged height of the scroll widget's outer wrapper (the node that
+/// carries the user's `id`).
+fn scroll_height(ui: &Ui, id_salt: &'static str) -> f32 {
+    let node = ui.node_for_widget_id(WidgetId::from_hash(id_salt));
+    ui.layout[Layer::Main].rect[node.idx()].size.h
+}
+
+/// Build a `count`-row vertical **Hug** scroll (each row 50px tall)
+/// wrapped in a Hug vstack, with the given min/max heights. Returns the
+/// scroll's arranged height. A Hug scroll sizes to content (the driver
+/// reports content extent on Hug panned axes); the wrapper isolates the
+/// assertion from how the root itself is arranged.
+fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .min_size((0.0, min_h))
+                    .max_size((f32::INFINITY, max_h))
+                    .show(ui, |ui| {
+                        for i in 0..count {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("row", i)))
+                                .size((Sizing::Fixed(120.0), Sizing::Fixed(50.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+    });
+    scroll_height(&ui, "scroll")
+}
+
+/// A `Hug` scroll sizes to its content (3 × 50 = 150) when below the
+/// cap — the same "size to content" `Hug` means for every other widget,
+/// rather than collapsing to zero or filling the parent.
+#[test]
+fn hug_scroll_fits_content_below_max() {
+    assert_eq!(hug_scroll_height(3, 0.0, 400.0), 150.0);
+}
+
+/// Past the cap: 8 × 50 = 400 of content in a `Hug` scroll capped at
+/// `max_size = 200`, so the viewport stops at 200 and the content
+/// overflows (scrollbar engages). Content extent still records the full
+/// 400 so the bar/thumb sizing is correct.
+#[test]
+fn hug_scroll_caps_at_max_and_scrolls() {
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .max_size((f32::INFINITY, 200.0))
+                    .show(ui, |ui| {
+                        for i in 0..8u32 {
+                            Frame::new()
+                                .id(WidgetId::from_hash(("row", i)))
+                                .size((Sizing::Fixed(120.0), Sizing::Fixed(50.0)))
+                                .show(ui);
+                        }
+                    });
+            });
+    });
+    assert_eq!(scroll_height(&ui, "scroll"), 200.0, "capped at max_size");
+    let st = state_for(&mut ui, "scroll");
+    assert_eq!(st.content.h, 400.0, "records full content extent");
+    assert!(st.overflow.1, "content past the cap overflows on Y");
+}
+
+/// Below the floor: 1 × 50 = 50 of content in a `Hug` scroll with
+/// `min_size = 120` floors the viewport at 120 (the cap, 400, is slack).
+#[test]
+fn hug_scroll_floors_at_min() {
+    assert_eq!(hug_scroll_height(1, 120.0, 400.0), 120.0);
+}
+
+/// Counterpart guard: a `Fill` scroll keeps the content-independent
+/// viewport — it reports zero on its pan axis, so it does **not** inflate
+/// a `Hug` ancestor (a Fill scroll in a Hug parent stays collapsed, the
+/// parent doesn't grow to the 150px of content). This is what `Hug` opts
+/// out of, and it's unchanged from before.
+#[test]
+fn fill_scroll_does_not_grow_hug_parent() {
+    let mut ui = Ui::for_test();
+    ui.run_at(SURFACE, |ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Hug, Sizing::Fill(1.0)))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("row"))
+                            .size((Sizing::Fixed(120.0), Sizing::Fixed(150.0)))
+                            .show(ui);
+                    });
+            });
+    });
+    assert_eq!(
+        scroll_height(&ui, "scroll"),
+        0.0,
+        "a Fill scroll reports zero pan-axis extent; the Hug parent doesn't grow",
+    );
+}
+
+/// Toggling a scroll's pan-axis `Sizing` (`Hug` ⇄ `Fill`) on the **same
+/// `WidgetId`** across frames busts the `MeasureCache`: the fit bits ride
+/// `mode_payload`, which is folded into the subtree hash for `Scroll`.
+/// Frame 1 (`Hug`) fits its 150px content; frame 2 (`Fill`) collapses in
+/// the `Hug` parent. Without the payload hashing, the inner viewport's
+/// hash (its own `Sizing` is a constant `Fill`) wouldn't change and the
+/// stale frame-1 fit measure would be served — yielding 150 in frame 2.
+#[test]
+fn toggling_scroll_sizing_busts_measure_cache() {
+    let mut ui = Ui::for_test();
+    let build = |ui: &mut Ui, pan_h: Sizing| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                Scroll::vertical()
+                    .id(WidgetId::from_hash("scroll"))
+                    .size((Sizing::Hug, pan_h))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("row"))
+                            .size((Sizing::Fixed(120.0), Sizing::Fixed(150.0)))
+                            .show(ui);
+                    });
+            });
+    };
+    ui.run_at(SURFACE, |ui| build(ui, Sizing::Hug));
+    assert_eq!(scroll_height(&ui, "scroll"), 150.0, "Hug fits its content");
+    ui.run_at(SURFACE, |ui| build(ui, Sizing::Fill(1.0)));
+    assert_eq!(
+        scroll_height(&ui, "scroll"),
+        0.0,
+        "Fill collapses in the Hug parent — the frame-1 fit measure is not served stale",
+    );
 }

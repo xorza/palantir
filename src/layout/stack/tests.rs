@@ -496,3 +496,59 @@ fn fill_cross_axis_stretches_regardless_of_align() {
         );
     }
 }
+
+/// Cross-cutting min/max contract: a `Hug` panel clamps its
+/// content-driven size to `[min_size, max_size]` on each axis — the same
+/// `resolve_axis_size` clamp every widget/panel goes through, so this
+/// pins the behavior for all of them. Small content floors at `min_size`;
+/// large content caps at `max_size`.
+#[test]
+fn hug_panel_clamps_to_min_and_max_size() {
+    // Content 60px tall, `min_size` 100 → floors at 100.
+    let mut ui = Ui::for_test();
+    let mut small = None;
+    ui.run_at(UVec2::new(800, 600), |ui| {
+        small = Some(
+            Panel::vstack()
+                .id(WidgetId::from_hash("small"))
+                .size((Sizing::Hug, Sizing::Hug))
+                .min_size((0.0, 100.0))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(60.0)))
+                        .show(ui);
+                })
+                .node(),
+        );
+    });
+    assert_eq!(
+        ui.layout[Layer::Main].rect[small.unwrap().idx()].size.h,
+        100.0,
+        "Hug floors at min_size when content is smaller",
+    );
+
+    // Content 300px tall, `max_size` 120 → caps at 120.
+    let mut ui = Ui::for_test();
+    let mut big = None;
+    ui.run_at(UVec2::new(800, 600), |ui| {
+        big = Some(
+            Panel::vstack()
+                .id(WidgetId::from_hash("big"))
+                .size((Sizing::Hug, Sizing::Hug))
+                .max_size((f32::INFINITY, 120.0))
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id(WidgetId::from_hash("c"))
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(300.0)))
+                        .show(ui);
+                })
+                .node(),
+        );
+    });
+    assert_eq!(
+        ui.layout[Layer::Main].rect[big.unwrap().idx()].size.h,
+        120.0,
+        "Hug caps at max_size when content is larger",
+    );
+}

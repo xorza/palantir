@@ -150,6 +150,12 @@ pub(crate) fn measure(
     out: &mut Layout,
 ) -> Size {
     let pan = LayoutMode::pan_mask_from_payload(mode_payload);
+    // A panned axis the user sized `Hug` "fits" to content (reports its
+    // content extent below); `Fill`/`Fixed` keep the content-independent
+    // viewport (reports zero). The `Scroll` widget encodes the user's
+    // per-axis `Sizing` into these bits, so `Hug` means the same "size to
+    // content" here as it does for every other widget.
+    let fit = LayoutMode::scroll_fit_from_payload(mode_payload);
     let child_avail = Size::new(
         if pan.x { f32::INFINITY } else { inner_avail.w },
         if pan.y { f32::INFINITY } else { inner_avail.h },
@@ -171,12 +177,16 @@ pub(crate) fn measure(
     // driver itself sees only non-negative content.
     layout.scroll_states.entry(wid).or_default().content = raw;
 
-    // Panned axes contribute zero to the viewport's own desired size
-    // (content extent doesn't grow the viewport); non-panned axes pass
-    // the measured size through.
+    // A `Fill`/`Fixed` panned axis contributes zero to the viewport's own
+    // desired size (content extent doesn't grow the viewport); non-panned
+    // axes pass the measured size through. A `Hug` panned axis instead
+    // reports the content extent, so the viewport sizes to content (and a
+    // `max_size`/`available` cap then bounds it, with the overflow
+    // scrolling). The content intrinsic stays zero (see `intrinsic.rs`),
+    // so ancestors can still shrink a `Hug` viewport below its content.
     Size::new(
-        if pan.x { 0.0 } else { raw.w },
-        if pan.y { 0.0 } else { raw.h },
+        if pan.x && !fit.x { 0.0 } else { raw.w },
+        if pan.y && !fit.y { 0.0 } else { raw.h },
     )
 }
 

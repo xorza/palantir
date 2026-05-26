@@ -130,13 +130,14 @@ pub enum LayoutMode {
     /// (both-axes pan). The widget builder sets `transform` for pan
     /// and `clip` so children render within the rect.
     ///
-    /// **Hashing caveat**: `mode_payload` is intentionally not part
-    /// of the subtree hash (see [`LayoutCore::hash_with_flags`]).
-    /// A widget that swaps pan mask at runtime won't bust the
-    /// MeasureCache. In practice every `Scroll::*` constructor picks
-    /// a variant at instantiation and the widget is re-mounted with
-    /// a fresh `WidgetId` if the surrounding code rebuilds, so this
-    /// is a documented constraint rather than a live bug.
+    /// **Hashing**: unlike `Grid` (whose `mode_payload` is a frame-local
+    /// arena idx, deliberately excluded), a `Scroll`'s `mode_payload`
+    /// (pan mask + the per-axis fit bits [`Self::SCROLL_FIT_X`] /
+    /// [`Self::SCROLL_FIT_Y`], derived from the user's
+    /// `Hug`/`Fill`/`Fixed` `Sizing`) *is* folded into the subtree hash
+    /// (see [`LayoutCore::hash_with_flags`]). So swapping the pan mask or
+    /// toggling a pan-axis between `Hug` and `Fill`/`Fixed` at runtime on
+    /// the same `WidgetId` correctly busts the MeasureCache.
     Scroll = 8,
 }
 
@@ -145,6 +146,24 @@ impl LayoutMode {
     pub(crate) const SCROLL_PAN_X: u16 = 0b01;
     /// `mode_payload` bit for pan-on-Y under [`Self::Scroll`].
     pub(crate) const SCROLL_PAN_Y: u16 = 0b10;
+    /// `mode_payload` bits: per-axis "fit to content". A `Hug`-sized
+    /// scroll axis reports its content extent (instead of zero) so the
+    /// viewport sizes to content like any other `Hug` widget (bounded by
+    /// `max_size`/available, scrolling past the cap). Set automatically by
+    /// the `Scroll` widget from the user's per-axis `Sizing`; independent
+    /// of the pan-mask bits.
+    pub(crate) const SCROLL_FIT_X: u16 = 0b0100;
+    pub(crate) const SCROLL_FIT_Y: u16 = 0b1000;
+
+    /// Decode the per-axis fit bits (see [`Self::SCROLL_FIT_X`]) from a
+    /// [`Self::Scroll`] `mode_payload`.
+    #[inline]
+    pub(crate) fn scroll_fit_from_payload(payload: u16) -> glam::BVec2 {
+        glam::BVec2::new(
+            payload & Self::SCROLL_FIT_X != 0,
+            payload & Self::SCROLL_FIT_Y != 0,
+        )
+    }
 
     /// Decode a [`Self::Scroll`] `mode_payload` into the per-axis
     /// pan mask. Caller is responsible for gating on `mode ==
@@ -350,10 +369,12 @@ impl LayoutCore {
     /// `NodeFlags::hash` → `write_u8` fold. Saves one hasher call per
     /// node per frame.
     ///
-    /// `mode_payload` is intentionally **not** hashed: it's the Grid
-    /// arena idx, a frame-local slot that shifts with sibling order.
-    /// The Grid def's content is hashed separately at `NodeExit` via
-    /// `GridDef::hash`.
+    /// `mode_payload` is hashed **only for `Scroll`**, where it carries
+    /// stable semantics (pan mask + fit bits) — so a runtime pan/fit
+    /// change busts the MeasureCache. For `Grid` it's the frame-local
+    /// arena idx (shifts with sibling order every frame), so hashing it
+    /// would bust the cache every frame; it stays excluded and the Grid
+    /// def's content is hashed separately at `NodeExit` via `GridDef::hash`.
     #[inline]
     pub(crate) fn hash_with_flags<H: std::hash::Hasher>(&self, flags: NodeFlags, h: &mut H) {
         h.write_u64(self.size.as_u64());
@@ -362,6 +383,9 @@ impl LayoutCore {
         let [flags_lo, flags_hi] = flags.bits.to_ne_bytes();
         let tail = u32::from_ne_bytes([self.bits, self.mode as u8, flags_lo, flags_hi]);
         h.write_u32(tail);
+        if matches!(self.mode, LayoutMode::Scroll) {
+            h.write_u16(self.mode_payload);
+        }
     }
 }
 

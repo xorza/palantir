@@ -741,7 +741,22 @@ impl Scroll {
         let mut inner = Element::new(self.element.mode);
         // Carry the pan mask payload onto the inner viewport — that's
         // the node the dispatcher sees with mode = Scroll.
-        inner.mode_payload = self.element.mode_payload;
+        // Encode the user's per-axis `Sizing` into the viewport's fit
+        // bits: a `Hug` panned axis makes the driver report its content
+        // extent, so the scroll sizes to content like any other `Hug`
+        // widget (bounded by `max_size`/available, scrolling past the
+        // cap); `Fill`/`Fixed` keep the content-independent viewport. The
+        // inner itself stays `Fill` so it fills the outer wrapper — the
+        // outer carries the user's `Sizing` and drives the actual size.
+        let user = self.element.size;
+        let mut inner_payload = self.element.mode_payload;
+        if pan.x && matches!(user.w(), Sizing::Hug) {
+            inner_payload |= LayoutMode::SCROLL_FIT_X;
+        }
+        if pan.y && matches!(user.h(), Sizing::Hug) {
+            inner_payload |= LayoutMode::SCROLL_FIT_Y;
+        }
+        inner.mode_payload = inner_payload;
         inner.salt = Salt::Verbatim(scroll_id);
         inner.size = (Sizing::FILL, Sizing::FILL).into();
         inner.padding = self.element.padding;
