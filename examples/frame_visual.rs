@@ -15,13 +15,15 @@ struct FrameVisual {
     state: fixture::FormState,
 }
 
-impl App for FrameVisual {
+impl FrameVisual {
     fn new(_ui: &mut Ui, _handle: HostHandle) -> Self {
         FrameVisual {
             state: fixture::FormState::default(),
         }
     }
+}
 
+impl App for FrameVisual {
     fn frame(&mut self, ui: &mut Ui) {
         fixture::build_ui(&mut self.state, fixture::VISUAL_SCALE, ui);
     }
@@ -34,5 +36,5 @@ fn main() {
         min_inner_size: Some(LogicalSize::new(640, 480)),
         ..WinitHostConfig::default()
     };
-    WinitHost::<FrameVisual>::new(config).run();
+    WinitHost::new(config, FrameVisual::new).run();
 }
