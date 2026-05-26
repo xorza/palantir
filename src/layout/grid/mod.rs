@@ -1022,13 +1022,17 @@ pub(crate) fn intrinsic(
     tc: &TextCtx<'_>,
 ) -> f32 {
     let def = &tree.grid.defs[idx as usize];
+    // An empty dimension means no cells, so the grid measures to
+    // `Size::ZERO` (see `measure_inner`); its intrinsic must match on
+    // *both* axes — a declared `Fixed` track on the non-empty axis
+    // contributes nothing when there's nothing to place in it.
+    if def.cols.is_empty() || def.rows.is_empty() {
+        return 0.0;
+    }
     let (tracks, gap, n_tracks) = match axis {
         Axis::X => (def.cols.clone(), def.col_gap, def.cols.len()),
         Axis::Y => (def.rows.clone(), def.row_gap, def.rows.len()),
     };
-    if n_tracks == 0 {
-        return 0.0;
-    }
 
     // Bump-allocate `n_tracks` slots on the shared scratch. Recursive
     // intrinsic calls extend past `base + n_tracks` and truncate back, so
