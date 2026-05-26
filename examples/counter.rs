@@ -6,11 +6,13 @@ struct Counter {
     clicks: u32,
 }
 
-impl App for Counter {
+impl Counter {
     fn new(_ui: &mut Ui, _handle: HostHandle) -> Self {
         Counter { clicks: 0 }
     }
+}
 
+impl App for Counter {
     fn frame(&mut self, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
@@ -28,5 +30,5 @@ impl App for Counter {
 }
 
 fn main() {
-    WinitHost::<Counter>::new(WinitHostConfig::new("counter")).run();
+    WinitHost::new(WinitHostConfig::new("counter"), Counter::new).run();
 }

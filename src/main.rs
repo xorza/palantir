@@ -75,10 +75,10 @@ fn main() {
         )
         .init();
 
-    WinitHost::<State>::new(WinitHostConfig::new("palantir showcase")).run();
+    WinitHost::new(WinitHostConfig::new("palantir showcase"), State::new).run();
 }
 
-impl App for State {
+impl State {
     fn new(ui: &mut Ui, _handle: HostHandle) -> Self {
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
@@ -88,7 +88,9 @@ impl App for State {
             app: AppState { counter: 0 },
         }
     }
+}
 
+impl App for State {
     fn frame(&mut self, ui: &mut Ui) {
         build_ui(ui, self);
     }
