@@ -6,6 +6,7 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -340,6 +341,7 @@ fn update_scroll(
     ctx: &ShapeCtx,
     caret_pos: CursorPos,
     caret_width: f32,
+    content_w: f32,
 ) {
     let Some(rect) = response_rect else {
         state.scroll = Vec2::ZERO;
@@ -375,7 +377,19 @@ fn update_scroll(
         } else if caret_right > state.scroll.x + trailing {
             state.scroll.x = caret_right - trailing;
         }
-        state.scroll.x = state.scroll.x.max(0.0);
+        // Never scroll past what's needed to reveal the text's end (plus
+        // the trailing caret sliver). Without this upper clamp a buffer
+        // scrolled left while narrow — e.g. a `Hug` editor lagging one
+        // frame behind its own growth as you type — stays scrolled even
+        // after it widens enough to fit everything, permanently clipping
+        // the leading glyphs. `response_rect` is one frame stale, so the
+        // clamp is what makes the scroll settle back to 0 next frame.
+        // `2·caret_width`: the caret quad past the text end, plus the
+        // trailing sliver the clamp above reserves — matches the scroll
+        // that branch sets when the caret is at end-of-text, so this only
+        // ever trims *excess* scroll, never the legitimate end position.
+        let max_scroll = (content_w + 2.0 * caret_width - inner_w).max(0.0);
+        state.scroll.x = state.scroll.x.clamp(0.0, max_scroll);
     }
 }
 
@@ -607,6 +621,12 @@ impl<'a> TextEdit<'a> {
         // shaper). Reading `rect` would mix post-transform widget
         // height with logical text height and drift the vertical center
         // by `(scale - 1) * line_height / 2` under any ancestor zoom.
+        // Reused below by `update_scroll` to cap the single-line scroll
+        // at the text's end (set from the same measure as the align
+        // offset, so there's only one shaping call per frame). Stays 0
+        // until the first arrange and on the multi-line path, where x
+        // never scrolls.
+        let mut content_w = 0.0_f32;
         let offset = if let Some(r) = response.layout_rect {
             let measure_str: &str = if !self.text.is_empty() || is_focused {
                 self.text
@@ -624,6 +644,7 @@ impl<'a> TextEdit<'a> {
                     ctx.halign,
                 )
                 .size;
+            content_w = m.w;
             let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz() - caret_room).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
@@ -686,6 +707,7 @@ impl<'a> TextEdit<'a> {
                 &ctx,
                 caret_pos,
                 theme.caret_width,
+                content_w,
             );
             if is_focused && (caret_changed || focus_gained) {
                 state.last_caret_change = now;
@@ -734,6 +756,38 @@ impl<'a> TextEdit<'a> {
             let row_min_h = ctx.line_height_px + ctx.padding.vert();
             if element.min_size.h < row_min_h {
                 element.min_size.h = row_min_h;
+            }
+            // A `Hug`-width single-line editor sizes to the glyph bbox,
+            // but `update_scroll` keeps a caret-width sliver past the
+            // text's end (so the end-of-line caret can't land on the
+            // scissor boundary). With zero slack the end-of-text caret
+            // scrolls the buffer left and clips the leading glyphs, so a
+            // content-hugging field can never show its own full text.
+            // Fold that reservation (the trailing sliver + the caret quad
+            // itself) into the desired width so Hug accounts for it.
+            // `Fixed`/`Fill` editors are meant to scroll, so leave them.
+            if matches!(element.size.w(), Sizing::Hug) {
+                let measure_str: &str = if self.text.is_empty() {
+                    self.placeholder.as_ref()
+                } else {
+                    self.text.as_str()
+                };
+                let reserve_w = ui
+                    .text
+                    .measure(
+                        measure_str,
+                        ctx.font_size,
+                        ctx.line_height_px,
+                        None,
+                        ctx.family,
+                        ctx.halign,
+                    )
+                    .size
+                    .w;
+                let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
+                if element.min_size.w < reserved {
+                    element.min_size.w = reserved;
+                }
             }
         }
         let chrome = look.background;
