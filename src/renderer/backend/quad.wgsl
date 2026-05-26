@@ -298,20 +298,24 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let fill_rgba = eval_fill(in);
 
     if (in.stroke_width > 0.0) {
-        // Stroke sits on the inner edge: fill region is the rect
-        // shrunk by `stroke_width`. Composite stroke OVER fill in
-        // premultiplied space (Porter–Duff): `out = S + F*(1-Sa)`.
-        // Earlier code summed premul RGB additively while combining
-        // alpha via P-D over, which over-brightened the SDF transition
-        // band whenever both stroke and fill were translucent.
+        // Stroke sits on the inner edge: the stroke covers the annulus
+        // between the outer edge and the edge inset by `stroke_width`,
+        // the fill covers the interior inside that inset. The two are
+        // *spatially disjoint* within any pixel (`stroke_cov` is
+        // `outer_aa - inner_aa`, the fill is `inner_aa`), so they sum
+        // additively in premultiplied space — `cov`s partition the
+        // covered area and add up to `outer_aa`. Compositing stroke OVER
+        // fill instead (`a = stroke_a + fill_a*(1-stroke_a)`) dips the
+        // total alpha to 0.75 where the two AA bands cross at ~0.5 each,
+        // which shows up as a 1px seam of background bleeding between the
+        // stroke and the fill at fractional zoom. Summing keeps total
+        // coverage at `outer_aa` across the seam.
         let inner_d  = d + in.stroke_width;
         let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
         let stroke_a = (outer_aa - inner_aa) * in.stroke_color.a;
         let fill_a   = inner_aa * fill_rgba.a;
-        let stroke_rgb = in.stroke_color.rgb * stroke_a;
-        let fill_rgb   = fill_rgba.rgb       * fill_a;
-        let rgb = stroke_rgb + fill_rgb * (1.0 - stroke_a);
-        let a   = stroke_a   + fill_a   * (1.0 - stroke_a);
+        let rgb = in.stroke_color.rgb * stroke_a + fill_rgba.rgb * fill_a;
+        let a   = stroke_a + fill_a;
         return vec4<f32>(rgb, a);
     }
     let a = fill_rgba.a * outer_aa;
