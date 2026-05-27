@@ -4,6 +4,7 @@
 //! fixture for `Ui::animate` end-to-end (target → tick → record →
 //! repaint loop).
 
+use palantir::TextWrap;
 use palantir::{
     AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, Ui,
     WidgetId,
@@ -28,7 +29,7 @@ pub fn build(ui: &mut Ui) {
                  different AnimSpec. Hover any control to see the button-fade \
                  driven by the same primitive.",
             )
-            .wrapping()
+            .text_wrap(TextWrap::Wrap)
             .auto_id()
             .show(ui);
 

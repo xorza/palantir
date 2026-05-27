@@ -22,7 +22,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
-use crate::text::TextShaper;
+use crate::text::{LineFit, TextShaper};
 use rustc_hash::FxHashSet;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -727,25 +727,35 @@ impl LayoutEngine {
             ts.family,
         );
 
-        // Re-shape through the width-bounded path for `Wrap`/`Ellipsis`
-        // against a finite width. For `Wrap` this is needed even when the
-        // content fits — the shaped buffer only carries per-line
-        // `BufferLine::set_align` when `max_width_px` is `Some`, and a
-        // multi-line buffer built without it has every visual line pinned
-        // at x = 0; without it an `\n`-separated paragraph that never
-        // wraps would render left-aligned while the widget's `cursor_xy`
-        // (always called with the wrap target) reads per-line-aligned
-        // coords from a different cached buffer. For `Ellipsis` it's the
-        // path that elides the run to one line at the committed width.
-        let ellipsize = matches!(ts.wrap, TextWrap::SingleLine);
-        let bounded =
-            matches!(ts.wrap, TextWrap::Wrap | TextWrap::SingleLine) && available_w.is_finite();
+        // Re-shape through the width-bounded path for `Wrap` and the
+        // single-line truncating modes against a finite width. For `Wrap`
+        // this is needed even when the content fits — the shaped buffer only
+        // carries per-line `BufferLine::set_align` when `max_width_px` is
+        // `Some`, and a multi-line buffer built without it has every visual
+        // line pinned at x = 0; without it an `\n`-separated paragraph that
+        // never wraps would render left-aligned while the widget's
+        // `cursor_xy` (always called with the wrap target) reads
+        // per-line-aligned coords from a different cached buffer. For
+        // `SingleLine`/`Ellipsis` it's the path that cuts the run to one
+        // line at the committed width.
+        let fit = match ts.wrap {
+            TextWrap::Wrap => LineFit::Wrap,
+            TextWrap::Ellipsis => LineFit::Ellipsis,
+            // `Overflow` never reaches the bounded branch (excluded below);
+            // `Clip` is harmless as its fallthrough value.
+            TextWrap::SingleLine | TextWrap::Overflow => LineFit::Clip,
+        };
+        let single_line = matches!(ts.wrap, TextWrap::SingleLine | TextWrap::Ellipsis);
+        let bounded = matches!(
+            ts.wrap,
+            TextWrap::Wrap | TextWrap::SingleLine | TextWrap::Ellipsis
+        ) && available_w.is_finite();
 
         let result = if bounded {
             // Wrap floors the target at the longest word (overflow rather
-            // than break mid-word); ellipsis truncates freely, so it takes
-            // the committed width verbatim.
-            let target = if ellipsize {
+            // than break mid-word); single-line modes truncate freely, so
+            // they take the committed width verbatim.
+            let target = if single_line {
                 available_w
             } else {
                 available_w.max(unbounded.intrinsic_min)
@@ -761,7 +771,7 @@ impl LayoutEngine {
                 target_q,
                 ts.family,
                 ts.halign,
-                ellipsize,
+                fit,
             )
         } else {
             unbounded

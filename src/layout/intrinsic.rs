@@ -194,10 +194,10 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
             (Axis::X, LenReq::MinContent) => match ts.wrap {
                 TextWrap::Wrap => m.intrinsic_min,
                 TextWrap::Overflow => m.size.w,
-                // A truncating run shrinks to just the ellipsis, so it never
-                // floors a track's min-content — the box width wins and
-                // the run elides to it.
-                TextWrap::SingleLine => 0.0,
+                // A truncating run shrinks to nothing, so it never floors a
+                // track's min-content — the box width wins and the run is
+                // cut to it (with or without a trailing `…`).
+                TextWrap::SingleLine | TextWrap::Ellipsis => 0.0,
             },
             (Axis::X, LenReq::MaxContent) => m.size.w,
             (Axis::Y, _) => m.size.h,
@@ -236,7 +236,7 @@ mod tests {
                 .show(ui, |ui| {
                     Text::new("lorem ipsum dolor sit amet")
                         .id_salt("msg")
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
@@ -272,7 +272,7 @@ mod tests {
                 .show(ui, |ui| {
                     Text::new("hello world")
                         .id_salt("msg")
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })

@@ -6,6 +6,7 @@
 
 use super::swatch::{caption_style, section, swatch_bg};
 use crate::showcase::swatch;
+use palantir::TextWrap;
 use palantir::{
     Background, Configure, Corners, Frame, Justify, Panel, Shadow, Sizing, Stroke, Text, TextStyle,
     Ui,
@@ -30,7 +31,7 @@ pub fn build(ui: &mut Ui) {
             ))
             .id_salt(("hdr", "sub"))
             .style(caption_style())
-            .wrapping()
+            .text_wrap(TextWrap::Wrap)
             .show(ui);
 
             // Tag-cloud style — many small chips wrapping in a fixed width.

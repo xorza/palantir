@@ -5,7 +5,7 @@
 
 use palantir::{
     Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Shadow, Sizing, Stroke,
-    TextStyle, Ui, WidgetLook,
+    TextStyle, TextWrap, Ui, WidgetLook,
 };
 
 pub fn build(ui: &mut Ui) {
@@ -61,11 +61,12 @@ pub fn build(ui: &mut Ui) {
                     .show(ui);
             });
 
-            // Single-line labels truncate to a trailing `…` by default: a
-            // fixed-width button (left) whose label is longer than its box
-            // elides instead of spilling outside the chrome. `.overflowing()`
-            // (middle) opts out — the label runs past the box on one line. A
-            // `Hug`-width button (right) commits its natural width either way.
+            // Single-line labels are hard-cut to the box width by default: a
+            // fixed-width button (left) whose label is longer than its box is
+            // truncated instead of spilling outside the chrome.
+            // `.text_wrap(Overflow)` (middle) opts out — the label runs past
+            // the box on one line. A `Hug`-width button (right) commits its
+            // natural width either way.
             row(ui, "elide", |ui| {
                 Button::new()
                     .id_salt("e-1")
@@ -75,7 +76,7 @@ pub fn build(ui: &mut Ui) {
                 Button::new()
                     .id_salt("e-2")
                     .size((Sizing::Fixed(140.0), Sizing::Hug))
-                    .overflowing()
+                    .text_wrap(TextWrap::Overflow)
                     .label("Screenshot 2026-05-28 at 01.21.25.png")
                     .show(ui);
                 Button::new()

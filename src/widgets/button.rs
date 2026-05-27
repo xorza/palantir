@@ -29,10 +29,11 @@ impl Button {
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
-            // Single-line by default — a button hugs its label, so the elide
+            // Single-line by default — a button hugs its label, so truncation
             // only bites when the caller commits a narrower width than the
-            // label's natural line (Fixed/Fill button); then it shows `…`
-            // instead of spilling outside the chrome.
+            // label's natural line (Fixed/Fill button); then the label is cut
+            // to fit instead of spilling outside the chrome. Override the mode
+            // via `.text_wrap(...)`.
             label_wrap: TextWrap::SingleLine,
         }
     }
@@ -46,12 +47,14 @@ impl Button {
         self
     }
 
-    /// Opt out of the default ellipsis: let the label run past the button's
-    /// committed width on one unbroken line instead of truncating. Only
-    /// matters on a `Fixed`/`Fill`-width button narrower than the label — a
-    /// `Hug` button commits its natural width, so the label always fits.
-    pub fn overflowing(mut self) -> Self {
-        self.label_wrap = TextWrap::Overflow;
+    /// Set how the label handles a width narrower than its natural line.
+    /// Default [`TextWrap::SingleLine`] (hard-cut to one line); pass
+    /// [`TextWrap::Ellipsis`] to mark the cut with `…`, [`TextWrap::Wrap`] to
+    /// reflow onto multiple lines, or [`TextWrap::Overflow`] to let it run
+    /// past the chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
+    /// button commits its natural width, so the label always fits.
+    pub fn text_wrap(mut self, wrap: TextWrap) -> Self {
+        self.label_wrap = wrap;
         self
     }
 
@@ -113,9 +116,9 @@ impl Button {
                     brush: look.text.color.into(),
                     font_size_px: look.text.font_size_px,
                     line_height_px: look.line_height_px(),
-                    // `SingleLine` by default so an over-wide label elides to
-                    // one line instead of spilling outside the chrome;
-                    // `.overflowing()` switches to `Overflow`.
+                    // `SingleLine` by default so an over-wide label is cut to
+                    // one line instead of spilling outside the chrome; see the
+                    // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::Wrap)` / `.text_wrap(TextWrap::Overflow)` builders.
                     wrap: label_wrap,
                     align: label_align,
                     family: look.text.family,

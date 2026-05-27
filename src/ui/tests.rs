@@ -8,6 +8,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
+use crate::shape::TextWrap;
 use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
 use crate::ui::frame_report::RenderPlan;
@@ -439,7 +440,7 @@ fn text_reshape_skipped_when_unchanged() {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("wrapped"))
                     .style(TextStyle::default().with_font_size(16.0))
-                    .wrapping()
+                    .text_wrap(TextWrap::Wrap)
                     .show(ui);
             });
     };
@@ -455,7 +456,7 @@ fn text_reshape_skipped_when_unchanged() {
                     .show(ui);
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("fill-col-text"))
-                    .wrapping()
+                    .text_wrap(TextWrap::Wrap)
                     .grid_cell((0, 1))
                     .show(ui);
             });
@@ -557,7 +558,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .id(WidgetId::from_hash("p"))
                         .style(TextStyle::default().with_font_size(16.0))
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .show(ui);
                 });
         }

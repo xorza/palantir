@@ -5,6 +5,7 @@ use crate::layout::cache::{ArenaSnapshot, AvailableKey};
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, size::Size};
+use crate::shape::TextWrap;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -195,7 +196,7 @@ fn changing_available_forces_miss_and_remeasure() {
                 .id(WidgetId::from_hash("fill"))
                 .size((Sizing::FILL, Sizing::Hug))
                 .style(TextStyle::default().with_font_size(16.0))
-                .wrapping()
+                .text_wrap(TextWrap::Wrap)
                 .show(ui);
             });
     };

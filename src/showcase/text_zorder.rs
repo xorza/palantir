@@ -7,6 +7,7 @@
 
 use super::swatch::{caption_style, swatch_bg};
 use crate::showcase::swatch;
+use palantir::TextWrap;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {
@@ -29,7 +30,7 @@ pub fn build(ui: &mut Ui) {
             ))
             .id_salt(("hdr", "sub"))
             .style(caption_style())
-            .wrapping()
+            .text_wrap(TextWrap::Wrap)
             .show(ui);
 
             // Two side-by-side cells.
@@ -70,7 +71,7 @@ fn cell(ui: &mut Ui, id: &'static str, caption: &'static str, accent: Color, qua
             Text::new(caption)
                 .id_salt(("caption", id))
                 .style(TextStyle::default().with_font_size(11.0))
-                .wrapping()
+                .text_wrap(TextWrap::Wrap)
                 .show(ui);
 
             // The demo: ZStack of background + label + (maybe) occluder.

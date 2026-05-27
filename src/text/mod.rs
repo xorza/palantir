@@ -186,7 +186,7 @@ impl TextShaper {
             max_width_px,
             family,
             halign,
-            false,
+            LineFit::Wrap,
         )
     }
 
@@ -225,7 +225,7 @@ impl TextShaper {
             None,
             family,
             HAlign::Auto,
-            false,
+            LineFit::Wrap,
         );
         inner.reuse.insert(
             (wid, ordinal),
@@ -239,12 +239,12 @@ impl TextShaper {
     }
 
     /// Identity-cached width-bounded shape for `wid` at the caller-
-    /// quantized `target_q`. `ellipsize` picks the overflow behaviour:
-    /// `false` wraps to the target width, `true` elides to one line with
-    /// a trailing `…`. Hits when the same target + halign + mode was used
-    /// last frame; otherwise dispatches and refreshes the entry. Must be
-    /// preceded by [`Self::shape_unbounded`] on the same `(wid, ordinal)`
-    /// so the parent entry exists.
+    /// quantized `target_q`. `fit` picks the overflow behaviour: `Wrap`
+    /// reflows to the target width, `Clip` hard-cuts to one line, `Ellipsis`
+    /// cuts to one line with a trailing `…`. Hits when the same target +
+    /// halign + mode was used last frame; otherwise dispatches and refreshes
+    /// the entry. Must be preceded by [`Self::shape_unbounded`] on the same
+    /// `(wid, ordinal)` so the parent entry exists.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_wrap(
         &self,
@@ -257,7 +257,7 @@ impl TextShaper {
         target_q: u32,
         family: FontFamily,
         halign: HAlign,
-        ellipsize: bool,
+        fit: LineFit,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -270,7 +270,7 @@ impl TextShaper {
         if let Some(w) = entry.get().wrap
             && w.target_q == target_q
             && w.halign == halign
-            && w.ellipsize == ellipsize
+            && w.fit == fit
         {
             return w.result;
         }
@@ -282,7 +282,7 @@ impl TextShaper {
             Some(target),
             family,
             halign,
-            ellipsize,
+            fit,
         );
         // Re-borrow `entry` because dispatch took `&mut inner` over the
         // whole struct; the prior borrow ended at the early-return.
@@ -293,7 +293,7 @@ impl TextShaper {
             .wrap = Some(WrapReuse {
             target_q,
             halign,
-            ellipsize,
+            fit,
             result: m,
         });
         m
@@ -551,16 +551,22 @@ impl ShaperInner {
         max_width_px: Option<f32>,
         family: FontFamily,
         halign: HAlign,
-        ellipsize: bool,
+        fit: LineFit,
     ) -> MeasureResult {
         match self.cosmic.as_mut() {
-            // Ellipsis needs a finite width to elide against; without one
+            // Truncation needs a finite width to cut against; without one
             // it's just an unbounded single line, so fall through to the
             // plain measure.
-            Some(c) => match (ellipsize, max_width_px) {
-                (true, Some(w)) => {
-                    c.measure_elided(text, font_size_px, line_height_px, w, family, halign)
-                }
+            Some(c) => match (fit, max_width_px) {
+                (LineFit::Ellipsis | LineFit::Clip, Some(w)) => c.measure_truncated(
+                    text,
+                    font_size_px,
+                    line_height_px,
+                    w,
+                    family,
+                    halign,
+                    matches!(fit, LineFit::Ellipsis),
+                ),
                 _ => c.measure(
                     text,
                     font_size_px,
@@ -572,7 +578,7 @@ impl ShaperInner {
             },
             // Mono fallback is single-line; cosmic per-line align
             // can't be applied so `halign` is unused here.
-            None => mono_measure(text, font_size_px, line_height_px, max_width_px, ellipsize),
+            None => mono_measure(text, font_size_px, line_height_px, max_width_px, fit),
         }
     }
 }
@@ -701,7 +707,7 @@ fn mono_measure(
     font_size_px: f32,
     line_height_px: f32,
     max_width_px: Option<f32>,
-    ellipsize: bool,
+    fit: LineFit,
 ) -> MeasureResult {
     if text.is_empty() {
         return MeasureResult::INVALID;
@@ -713,22 +719,23 @@ fn mono_measure(
     // it overcounts, but mono is not a production path.
     let total_chars = text.len() as f32;
     let unbroken_w = total_chars * glyph_w;
+    let single_line = matches!(fit, LineFit::Clip | LineFit::Ellipsis);
 
     let size = match max_width_px {
         None => Size::new(unbroken_w, line_h),
         Some(max) if max >= unbroken_w => Size::new(unbroken_w, line_h),
-        // Elision is one line capped at the available width.
-        Some(max) if ellipsize => Size::new(max, line_h),
+        // Clip/ellipsis is one line capped at the available width.
+        Some(max) if single_line => Size::new(max, line_h),
         Some(max) => {
             let chars_per_line = (max / glyph_w).floor().max(1.0);
             let lines = (total_chars / chars_per_line).ceil().max(1.0);
             Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h)
         }
     };
-    // An elided run shrinks to just the ellipsis — zero floor. Otherwise
-    // mono has no real word boundaries, so fall back to "the longest run
-    // of non-space bytes" as the wrap floor.
-    let intrinsic_min = if ellipsize {
+    // A truncated run shrinks to nothing — zero floor. Otherwise mono has
+    // no real word boundaries, so fall back to "the longest run of
+    // non-space bytes" as the wrap floor.
+    let intrinsic_min = if single_line {
         0.0
     } else {
         let mut longest = 0u32;
@@ -864,11 +871,25 @@ struct WrapReuse {
     /// inside the shaped buffer, so changing halign invalidates this
     /// slot even when `target_q` is unchanged.
     halign: HAlign,
-    /// Overflow mode: `false` = wrap, `true` = ellipsis. A widget that
-    /// flips mode at the same call site reshapes (the elided buffer
-    /// holds a different string than the wrapped one).
-    ellipsize: bool,
+    /// Overflow mode. A widget that flips mode at the same call site
+    /// reshapes — each mode bakes a different buffer (and `Clip`/`Ellipsis`
+    /// a different truncated string) at the same target.
+    fit: LineFit,
     result: MeasureResult,
+}
+
+/// How a width-bounded text run handles overflow. Maps from the public
+/// [`crate::shape::TextWrap`] (minus `Overflow`, which never reaches the
+/// bounded path). Threaded through `shape_wrap` → `dispatch` and folded
+/// into the shape cache key.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) enum LineFit {
+    /// Multi-line reflow at the target width.
+    Wrap,
+    /// One line, hard-cut to the target width with no marker.
+    Clip,
+    /// One line, cut to the target width with a trailing `…`.
+    Ellipsis,
 }
 
 #[cfg(any(test, feature = "internals"))]
