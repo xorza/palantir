@@ -269,8 +269,6 @@ impl TextBackend {
         // computed key + origin so pass 2 doesn't re-derive). No
         // `with_render_split` — an all-hit frame never cracks the
         // RefCell or hits cosmic.
-        let current_frame = self.atlas.current_frame;
-        let eviction = self.atlas.eviction_count;
         self.misses.clear();
         for (i, r) in runs.iter().enumerate() {
             if r.key.is_invalid() {
@@ -280,8 +278,7 @@ impl TextBackend {
             let run_key = encode_key_for(r, scale);
             if try_emit_cached(
                 &mut self.encoded_cache,
-                eviction,
-                current_frame,
+                &mut self.atlas,
                 &run_key,
                 &mut self.instances,
             ) {
@@ -680,5 +677,136 @@ mod tests {
         use crate::renderer::backend::{IMMEDIATES_BYTES, ViewportPush};
         assert_eq!(Params::OFFSET as usize, ViewportPush::BYTES);
         assert!(Params::OFFSET as usize + Params::BYTES <= IMMEDIATES_BYTES as usize);
+    }
+}
+
+/// GPU regression coverage for the encoded-cache liveness fix. Gated
+/// on `internals` (not bare `test`) so the default headless `cargo
+/// test` stays GPU-free, matching the visual / atlas-bench gating.
+#[cfg(feature = "internals")]
+#[cfg(test)]
+mod gpu_regression {
+    use super::TextBackend;
+    use crate::renderer::backend::{GpuCtx, Queue};
+    use crate::text::TextShaper;
+    use glam::{UVec2, Vec2};
+    use pollster::FutureExt;
+
+    use crate::primitives::color::ColorU8;
+    use crate::renderer::backend::text::test_support::make_run;
+    use crate::renderer::render_buffer::TextRun;
+
+    const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
+    const PHYSICAL: UVec2 = UVec2::new(640, 480);
+
+    fn device_queue() -> (wgpu::Device, Queue) {
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .block_on()
+            .expect("request adapter (headless)");
+        let mut limits = wgpu::Limits::default();
+        limits.max_immediate_size = limits.max_immediate_size.max(16);
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor {
+                label: Some("palantir.text_regression.device"),
+                required_features: wgpu::Features::IMMEDIATES,
+                required_limits: limits,
+                experimental_features: wgpu::ExperimentalFeatures::default(),
+                memory_hints: wgpu::MemoryHints::default(),
+                trace: wgpu::Trace::Off,
+            })
+            .block_on()
+            .expect("request device");
+        (device, Queue::new(queue))
+    }
+
+    fn run_one_frame(
+        device: &wgpu::Device,
+        queue: &Queue,
+        backend: &mut TextBackend,
+        scale: f32,
+        runs: &[TextRun],
+    ) {
+        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        {
+            let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
+            backend.prepare(&mut ctx, scale, runs);
+            backend.flush(&mut ctx);
+        }
+        belt.finish();
+        queue.submit([encoder.finish()]);
+        belt.recall();
+        device
+            .poll(wgpu::PollType::Wait {
+                submission_index: None,
+                timeout: None,
+            })
+            .expect("poll");
+    }
+
+    /// A run that hits the encoded cache must still refresh the LRU
+    /// `last_use` of every atlas slot it rides. Before the fix the
+    /// fast path emitted cached uv coords without touching the slots,
+    /// so a steadily-cached run's slots froze at their rasterization
+    /// frame and `evict_one` (which fires under zoom's many-sizes
+    /// atlas pressure) would reclaim a still-live slot and overwrite it
+    /// with a different glyph — garbled text.
+    #[test]
+    fn cached_run_keeps_its_atlas_slots_live() {
+        let (device, queue) = device_queue();
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut backend = TextBackend::new_for_bench(&device, FORMAT, shaper.clone());
+
+        let runs = [make_run(
+            &shaper,
+            "File",
+            14.0,
+            14.0 * 1.2,
+            Vec2::new(20.0, 20.0),
+            PHYSICAL,
+            1.0,
+            ColorU8::rgba(240, 240, 240, 255),
+        )];
+
+        // Frame 1: encoded-cache miss → rasterize + cache. Slots get
+        // last_use == current_frame.
+        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        backend.end_frame();
+        let evictions_after_warmup = backend.atlas.eviction_count;
+        assert!(
+            !backend.atlas.cache.is_empty(),
+            "warmup should have rasterized at least one glyph",
+        );
+
+        // Frame 2: same run → encoded-cache hit (no cosmic walk, no new
+        // rasterization). The hit must still bump every slot's
+        // last_use to the now-current frame.
+        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+
+        let cf = backend.atlas.current_frame;
+        let stale: Vec<u64> = backend
+            .atlas
+            .cache
+            .values()
+            .map(|s| s.last_use)
+            .filter(|&lu| lu != cf)
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "cache-hit frame left slots stale: last_use {stale:?} != current_frame {cf}",
+        );
+        // The second frame was a pure hit — nothing should have been
+        // re-rasterized or evicted.
+        assert_eq!(
+            backend.atlas.eviction_count, evictions_after_warmup,
+            "a pure cache-hit frame must not evict",
+        );
     }
 }
