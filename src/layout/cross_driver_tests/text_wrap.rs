@@ -12,7 +12,7 @@ use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
-use crate::widgets::{grid::Grid, panel::Panel, text::Text};
+use crate::widgets::{button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
 
@@ -58,6 +58,64 @@ fn wrapping_text_grows_height_in_narrow_frame() {
     assert_eq!(wrap, TextWrap::Wrap);
     let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     assert!(shaped.measured.h > 32.0);
+}
+
+/// A `Button` with a label wider than its `Fixed` width elides to one
+/// line instead of overflowing or wrapping: the body height stays a
+/// single line (contrast `wrapping_text_grows_height_in_narrow_frame`,
+/// where the same paragraph spans many) and the label shape carries
+/// `TextWrap::Ellipsis`.
+#[test]
+fn ellipsis_button_label_stays_one_line_in_narrow_frame() {
+    let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
+    let mut node = None;
+    ui.run_at_acked(UVec2::new(400, 400), |ui| {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::Fixed(80.0), Sizing::Hug))
+            .show(ui, |ui| {
+                node = Some(
+                    Button::new()
+                        .auto_id()
+                        .elide()
+                        .label(PARAGRAPH)
+                        .show(ui)
+                        .node(),
+                );
+            });
+    });
+    let node = node.unwrap();
+
+    let wrap = ui
+        .forest
+        .tree(Layer::Main)
+        .shapes_of(node)
+        .find_map(|s| match s {
+            ShapeRecord::Text { wrap, .. } => Some(*wrap),
+            _ => None,
+        })
+        .expect("button label text shape");
+    assert_eq!(
+        wrap,
+        TextWrap::Ellipsis,
+        "`.elide()` selects the ellipsis wrap mode"
+    );
+
+    // The same paragraph wraps to >32 px tall in the wrap test; elided it
+    // stays a single ~16 px line.
+    let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
+    assert!(
+        shaped.measured.h <= 32.0,
+        "elided label must stay one line, got h={}",
+        shaped.measured.h,
+    );
+    // And the elided line fits the button's fixed width (label width is
+    // bounded by the 80 px box minus its padding).
+    assert!(
+        shaped.measured.w <= 80.0,
+        "elided label must fit the button width, got w={}",
+        shaped.measured.w,
+    );
 }
 
 /// Pinned by `src/layout/intrinsic.md`: a wrapping `Text` inside a

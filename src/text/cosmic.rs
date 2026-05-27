@@ -42,6 +42,7 @@ fn key_for(
     max_w_px: Option<f32>,
     family: FontFamily,
     halign: HAlign,
+    ellipsize: bool,
 ) -> TextCacheKey {
     // FxHasher beats SipHash here by ~10× for the short ASCII strings
     // typical of UI labels — the cache-key fingerprint doesn't need
@@ -51,6 +52,13 @@ fn key_for(
     // strings.
     let mut h = FxHasher::default();
     h.write(text.as_bytes());
+    // Fold the elide mode into the fingerprint: at the same (text,
+    // width) an ellipsized buffer holds a *different* string (the
+    // truncated `prefix…`) than a wrapped one, so their cache slots
+    // must not collide.
+    if ellipsize {
+        h.write_u8(1);
+    }
     let mut text_hash = h.finish();
     // Avoid colliding with INVALID. Probability astronomically low; flip a
     // bit if it happens so the renderer never silently drops a real run.
@@ -211,11 +219,7 @@ impl CosmicMeasure {
         halign: HAlign,
     ) -> MeasureResult {
         if text.is_empty() || font_size_px <= 0.0 {
-            return MeasureResult {
-                size: Size::ZERO,
-                key: TextCacheKey::INVALID,
-                intrinsic_min: 0.0,
-            };
+            return MeasureResult::INVALID;
         }
         let key = key_for(
             text,
@@ -224,13 +228,10 @@ impl CosmicMeasure {
             max_width_px,
             family,
             halign,
+            false,
         );
-        if let Some(entry) = self.cache.get(&key) {
-            return MeasureResult {
-                size: entry.measured,
-                key,
-                intrinsic_min: entry.intrinsic_min,
-            };
+        if let Some(hit) = self.cache_hit(key) {
+            return hit;
         }
 
         let metrics = Metrics::new(font_size_px, line_height_px);
@@ -249,48 +250,180 @@ impl CosmicMeasure {
         buffer.set_text(text, &attrs_for(family), Shaping::Advanced, alignment);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let mut max_w = 0.0_f32;
-        let mut total_h = 0.0_f32;
-        let mut intrinsic_min = 0.0_f32;
-        let mut current_word_w = 0.0_f32;
-        for run in buffer.layout_runs() {
-            // `line_w` is content width before per-line alignment;
-            // when align shifts glyphs right, the glyph cluster's
-            // physical x extends past `line_w`. Take the last glyph's
-            // trailing edge so the measured bbox encloses every
-            // rendered pixel — otherwise glyphon clips right-aligned
-            // glyphs against an undersized `TextBounds`.
-            let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
-            max_w = max_w.max(line_right);
-            total_h = total_h.max(run.line_top + run.line_height);
-            for g in run.glyphs {
-                let cluster = &run.text[g.start..g.end];
-                let is_break = cluster.chars().all(|c| c.is_whitespace());
-                if is_break {
-                    intrinsic_min = intrinsic_min.max(current_word_w);
-                    current_word_w = 0.0;
-                } else {
-                    current_word_w += g.w;
+        let extent = shaped_extent(&buffer);
+        self.cache.insert(
+            key,
+            CacheEntry {
+                buffer,
+                measured: extent.size,
+                intrinsic_min: extent.intrinsic_min,
+            },
+        );
+        MeasureResult {
+            size: extent.size,
+            key,
+            intrinsic_min: extent.intrinsic_min,
+        }
+    }
+
+    /// Shape `text` as a single line elided to fit `w` with a trailing
+    /// `…`. Truncation is char-precise: an unbounded probe shape gives
+    /// per-glyph advances, we cut at the last glyph whose trailing edge
+    /// fits `w - ellipsis_width`, then shape `prefix…` aligned within
+    /// `w`. The elided buffer caches under an ellipsis-discriminated key
+    /// (so it can't collide with the wrapped buffer at the same width).
+    /// `intrinsic_min` is 0 — an elided run can shrink to just the
+    /// ellipsis.
+    pub fn measure_elided(
+        &mut self,
+        text: &str,
+        font_size_px: f32,
+        line_height_px: f32,
+        w: f32,
+        family: FontFamily,
+        halign: HAlign,
+    ) -> MeasureResult {
+        if text.is_empty() || font_size_px <= 0.0 {
+            return MeasureResult::INVALID;
+        }
+        let key = key_for(
+            text,
+            font_size_px,
+            line_height_px,
+            Some(w),
+            family,
+            halign,
+            true,
+        );
+        if let Some(hit) = self.cache_hit(key) {
+            return hit;
+        }
+        let metrics = Metrics::new(font_size_px, line_height_px);
+        let attrs = attrs_for(family);
+        // Probe: unbounded single-pass shape to read glyph advances and
+        // decide whether (and where) to cut.
+        let mut probe = Buffer::new(&mut self.font_system, metrics);
+        probe.set_size(None, None);
+        probe.set_text(text, &attrs, Shaping::Advanced, None);
+        probe.shape_until_scroll(&mut self.font_system, false);
+        let line_w = first_line_right(&probe);
+        let multiline = probe.layout_runs().count() > 1;
+
+        let truncated = if line_w <= w && !multiline {
+            None
+        } else {
+            let ellipsis_w = self.advance_of("…", metrics, family);
+            let avail = (w - ellipsis_w).max(0.0);
+            let mut cut = 0usize;
+            if let Some(run) = probe.layout_runs().next() {
+                for g in run.glyphs {
+                    if g.x + g.w > avail {
+                        break;
+                    }
+                    cut = g.end;
                 }
             }
-            // Hard line break (\n) terminates a run — also closes any
-            // in-progress word.
-            intrinsic_min = intrinsic_min.max(current_word_w);
-            current_word_w = 0.0;
-        }
-        let measured = Size::new(max_w.ceil(), total_h.ceil());
+            Some(format!("{}…", text[..cut].trim_end()))
+        };
+
+        let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_size(Some(w), None);
+        buffer.set_text(
+            truncated.as_deref().unwrap_or(text),
+            &attrs,
+            Shaping::Advanced,
+            cosmic_align(halign),
+        );
+        buffer.shape_until_scroll(&mut self.font_system, false);
+
+        let measured = shaped_extent(&buffer).size;
         self.cache.insert(
             key,
             CacheEntry {
                 buffer,
                 measured,
-                intrinsic_min,
+                intrinsic_min: 0.0,
             },
         );
         MeasureResult {
             size: measured,
             key,
-            intrinsic_min,
+            intrinsic_min: 0.0,
         }
+    }
+
+    /// Trailing-edge width of `text` shaped unbounded on one line — used
+    /// to size the ellipsis. Not cached (one short shape, only on an
+    /// elision cache miss).
+    fn advance_of(&mut self, text: &str, metrics: Metrics, family: FontFamily) -> f32 {
+        let mut buffer = Buffer::new(&mut self.font_system, metrics);
+        buffer.set_size(None, None);
+        buffer.set_text(text, &attrs_for(family), Shaping::Advanced, None);
+        buffer.shape_until_scroll(&mut self.font_system, false);
+        first_line_right(&buffer)
+    }
+
+    /// A cached entry's `MeasureResult` for `key`, or `None` on a miss.
+    fn cache_hit(&self, key: TextCacheKey) -> Option<MeasureResult> {
+        self.cache.get(&key).map(|entry| MeasureResult {
+            size: entry.measured,
+            key,
+            intrinsic_min: entry.intrinsic_min,
+        })
+    }
+}
+
+/// Trailing edge (`x + w` of the last glyph) of a shaped buffer's first
+/// layout run, or `0.0` when empty — the rendered width of one line. The
+/// per-run analogue inside [`shaped_extent`] takes the max across runs.
+fn first_line_right(buffer: &Buffer) -> f32 {
+    buffer
+        .layout_runs()
+        .next()
+        .and_then(|r| r.glyphs.last().map(|g| g.x + g.w))
+        .unwrap_or(0.0)
+}
+
+/// Measured extent of a shaped `buffer`: bounding size (ceil'd) plus the
+/// widest unbreakable run (longest word), the floor the wrap path uses
+/// when a parent commits a narrower width.
+struct ShapedExtent {
+    size: Size,
+    intrinsic_min: f32,
+}
+
+fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
+    let mut max_w = 0.0_f32;
+    let mut total_h = 0.0_f32;
+    let mut intrinsic_min = 0.0_f32;
+    let mut current_word_w = 0.0_f32;
+    for run in buffer.layout_runs() {
+        // `line_w` is content width before per-line alignment; when
+        // align shifts glyphs right, the glyph cluster's physical x
+        // extends past `line_w`. Take the last glyph's trailing edge so
+        // the measured bbox encloses every rendered pixel — otherwise
+        // glyphon clips right-aligned glyphs against an undersized
+        // `TextBounds`.
+        let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
+        max_w = max_w.max(line_right);
+        total_h = total_h.max(run.line_top + run.line_height);
+        for g in run.glyphs {
+            let cluster = &run.text[g.start..g.end];
+            let is_break = cluster.chars().all(|c| c.is_whitespace());
+            if is_break {
+                intrinsic_min = intrinsic_min.max(current_word_w);
+                current_word_w = 0.0;
+            } else {
+                current_word_w += g.w;
+            }
+        }
+        // Hard line break (\n) terminates a run — also closes any
+        // in-progress word.
+        intrinsic_min = intrinsic_min.max(current_word_w);
+        current_word_w = 0.0;
+    }
+    ShapedExtent {
+        size: Size::new(max_w.ceil(), total_h.ceil()),
+        intrinsic_min,
     }
 }

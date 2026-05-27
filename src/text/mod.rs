@@ -186,6 +186,7 @@ impl TextShaper {
             max_width_px,
             family,
             halign,
+            false,
         )
     }
 
@@ -224,6 +225,7 @@ impl TextShaper {
             None,
             family,
             HAlign::Auto,
+            false,
         );
         inner.reuse.insert(
             (wid, ordinal),
@@ -236,11 +238,13 @@ impl TextShaper {
         unbounded
     }
 
-    /// Identity-cached wrap shape for `wid` at the caller-quantized
-    /// `target_q`. Hits when the same wrap target was used last frame;
-    /// otherwise dispatches and refreshes the entry. Must be preceded
-    /// by [`Self::shape_unbounded`] on the same `(wid, ordinal)` so the
-    /// parent entry exists.
+    /// Identity-cached width-bounded shape for `wid` at the caller-
+    /// quantized `target_q`. `ellipsize` picks the overflow behaviour:
+    /// `false` wraps to the target width, `true` elides to one line with
+    /// a trailing `…`. Hits when the same target + halign + mode was used
+    /// last frame; otherwise dispatches and refreshes the entry. Must be
+    /// preceded by [`Self::shape_unbounded`] on the same `(wid, ordinal)`
+    /// so the parent entry exists.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_wrap(
         &self,
@@ -253,6 +257,7 @@ impl TextShaper {
         target_q: u32,
         family: FontFamily,
         halign: HAlign,
+        ellipsize: bool,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -265,6 +270,7 @@ impl TextShaper {
         if let Some(w) = entry.get().wrap
             && w.target_q == target_q
             && w.halign == halign
+            && w.ellipsize == ellipsize
         {
             return w.result;
         }
@@ -276,6 +282,7 @@ impl TextShaper {
             Some(target),
             family,
             halign,
+            ellipsize,
         );
         // Re-borrow `entry` because dispatch took `&mut inner` over the
         // whole struct; the prior borrow ended at the early-return.
@@ -286,6 +293,7 @@ impl TextShaper {
             .wrap = Some(WrapReuse {
             target_q,
             halign,
+            ellipsize,
             result: m,
         });
         m
@@ -534,6 +542,7 @@ impl ShaperInner {
     /// Caller is responsible for incrementing `measure_calls` on cache
     /// misses (we don't bump it here because some paths — `shape_wrap`
     /// — already account for it).
+    #[allow(clippy::too_many_arguments)]
     fn dispatch(
         &mut self,
         text: &str,
@@ -542,19 +551,28 @@ impl ShaperInner {
         max_width_px: Option<f32>,
         family: FontFamily,
         halign: HAlign,
+        ellipsize: bool,
     ) -> MeasureResult {
         match self.cosmic.as_mut() {
-            Some(c) => c.measure(
-                text,
-                font_size_px,
-                line_height_px,
-                max_width_px,
-                family,
-                halign,
-            ),
+            // Ellipsis needs a finite width to elide against; without one
+            // it's just an unbounded single line, so fall through to the
+            // plain measure.
+            Some(c) => match (ellipsize, max_width_px) {
+                (true, Some(w)) => {
+                    c.measure_elided(text, font_size_px, line_height_px, w, family, halign)
+                }
+                _ => c.measure(
+                    text,
+                    font_size_px,
+                    line_height_px,
+                    max_width_px,
+                    family,
+                    halign,
+                ),
+            },
             // Mono fallback is single-line; cosmic per-line align
             // can't be applied so `halign` is unused here.
-            None => mono_measure(text, font_size_px, line_height_px, max_width_px),
+            None => mono_measure(text, font_size_px, line_height_px, max_width_px, ellipsize),
         }
     }
 }
@@ -658,6 +676,17 @@ pub struct MeasureResult {
     pub intrinsic_min: f32,
 }
 
+impl MeasureResult {
+    /// Zero-size run carrying [`TextCacheKey::INVALID`] — the result for
+    /// empty / non-positive-size input on every path. The renderer drops
+    /// `INVALID` runs, so nothing paints.
+    pub(crate) const INVALID: Self = Self {
+        size: Size::ZERO,
+        key: TextCacheKey::INVALID,
+        intrinsic_min: 0.0,
+    };
+}
+
 /// Deterministic placeholder metric used when [`crate::Ui`] has no
 /// [`CosmicMeasure`] installed. Every glyph is `font_size_px * 0.5` wide and
 /// the line is `font_size_px` tall; wrapping is approximated by simple
@@ -672,13 +701,10 @@ fn mono_measure(
     font_size_px: f32,
     line_height_px: f32,
     max_width_px: Option<f32>,
+    ellipsize: bool,
 ) -> MeasureResult {
     if text.is_empty() {
-        return MeasureResult {
-            size: Size::ZERO,
-            key: TextCacheKey::INVALID,
-            intrinsic_min: 0.0,
-        };
+        return MeasureResult::INVALID;
     }
     let glyph_w = font_size_px * 0.5;
     let line_h = line_height_px;
@@ -691,30 +717,37 @@ fn mono_measure(
     let size = match max_width_px {
         None => Size::new(unbroken_w, line_h),
         Some(max) if max >= unbroken_w => Size::new(unbroken_w, line_h),
+        // Elision is one line capped at the available width.
+        Some(max) if ellipsize => Size::new(max, line_h),
         Some(max) => {
             let chars_per_line = (max / glyph_w).floor().max(1.0);
             let lines = (total_chars / chars_per_line).ceil().max(1.0);
             Size::new((chars_per_line * glyph_w).min(unbroken_w), lines * line_h)
         }
     };
-    // Mono has no real word boundaries — fall back to "the longest run of
-    // non-space bytes" so wrap callers still get a sensible floor.
-    let mut longest = 0u32;
-    let mut run = 0u32;
-    for &b in text.as_bytes() {
-        if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
-            if run > longest {
-                longest = run;
+    // An elided run shrinks to just the ellipsis — zero floor. Otherwise
+    // mono has no real word boundaries, so fall back to "the longest run
+    // of non-space bytes" as the wrap floor.
+    let intrinsic_min = if ellipsize {
+        0.0
+    } else {
+        let mut longest = 0u32;
+        let mut run = 0u32;
+        for &b in text.as_bytes() {
+            if b == b' ' || b == b'\t' || b == b'\n' || b == b'\r' {
+                if run > longest {
+                    longest = run;
+                }
+                run = 0;
+            } else {
+                run += 1;
             }
-            run = 0;
-        } else {
-            run += 1;
         }
-    }
-    if run > longest {
-        longest = run;
-    }
-    let intrinsic_min = longest as f32 * glyph_w;
+        if run > longest {
+            longest = run;
+        }
+        longest as f32 * glyph_w
+    };
     MeasureResult {
         size,
         key: TextCacheKey::INVALID,
@@ -821,9 +854,9 @@ pub(crate) struct TextReuseEntry {
     wrap: Option<WrapReuse>,
 }
 
-/// One cached wrap result — the most-recent `target_q` (caller-
-/// quantized wrap target) and the `MeasureResult` that came out of
-/// shaping at that target.
+/// One cached width-bounded result — the most-recent `target_q` (caller-
+/// quantized target), halign, and overflow mode, plus the `MeasureResult`
+/// that came out of shaping at that target.
 #[derive(Clone, Copy)]
 struct WrapReuse {
     target_q: u32,
@@ -831,6 +864,10 @@ struct WrapReuse {
     /// inside the shaped buffer, so changing halign invalidates this
     /// slot even when `target_q` is unchanged.
     halign: HAlign,
+    /// Overflow mode: `false` = wrap, `true` = ellipsis. A widget that
+    /// flips mode at the same call site reshapes (the elided buffer
+    /// holds a different string than the wrapped one).
+    ellipsize: bool,
     result: MeasureResult,
 }
 
