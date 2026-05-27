@@ -299,6 +299,17 @@ impl ColorU8 {
         Self { r, g, b, a: 0xff }
     }
 
+    /// Per-channel invert (`255 − v`) of the linear RGB channels, alpha
+    /// kept. The u8 analogue of [`Color::inverted`]; exactly reversible.
+    pub const fn inverted(self) -> Self {
+        Self {
+            r: 255 - self.r,
+            g: 255 - self.g,
+            b: 255 - self.b,
+            a: self.a,
+        }
+    }
+
     /// Pack the four channels into a single `u32` as `0xRRGGBBAA`
     /// (big-endian byte order — R in the most-significant byte). Used
     /// by hash sites that want to write one `u32`/`u64` instead of
