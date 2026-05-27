@@ -47,11 +47,11 @@ pub(crate) struct Composer {
     /// fed to the stroke tessellator. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
-    /// Spatial index over the physical-px AABBs of text runs accumulated
-    /// in the current text-batch (potentially across multiple groups).
-    /// A new quad overlapping any of these would paint *under* the
-    /// merged batch text — closes the batch (and flushes the group)
-    /// so paint order is preserved. Cleared in [`Self::close_batch`].
+    /// Spatial index over the physical-px AABBs of the *open* text
+    /// batch's runs (spans groups with its batch). A new quad overlapping
+    /// any of these would paint *under* the merged batch text — closes
+    /// the batch (and flushes the group) so paint order is preserved.
+    /// Cleared in [`Self::close_batch`].
     ///
     /// Backed by a viewport-tiled grid (see [`TextRectGrid`]). The
     /// grid replaces a flat `Vec<URect>` linear scan that dominated
@@ -61,6 +61,14 @@ pub(crate) struct Composer {
     /// grid lookup walks only the tiles the query rect overlaps and
     /// drops typical scan length to 1-4 candidates.
     text_grid: TextRectGrid,
+    /// Spatial index over text runs of batches **already closed within
+    /// the in-flight group**. Such text still drains at its `last_group`
+    /// (= this group), *after* the group's quads, so a later overlapping
+    /// quad must flush even though the batch is no longer open
+    /// ([`Self::text_grid`] tracks only the open one). Filled from each
+    /// closing batch in [`Self::close_batch`]; cleared in [`Self::flush`]
+    /// at the group boundary (closed batches have rendered by then).
+    closed_text_grid: TextRectGrid,
     /// Per-group AABBs of draws that paint above text under the
     /// kind-reorder (mesh, image, polyline). Used by the intra-group
     /// text-after-X check: text recorded after a same-group higher-kind
@@ -213,6 +221,12 @@ impl Composer {
         self.opaque_in_group.clear();
         self.drop_indices.clear();
         self.prefix_max_cover.clear();
+        // Closed-batch text is group-scoped: once we cross a group
+        // boundary, any batch closed *in* this group has rendered (it
+        // drains at its `last_group`), so its rects no longer gate quads.
+        // The open-batch grid is NOT cleared here — it spans groups with
+        // its (still-open) batch.
+        self.closed_text_grid.clear();
     }
 
     /// Drop quads in the in-flight group that are fully covered by a
@@ -327,17 +341,25 @@ impl Composer {
     }
 
     /// Finalize the open text batch (if any): push a [`TextBatch`]
-    /// entry covering `batch_texts_start..out.texts.len()` and clear
-    /// batch-scoped scratch. No-op when no batch is active. Called
-    /// at batch-split events — rounded-clip change, mesh/polyline
-    /// append, or a quad that would paint under accumulated batch
-    /// text. The id used by the just-pushed batch matches what
-    /// [`Self::open_batch`] stamped on contributing groups.
+    /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
+    /// batch is active. Called at batch-split events — rounded-clip
+    /// change, mesh/polyline append, or a strict-bounds mismatch. The
+    /// text-overlap grid is NOT cleared here (it's group-scoped, cleared
+    /// in `flush`) so a later quad still flushes for text in an
+    /// already-closed batch that shares this group.
     fn close_batch(&mut self, out: &mut RenderBuffer) {
         let Some(b) = self.open_batch.take() else {
             return;
         };
         let texts_end = out.texts.len() as u32;
+        // Carry this batch's text rects into the group-scoped closed grid
+        // so a later quad sharing the group still flushes for them (they
+        // drain at `last_group` = this group, *after* the group's quads).
+        // Then reset the open-batch grid for the next batch.
+        for ti in b.texts_start..texts_end {
+            self.closed_text_grid.push(out.texts[ti as usize].bounds);
+        }
+        self.text_grid.clear();
         // Invariants the schedule cursor relies on: batches are pushed
         // in walk order so `last_group` is monotonically non-decreasing
         // (multiple batches can anchor to the same group when a mesh
@@ -364,7 +386,6 @@ impl Composer {
             // inlined text backend doesn't actually implement.
             scissor: b.text_union,
         });
-        self.text_grid.clear();
     }
 
     /// Return a mutable handle to the open batch, opening a fresh one
@@ -392,26 +413,35 @@ impl Composer {
     }
 
     /// Force a flush / batch-close if a quad-tier draw at `overlap`
-    /// overlaps something already in the group (or the open batch's
-    /// text) that would be reordered above it. Quad is the lowest
-    /// paint kind, so any higher-kind draw it overlaps would paint
-    /// *under* it after the backend's intra-group reorder — flush to
-    /// keep record order. Text overlap is checked against the whole
-    /// open batch (which may span multiple groups); a hit also closes
-    /// the batch so the merged text doesn't paint over this quad at
-    /// end-of-batch. Coarse reject first against the batch's union
-    /// AABB before scanning per-rect — common case is "quad far from
-    /// any text," so the O(n) scan is wasted work without it.
+    /// overlaps something in the group that would be reordered above it.
+    /// Quad is the lowest paint kind, so any higher-kind draw it overlaps
+    /// would paint *under* it after the backend's intra-group reorder —
+    /// flush to keep record order. Text overlap is checked against both
+    /// the open batch ([`Self::text_grid`], which may span groups) and
+    /// batches already closed in this group ([`Self::closed_text_grid`]);
+    /// an open-batch hit additionally closes the batch so its text can't
+    /// coalesce forward and re-cover this quad. Both checks go straight to
+    /// the tiled grid — `any_overlap` early-exits on an empty grid, so no
+    /// separate union pre-reject is needed.
     fn quad_forces_flush(&mut self, overlap: URect, out: &mut RenderBuffer) {
-        let batch_text_hit = self
-            .open_batch
-            .as_ref()
-            .is_some_and(|b| b.text_union.intersect(overlap).is_some())
-            && self.text_grid.any_overlap(overlap);
-        if batch_text_hit {
+        // Text painted in (or scheduled after) this group sits in two
+        // places: the open batch (`text_grid`, spans groups with its
+        // batch) and batches already closed within this group
+        // (`closed_text_grid`). A quad overlapping either would be painted
+        // *under* that text by the backend's quads→text order, so flush so
+        // the text renders first.
+        //
+        // An open-batch hit additionally *closes* the batch: leaving it
+        // open would let the overlapping run coalesce forward and schedule
+        // at a later `last_group`, re-covering this quad. A closed-grid
+        // hit needs no close — that text's batch is already finalized at
+        // this group; flushing alone puts the quad in the next group.
+        if self.text_grid.any_overlap(overlap) {
             self.close_batch(out);
             self.flush(out);
-        } else if any_overlap(&self.above_text_rects, overlap) {
+        } else if self.closed_text_grid.any_overlap(overlap)
+            || any_overlap(&self.above_text_rects, overlap)
+        {
             self.flush(out);
         }
     }
@@ -477,6 +507,7 @@ impl Composer {
         self.clip_stack.clear();
         self.transform_stack.clear();
         self.text_grid.start_frame(viewport_phys);
+        self.closed_text_grid.start_frame(viewport_phys);
         self.above_text_rects.clear();
         self.current_scissor = None;
         self.current_rounded = None;

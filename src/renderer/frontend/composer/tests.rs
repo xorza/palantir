@@ -1736,3 +1736,61 @@ fn rect_inflated_round_trips_with_deflated_by_uniform() {
     assert!((round.size.w - r.size.w).abs() < 1e-5);
     assert!((round.size.h - r.size.h).abs() < 1e-5);
 }
+
+/// Regression: a quad overlapping text that lives in an *already-closed*
+/// batch within the same group must still flush so the text paints under
+/// it. Reproduces the node-label-over-inspector-panel bug: a node's text
+/// gets closed into its own batch (here, by an unrelated polyline that
+/// doesn't overlap), then the panel quad — recorded later, overlapping —
+/// must not let that closed batch's text paint on top.
+#[test]
+fn quad_flushes_text_in_already_closed_batch_same_group() {
+    let buf = run(
+        |b, arena| {
+            // Node label.
+            text(b, rect(0.0, 0.0, 100.0, 20.0));
+            // A polyline far from everything closes the text batch
+            // (mesh-tier) without flushing the group, and doesn't overlap
+            // the quad below (so it can't be what forces the flush).
+            let p_start = arena.polyline_points.len() as u32;
+            arena.polyline_points.push(Vec2::new(0.0, 400.0));
+            arena.polyline_points.push(Vec2::new(50.0, 400.0));
+            let c_start = arena.polyline_colors.len() as u32;
+            arena.polyline_colors.push(Color::WHITE.into());
+            b.draw_polyline(DrawPolylinePayload {
+                bbox: rect(0.0, 400.0, 50.0, 0.0),
+                origin: Vec2::ZERO,
+                width: 1.0,
+                points_start: p_start,
+                points_len: 2,
+                colors_start: c_start,
+                colors_len: 1,
+                color_mode: ColorModeBits::new(ColorMode::Single),
+                cap: LineCapBits::new(LineCap::Butt),
+                join: LineJoinBits::new(LineJoin::Miter),
+                ..bytemuck::Zeroable::zeroed()
+            });
+            // Panel chrome quad, overlapping the (now closed-batch) label.
+            draw(b, rect(0.0, 0.0, 100.0, 60.0));
+        },
+        &params(1.0, UVec2::new(600, 600)),
+    );
+    // The label's batch must anchor strictly before the group holding the
+    // overlapping quad.
+    let tlg = buf.text_batches[0].last_group;
+    let qg = buf
+        .groups
+        .iter()
+        .enumerate()
+        .filter(|(_, g)| {
+            (g.quads.start..g.quads.start + g.quads.len)
+                .any(|qi| buf.quads[qi as usize].rect.min.y < 100.0)
+        })
+        .map(|(i, _)| i as u32)
+        .next()
+        .expect("panel quad group");
+    assert!(
+        tlg < qg,
+        "closed-batch text (last_group={tlg}) must paint before the overlapping quad (group={qg})",
+    );
+}
