@@ -1,3 +1,4 @@
+use palantir::TextWrap;
 use palantir::{
     AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Shadow,
     Sizing, Stroke, TextStyle, Ui, WidgetLook,
@@ -29,7 +30,7 @@ pub fn build(ui: &mut Ui) {
             };
             palantir::Text::new(header)
                 .auto_id()
-                .wrapping()
+                .text_wrap(TextWrap::Wrap)
                 .style(TextStyle::default().with_font_size(13.0))
                 .show(ui);
 

@@ -4,6 +4,7 @@
 //! per-frame engine state we forgot to snapshot/restore on a cache
 //! hit.
 use crate::primitives::widget_id::WidgetId;
+use crate::shape::TextWrap;
 
 use crate::TextStyle;
 use crate::Ui;
@@ -82,7 +83,7 @@ fn cache_hit_preserves_grid_cell_rects() {
                                 Text::new("value column")
                                     .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
-                                    .wrapping()
+                                    .text_wrap(TextWrap::Wrap)
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),
@@ -392,7 +393,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                 )
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .grid_cell((0, 1))
                                 .show(ui);
                                 Text::new("Tag:")
@@ -403,7 +404,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
                                 Text::new("layout, grid, intrinsic, wrapping")
                                     .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
-                                    .wrapping()
+                                    .text_wrap(TextWrap::Wrap)
                                     .grid_cell((1, 1))
                                     .show(ui);
                             });
@@ -469,7 +470,7 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
                                     )
                                     .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
-                                    .wrapping()
+                                    .text_wrap(TextWrap::Wrap)
                                     .grid_cell((0, 1))
                                     .show(ui)
                                     .node(),

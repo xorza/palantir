@@ -31,7 +31,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                     Text::new(PARAGRAPH)
                         .auto_id()
                         .style(TextStyle::default().with_font_size(16.0))
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .show(ui)
                         .node(),
                 );
@@ -305,7 +305,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                         )
                                         .id(WidgetId::from_hash("section-title"))
                                         .style(TextStyle::default().with_font_size(12.0))
-                                        .overflowing()
+                                        .text_wrap(TextWrap::Overflow)
                                         .show(ui);
                                         grid_node = Some(
                                             Grid::new()
@@ -317,7 +317,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                         "the quick brown fox jumps over the lazy dog",
                                                     ).auto_id()
                                                     .style(TextStyle::default().with_font_size(14.0))
-                                                    .wrapping()
+                                                    .text_wrap(TextWrap::Wrap)
                                                     .grid_cell((0, 0))
                                                     .show(ui);
                                                     Text::new("right column").auto_id()
@@ -325,7 +325,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                             TextStyle::default()
                                                                 .with_font_size(14.0),
                                                         )
-                                                        .overflowing()
+                                                        .text_wrap(TextWrap::Overflow)
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })
@@ -407,7 +407,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
             Text::new("right column")
                 .auto_id()
                 .style(TextStyle::default().with_font_size(14.0))
-                .overflowing()
+                .text_wrap(TextWrap::Overflow)
                 .show(ui)
                 .node(),
         );
@@ -461,7 +461,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .grid_cell((0, 0))
                         .show(ui)
                         .node(),
@@ -470,7 +470,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                     Text::new("right column")
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .overflowing()
+                        .text_wrap(TextWrap::Overflow)
                         .grid_cell((0, 1))
                         .show(ui)
                         .node(),
@@ -713,7 +713,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
                         )
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .wrapping()
+                        .text_wrap(TextWrap::Wrap)
                         .show(ui);
                     })
                     .node();

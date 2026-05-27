@@ -8,13 +8,14 @@ use crate::widgets::theme::text_style::TextStyle;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size when it has room;
-/// **by default a single-line label that doesn't fit truncates with a
-/// trailing `…`** rather than overflowing its slot ([`TextWrap::SingleLine`]).
-/// In an unbounded / Hug-width parent this is indistinguishable from showing
-/// the full line — eliding only kicks in once a parent commits a narrower
-/// width. Call `.wrapping()` for multi-line reflow, or `.overflowing()` to
-/// keep the old single-line-overflow behavior (e.g. text inside a horizontal
-/// scroll that should run past the viewport).
+/// **by default a single-line label that doesn't fit is hard-cut to the
+/// committed width** with no marker, rather than overflowing its slot
+/// ([`TextWrap::SingleLine`]). In an unbounded / Hug-width parent this is
+/// indistinguishable from showing the full line — truncation only kicks in
+/// once a parent commits a narrower width. Use [`Self::text_wrap`] to pick a
+/// different mode: `Ellipsis` marks the cut with `…`, `Wrap` reflows onto
+/// multiple lines, `Overflow` keeps one line that runs past the slot (e.g.
+/// text inside a horizontal scroll).
 ///
 /// Style is all-or-nothing: the optional `style` field replaces every
 /// text axis (font size, color, leading) at once. Defaults to the
@@ -57,21 +58,15 @@ impl Text {
         self
     }
 
-    /// Allow the renderer to reshape this text at the arranged width when
-    /// the parent commits a narrower width than the unbounded line. Without
-    /// this, the text just hugs its widest natural line forever.
-    pub fn wrapping(mut self) -> Self {
-        self.wrap = TextWrap::Wrap;
-        self
-    }
-
-    /// Opt out of the default ellipsis: keep the text on one unbroken line
-    /// and let it overflow a too-narrow parent instead of truncating. Its
-    /// min-content becomes the full line width, so a Hug track won't shrink
-    /// below it. Use inside a horizontal `Scroll` where the run is meant to
-    /// extend past the viewport.
-    pub fn overflowing(mut self) -> Self {
-        self.wrap = TextWrap::Overflow;
+    /// Set how the text handles a committed width narrower than its natural
+    /// line. Default [`TextWrap::SingleLine`] (one line, hard-cut with no
+    /// marker); pass [`TextWrap::Ellipsis`] to mark the cut with `…`,
+    /// [`TextWrap::Wrap`] to reshape onto multiple lines, or
+    /// [`TextWrap::Overflow`] to keep one unbroken line that runs past the
+    /// slot (its min-content becomes the full line width, so a Hug track won't
+    /// shrink below it — e.g. text inside a horizontal `Scroll`).
+    pub fn text_wrap(mut self, wrap: TextWrap) -> Self {
+        self.wrap = wrap;
         self
     }
 

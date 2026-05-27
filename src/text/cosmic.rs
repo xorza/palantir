@@ -11,7 +11,7 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use super::{FontFamily, MeasureResult, TextCacheKey};
+use super::{FontFamily, LineFit, MeasureResult, TextCacheKey};
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use cosmic_text::{
@@ -42,7 +42,7 @@ fn key_for(
     max_w_px: Option<f32>,
     family: FontFamily,
     halign: HAlign,
-    ellipsize: bool,
+    fit: LineFit,
 ) -> TextCacheKey {
     // FxHasher beats SipHash here by ~10× for the short ASCII strings
     // typical of UI labels — the cache-key fingerprint doesn't need
@@ -52,12 +52,15 @@ fn key_for(
     // strings.
     let mut h = FxHasher::default();
     h.write(text.as_bytes());
-    // Fold the elide mode into the fingerprint: at the same (text,
-    // width) an ellipsized buffer holds a *different* string (the
-    // truncated `prefix…`) than a wrapped one, so their cache slots
-    // must not collide.
-    if ellipsize {
-        h.write_u8(1);
+    // Fold the fit mode into the fingerprint: at the same (text, width)
+    // `Clip` and `Ellipsis` each bake a *different* truncated string, and
+    // both differ from the `Wrap` buffer — their cache slots must not
+    // collide. `Wrap` writes nothing so its key matches the unbounded /
+    // single-line `measure` path.
+    match fit {
+        LineFit::Wrap => {}
+        LineFit::Clip => h.write_u8(1),
+        LineFit::Ellipsis => h.write_u8(2),
     }
     let mut text_hash = h.finish();
     // Avoid colliding with INVALID. Probability astronomically low; flip a
@@ -228,7 +231,7 @@ impl CosmicMeasure {
             max_width_px,
             family,
             halign,
-            false,
+            LineFit::Wrap,
         );
         if let Some(hit) = self.cache_hit(key) {
             return hit;
@@ -266,15 +269,17 @@ impl CosmicMeasure {
         }
     }
 
-    /// Shape `text` as a single line elided to fit `w` with a trailing
-    /// `…`. Truncation is char-precise: an unbounded probe shape gives
-    /// per-glyph advances, we cut at the last glyph whose trailing edge
-    /// fits `w - ellipsis_width`, then shape `prefix…` aligned within
-    /// `w`. The elided buffer caches under an ellipsis-discriminated key
-    /// (so it can't collide with the wrapped buffer at the same width).
-    /// `intrinsic_min` is 0 — an elided run can shrink to just the
-    /// ellipsis.
-    pub fn measure_elided(
+    /// Shape `text` as a single line truncated to fit `w`. Truncation is
+    /// char-precise: an unbounded probe shape gives per-glyph advances, we
+    /// cut at the last glyph whose trailing edge fits, then shape the prefix
+    /// aligned within `w`. `with_ellipsis` reserves room for and appends a
+    /// trailing `…`; without it the prefix is cut flush to `w` with no
+    /// marker. The truncated buffer caches under a fit-discriminated key (so
+    /// it can't collide with the wrapped buffer — or the other truncation
+    /// mode — at the same width). `intrinsic_min` is 0 — a truncated run can
+    /// shrink to nothing.
+    #[allow(clippy::too_many_arguments)]
+    pub fn measure_truncated(
         &mut self,
         text: &str,
         font_size_px: f32,
@@ -282,6 +287,7 @@ impl CosmicMeasure {
         w: f32,
         family: FontFamily,
         halign: HAlign,
+        with_ellipsis: bool,
     ) -> MeasureResult {
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
@@ -293,7 +299,11 @@ impl CosmicMeasure {
             Some(w),
             family,
             halign,
-            true,
+            if with_ellipsis {
+                LineFit::Ellipsis
+            } else {
+                LineFit::Clip
+            },
         );
         if let Some(hit) = self.cache_hit(key) {
             return hit;
@@ -312,8 +322,13 @@ impl CosmicMeasure {
         let truncated = if line_w <= w && !multiline {
             None
         } else {
-            let ellipsis_w = self.advance_of("…", metrics, family);
-            let avail = (w - ellipsis_w).max(0.0);
+            // Reserve the ellipsis width only when we'll append one; a plain
+            // clip cuts flush to the full available width.
+            let avail = if with_ellipsis {
+                (w - self.advance_of("…", metrics, family)).max(0.0)
+            } else {
+                w
+            };
             let mut cut = 0usize;
             if let Some(run) = probe.layout_runs().next() {
                 for g in run.glyphs {
@@ -323,7 +338,12 @@ impl CosmicMeasure {
                     cut = g.end;
                 }
             }
-            Some(format!("{}…", text[..cut].trim_end()))
+            let prefix = text[..cut].trim_end();
+            Some(if with_ellipsis {
+                format!("{prefix}…")
+            } else {
+                prefix.to_string()
+            })
         };
 
         let mut buffer = Buffer::new(&mut self.font_system, metrics);

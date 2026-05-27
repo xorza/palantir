@@ -1,5 +1,6 @@
 use super::swatch::section;
 use crate::showcase::swatch;
+use palantir::TextWrap;
 use palantir::Track;
 use palantir::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
@@ -11,7 +12,7 @@ const PARAGRAPH: &str = "The quick brown fox jumps over the lazy dog. \
     How vexingly quick daft zebras jump!";
 
 /// "text" tab — basic single-text wrapping mechanics in fixed-width
-/// containers. The simplest demonstrations of `Text::new(...).auto_id().wrapping()`
+/// containers. The simplest demonstrations of `Text::new(...).auto_id().text_wrap(TextWrap::Wrap)`
 /// and the intrinsic-min overflow rule.
 pub fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -39,7 +40,7 @@ pub fn build(ui: &mut Ui) {
                         Text::new(PARAGRAPH)
                             .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
-                            .wrapping()
+                            .text_wrap(TextWrap::Wrap)
                             .show(ui);
                     });
             });
@@ -57,7 +58,7 @@ pub fn build(ui: &mut Ui) {
                             Text::new(PARAGRAPH)
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .show(ui);
                         });
                 },
@@ -76,7 +77,7 @@ pub fn build(ui: &mut Ui) {
                             Text::new("supercalifragilistic")
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .show(ui);
                         });
                 },
@@ -107,7 +108,7 @@ pub fn build_layouts(ui: &mut Ui) {
                             Text::new(PARAGRAPH)
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .grid_cell((0, 0))
                                 .show(ui);
                             Text::new("right column")
@@ -139,7 +140,7 @@ pub fn build_layouts(ui: &mut Ui) {
                             Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .grid_cell((0, 1))
                                 .show(ui);
                             Text::new("Description:")
@@ -150,7 +151,7 @@ pub fn build_layouts(ui: &mut Ui) {
                             Text::new(PARAGRAPH)
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .grid_cell((1, 1))
                                 .show(ui);
                             Text::new("Tags:")
@@ -161,7 +162,7 @@ pub fn build_layouts(ui: &mut Ui) {
                             Text::new("layout, grid, intrinsic, wrapping, css")
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .grid_cell((2, 1))
                                 .show(ui);
                         });
@@ -219,7 +220,7 @@ fn chat_row(ui: &mut Ui, key: &'static str, avatar_color: Color, message: &'stat
                 .id_salt(("message", key))
                 .style(TextStyle::default().with_font_size(14.0))
                 .size((Sizing::FILL, Sizing::Hug))
-                .wrapping()
+                .text_wrap(TextWrap::Wrap)
                 .show(ui);
         });
 }

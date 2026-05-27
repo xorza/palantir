@@ -3,6 +3,7 @@
 //! framework disambiguates the duplicates (so state stays intact) and
 //! paints a magenta 3px outline over every offender.
 
+use palantir::TextWrap;
 use palantir::{Background, Button, Color, Configure, Frame, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui) {
@@ -16,7 +17,7 @@ pub fn build(ui: &mut Ui) {
                 "Each row below reuses an explicit id across two or more sibling widgets. \
                  They get disambiguated and outlined in magenta — no panic, state survives.",
             )
-            .wrapping()
+            .text_wrap(TextWrap::Wrap)
             .show(ui);
 
             row(ui, |ui| {

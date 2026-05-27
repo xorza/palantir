@@ -7,6 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
+use crate::shape::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::text::Text;
@@ -224,7 +225,10 @@ impl<'r> Tooltip<'r> {
             }
             ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
                 ui.node_with_chrome(bubble_id, element, &chrome, |ui| {
-                    Text::new(text).style(text_style).wrapping().show(ui);
+                    Text::new(text)
+                        .style(text_style)
+                        .text_wrap(TextWrap::Wrap)
+                        .show(ui);
                 });
             });
             if let Some(r) = ui.response_for(bubble_id).rect {

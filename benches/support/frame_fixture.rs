@@ -17,7 +17,7 @@ use palantir::{
     Align, Background, Brush, Button, Checkbox, Color, ColorU8, Configure, ConicGradient, Corners,
     Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel, PolylineColors, Popup,
     RadialGradient, RadioButton, Rect, Scroll, Shadow, Shape, Sizing, Stop, Stroke, Text, TextEdit,
-    TextStyle, Tooltip, Track, Ui,
+    TextStyle, TextWrap, Tooltip, Track, Ui,
 };
 
 // Each include site (bench / example) only uses one constant; the other
@@ -212,7 +212,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                         Text::new(values[row % values.len()])
                                             .id_salt(("pval", row))
                                             .style(TextStyle::default().with_font_size(14.0))
-                                            .wrapping()
+                                            .text_wrap(TextWrap::Wrap)
                                             .grid_cell((r, 1))
                                             .show(ui);
                                         Button::new()
@@ -321,7 +321,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                                             TextStyle::default()
                                                                 .with_font_size(13.0),
                                                         )
-                                                        .wrapping()
+                                                        .text_wrap(TextWrap::Wrap)
                                                         .size((Sizing::FILL, Sizing::Hug))
                                                         .show(ui);
                                                     });

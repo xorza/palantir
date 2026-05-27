@@ -341,15 +341,20 @@ impl ColorMode {
 /// Wrap mode for [`ShapeRecord::Text`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
-    /// **Default.** Single line, truncated with a trailing `…` when the
-    /// committed width is narrower than the natural line. Min-content is zero
-    /// (it shrinks to just the ellipsis), so a bounded parent clips the run to
-    /// one elided line instead of overflowing — single-line text is limited to
-    /// its available width like any other widget. In an unbounded / Hug-width
-    /// parent the full line shows; eliding only bites once a parent commits a
-    /// narrower width.
+    /// **Default.** Single line, hard-truncated to the committed width with
+    /// no trailing marker — glyphs past the box edge are simply dropped.
+    /// Min-content is zero (the run can shrink to nothing), so a bounded
+    /// parent clips it to its slot instead of overflowing — single-line text
+    /// is limited to its available width like any other widget. In an
+    /// unbounded / Hug-width parent the full line shows; truncation only
+    /// bites once a parent commits a narrower width.
     #[default]
     SingleLine,
+    /// Single line, truncated to the committed width with a trailing `…`.
+    /// Identical to [`TextWrap::SingleLine`] (min-content zero, clipped to the
+    /// slot) except the cut is marked with an ellipsis. For labels where the
+    /// elision should be visible — paths, names in fixed-width chrome.
+    Ellipsis,
     /// Reshape during measure if the parent commits a width narrower than
     /// the natural unbroken line. The widest unbreakable run (longest word)
     /// is the floor — text overflows rather than breaking inside a word.

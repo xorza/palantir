@@ -10,6 +10,7 @@
 //! so `#[path]` includes from `benches/` / `examples/` work.
 
 use glam::Vec2;
+use palantir::TextWrap;
 use palantir::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Color, Configure, Corners, Frame, Grid,
     LineCap, LineJoin, LinearGradient, Panel, PolylineColors, Scroll, Shadow, Shape, Sizing,
@@ -28,7 +29,7 @@ pub fn build(ui: &mut Ui) {
                  Wheel pans, Ctrl/Cmd + wheel zooms about the cursor.",
             )
             .auto_id()
-            .wrapping()
+            .text_wrap(TextWrap::Wrap)
             .style(TextStyle::default().with_font_size(13.0))
             .show(ui);
 
@@ -126,7 +127,7 @@ fn property_grid(ui: &mut Ui) {
                 Text::new(values[row % values.len()])
                     .id_salt(("pval", row))
                     .style(TextStyle::default().with_font_size(14.0))
-                    .wrapping()
+                    .text_wrap(TextWrap::Wrap)
                     .grid_cell((r, 1))
                     .show(ui);
                 Button::new()
@@ -226,7 +227,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                                 )
                                 .id_salt(("msg", i))
                                 .style(TextStyle::default().with_font_size(13.0))
-                                .wrapping()
+                                .text_wrap(TextWrap::Wrap)
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui);
                             });
