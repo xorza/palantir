@@ -139,6 +139,19 @@ impl Color {
         }
     }
 
+    /// Invert the RGB channels in linear space (`1 − c`), preserving
+    /// alpha. A pure linear reflection — no sRGB round-trip — so it's
+    /// *exactly* reversible (`c.inverted().inverted() == c`), which makes
+    /// it safe to drive a light/dark toggle.
+    pub const fn inverted(self) -> Self {
+        Self {
+            r: 1.0 - self.r,
+            g: 1.0 - self.g,
+            b: 1.0 - self.b,
+            a: self.a,
+        }
+    }
+
     /// Multiply the linear RGB channels by `mul`, preserve alpha. Used by the
     /// encoder to dim disabled subtrees.
     pub const fn dim_rgb(self, mul: f32) -> Self {
