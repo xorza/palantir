@@ -31,7 +31,7 @@ TextEdit            (Leaf, sense = Click, focusable, ClipMode::Rect)
   shapes:
     [Background]    (state.background; theme-driven, omitted when None)
     [Selection]     (only when focused with live selection)
-    Text            (buffer or placeholder; TextWrap::Single or ::Wrap)
+    Text            (buffer or placeholder; TextWrap::Overflow or ::Wrap)
     [Caret]         (painted last, only when focused)
 ```
 

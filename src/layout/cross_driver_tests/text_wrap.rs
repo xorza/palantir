@@ -61,12 +61,12 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 }
 
 /// A `Button` with a label wider than its `Fixed` width elides to one
-/// line instead of overflowing or wrapping: the body height stays a
-/// single line (contrast `wrapping_text_grows_height_in_narrow_frame`,
+/// line instead of overflowing or wrapping *by default*: the body height
+/// stays a single line (contrast `wrapping_text_grows_height_in_narrow_frame`,
 /// where the same paragraph spans many) and the label shape carries
-/// `TextWrap::Ellipsis`.
+/// `TextWrap::SingleLine`.
 #[test]
-fn ellipsis_button_label_stays_one_line_in_narrow_frame() {
+fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     let mut ui = Ui::for_test_at_text(UVec2::new(400, 400));
     let mut node = None;
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
@@ -74,14 +74,7 @@ fn ellipsis_button_label_stays_one_line_in_narrow_frame() {
             .auto_id()
             .size((Sizing::Fixed(80.0), Sizing::Hug))
             .show(ui, |ui| {
-                node = Some(
-                    Button::new()
-                        .auto_id()
-                        .elide()
-                        .label(PARAGRAPH)
-                        .show(ui)
-                        .node(),
-                );
+                node = Some(Button::new().auto_id().label(PARAGRAPH).show(ui).node());
             });
     });
     let node = node.unwrap();
@@ -97,8 +90,8 @@ fn ellipsis_button_label_stays_one_line_in_narrow_frame() {
         .expect("button label text shape");
     assert_eq!(
         wrap,
-        TextWrap::Ellipsis,
-        "`.elide()` selects the ellipsis wrap mode"
+        TextWrap::SingleLine,
+        "a button label defaults to the truncating wrap mode"
     );
 
     // The same paragraph wraps to >32 px tall in the wrap test; elided it
@@ -312,6 +305,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                         )
                                         .id(WidgetId::from_hash("section-title"))
                                         .style(TextStyle::default().with_font_size(12.0))
+                                        .overflowing()
                                         .show(ui);
                                         grid_node = Some(
                                             Grid::new()
@@ -331,6 +325,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                             TextStyle::default()
                                                                 .with_font_size(14.0),
                                                         )
+                                                        .overflowing()
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })
@@ -412,6 +407,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
             Text::new("right column")
                 .auto_id()
                 .style(TextStyle::default().with_font_size(14.0))
+                .overflowing()
                 .show(ui)
                 .node(),
         );
@@ -474,6 +470,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                     Text::new("right column")
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
+                        .overflowing()
                         .grid_cell((0, 1))
                         .show(ui)
                         .node(),
@@ -537,7 +534,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
-                wrap: TextWrap::Single,
+                wrap: TextWrap::SingleLine,
                 align: Default::default(),
                 family: crate::text::FontFamily::Sans,
             });
@@ -547,7 +544,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
-                wrap: TextWrap::Single,
+                wrap: TextWrap::SingleLine,
                 align: Default::default(),
                 family: crate::text::FontFamily::Sans,
             });

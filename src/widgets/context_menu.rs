@@ -286,7 +286,7 @@ impl MenuItem {
                     brush: label_color.into(),
                     font_size_px,
                     line_height_px,
-                    wrap: TextWrap::Single,
+                    wrap: TextWrap::SingleLine,
                     align: Align::default(),
                     family,
                 });
@@ -303,7 +303,7 @@ impl MenuItem {
                         brush: shortcut_color.into(),
                         font_size_px,
                         line_height_px,
-                        wrap: TextWrap::Single,
+                        wrap: TextWrap::SingleLine,
                         align: Align::default(),
                         family,
                     });

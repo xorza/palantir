@@ -737,9 +737,9 @@ impl LayoutEngine {
         // (always called with the wrap target) reads per-line-aligned
         // coords from a different cached buffer. For `Ellipsis` it's the
         // path that elides the run to one line at the committed width.
-        let ellipsize = matches!(ts.wrap, TextWrap::Ellipsis);
+        let ellipsize = matches!(ts.wrap, TextWrap::SingleLine);
         let bounded =
-            matches!(ts.wrap, TextWrap::Wrap | TextWrap::Ellipsis) && available_w.is_finite();
+            matches!(ts.wrap, TextWrap::Wrap | TextWrap::SingleLine) && available_w.is_finite();
 
         let result = if bounded {
             // Wrap floors the target at the longest word (overflow rather

@@ -339,22 +339,27 @@ impl ColorMode {
 }
 
 /// Wrap mode for [`ShapeRecord::Text`].
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
-    /// ShapeRecord once at unbounded width and never reshape. Used by every text
-    /// run that fits on a single line — labels, headings, anything that
-    /// shouldn't wrap.
-    Single,
+    /// **Default.** Single line, truncated with a trailing `…` when the
+    /// committed width is narrower than the natural line. Min-content is zero
+    /// (it shrinks to just the ellipsis), so a bounded parent clips the run to
+    /// one elided line instead of overflowing — single-line text is limited to
+    /// its available width like any other widget. In an unbounded / Hug-width
+    /// parent the full line shows; eliding only bites once a parent commits a
+    /// narrower width.
+    #[default]
+    SingleLine,
     /// Reshape during measure if the parent commits a width narrower than
     /// the natural unbroken line. The widest unbreakable run (longest word)
     /// is the floor — text overflows rather than breaking inside a word.
     Wrap,
-    /// Single line, truncated with a trailing `…` when the committed width
-    /// is narrower than the natural line. Min-content is zero (it shrinks
-    /// to just the ellipsis), so a bounded parent clips the run to one
-    /// elided line instead of overflowing. Used for labels in fixed-width
-    /// chrome — buttons, cells — where the box width is authoritative.
-    Ellipsis,
+    /// Single line shaped once at unbounded width and never reshaped, so it
+    /// overflows a too-narrow slot rather than truncating. Min-content equals
+    /// the full line width, so a Hug track won't shrink below it. The explicit
+    /// opt-out from the truncating default — for editable buffers and
+    /// horizontally-scrolled text that are *meant* to run past the viewport.
+    Overflow,
 }
 
 /// True iff `local_rect` is set with a degenerate or negative extent

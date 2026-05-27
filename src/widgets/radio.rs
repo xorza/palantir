@@ -108,7 +108,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                         brush: look.text.color.into(),
                         font_size_px: look.text.font_size_px,
                         line_height_px: look.line_height_px(),
-                        wrap: TextWrap::Single,
+                        wrap: TextWrap::SingleLine,
                         align: Align::v(VAlign::Center),
                         family: look.text.family,
                     });

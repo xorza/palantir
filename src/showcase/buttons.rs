@@ -61,19 +61,25 @@ pub fn build(ui: &mut Ui) {
                     .show(ui);
             });
 
-            // Elided labels: a fixed-width button whose label is longer
-            // than its box truncates to one line with a trailing `…`
-            // instead of spilling outside the chrome. A `Hug`-width
-            // button (right) keeps its full label.
+            // Single-line labels truncate to a trailing `…` by default: a
+            // fixed-width button (left) whose label is longer than its box
+            // elides instead of spilling outside the chrome. `.overflowing()`
+            // (middle) opts out — the label runs past the box on one line. A
+            // `Hug`-width button (right) commits its natural width either way.
             row(ui, "elide", |ui| {
                 Button::new()
                     .id_salt("e-1")
                     .size((Sizing::Fixed(140.0), Sizing::Hug))
-                    .elide()
                     .label("Screenshot 2026-05-28 at 01.21.25.png")
                     .show(ui);
                 Button::new()
                     .id_salt("e-2")
+                    .size((Sizing::Fixed(140.0), Sizing::Hug))
+                    .overflowing()
+                    .label("Screenshot 2026-05-28 at 01.21.25.png")
+                    .show(ui);
+                Button::new()
+                    .id_salt("e-3")
                     .label("fits its content")
                     .show(ui);
             });

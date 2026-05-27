@@ -862,7 +862,9 @@ impl<'a> TextEdit<'a> {
                     wrap: if ctx.multiline {
                         TextWrap::Wrap
                     } else {
-                        TextWrap::Single
+                        // Editable single line: overflow + own horizontal
+                        // scroll, never elide the buffer.
+                        TextWrap::Overflow
                     },
                     // Pass the user's `text_align` so the layout
                     // pipeline's `shape_wrap` builds a `TextCacheKey`
