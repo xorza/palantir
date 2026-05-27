@@ -2181,7 +2181,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         brush: Color::WHITE.into(),
                         font_size_px: FONT,
                         line_height_px: FONT,
-                        wrap: TextWrap::Single,
+                        wrap: TextWrap::SingleLine,
                         align: Default::default(),
                         family: FontFamily::Sans,
                     });

@@ -7,9 +7,14 @@ use crate::widgets::Response;
 use crate::widgets::theme::text_style::TextStyle;
 
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
-/// anything that's just a string. Hugs its measured size by default; call
-/// `.wrapping()` to opt into reshape-on-arrange when a fixed-width parent
-/// commits a narrower width than the natural unbroken line.
+/// anything that's just a string. Hugs its measured size when it has room;
+/// **by default a single-line label that doesn't fit truncates with a
+/// trailing `…`** rather than overflowing its slot ([`TextWrap::SingleLine`]).
+/// In an unbounded / Hug-width parent this is indistinguishable from showing
+/// the full line — eliding only kicks in once a parent commits a narrower
+/// width. Call `.wrapping()` for multi-line reflow, or `.overflowing()` to
+/// keep the old single-line-overflow behavior (e.g. text inside a horizontal
+/// scroll that should run past the viewport).
 ///
 /// Style is all-or-nothing: the optional `style` field replaces every
 /// text axis (font size, color, leading) at once. Defaults to the
@@ -35,7 +40,7 @@ impl Text {
             element: Element::new(LayoutMode::Leaf),
             text: text.into(),
             style: None,
-            wrap: TextWrap::Single,
+            wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
             // a Hug Text widget has no slack to align in.
@@ -57,6 +62,16 @@ impl Text {
     /// this, the text just hugs its widest natural line forever.
     pub fn wrapping(mut self) -> Self {
         self.wrap = TextWrap::Wrap;
+        self
+    }
+
+    /// Opt out of the default ellipsis: keep the text on one unbroken line
+    /// and let it overflow a too-narrow parent instead of truncating. Its
+    /// min-content becomes the full line width, so a Hug track won't shrink
+    /// below it. Use inside a horizontal `Scroll` where the run is meant to
+    /// extend past the viewport.
+    pub fn overflowing(mut self) -> Self {
+        self.wrap = TextWrap::Overflow;
         self
     }
 

@@ -29,9 +29,11 @@ impl Button {
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
-            // Single line by default — a button hugs its label, so it
-            // only matters when the caller commits a narrower width.
-            label_wrap: TextWrap::Single,
+            // Single-line by default — a button hugs its label, so the elide
+            // only bites when the caller commits a narrower width than the
+            // label's natural line (Fixed/Fill button); then it shows `…`
+            // instead of spilling outside the chrome.
+            label_wrap: TextWrap::SingleLine,
         }
     }
 
@@ -44,12 +46,12 @@ impl Button {
         self
     }
 
-    /// Elide the label to one line with a trailing `…` when it's wider
-    /// than the button's committed width, instead of spilling outside the
-    /// chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
-    /// button commits its natural width, so the label always fits.
-    pub fn elide(mut self) -> Self {
-        self.label_wrap = TextWrap::Ellipsis;
+    /// Opt out of the default ellipsis: let the label run past the button's
+    /// committed width on one unbroken line instead of truncating. Only
+    /// matters on a `Fixed`/`Fill`-width button narrower than the label — a
+    /// `Hug` button commits its natural width, so the label always fits.
+    pub fn overflowing(mut self) -> Self {
+        self.label_wrap = TextWrap::Overflow;
         self
     }
 
@@ -111,9 +113,9 @@ impl Button {
                     brush: look.text.color.into(),
                     font_size_px: look.text.font_size_px,
                     line_height_px: look.line_height_px(),
-                    // `Single` by default; `.elide()` switches to
-                    // `Ellipsis` so an over-wide label truncates to one
-                    // line instead of spilling outside the chrome.
+                    // `SingleLine` by default so an over-wide label elides to
+                    // one line instead of spilling outside the chrome;
+                    // `.overflowing()` switches to `Overflow`.
                     wrap: label_wrap,
                     align: label_align,
                     family: look.text.family,
