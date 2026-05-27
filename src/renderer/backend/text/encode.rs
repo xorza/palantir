@@ -25,7 +25,7 @@ use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextCacheKey;
-use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
+use cosmic_text::{Buffer, CacheKey, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
 use super::atlas::GlyphAtlas;
@@ -105,9 +105,18 @@ pub(crate) struct EncodedCache {
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
     pub(crate) arena: Vec<EncodedGlyph>,
+    /// Per-glyph atlas `CacheKey`, parallel to `arena` (same spans).
+    /// A cache hit emits `arena` straight out without walking cosmic,
+    /// so the atlas slots backing the run would never get their LRU
+    /// `last_use` bumped — `evict_one` could then reclaim a slot still
+    /// referenced this frame and overwrite it with a different glyph.
+    /// On hit we walk this slice and re-touch each slot so liveness
+    /// tracks actual use.
+    pub(crate) keys: Vec<CacheKey>,
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
     pub(crate) scratch: Vec<EncodedGlyph>,
+    pub(crate) scratch_keys: Vec<CacheKey>,
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -129,13 +138,16 @@ impl EncodedCache {
             return;
         }
         self.scratch.clear();
+        self.scratch_keys.clear();
         for entry in self.map.values_mut() {
             let new_start = self.scratch.len() as u32;
             let r = entry.span.range();
-            self.scratch.extend_from_slice(&self.arena[r]);
+            self.scratch.extend_from_slice(&self.arena[r.clone()]);
+            self.scratch_keys.extend_from_slice(&self.keys[r]);
             entry.span = Span::new(new_start, entry.span.len);
         }
         std::mem::swap(&mut self.arena, &mut self.scratch);
+        std::mem::swap(&mut self.keys, &mut self.scratch_keys);
     }
 }
 
@@ -165,15 +177,15 @@ pub(crate) fn encode_key_for(r: &TextRun, frame_scale: f32) -> EncodedRunKey {
 /// through to the slow path on `false`.
 pub(crate) fn try_emit_cached(
     cache: &mut EncodedCache,
-    atlas_eviction: u64,
-    current_frame: u64,
+    atlas: &mut GlyphAtlas,
     run_key: &EncodedRunKey,
     out: &mut Vec<GlyphInstance>,
 ) -> bool {
+    let current_frame = atlas.current_frame;
     let Some(entry) = cache.map.get_mut(&run_key.key) else {
         return false;
     };
-    if entry.eviction_at != atlas_eviction {
+    if entry.eviction_at != atlas.eviction_count {
         return false;
     }
     entry.last_use = current_frame;
@@ -187,6 +199,15 @@ pub(crate) fn try_emit_cached(
             uv_and_kind: g.uv_and_kind,
             color: g.color,
         });
+    }
+    // Refresh LRU on every slot this run rides so `evict_one` can't
+    // reclaim a slot we're still drawing this frame. The eviction_at
+    // check above guarantees no slot was evicted since insert, so every
+    // key is still present.
+    for k in &cache.keys[span.range()] {
+        if let Some(slot) = atlas.cache.get_mut(k) {
+            slot.last_use = current_frame;
+        }
     }
     true
 }
@@ -281,6 +302,7 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
+                ctx.cache.keys.push(physical.cache_key);
             }
         }
 
@@ -299,6 +321,7 @@ pub(crate) fn encode_batch<'a>(
         } else {
             // Roll back the partial entry — its uv coords are stale.
             ctx.cache.arena.truncate(pending_start as usize);
+            ctx.cache.keys.truncate(pending_start as usize);
         }
     }
 }
