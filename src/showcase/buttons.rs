@@ -60,6 +60,23 @@ pub fn build(ui: &mut Ui) {
                     .label("danger")
                     .show(ui);
             });
+
+            // Elided labels: a fixed-width button whose label is longer
+            // than its box truncates to one line with a trailing `…`
+            // instead of spilling outside the chrome. A `Hug`-width
+            // button (right) keeps its full label.
+            row(ui, "elide", |ui| {
+                Button::new()
+                    .id_salt("e-1")
+                    .size((Sizing::Fixed(140.0), Sizing::Hug))
+                    .elide()
+                    .label("Screenshot 2026-05-28 at 01.21.25.png")
+                    .show(ui);
+                Button::new()
+                    .id_salt("e-2")
+                    .label("fits its content")
+                    .show(ui);
+            });
         });
 }
 

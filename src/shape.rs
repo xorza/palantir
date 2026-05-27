@@ -349,6 +349,12 @@ pub enum TextWrap {
     /// the natural unbroken line. The widest unbreakable run (longest word)
     /// is the floor — text overflows rather than breaking inside a word.
     Wrap,
+    /// Single line, truncated with a trailing `…` when the committed width
+    /// is narrower than the natural line. Min-content is zero (it shrinks
+    /// to just the ellipsis), so a bounded parent clips the run to one
+    /// elided line instead of overflowing. Used for labels in fixed-width
+    /// chrome — buttons, cells — where the box width is authoritative.
+    Ellipsis,
 }
 
 /// True iff `local_rect` is set with a degenerate or negative extent

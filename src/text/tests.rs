@@ -54,11 +54,15 @@ fn mono_measure_cases() {
         ),
     ];
     for (label, text, fs, lh_v, max_w, expected) in cases {
-        let r = mono_measure(text, *fs, *lh_v, *max_w);
+        let r = mono_measure(text, *fs, *lh_v, *max_w, false);
         assert_eq!(r.size, *expected, "case: {label}");
     }
     // Empty also produces the INVALID sentinel.
-    assert!(mono_measure("", 16.0, lh(16.0), None).key.is_invalid());
+    assert!(
+        mono_measure("", 16.0, lh(16.0), None, false)
+            .key
+            .is_invalid()
+    );
 }
 
 /// `cursor_xy(...).x`. Mono fallback: each ASCII byte is
@@ -199,6 +203,7 @@ fn shape_wrap_panics_without_prime() {
         100,
         FontFamily::Sans,
         HAlign::Auto,
+        false,
     );
 }
 
@@ -630,6 +635,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         200 * 64,
         FontFamily::Sans,
         HAlign::Left,
+        false,
     );
     let after_left = m.measure_calls();
     assert_eq!(after_left, baseline + 1, "first wrap shape must dispatch");
@@ -644,6 +650,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         200 * 64,
         FontFamily::Sans,
         HAlign::Left,
+        false,
     );
     assert_eq!(
         m.measure_calls(),
@@ -661,6 +668,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         200 * 64,
         FontFamily::Sans,
         HAlign::Right,
+        false,
     );
     assert_eq!(
         m.measure_calls(),
@@ -739,5 +747,89 @@ fn cursor_xy_on_empty_line_respects_right_align() {
         "left-aligned caret on empty trailing line stays at 0; \
          got x = {}",
         pos_left.x,
+    );
+}
+
+#[test]
+fn cosmic_ellipsis_elides_long_line_to_width() {
+    // A label wider than the committed width truncates to one line that
+    // fits, with a trailing ellipsis. Pins the "labels never overflow
+    // their box" contract the Button relies on.
+    use crate::text::cosmic::CosmicMeasure;
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let long = "Screenshot 2026-05-28 at 01.21.25.png";
+    let w = 120.0;
+    let elided = c.measure_elided(long, 16.0, lh(16.0), w, FontFamily::Sans, HAlign::Auto);
+    // Precondition: the natural single line genuinely overflows `w`.
+    let full = c.measure(long, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    assert!(
+        full.size.w > w,
+        "precondition: natural line ({}) must overflow the cap ({w})",
+        full.size.w,
+    );
+    // Elided result fits the cap (ceil tolerance) and stays one line.
+    assert!(
+        elided.size.w <= w + 1.0,
+        "elided width {} must fit cap {w}",
+        elided.size.w,
+    );
+    assert!(
+        elided.size.h <= (16.0 * LINE_HEIGHT_MULT).ceil() + 0.5,
+        "elided run must be a single line, got h={}",
+        elided.size.h,
+    );
+    assert_eq!(
+        elided.intrinsic_min, 0.0,
+        "an elided run has zero min floor"
+    );
+    // The elided buffer must not collide with the *wrapped* buffer at the
+    // same width — they hold different strings, so distinct cache keys.
+    let wrapped = c.measure(
+        long,
+        16.0,
+        lh(16.0),
+        Some(w),
+        FontFamily::Sans,
+        HAlign::Auto,
+    );
+    assert_ne!(
+        elided.key, wrapped.key,
+        "elision and wrap must key distinct cache slots at the same width",
+    );
+}
+
+#[test]
+fn cosmic_ellipsis_short_text_not_truncated() {
+    // A label that already fits the cap is shaped whole — no spurious
+    // ellipsis, width matches the natural measurement.
+    use crate::text::cosmic::CosmicMeasure;
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let short = "ok";
+    let natural = c.measure(short, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    let elided = c.measure_elided(short, 16.0, lh(16.0), 200.0, FontFamily::Sans, HAlign::Auto);
+    assert!(
+        (elided.size.w - natural.size.w).abs() <= 2.0,
+        "short text must not truncate: elided {} vs natural {}",
+        elided.size.w,
+        natural.size.w,
+    );
+}
+
+#[test]
+fn mono_ellipsis_caps_width_with_zero_floor() {
+    // Mono fallback: an elided long word caps at the available width and
+    // reports zero min-content (shrinks to the ellipsis); the wrap
+    // counterpart instead grows height and keeps the longest-word floor.
+    let long = "abcdefghijklmnop"; // 16 ASCII bytes × 8 px = 128 px natural
+    let w = 40.0;
+    let elided = mono_measure(long, 16.0, lh(16.0), Some(w), true);
+    assert_eq!(elided.size.w, w, "elided mono caps at the width");
+    assert_eq!(elided.size.h, lh(16.0), "elided mono is one line");
+    assert_eq!(elided.intrinsic_min, 0.0, "elided mono has zero floor");
+    let wrapped = mono_measure(long, 16.0, lh(16.0), Some(w), false);
+    assert!(wrapped.size.h > lh(16.0), "wrap grows height across lines");
+    assert!(
+        wrapped.intrinsic_min > 0.0,
+        "wrap keeps a longest-word floor"
     );
 }

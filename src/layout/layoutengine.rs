@@ -727,19 +727,29 @@ impl LayoutEngine {
             ts.family,
         );
 
-        // Always re-shape through `shape_wrap` for `TextWrap::Wrap` +
-        // a finite available width, even when the content fits — the
-        // shaped buffer only carries per-line `BufferLine::set_align`
-        // when `max_width_px` is `Some`, and a multi-line buffer
-        // built without it has every visual line pinned at x = 0.
-        // Without this, an `\n`-separated paragraph that never wraps
-        // would render left-aligned while the widget's `cursor_xy`
+        // Re-shape through the width-bounded path for `Wrap`/`Ellipsis`
+        // against a finite width. For `Wrap` this is needed even when the
+        // content fits — the shaped buffer only carries per-line
+        // `BufferLine::set_align` when `max_width_px` is `Some`, and a
+        // multi-line buffer built without it has every visual line pinned
+        // at x = 0; without it an `\n`-separated paragraph that never
+        // wraps would render left-aligned while the widget's `cursor_xy`
         // (always called with the wrap target) reads per-line-aligned
-        // coords from a different cached buffer.
-        let want_wrap = matches!(ts.wrap, TextWrap::Wrap) && available_w.is_finite();
+        // coords from a different cached buffer. For `Ellipsis` it's the
+        // path that elides the run to one line at the committed width.
+        let ellipsize = matches!(ts.wrap, TextWrap::Ellipsis);
+        let bounded =
+            matches!(ts.wrap, TextWrap::Wrap | TextWrap::Ellipsis) && available_w.is_finite();
 
-        let result = if want_wrap {
-            let target = available_w.max(unbounded.intrinsic_min);
+        let result = if bounded {
+            // Wrap floors the target at the longest word (overflow rather
+            // than break mid-word); ellipsis truncates freely, so it takes
+            // the committed width verbatim.
+            let target = if ellipsize {
+                available_w
+            } else {
+                available_w.max(unbounded.intrinsic_min)
+            };
             let target_q = quantize_wrap_target(target);
             text.shape_wrap(
                 wid,
@@ -751,6 +761,7 @@ impl LayoutEngine {
                 target_q,
                 ts.family,
                 ts.halign,
+                ellipsize,
             )
         } else {
             unbounded

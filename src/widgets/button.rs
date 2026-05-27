@@ -13,6 +13,7 @@ pub struct Button {
     style: Option<ButtonTheme>,
     label: InternedStr,
     label_align: Align,
+    label_wrap: TextWrap,
 }
 
 impl Button {
@@ -28,6 +29,9 @@ impl Button {
             // Buttons center their labels by convention. Override with
             // `.text_align(...)` for left/right-aligned labels.
             label_align: Align::CENTER,
+            // Single line by default — a button hugs its label, so it
+            // only matters when the caller commits a narrower width.
+            label_wrap: TextWrap::Single,
         }
     }
 
@@ -37,6 +41,15 @@ impl Button {
     }
     pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
+        self
+    }
+
+    /// Elide the label to one line with a trailing `…` when it's wider
+    /// than the button's committed width, instead of spilling outside the
+    /// chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
+    /// button commits its natural width, so the label always fits.
+    pub fn elide(mut self) -> Self {
+        self.label_wrap = TextWrap::Ellipsis;
         self
     }
 
@@ -88,6 +101,7 @@ impl Button {
         let look = look_target.animate(ui, id, fallback_text, style_anim);
         let label = self.label;
         let label_align = self.label_align;
+        let label_wrap = self.label_wrap;
 
         ui.node_with_chrome(id, element, &look.background, |ui| {
             if !label.is_empty() {
@@ -97,7 +111,10 @@ impl Button {
                     brush: look.text.color.into(),
                     font_size_px: look.text.font_size_px,
                     line_height_px: look.line_height_px(),
-                    wrap: TextWrap::Single,
+                    // `Single` by default; `.elide()` switches to
+                    // `Ellipsis` so an over-wide label truncates to one
+                    // line instead of spilling outside the chrome.
+                    wrap: label_wrap,
                     align: label_align,
                     family: look.text.family,
                 });
