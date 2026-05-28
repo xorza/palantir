@@ -271,13 +271,17 @@ impl CosmicMeasure {
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
     /// char-precise: an unbounded probe shape gives per-glyph advances, we
-    /// cut at the last glyph whose trailing edge fits, then shape the prefix
-    /// aligned within `w`. `with_ellipsis` reserves room for and appends a
-    /// trailing `…`; without it the prefix is cut flush to `w` with no
-    /// marker. The truncated buffer caches under a fit-discriminated key (so
-    /// it can't collide with the wrapped buffer — or the other truncation
-    /// mode — at the same width). `intrinsic_min` is 0 — a truncated run can
-    /// shrink to nothing.
+    /// cut at the last glyph whose trailing edge fits, then shape the
+    /// (possibly truncated) prefix on one **natural** line — unbounded, no
+    /// per-line align. The committed width only decides the cut; the encoder
+    /// positions/aligns the single line, so the measured extent is the glyph
+    /// width, not `w` (binding to `w` + center align would inflate a
+    /// fits-anyway label to ~half the box). `with_ellipsis` reserves room for
+    /// and appends a trailing `…`; without it the prefix is cut flush to `w`
+    /// with no marker. The buffer caches under a fit-discriminated key (so it
+    /// can't collide with the wrapped buffer — or the other truncation mode —
+    /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
+    /// to nothing.
     #[allow(clippy::too_many_arguments)]
     pub fn measure_truncated(
         &mut self,
@@ -346,13 +350,17 @@ impl CosmicMeasure {
             })
         };
 
+        // Shape unbounded on one line: the cut already fit it to `w`, and the
+        // encoder owns single-line placement. Binding to `Some(w)` + align
+        // would measure the aligned glyph position, inflating a fits-anyway
+        // label toward the box width.
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
-        buffer.set_size(Some(w), None);
+        buffer.set_size(None, None);
         buffer.set_text(
             truncated.as_deref().unwrap_or(text),
             &attrs,
             Shaping::Advanced,
-            cosmic_align(halign),
+            None,
         );
         buffer.shape_until_scroll(&mut self.font_system, false);
 

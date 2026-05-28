@@ -832,6 +832,37 @@ fn cosmic_ellipsis_short_text_not_truncated() {
 }
 
 #[test]
+fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
+    // Regression: a single-line label that fits a wide cap must measure to
+    // its natural glyph width, not inflate toward the box, even with a
+    // non-`Auto` halign (the encoder positions the line; the shaped buffer
+    // must not bake in width + per-line align). A `Center`-aligned label in
+    // a 400 px cap previously measured ~half the box wide.
+    use crate::text::cosmic::CosmicMeasure;
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let label = "File";
+    let cap = 400.0;
+    let natural = c.measure(label, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    for fit in [false, true] {
+        let m = c.measure_truncated(
+            label,
+            16.0,
+            lh(16.0),
+            cap,
+            FontFamily::Sans,
+            HAlign::Center,
+            fit,
+        );
+        assert!(
+            (m.size.w - natural.size.w).abs() <= 2.0,
+            "centered fitting label must measure natural width ({}), got {} (with_ellipsis={fit})",
+            natural.size.w,
+            m.size.w,
+        );
+    }
+}
+
+#[test]
 fn cosmic_singleline_clips_to_width_without_ellipsis() {
     // The default `SingleLine` mode (clip, no marker) cuts an over-wide
     // label to fit the cap on one line — like the ellipsis path but with no
