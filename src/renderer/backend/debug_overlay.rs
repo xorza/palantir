@@ -32,10 +32,11 @@ pub(super) const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
 /// pixels. Multiplied by `scale_factor` at submit time.
 pub(super) const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
 
-/// How far the overlay rect is inset from the damage rect, in
-/// logical pixels. Centers the stroke fully inside the highlighted
-/// region.
-pub(super) const DAMAGE_OVERLAY_INSET: f32 = 1.0;
+/// Gap between the overlay outline and the damage edge, in logical
+/// pixels. `Partial` rects outset by this (so thin damage like a 1px
+/// text caret still gets a visible box instead of collapsing to zero
+/// width); the full-viewport outline insets by it to stay on-screen.
+pub(super) const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 
 pub(super) struct DebugOverlay {
     /// Single-instance buffer holding a translucent-black full-viewport

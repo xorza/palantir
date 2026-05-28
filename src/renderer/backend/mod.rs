@@ -18,7 +18,7 @@ pub(crate) mod write_stats;
 
 use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
-    DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
+    DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_GAP, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
 use self::gpu_ctx::GpuCtx;
 use self::gpu_pass_stats::{BatchKind, GpuPassStats};
@@ -1051,24 +1051,31 @@ impl WgpuBackend {
             // `queue.write_buffer` covers them (per-iteration writes
             // to the same buffer would all collapse to the last
             // value at submit time).
-            let inset_px = (DAMAGE_OVERLAY_INSET * buffer.scale).max(1.0);
+            let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
             let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
             let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
             match plan {
                 RenderPlan::Partial { region, .. } => {
+                    // Outset, not inset: damage rects can be thinner than
+                    // `2 * gap_px` (a 1px text caret), and insetting would
+                    // collapse them to zero area — no outline drawn. An
+                    // outset box always survives and brackets the damage
+                    // from just outside. The overlay pass is unscissored
+                    // and the surface clips, so spilling a few px past the
+                    // damage edge is fine.
                     for r in region.iter_rects() {
-                        overlay_rects.push(
-                            r.scaled_by(buffer.scale, true)
-                                .deflated_by(Spacing::all(inset_px)),
-                        );
+                        overlay_rects.push(r.scaled_by(buffer.scale, true).inflated(gap_px));
                     }
                 }
+                // The full-viewport outline insets instead: outsetting it
+                // would push the whole box off-screen, leaving only a
+                // half-clipped edge line.
                 RenderPlan::Full { .. } => overlay_rects.push(
                     Rect {
                         min: glam::Vec2::ZERO,
                         size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
                     }
-                    .deflated_by(Spacing::all(inset_px)),
+                    .deflated_by(Spacing::all(gap_px)),
                 ),
             }
             if overlay_rects.is_empty() {

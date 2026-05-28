@@ -346,3 +346,66 @@ fn corner_pair_overlay_strokes_each_rect() {
          overlay should outline each damage rect, not their union",
     );
 }
+
+/// Regression for the blinking-caret bug: a damage rect thinner than
+/// twice the overlay gap (here a 2px sliver, a stand-in for the ~1px
+/// text caret) must still get an outline. The overlay *outsets* the
+/// damage rect; insetting it by more than its half-width would deflate
+/// it to zero area and draw nothing.
+#[test]
+fn damage_rect_overlay_outlines_thin_sliver() {
+    let mut h = Harness::new();
+    let size = UVec2::new(120, 80);
+    let sliver = |on: bool| {
+        move |ui: &mut palantir::Ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Color::rgb(0.12, 0.12, 0.15).into(),
+                    ..Default::default()
+                })
+                .show(ui, |ui| {
+                    Frame::new()
+                        .id_salt("sliver")
+                        .position(Vec2::new(60.0, 20.0))
+                        .size((Sizing::Fixed(2.0), Sizing::Fixed(40.0)))
+                        .background(Background {
+                            fill: if on {
+                                Color::rgb(0.9, 0.5, 0.2)
+                            } else {
+                                Color::rgb(0.2, 0.3, 0.7)
+                            }
+                            .into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        }
+    };
+
+    let _f1 = h.render(size, 1.0, DARK_BG, sliver(false));
+    let f2 = h.render_with_overlay(
+        DebugOverlayConfig {
+            damage_rect: true,
+            ..Default::default()
+        },
+        size,
+        1.0,
+        DARK_BG,
+        sliver(true),
+    );
+    save_debug("damage_rect_overlay_outlines_thin_sliver", &f2);
+
+    let red = count_pixels(&f2, is_red);
+    assert!(
+        red > 0,
+        "a 2px sliver of damage must still get an outset outline; got 0 red \
+         pixels — an inset wider than the rect would collapse it to zero area \
+         (the blinking-caret bug)",
+    );
+    assert!(
+        red < size.x * size.y / 4,
+        "outline should be a thin stroke around the sliver, not a flood ({red} px)",
+    );
+}
