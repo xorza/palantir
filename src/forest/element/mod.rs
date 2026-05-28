@@ -15,11 +15,10 @@
 //! Paint chrome (`Background`, ~232 B) lives **outside** `Element`:
 //! widgets that paint a background carry their own
 //! `chrome: Option<Background>` field and pass it as a side-channel
-//! argument through `Ui::node_with_chrome` →
-//! `Forest::open_node_with_chrome` → `Tree::open_node_with_chrome`,
-//! where it lands in the per-tree `chrome_table` (with `is_noop`
-//! filtered out at push). Keeps the hot per-widget `Element` copy at
-//! ~128 B instead of 360 B.
+//! argument through `Ui::node` → `Forest::open_node` →
+//! `Tree::open_node`, where it lands in the per-tree `chrome_table`
+//! (with `is_noop` filtered out at push). Keeps the hot per-widget
+//! `Element` copy at ~128 B instead of 360 B.
 //!
 //! Fan-out from `Element` to the dense columns happens once in
 //! `Element::into_columns`. Adding a field is two local edits: append

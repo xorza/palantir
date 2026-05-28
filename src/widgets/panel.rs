@@ -83,7 +83,7 @@ impl Panel {
             ui.theme.panel_clip,
         );
         let id = ui.make_persistent_id(element.salt);
-        let inner = ui.node_maybe_chrome(id, element, chrome.as_ref(), body);
+        let inner = ui.node(id, element, chrome.as_ref(), body);
         crate::widgets::InnerResponse {
             // Decorative: skip eager `response_for`.
             response: Response::lazy(id, ui),

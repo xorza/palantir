@@ -37,12 +37,12 @@ pub(crate) fn toggle_row(
     element.gaps.set_gap(row_gap);
     element.child_align = Align::v(VAlign::Center);
 
-    ui.node(id, element, |ui| {
+    ui.node(id, element, None, |ui| {
         let box_id = id.with("box");
         let mut box_elem = Element::new(LayoutMode::Leaf);
         box_elem.salt = Salt::Verbatim(box_id);
         box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
-        ui.node_with_chrome(box_id, box_elem, &look.background, paint_indicator);
+        ui.node(box_id, box_elem, Some(&look.background), paint_indicator);
 
         if !label.is_empty() {
             Text::new(label)

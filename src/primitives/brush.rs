@@ -430,7 +430,7 @@ fn collect_stops<const N: usize>(
 // carry a 40 B `ArrayVec<[Stop; 8]>` and the whole enum is 60 B. The
 // recording chain used to thread `Brush` (often inside `Background`)
 // through 3-4 functions per chromed widget by value; auto-`Copy` hid
-// an O(N) of `vmovups` per frame in `Ui::node_with_chrome`. Hot paths
+// an O(N) of `vmovups` per frame in `Ui::node`. Hot paths
 // now pass `&Brush` / `&Background`; explicit `.clone()` at the
 // remaining duplication sites keeps the cost auditable. See
 // `Animatable`'s `Clone` (not `Copy`) supertrait for the matching

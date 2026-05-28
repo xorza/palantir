@@ -20,7 +20,7 @@ use glam::Vec2;
 /// `Clone` (not `Copy`): heavy `Animatable` types — `Background`
 /// (168 B), `Brush` (60 B with inline gradient stops), `Stroke` — used
 /// to auto-`Copy` through the recording chain. Per-frame stack copies
-/// of those types showed up at ~35 % self in `Ui::node_with_chrome`
+/// of those types showed up at ~35 % self in `Ui::node`
 /// (`vmovups` ladders). Forcing `.clone()` at duplication sites makes
 /// every copy a deliberate call-site decision; small `Copy` types
 /// (`f32`, `Vec2`, `Color`) still pass through the trait at zero

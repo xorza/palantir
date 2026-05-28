@@ -231,9 +231,9 @@ fn push_bar_nodes(
             corners: radius,
             shadow: Shadow::NONE,
         };
-        ui.node_with_chrome(track_id, track, &chrome, |_| {});
+        ui.node(track_id, track, Some(&chrome), |_| {});
     } else {
-        ui.node(track_id, track, |_| {});
+        ui.node(track_id, track, None, |_| {});
     }
 
     let fill = if resp.drag_delta().is_some() || resp.pressed {
@@ -258,7 +258,7 @@ fn push_bar_nodes(
         corners: radius,
         shadow: Shadow::NONE,
     };
-    ui.node_with_chrome(thumb_id, thumb, &chrome, |_| {});
+    ui.node(thumb_id, thumb, Some(&chrome), |_| {});
 }
 
 // ---------------------------------------------------------------------------
@@ -828,8 +828,8 @@ impl Scroll {
             &theme,
         );
 
-        let inner_value = ui.node(id, outer, |ui| {
-            let inner_value = ui.node_maybe_chrome(scroll_id, inner, inner_chrome.as_ref(), body);
+        let inner_value = ui.node(id, outer, None, |ui| {
+            let inner_value = ui.node(scroll_id, inner, inner_chrome.as_ref(), body);
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves
@@ -840,7 +840,7 @@ impl Scroll {
                 let mut overlay = Element::new(LayoutMode::Canvas);
                 overlay.salt = Salt::Verbatim(bars_id);
                 overlay.size = (Sizing::FILL, Sizing::FILL).into();
-                ui.node(bars_id, overlay, |ui| {
+                ui.node(bars_id, overlay, None, |ui| {
                     if let Some(p) = plan_v {
                         push_bar_nodes(ui, p, track_id_v, thumb_id_v, resp_v, &theme);
                     }

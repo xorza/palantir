@@ -793,7 +793,7 @@ impl<'a> TextEdit<'a> {
         let chrome = look.background;
         let placeholder = self.placeholder;
         let text_ptr = &*self.text;
-        ui.node_with_chrome(id, element, &chrome, |ui| {
+        ui.node(id, element, Some(&chrome), |ui| {
             let [pad_l, pad_t, _, _] = ctx.padding.as_array();
             // Selection highlight, painted *before* the text so glyphs
             // sit on top of the wash. Only when focused and a range is

@@ -30,7 +30,7 @@ use std::cell::Cell;
 /// an explicit `.background(...)` wins, otherwise the theme default
 /// fills in; the clip default only applies when the caller left clip at
 /// [`ClipMode::None`]. Returns the chrome to pass to
-/// [`Ui::node_maybe_chrome`].
+/// [`Ui::node`].
 pub(crate) fn resolve_container_chrome(
     element: &mut Element,
     explicit: Option<Background>,
