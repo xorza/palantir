@@ -33,24 +33,7 @@ impl MeshPipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
         });
 
-        // Mesh shader uses no bind groups — only the shared immediate
-        // region for viewport. Empty bind-group-layout list.
-        let pipeline_layout = build_pipeline_layout(device, "palantir.mesh.pl", &[]);
-        let pipeline = build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.mesh.pipeline",
-                shader: &shader,
-                layout: &pipeline_layout,
-                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
-            },
-        );
+        let pipeline = Self::build_color_pipeline(device, &shader, format);
 
         let vertex_buffer =
             DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256, 64);
@@ -67,6 +50,48 @@ impl MeshPipeline {
             shader,
             color_format: format,
         }
+    }
+
+    /// Build the no-stencil color pipeline against `format` — the only
+    /// format-dependent object; the vertex / index / instance buffers
+    /// are reused. Shared by [`Self::new`] and [`Self::rebuild_for_format`].
+    fn build_color_pipeline(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        // Mesh shader uses no bind groups — only the shared immediate
+        // region for viewport. Empty bind-group-layout list.
+        let pipeline_layout = build_pipeline_layout(device, "palantir.mesh.pl", &[]);
+        build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.mesh.pipeline",
+                shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
+            },
+        )
+    }
+
+    /// Rebuild the format-dependent render pipeline against `format`;
+    /// the buffers are format-independent and kept. The lazy stencil
+    /// variant is dropped so it rebuilds against the new format on the
+    /// next rounded-clip frame.
+    pub(crate) fn rebuild_for_format(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) {
+        self.pipeline = Self::build_color_pipeline(device, &self.shader, format);
+        self.color_format = format;
+        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.

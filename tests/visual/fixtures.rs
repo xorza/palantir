@@ -4,6 +4,7 @@
 //! declaring it below.
 
 mod damage;
+mod format_change;
 mod hidpi;
 mod layout;
 mod scroll;

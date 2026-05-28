@@ -198,32 +198,13 @@ impl TextBackend {
             &sampler,
         );
 
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir text shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir text pipeline layout"),
-            // Group 0 = atlas textures + sampler. Viewport + atlas-
-            // size `Params` ride the shared immediate region.
-            bind_group_layouts: &[Some(&atlas_bgl)],
-            immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
-        });
-
-        let pipelines = depth_stencil_states
-            .iter()
-            .map(|ds| {
-                build_pipeline(
-                    device,
-                    &shader,
-                    &pipeline_layout,
-                    format,
-                    multisample,
-                    ds.clone(),
-                )
-            })
-            .collect();
+        let pipelines = Self::build_pipelines(
+            device,
+            &atlas_bgl,
+            format,
+            multisample,
+            depth_stencil_states,
+        );
 
         let vbuf_capacity = (std::mem::size_of::<GlyphInstance>() as u64) * 4096;
         let vbuf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -250,6 +231,69 @@ impl TextBackend {
             encoded_cache: EncodedCache::default(),
             misses: Vec::new(),
         }
+    }
+
+    /// Build the per-stencil-config render pipelines against `format`.
+    /// The shader module + pipeline layout are cheap, format-independent
+    /// boilerplate (recreated each call); the glyph atlas, its bind
+    /// group, and the sampler are not built here and so survive a
+    /// rebuild. Shared by [`Self::new`] and [`Self::rebuild_for_format`].
+    fn build_pipelines(
+        device: &wgpu::Device,
+        atlas_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+        multisample: wgpu::MultisampleState,
+        depth_stencil_states: &[Option<wgpu::DepthStencilState>],
+    ) -> Vec<wgpu::RenderPipeline> {
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("palantir text shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
+
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("palantir text pipeline layout"),
+            // Group 0 = atlas textures + sampler. Viewport + atlas-
+            // size `Params` ride the shared immediate region.
+            bind_group_layouts: &[Some(atlas_bgl)],
+            immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
+        });
+
+        depth_stencil_states
+            .iter()
+            .map(|ds| {
+                build_pipeline(
+                    device,
+                    &shader,
+                    &pipeline_layout,
+                    format,
+                    multisample,
+                    ds.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Rebuild only the format-dependent render pipelines against
+    /// `format`. The glyph atlas (every rasterized glyph in it), its
+    /// bind group, the sampler, and the encoded-run cache all survive —
+    /// the atlas texture's format (`R8Unorm` / `Rgba8UnormSrgb`) is
+    /// independent of the swapchain color format, so **no glyph
+    /// re-rasterization is needed**. Pass the same `multisample` /
+    /// `depth_stencil_states` the backend built the text pipelines with.
+    pub(crate) fn rebuild_for_format(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+        multisample: wgpu::MultisampleState,
+        depth_stencil_states: &[Option<wgpu::DepthStencilState>],
+    ) {
+        self.pipelines = Self::build_pipelines(
+            device,
+            &self.atlas_bgl,
+            format,
+            multisample,
+            depth_stencil_states,
+        );
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,

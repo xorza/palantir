@@ -60,25 +60,7 @@ impl CurvePipeline {
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        // Gradient at group 0 — viewport rides the shared immediate
-        // region, no bind-group slot needed for it.
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
-        let pipeline = build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.curve.pipeline",
-                shader: &shader,
-                layout: &pipeline_layout,
-                vertex_buffers: &[curve_instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
-            },
-        );
+        let pipeline = Self::build_color_pipeline(device, &shader, gradient_bgl, format);
 
         let instance_buffer =
             DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64, 64);
@@ -90,6 +72,52 @@ impl CurvePipeline {
             shader,
             color_format: format,
         }
+    }
+
+    /// Build the no-stencil color pipeline against `format`. Caller
+    /// passes the shared `gradient_bgl` (owned by the quad pipeline) so
+    /// the layout matches; the instance buffer is format-independent.
+    /// Shared by [`Self::new`] and [`Self::rebuild_for_format`].
+    fn build_color_pipeline(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        // Gradient at group 0 — viewport rides the shared immediate
+        // region, no bind-group slot needed for it.
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
+        build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.curve.pipeline",
+                shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[curve_instance_layout()],
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
+            },
+        )
+    }
+
+    /// Rebuild the format-dependent render pipeline against `format`,
+    /// reusing the shared `gradient_bgl`. The instance buffer is kept;
+    /// the lazy stencil variant is dropped so it rebuilds against the
+    /// new format on the next rounded-clip frame.
+    pub(crate) fn rebuild_for_format(
+        &mut self,
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) {
+        self.pipeline = Self::build_color_pipeline(device, &self.shader, gradient_bgl, format);
+        self.color_format = format;
+        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.

@@ -136,15 +136,14 @@ pub(crate) struct WgpuBackend {
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
-    /// Color format the quad pipeline + text atlas were built for.
-    /// Fixed at [`Self::new`]; [`Self::ensure_backbuffer`] hard-asserts
-    /// that the swapchain texture handed to `submit` keeps this format
-    /// across the backend's lifetime. Format change requires
-    /// recreating the backend — partial in-place rebuild (atlas only,
-    /// quad pipeline left stale) was previously possible and would
-    /// silently mis-render quads. We'd rather fail loudly until a
-    /// real format-flip use case shows up and we wire the full
-    /// rebuild path.
+    /// Color format every pipeline (quad / mesh / image / curve / text
+    /// atlas) was built for. Set at [`Self::new`] and updated by
+    /// [`Self::recreate_for_format`], which rebuilds all of them
+    /// together. [`Self::ensure_backbuffer`] hard-asserts the swapchain
+    /// texture handed to `submit` matches this — a mismatch means the
+    /// host changed format without going through
+    /// [`Host::set_surface_format`](crate::Host::set_surface_format),
+    /// which would leave the pipelines stale and silently mis-render.
     color_format: wgpu::TextureFormat,
     /// Persistent off-screen render target; lazily created on first
     /// submit and recreated when the surface size or format changes.
@@ -232,9 +231,7 @@ impl WgpuBackend {
             &device,
             format,
             wgpu::MultisampleState::default(),
-            // Index 0 = Plain, index 1 = Stencil — matches
-            // `text::StencilMode::pipeline_idx`.
-            &[None, Some(stencil::stencil_test_state())],
+            &Self::text_stencil_states(),
             shaper,
         );
         let debug = DebugOverlay::new(&device);
@@ -262,6 +259,54 @@ impl WgpuBackend {
         }
     }
 
+    /// Per-pipeline stencil configs the production text pipelines are
+    /// built with. Index 0 = Plain, index 1 = Stencil — matches
+    /// `text::StencilMode::pipeline_idx`. Single source of truth shared
+    /// by [`Self::new`] and [`Self::recreate_for_format`] so the rebuilt
+    /// text pipelines can't drift from the originals.
+    fn text_stencil_states() -> [Option<wgpu::DepthStencilState>; 2] {
+        [None, Some(stencil::stencil_test_state())]
+    }
+
+    /// Rebuild every format-dependent pipeline (quad / mesh / image /
+    /// curve / text) against `format`. No-op when `format` already
+    /// matches. Surgical: only the `wgpu::RenderPipeline` objects carry
+    /// the color-target format, so each pipeline swaps just those and
+    /// keeps its format-independent resources — uploaded image textures
+    /// with their bind groups, the gradient LUT atlas, the glyph atlas
+    /// (every rasterized glyph), samplers, and instance/index buffers
+    /// all survive. **No image re-upload or glyph re-rasterization.** Lazy
+    /// stencil variants are dropped and rebuild on the next rounded-clip
+    /// frame. Drops the backbuffer so the next submit full-clears at the
+    /// new format (the old texture carries the old format). Counterpart
+    /// to the hard-assert in [`Self::ensure_backbuffer`] — the host
+    /// calls this via
+    /// [`Host::set_surface_format`](crate::Host::set_surface_format)
+    /// when it observes a surface format change.
+    pub(crate) fn recreate_for_format(&mut self, format: wgpu::TextureFormat) {
+        if self.color_format == format {
+            return;
+        }
+        let device = &self.device;
+        self.quad.rebuild_for_format(device, format);
+        self.mesh.rebuild_for_format(device, format);
+        self.image.rebuild_for_format(device, format);
+        // Curve shares the quad's gradient bind-group layout — pass the
+        // (preserved) handle so its rebuilt pipeline matches.
+        self.curve
+            .rebuild_for_format(device, &self.quad.gradient_bgl, format);
+        self.text.rebuild_for_format(
+            device,
+            format,
+            wgpu::MultisampleState::default(),
+            &Self::text_stencil_states(),
+        );
+        self.color_format = format;
+        // Old backbuffer carries the previous format; force a fresh
+        // allocation + full clear on the next submit.
+        self.backbuffer = None;
+    }
+
     /// Lazily (re)create the backbuffer to match the surface texture's
     /// size. Returns `true` if the backbuffer was just (re)created —
     /// caller treats that as a forced full repaint (the new texture's
@@ -273,9 +318,11 @@ impl WgpuBackend {
         assert_eq!(
             self.color_format, format,
             "WgpuBackend was built for surface format {:?}; got {:?} this submit. \
-             Mid-session format change isn't yet supported (quad pipeline + text \
-             atlas were built against the original format). Recreate the \
-             WgpuBackend with the new format.",
+             Every format-dependent pipeline (quad / mesh / image / curve / text \
+             atlas) was built against the original format. Call \
+             `Host::set_surface_format` when the surface format changes \
+             mid-session — it rebuilds them all. Reaching here means the \
+             swapchain format changed without that call.",
             self.color_format, format,
         );
         let needs_new = match &self.backbuffer {
@@ -1115,6 +1162,29 @@ impl WgpuBackend {
             },
             bb.size(),
         );
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    //! Reach-in introspection for the surface-format-change tests:
+    //! the current color format and the GPU image-cache occupancy,
+    //! used to assert a format flip rebuilds pipelines without dropping
+    //! or re-uploading cached textures.
+
+    use super::*;
+
+    impl WgpuBackend {
+        /// Current swapchain color format the pipelines were built for.
+        pub(crate) fn color_format(&self) -> wgpu::TextureFormat {
+            self.color_format
+        }
+
+        /// Images resident in the GPU texture cache — see
+        /// [`ImagePipeline::gpu_cached_count`].
+        pub(crate) fn gpu_image_cache_len(&self) -> usize {
+            self.image.gpu_cached_count()
+        }
     }
 }
 

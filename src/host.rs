@@ -153,6 +153,36 @@ impl Host {
         self.occluded = occluded;
     }
 
+    /// Rebuild the GPU backend for a new swapchain color `format`.
+    /// Call when the host observes the surface's format change
+    /// mid-session — e.g. the window moves to an HDR / wide-gamut
+    /// output and the compositor renegotiates the swapchain, so
+    /// `surface.get_capabilities(..)` now reports a different preferred
+    /// format. Rebuilds every format-dependent pipeline (the backend
+    /// was built against the old format and would otherwise trip the
+    /// hard-assert in `WgpuBackend::ensure_backbuffer`). Cheap no-op
+    /// when `format` already matches. Forces the next [`Self::frame`] to
+    /// reconfigure the surface and repaint in full.
+    ///
+    /// Caller still owns the surface: update the
+    /// `wgpu::SurfaceConfiguration::format` and reconfigure (or let the
+    /// next `frame()` reconfigure) so the swapchain texture handed to
+    /// the backend actually carries `format`.
+    pub fn set_surface_format(&mut self, format: wgpu::TextureFormat) {
+        self.backend.recreate_for_format(format);
+        // Drop the cached size so `frame()` reconfigures the surface
+        // against the new format on the next call.
+        self.configured = None;
+        // The backbuffer was dropped in the rebuild and the previously
+        // presented pixels live in an old-format texture — neither is
+        // valid to `LoadOp::Load` or copy from. Mark the last frame
+        // un-submitted so `classify_frame` forces a full record + clear
+        // next frame (same path a skipped/lost present takes); otherwise
+        // an unchanged scene would damage-skip to a `copy_backbuffer`
+        // with no backbuffer to copy.
+        self.ui.frame_state.mark_pending();
+    }
+
     /// Swapchain one-shot: run CPU + GPU + present. Folds the acquire
     /// dance (Suboptimal / Outdated / Lost / Timeout / Validation /
     /// Occluded) into the returned `repaint_requested` bool — `true`
@@ -368,6 +398,20 @@ pub mod test_support {
         /// readers just see `None`.
         pub fn gpu_pass_stats(&self) -> &GpuPassStats {
             &self.ui.gpu_pass_stats
+        }
+
+        /// Swapchain color format the GPU pipelines are currently built
+        /// for. Lets format-change tests confirm
+        /// [`Host::set_surface_format`] reached the backend.
+        pub fn surface_format(&self) -> wgpu::TextureFormat {
+            self.backend.color_format()
+        }
+
+        /// Number of images resident in the GPU texture cache. Used by
+        /// the format-change test to assert the cache survives the
+        /// surgical pipeline rebuild (no re-upload).
+        pub fn gpu_image_cache_len(&self) -> usize {
+            self.backend.gpu_image_cache_len()
         }
     }
 }
