@@ -112,9 +112,10 @@ impl DebugOverlay {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad: &'a super::QuadPipeline,
+        gradient_bg: &'a wgpu::BindGroup,
         viewport: &super::ViewportPush,
     ) {
-        quad.bind_debug(pass);
+        quad.bind_debug(pass, gradient_bg);
         // Pipeline is now bound — safe to push the shared viewport
         // immediate. (Dim runs in its own `RenderPass`, separate from
         // the main pass, so it must self-push.)
@@ -174,10 +175,11 @@ impl DebugOverlay {
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
         quad: &'a super::QuadPipeline,
+        gradient_bg: &'a wgpu::BindGroup,
         viewport: &super::ViewportPush,
         count: u32,
     ) {
-        quad.bind_debug(pass);
+        quad.bind_debug(pass, gradient_bg);
         // Pipeline is now bound — safe to push viewport. (Overlay
         // runs in its own swapchain-targeted `RenderPass`, no
         // inherited immediate state.)

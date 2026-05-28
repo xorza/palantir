@@ -324,8 +324,8 @@ impl ImagePipeline {
 
     /// Bind once per pass. Viewport rides immediates; per-image
     /// group 0 is set in [`Self::draw`] from the cached `GpuImage`.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
-        if stencil {
+    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
+        if use_stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
             pass.set_pipeline(p);
         } else {

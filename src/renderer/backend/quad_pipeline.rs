@@ -8,7 +8,6 @@ use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layou
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
-use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
@@ -17,14 +16,11 @@ pub(crate) struct QuadPipeline {
     /// The no-stencil base pipeline. Reached only via methods —
     /// `bind`, `draw_clear`, and `bind_debug` (the debug-overlay
     /// entrypoint) own the `set_pipeline` / `set_bind_group` pair so
-    /// the public surface is "what to do", not "what to bind."
+    /// the public surface is "what to do", not "what to bind." Group 0
+    /// (gradient atlas + sampler) is owned by
+    /// [`GradientResources`](super::gradient_resources::GradientResources)
+    /// and passed to every `bind*` call.
     pipeline: wgpu::RenderPipeline,
-    /// Group 0 (gradient atlas + sampler). The shared viewport
-    /// uniform rides immediates — no bind-group slot for it.
-    /// Exposed `pub(crate)` so the curve pipeline can reuse the same
-    /// bind group instead of allocating its own — both share the same
-    /// gradient texture + sampler resources.
-    pub(crate) gradient_bg: wgpu::BindGroup,
     instance_buffer: DynamicBuffer,
     /// Lazy stencil-aware pipeline variants — built on first need
     /// (first frame with `FrameOutput::has_rounded_clip == true`) so
@@ -64,29 +60,7 @@ pub(crate) struct QuadPipeline {
     /// Cached creation inputs needed to lazy-build `stencil` later.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
-    /// Layout for group 0 (gradient atlas + sampler). Cached so the
-    /// stencil-variant builder can compose its own pipeline layout
-    /// against the same shape. Exposed `pub(crate)` so the curve
-    /// pipeline composes against the identical layout — they share
-    /// the same bind group at draw time.
-    pub(crate) gradient_bgl: wgpu::BindGroupLayout,
-    /// LUT atlas texture for gradient brushes. 256 cols × 256 rows of
-    /// `Rgba8UnormSrgb`. Sampled at fragment time by the brush-slot
-    /// path in `quad.wgsl`; sRGB-format so the GPU sampler returns
-    /// linear-RGB to match the existing premultiplied blend convention
-    /// (see `CLAUDE.md` "Colour pipeline"). Uploaded each frame by
-    /// `upload_gradients`, bound via the pipeline's bind group entry 1.
-    gradient_texture: wgpu::Texture,
 }
-
-/// Side of the gradient LUT atlas texture (square: 256 × 256).
-/// Must equal `ATLAS_ROWS_F` in `quad.wgsl` — the shader divides the
-/// row index by this constant to compute the sample `v` coord.
-const GRADIENT_ATLAS_SIDE: u32 = 256;
-const _: () = assert!(
-    GRADIENT_ATLAS_SIDE == 256,
-    "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
-);
 
 /// Two pipelines built atop the same shader + viewport bind group as
 /// the no-stencil `pipeline`, used in the stencil-attached render pass.
@@ -107,88 +81,21 @@ struct StencilPipelines {
 }
 
 impl QuadPipeline {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    /// `gradient_bgl` is the group-0 layout owned by
+    /// [`GradientResources`](super::gradient_resources::GradientResources);
+    /// the pipeline composes its layout against it and the matching bind
+    /// group arrives at each `bind*` call.
+    pub(crate) fn new(
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
 
-        // Group 0 = gradient LUT atlas + sampler. Viewport rides
-        // immediates (shared with every pipeline) — no bind-group
-        // slot for it.
-        let gradient_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.quad.gradient.bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
-
-        let gradient_texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.quad.gradient_atlas"),
-            size: wgpu::Extent3d {
-                width: GRADIENT_ATLAS_SIDE,
-                height: GRADIENT_ATLAS_SIDE,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            // Linear format: sampler returns the stored bytes as
-            // `u8/255` floats with no decode. The LUT bake quantizes
-            // linear-RGB values directly to `ColorU8` via the linear
-            // `From<Color>` impl, so the GPU sees ready-to-blend
-            // linear values.
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            view_formats: &[],
-        });
-        let gradient_texture_view = gradient_texture.create_view(&Default::default());
-        // Linear filter inside a row (smooth gradient interpolation).
-        // Clamp addressing — spread modes (Pad/Repeat/Reflect) are
-        // applied shader-side on `t` before the sample, so the GPU
-        // sampler never sees t outside 0..1.
-        let gradient_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.quad.gradient_sampler"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Linear,
-            mipmap_filter: wgpu::MipmapFilterMode::Nearest,
-            ..Default::default()
-        });
-
-        let gradient_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.quad.gradient.bg"),
-            layout: &gradient_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&gradient_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&gradient_sampler),
-                },
-            ],
-        });
-
-        let pipeline = Self::build_base_pipeline(device, &shader, &gradient_bgl, format);
+        let pipeline = Self::build_base_pipeline(device, &shader, gradient_bgl, format);
 
         let instance_buffer =
             DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256, 8);
@@ -202,7 +109,6 @@ impl QuadPipeline {
 
         Self {
             pipeline,
-            gradient_bg,
             instance_buffer,
             stencil: None,
             mask_buffer: None,
@@ -212,41 +118,7 @@ impl QuadPipeline {
             last_clear: None,
             shader,
             color_format: format,
-            gradient_bgl,
-            gradient_texture,
         }
-    }
-
-    /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
-    /// Idle frames (no new gradients) hit the early `None` return and
-    /// do nothing. Dirty frames upload the entire 256 KB atlas in a
-    /// single `write_texture` call — see the dirty-tracking note in
-    /// `GradientCpuAtlas` for why per-row uploads aren't worth the API
-    /// overhead. Called from `WgpuBackend::submit` before the render
-    /// pass starts.
-    #[profiling::function]
-    pub(crate) fn upload_gradients(&self, ctx: &GpuCtx<'_>, atlas: &GradientAtlas) {
-        atlas.flush_with(|bytes| {
-            ctx.queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &self.gradient_texture,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
-                    aspect: wgpu::TextureAspect::All,
-                },
-                bytes,
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
-                    rows_per_image: Some(GRADIENT_ATLAS_SIDE),
-                },
-                wgpu::Extent3d {
-                    width: GRADIENT_ATLAS_SIDE,
-                    height: GRADIENT_ATLAS_SIDE,
-                    depth_or_array_layers: 1,
-                },
-            );
-        });
     }
 
     /// Build the no-stencil base pipeline against `format`. The gradient
@@ -290,28 +162,35 @@ impl QuadPipeline {
     pub(crate) fn rebuild_for_format(
         &mut self,
         device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) {
-        self.pipeline = Self::build_base_pipeline(device, &self.shader, &self.gradient_bgl, format);
+        self.pipeline = Self::build_base_pipeline(device, &self.shader, gradient_bgl, format);
         self.color_format = format;
         self.stencil = None;
     }
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from
     /// the rounded-clip render path before the first `set_pipeline`.
+    /// `gradient_bgl` is the shared group-0 layout (see [`Self::new`]).
     #[profiling::function]
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
+    pub(crate) fn ensure_stencil(
+        &mut self,
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+    ) {
         if self.stencil.is_none() {
-            self.stencil = Some(self.build_stencil_pipelines(device));
+            self.stencil = Some(self.build_stencil_pipelines(device, gradient_bgl));
         }
     }
 
-    fn build_stencil_pipelines(&self, device: &wgpu::Device) -> StencilPipelines {
-        let layout = build_pipeline_layout(
-            device,
-            "palantir.quad.pl.stencil",
-            &[Some(&self.gradient_bgl)],
-        );
+    fn build_stencil_pipelines(
+        &self,
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+    ) -> StencilPipelines {
+        let layout =
+            build_pipeline_layout(device, "palantir.quad.pl.stencil", &[Some(gradient_bgl)]);
         let instance = quad_instance_layout();
         let vertex_buffers = std::slice::from_ref(&instance);
 
@@ -385,22 +264,39 @@ impl QuadPipeline {
     }
 
     /// Bind pipeline + gradient bind group + instance buffer once per
-    /// pass. Group 0 (shared viewport) is bound by
-    /// `WgpuBackend::run_main_pass`.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.gradient_bg, &[]);
+    /// pass. `use_stencil` selects the stencil-test variant (the
+    /// rounded-clip pass) over the no-stencil base. Group 0 is the
+    /// shared gradient bind group; viewport rides immediates. Mirrors
+    /// the `bind(pass, use_stencil, gradient_bg)` shape of the mesh /
+    /// image / curve pipelines.
+    pub(crate) fn bind<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        use_stencil: bool,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
+        if use_stencil {
+            let stencil = self.stencil.as_ref().expect("ensure_stencil first");
+            pass.set_pipeline(&stencil.stencil_test);
+        } else {
+            pass.set_pipeline(&self.pipeline);
+        }
+        pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
-    /// Bind pipeline + group 1 (gradient atlas) **without** the instance
+    /// Bind pipeline + group 0 (gradient atlas) **without** the instance
     /// buffer. The caller (today: `DebugOverlay`) sets its own vertex
-    /// buffer next, and is responsible for binding group 0 (viewport)
-    /// itself — the dim / damage-overlay passes don't share the main
-    /// pass's pre-bound viewport.
-    pub(crate) fn bind_debug<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+    /// buffer next, and is responsible for binding the viewport
+    /// immediate itself — the dim / damage-overlay passes don't share
+    /// the main pass's pre-bound viewport.
+    pub(crate) fn bind_debug<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
         pass.set_pipeline(&self.pipeline);
-        pass.set_bind_group(0, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, gradient_bg, &[]);
     }
 
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
@@ -457,29 +353,27 @@ impl QuadPipeline {
     /// reference 0 instead — the stencil is cleared to 0 each pass,
     /// so `Equal(0)` matches every pixel and `write_mask=0` keeps
     /// stencil intact.
-    pub(crate) fn bind_clear<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
+    pub(crate) fn bind_clear<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        use_stencil: bool,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
         debug_assert!(
             self.last_clear.is_some(),
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
-        if stencil {
+        if use_stencil {
             let s = self.stencil.as_ref().expect("ensure_stencil first");
             pass.set_pipeline(&s.stencil_test);
             pass.set_stencil_reference(0);
         } else {
             pass.set_pipeline(&self.pipeline);
         }
-        pass.set_bind_group(0, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
     }
-
-    /// Reset per-frame state. Called from `WgpuBackend::submit` after
-    /// `queue.submit` so the next frame starts with a clean slate.
-    /// `last_clear` is intentionally **not** reset — it persists
-    /// across frames so steady-state Partial frames can short-circuit
-    /// the clear write_buffer in [`Self::upload_clear`].
-    pub(crate) fn post_record(&mut self) {}
 
     /// Build the per-group mask-index map for the schedule and upload
     /// one mask quad per rounded-clip group in `groups`. Caller must
@@ -515,24 +409,19 @@ impl QuadPipeline {
         buf.upload(ctx, bytemuck::cast_slice(&self.masks), self.masks.len());
     }
 
-    /// Bind the stencil-test (color) pipeline + main instance buffer.
-    /// Used once before the per-group draw loop in the stencil path.
-    /// Group 0 (viewport) is pre-bound by the backend.
-    pub(crate) fn bind_stencil_test<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
-        let stencil = self.stencil.as_ref().expect("ensure_stencil first");
-        pass.set_pipeline(&stencil.stencil_test);
-        pass.set_bind_group(0, &self.gradient_bg, &[]);
-        pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
-    }
-
     /// Bind the mask-write pipeline + mask instance buffer. Caller sets
     /// `stencil_reference` per draw (1 to write the mask, 0 to clear).
-    /// Group 0 (viewport) is pre-bound by the backend.
-    pub(crate) fn bind_mask_write<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
+    /// Group 0 is the shared gradient bind group; viewport rides
+    /// immediates, pre-pushed by the backend.
+    pub(crate) fn bind_mask_write<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        gradient_bg: &'a wgpu::BindGroup,
+    ) {
         let stencil = self.stencil.as_ref().expect("ensure_stencil first");
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         pass.set_pipeline(&stencil.mask_write);
-        pass.set_bind_group(0, &self.gradient_bg, &[]);
+        pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, buf.buffer.slice(..));
     }
 
