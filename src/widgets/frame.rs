@@ -32,10 +32,7 @@ impl Frame {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let id = ui.make_persistent_id(self.element.salt);
-        match self.chrome {
-            Some(c) => ui.node_with_chrome(id, self.element, &c, |_| {}),
-            None => ui.node(id, self.element, |_| {}),
-        }
+        ui.node_maybe_chrome(id, self.element, self.chrome.as_ref(), |_| {});
         // Decorative: skip eager `response_for`.
         Response::lazy(id, ui)
     }

@@ -5,10 +5,9 @@ use crate::widgets::theme::palette;
 /// content overflows on a panned axis, the widget reserves `width`
 /// of padding on that axis's far edge; the bar paints in the reserved
 /// strip — beside the visible content, never on top of it. Track +
-/// thumb are filled rounded rects. v1 has no hover/active states (no
-/// drag interaction yet), so `thumb` is the only color used today;
-/// the slots exist so adding drag can light them up without an API
-/// change.
+/// thumb are filled rounded rects. The thumb fill picks between
+/// `thumb` / `thumb_hover` / `thumb_active` based on the bar leaf's
+/// hover + drag state (see `scroll::push_bar_nodes`).
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ScrollbarTheme {
     /// Cross-axis thickness of the bar in logical px.
@@ -26,12 +25,9 @@ pub struct ScrollbarTheme {
     pub track: Color,
     /// Idle thumb fill.
     pub thumb: Color,
-    /// Thumb fill on hover. Read once hover-state on bar leaves lands
-    /// (v1.1, alongside drag).
-    #[allow(dead_code)] // first reader is the v1.1 drag/hover branch
+    /// Thumb fill while the pointer is over the bar.
     pub thumb_hover: Color,
-    /// Thumb fill while drag-captured. Read once drag-to-pan lands.
-    #[allow(dead_code)] // first reader is the v1.1 drag/hover branch
+    /// Thumb fill while the thumb is drag-captured (or pressed).
     pub thumb_active: Color,
     /// Corner radius applied to track and thumb. `width / 2` = pill.
     pub radius: f32,

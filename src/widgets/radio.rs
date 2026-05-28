@@ -1,14 +1,13 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
-use crate::shape::{Shape, TextWrap};
+use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::toggle::toggle_row;
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -70,21 +69,21 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
 
         // Force pill radius regardless of any look's stored radius so a
         // re-themed `theme.radio.checked.normal.background.radius`
-        // can't accidentally square-corner the pip.
+        // can't accidentally square-corner the pip. Baked into the look
+        // before `toggle_row` records the box chrome.
         let mut look = look_target.animate(ui, id, fallback_text, anim);
         look.background.corners = Corners::all(pip_size * 0.5);
-        let label = self.label;
 
-        let mut element = self.element;
-        element.gaps.set_gap(row_gap);
-        element.child_align = Align::v(VAlign::Center);
-
-        ui.node(id, element, |ui| {
-            let pip_id = id.with("pip");
-            let mut pip_elem = Element::new(LayoutMode::Leaf);
-            pip_elem.salt = Salt::Verbatim(pip_id);
-            pip_elem.size = (Sizing::Fixed(pip_size), Sizing::Fixed(pip_size)).into();
-            ui.node_with_chrome(pip_id, pip_elem, &look.background, |ui| {
+        toggle_row(
+            ui,
+            id,
+            self.element,
+            raw_state,
+            look,
+            pip_size,
+            row_gap,
+            self.label,
+            |ui| {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
@@ -95,28 +94,8 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
                         stroke: Stroke::ZERO,
                     });
                 }
-            });
-
-            if !label.is_empty() {
-                let label_id = id.with("label");
-                let mut label_elem = Element::new(LayoutMode::Leaf);
-                label_elem.salt = Salt::Verbatim(label_id);
-                ui.node(label_id, label_elem, |ui| {
-                    ui.add_shape(Shape::Text {
-                        local_origin: None,
-                        text: label,
-                        brush: look.text.color.into(),
-                        font_size_px: look.text.font_size_px,
-                        line_height_px: look.line_height_px(),
-                        wrap: TextWrap::SingleLine,
-                        align: Align::v(VAlign::Center),
-                        family: look.text.family,
-                    });
-                });
-            }
-        });
-
-        Response::eager(id, ui, raw_state)
+            },
+        )
     }
 }
 

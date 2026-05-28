@@ -8,7 +8,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::{WidgetLook, pick_4};
 
 /// Four-state button theme. The leaf type ([`WidgetLook`]) is shared
 /// with `TextEditTheme`; widget reads `theme.{normal,hovered,pressed,
@@ -125,14 +125,12 @@ impl ButtonTheme {
     /// the caller wants lag-free response to its own self-toggle,
     /// merge `state.disabled |= element.disabled` before calling.
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        if state.disabled {
-            &self.disabled
-        } else if state.pressed {
-            &self.pressed
-        } else if state.hovered {
-            &self.hovered
-        } else {
-            &self.normal
-        }
+        pick_4(
+            state,
+            &self.normal,
+            &self.hovered,
+            &self.pressed,
+            &self.disabled,
+        )
     }
 }

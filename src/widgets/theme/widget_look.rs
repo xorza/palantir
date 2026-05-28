@@ -94,18 +94,38 @@ pub struct StatefulLook {
     pub disabled: WidgetLook,
 }
 
+/// Four-state pick precedence shared by [`StatefulLook::pick`] and
+/// [`crate::widgets::theme::button::ButtonTheme::pick`] (which keeps its
+/// looks as flat fields for ergonomic theme construction rather than
+/// embedding a `StatefulLook`): disabled > pressed > hovered > normal.
+pub(crate) fn pick_4<'a>(
+    state: ResponseState,
+    normal: &'a WidgetLook,
+    hovered: &'a WidgetLook,
+    pressed: &'a WidgetLook,
+    disabled: &'a WidgetLook,
+) -> &'a WidgetLook {
+    if state.disabled {
+        disabled
+    } else if state.pressed {
+        pressed
+    } else if state.hovered {
+        hovered
+    } else {
+        normal
+    }
+}
+
 impl StatefulLook {
     /// Same precedence as `ButtonTheme::pick`: disabled > pressed >
     /// hovered > normal.
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        if state.disabled {
-            &self.disabled
-        } else if state.pressed {
-            &self.pressed
-        } else if state.hovered {
-            &self.hovered
-        } else {
-            &self.normal
-        }
+        pick_4(
+            state,
+            &self.normal,
+            &self.hovered,
+            &self.pressed,
+            &self.disabled,
+        )
     }
 }
