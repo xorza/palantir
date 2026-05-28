@@ -8,9 +8,10 @@
 //!
 //! Lives in its own module so the GPU resources, upload helpers,
 //! and the three appearance constants are kept together. Apps that
-//! never enable debug overlays still allocate these buffers (cheap
-//! at ~92 B each) but never upload to them.
+//! never enable debug overlays still allocate these buffers (a few
+//! hundred bytes total) but never upload to them.
 
+use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
 use crate::primitives::{
     color::{Color, ColorF16},
@@ -50,11 +51,9 @@ pub(super) struct DebugOverlay {
     /// (transparent fill, red stroke per damaged rect). Drawn onto
     /// the swapchain texture *after* the backbuffer→surface copy, so
     /// it never touches the backbuffer and produces no ghosts. Only
-    /// written when `DebugOverlayConfig::damage_rect` is on; sized
-    /// dynamically by [`Self::upload_overlays`] to fit the region's
-    /// rect count.
-    overlay_buffer: wgpu::Buffer,
-    overlay_capacity: usize,
+    /// written when `DebugOverlayConfig::damage_rect` is on;
+    /// [`DynamicBuffer`] grows it to fit the region's rect count.
+    overlay_buffer: DynamicBuffer,
 }
 
 impl DebugOverlay {
@@ -65,19 +64,12 @@ impl DebugOverlay {
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        // Sized for one quad up front; `upload_overlays` grows it on
-        // demand when the damage region carries more rects.
-        let overlay_capacity = 1;
-        let overlay_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.overlay"),
-            size: (overlay_capacity * std::mem::size_of::<Quad>()) as u64,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        // `upload_overlays` grows it on demand when the damage region
+        // carries more rects (8-quad floor avoids tiny early regrows).
+        let overlay_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.overlay", 8, 8);
         Self {
             dim_buffer,
             overlay_buffer,
-            overlay_capacity,
         }
     }
 
@@ -125,9 +117,8 @@ impl DebugOverlay {
     }
 
     /// Upload one or more damage-rect outline quads (stroked rects in
-    /// physical px, transparent fill). Buffer grows to the next power
-    /// of two when needed, mirroring the mask buffer's dynamic-resize
-    /// pattern; the upload uses stack-bounded scratch
+    /// physical px, transparent fill). [`DynamicBuffer`] grows the
+    /// buffer when needed; the staging uses stack-bounded scratch
     /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
     pub(super) fn upload_overlays(
         &mut self,
@@ -138,15 +129,6 @@ impl DebugOverlay {
     ) {
         if rects.is_empty() {
             return;
-        }
-        if rects.len() > self.overlay_capacity {
-            self.overlay_capacity = rects.len().next_power_of_two().max(8);
-            self.overlay_buffer = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.quad.overlay"),
-                size: (self.overlay_capacity * std::mem::size_of::<Quad>()) as u64,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
         }
         let stroke_color_f16: ColorF16 = stroke_color.into();
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
@@ -160,11 +142,8 @@ impl DebugOverlay {
                 ..Default::default()
             });
         }
-        ctx.write(
-            &self.overlay_buffer,
-            0,
-            bytemuck::cast_slice(quads.as_slice()),
-        );
+        self.overlay_buffer
+            .upload(ctx, bytemuck::cast_slice(quads.as_slice()), quads.len());
     }
 
     /// Bind the supplied quad pipeline's no-stencil base + overlay
@@ -184,7 +163,7 @@ impl DebugOverlay {
         // runs in its own swapchain-targeted `RenderPass`, no
         // inherited immediate state.)
         viewport.push_into(pass);
-        pass.set_vertex_buffer(0, self.overlay_buffer.slice(..));
+        pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
         pass.draw(0..4, 0..count);
     }
 }
