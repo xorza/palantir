@@ -119,7 +119,7 @@ impl RecordingScratch {
 /// non-contiguous top-level subtrees in the same layer.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
-    pub(crate) first_node: u32,
+    pub(crate) first_node: NodeId,
     /// Top-left placement in screen space. `Vec2::ZERO` for `Main`;
     /// set by `Forest::push_layer` for side layers.
     pub(crate) anchor: Vec2,
@@ -458,7 +458,7 @@ impl Tree {
         if parent_frame.is_none() {
             let pending = scratch.pending_anchor.unwrap_or_default();
             self.roots.push(RootSlot {
-                first_node: new_id.0,
+                first_node: new_id,
                 anchor: pending.anchor,
                 size: pending.size,
             });
