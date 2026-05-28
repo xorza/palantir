@@ -27,35 +27,48 @@ cargo bench --bench caches --features internals        # gated benches
   rather than defaulting to the full matrix.
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`):
-- **No features needed**: `alloc_free`, `input_throughput`.
+- **No features needed**: `alloc_free`, `alloc_resize`, `input_throughput`.
 - **`internals`**: everything else (`frame`, `alloc_free_gpu`,
   `scrollzoom`, `text_atlas`, `caches`, `damage`).
 
-`cargo bench --no-run` without features only builds `alloc_free` and
-`input_throughput`; everything else requires `--features internals`.
+`cargo bench --no-run` without features only builds `alloc_free`,
+`alloc_resize`, and `input_throughput`; everything else requires
+`--features internals`.
 
-## Allocation-free invariants (two benches)
+## Allocation invariants (three benches)
 
-Two pinning benches, different floors:
+Three benches share the `support/frame_fixture.rs` workload (see
+below). Two pin a floor and fail; one only measures.
 
 - **`alloc_free`** — palantir CPU pipeline only (record → measure →
   arrange → cascade → encode), no GPU. **Strict zero** — any non-zero
   block delta over 256 steady-state frames fails. This pins the
   load-bearing CLAUDE.md invariant.
-- **`alloc_free_gpu`** — same fixture, plus `WgpuBackend::submit`
-  against an offscreen target with a GPU poll between frames.
-  Baselined: every wgpu submission fundamentally allocates
-  (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push, hal
-  scratch). Current floor ~22 blocks/frame, all attributed to
+- **`alloc_free_gpu`** — same fixture, plus the wgpu submission path
+  via `Host::frame_offscreen` against an offscreen target with a GPU
+  poll between frames. Baselined: every wgpu submission fundamentally
+  allocates (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push,
+  hal scratch). Current floor ~27 blocks/frame, all attributed to
   `wgpu_core` / `wgpu_hal` (verified via `DHAT_DUMP=1` + dh_view).
   Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
   is either a palantir bug or a wgpu/cosmic-text version drift.
+- **`alloc_resize`** — same CPU pipeline as `alloc_free`, but rotates
+  the `Display` size each frame to bust the measure / cascade /
+  text-shaping caches the way `frame/resizing_cpu` does. **Not
+  strict-zero — measures, doesn't assert.** Two arms: `pool-rotation`
+  (cycles four sizes, matching `frame/resizing_cpu`) and
+  `continuous-drag` (a unique width every frame, modelling a
+  window-edge drag with no cache hits possible). Prints blocks/frame +
+  bytes/frame per arm; use it to find which call sites still allocate
+  on the resize path.
 
 ```sh
 cargo bench --bench alloc_free                          # strict CPU invariant
 cargo bench --bench alloc_free_gpu                      # GPU baseline gate
+cargo bench --bench alloc_resize                        # resize-path measurement
 DHAT_DUMP=1 cargo bench --bench alloc_free              # emits dhat-heap.json on drop
 DHAT_DUMP=1 cargo bench --bench alloc_free_gpu          # same, for the GPU path
+DHAT_DUMP=1 cargo bench --bench alloc_resize            # same, for the resize path
 ```
 
 If either fails, load `dhat-heap.json` at
@@ -67,10 +80,15 @@ When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
 intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
 `benches/alloc_free_gpu.rs` and note the new floor in the PR.
 
-The fixture is a small mirror of `frame.rs`'s build_ui (a few buttons,
-wrapping text, nested stacks). If `frame.rs` grows new allocation
-surface area, mirror it in both `alloc_free.rs` and `alloc_free_gpu.rs`
-so the invariants track the same workload.
+All three benches and the `frame` bench pull `build_ui` + `FormState`
+from `benches/support/frame_fixture.rs` via a `#[path]` include — one
+synthetic UI tree (~800 nodes, ~500 text shapes at `NODE_SCALE = 32`)
+exercising every layout driver, widget, `Shape`, and `Brush` variant
+plus the popup/tooltip layers. The `frame_visual` example includes the
+same fixture at a smaller scale so a human can eyeball the workload the
+benches measure. Grow the fixture and every allocation bench tracks the
+new surface area automatically — there is no longer a per-bench mirror
+to keep in sync.
 
 ## Profiling on macOS
 

@@ -3,7 +3,7 @@
 //! Sister to `alloc_free.rs`. Where that bench asserts a *strict zero*
 //! on palantir's CPU pipeline (record → measure → arrange → cascade →
 //! encode), this bench measures the additional allocations introduced
-//! by `Host::render` against an offscreen target texture, with
+//! by `Host::frame_offscreen` against an offscreen target texture, with
 //! a GPU poll between frames so submitted work drains before the next
 //! iteration.
 //!
@@ -12,11 +12,11 @@
 //! Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
 //! `wgpu_hal::metal`. Current measured floor on this fixture is
 //! ~27 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
-//! beneath `Host::render` (verified via `DHAT_DUMP=1` +
+//! beneath `Host::frame_offscreen` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
-//! indicating either a palantir regression or a wgpu/glyphon version
-//! drift worth investigating.
+//! indicating either a palantir regression or a wgpu/cosmic-text
+//! version drift worth investigating.
 //!
 //! Uses `dhat` as the global allocator (10-30x overhead — never use
 //! this binary for timing).
@@ -40,7 +40,7 @@ static ALLOC: dhat::Alloc = dhat::Alloc;
 const WARMUP_FRAMES: usize = 16;
 const MEASURE_FRAMES: usize = 256;
 
-// Driver floor on the current wgpu/glyphon pin. Bump if a driver
+// Driver floor on the current wgpu/cosmic-text pin. Bump if a driver
 // upgrade or a deliberate palantir change moves the baseline; trip
 // the gate otherwise. All current attribution is wgpu_core/wgpu_hal —
 // no palantir-side per-frame allocs in this path.
@@ -170,7 +170,9 @@ fn main() {
         eprintln!("  DHAT_DUMP=1 cargo bench --bench alloc_free_gpu");
         eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         eprintln!();
-        eprintln!("If the baseline legitimately moved (wgpu/glyphon upgrade, intentional palantir");
+        eprintln!(
+            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional palantir"
+        );
         eprintln!("change), bump RENDER_BLOCKS_PER_FRAME_MAX in benches/alloc_free_gpu.rs.");
         std::process::exit(1);
     }
