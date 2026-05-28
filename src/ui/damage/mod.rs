@@ -202,9 +202,11 @@ pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) cascades: &'a Cascades,
     /// Host-arranged surface rect for this frame. A degenerate
-    /// zero-area surface short-circuits to full repaint; it shouldn't
-    /// happen in practice (host filters resize-to-zero), but cheap to
-    /// handle.
+    /// zero-area surface shouldn't happen in practice (host filters
+    /// resize-to-zero, and a surface *change* takes the `force_full`
+    /// path before the diff runs); if one slips through, every region
+    /// rect surface-clips to empty so [`Damage::new`] returns
+    /// [`Damage::Skip`].
     pub(crate) surface: Rect,
     pub(crate) prev_time: Option<Duration>,
     pub(crate) now: Duration,
@@ -498,11 +500,14 @@ impl DamageEngine {
     /// Diff against the just-finished frame and return a
     /// [`Damage`] ready for the renderer:
     ///
-    /// - [`Damage::Skip`] — empty region, nothing changed.
+    /// - [`Damage::Skip`] — empty region, nothing changed (also the
+    ///   outcome for a degenerate zero-area surface, since every rect
+    ///   surface-clips away).
     /// - [`Damage::Partial`] — coverage below
     ///   [`FULL_REPAINT_THRESHOLD`].
-    /// - [`Damage::Full`] — first frame / surface change /
-    ///   degenerate surface / coverage above the threshold.
+    /// - [`Damage::Full`] — coverage above the threshold, or the
+    ///   caller-supplied `force_full` (first frame / surface change /
+    ///   last frame unacked), which returns early below.
     ///
     /// `self.prev` is rolled forward in the same pass via the
     /// `entry()` API: vacant slot with a painting node inserts; an
@@ -521,9 +526,8 @@ impl DamageEngine {
     /// parents or around a drop shadow.
     ///
     /// `surface` is the rect the host arranged the UI into this
-    /// frame. A degenerate zero-area surface short-circuits to full
-    /// repaint; it shouldn't happen in practice (host filters
-    /// resize-to-zero), but cheap to handle.
+    /// frame; see [`DamageInput::surface`] for the degenerate-surface
+    /// behavior.
     #[profiling::function]
     pub(crate) fn compute(
         &mut self,
@@ -591,18 +595,22 @@ impl DamageEngine {
                 let curr_node_hash = tree.rollups.node[i];
                 let curr_subtree_hash = tree.rollups.subtree[i];
                 let curr_cascade_input = rows[i].cascade_input;
+                // This node's next-frame snapshot — every field but
+                // `paint_span` is fixed per node, so the arms differ
+                // only in which span they pass.
+                let make_snapshot = |paint_span| NodeSnapshot {
+                    rect: curr_rect,
+                    paint_span,
+                    hash: curr_node_hash,
+                    subtree_hash: curr_subtree_hash,
+                    cascade_input: curr_cascade_input,
+                };
                 let advance = match prev_map.entry(widget_ids[i]) {
                     Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => 1,
                     Entry::Vacant(e) => {
                         let paint_span = arena.append(curr_paints_slice);
                         push_screens(raw_rects, curr_paints_slice);
-                        e.insert(NodeSnapshot {
-                            rect: curr_rect,
-                            paint_span,
-                            hash: curr_node_hash,
-                            subtree_hash: curr_subtree_hash,
-                            cascade_input: curr_cascade_input,
-                        });
+                        e.insert(make_snapshot(paint_span));
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(i as u32));
                         1
@@ -625,13 +633,7 @@ impl DamageEngine {
                                 raw_rects.push(curr_rect);
                             }
                             arena.refresh_screens(prev.paint_span, curr_paints_slice);
-                            *e.get_mut() = NodeSnapshot {
-                                rect: curr_rect,
-                                paint_span: prev.paint_span,
-                                hash: curr_node_hash,
-                                subtree_hash: curr_subtree_hash,
-                                cascade_input: curr_cascade_input,
-                            };
+                            *e.get_mut() = make_snapshot(prev.paint_span);
                             1
                         }
                     }
@@ -639,13 +641,7 @@ impl DamageEngine {
                         let prev = *e.get();
                         let new_span =
                             arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
-                        *e.get_mut() = NodeSnapshot {
-                            rect: curr_rect,
-                            paint_span: new_span,
-                            hash: curr_node_hash,
-                            subtree_hash: curr_subtree_hash,
-                            cascade_input: curr_cascade_input,
-                        };
+                        *e.get_mut() = make_snapshot(new_span);
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(i as u32));
                         1
@@ -706,6 +702,13 @@ impl DamageEngine {
         self.arena.maybe_compact(forest, &mut self.prev);
 
         // ── Pass 2: collapse to the bounded region ────────────────
+        self.finish_region(surface)
+    }
+
+    /// Pass 2: collapse the accumulated `raw_rects` into a budgeted
+    /// region and lift it to a [`Damage`]. Shared tail of both compute
+    /// paths.
+    fn finish_region(&self, surface: Rect) -> Damage {
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
         Damage::new(surface, region)
     }
@@ -728,8 +731,7 @@ impl DamageEngine {
             input.prev_time,
             input.now,
         );
-        let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, input.surface);
-        Damage::new(input.surface, region)
+        self.finish_region(input.surface)
     }
 }
 
