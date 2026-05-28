@@ -130,13 +130,3 @@ When changing any hot row (`NodeRecord`, `LayoutCore`, `ShapeRecord`,
 `Brush`, `DrawRectPayload`, `Cascade`, `DamageRegion`, `Quad`, etc.)
 re-run the test and eyeball the printed sizes against the previous run
 to catch regressions.
-
-## Finding duplicated code
-
-Before refactoring or hunting for similar code by reading files, run jscpd — it's fast (~500ms) and avoids burning tokens:
-
-```sh
-npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-tokens 50 --ignore "**/tests.rs,**/tests/**" --reporters console
-```
-
-Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
