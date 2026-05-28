@@ -1,9 +1,9 @@
 //! Thin newtype around `wgpu::Queue` that, with the `internals` feature
-//! enabled, tallies every per-frame `write_buffer` / `write_texture`
-//! call into the global counters in [`crate::renderer::backend::write_stats`].
+//! enabled, tallies every per-frame `write_texture` call into the global
+//! counters in [`crate::renderer::backend::write_stats`].
 //!
 //! Without `internals`, the wrapper is a zero-cost passthrough — the
-//! shadowed methods inline straight into `wgpu::Queue::write_*` and
+//! shadowed method inlines straight into `wgpu::Queue::write_texture` and
 //! `Deref<Target = wgpu::Queue>` covers everything else.
 
 use std::ops::Deref;
@@ -16,24 +16,6 @@ pub struct Queue(wgpu::Queue);
 impl Queue {
     pub fn new(inner: wgpu::Queue) -> Self {
         Self(inner)
-    }
-
-    /// Counted shadow of [`wgpu::Queue::write_buffer`]. Drop-in
-    /// replacement; bumps the per-frame counter under `internals`.
-    /// Production routes buffer writes through the staging belt, so
-    /// this is only exercised by the bench/test reach-in surface.
-    #[cfg_attr(
-        not(any(test, feature = "internals")),
-        allow(
-            dead_code,
-            reason = "API-symmetry shadow; only used by bench/test surface"
-        )
-    )]
-    #[inline]
-    pub fn write_buffer(&self, buffer: &wgpu::Buffer, offset: u64, data: &[u8]) {
-        #[cfg(feature = "internals")]
-        super::write_stats::record_buffer(data.len());
-        self.0.write_buffer(buffer, offset, data);
     }
 
     /// Counted shadow of [`wgpu::Queue::write_texture`]. Records the
