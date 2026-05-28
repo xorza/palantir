@@ -1,4 +1,4 @@
-use super::super::cmd_buffer::{DrawPolylinePayload, RenderCmdBuffer};
+use super::super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
 use crate::common::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
@@ -177,6 +177,38 @@ fn cull_does_not_apply_without_active_clip() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.quads.len(), 1);
+}
+
+fn mesh(buf: &mut RenderCmdBuffer, bbox: Rect) {
+    // 3 verts / 3 indices + opaque tint clears `DrawMeshPayload::is_noop`
+    // so the cmd reaches the composer.
+    buf.draw_mesh(DrawMeshPayload {
+        bbox,
+        origin: Vec2::ZERO,
+        tint: Color::WHITE.into(),
+        v_start: 0,
+        v_len: 3,
+        i_start: 0,
+        i_len: 3,
+        ..bytemuck::Zeroable::zeroed()
+    });
+}
+
+#[test]
+fn cull_drops_drawmesh_entirely_outside_active_clip() {
+    // Mesh now gets the same active-clip cull every other shape draw
+    // performs. Two meshes under one clip: inside emits a row, fully
+    // outside is culled.
+    let buf = run(
+        |b, _arena| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // inside
+            mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.meshes.rows.len(), 1, "outside-clip mesh must be culled");
 }
 
 #[test]
@@ -929,6 +961,30 @@ fn compose_mesh_between_texts_splits_text_batch() {
         mb.last_group as usize,
         buf.groups.len() - 1,
         "mesh batch anchors at the group that emitted the polyline",
+    );
+}
+
+/// Pin: a higher-kind draw that gets *culled* (fully outside the active
+/// clip) does NOT split the text batch — the batch only closes once the
+/// draw will actually emit. Counterpart to
+/// `compose_mesh_between_texts_splits_text_batch`.
+#[test]
+fn compose_culled_mesh_between_texts_keeps_one_batch() {
+    let buf = run(
+        |b, _arena| {
+            b.push_clip(rect(0.0, 0.0, 100.0, 100.0));
+            text(b, rect(0.0, 0.0, 100.0, 20.0));
+            mesh(b, rect(200.0, 200.0, 30.0, 30.0)); // outside the clip → culled
+            text(b, rect(0.0, 40.0, 100.0, 20.0));
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.meshes.rows.len(), 0, "the mesh must be culled");
+    assert_eq!(
+        buf.text_batches.len(),
+        1,
+        "a culled mesh must not split the text batch",
     );
 }
 

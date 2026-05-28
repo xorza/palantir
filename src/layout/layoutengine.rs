@@ -338,7 +338,7 @@ impl LayoutEngine {
             }
             self.scratch.resize_for(tree);
             for slot in &tree.roots {
-                let root = NodeId(slot.first_node);
+                let root = slot.first_node;
                 // Main: implicit root spans the surface. Side layers:
                 // `slot.anchor` is the paint placement. `slot.size`
                 // controls the measurement available:

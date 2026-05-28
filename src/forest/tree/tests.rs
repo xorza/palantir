@@ -791,8 +791,8 @@ fn ui_layer_records_popup_into_separate_tree() {
     let popup_tree = ui.forest.tree(Layer::Popup);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots.len(), 1);
-    assert_eq!(main_tree.roots[0].first_node, 0);
-    assert_eq!(popup_tree.roots[0].first_node, 0);
+    assert_eq!(main_tree.roots[0].first_node.idx(), 0);
+    assert_eq!(popup_tree.roots[0].first_node.idx(), 0);
     assert_eq!(popup_tree.roots[0].anchor, popup_anchor);
     assert_eq!(popup_tree.roots[0].size, None);
     assert_eq!(
@@ -843,7 +843,7 @@ fn ui_layer_size_caps_overlay_available() {
             });
         });
         let popup_tree = ui.forest.tree(Layer::Popup);
-        let root = popup_tree.roots[0].first_node as usize;
+        let root = popup_tree.roots[0].first_node.idx();
         let rect = ui.layout[Layer::Popup].rect[root];
         assert_eq!(rect.min, anchor, "cap={cap:?}");
         assert_eq!(rect.size, *expected, "cap={cap:?}");
@@ -1047,7 +1047,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     // Synthetic viewport at NodeId(0); user "main-parent" at NodeId(1).
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
-    assert_eq!(main_tree.roots[0].first_node, 0);
+    assert_eq!(main_tree.roots[0].first_node.idx(), 0);
     assert_eq!(main_tree.records.subtree_end()[parent.idx()].end(), 6);
 
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
@@ -1064,7 +1064,7 @@ fn mid_recording_popup_keeps_trees_independent() {
 
     assert_eq!(popup_tree.records.len(), 3);
     assert_eq!(popup_tree.roots.len(), 1);
-    assert_eq!(popup_tree.roots[0].first_node, 0);
+    assert_eq!(popup_tree.roots[0].first_node.idx(), 0);
     assert_eq!(popup_tree.records.subtree_end()[0].end(), 3);
 
     let popup_widths: Vec<u32> = popup_tree.shapes.records.iter().map(marker_w).collect();

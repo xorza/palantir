@@ -76,27 +76,38 @@ pub(crate) fn encode(
     let now = ui.time;
     let gradients = arena.gradients.as_slice();
     for (layer, tree) in ui.forest.iter_paint_order() {
-        let layout = &ui.layout[layer];
         let layer_cascades = &ui.layout.cascades.layers[layer];
-        let rows = layer_cascades.rows.as_slice();
-        let subtree_paint_rects = layer_cascades.subtree_paint_rects.as_slice();
+        let ctx = LayerCtx {
+            tree,
+            layout: &ui.layout[layer],
+            rows: layer_cascades.rows.as_slice(),
+            subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
+            gradients,
+            damage_filter,
+            viewport,
+            now,
+        };
         for root in &tree.roots {
-            encode_node(
-                tree,
-                layout,
-                rows,
-                subtree_paint_rects,
-                gradients,
-                damage_filter,
-                viewport,
-                NodeId(root.first_node),
-                now,
-                out,
-            );
+            encode_node(&ctx, root.first_node, out);
         }
     }
 
     emit_collision_overlays(ui, out);
+}
+
+/// Immutable per-layer encode context. Bundles the eight refs/scalars
+/// that stay fixed across a layer's whole recursion so `encode_node`
+/// and `emit_one_shape` thread one `&ctx` instead of a long argument
+/// list. Built once per layer in [`encode`].
+struct LayerCtx<'a> {
+    tree: &'a Tree,
+    layout: &'a LayerLayout,
+    rows: &'a [Cascade],
+    subtree_paint_rects: &'a [Rect],
+    gradients: &'a [LoweredGradient],
+    damage_filter: Option<&'a DamageRegion>,
+    viewport: Rect,
+    now: Duration,
 }
 
 /// Final pass: emit a magenta outline for each explicit-id collision
@@ -112,6 +123,18 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
     for record in &ui.forest.collisions {
         for ep in [record.first, record.second] {
             let rects = &ui.layout[ep.layer].rect;
+            // Both endpoints come from `Forest::open_node`'s
+            // `peek_next_id` and are always opened, so arrange produced
+            // a rect for each — the index can't actually exceed `rects`.
+            // Assert the invariant in dev; keep the skip as a release
+            // safety net so a logic slip degrades to a missing overlay
+            // (cosmetic) rather than a panic in the paint path.
+            debug_assert!(
+                ep.node.idx() < rects.len(),
+                "collision endpoint {:?} out of bounds for layer rects len {}",
+                ep.node,
+                rects.len(),
+            );
             if ep.node.idx() >= rects.len() {
                 continue;
             }
@@ -130,24 +153,20 @@ fn emit_collision_overlays(ui: &Ui, out: &mut RenderCmdBuffer) {
 /// match. `text_ordinal` is the within-node index of the next
 /// `ShapeRecord::Text` to consume from `layout.text_spans[id]`; the caller
 /// increments it after this function emits a text run.
-#[allow(clippy::too_many_arguments)]
 fn emit_one_shape(
-    tree: &Tree,
-    layout: &LayerLayout,
+    ctx: &LayerCtx,
     id: NodeId,
     owner_rect: Rect,
     shape_idx: u32,
     shape: &ShapeRecord,
-    gradients: &[LoweredGradient],
     text_ordinal: u32,
-    now: Duration,
     out: &mut RenderCmdBuffer,
 ) {
     // Paint-anim gate. Slice 1 ships only `BlinkOpacity`, whose
     // alpha is binary 0/1 — so we just skip emission when the
     // sample says "hidden". Fractional-alpha multiplication
     // arrives with the `Pulse` variant.
-    let paint_mod = tree.paint_anims.sample(shape_idx, now);
+    let paint_mod = ctx.tree.paint_anims.sample(shape_idx, ctx.now);
     if noop_f32(paint_mod.alpha) {
         return;
     }
@@ -166,7 +185,7 @@ fn emit_one_shape(
                     size: lr.size,
                 },
             };
-            let src = shape_brush_source(gradients, *fill);
+            let src = shape_brush_source(ctx.gradients, *fill);
             out.draw_rect(r, *corners, src, *stroke);
         }
         ShapeRecord::Text {
@@ -175,13 +194,13 @@ fn emit_one_shape(
             align,
             ..
         } => {
-            let span = layout.text_spans[id.idx()];
+            let span = ctx.layout.text_spans[id.idx()];
             assert!(
                 text_ordinal < span.len,
                 "encoder text-shape ordinal {text_ordinal} out of bounds for span len {}",
                 span.len,
             );
-            let shaped = layout.text_shapes[(span.start + text_ordinal) as usize];
+            let shaped = ctx.layout.text_shapes[(span.start + text_ordinal) as usize];
             if shaped.key.is_invalid() {
                 tracing::trace!(?shape, "encoder: dropping text with invalid key");
                 return;
@@ -198,7 +217,8 @@ fn emit_one_shape(
             //   per-line glyph offsets).
             let rect = match local_origin {
                 None => {
-                    let padded = owner_rect.deflated_by(tree.records.layout()[id.idx()].padding);
+                    let padded =
+                        owner_rect.deflated_by(ctx.tree.records.layout()[id.idx()].padding);
                     text_in_rect(padded, shaped.measured, *align)
                 }
                 Some(origin) => Rect {
@@ -281,7 +301,7 @@ fn emit_one_shape(
         } => {
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px.
-            let (color, fill_kind, fill_lut_row) = match shape_brush_source(gradients, *fill) {
+            let (color, fill_kind, fill_lut_row) = match shape_brush_source(ctx.gradients, *fill) {
                 BrushSource::Solid(c) => (c, FillKind::SOLID, LutRow::FALLBACK),
                 BrushSource::Gradient(g) => (ColorF16::TRANSPARENT, g.kind, g.row),
             };
@@ -334,20 +354,8 @@ fn emit_one_shape(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-fn encode_node(
-    tree: &Tree,
-    layout: &LayerLayout,
-    rows: &[Cascade],
-    subtree_paint_rects: &[Rect],
-    gradients: &[LoweredGradient],
-    damage_filter: Option<&DamageRegion>,
-    viewport: Rect,
-    id: NodeId,
-    now: Duration,
-    out: &mut RenderCmdBuffer,
-) {
-    if rows[id.idx()].cascade_input.invisible() {
+fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
+    if ctx.rows[id.idx()].cascade_input.invisible() {
         return;
     }
 
@@ -357,8 +365,8 @@ fn encode_node(
     // bound (or a shape with negative-margin overhang) doesn't get
     // killed when the parent's own rect lies just outside the
     // viewport. The parallel column is owner-local to this layer.
-    let subtree_paint_rect = subtree_paint_rects[id.idx()];
-    if !subtree_paint_rect.intersects(viewport) {
+    let subtree_paint_rect = ctx.subtree_paint_rects[id.idx()];
+    if !subtree_paint_rect.intersects(ctx.viewport) {
         return;
     }
 
@@ -369,49 +377,41 @@ fn encode_node(
     // covers descendants too, so a horizontal pan that translates
     // an overhanging port circle into the damage region still
     // recurses through the (potentially own-rect-tight) ancestor.
-    if let Some(region) = damage_filter
+    if let Some(region) = ctx.damage_filter
         && !region.any_intersects(subtree_paint_rect)
     {
         return;
     }
 
-    let rect = layout.rect[id.idx()];
+    let rect = ctx.layout.rect[id.idx()];
 
     // Order: clip is in parent-of-panel space (pre-transform); transform
     // applies inside the clip and only to children. The panel's own
     // background paints under the clip but BEFORE the transform — matching
     // WPF's `RenderTransform` convention.
     //
-    // Exception: for `ClipMode::Rounded`, chrome paints BEFORE the clip
-    // is pushed. The rounded mask is inset by the stroke width so
-    // children can't overpaint the panel's stroke; that means chrome
-    // pixels at the stroke region sit outside the mask. If chrome
-    // painted under the mask too, its stroke would also be discarded.
-    // Painting chrome unmasked (it self-clips via the SDF) keeps the
-    // stroke visible while children stay clipped to the inset
-    // interior.
-    let mode = tree.records.attrs()[id.idx()].clip_mode();
-    let clip = mode.is_clip();
-    let chrome = tree.chrome(id);
-
-    // Chrome paints BEFORE the clip is pushed. The clip rect is
-    // deflated by the chrome's stroke width (so children don't paint
-    // over the stroke), which means chrome's own stroke pixels would
-    // also fall outside the deflated region and be clipped. Painting
-    // chrome first leaves it unclipped (the panel's SDF self-clips
-    // correctly), preserving the stroke ring.
+    // Chrome paints BEFORE the clip is pushed: `Tree::open_node` folds
+    // the chrome's stroke width into the padding that deflates the clip
+    // (and, for `ClipMode::Rounded`, insets the mask), so chrome's own
+    // stroke pixels sit outside the mask. Painting chrome first leaves it
+    // unclipped — it self-clips via its SDF — which preserves the stroke
+    // ring while children stay clipped to the inset interior.
     //
-    // `Tree::open_node` drops chrome to `None` only when every
-    // paintable part is no-op. Both `draw_rect` and `draw_shadow`
-    // gate on their own `is_noop` internally, so a shadow-only or
-    // fill-only background here emits exactly one command.
+    // `Tree::open_node` drops chrome to `None` only when every paintable
+    // part is no-op. Both `draw_rect` and `draw_shadow` gate on their own
+    // `is_noop` internally, so a shadow-only or fill-only background here
+    // emits exactly one command.
+    let mode = ctx.tree.records.attrs()[id.idx()].clip_mode();
+    let clip = mode.is_clip();
+    let chrome = ctx.tree.chrome(id);
+
     if let Some(bg) = chrome {
         // Shadow paints UNDER the rect fill (CSS box-shadow order).
         // `local_rect = None` means the shadow follows the owner's
         // full arranged rect — `compute_paint_rect` mirrors this so
         // paint extent and damage extent stay in lockstep.
         emit_shadow(out, rect, None, bg.corners, &bg.shadow);
-        let src = shape_brush_source(gradients, bg.fill);
+        let src = shape_brush_source(ctx.gradients, bg.fill);
         out.draw_rect(rect, bg.corners, src, bg.stroke);
     }
 
@@ -420,7 +420,7 @@ fn encode_node(
         // chrome's stroke width into padding so the mask automatically
         // sits inside the painted stroke ring — children clipped here
         // can't overpaint the stroke.
-        let padding = tree.records.layout()[id.idx()].padding;
+        let padding = ctx.tree.records.layout()[id.idx()].padding;
         let mask_rect = rect.deflated_by(padding);
         match mode {
             ClipMode::Rect => out.push_clip(mask_rect),
@@ -430,8 +430,7 @@ fn encode_node(
                 // both adjacent edges; radius can't honor concentricity
                 // with the painted stroke on both axes when padding is
                 // asymmetric.
-                let painted = tree
-                    .chrome(id)
+                let painted = chrome
                     .map(|bg| bg.corners)
                     .expect("ClipMode::Rounded without chrome row — open_node invariant violated");
                 let [ptl, ptr_, pbr, pbl] = painted.as_array();
@@ -466,7 +465,8 @@ fn encode_node(
     // `TranslateScale::anchored_at`). Cascade and `compute_paint_rect`
     // apply the same anchoring; pushing the un-anchored form here
     // would visibly shift the body relative to its damage rect.
-    let transform = tree
+    let transform = ctx
+        .tree
         .transform_of(id)
         .map(|t| t.anchored_at(rect.min))
         .filter(|t| !t.is_noop());
@@ -481,38 +481,16 @@ fn encode_node(
         out.push_transform(t);
     }
     let mut text_ordinal: u32 = 0;
-    for item in tree.tree_items(id) {
+    for item in ctx.tree.tree_items(id) {
         match item {
             TreeItem::ShapeRecord(shape_idx, shape) => {
-                emit_one_shape(
-                    tree,
-                    layout,
-                    id,
-                    rect,
-                    shape_idx,
-                    shape,
-                    gradients,
-                    text_ordinal,
-                    now,
-                    out,
-                );
+                emit_one_shape(ctx, id, rect, shape_idx, shape, text_ordinal, out);
                 if matches!(shape, ShapeRecord::Text { .. }) {
                     text_ordinal += 1;
                 }
             }
             TreeItem::Child(child) => {
-                encode_node(
-                    tree,
-                    layout,
-                    rows,
-                    subtree_paint_rects,
-                    gradients,
-                    damage_filter,
-                    viewport,
-                    child.id,
-                    now,
-                    out,
-                );
+                encode_node(ctx, child.id, out);
             }
         }
     }

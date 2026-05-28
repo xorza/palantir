@@ -184,7 +184,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                 });
         });
         let popup_tree = ui.forest.tree(Layer::Popup);
-        let body_root = popup_tree.roots[1].first_node as usize;
+        let body_root = popup_tree.roots[1].first_node.idx();
         let body_rect = ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
             body_rect.size, expected_size,
@@ -236,7 +236,7 @@ fn popup_near_bottom_flips_upward() {
     ui.run_at(SURF, scene);
 
     let popup_tree = ui.forest.tree(Layer::Popup);
-    let body_root = popup_tree.roots[1].first_node as usize;
+    let body_root = popup_tree.roots[1].first_node.idx();
     let body_rect = ui.layout[Layer::Popup].rect[body_root];
     assert_eq!(
         body_rect.size, content,

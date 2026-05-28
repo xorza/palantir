@@ -7,7 +7,7 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::image::ImageHandle;
-use crate::primitives::{rect::Rect, transform::TranslateScale, urect::URect};
+use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::renderer::gradient_atlas::LutRow;
 use crate::renderer::quad::{FillKind, Quad};
 use crate::renderer::render_buffer::{
@@ -32,8 +32,8 @@ use tinyvec::TinyVec;
 /// that violates the rule forces a [`Self::flush`] so record order is
 /// honored. The check uses
 /// [`text_grid`](Self::text_grid) (per-batch text AABBs, spatially indexed)
-/// and [`above_text_rects`](Self::above_text_rects) (per-group AABBs
-/// of mesh/image/polyline draws that paint above text under
+/// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group AABBs
+/// of mesh/image/curve/polyline draws that paint above text under
 /// kind-reorder).
 #[derive(Default)]
 pub(crate) struct Composer {
@@ -69,23 +69,23 @@ pub(crate) struct Composer {
     /// closing batch in [`Self::close_batch`]; cleared in [`Self::flush`]
     /// at the group boundary (closed batches have rendered by then).
     closed_text_grid: TextRectGrid,
-    /// Per-group AABBs of draws that paint above text under the
-    /// kind-reorder (mesh, image, polyline). Used by the intra-group
-    /// text-after-X check: text recorded after a same-group higher-kind
-    /// draw would be reordered above it on flush, so we force a flush
-    /// when the new text overlaps. Cleared per flush — independent of
-    /// batch state since every higher-kind draw also closes the batch.
-    above_text_rects: Vec<URect>,
+    /// Per-group AABBs of draws that paint above both quads and text
+    /// under the kind-reorder (mesh, image, curve, polyline). Used by
+    /// two checks: a later quad overlapping one would be reordered
+    /// *under* it (`quad_forces_flush`), and text recorded after one
+    /// would be reordered *above* it (`DrawText`) — either forces a
+    /// flush to preserve record order. Cleared per flush — independent
+    /// of batch state since every higher-kind draw also closes the batch.
+    higher_kind_rects: Vec<URect>,
     /// In-flight group state. `*_start` cursors mark where the open
     /// group's `quads`/`texts`/`meshes` slice begins in `out`;
     /// [`Self::flush`] closes the slice and advances them.
     current_scissor: Option<URect>,
     current_rounded: Option<RoundedClip>,
-    quads_start: u32,
-    texts_start: u32,
-    meshes_start: u32,
-    images_start: u32,
-    curves_start: u32,
+    /// `*_start` cursors marking where the open group's per-kind slices
+    /// begin in `out`. [`Self::flush`] closes each slice and advances
+    /// the matching cursor.
+    cursors: GroupCursors,
     /// Bundled state for the currently-open text batch — `Some` while
     /// the composer is accumulating runs into a batch, `None`
     /// between batches. The rect scratch lives outside in
@@ -103,7 +103,7 @@ pub(crate) struct Composer {
     /// offset of a corner arc). Populated in the `DrawRect` push
     /// handler; consumed and cleared in `flush()`.
     opaque_in_group: Vec<Occluder>,
-    /// Indices (relative to `quads_start`) of quads in the in-flight
+    /// Indices (relative to `cursors.quads`) of quads in the in-flight
     /// group marked for removal by the prune sweep. Sorted ascending
     /// by construction. Cleared at the end of each `flush()`.
     drop_indices: Vec<u32>,
@@ -123,7 +123,7 @@ pub(crate) struct Composer {
 #[derive(Clone, Copy)]
 struct Occluder {
     /// Index inside the in-flight group's quad slice
-    /// (`out.quads[quads_start + idx]`).
+    /// (`out.quads[cursors.quads + idx]`).
     idx: u32,
     /// Largest axis-aligned rect with full opaque coverage. Used
     /// as the left-hand side of
@@ -136,6 +136,20 @@ struct Occluder {
 struct ClipFrame {
     scissor: URect,
     rounded: Option<RoundedClip>,
+}
+
+/// Per-kind slice cursors for the in-flight group. Each field marks
+/// where the open group's slice begins in the matching `out` buffer;
+/// [`Composer::flush`] closes the slices and advances every cursor to
+/// the buffer's current length. Bundled so the flush-boundary contract
+/// is one value instead of five parallel fields.
+#[derive(Default, Clone, Copy)]
+struct GroupCursors {
+    quads: u32,
+    texts: u32,
+    meshes: u32,
+    images: u32,
+    curves: u32,
 }
 
 /// State carried while a text batch is mid-accumulation. Pushed onto
@@ -178,46 +192,48 @@ impl Composer {
         let m_end = out.meshes.rows.len() as u32;
         let i_end = out.images.rows.len() as u32;
         let c_end = out.curves.len() as u32;
-        if q_end > self.quads_start
-            || t_end > self.texts_start
-            || m_end > self.meshes_start
-            || i_end > self.images_start
-            || c_end > self.curves_start
+        if q_end > self.cursors.quads
+            || t_end > self.cursors.texts
+            || m_end > self.cursors.meshes
+            || i_end > self.cursors.images
+            || c_end > self.cursors.curves
         {
             // Push the mesh/image batches BEFORE the group itself so
             // their `last_group` matches the in-flight group's
             // eventual index (= current `out.groups.len()`).
-            if m_end > self.meshes_start {
+            if m_end > self.cursors.meshes {
                 out.mesh_batches.push(MeshBatch {
-                    meshes: (self.meshes_start..m_end).into(),
+                    meshes: (self.cursors.meshes..m_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
-            if i_end > self.images_start {
+            if i_end > self.cursors.images {
                 out.image_batches.push(ImageBatch {
-                    images: (self.images_start..i_end).into(),
+                    images: (self.cursors.images..i_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
-            if c_end > self.curves_start {
+            if c_end > self.cursors.curves {
                 out.curve_batches.push(CurveBatch {
-                    instances: (self.curves_start..c_end).into(),
+                    instances: (self.cursors.curves..c_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
             out.groups.push(DrawGroup {
                 scissor: self.current_scissor,
                 rounded_clip: self.current_rounded,
-                quads: (self.quads_start..q_end).into(),
-                texts: (self.texts_start..t_end).into(),
+                quads: (self.cursors.quads..q_end).into(),
+                texts: (self.cursors.texts..t_end).into(),
             });
         }
-        self.quads_start = q_end;
-        self.texts_start = t_end;
-        self.meshes_start = m_end;
-        self.images_start = i_end;
-        self.curves_start = c_end;
-        self.above_text_rects.clear();
+        self.cursors = GroupCursors {
+            quads: q_end,
+            texts: t_end,
+            meshes: m_end,
+            images: i_end,
+            curves: c_end,
+        };
+        self.higher_kind_rects.clear();
         self.opaque_in_group.clear();
         self.drop_indices.clear();
         self.prefix_max_cover.clear();
@@ -234,7 +250,7 @@ impl Composer {
     /// pipeline / shader changes. See `docs/roadmap/occlusion-pruning.md`.
     ///
     /// Preconditions:
-    /// - `out.quads[self.quads_start..]` is the in-flight group's
+    /// - `out.quads[self.cursors.quads..]` is the in-flight group's
     ///   contiguous slice (composer's flush boundary contract).
     /// - `self.opaque_in_group` holds `Occluder` entries for every
     ///   solid-opaque quad pushed into the slice, in push order
@@ -255,7 +271,7 @@ impl Composer {
     /// - Compacts in place via `swap`-and-truncate; preserves the
     ///   relative order of survivors.
     fn prune_occluded_quads(&mut self, out: &mut RenderBuffer) {
-        let start = self.quads_start as usize;
+        let start = self.cursors.quads as usize;
         if out.quads.len() - start < 2 || self.opaque_in_group.is_empty() {
             return;
         }
@@ -440,7 +456,7 @@ impl Composer {
             self.close_batch(out);
             self.flush(out);
         } else if self.closed_text_grid.any_overlap(overlap)
-            || any_overlap(&self.above_text_rects, overlap)
+            || any_overlap(&self.higher_kind_rects, overlap)
         {
             self.flush(out);
         }
@@ -508,14 +524,10 @@ impl Composer {
         self.transform_stack.clear();
         self.text_grid.start_frame(viewport_phys);
         self.closed_text_grid.start_frame(viewport_phys);
-        self.above_text_rects.clear();
+        self.higher_kind_rects.clear();
         self.current_scissor = None;
         self.current_rounded = None;
-        self.quads_start = 0;
-        self.texts_start = 0;
-        self.meshes_start = 0;
-        self.images_start = 0;
-        self.curves_start = 0;
+        self.cursors = GroupCursors::default();
         self.open_batch = None;
         self.opaque_in_group.clear();
         self.drop_indices.clear();
@@ -624,7 +636,7 @@ impl Composer {
                     if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
                         let cover = phys_rect.inscribed_for_corners(phys_radius);
                         if !cover.is_paint_empty() {
-                            let idx = out.quads.len() as u32 - 1 - self.quads_start;
+                            let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
                             self.opaque_in_group.push(Occluder { idx, cover });
                         }
                     }
@@ -666,14 +678,37 @@ impl Composer {
                     });
                 }
                 CmdKind::DrawMesh => {
-                    // Mesh paints above text in the kind order. With
-                    // text batching, the batch render emits at the END
-                    // of its last group — past this mesh in schedule
-                    // walk if the batch were left open. Close so the
-                    // batch's text emits before this group's mesh and
-                    // mesh-over-text is preserved.
-                    self.close_batch(out);
                     let p: DrawMeshPayload = cmds.read(start);
+                    // `draw_mesh` already gated empty/degenerate meshes
+                    // (`DrawMeshPayload::is_noop`), so `v_len >= 1` here.
+                    // Inflate by 0.5 phys-px to match polyline's AA-fringe
+                    // policy. Mesh today paints inside its vertex hull,
+                    // but a future AA edge or displacement shader would
+                    // silently produce false negatives — and false
+                    // negatives in the overlap test reorder paint. The
+                    // same inflated rect feeds the clip cull below.
+                    let world_bbox = current_transform.apply_rect(Rect {
+                        min: p.bbox.min + p.origin,
+                        size: p.bbox.size,
+                    });
+                    let min = world_bbox.min * scale;
+                    let max = world_bbox.max() * scale;
+                    let fringe = Vec2::splat(0.5);
+                    let mesh_urect = urect_from_phys(min - fringe, max + fringe, viewport_phys);
+                    // Clip-cull: a mesh fully outside the active scissor
+                    // (e.g. scrolled out of an ancestor clip) would be
+                    // scissored away by the GPU — skip the upload. Same
+                    // reject every other shape draw performs.
+                    if self.cull_against_active_clip(mesh_urect) {
+                        continue;
+                    }
+                    // Mesh paints above text in the kind order, and a
+                    // batch renders at the END of its last group — past
+                    // this mesh if left open. Close so the batch's text
+                    // emits first. Done only now that the mesh will
+                    // actually draw: a culled mesh must not split the
+                    // batch.
+                    self.close_batch(out);
                     // Verts already live in FrameArena owner-local;
                     // span passes through to `MeshDraw` verbatim. The
                     // per-instance translate folds in both the owner
@@ -699,38 +734,20 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
-                    if p.v_len > 0 {
-                        // Inflate by 0.5 phys-px to match polyline's
-                        // AA-fringe policy. Mesh today paints inside
-                        // its vertex hull, but a future AA edge or
-                        // displacement shader would silently produce
-                        // false negatives — and false negatives in
-                        // the overlap test reorder paint.
-                        let world_bbox = current_transform.apply_rect(Rect {
-                            min: p.bbox.min + p.origin,
-                            size: p.bbox.size,
-                        });
-                        let min = world_bbox.min * scale;
-                        let max = world_bbox.max() * scale;
-                        let fringe = Vec2::splat(0.5);
-                        self.above_text_rects.push(urect_from_phys(
-                            min - fringe,
-                            max + fringe,
-                            viewport_phys,
-                        ));
-                    }
+                    self.higher_kind_rects.push(mesh_urect);
                 }
                 CmdKind::DrawImage => {
-                    // Image sits above text in the kind order (same as
-                    // mesh): close any open text batch so batched text
-                    // emits before this group's images.
-                    self.close_batch(out);
                     let p: DrawImagePayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
                     let image_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
                     if self.cull_against_active_clip(image_urect) {
                         continue;
                     }
+                    // Image sits above text in the kind order (same as
+                    // mesh): close any open text batch so batched text
+                    // emits before this group's images. Only after the
+                    // cull — a culled image must not split the batch.
+                    self.close_batch(out);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let tint_color: Color = p.tint.into();
                     out.images.rows.push(ImageDrawRow {
@@ -753,35 +770,30 @@ impl Composer {
                         },
                     });
                     // Track for paint-order overlap with mesh-tier draws.
-                    self.above_text_rects.push(image_urect);
+                    self.higher_kind_rects.push(image_urect);
                 }
                 CmdKind::DrawCurve => {
-                    // Curve sits above text in the kind order (same as
-                    // mesh/image): close any open text batch so batched
-                    // text emits before this group's curves.
-                    self.close_batch(out);
                     let p: DrawCurvePayload = cmds.read(start);
                     let width_phys = p.width * current_transform.scale * scale;
-                    // Inflate the owner-local bbox by the AA fringe in
-                    // *logical* px, then transform & cull. Same shape
-                    // as the polyline path.
-                    let world_bbox = current_transform.apply_rect(Rect {
-                        min: p.bbox.min + p.origin,
-                        size: p.bbox.size,
-                    });
-                    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
-                    let inflate_logical = inflate_phys / scale;
-                    let inflated = Rect {
-                        min: world_bbox.min - Vec2::splat(inflate_logical),
-                        size: crate::primitives::size::Size {
-                            w: world_bbox.size.w + 2.0 * inflate_logical,
-                            h: world_bbox.size.h + 2.0 * inflate_logical,
-                        },
-                    };
-                    let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
+                    // Inflate the owner-local bbox by the stroke's AA
+                    // fringe, transform to physical px, then cull. Same
+                    // bound the polyline path uses.
+                    let bbox_scissor = stroke_bbox_scissor(
+                        current_transform,
+                        p.bbox,
+                        p.origin,
+                        width_phys,
+                        scale,
+                        viewport_phys,
+                    );
                     if self.cull_against_active_clip(bbox_scissor) {
                         continue;
                     }
+                    // Curve sits above text in the kind order (same as
+                    // mesh/image): close any open text batch so batched
+                    // text emits before this group's curves. Only after
+                    // the cull — a culled curve must not split the batch.
+                    self.close_batch(out);
                     // Transform control points to physical px. Owner
                     // origin folds in here so the record stays
                     // owner-local (cross-frame stable). No pixel
@@ -806,7 +818,7 @@ impl Composer {
                     let n = total_segments
                         .div_ceil(SEGMENTS_PER_INSTANCE)
                         .clamp(1, MAX_SUB_INSTANCES);
-                    let color = crate::primitives::color::Color::from(p.color).into();
+                    let color = Color::from(p.color).into();
                     let fill_kind = p.fill_kind;
                     let fill_lut_row = p.fill_lut_row;
                     let inv_n = 1.0 / n as f32;
@@ -832,13 +844,9 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         });
                     }
-                    self.above_text_rects.push(bbox_scissor);
+                    self.higher_kind_rects.push(bbox_scissor);
                 }
                 CmdKind::DrawPolyline => {
-                    // Polyline tessellates to a mesh — same paint-order
-                    // rule as DrawMesh. Close any open text batch
-                    // before appending so batched text emits earlier.
-                    self.close_batch(out);
                     let p: DrawPolylinePayload = cmds.read(start);
                     let mode = p.color_mode.get();
                     let cap = p.cap.get();
@@ -846,30 +854,19 @@ impl Composer {
                     let width_phys = p.width * current_transform.scale * scale;
 
                     // Compute the inflated physical-px AABB once and
-                    // reuse it for cull and overlap tracking. Encoder
-                    // shipped a logical-px AABB over the cmd-buffer
-                    // points; `TranslateScale` is uniform-scale so the
-                    // transformed rect stays axis-aligned. Inflate
-                    // by the tessellator's outer-fringe offset
-                    // (`max(w/2, 0.5) + 0.5` in *phys* px) so the
-                    // cull never trims a pixel the stroke would
-                    // reach. Short-circuits before transforming the
-                    // full point list — the win for long flattened
-                    // curves.
-                    let world_bbox = current_transform.apply_rect(Rect {
-                        min: p.bbox.min + p.origin,
-                        size: p.bbox.size,
-                    });
-                    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
-                    let inflate_logical = inflate_phys / scale;
-                    let inflated = Rect {
-                        min: world_bbox.min - Vec2::splat(inflate_logical),
-                        size: crate::primitives::size::Size {
-                            w: world_bbox.size.w + 2.0 * inflate_logical,
-                            h: world_bbox.size.h + 2.0 * inflate_logical,
-                        },
-                    };
-                    let bbox_scissor = scissor_from_logical(inflated, scale, false, viewport_phys);
+                    // reuse it for cull and overlap tracking. Inflating
+                    // by the tessellator's outer fringe means the cull
+                    // never trims a pixel the stroke would reach, and it
+                    // short-circuits before transforming the full point
+                    // list — the win for long flattened curves.
+                    let bbox_scissor = stroke_bbox_scissor(
+                        current_transform,
+                        p.bbox,
+                        p.origin,
+                        width_phys,
+                        scale,
+                        viewport_phys,
+                    );
                     if self.cull_against_active_clip(bbox_scissor) {
                         continue;
                     }
@@ -913,6 +910,12 @@ impl Composer {
                     if v_len == 0 {
                         continue;
                     }
+                    // Polyline tessellates to a mesh — same paint-order
+                    // rule as DrawMesh: close any open text batch so its
+                    // text emits before this group's mesh. Only now that
+                    // the polyline will actually emit geometry — an
+                    // empty or culled polyline must not split the batch.
+                    self.close_batch(out);
                     // Polyline points are pre-transformed to physical-px
                     // on CPU (the tessellator needs phys-px width to pick
                     // its AA fringe), so the shader's per-instance state
@@ -925,11 +928,11 @@ impl Composer {
                         instance: MeshInstance {
                             translate: Vec2::ZERO,
                             scale: 1.0,
-                            tint: crate::primitives::color::ColorU8::WHITE,
+                            tint: ColorU8::WHITE,
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
-                    self.above_text_rects.push(bbox_scissor);
+                    self.higher_kind_rects.push(bbox_scissor);
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -948,11 +951,12 @@ impl Composer {
                     if bounds.w == 0 || bounds.h == 0 {
                         continue;
                     }
-                    // Text sits below mesh in the kind order — flush
-                    // if any prior mesh in the group overlaps so this
-                    // text doesn't get reordered above it. (No need
-                    // to check quads: text paints over quads anyway.)
-                    if any_overlap(&self.above_text_rects, bounds) {
+                    // Text sits below mesh/image/curve/polyline in the
+                    // kind order — flush if any prior higher-kind draw in
+                    // the group overlaps so this text doesn't get
+                    // reordered above it. (No need to check quads: text
+                    // paints over quads anyway.)
+                    if any_overlap(&self.higher_kind_rects, bounds) {
                         self.flush(out);
                     }
                     // Batch GPU scissor = `text_union` (union of every
@@ -1112,6 +1116,16 @@ impl TextRectGrid {
         if r.w == 0 || r.h == 0 {
             return;
         }
+        // Tile buckets store rect indices as `u16`. Past 65 535 text
+        // rects in one batch the cast would wrap and the grid would
+        // point at the wrong rect — a silent paint-order corruption.
+        // Far above any real text-dense batch, but assert rather than
+        // truncate (the field comments anticipate spreadsheet grids).
+        assert!(
+            self.rects.len() < u16::MAX as usize,
+            "TextRectGrid batch exceeded {} rects — u16 index would wrap",
+            u16::MAX,
+        );
         let idx = self.rects.len() as u16;
         self.rects.push(r);
         let max_x = self.cols - 1;
@@ -1247,6 +1261,37 @@ fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
     let phys = r.scaled_by(scale, snap);
     urect_from_phys(phys.min, phys.max(), viewport)
+}
+
+/// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds
+/// `origin` + the active transform into world space, inflates by the
+/// tessellator's outer AA-fringe (`max(width_phys/2, 0.5) + 0.5` phys
+/// px, expressed back in logical units), then clamps to the viewport.
+/// Shared by the curve and polyline paths so their cull / overlap bound
+/// can't drift. `snap = false` — snapping a stroke bbox would shift thin
+/// lines off-axis; `urect_from_phys` floors/ceils to fully cover it.
+fn stroke_bbox_scissor(
+    xform: TranslateScale,
+    bbox: Rect,
+    origin: Vec2,
+    width_phys: f32,
+    scale: f32,
+    viewport: UVec2,
+) -> URect {
+    let world_bbox = xform.apply_rect(Rect {
+        min: bbox.min + origin,
+        size: bbox.size,
+    });
+    let inflate_phys = (width_phys * 0.5).max(0.5) + 0.5;
+    let inflate_logical = inflate_phys / scale;
+    let inflated = Rect {
+        min: world_bbox.min - Vec2::splat(inflate_logical),
+        size: Size {
+            w: world_bbox.size.w + 2.0 * inflate_logical,
+            h: world_bbox.size.h + 2.0 * inflate_logical,
+        },
+    };
+    scissor_from_logical(inflated, scale, false, viewport)
 }
 
 #[cfg(test)]
