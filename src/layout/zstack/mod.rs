@@ -10,9 +10,6 @@ use crate::layout::Layout;
 use crate::primitives::{rect::Rect, size::Size};
 use glam::Vec2;
 
-#[cfg(test)]
-mod tests;
-
 /// Intrinsic size of a ZStack: max over children on the queried axis.
 /// Children stack at the same origin, so the parent hugs the largest
 /// child.
@@ -85,3 +82,6 @@ pub(crate) fn arrange(
         layout.arrange(tree, c, self_outer, child_rect, out);
     }
 }
+
+#[cfg(test)]
+mod tests;

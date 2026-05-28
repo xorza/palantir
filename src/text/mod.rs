@@ -30,9 +30,6 @@ use std::rc::Rc;
 
 pub(crate) mod cosmic;
 
-#[cfg(test)]
-mod tests;
-
 /// Leading the shaper hands to cosmic-text's `Metrics::new`, also used
 /// as the default for [`crate::TextEditTheme::line_height_mult`] so
 /// the caret rect spans the same y-range as the rendered text.
@@ -909,3 +906,6 @@ pub mod test_support {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
