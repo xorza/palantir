@@ -305,9 +305,7 @@ impl Cascades {
     pub(crate) fn contains_widget(&self, id: WidgetId) -> bool {
         self.by_id.contains_key(&id)
     }
-}
 
-impl Cascades {
     /// Reverse-iter entries → topmost-first under pre-order paint walk.
     /// `filter` decides which `Sense` values participate (hoverable for
     /// hover, clickable for press/release).
@@ -491,11 +489,11 @@ fn finalize_and_capture(
 ) {
     let node_idx = popped.node_idx;
     let subtree_end = popped.subtree_end;
-    let CaptureState::Capturing(paint_capture_start) = popped.capture else {
-        finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
+    let capture = popped.capture;
+    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
+    let CaptureState::Capturing(paint_capture_start) = capture else {
         return;
     };
-    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
     let widget_id = entries.widget_id()[entries_base as usize + node_idx];
     // Recompute the probe key at capture time — the parent's
     // cascade_prefix is `stack.last()` (we already popped) or the root
@@ -506,11 +504,7 @@ fn finalize_and_capture(
         Some(p) => p.cascade_prefix.finish(),
         None => root_prefix.finish(),
     };
-    let key = cache::ProbeKey {
-        subtree_hash: tree.rollups.subtree[node_idx],
-        parent_prefix,
-        rect_q: cache::quantize_rect(layer_layout.rect[node_idx]),
-    };
+    let key = probe_key(tree, layer_layout.rect[node_idx], node_idx, parent_prefix);
     cache.capture(
         widget_id,
         key,
@@ -521,6 +515,19 @@ fn finalize_and_capture(
         entries_base,
         paint_capture_start,
     );
+}
+
+/// Build the cross-frame cache probe key for `node_idx`. Shared by the
+/// descent-time lookup and the pop-time capture so the two can't drift
+/// on which fields key the cache (the capture-side recompute is
+/// deliberate — see `finalize_and_capture`).
+#[inline]
+fn probe_key(tree: &Tree, rect: Rect, node_idx: usize, parent_prefix: u64) -> cache::ProbeKey {
+    cache::ProbeKey {
+        subtree_hash: tree.rollups.subtree[node_idx],
+        parent_prefix,
+        rect_q: cache::quantize_rect(rect),
+    }
 }
 
 fn run_tree(
@@ -579,10 +586,8 @@ fn run_tree(
         let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
 
         let layout_rect = layout.rect[iu];
-        // Mask off the grid flag (high bit of `subtree_end`) — downstream
-        // uses (cache span, walk cursor, `is_leaf` compare) need the
-        // clean end. `tree.subtree_has_grid(iu)` reads the same word
-        // separately when measure-cache needs it.
+        // `.end()` strips the packed grid flag — downstream uses (cache
+        // span, walk cursor, leaf compare) need the clean pre-order end.
         let subtree_end = ends[iu].end();
 
         // Cache lookup. Only build the probe key + probe when this
@@ -592,15 +597,10 @@ fn run_tree(
         let wid = widget_ids[iu];
         let cacheable = cache::CascadeCache::is_cacheable(subtree_end - i);
         if cacheable {
-            let cache_key = cache::ProbeKey {
-                subtree_hash: tree.rollups.subtree[iu],
-                parent_prefix: parent_prefix.finish(),
-                rect_q: cache::quantize_rect(layout_rect),
-            };
+            let cache_key = probe_key(tree, layout_rect, iu, parent_prefix.finish());
             if cache.probe(wid, &cache_key) {
                 let root_paint_rect = cache.blit(
                     wid,
-                    tree,
                     i,
                     subtree_end,
                     &mut cascades.layers[layer],
