@@ -188,25 +188,7 @@ impl QuadPipeline {
             ],
         });
 
-        // Gradient atlas at group 0 (viewport rides the shared
-        // immediate region, no bind-group slot needed).
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.quad.pl", &[Some(&gradient_bgl)]);
-        let pipeline = build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.quad.pipeline",
-                shader: &shader,
-                layout: &pipeline_layout,
-                vertex_buffers: &[quad_instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
-            },
-        );
+        let pipeline = Self::build_base_pipeline(device, &shader, &gradient_bgl, format);
 
         let instance_buffer =
             DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256, 8);
@@ -265,6 +247,54 @@ impl QuadPipeline {
                 },
             );
         });
+    }
+
+    /// Build the no-stencil base pipeline against `format`. The gradient
+    /// LUT atlas texture + bind group, sampler, and layout are all
+    /// format-independent and reused; only this `RenderPipeline` carries
+    /// the color-target format. Shared by [`Self::new`] and
+    /// [`Self::rebuild_for_format`].
+    fn build_base_pipeline(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        // Gradient atlas at group 0 (viewport rides the shared
+        // immediate region, no bind-group slot needed).
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.quad.pl", &[Some(gradient_bgl)]);
+        build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.quad.pipeline",
+                shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[quad_instance_layout()],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
+            },
+        )
+    }
+
+    /// Rebuild only the format-dependent render pipelines against
+    /// `format`. The gradient LUT atlas (its uploaded contents
+    /// included), bind group, sampler, and instance/clear buffers all
+    /// survive — none depend on the swapchain format. The lazy stencil
+    /// variants are dropped so they rebuild against the new format on
+    /// the next rounded-clip frame.
+    pub(crate) fn rebuild_for_format(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) {
+        self.pipeline = Self::build_base_pipeline(device, &self.shader, &self.gradient_bgl, format);
+        self.color_format = format;
+        self.stencil = None;
     }
 
     /// Lazy-build the stencil-aware variants. Idempotent; called from

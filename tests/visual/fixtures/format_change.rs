@@ -1,0 +1,255 @@
+//! Surface format change mid-session. Simulates the host noticing the
+//! swapchain's color format changed (e.g. the window moved to an HDR /
+//! wide-gamut output and the compositor renegotiated) and recreating
+//! the GPU backend via [`palantir::Host::set_surface_format`].
+//!
+//! The backend builds every format-dependent pipeline (quad / mesh /
+//! image / curve / text atlas) against one format; submitting against a
+//! differently-formatted texture trips a hard-assert. These fixtures
+//! pin both halves of that contract: the recreate path produces a
+//! working renderer at the new format, and skipping it still fails loud.
+
+use glam::UVec2;
+use palantir::{
+    Background, Button, Color, Configure, Corners, Frame, Image, ImageFit, Panel, Shape, Sizing,
+    Stroke,
+};
+use wgpu::TextureFormat;
+
+use crate::diff::{Tolerance, diff};
+use crate::fixtures::DARK_BG;
+use crate::harness::Harness;
+
+/// A scene touching multiple format-dependent pipelines: a stroked,
+/// rounded frame (quad pipeline) wrapping a button with a text label
+/// (quad + text atlas). Both pipelines get rebuilt on the format flip,
+/// so an incorrect rebuild shows up as a pixel mismatch.
+fn scene(ui: &mut palantir::Ui) {
+    Panel::vstack()
+        .auto_id()
+        .padding(16.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            Frame::new()
+                .id_salt("card")
+                .size((Sizing::FILL, Sizing::FILL))
+                .background(Background {
+                    fill: Color::rgb(0.20, 0.30, 0.55).into(),
+                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
+                    corners: Corners::all(12.0),
+                    ..Default::default()
+                })
+                .show(ui);
+            Button::new()
+                .id_salt("btn")
+                .label("format")
+                .size((Sizing::FILL, Sizing::Fixed(32.0)))
+                .show(ui);
+        });
+}
+
+/// Render at the host's original sRGB format, then simulate the host
+/// observing a sudden format change to a different sRGB format, recreate
+/// the backend, and render the same scene again. Both formats are sRGB,
+/// so the GPU's linear→sRGB encode produces the same perceptual pixels —
+/// after correcting BGRA channel order the two renders must match.
+/// Equivalence is the assertion: it proves the rebuilt pipelines render
+/// correctly against the new format rather than panicking or drawing
+/// garbage.
+#[test]
+fn recreate_backend_on_format_change_renders_identically() {
+    let size = UVec2::new(200, 120);
+    let mut h = Harness::new();
+
+    // Baseline at the construction format (Rgba8UnormSrgb).
+    let before = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+
+    // Guard against a vacuous comparison: the scene must actually paint
+    // content distinct from the clear color, otherwise two all-clear
+    // frames would match even if the rebuild drew nothing. The card's
+    // center sits well inside the blue frame fill.
+    let bg = before.get_pixel(2, 2);
+    let center = before.get_pixel(size.x / 2, size.y / 2);
+    assert_ne!(
+        bg.0, center.0,
+        "scene drew nothing distinct from the background — comparison would be vacuous",
+    );
+
+    // Host notices the surface format changed and recreates the backend.
+    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
+
+    // Render the same scene against the new format. `render_to_format`
+    // swizzles the BGRA readback back into RGBA space for comparison.
+    let after = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
+
+    // Both formats are sRGB: identical perceptual output expected.
+    // A small per-channel tolerance covers BGRA-vs-RGBA rounding in the
+    // encode; allow a few stray pixels along AA edges of the rounded
+    // stroke where the two formats can round opposite directions.
+    let tol = Tolerance {
+        per_channel: 2,
+        max_ratio: 0.01,
+    };
+    let report = diff(&after, &before, tol);
+    assert!(
+        report.passes(tol),
+        "recreated backend rendered differently after format change: \
+         {} differing pixels (ratio {:.4}), max channel delta {}",
+        report.differing_pixels,
+        report.differing_ratio,
+        report.max_channel_delta,
+    );
+}
+
+/// `set_surface_format` is idempotent / cheap when the format is
+/// unchanged, and repeated changes keep working. Flip away and back,
+/// then render at the original format again — still correct.
+#[test]
+fn repeated_format_changes_keep_rendering() {
+    let size = UVec2::new(160, 100);
+    let mut h = Harness::new();
+
+    let baseline = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+
+    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
+    let _ = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
+
+    // No-op: same format requested again.
+    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
+
+    // Flip back to the original format and re-render.
+    h.host.set_surface_format(TextureFormat::Rgba8UnormSrgb);
+    let restored = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
+
+    let tol = Tolerance {
+        per_channel: 2,
+        max_ratio: 0.01,
+    };
+    let report = diff(&restored, &baseline, tol);
+    assert!(
+        report.passes(tol),
+        "round-tripping the surface format back to the original changed the render: \
+         {} differing pixels (ratio {:.4})",
+        report.differing_pixels,
+        report.differing_ratio,
+    );
+}
+
+/// A 64×64 four-quadrant image (TL red, TR green, BL blue, BR white).
+/// Channel-distinct quadrants make a BGRA-vs-RGBA mishandling obvious,
+/// and the hard quadrant edges survive `ImageFit::Fill` scaling.
+fn test_image() -> Image {
+    const N: u32 = 64;
+    const H: u32 = N / 2;
+    let mut px = Vec::with_capacity((N * N * 4) as usize);
+    for y in 0..N {
+        for x in 0..N {
+            let rgb = match (x < H, y < H) {
+                (true, true) => [230, 30, 30],     // TL red
+                (false, true) => [30, 230, 30],    // TR green
+                (true, false) => [30, 30, 230],    // BL blue
+                (false, false) => [230, 230, 230], // BR white
+            };
+            px.extend_from_slice(&[rgb[0], rgb[1], rgb[2], 255]);
+        }
+    }
+    Image::from_rgba8(N, N, px)
+}
+
+/// Scene drawing the test image stretched to fill. `register_image` is
+/// content-addressed and idempotent, so calling it each frame uploads
+/// once and is a hash lookup thereafter.
+fn image_scene(ui: &mut palantir::Ui) {
+    let handle = ui.register_image("format_change.test_image", test_image());
+    Panel::zstack()
+        .auto_id()
+        .padding(8.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            ui.add_shape(Shape::Image {
+                handle,
+                local_rect: None,
+                fit: ImageFit::Fill,
+                tint: Color::WHITE,
+            });
+        });
+}
+
+/// The point of the surgical rebuild: a format change must rebuild only
+/// the render pipelines and **keep** the uploaded image texture — the
+/// image format (`Rgba8UnormSrgb`) is independent of the swapchain
+/// color format. Asserts the GPU texture cache survives the flip (no
+/// drop, no re-upload) and that the image still renders identically.
+#[test]
+fn images_survive_format_change_without_reupload() {
+    let size = UVec2::new(128, 128);
+    let mut h = Harness::new();
+
+    // First render at the construction format uploads the image.
+    let before = h.render_to_format(
+        TextureFormat::Rgba8UnormSrgb,
+        size,
+        1.0,
+        DARK_BG,
+        image_scene,
+    );
+    assert_eq!(
+        h.host.gpu_image_cache_len(),
+        1,
+        "image should be resident in the GPU cache after the first render",
+    );
+
+    // Flip format. The surgical rebuild must keep the uploaded texture.
+    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
+    assert_eq!(h.host.surface_format(), TextureFormat::Bgra8UnormSrgb);
+    assert_eq!(
+        h.host.gpu_image_cache_len(),
+        1,
+        "the uploaded image texture must survive the surgical pipeline rebuild — \
+         a format change rebuilds pipelines only, not sampled textures, so the \
+         cache must stay populated (no drop, no re-upload)",
+    );
+
+    // Render the same image at the new format; still drawn from the
+    // surviving cache (count unchanged), and pixel-identical.
+    let after = h.render_to_format(
+        TextureFormat::Bgra8UnormSrgb,
+        size,
+        1.0,
+        DARK_BG,
+        image_scene,
+    );
+    assert_eq!(
+        h.host.gpu_image_cache_len(),
+        1,
+        "rendering after the format change must reuse the cached texture, not re-upload",
+    );
+
+    let tol = Tolerance {
+        per_channel: 2,
+        max_ratio: 0.01,
+    };
+    let report = diff(&after, &before, tol);
+    assert!(
+        report.passes(tol),
+        "image rendered differently after format change: {} differing pixels (ratio {:.4})",
+        report.differing_pixels,
+        report.differing_ratio,
+    );
+}
+
+/// Contract pin: submitting against a texture whose format differs from
+/// the backend's *without* calling `set_surface_format` first trips the
+/// hard-assert. This is what makes `set_surface_format` mandatory on a
+/// format change — guards against a silent stale-pipeline mis-render.
+#[test]
+#[should_panic(expected = "set_surface_format")]
+fn format_change_without_recreate_panics() {
+    let size = UVec2::new(64, 64);
+    let mut h = Harness::new();
+    // Host built for Rgba8UnormSrgb; render straight into a BGRA target
+    // without recreating. The backend's `ensure_backbuffer` assert fires
+    // before any GPU work, so the shared device stays clean for other
+    // tests.
+    let _ = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
+}

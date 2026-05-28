@@ -123,25 +123,7 @@ impl ImagePipeline {
             ..Default::default()
         });
 
-        // Per-image tex+sampler at group 0 — viewport rides the
-        // shared immediate region.
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.image.pl", &[Some(&image_bgl)]);
-        let pipeline = build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.image.pipeline",
-                shader: &shader,
-                layout: &pipeline_layout,
-                vertex_buffers: &[instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
-            },
-        );
+        let pipeline = Self::build_color_pipeline(device, &shader, &image_bgl, format);
 
         let instance_buffer =
             DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16, 16);
@@ -160,6 +142,54 @@ impl ImagePipeline {
             total_bytes: 0,
             touched: RefCell::new(Vec::new()),
         }
+    }
+
+    /// Build the no-stencil color pipeline. The only format-dependent
+    /// object in the whole pipeline — the per-image textures, bind
+    /// groups, sampler, and layout are all format-independent. Shared by
+    /// [`Self::new`] and [`Self::rebuild_for_format`].
+    fn build_color_pipeline(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        image_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        // Per-image tex+sampler at group 0 — viewport rides the
+        // shared immediate region.
+        let pipeline_layout =
+            build_pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
+        build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.image.pipeline",
+                shader,
+                layout: &pipeline_layout,
+                vertex_buffers: &[instance_layout()],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: None,
+            },
+        )
+    }
+
+    /// Rebuild only the format-dependent render pipelines against
+    /// `format`. The uploaded image textures + their bind groups
+    /// (`Rgba8UnormSrgb`, independent of the swapchain format) survive
+    /// in `cache` — they reference the preserved `image_bgl`, so the
+    /// fresh pipelines stay compatible with them and **no re-upload is
+    /// needed**. The lazy stencil variant is dropped so it rebuilds
+    /// against the new format on the next rounded-clip frame.
+    pub(crate) fn rebuild_for_format(
+        &mut self,
+        device: &wgpu::Device,
+        format: wgpu::TextureFormat,
+    ) {
+        self.pipeline = Self::build_color_pipeline(device, &self.shader, &self.image_bgl, format);
+        self.color_format = format;
+        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
@@ -457,6 +487,24 @@ fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<ImageInstance>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &IMAGE_INSTANCE_ATTRS,
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod test_support {
+    //! Reach-in for the surface-format-change tests: GPU texture-cache
+    //! occupancy, used to assert the cache survives a pipeline rebuild.
+
+    use super::*;
+
+    impl ImagePipeline {
+        /// Count of images currently resident in the GPU texture cache.
+        /// Lets the surface-format-change tests assert the cache survives
+        /// a pipeline rebuild (surgical rebuild keeps it; a full rebuild
+        /// would drop it to zero).
+        pub(crate) fn gpu_cached_count(&self) -> usize {
+            self.cache.len()
+        }
     }
 }
 
