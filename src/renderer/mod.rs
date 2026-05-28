@@ -17,12 +17,6 @@
 //! Both halves are owned and driven from [`Host`](crate::host::Host),
 //! the public top-level handle.
 pub mod backend;
-pub use backend::DEFAULT_IMAGE_BUDGET_BYTES;
-/// Counting wrapper around `wgpu::Queue` — every `write_buffer` /
-/// `write_texture` call routed through this type bumps the per-frame
-/// counters under [`write_stats`] (gated on `internals`). Production
-/// builds compile to a zero-cost passthrough.
-pub use backend::Queue;
 /// Shared handle types for the most recent GPU instrumentation
 /// sample, refreshed each frame by the backend's timestamp-query +
 /// pipeline-statistics readback. Consumers (debug overlay, benches)

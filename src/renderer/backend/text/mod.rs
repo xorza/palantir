@@ -23,14 +23,15 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
-use crate::renderer::backend::{GpuCtx, ViewportPush};
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
 use std::ops::Range;
 
-pub(crate) use atlas::GlyphAtlas;
+use atlas::GlyphAtlas;
 use encode::{
     EncodeCtx, EncodedCache, EncodedRunKey, ResolvedRun, encode_batch, encode_key_for,
     try_emit_cached,
@@ -563,7 +564,10 @@ pub mod test_support {
     /// one to feed `prepare`/`flush`. The full path
     /// (`crate::renderer::backend::dynamic_buffer::GpuCtx`) is
     /// noisy at the call site.
-    pub use crate::renderer::backend::GpuCtx;
+    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
+    /// Re-export the counting `Queue` wrapper so benches can build one
+    /// to feed `GpuCtx::new`.
+    pub use crate::renderer::backend::queue::Queue;
     /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
@@ -674,7 +678,8 @@ mod tests {
         // `Params::OFFSET` drifts, the shader's `imm.params` would
         // read the wrong bytes. Total 16 must also still fit inside
         // `IMMEDIATES_BYTES`.
-        use crate::renderer::backend::{IMMEDIATES_BYTES, ViewportPush};
+        use crate::renderer::backend::IMMEDIATES_BYTES;
+        use crate::renderer::backend::viewport::ViewportPush;
         assert_eq!(Params::OFFSET as usize, ViewportPush::BYTES);
         assert!(Params::OFFSET as usize + Params::BYTES <= IMMEDIATES_BYTES as usize);
     }
@@ -687,7 +692,8 @@ mod tests {
 #[cfg(test)]
 mod gpu_regression {
     use super::TextBackend;
-    use crate::renderer::backend::{GpuCtx, Queue};
+    use crate::renderer::backend::gpu_ctx::GpuCtx;
+    use crate::renderer::backend::queue::Queue;
     use crate::text::TextShaper;
     use glam::{UVec2, Vec2};
     use pollster::FutureExt;

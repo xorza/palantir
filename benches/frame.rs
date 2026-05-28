@@ -289,7 +289,7 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
 
 /// Per-frame `queue.write_*` counts + GPU main-pass time for each
 /// arm, frames 0..=5, so the cold→warm transition is visible.
-/// Upload columns come from the counting [`palantir::renderer::Queue`]
+/// Upload columns come from the counting `palantir::renderer::backend::queue::Queue`
 /// wrapper; the GPU pass column comes from `wgpu` timestamp queries
 /// surfaced via [`palantir::renderer::gpu_pass_stats::last_pass_ms`].
 /// The pass readout is one frame lagged (the `map_async` callback

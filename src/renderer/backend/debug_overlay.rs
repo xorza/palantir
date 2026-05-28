@@ -11,7 +11,7 @@
 //! never enable debug overlays still allocate these buffers (cheap
 //! at ~92 B each) but never upload to them.
 
-use super::GpuCtx;
+use super::gpu_ctx::GpuCtx;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,

@@ -2,8 +2,8 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
+use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;

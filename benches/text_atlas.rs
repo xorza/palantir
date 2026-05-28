@@ -46,7 +46,9 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use palantir::ColorU8;
 use palantir::TextShaper;
-use palantir::renderer::backend::text::test_support::{GpuCtx, TextBackend, TextRun, make_run};
+use palantir::renderer::backend::text::test_support::{
+    GpuCtx, Queue, TextBackend, TextRun, make_run,
+};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -62,7 +64,7 @@ const ROWS: u32 = 32;
 
 struct Gpu {
     device: wgpu::Device,
-    queue: palantir::renderer::Queue,
+    queue: Queue,
 }
 
 fn gpu() -> &'static Gpu {
@@ -93,7 +95,7 @@ fn gpu() -> &'static Gpu {
             .expect("request device");
         Gpu {
             device,
-            queue: palantir::renderer::Queue::new(queue),
+            queue: Queue::new(queue),
         }
     })
 }

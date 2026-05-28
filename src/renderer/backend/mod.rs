@@ -1,39 +1,35 @@
 mod curve_pipeline;
 mod debug_overlay;
 mod dynamic_buffer;
-mod gpu_ctx;
+pub(crate) mod gpu_ctx;
 pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
-mod image_pipeline;
+pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod pipeline_utils;
 mod quad_pipeline;
-mod queue;
+pub(crate) mod queue;
 mod schedule;
 mod stencil;
 pub mod text;
-mod viewport;
+pub(crate) mod viewport;
 #[cfg(feature = "internals")]
 pub(crate) mod write_stats;
-
-pub use self::gpu_ctx::GpuCtx;
-pub use self::queue::Queue;
 
 use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_INSET, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
-use self::gpu_pass_stats::BatchKind;
-pub(crate) use self::gpu_pass_stats::GpuPassStats;
+use self::gpu_ctx::GpuCtx;
+use self::gpu_pass_stats::{BatchKind, GpuPassStats};
 use self::gpu_timings::GpuTimings;
-pub use self::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
+use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
-pub(crate) use self::viewport::ViewportPush;
-use self::viewport::build_damage_scissors;
+use self::viewport::{ViewportPush, build_damage_scissors};
 use crate::common::frame_arena::FrameArena;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};

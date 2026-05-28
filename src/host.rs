@@ -15,7 +15,8 @@
 use std::time::Instant;
 
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-use crate::renderer::backend::{DEFAULT_IMAGE_BUDGET_BYTES, WgpuBackend, WgpuBackendConfig};
+use crate::renderer::backend::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
+use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
