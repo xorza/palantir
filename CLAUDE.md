@@ -2,7 +2,7 @@
 
 A Rust GUI crate. **Immediate-mode authoring API**, **WPF-contract two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 
-Read `DESIGN.md` for the full design rationale before making non-trivial changes. Generic Rust coding conventions live in `CODING_STYLE.md`.
+Read `DESIGN.md` for the full design rationale before making non-trivial changes.
 
 ## Posture
 
