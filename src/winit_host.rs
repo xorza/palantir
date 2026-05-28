@@ -91,29 +91,6 @@ impl HostHandle {
     }
 }
 
-/// How many frames may be in flight between CPU record and GPU
-/// present. Maps 1:1 to wgpu's `desired_maximum_frame_latency`. Two
-/// variants because the only sane choices on every supported platform
-/// are 1 and 2 — extend the enum if a real use case for 3+ shows up.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FrameLatency {
-    /// 1 frame in flight — lowest input-to-photon latency, less
-    /// pacing headroom. Default.
-    Low,
-    /// 2 frames in flight — smoother pacing under bursty frames at
-    /// the cost of one extra frame of input lag.
-    Buffered,
-}
-
-impl FrameLatency {
-    fn frames(self) -> u32 {
-        match self {
-            FrameLatency::Low => 1,
-            FrameLatency::Buffered => 2,
-        }
-    }
-}
-
 /// Tunables forwarded to winit + wgpu at startup. All fields are
 /// optional with sensible defaults; override what you care about.
 pub struct WinitHostConfig {
@@ -125,9 +102,6 @@ pub struct WinitHostConfig {
     pub min_inner_size: Option<LogicalSize<u32>>,
     pub present_mode: wgpu::PresentMode,
     pub power_preference: wgpu::PowerPreference,
-    /// How many frames may be in flight on the GPU at once. See
-    /// [`FrameLatency`].
-    pub max_frame_latency: FrameLatency,
     /// GPU texture cache budget; eviction kicks in past this. See
     /// [`DEFAULT_IMAGE_BUDGET_BYTES`](crate::DEFAULT_IMAGE_BUDGET_BYTES).
     pub image_budget_bytes: u64,
@@ -145,7 +119,6 @@ impl Default for WinitHostConfig {
             min_inner_size: None,
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
-            max_frame_latency: FrameLatency::Low,
             image_budget_bytes: HostConfig::default().image_budget_bytes,
             collect_gpu_stats: false,
         }
@@ -372,7 +345,9 @@ where
                 caps.alpha_modes[0]
             },
             view_formats: vec![],
-            desired_maximum_frame_latency: cfg.max_frame_latency.frames(),
+            // Smallest swapchain: 1 frame of latency → double-buffered
+            // (two images), lowest input-to-photon latency.
+            desired_maximum_frame_latency: 1,
         };
         // `Host::frame` configures the surface lazily when it spots
         // `(config.width, config.height)` differing from the last

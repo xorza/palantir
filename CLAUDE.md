@@ -61,7 +61,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/common/` — shared scaffolding: `CacheArena`, `FrameArena`, `PerLayer`, hashing helpers, platform/time shims
 - **Test/bench reach-in surface:** per-module `#[cfg(any(test, feature = "internals"))] pub mod test_support` blocks (no `src/support/` aggregator). Top-level modules are `pub` so external benches/integration tests can reach them as `palantir::foo::bar::test_support::*`.
 - `src/host.rs` — `Host<T>` pipeline owner (recorder `Ui` + `Frontend` + `WgpuBackend`) + `FramePresent` scheduling enum; public entries `Host::frame` (swapchain) and `Host::frame_offscreen` (bench / headless render to a `wgpu::Texture`)
-- `src/winit_host.rs` — `WinitHost<T>` + `WinitHostConfig`: winit `ApplicationHandler` glue around `Host`. Owns window/surface, picks sRGB swapchain, maps `FramePresent` → `ControlFlow`, forwards `WindowEvent`s to `Ui::on_input`. Config exposes title, initial/min logical size, present mode, power preference, frame latency.
+- `src/winit_host.rs` — `WinitHost<T>` + `WinitHostConfig`: winit `ApplicationHandler` glue around `Host`. Owns window/surface, picks sRGB swapchain, maps `FramePresent` → `ControlFlow`, forwards `WindowEvent`s to `Ui::on_input`. Config exposes title, initial/min logical size, present mode, power preference. The swapchain is always double-buffered (`desired_maximum_frame_latency: 1`).
 - `src/clipboard.rs` — process-wide clipboard (arboard + in-memory fallback)
 - `src/debug_overlay.rs` — `DebugOverlayConfig` on `Ui` (damage-rect / clear-damage / frame-stats visualizations)
 - `src/showcase/` — multi-page demo content; `src/main.rs` — showcase binary (uses `WinitHost`)
