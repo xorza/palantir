@@ -67,17 +67,21 @@ pub fn set(s: &str) {
     g.cache.push_str(s);
 }
 
-/// Test-only serialization guard. The clipboard backend is a
-/// process-global `Mutex<Inner>`, so parallel tests calling
-/// `get`/`set` race on the cached value between each other's
-/// assertions. Tests that depend on clipboard state acquire this
-/// outer mutex first.
 #[cfg(test)]
-pub(crate) fn test_serialize_guard() -> std::sync::MutexGuard<'static, ()> {
-    static G: OnceLock<Mutex<()>> = OnceLock::new();
-    G.get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("clipboard test guard poisoned")
+pub(crate) mod test_support {
+    use std::sync::{Mutex, OnceLock};
+
+    /// Test-only serialization guard. The clipboard backend is a
+    /// process-global `Mutex<Inner>`, so parallel tests calling
+    /// `get`/`set` race on the cached value between each other's
+    /// assertions. Tests that depend on clipboard state acquire this
+    /// outer mutex first.
+    pub(crate) fn test_serialize_guard() -> std::sync::MutexGuard<'static, ()> {
+        static G: OnceLock<Mutex<()>> = OnceLock::new();
+        G.get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("clipboard test guard poisoned")
+    }
 }
 
 #[cfg(test)]
@@ -85,6 +89,7 @@ mod tests {
     // `cfg(test)` forces the in-memory backend so these assertions
     // don't touch the developer's real OS clipboard.
     use super::*;
+    use crate::clipboard::test_support::test_serialize_guard;
 
     #[test]
     fn set_get_roundtrip() {

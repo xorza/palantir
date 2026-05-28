@@ -33,9 +33,6 @@ use super::stack;
 use super::support::TextCtx;
 use super::zstack;
 
-#[cfg(test)]
-mod tests;
-
 // ---------------------------------------------------------------------------
 // Cross-frame state — what the scroll widget reads at record time
 // ---------------------------------------------------------------------------
@@ -242,3 +239,6 @@ pub(crate) fn arrange(
     // on actual pan input, which is the only place a stale offset
     // matters for the user.
 }
+
+#[cfg(test)]
+mod tests;

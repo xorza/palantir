@@ -13,8 +13,6 @@ pub(crate) mod animatable;
 pub(crate) mod easing;
 pub(crate) mod paint;
 pub(crate) mod spring;
-#[cfg(test)]
-mod tests;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
@@ -421,3 +419,6 @@ impl AnimMap {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

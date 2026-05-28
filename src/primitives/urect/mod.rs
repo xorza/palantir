@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 /// Axis-aligned rectangle in physical pixels (`u32`). Used for scissors,
 /// glyph clip bounds, viewport extents — anywhere the renderer hands
 /// integer pixel rects to the GPU. Logical-px rects use [`super::Rect`].
@@ -182,3 +179,6 @@ const fn sat_u16(v: u32) -> u16 {
         v as u16
     }
 }
+
+#[cfg(test)]
+mod tests;

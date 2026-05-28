@@ -9,9 +9,6 @@ use crate::layout::Layout;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::{rect::Rect, size::Size};
 
-#[cfg(test)]
-mod tests;
-
 /// Canvas: children placed at their declared `Layout.position` (parent-inner
 /// coords, defaulting to `(0, 0)`). Per-axis available width: pass `inner`
 /// when Canvas itself is constrained (Fill / Fixed) so children that need
@@ -126,3 +123,6 @@ pub(crate) fn intrinsic(
         }
     })
 }
+
+#[cfg(test)]
+mod tests;

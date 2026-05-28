@@ -9,7 +9,7 @@ fn context_menu_cut_copy_paste_clear() {
     use crate::widgets::context_menu::ContextMenu;
     // Whole test holds the clipboard guard so a parallel test in
     // the lib binary can't slip between our `set`/`get` checks.
-    let _cb_guard = crate::clipboard::test_serialize_guard();
+    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
     crate::clipboard::set("");
 
     fn editor_id() -> WidgetId {
@@ -114,7 +114,7 @@ fn context_menu_cut_copy_paste_clear() {
 /// per platform.
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    let _cb_guard = crate::clipboard::test_serialize_guard();
+    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
 
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
@@ -209,7 +209,7 @@ fn paste_strips_newlines() {
     // End-to-end via Cmd+V (Ctrl+V on non-Mac): a multi-line
     // clipboard string lands in the buffer as a single
     // space-separated line.
-    let _cb_guard = crate::clipboard::test_serialize_guard();
+    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
     crate::clipboard::set("first\r\nsecond\nthird");
     let mut text = String::new();
     let mut state = TextEditState::default();
@@ -222,7 +222,7 @@ fn paste_strips_newlines() {
 /// shortcut branch suppresses the printable-char insert path.
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
-    let _cb_guard = crate::clipboard::test_serialize_guard();
+    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
     crate::clipboard::set("");
 
     let mut text = String::from("ab");
@@ -251,7 +251,7 @@ fn clipboard_shortcut_does_not_insert_char() {
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     use crate::widgets::context_menu::ContextMenu;
-    let _cb_guard = crate::clipboard::test_serialize_guard();
+    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
 
     let editor_id = WidgetId::from_hash("ctx-ed-sec");
     fn body(ui: &mut Ui, buf: &mut String) {

@@ -20,9 +20,6 @@ use crate::ui::Ui;
 use glam::Vec2;
 use std::cell::Cell;
 
-#[cfg(test)]
-mod tests;
-
 /// Lazy handle to a widget's per-frame interaction state. Holds a
 /// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
 /// `ui.response_for(self.id)` on first access and memoizes the result.
@@ -342,3 +339,6 @@ pub mod test_support {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;

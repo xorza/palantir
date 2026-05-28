@@ -1,6 +1,3 @@
-#[cfg(test)]
-mod tests;
-
 use crate::primitives::{corners::Corners, size::Size, spacing::Spacing};
 use glam::Vec2;
 
@@ -231,3 +228,6 @@ impl Rect {
         }
     }
 }
+
+#[cfg(test)]
+mod tests;
