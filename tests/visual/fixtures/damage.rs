@@ -12,6 +12,7 @@ use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
 use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 
+use crate::diff::{Tolerance, diff};
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
 
@@ -344,5 +345,89 @@ fn corner_pair_overlay_strokes_each_rect() {
         centre_red, 0,
         "centre 100×100 must be free of overlay strokes (got {centre_red}) — \
          overlay should outline each damage rect, not their union",
+    );
+}
+
+/// Row 1 of four toggles colour each frame; the other three rows stay a
+/// static grey. Toggling one of four full-width rows keeps the damage
+/// well under the Full-escalation threshold, so frames after the first
+/// take the `Partial` path.
+fn cell_toggle_scene(on: bool) -> impl FnMut(&mut palantir::Ui) + Copy {
+    move |ui: &mut palantir::Ui| {
+        Panel::vstack()
+            .auto_id()
+            .gap(6.0)
+            .padding(10.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for i in 0..4 {
+                    let fill = if i == 1 {
+                        if on {
+                            Color::rgb(0.9, 0.5, 0.2)
+                        } else {
+                            Color::rgb(0.2, 0.3, 0.7)
+                        }
+                    } else {
+                        Color::rgb(0.18, 0.18, 0.20)
+                    };
+                    Frame::new()
+                        .id_salt(("row", i))
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .background(Background {
+                            fill: fill.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                }
+            });
+    }
+}
+
+/// Correctness pin for the partial backbuffer→surface copy. Renders a
+/// mutating scene into the *same* target across several frames so the
+/// backend takes its partial-copy path (a fresh target always
+/// full-copies), then checks the accumulated result is pixel-identical
+/// to the final state rendered from scratch into a fresh target.
+///
+/// The toggled row actually changes colour each frame, so a dropped or
+/// mis-placed copy region would leave a stale colour and diverge here.
+/// Frame 0 is the target's first sight (full copy); later frames are
+/// `Partial` — asserted via `damage_paint_kind` so a silent escalation
+/// to Full (which would make the copy path untested) fails the test.
+#[test]
+fn partial_copy_reused_target_matches_full_render() {
+    let size = UVec2::new(160, 120);
+    let fmt = wgpu::TextureFormat::Rgba8UnormSrgb;
+
+    let mut h = Harness::new();
+    let target = h.make_target(fmt, size);
+
+    let mut reused = None;
+    let mut saw_partial = false;
+    for tick in 0..6u32 {
+        reused = Some(h.render_into(&target, 1.0, DARK_BG, cell_toggle_scene(tick % 2 == 1)));
+        if tick > 0 && h.host.ui.damage_paint_kind() == "partial" {
+            saw_partial = true;
+        }
+    }
+    let reused = reused.unwrap();
+    assert!(
+        saw_partial,
+        "fixture never produced a Partial frame — the partial-copy path went untested",
+    );
+
+    // Final state is tick 5 ⇒ `on`. A fresh target always full-copies,
+    // so this is the ground truth the accumulated reused target must match.
+    let mut h2 = Harness::new();
+    let reference = h2.render_to_format(fmt, size, 1.0, DARK_BG, cell_toggle_scene(true));
+
+    let report = diff(&reused, &reference, Tolerance::default());
+    assert!(
+        report.passes(Tolerance::default()),
+        "reused-target partial copies diverged from a full render: \
+         {} differing px (ratio {:.4}, max channel delta {})",
+        report.differing_pixels,
+        report.differing_ratio,
+        report.max_channel_delta,
     );
 }

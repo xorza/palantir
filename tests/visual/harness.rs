@@ -109,28 +109,9 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.visual_test.target"),
-            size: wgpu::Extent3d {
-                width: physical.x,
-                height: physical.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
-
-        self.host.ui.theme.window_clear = clear;
-        self.host.frame_offscreen(&target, scale, scene);
-
-        let mut img = readback(&self.device, &self.queue, &target, physical);
-        // Readback copies raw bytes; a BGRA target lands as B,G,R,A.
+        let target = self.make_target(format, physical);
+        let mut img = self.render_into(&target, scale, clear, scene);
+        // `render_into` reads raw bytes; a BGRA target lands as B,G,R,A.
         // Swap R/B so callers always compare in RGBA space.
         if matches!(
             format,
@@ -176,6 +157,55 @@ impl Harness {
         let img = self.render(physical, scale, clear, scene);
         self.host.ui.debug_overlay = DebugOverlayConfig::default();
         img
+    }
+}
+
+impl Harness {
+    /// Allocate a caller-owned target for [`Self::render_into`]. Same
+    /// usage flags as the per-call target in [`Self::render_to_format`],
+    /// but reusable across frames so it stands in for a persistent
+    /// swapchain image — the case that exercises the backend's partial
+    /// backbuffer→surface copy (a fresh target always full-copies).
+    pub fn make_target(&self, format: wgpu::TextureFormat, physical: UVec2) -> wgpu::Texture {
+        self.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("palantir.visual_test.reused_target"),
+            size: wgpu::Extent3d {
+                width: physical.x,
+                height: physical.y,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::COPY_DST
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+    }
+
+    /// Render one frame into a caller-owned (reused) `target` and read
+    /// it back in the target's native channel order (no swizzle — an
+    /// RGBA target yields RGBA, a BGRA target yields BGRA). Unlike
+    /// [`Self::render_to_format`] this does not allocate a fresh target,
+    /// so repeated calls drive the partial-copy path.
+    pub fn render_into(
+        &mut self,
+        target: &wgpu::Texture,
+        scale: f32,
+        clear: Color,
+        scene: impl FnMut(&mut Ui),
+    ) -> RgbaImage {
+        self.host.ui.theme.window_clear = clear;
+        self.host.frame_offscreen(target, scale, scene);
+        let s = target.size();
+        readback(
+            &self.device,
+            &self.queue,
+            target,
+            UVec2::new(s.width, s.height),
+        )
     }
 }
 
