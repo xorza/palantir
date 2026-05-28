@@ -544,6 +544,30 @@ struct Estimate {
     hi_ns: f64,
 }
 
+/// Locate criterion's output root. Criterion writes to the *workspace*
+/// `target/criterion`, but cargo runs this bench with its CWD set to
+/// the package dir — which, since palantir is a git submodule, is the
+/// submodule root, not the workspace. A plain `target/criterion`
+/// relative path therefore misses (no `palantir/target`). Resolve it
+/// robustly: honour `CARGO_TARGET_DIR`, else walk up from CWD for the
+/// first existing `target/criterion` (the shared workspace target sits
+/// above the submodule package dir).
+fn criterion_root() -> PathBuf {
+    if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
+        return PathBuf::from(t).join("criterion");
+    }
+    let mut dir = std::env::current_dir().unwrap_or_default();
+    loop {
+        let cand = dir.join("target").join("criterion");
+        if cand.is_dir() {
+            return cand;
+        }
+        if !dir.pop() {
+            return PathBuf::from("target").join("criterion");
+        }
+    }
+}
+
 /// Extract `mean.{lower_bound, point_estimate, upper_bound}` from
 /// criterion's `estimates.json`. The file is a single-line JSON blob
 /// with a stable layout: `"mean":{"confidence_interval":{...},
@@ -552,9 +576,7 @@ struct Estimate {
 /// just for this.
 fn read_criterion_mean(name: &str) -> Option<Estimate> {
     let slug = name.replace('/', "_");
-    let path = PathBuf::from("target/criterion")
-        .join(&slug)
-        .join("new/estimates.json");
+    let path = criterion_root().join(&slug).join("new/estimates.json");
     let s = std::fs::read_to_string(&path).ok()?;
     let after_mean = &s[s.find("\"mean\":")? + "\"mean\":".len()..];
     let lo = extract_json_number(after_mean, "\"lower_bound\":")?;
