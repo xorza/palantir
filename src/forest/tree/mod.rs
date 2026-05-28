@@ -23,21 +23,19 @@
 //! and `Ui::add_shape` / encoder branches stay gate-free pass-throughs.
 
 use crate::ClipMode;
-use crate::common::frame_arena::FrameArena;
 use crate::common::hash::Hasher;
+use crate::forest::Chrome;
 use crate::forest::element::{BoundsExtras, Element, LayoutCore, LayoutMode, PanelExtras};
-use crate::forest::node::NodeRecord;
+use crate::forest::node::{NodeRecord, SubtreeEnd};
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
 use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
 use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::visibility::Visibility;
-use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::widgets::grid::GridDef;
 use glam::Vec2;
 use soa_rs::Soa;
@@ -144,24 +142,6 @@ pub(crate) struct PendingAnchor {
     pub(crate) size: Option<Size>,
 }
 
-/// **Per-NodeId columns** — `Soa<NodeRecord>` indexed by `NodeId.0`, in
-/// pre-order paint order (parent before children, siblings in declaration
-/// order). Reverse iteration gives topmost-first (used by hit-testing).
-/// `soa-rs` lays each `NodeRecord` field out as its own contiguous slice,
-/// so each pass touches only the bytes it needs:
-///
-/// - `layout`    — read by measure / arrange / alignment math
-/// - `attrs`     — 1-byte packed paint/input flags; cascade / encoder
-/// - `widget_id` — hit-test, state map, damage diff
-/// - `end`       — pre-order skip (every walk)
-/// - `shapes`    — span into the flat shape buffer covering this node's
-///   subtree (parent + descendants); the gap between children's
-///   sub-ranges holds the parent's direct shapes in record order.
-///
-/// Each [`Tree`] is a single layer's arena. Per-layer trees live on
-/// [`forest::Forest`] and share no record/shape storage — mid-recording
-/// `Ui::layer` calls dispatch into the destination tree without
-/// interleaving, eliminating the prior reorder pass.
 /// Niche-encoded dense-table slot. `u16::MAX` means "absent"; any
 /// other value is an index into a `*_table` `Vec`. Constructed by
 /// [`Slot::push`] off a `Vec::len()`; resolved at read time via
@@ -220,6 +200,24 @@ pub(crate) struct ExtrasIdx {
     pub(crate) chrome: Slot,
 }
 
+/// A single layer's arena. Per-layer trees live on
+/// [`crate::forest::Forest`] and share no record/shape storage —
+/// mid-recording `Ui::layer` calls dispatch into the destination tree
+/// without interleaving, eliminating the prior reorder pass.
+///
+/// **`records`** is `Soa<NodeRecord>` indexed by `NodeId.0`, in pre-order
+/// paint order (parent before children, siblings in declaration order).
+/// Reverse iteration gives topmost-first (used by hit-testing). `soa-rs`
+/// lays each `NodeRecord` field out as its own contiguous slice, so each
+/// pass touches only the bytes it needs:
+///
+/// - `layout`      — read by measure / arrange / alignment math
+/// - `attrs`       — 1-byte packed paint/input flags; cascade / encoder
+/// - `widget_id`   — hit-test, state map, damage diff
+/// - `subtree_end` — pre-order skip + grid flag (every walk)
+/// - `shape_span`  — span into the flat shape buffer covering this node's
+///   subtree (parent + descendants); the gap between children's
+///   sub-ranges holds the parent's direct shapes in record order.
 #[derive(Default)]
 pub(crate) struct Tree {
     // -- Per-NodeId mandatory columns ------------------------------------
@@ -269,31 +267,18 @@ pub(crate) struct Tree {
     pub(crate) rollups: SubtreeRollups,
 }
 
-/// High bit of `NodeRecord.subtree_end` — set iff the subtree rooted
-/// at this node (inclusive) contains a `LayoutMode::Grid` node
-/// somewhere. Packed alongside the pre-order end so the
-/// `MeasureCache` grid-hug fast-path test is one load against the
-/// same SoA column the caller already touches for the subtree bound,
-/// instead of a second cache line for a dedicated `has_grid` bitset.
-/// The remaining 31 bits hold the real end — arena will never approach
-/// 2^31 nodes.
-pub(crate) const SUBTREE_GRID_FLAG: u32 = 1 << 31;
-pub(crate) const SUBTREE_END_MASK: u32 = !SUBTREE_GRID_FLAG;
-
 impl Tree {
-    /// Masked `subtree_end` for node `i` — strips the grid flag
-    /// (`SUBTREE_GRID_FLAG`) so callers see the raw pre-order end.
+    /// Exclusive pre-order end for node `i`, grid flag stripped.
     #[inline]
     pub(crate) fn subtree_end_of(&self, i: usize) -> u32 {
-        self.records.subtree_end()[i] & SUBTREE_END_MASK
+        self.records.subtree_end()[i].end()
     }
 
     /// `true` iff the subtree rooted at `i` (inclusive) contains any
-    /// `LayoutMode::Grid` node. Read from the high bit of
-    /// `subtree_end[i]`; populated incrementally by `close_node`.
+    /// `LayoutMode::Grid` node. Populated incrementally by `close_node`.
     #[inline]
     pub(crate) fn subtree_has_grid(&self, i: usize) -> bool {
-        self.records.subtree_end()[i] & SUBTREE_GRID_FLAG != 0
+        self.records.subtree_end()[i].has_grid()
     }
 
     pub(crate) fn pre_record(&mut self) {
@@ -386,7 +371,7 @@ impl Tree {
             // time; fold it in as a u64 so we don't re-hash the record
             // fields here. The `0xFF` child marker is a domain
             // separator between adjacent shape-hash u64 writes.
-            let subtree_end = ends[i] & SUBTREE_END_MASK;
+            let subtree_end = ends[i].end();
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
@@ -408,7 +393,7 @@ impl Tree {
             let mut next = (i as u32) + 1;
             while next < subtree_end {
                 sh.write_u64(subtree_out[next as usize].0);
-                next = ends[next as usize] & SUBTREE_END_MASK;
+                next = ends[next as usize].end();
             }
             subtree_out[i] = NodeHash(sh.finish());
         }
@@ -453,7 +438,7 @@ impl Tree {
         new_id: NodeId,
         widget_id: WidgetId,
         mut element: Element,
-        chrome: Option<(&Background, &FrameArena, &GradientAtlas)>,
+        chrome: Option<Chrome<'_>>,
     ) -> NodeId {
         debug_assert_eq!(
             new_id.0 as usize,
@@ -462,7 +447,7 @@ impl Tree {
         );
 
         if matches!(element.flags.clip_mode(), ClipMode::Rounded) {
-            let radius_zero = chrome.is_none_or(|(bg, _, _)| bg.corners.approx_zero());
+            let radius_zero = chrome.is_none_or(|c| c.bg.corners.approx_zero());
             if radius_zero {
                 element.flags.set_clip(ClipMode::Rect);
             }
@@ -498,7 +483,7 @@ impl Tree {
             ex.panel = Slot::from_len(self.panel_table.len());
             self.panel_table.push(cols.panel);
         }
-        if let Some((bg, arena, atlas)) = chrome {
+        if let Some(Chrome { bg, arena, atlas }) = chrome {
             // Chrome stroke paints fully inside the node's arranged
             // rect (see `quad.wgsl` SDF stroke band). Inflate `padding`
             // by `stroke.width` on every side so children sit inside
@@ -525,21 +510,11 @@ impl Tree {
         }
         self.extras_idx.push(ex);
 
-        // High bit of `subtree_end` carries the `SUBTREE_GRID_FLAG` —
-        // pin the 31-bit arena ceiling here so a future overflow fails
-        // loudly instead of silently corrupting the flag.
-        assert!(
-            new_id.0 & SUBTREE_GRID_FLAG == 0,
-            "NodeId exhausted 31-bit arena (high bit is SUBTREE_GRID_FLAG)",
-        );
         // Stamp the self-Grid bit at open time — `cols.layout.mode` is
         // already in registers here. Lets `close_node` drop its
-        // `layout[i].mode` read (3 record columns → 2).
-        let init_end = if cols.layout.mode == LayoutMode::Grid {
-            (new_id.0 + 1) | SUBTREE_GRID_FLAG
-        } else {
-            new_id.0 + 1
-        };
+        // `layout[i].mode` read (3 record columns → 2). `new_open`
+        // asserts the 31-bit arena ceiling (high bit is the grid flag).
+        let init_end = SubtreeEnd::new_open(new_id.0, cols.layout.mode == LayoutMode::Grid);
         self.records.push(NodeRecord {
             widget_id: cols.widget_id,
             shape_span: Span::new(self.shapes.records.len() as u32, 0),
@@ -614,19 +589,11 @@ impl Tree {
         // descendants merged their flags up via this same code at
         // close. No `layout[i].mode` read needed — drops close_node
         // from 3 record-column touches to 2.
-        let raw = self.records.subtree_end()[i];
+        let child_end = self.records.subtree_end()[i];
 
         if let Some(parent) = scratch.open_frames.last().map(|f| f.node) {
             let pi = parent.idx();
-            let ends = self.records.subtree_end_mut();
-            let parent_raw = ends[pi];
-            // Take the max of the two ends and OR the union of both
-            // grid flags. Bit-level: low 31 bits are always ≤
-            // SUBTREE_END_MASK so `.max` on the masked words gives the
-            // right end; high bit is the flag and `(a | b) & FLAG`
-            // unions cleanly.
-            ends[pi] = (parent_raw & SUBTREE_END_MASK).max(raw & SUBTREE_END_MASK)
-                | ((parent_raw | raw) & SUBTREE_GRID_FLAG);
+            self.records.subtree_end_mut()[pi].merge_child(child_end);
         }
     }
 
@@ -639,7 +606,7 @@ impl Tree {
         ChildIter {
             layouts: self.records.layout(),
             next: parent.0 + 1,
-            end: ends[parent.0 as usize] & SUBTREE_END_MASK,
+            end: ends[parent.0 as usize].end(),
             ends,
         }
     }
@@ -704,7 +671,7 @@ impl Tree {
 
 pub(crate) struct ChildIter<'a> {
     layouts: &'a [LayoutCore],
-    ends: &'a [u32],
+    ends: &'a [SubtreeEnd],
     next: u32,
     end: u32,
 }
@@ -740,7 +707,7 @@ impl<'a> Iterator for ChildIter<'a> {
         }
         let i = self.next as usize;
         let visibility = self.layouts[i].visibility();
-        self.next = self.ends[i] & SUBTREE_END_MASK;
+        self.next = self.ends[i].end();
         Some(Child {
             id: NodeId(i as u32),
             visibility,
@@ -751,7 +718,7 @@ impl<'a> Iterator for ChildIter<'a> {
 pub(crate) struct TreeItems<'a> {
     shapes_col: &'a [Span],
     layouts: &'a [LayoutCore],
-    ends: &'a [u32],
+    ends: &'a [SubtreeEnd],
     shapes: &'a [ShapeRecord],
     cursor: usize,
     parent_end: usize,
@@ -776,7 +743,7 @@ impl<'a> TreeItems<'a> {
             cursor: parent.start as usize,
             parent_end: (parent.start + parent.len) as usize,
             next_child_id: node.0 + 1,
-            subtree_end: ends[node.idx()] & SUBTREE_END_MASK,
+            subtree_end: ends[node.idx()].end(),
         }
     }
 }
@@ -799,7 +766,7 @@ impl<'a> Iterator for TreeItems<'a> {
                 visibility,
             };
             self.cursor = cs_start + cs.len as usize;
-            self.next_child_id = self.ends[self.next_child_id as usize] & SUBTREE_END_MASK;
+            self.next_child_id = self.ends[self.next_child_id as usize].end();
             return Some(TreeItem::Child(child));
         }
         if self.cursor < self.parent_end {

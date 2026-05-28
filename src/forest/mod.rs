@@ -28,6 +28,17 @@ pub(crate) struct CollisionRecord {
     pub(crate) second: Endpoint,
 }
 
+/// Background paint inputs for a chromed node, threaded by reference
+/// from `Ui::node_with_chrome` through [`Forest::open_node`] to
+/// `Tree::open_node` so the 168 B `Background` isn't copied on every
+/// chromed widget every frame. `None` chrome means no background paint.
+#[derive(Clone, Copy)]
+pub(crate) struct Chrome<'a> {
+    pub(crate) bg: &'a Background,
+    pub(crate) arena: &'a FrameArena,
+    pub(crate) atlas: &'a GradientAtlas,
+}
+
 pub(crate) mod element;
 pub(crate) mod node;
 pub(crate) mod rollups;
@@ -85,6 +96,7 @@ impl Layer {
 /// for known-layer access; iterate `trees` directly only for
 /// cross-layer aggregation that doesn't care about layer order
 /// (e.g. summing record counts).
+#[derive(Default)]
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
     /// Per-layer recording-only state (ancestor stack + pending
@@ -106,25 +118,13 @@ pub(crate) struct Forest {
     /// paint walk; cleared by the next `pre_record`. Public-in-crate
     /// so tests can introspect.
     pub(crate) collisions: Vec<CollisionRecord>,
-    /// Layer scope stack. Top is the active layer for the next
-    /// `open_node`; the entry below (when any) is the layer
-    /// `pop_layer` will restore. Seeded with `[Layer::Main]` and never
-    /// drained below that baseline — `pop_layer` asserts. Anchors live
-    /// on the per-`Tree` `pending_anchor` slot; `push_layer`'s no-
-    /// nesting assert keeps the slot single-occupancy.
-    layer_stack: Vec<Layer>,
-}
-
-impl Default for Forest {
-    fn default() -> Self {
-        Self {
-            trees: PerLayer::default(),
-            scratch: PerLayer::default(),
-            ids: SeenIds::default(),
-            collisions: Vec::new(),
-            layer_stack: vec![Layer::Main],
-        }
-    }
+    /// Active side-layer scope, or `None` for the `Main` baseline.
+    /// `push_layer` asserts the current layer is `Main` (no nesting),
+    /// so the scope is at most one deep — `Some(side)` or `None` —
+    /// and a single slot captures it without a stack. Anchors live on
+    /// the per-`Tree` `pending_anchor` slot; `push_layer`'s no-nesting
+    /// assert keeps that slot single-occupancy too.
+    active_side: Option<Layer>,
 }
 
 impl Forest {
@@ -132,15 +132,11 @@ impl Forest {
     /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
     #[inline]
     pub(crate) fn current_layer(&self) -> Layer {
-        *self
-            .layer_stack
-            .last()
-            .expect("layer_stack drained below Main baseline")
+        self.active_side.unwrap_or(Layer::Main)
     }
 
     pub(crate) fn pre_record(&mut self) {
-        self.layer_stack.clear();
-        self.layer_stack.push(Layer::Main);
+        self.active_side = None;
         self.ids.pre_record();
         self.collisions.clear();
         for t in &mut self.trees {
@@ -201,9 +197,9 @@ impl Forest {
     /// `SeenIds::record_endpoint` (also emitting any pending explicit
     /// collision pair), and opens the node in the active tree.
     ///
-    /// `chrome` is `Some((bg, arena, atlas))` for nodes with a
-    /// background paint and `None` otherwise. `bg` is borrowed (not
-    /// owned) so the 168 B `Background` doesn't get copied through the
+    /// `chrome` is `Some(Chrome { .. })` for nodes with a background
+    /// paint and `None` otherwise. The `Background` is borrowed (not
+    /// owned) so its 168 B don't get copied through the
     /// `Ui::node_with_chrome → here → Tree::open_node →
     /// FrameArena::lower_background` chain on every chromed widget.
     #[inline]
@@ -211,7 +207,7 @@ impl Forest {
         &mut self,
         widget_id: WidgetId,
         element: Element,
-        chrome: Option<(&Background, &FrameArena, &GradientAtlas)>,
+        chrome: Option<Chrome<'_>>,
     ) {
         let layer = self.current_layer();
         let node = self.trees[layer].peek_next_id();
@@ -309,15 +305,13 @@ impl Forest {
             "push_layer({layer:?}) found pending_anchor already set — no-nesting invariant violated",
         );
         scratch.pending_anchor = Some(PendingAnchor { anchor, size });
-        self.layer_stack.push(layer);
+        self.active_side = Some(layer);
     }
 
     pub(crate) fn pop_layer(&mut self) {
-        assert!(
-            self.layer_stack.len() > 1,
-            "pop_layer without matching push_layer",
-        );
-        let layer = self.current_layer();
+        let layer = self
+            .active_side
+            .expect("pop_layer without matching push_layer");
         let scratch = &mut self.scratch[layer];
         assert!(
             scratch.open_frames.is_empty(),
@@ -326,7 +320,7 @@ impl Forest {
             layer,
         );
         scratch.pending_anchor = None;
-        self.layer_stack.pop();
+        self.active_side = None;
     }
 
     /// Borrow the tree owned by `layer`.

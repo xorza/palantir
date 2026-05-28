@@ -1,3 +1,6 @@
+use crate::layout::axis::Axis;
+use crate::primitives::span::Span;
+
 /// Per-child placement inside a `Grid` parent. Inert when the parent is not a
 /// `LayoutMode::Grid`. `(row, col)` is the top-left cell; `(row_span,
 /// col_span)` extends the slot toward the bottom-right (defaults to 1×1).
@@ -8,6 +11,19 @@ pub struct GridCell {
     pub col: u16,
     pub row_span: u16,
     pub col_span: u16,
+}
+
+impl GridCell {
+    /// Track-index span on `axis`: `(col, col_span)` for X,
+    /// `(row, row_span)` for Y. Bundles the start/length pair the grid
+    /// track math slices with, so the two can't be passed swapped.
+    #[inline]
+    pub(crate) fn track_span(&self, axis: Axis) -> Span {
+        match axis {
+            Axis::X => Span::new(self.col as u32, self.col_span as u32),
+            Axis::Y => Span::new(self.row as u32, self.row_span as u32),
+        }
+    }
 }
 
 impl Default for GridCell {

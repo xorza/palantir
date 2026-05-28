@@ -672,13 +672,13 @@ fn subtree_end_rolls_up_during_recording() {
     // Pre-order: 0=viewport 1=root 2=a 3=inner 4=b 5=c 6=d
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 7);
     let ends = ui.forest.tree(Layer::Main).records.subtree_end();
-    assert_eq!(ends[0], 7, "synthetic viewport spans everything");
-    assert_eq!(ends[root.unwrap().idx()], 7, "root");
-    assert_eq!(ends[2], 3, "leaf a");
-    assert_eq!(ends[3], 6, "inner spans b,c");
-    assert_eq!(ends[4], 5, "leaf b");
-    assert_eq!(ends[5], 6, "leaf c");
-    assert_eq!(ends[6], 7, "leaf d");
+    assert_eq!(ends[0].end(), 7, "synthetic viewport spans everything");
+    assert_eq!(ends[root.unwrap().idx()].end(), 7, "root");
+    assert_eq!(ends[2].end(), 3, "leaf a");
+    assert_eq!(ends[3].end(), 6, "inner spans b,c");
+    assert_eq!(ends[4].end(), 5, "leaf b");
+    assert_eq!(ends[5].end(), 6, "leaf c");
+    assert_eq!(ends[6].end(), 7, "leaf d");
 }
 
 #[test]
@@ -702,13 +702,13 @@ fn subtree_end_handles_deep_nesting() {
     assert_eq!(n, 18);
     for i in 0..(n - 1) {
         assert_eq!(
-            ui.forest.tree(Layer::Main).records.subtree_end()[i as usize],
+            ui.forest.tree(Layer::Main).records.subtree_end()[i as usize].end(),
             n,
             "every ancestor on the chain points past the leaf",
         );
     }
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.subtree_end()[(n - 1) as usize],
+        ui.forest.tree(Layer::Main).records.subtree_end()[(n - 1) as usize].end(),
         n,
     );
 }
@@ -796,11 +796,11 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert_eq!(popup_tree.roots[0].anchor, popup_anchor);
     assert_eq!(popup_tree.roots[0].size, None);
     assert_eq!(
-        main_tree.records.subtree_end()[0] as usize,
+        main_tree.records.subtree_end()[0].end() as usize,
         main_tree.records.len(),
     );
     assert_eq!(
-        popup_tree.records.subtree_end()[0] as usize,
+        popup_tree.records.subtree_end()[0].end() as usize,
         popup_tree.records.len(),
     );
 }
@@ -1048,7 +1048,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     assert_eq!(main_tree.records.len(), 6);
     assert_eq!(main_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node, 0);
-    assert_eq!(main_tree.records.subtree_end()[parent.idx()], 6);
+    assert_eq!(main_tree.records.subtree_end()[parent.idx()].end(), 6);
 
     let kids: Vec<u32> = main_tree.children(parent).map(|c| c.id.0).collect();
     assert_eq!(kids, vec![2, 3, 4, 5]);
@@ -1065,7 +1065,7 @@ fn mid_recording_popup_keeps_trees_independent() {
     assert_eq!(popup_tree.records.len(), 3);
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(popup_tree.roots[0].first_node, 0);
-    assert_eq!(popup_tree.records.subtree_end()[0], 3);
+    assert_eq!(popup_tree.records.subtree_end()[0].end(), 3);
 
     let popup_widths: Vec<u32> = popup_tree.shapes.records.iter().map(marker_w).collect();
     assert_eq!(popup_widths, vec![11, 12]);
