@@ -16,7 +16,9 @@
 use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
-use super::support::{JustifyOffsets, TextCtx, cross_place, justify_offsets, zero_subtree};
+use super::support::{
+    JustifyOffsets, TextCtx, children_max_intrinsic, cross_place, justify_offsets, zero_subtree,
+};
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::sizing::{Sizes, Sizing};
@@ -320,12 +322,10 @@ pub(crate) fn intrinsic(
     let gap = tree.panel(node).gaps.gap();
     if main_axis == query_axis {
         match req {
+            // Widest single child sets the floor — one row of just that
+            // child still has to fit.
             LenReq::MinContent => {
-                let mut floor = 0.0f32;
-                for c in tree.active_children(node) {
-                    floor = floor.max(layout.intrinsic(tree, c, query_axis, req, tc));
-                }
-                floor
+                children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
             }
             LenReq::MaxContent => {
                 let mut total = 0.0f32;
@@ -342,11 +342,7 @@ pub(crate) fn intrinsic(
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        let mut max = 0.0f32;
-        for c in tree.active_children(node) {
-            max = max.max(layout.intrinsic(tree, c, query_axis, req, tc));
-        }
-        max
+        children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
     }
 }
 

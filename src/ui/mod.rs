@@ -11,6 +11,7 @@ use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::frame_arena::FrameArena;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
+use crate::forest::Chrome;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::element::{Element, LayoutMode, Salt};
@@ -971,7 +972,11 @@ impl Ui {
         self.forest.open_node(
             id,
             element,
-            Some((chrome, &self.frame_arena, &self.caches.gradients)),
+            Some(Chrome {
+                bg: chrome,
+                arena: &self.frame_arena,
+                atlas: &self.caches.gradients,
+            }),
         );
         let r = f(self);
         self.forest.close_node();

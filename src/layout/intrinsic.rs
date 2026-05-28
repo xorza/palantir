@@ -175,8 +175,12 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
     let wid = tree.records.widget_id()[node.idx()];
     let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
-    for (ordinal, ts) in leaf_text_shapes(tree, tc, node).enumerate() {
-        let ordinal = ordinal as u16;
+    // Same within-node `ordinal` keying + overflow contract as
+    // `LayoutEngine::leaf_content_size` — both walk `leaf_text_shapes`
+    // in record order and key the text cache on `(wid, ordinal, hash)`,
+    // so the counter must derive identically on both sides.
+    let mut ordinal: u16 = 0;
+    for ts in leaf_text_shapes(tree, tc, node) {
         let m = tc.shaper.shape_unbounded(
             wid,
             ordinal,
@@ -204,6 +208,10 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
             (Axis::Y, _) => m.size.h,
         };
         acc = acc.max(v);
+        ordinal = ordinal.checked_add(1).expect(
+            "more than 65535 ShapeRecord::Text per leaf — well past anything sane; \
+             widen the within-node ordinal width if this trips",
+        );
     }
     acc
 }

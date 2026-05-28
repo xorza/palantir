@@ -541,10 +541,12 @@ fn measure_inner(
             // cols would measure at a different width than they're
             // arranged at, and that discrepancy commits row heights
             // based on a width arrange doesn't honor.
-            let avail_w = sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.col, cell.col_span);
+            let avail_w =
+                sum_spanned_known(&s.col.sizes, &s.col.resolved, cell.track_span(Axis::X));
             // Rows: only Fixed is known yet; Hug and Fill are unresolved
             // → INF (WPF intrinsic trick), as before.
-            let avail_h = sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.row, cell.row_span);
+            let avail_h =
+                sum_spanned_known(&s.row.sizes, &s.row.resolved, cell.track_span(Axis::Y));
             Size::new(avail_w, avail_h)
         };
 
@@ -736,8 +738,8 @@ fn arrange_inner(
             let s = layout.scratch.grid.depth_stack.at(depth);
             let slot_x = s.col.offsets[cell.col as usize];
             let slot_y = s.row.offsets[cell.row as usize];
-            let slot_w = span_size(&s.col.sizes, cell.col, cell.col_span, col_gap);
-            let slot_h = span_size(&s.row.sizes, cell.row, cell.row_span, row_gap);
+            let slot_w = span_size(&s.col.sizes, cell.track_span(Axis::X), col_gap);
+            let slot_h = span_size(&s.row.sizes, cell.track_span(Axis::Y), row_gap);
             (slot_x, slot_y, slot_w, slot_h)
         };
 
@@ -759,15 +761,16 @@ fn arrange_inner(
 /// Sum of spanned tracks' resolved sizes, or `∞` if any spanned track is not
 /// yet resolved (Hug / Fill at measure time). Infinity makes the child fall
 /// back to its intrinsic size on that axis (the WPF trick).
-fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, start: u16, span: u16) -> f32 {
-    let s = (start as usize).min(sizes.len());
-    let n = (span as usize).min(sizes.len() - s);
+fn sum_spanned_known(sizes: &[f32], resolved: &FixedBitSet, span: Span) -> f32 {
+    // Cells are range-checked against the parent's track counts at record
+    // time (`Tree::check_grid_cell`), so `span.range()` is always in
+    // bounds here — index directly.
     let mut sum = 0.0;
-    for (offset, &size) in sizes[s..s + n].iter().enumerate() {
-        if !resolved.contains(s + offset) {
+    for i in span.range() {
+        if !resolved.contains(i) {
             return f32::INFINITY;
         }
-        sum += size;
+        sum += sizes[i];
     }
     sum
 }
@@ -784,10 +787,12 @@ fn track_offsets(sizes: &[f32], gap: f32, out: &mut [f32]) {
     }
 }
 
-fn span_size(sizes: &[f32], start: u16, span: u16, gap: f32) -> f32 {
-    let s = (start as usize).min(sizes.len());
-    let n = (span as usize).min(sizes.len() - s);
-    let mut total: f32 = sizes[s..s + n].iter().sum();
+fn span_size(sizes: &[f32], span: Span, gap: f32) -> f32 {
+    // In-bounds by the same record-time cell range check as
+    // `sum_spanned_known`.
+    let r = span.range();
+    let n = r.len();
+    let mut total: f32 = sizes[r].iter().sum();
     if n > 1 {
         total += gap * (n - 1) as f32;
     }
@@ -1052,18 +1057,11 @@ pub(crate) fn intrinsic(
     }
 
     for c in tree.active_children(node) {
-        let cell = tree.bounds(c).grid;
-        let span = match axis {
-            Axis::X => cell.col_span,
-            Axis::Y => cell.row_span,
-        };
-        if span != 1 {
+        let cell_span = tree.bounds(c).grid.track_span(axis);
+        if cell_span.len != 1 {
             continue;
         }
-        let track_idx = match axis {
-            Axis::X => cell.col as usize,
-            Axis::Y => cell.row as usize,
-        };
+        let track_idx = cell_span.start as usize;
         if track_idx >= n_tracks {
             continue;
         }
