@@ -288,6 +288,51 @@ pub enum BarMode {
     Hidden,
 }
 
+/// The two wrapper `Element`s a `Scroll` records: an outer `ZStack`
+/// that owns sizing / placement / sense / visibility and an inner
+/// viewport that owns the `Scroll` layout mode, padding, and the panel
+/// knobs (gap / justify / child_align).
+struct ScrollWrappers {
+    outer: Element,
+    inner: Element,
+}
+
+/// Split a user `Scroll` element into its outer/inner wrappers.
+///
+/// **This routes every `Element` field that should survive on a
+/// `Scroll`** — adding a field means deciding whether it lands on
+/// `outer` (sizing/placement) or `inner` (layout/panel knobs);
+/// forgetting it drops the field silently on `Scroll` with no compile
+/// error. `Scroll::show` patches the remaining inner fields it computes
+/// per frame (`salt`, the reservation `margin`, `mode_payload` fit bits,
+/// `clip`, and the pan `transform`).
+fn scroll_wrappers(element: Element) -> ScrollWrappers {
+    let mut outer = Element::new(LayoutMode::ZStack);
+    outer.salt = element.salt;
+    outer.size = element.size;
+    outer.min_size = element.min_size;
+    outer.max_size = element.max_size;
+    outer.margin = element.margin;
+    outer.align = element.align;
+    outer.position = element.position;
+    outer.grid = element.grid;
+    outer.flags.set_sense(element.flags.sense());
+    outer.flags.set_disabled(element.flags.is_disabled());
+    outer.flags.set_focusable(element.flags.is_focusable());
+    outer.visibility = element.visibility;
+
+    let mut inner = Element::new(element.mode);
+    inner.mode_payload = element.mode_payload;
+    // Inner fills the outer wrapper; the outer carries the user's
+    // `Sizing` and drives the actual size.
+    inner.size = (Sizing::FILL, Sizing::FILL).into();
+    inner.padding = element.padding;
+    inner.gaps = element.gaps;
+    inner.justify = element.justify;
+    inner.child_align = element.child_align;
+    ScrollWrappers { outer, inner }
+}
+
 /// Scroll viewport. Three flavors via constructor:
 /// - [`Scroll::vertical`]: pans on Y, lays children out as a `VStack`.
 /// - [`Scroll::horizontal`]: pans on X, lays children out as an
@@ -389,10 +434,10 @@ impl Scroll {
     }
 
     /// Enable pivot-anchored zoom with a default [`ZoomConfig`]. Asserts
-    /// at record time that the underlying axes are [`ScrollAxes::Both`]
-    /// — uniform scale on a single-axis scroll has no clean answer
-    /// (cross-axis content escapes the viewport with no way to reach
-    /// it). Caller bug, hard error.
+    /// at record time that the scroll pans on both axes (built via
+    /// [`Scroll::both`]) — uniform scale on a single-axis scroll has no
+    /// clean answer (cross-axis content escapes the viewport with no way
+    /// to reach it). Caller bug, hard error.
     pub fn with_zoom(mut self) -> Self {
         self.zoom = Some(ZoomConfig::default());
         self
@@ -714,40 +759,24 @@ impl Scroll {
         // overlay. The reservation gutter lives on `inner.margin` —
         // not on outer's padding — so the bar overlay (sibling of
         // inner under the same ZStack) can reach into the gutter
-        // strip with absolute positions.
-        let mut outer = Element::new(LayoutMode::ZStack);
-        outer.salt = self.element.salt;
-        outer.size = self.element.size;
-        outer.min_size = self.element.min_size;
-        outer.max_size = self.element.max_size;
-        outer.margin = self.element.margin;
-        outer.align = self.element.align;
-        outer.position = self.element.position;
-        outer.grid = self.element.grid;
-        // Outer carries sense/disabled/focusable/visibility from the
-        // user's element. Inner owns clip + justify (set below).
-        outer.flags.set_sense(self.element.flags.sense());
-        outer.flags.set_disabled(self.element.flags.is_disabled());
-        outer.flags.set_focusable(self.element.flags.is_focusable());
-        outer.visibility = self.element.visibility;
+        // strip with absolute positions. The field routing
+        // (outer = sizing/placement, inner = layout/panel knobs) lives
+        // in `Element::into_scroll_wrappers`; the per-frame computed
+        // fields below patch `inner`.
+        let ScrollWrappers { outer, mut inner } = scroll_wrappers(self.element);
 
-        // Inner viewport: owns the clip, the pan transform, the
-        // user-set padding (which the encoder uses to deflate the
-        // clip mask), and the actual `Scroll` layout mode that runs
-        // children with INF on panned axes. The reservation gutter
-        // is its margin — ZStack arrange deflates `Sizing::Fill` by
-        // margin, so inner's rendered rect = outer.rect minus the
-        // reserved strip on the cross axes.
-        let mut inner = Element::new(self.element.mode);
-        // Carry the pan mask payload onto the inner viewport — that's
-        // the node the dispatcher sees with mode = Scroll.
+        // Inner viewport owns the clip, the pan transform, the user-set
+        // padding (encoder deflates the clip mask by it), and the
+        // `Scroll` layout mode that runs children with INF on panned
+        // axes. The reservation gutter is its margin — ZStack arrange
+        // deflates `Sizing::Fill` by margin, so inner's rendered rect =
+        // outer.rect minus the reserved strip on the cross axes.
+        //
         // Encode the user's per-axis `Sizing` into the viewport's fit
         // bits: a `Hug` panned axis makes the driver report its content
         // extent, so the scroll sizes to content like any other `Hug`
         // widget (bounded by `max_size`/available, scrolling past the
-        // cap); `Fill`/`Fixed` keep the content-independent viewport. The
-        // inner itself stays `Fill` so it fills the outer wrapper — the
-        // outer carries the user's `Sizing` and drives the actual size.
+        // cap); `Fill`/`Fixed` keep the content-independent viewport.
         let user = self.element.size;
         let mut inner_payload = self.element.mode_payload;
         if pan.x && matches!(user.w(), Sizing::Hug) {
@@ -758,12 +787,7 @@ impl Scroll {
         }
         inner.mode_payload = inner_payload;
         inner.salt = Salt::Verbatim(scroll_id);
-        inner.size = (Sizing::FILL, Sizing::FILL).into();
-        inner.padding = self.element.padding;
         inner.margin = Spacing::new(0.0, 0.0, reserve_y, reserve_x);
-        inner.gaps = self.element.gaps;
-        inner.justify = self.element.justify;
-        inner.child_align = self.element.child_align;
         let inner_chrome = self.chrome;
         // Scroll is always clipped — `with_axes` set `ClipMode::Rect`
         // by default; if the caller upgraded to `Rounded` via
@@ -805,10 +829,7 @@ impl Scroll {
         );
 
         let inner_value = ui.node(id, outer, |ui| {
-            let inner_value = match inner_chrome {
-                Some(c) => ui.node_with_chrome(scroll_id, inner, &c, body),
-                None => ui.node(scroll_id, inner, body),
-            };
+            let inner_value = ui.node_maybe_chrome(scroll_id, inner, inner_chrome.as_ref(), body);
             // Bar overlay: Canvas sibling of inner, Fill on both axes
             // → covers outer's full rect. Tracks attach as shapes on
             // the overlay (paint first); thumbs are Sense::DRAG leaves

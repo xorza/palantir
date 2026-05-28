@@ -1,7 +1,6 @@
 use crate::forest::Layer;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
-use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
@@ -87,7 +86,7 @@ pub struct Popup {
     anchor: Vec2,
     click_outside: ClickOutside,
     element: Element,
-    pub(crate) chrome: Option<Background>,
+    chrome: Option<Background>,
 }
 
 impl Popup {
@@ -152,13 +151,12 @@ impl Popup {
                 .show(ui);
         });
         let mut element = self.element;
-        let chrome = self
-            .chrome
-            .clone()
-            .or_else(|| ui.theme.panel_background.clone());
-        if matches!(element.flags.clip_mode(), ClipMode::None) {
-            element.flags.set_clip(ui.theme.panel_clip);
-        }
+        let chrome = crate::widgets::resolve_container_chrome(
+            &mut element,
+            self.chrome,
+            ui.theme.panel_background.as_ref(),
+            ui.theme.panel_clip,
+        );
         // Anchor-independent measure — pass `Some(surface.size)` so
         // the body measures against its full natural height regardless
         // of where it'll paint. Without this, a popup anchored near
@@ -168,13 +166,8 @@ impl Popup {
         // loop that never lets the popup escape the bottom band.
         let handle = PopupHandle::new();
         let measure_cap = Some(surface.size);
-        ui.layer(Layer::Popup, placed, measure_cap, |ui| match chrome {
-            Some(c) => {
-                ui.node_with_chrome(body_id, element, &c, |ui| body(ui, &handle));
-            }
-            None => {
-                ui.node(body_id, element, |ui| body(ui, &handle));
-            }
+        ui.layer(Layer::Popup, placed, measure_cap, |ui| {
+            ui.node_maybe_chrome(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
         });
         if first_open {
             // No measured size yet → `placed` fell back to the raw

@@ -1,11 +1,10 @@
-use crate::forest::element::{Configure, Element, LayoutMode, Salt};
+use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
-use crate::layout::types::align::{Align, VAlign};
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::interned_str::InternedStr;
-use crate::shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
+use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
 use crate::widgets::Response;
+use crate::widgets::toggle::toggle_row;
 use glam::Vec2;
 
 /// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
@@ -66,18 +65,17 @@ impl<'a> Checkbox<'a> {
         let fallback_text = ui.theme.text;
 
         let look = look_target.animate(ui, id, fallback_text, anim);
-        let label = self.label;
 
-        let mut element = self.element;
-        element.gaps.set_gap(row_gap);
-        element.child_align = Align::v(VAlign::Center);
-
-        ui.node(id, element, |ui| {
-            let box_id = id.with("box");
-            let mut box_elem = Element::new(LayoutMode::Leaf);
-            box_elem.salt = Salt::Verbatim(box_id);
-            box_elem.size = (Sizing::Fixed(box_size), Sizing::Fixed(box_size)).into();
-            ui.node_with_chrome(box_id, box_elem, &look.background, |ui| {
+        toggle_row(
+            ui,
+            id,
+            self.element,
+            raw_state,
+            look,
+            box_size,
+            row_gap,
+            self.label,
+            |ui| {
                 if checked {
                     let pts = check_pts(box_size);
                     ui.add_shape(Shape::Polyline {
@@ -88,28 +86,8 @@ impl<'a> Checkbox<'a> {
                         join: LineJoin::Round,
                     });
                 }
-            });
-
-            if !label.is_empty() {
-                let label_id = id.with("label");
-                let mut label_elem = Element::new(LayoutMode::Leaf);
-                label_elem.salt = Salt::Verbatim(label_id);
-                ui.node(label_id, label_elem, |ui| {
-                    ui.add_shape(Shape::Text {
-                        local_origin: None,
-                        text: label,
-                        brush: look.text.color.into(),
-                        font_size_px: look.text.font_size_px,
-                        line_height_px: look.line_height_px(),
-                        wrap: TextWrap::SingleLine,
-                        align: Align::v(VAlign::Center),
-                        family: look.text.family,
-                    });
-                });
-            }
-        });
-
-        Response::eager(id, ui, raw_state)
+            },
+        )
     }
 }
 

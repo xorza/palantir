@@ -34,9 +34,8 @@ pub struct TextEditTheme {
     /// a thin Overlay rect at the caret's prefix-x; one pixel reads as
     /// a hairline, two as a chunkier i-beam. Default 1.5 px.
     pub caret_width: f32,
-    /// Selection highlight fill. Unused in v1 (no selection ops yet)
-    /// but kept on the theme so enabling selection later doesn't
-    /// require a theme migration.
+    /// Selection highlight fill, painted as a wash behind the selected
+    /// glyphs (see `TextEdit::show`).
     pub selection: Color,
     /// Default padding inside the editor (around the buffer text).
     /// Applied at `show()` time when the builder hasn't set padding.

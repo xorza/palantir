@@ -10,15 +10,39 @@ pub(crate) mod scroll;
 pub(crate) mod text;
 pub(crate) mod text_edit;
 pub(crate) mod theme;
+pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
+use crate::forest::element::Element;
 use crate::input::ResponseState;
 use crate::input::pointer::PointerButton;
+use crate::layout::types::clip_mode::ClipMode;
+use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use glam::Vec2;
 use std::cell::Cell;
+
+/// Resolve a container widget's chrome + clip against the theme
+/// fallbacks, mutating `element`'s clip mode in place. Shared by
+/// `Panel`/`Grid`/`Popup` (theme slot `panel_background` / `panel_clip`):
+/// an explicit `.background(...)` wins, otherwise the theme default
+/// fills in; the clip default only applies when the caller left clip at
+/// [`ClipMode::None`]. Returns the chrome to pass to
+/// [`Ui::node_maybe_chrome`].
+pub(crate) fn resolve_container_chrome(
+    element: &mut Element,
+    explicit: Option<Background>,
+    theme_bg: Option<&Background>,
+    theme_clip: ClipMode,
+) -> Option<Background> {
+    let chrome = explicit.or_else(|| theme_bg.cloned());
+    if matches!(element.flags.clip_mode(), ClipMode::None) {
+        element.flags.set_clip(theme_clip);
+    }
+    chrome
+}
 
 /// Lazy handle to a widget's per-frame interaction state. Holds a
 /// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
@@ -36,6 +60,121 @@ use std::cell::Cell;
 /// before calling another `&mut Ui` op while still holding the
 /// state), use [`Response::snapshot`] to materialize a
 /// [`ResponseSnapshot`].
+/// Generates the shared read-only accessor surface for [`Response`]
+/// and [`ResponseSnapshot`]. Both forward to a private
+/// `resolved_state(&self) -> ResponseState` (lazy probe on `Response`,
+/// owned field on `ResponseSnapshot`) and carry an `id` field, so the
+/// accessor bodies are identical — the only real difference is how
+/// `resolved_state` is obtained. Keep the two surfaces from drifting by
+/// defining them once here.
+macro_rules! response_accessors {
+    () => {
+        /// Widget id of the originating widget. Stable across frames as
+        /// long as the call-site / explicit-key inputs don't change.
+        /// Cheap — no `response_for` probe.
+        #[inline]
+        pub fn widget_id(&self) -> WidgetId {
+            self.id
+        }
+        pub fn rect(&self) -> Option<Rect> {
+            self.resolved_state().rect
+        }
+        /// Pre-transform layout rect — see
+        /// [`crate::input::ResponseState::layout_rect`].
+        pub fn layout_rect(&self) -> Option<Rect> {
+            self.resolved_state().layout_rect
+        }
+        pub fn hovered(&self) -> bool {
+            self.resolved_state().hovered
+        }
+        pub fn pressed(&self) -> bool {
+            self.resolved_state().pressed
+        }
+        pub fn clicked(&self) -> bool {
+            self.resolved_state().clicked
+        }
+        /// One-frame edge: right mouse button clicked-and-released on
+        /// this widget without latching a drag. Independent of
+        /// `clicked` (left).
+        pub fn secondary_clicked(&self) -> bool {
+            self.resolved_state().secondary_clicked
+        }
+        /// One-frame edge: any pointer button just double-clicked this
+        /// widget (two clicks on the same id within
+        /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]).
+        pub fn double_clicked(&self) -> bool {
+            self.resolved_state().double_clicked()
+        }
+        /// One-frame edge filtered by button.
+        pub fn double_clicked_by(&self, button: PointerButton) -> bool {
+            self.resolved_state().double_clicked_by(button)
+        }
+        /// Any button is currently dragging this widget.
+        pub fn dragged(&self) -> bool {
+            self.resolved_state().dragged()
+        }
+        /// `button` is currently dragging this widget.
+        pub fn dragged_by(&self, button: PointerButton) -> bool {
+            self.resolved_state().dragged_by(button)
+        }
+        /// One-frame edge: the active drag latched this frame. Snapshot
+        /// the position here to anchor subsequent `drag_delta()` reads.
+        pub fn drag_started(&self) -> bool {
+            self.resolved_state().drag_started()
+        }
+        /// One-frame edge for `button`-drag specifically.
+        pub fn drag_started_by(&self, button: PointerButton) -> bool {
+            self.resolved_state().drag_started_by(button)
+        }
+        /// Cumulative pointer travel of the active drag (any button).
+        /// `None` outside drag and for sub-threshold wiggle.
+        pub fn drag_delta(&self) -> Option<Vec2> {
+            self.resolved_state().drag_delta()
+        }
+        /// Cumulative pointer travel, filtered to `button`. `None` when
+        /// a different button (or none) is dragging.
+        pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
+            self.resolved_state().drag_delta_by(button)
+        }
+        /// Pixel-precise scroll delta this frame, in logical pixels —
+        /// the touchpad / precision-wheel source (winit
+        /// `MouseScrollDelta::PixelDelta`). Routes only to widgets with
+        /// [`crate::Sense::SCROLL`] that were the topmost scroll target
+        /// under the pointer. `Vec2::ZERO` otherwise — and also when the
+        /// widget *is* the target but no scroll event arrived this frame.
+        /// Sign matches "advance offset forward" (positive = scroll
+        /// down/right). Use for "trackpad pan" intent (e.g. a graph
+        /// viewport that pans on touchpad and zooms on wheel).
+        pub fn scroll_pixels(&self) -> Vec2 {
+            self.resolved_state().scroll_pixels
+        }
+        /// Notched scroll delta this frame, in raw line units (NOT
+        /// pixels) — the classic-wheel source (winit
+        /// `MouseScrollDelta::LineDelta`). Same routing as
+        /// [`Self::scroll_pixels`]. Use for "mouse wheel" intent (e.g.
+        /// zoom-by-notches). To form a combined pan delta in pixels,
+        /// compute `scroll_pixels() + scroll_lines() * line_px` where
+        /// `line_px` is the caller's font-derived line step.
+        pub fn scroll_lines(&self) -> Vec2 {
+            self.resolved_state().scroll_lines
+        }
+        /// Multiplicative pinch zoom factor this frame (`1.0` = no
+        /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
+        /// Independent of the scroll routes so a list can pan-via-scroll
+        /// without committing to pinch-to-zoom, and vice versa.
+        pub fn zoom_factor(&self) -> f32 {
+            self.resolved_state().zoom_factor
+        }
+        /// Cursor position relative to this widget's `rect.min`. `None`
+        /// when the pointer is off-surface or the widget didn't arrange.
+        /// Useful as a pivot for zoom-about-cursor without recomputing
+        /// the rect origin from `rect()`.
+        pub fn pointer_local(&self) -> Option<Vec2> {
+            self.resolved_state().pointer_local
+        }
+    };
+}
+
 pub struct Response<'a> {
     pub(crate) id: WidgetId,
     pub(crate) ui: &'a Ui,
@@ -75,7 +214,7 @@ impl<'a> Response<'a> {
     }
 
     #[inline]
-    fn state(&self) -> ResponseState {
+    fn resolved_state(&self) -> ResponseState {
         match self.cached.get() {
             Some(s) => s,
             None => {
@@ -84,14 +223,6 @@ impl<'a> Response<'a> {
                 s
             }
         }
-    }
-
-    /// Widget id of the originating widget. Stable across frames as
-    /// long as the call-site / explicit-key inputs don't change.
-    /// Cheap — no `response_for` probe.
-    #[inline]
-    pub fn widget_id(&self) -> WidgetId {
-        self.id
     }
 
     /// Materialize the full state into an owned [`ResponseSnapshot`],
@@ -105,105 +236,11 @@ impl<'a> Response<'a> {
     pub fn snapshot(&self) -> ResponseSnapshot {
         ResponseSnapshot {
             id: self.id,
-            state: self.state(),
+            state: self.resolved_state(),
         }
     }
 
-    pub fn rect(&self) -> Option<Rect> {
-        self.state().rect
-    }
-    /// Pre-transform layout rect — see
-    /// [`crate::input::ResponseState::layout_rect`].
-    pub fn layout_rect(&self) -> Option<Rect> {
-        self.state().layout_rect
-    }
-    pub fn hovered(&self) -> bool {
-        self.state().hovered
-    }
-    pub fn pressed(&self) -> bool {
-        self.state().pressed
-    }
-    pub fn clicked(&self) -> bool {
-        self.state().clicked
-    }
-    /// One-frame edge: right mouse button clicked-and-released on this
-    /// widget without latching a drag. Independent of `clicked` (left).
-    pub fn secondary_clicked(&self) -> bool {
-        self.state().secondary_clicked
-    }
-    /// One-frame edge: any pointer button just double-clicked this
-    /// widget (two clicks on the same id within
-    /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]).
-    pub fn double_clicked(&self) -> bool {
-        self.state().double_clicked()
-    }
-    /// One-frame edge filtered by button.
-    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
-        self.state().double_clicked_by(button)
-    }
-    /// Any button is currently dragging this widget.
-    pub fn dragged(&self) -> bool {
-        self.state().dragged()
-    }
-    /// `button` is currently dragging this widget.
-    pub fn dragged_by(&self, button: PointerButton) -> bool {
-        self.state().dragged_by(button)
-    }
-    /// One-frame edge: the active drag latched this frame. Snapshot
-    /// the position here to anchor subsequent `drag_delta()` reads.
-    pub fn drag_started(&self) -> bool {
-        self.state().drag_started()
-    }
-    /// One-frame edge for `button`-drag specifically.
-    pub fn drag_started_by(&self, button: PointerButton) -> bool {
-        self.state().drag_started_by(button)
-    }
-    /// Cumulative pointer travel of the active drag (any button).
-    /// `None` outside drag and for sub-threshold wiggle.
-    pub fn drag_delta(&self) -> Option<Vec2> {
-        self.state().drag_delta()
-    }
-    /// Cumulative pointer travel, filtered to `button`. `None` when
-    /// a different button (or none) is dragging.
-    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
-        self.state().drag_delta_by(button)
-    }
-    /// Pixel-precise scroll delta this frame, in logical pixels — the
-    /// touchpad / precision-wheel source (winit
-    /// `MouseScrollDelta::PixelDelta`). Routes only to widgets with
-    /// [`crate::Sense::SCROLL`] that were the topmost scroll target
-    /// under the pointer. `Vec2::ZERO` otherwise — and also when the
-    /// widget *is* the target but no scroll event arrived this frame.
-    /// Sign matches "advance offset forward" (positive = scroll
-    /// down/right). Use for "trackpad pan" intent (e.g. a graph
-    /// viewport that pans on touchpad and zooms on wheel).
-    pub fn scroll_pixels(&self) -> Vec2 {
-        self.state().scroll_pixels
-    }
-    /// Notched scroll delta this frame, in raw line units (NOT
-    /// pixels) — the classic-wheel source (winit
-    /// `MouseScrollDelta::LineDelta`). Same routing as
-    /// [`Self::scroll_pixels`]. Use for "mouse wheel" intent (e.g.
-    /// zoom-by-notches). To form a combined pan delta in pixels,
-    /// compute `scroll_pixels() + scroll_lines() * line_px` where
-    /// `line_px` is the caller's font-derived line step.
-    pub fn scroll_lines(&self) -> Vec2 {
-        self.state().scroll_lines
-    }
-    /// Multiplicative pinch zoom factor this frame (`1.0` = no
-    /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
-    /// Independent of the scroll routes so a list can pan-via-scroll
-    /// without committing to pinch-to-zoom, and vice versa.
-    pub fn zoom_factor(&self) -> f32 {
-        self.state().zoom_factor
-    }
-    /// Cursor position relative to this widget's `rect.min`. `None`
-    /// when the pointer is off-surface or the widget didn't arrange.
-    /// Useful as a pivot for zoom-about-cursor without recomputing
-    /// the rect origin from `rect()`.
-    pub fn pointer_local(&self) -> Option<Vec2> {
-        self.state().pointer_local
-    }
+    response_accessors!();
 }
 
 impl std::fmt::Debug for Response<'_> {
@@ -227,63 +264,14 @@ pub struct ResponseSnapshot {
 }
 
 impl ResponseSnapshot {
-    pub fn widget_id(&self) -> WidgetId {
-        self.id
+    /// Owned form of the shared accessor contract — the snapshot's
+    /// `state` is already materialized, so there's no probe to run.
+    #[inline]
+    fn resolved_state(&self) -> ResponseState {
+        self.state
     }
-    pub fn rect(&self) -> Option<Rect> {
-        self.state.rect
-    }
-    pub fn layout_rect(&self) -> Option<Rect> {
-        self.state.layout_rect
-    }
-    pub fn hovered(&self) -> bool {
-        self.state.hovered
-    }
-    pub fn pressed(&self) -> bool {
-        self.state.pressed
-    }
-    pub fn clicked(&self) -> bool {
-        self.state.clicked
-    }
-    pub fn secondary_clicked(&self) -> bool {
-        self.state.secondary_clicked
-    }
-    pub fn double_clicked(&self) -> bool {
-        self.state.double_clicked()
-    }
-    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
-        self.state.double_clicked_by(button)
-    }
-    pub fn dragged(&self) -> bool {
-        self.state.dragged()
-    }
-    pub fn dragged_by(&self, button: PointerButton) -> bool {
-        self.state.dragged_by(button)
-    }
-    pub fn drag_started(&self) -> bool {
-        self.state.drag_started()
-    }
-    pub fn drag_started_by(&self, button: PointerButton) -> bool {
-        self.state.drag_started_by(button)
-    }
-    pub fn drag_delta(&self) -> Option<Vec2> {
-        self.state.drag_delta()
-    }
-    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
-        self.state.drag_delta_by(button)
-    }
-    pub fn scroll_pixels(&self) -> Vec2 {
-        self.state.scroll_pixels
-    }
-    pub fn scroll_lines(&self) -> Vec2 {
-        self.state.scroll_lines
-    }
-    pub fn zoom_factor(&self) -> f32 {
-        self.state.zoom_factor
-    }
-    pub fn pointer_local(&self) -> Option<Vec2> {
-        self.state.pointer_local
-    }
+
+    response_accessors!();
 }
 
 /// `Response` plus a value returned by the body closure of widgets

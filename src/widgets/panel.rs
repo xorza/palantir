@@ -1,5 +1,4 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
@@ -77,18 +76,14 @@ impl Panel {
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
         let mut element = self.element;
-        let chrome = self
-            .chrome
-            .clone()
-            .or_else(|| ui.theme.panel_background.clone());
-        if matches!(element.flags.clip_mode(), ClipMode::None) {
-            element.flags.set_clip(ui.theme.panel_clip);
-        }
+        let chrome = crate::widgets::resolve_container_chrome(
+            &mut element,
+            self.chrome,
+            ui.theme.panel_background.as_ref(),
+            ui.theme.panel_clip,
+        );
         let id = ui.make_persistent_id(element.salt);
-        let inner = match chrome {
-            Some(c) => ui.node_with_chrome(id, element, &c, body),
-            None => ui.node(id, element, body),
-        };
+        let inner = ui.node_maybe_chrome(id, element, chrome.as_ref(), body);
         crate::widgets::InnerResponse {
             // Decorative: skip eager `response_for`.
             response: Response::lazy(id, ui),

@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::layout::types::{clip_mode::ClipMode, sizing::Sizing, track::Track};
+use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
@@ -128,6 +128,14 @@ impl Grid {
         self
     }
 
+    /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
+    /// the default; theme fallback in [`Self::show`] fills it in from
+    /// `ui.theme.panel_background` when unset.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
+    }
+
     pub fn show<R>(
         self,
         ui: &mut Ui,
@@ -139,33 +147,19 @@ impl Grid {
         element.mode_payload = idx;
 
         // Theme fallback for chrome / clip — see `Panel::show`.
-        let chrome = self
-            .chrome
-            .clone()
-            .or_else(|| ui.theme.panel_background.clone());
-        if matches!(element.flags.clip_mode(), ClipMode::None) {
-            element.flags.set_clip(ui.theme.panel_clip);
-        }
+        let chrome = crate::widgets::resolve_container_chrome(
+            &mut element,
+            self.chrome,
+            ui.theme.panel_background.as_ref(),
+            ui.theme.panel_clip,
+        );
         let id = ui.make_persistent_id(element.salt);
-        let inner = match chrome {
-            Some(c) => ui.node_with_chrome(id, element, &c, body),
-            None => ui.node(id, element, body),
-        };
+        let inner = ui.node_maybe_chrome(id, element, chrome.as_ref(), body);
         crate::widgets::InnerResponse {
             // Decorative: skip eager `response_for`.
             response: Response::lazy(id, ui),
             inner,
         }
-    }
-}
-
-impl Grid {
-    /// Paint chrome (fill / stroke / corner radius / shadow). `None` is
-    /// the default; theme fallback in [`Self::show`] fills it in from
-    /// `ui.theme.panel_background` when unset.
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
     }
 }
 

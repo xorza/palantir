@@ -10,9 +10,10 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
-use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
+use crate::widgets::text::Text;
+use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot};
 
 use crate::primitives::interned_str::InternedStr;
@@ -122,9 +123,10 @@ impl ContextMenu {
         // `Popup::show` handles surface-aware placement (flip when
         // overflowing, clamp as a last resort, one-shot relayout on
         // first open). ContextMenu just hands the raw anchor through.
-        let mut popup = Popup::anchored_to(raw_anchor).click_outside(ClickOutside::Dismiss);
+        let mut popup = Popup::anchored_to(raw_anchor)
+            .click_outside(ClickOutside::Dismiss)
+            .background(self.chrome.unwrap_or(theme.panel));
         *popup.element_mut() = e;
-        popup.chrome = Some(self.chrome.unwrap_or(theme.panel));
         let PopupResponse {
             dismissed,
             close_requested: item_clicked,
@@ -250,10 +252,12 @@ impl MenuItem {
         let look = theme.pick(raw_state);
         let look_bg = look.background.clone();
         let text_style = look.text.unwrap_or(ui.theme.text);
-        let label_color = text_style.color;
-        let font_size_px = text_style.font_size_px;
-        let line_height_px = text_style.line_height_for(font_size_px);
-        let shortcut_color = theme.shortcut;
+        // Shortcut hint reads muted — same style as the label but the
+        // theme's `shortcut` color.
+        let shortcut_style = TextStyle {
+            color: theme.shortcut,
+            ..text_style
+        };
         let padding = theme.padding;
 
         let mut element = self.element;
@@ -273,47 +277,23 @@ impl MenuItem {
         let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.key_pressed(s));
         let shortcut_label = shortcut.map(|s| s.label());
 
-        let family = text_style.family;
+        // Label + optional right-aligned shortcut hint as `Text` leaves;
+        // the row's `SpaceBetween` pins them to opposite edges. Both
+        // hug their content (Text defaults to `Hug × Hug` and a
+        // `SingleLine` wrap), matching what the row layout expects.
         let body = |ui: &mut Ui| {
-            let label_id = id.with("label");
-            let mut label_el = Element::new(LayoutMode::Leaf);
-            label_el.salt = Salt::Verbatim(label_id);
-            label_el.size = (Sizing::Hug, Sizing::Hug).into();
-            ui.node(label_id, label_el, |ui| {
-                ui.add_shape(Shape::Text {
-                    local_origin: None,
-                    text: label,
-                    brush: label_color.into(),
-                    font_size_px,
-                    line_height_px,
-                    wrap: TextWrap::SingleLine,
-                    align: Align::default(),
-                    family,
-                });
-            });
+            Text::new(label)
+                .id(id.with("label"))
+                .style(text_style)
+                .show(ui);
             if let Some(s) = shortcut_label {
-                let sh_id = id.with("shortcut");
-                let mut sh_el = Element::new(LayoutMode::Leaf);
-                sh_el.salt = Salt::Verbatim(sh_id);
-                sh_el.size = (Sizing::Hug, Sizing::Hug).into();
-                ui.node(sh_id, sh_el, |ui| {
-                    ui.add_shape(Shape::Text {
-                        local_origin: None,
-                        text: s.into(),
-                        brush: shortcut_color.into(),
-                        font_size_px,
-                        line_height_px,
-                        wrap: TextWrap::SingleLine,
-                        align: Align::default(),
-                        family,
-                    });
-                });
+                Text::new(s)
+                    .id(id.with("shortcut"))
+                    .style(shortcut_style)
+                    .show(ui);
             }
         };
-        match look_bg {
-            Some(c) => ui.node_with_chrome(id, element, &c, body),
-            None => ui.node(id, element, body),
-        }
+        ui.node_maybe_chrome(id, element, look_bg.as_ref(), body);
 
         let mut state = ui.response_for(id);
         if shortcut_fired {
