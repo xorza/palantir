@@ -5,9 +5,9 @@
 //! list each frame and uploads to GPU, then caches the resulting
 //! `GpuImage` by [`ImageHandle`] across frames.
 
-use super::GpuCtx;
 use super::Queue;
 use super::dynamic_buffer::DynamicBuffer;
+use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;

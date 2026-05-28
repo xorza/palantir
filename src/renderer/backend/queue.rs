@@ -20,6 +20,15 @@ impl Queue {
 
     /// Counted shadow of [`wgpu::Queue::write_buffer`]. Drop-in
     /// replacement; bumps the per-frame counter under `internals`.
+    /// Production routes buffer writes through the staging belt, so
+    /// this is only exercised by the bench/test reach-in surface.
+    #[cfg_attr(
+        not(any(test, feature = "internals")),
+        allow(
+            dead_code,
+            reason = "API-symmetry shadow; only used by bench/test surface"
+        )
+    )]
     #[inline]
     pub fn write_buffer(&self, buffer: &wgpu::Buffer, offset: u64, data: &[u8]) {
         #[cfg(feature = "internals")]

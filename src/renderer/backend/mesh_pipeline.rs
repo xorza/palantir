@@ -10,8 +10,8 @@
 //! (see [`Self::ensure_stencil`]) — it reads the mask but never
 //! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
 
-use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
+use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;

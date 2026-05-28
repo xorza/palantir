@@ -12,8 +12,8 @@
 //! [`MeshPipeline`]: super::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: super::image_pipeline::ImagePipeline
 
-use super::GpuCtx;
 use super::dynamic_buffer::DynamicBuffer;
+use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::CurveInstance;
