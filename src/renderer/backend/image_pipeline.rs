@@ -8,7 +8,9 @@
 use super::Queue;
 use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
+use super::pipeline_utils::{
+    PipelineRecipe, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
+};
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -90,27 +92,7 @@ impl ImagePipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
         });
 
-        let image_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.image.tex.bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let image_bgl = texture_sampler_bgl(device, "palantir.image.tex.bgl");
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir.image.sampler"),

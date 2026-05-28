@@ -60,6 +60,37 @@ pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
     })
 }
 
+/// Build a group-0 bind-group layout pairing a filterable 2D float
+/// texture at binding 0 with a filtering sampler at binding 1, both
+/// fragment-visible. The shape shared by the gradient LUT atlas
+/// (`GradientResources`) and the per-image bind group (`ImagePipeline`).
+pub(super) fn texture_sampler_bgl(
+    device: &wgpu::Device,
+    label: &'static str,
+) -> wgpu::BindGroupLayout {
+    device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some(label),
+        entries: &[
+            wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Texture {
+                    sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                    view_dimension: wgpu::TextureViewDimension::D2,
+                    multisampled: false,
+                },
+                count: None,
+            },
+            wgpu::BindGroupLayoutEntry {
+                binding: 1,
+                visibility: wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                count: None,
+            },
+        ],
+    })
+}
+
 /// Build a pipeline layout. Every palantir pipeline declares the same
 /// immediate-region size ([`super::IMMEDIATES_BYTES`]) so the
 /// immediate state set by the backend at pass open (viewport) stays

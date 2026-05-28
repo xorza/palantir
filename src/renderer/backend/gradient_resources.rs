@@ -8,6 +8,7 @@
 //! build time and `&bg` at bind time.
 
 use super::gpu_ctx::GpuCtx;
+use super::pipeline_utils::texture_sampler_bgl;
 use crate::renderer::gradient_atlas::GradientAtlas;
 
 /// Side of the gradient LUT atlas texture (square: 256 × 256). Must
@@ -41,27 +42,7 @@ impl GradientResources {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
-        let bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("palantir.gradient.bgl"),
-            entries: &[
-                wgpu::BindGroupLayoutEntry {
-                    binding: 0,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Texture {
-                        sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                        view_dimension: wgpu::TextureViewDimension::D2,
-                        multisampled: false,
-                    },
-                    count: None,
-                },
-                wgpu::BindGroupLayoutEntry {
-                    binding: 1,
-                    visibility: wgpu::ShaderStages::FRAGMENT,
-                    ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                    count: None,
-                },
-            ],
-        });
+        let bgl = texture_sampler_bgl(device, "palantir.gradient.bgl");
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.gradient_atlas"),
