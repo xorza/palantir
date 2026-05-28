@@ -140,7 +140,3 @@ npm_config_cache="$TMPDIR/npm-cache" npx --yes jscpd src/ --min-lines 5 --min-to
 ```
 
 Drop the `--ignore` to include tests. Reports exact `file:line` ranges for each clone pair.
-
-## Mechanical refactoring
-
-See `CODING_STYLE.md` for the tool stack (rust-analyzer ssr / ast-grep / rerast / clippy --fix), phased workflow, idempotent-rewrite rules, and when-to-use-what guide for large-scale renames and signature changes.
