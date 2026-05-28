@@ -49,7 +49,7 @@ impl Button {
 
     /// Set how the label handles a width narrower than its natural line.
     /// Default [`TextWrap::SingleLine`] (hard-cut to one line); pass
-    /// [`TextWrap::Ellipsis`] to mark the cut with `…`, [`TextWrap::Wrap`] to
+    /// [`TextWrap::Ellipsis`] to mark the cut with `…`, [`TextWrap::WrapWithOverflow`] to
     /// reflow onto multiple lines, or [`TextWrap::Overflow`] to let it run
     /// past the chrome. Only bites on a `Fixed`/`Fill`-width button — a `Hug`
     /// button commits its natural width, so the label always fits.
@@ -118,7 +118,7 @@ impl Button {
                     line_height_px: look.line_height_px(),
                     // `SingleLine` by default so an over-wide label is cut to
                     // one line instead of spilling outside the chrome; see the
-                    // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::Wrap)` / `.text_wrap(TextWrap::Overflow)` builders.
+                    // `.text_wrap(TextWrap::Ellipsis)` / `.text_wrap(TextWrap::WrapWithOverflow)` / `.text_wrap(TextWrap::Overflow)` builders.
                     wrap: label_wrap,
                     align: label_align,
                     family: look.text.family,

@@ -356,9 +356,16 @@ pub enum TextWrap {
     /// elision should be visible — paths, names in fixed-width chrome.
     Ellipsis,
     /// Reshape during measure if the parent commits a width narrower than
-    /// the natural unbroken line. The widest unbreakable run (longest word)
-    /// is the floor — text overflows rather than breaking inside a word.
+    /// the natural unbroken line. Breaks on word boundaries first; when a
+    /// single word still doesn't fit it falls back to a character-level
+    /// break. Min-content is effectively zero — the run can always reflow
+    /// to fit the committed slot, like WPF's `TextWrapping="Wrap"`.
     Wrap,
+    /// Reshape during measure on word boundaries only. The widest unbreakable
+    /// run (longest word) is the floor — words that exceed the committed
+    /// width overflow rather than breaking mid-word. Matches WPF's
+    /// `TextWrapping="WrapWithOverflow"`.
+    WrapWithOverflow,
     /// Single line shaped once at unbounded width and never reshaped, so it
     /// overflows a too-narrow slot rather than truncating. Min-content equals
     /// the full line width, so a Hug track won't shrink below it. The explicit

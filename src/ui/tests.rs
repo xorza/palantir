@@ -440,7 +440,7 @@ fn text_reshape_skipped_when_unchanged() {
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("wrapped"))
                     .style(TextStyle::default().with_font_size(16.0))
-                    .text_wrap(TextWrap::Wrap)
+                    .text_wrap(TextWrap::WrapWithOverflow)
                     .show(ui);
             });
     };
@@ -456,7 +456,7 @@ fn text_reshape_skipped_when_unchanged() {
                     .show(ui);
                 Text::new("the quick brown fox jumps over the lazy dog")
                     .id(WidgetId::from_hash("fill-col-text"))
-                    .text_wrap(TextWrap::Wrap)
+                    .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((0, 1))
                     .show(ui);
             });
@@ -558,7 +558,7 @@ fn wrap_target_change_preserves_unbounded_cache() {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .id(WidgetId::from_hash("p"))
                         .style(TextStyle::default().with_font_size(16.0))
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                 });
         }

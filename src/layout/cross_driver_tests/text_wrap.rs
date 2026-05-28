@@ -31,7 +31,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
                     Text::new(PARAGRAPH)
                         .auto_id()
                         .style(TextStyle::default().with_font_size(16.0))
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(),
                 );
@@ -55,7 +55,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         ShapeRecord::Text { wrap, .. } => *wrap,
         _ => panic!("expected ShapeRecord::Text"),
     };
-    assert_eq!(wrap, TextWrap::Wrap);
+    assert_eq!(wrap, TextWrap::WrapWithOverflow);
     let shaped = support::shaped_text(&ui.layout[Layer::Main], node);
     assert!(shaped.measured.h > 32.0);
 }
@@ -317,7 +317,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                         "the quick brown fox jumps over the lazy dog",
                                                     ).auto_id()
                                                     .style(TextStyle::default().with_font_size(14.0))
-                                                    .text_wrap(TextWrap::Wrap)
+                                                    .text_wrap(TextWrap::WrapWithOverflow)
                                                     .grid_cell((0, 0))
                                                     .show(ui);
                                                     Text::new("right column").auto_id()
@@ -461,7 +461,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                     Text::new("the quick brown fox jumps over the lazy dog")
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .grid_cell((0, 0))
                         .show(ui)
                         .node(),
@@ -713,7 +713,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
                         )
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                     })
                     .node();

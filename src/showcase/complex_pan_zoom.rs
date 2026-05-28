@@ -29,7 +29,7 @@ pub fn build(ui: &mut Ui) {
                  Wheel pans, Ctrl/Cmd + wheel zooms about the cursor.",
             )
             .auto_id()
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .style(TextStyle::default().with_font_size(13.0))
             .show(ui);
 
@@ -127,7 +127,7 @@ fn property_grid(ui: &mut Ui) {
                 Text::new(values[row % values.len()])
                     .id_salt(("pval", row))
                     .style(TextStyle::default().with_font_size(14.0))
-                    .text_wrap(TextWrap::Wrap)
+                    .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((r, 1))
                     .show(ui);
                 Button::new()
@@ -227,7 +227,7 @@ fn chat_messages(ui: &mut Ui, count: u32) {
                                 )
                                 .id_salt(("msg", i))
                                 .style(TextStyle::default().with_font_size(13.0))
-                                .text_wrap(TextWrap::Wrap)
+                                .text_wrap(TextWrap::WrapWithOverflow)
                                 .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui);
                             });

@@ -860,7 +860,7 @@ impl<'a> TextEdit<'a> {
                     font_size_px: ctx.font_size,
                     line_height_px: ctx.line_height_px,
                     wrap: if ctx.multiline {
-                        TextWrap::Wrap
+                        TextWrap::WrapWithOverflow
                     } else {
                         // Editable single line: overflow + own horizontal
                         // scroll, never elide the buffer.

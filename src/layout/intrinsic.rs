@@ -192,12 +192,13 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
             // let a Hug-track solver shrink the column below the actual
             // floor, and the text would overflow its slot at arrange.
             (Axis::X, LenReq::MinContent) => match ts.wrap {
-                TextWrap::Wrap => m.intrinsic_min,
+                TextWrap::WrapWithOverflow => m.intrinsic_min,
                 TextWrap::Overflow => m.size.w,
-                // A truncating run shrinks to nothing, so it never floors a
-                // track's min-content — the box width wins and the run is
-                // cut to it (with or without a trailing `…`).
-                TextWrap::SingleLine | TextWrap::Ellipsis => 0.0,
+                // `Wrap` can break inside a word at the glyph level, so its
+                // min-content is effectively zero; a truncating run likewise
+                // shrinks to nothing. In both cases the box width wins and
+                // the run reflows/cuts to it.
+                TextWrap::Wrap | TextWrap::SingleLine | TextWrap::Ellipsis => 0.0,
             },
             (Axis::X, LenReq::MaxContent) => m.size.w,
             (Axis::Y, _) => m.size.h,
@@ -236,7 +237,7 @@ mod tests {
                 .show(ui, |ui| {
                     Text::new("lorem ipsum dolor sit amet")
                         .id_salt("msg")
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })
@@ -272,7 +273,7 @@ mod tests {
                 .show(ui, |ui| {
                     Text::new("hello world")
                         .id_salt("msg")
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .size((Sizing::FILL, Sizing::Hug))
                         .show(ui);
                 })

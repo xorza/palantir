@@ -29,7 +29,7 @@ pub fn build(ui: &mut Ui) {
                  different AnimSpec. Hover any control to see the button-fade \
                  driven by the same primitive.",
             )
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .auto_id()
             .show(ui);
 

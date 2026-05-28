@@ -61,7 +61,7 @@ impl Text {
     /// Set how the text handles a committed width narrower than its natural
     /// line. Default [`TextWrap::SingleLine`] (one line, hard-cut with no
     /// marker); pass [`TextWrap::Ellipsis`] to mark the cut with `…`,
-    /// [`TextWrap::Wrap`] to reshape onto multiple lines, or
+    /// [`TextWrap::WrapWithOverflow`] to reshape onto multiple lines, or
     /// [`TextWrap::Overflow`] to keep one unbroken line that runs past the
     /// slot (its min-content becomes the full line width, so a Hug track won't
     /// shrink below it — e.g. text inside a horizontal `Scroll`).

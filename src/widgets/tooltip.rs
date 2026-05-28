@@ -227,7 +227,7 @@ impl<'r> Tooltip<'r> {
                 ui.node_with_chrome(bubble_id, element, &chrome, |ui| {
                     Text::new(text)
                         .style(text_style)
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui);
                 });
             });

@@ -17,7 +17,7 @@ pub fn build(ui: &mut Ui) {
                 "Each row below reuses an explicit id across two or more sibling widgets. \
                  They get disambiguated and outlined in magenta — no panic, state survives.",
             )
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .show(ui);
 
             row(ui, |ui| {

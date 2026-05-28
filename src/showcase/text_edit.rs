@@ -45,7 +45,7 @@ pub fn build(ui: &mut Ui) {
                  navigate, Escape blurs.",
             )
             .auto_id()
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .show(ui);
 
             Panel::hstack()
@@ -115,7 +115,7 @@ pub fn build(ui: &mut Ui) {
             .text_align(Align::RIGHT)
             .align(Align::RIGHT)
             .auto_id()
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .show(ui);
             TextEdit::new(&mut buf_ml)
                 .id_salt("editor_ml")
@@ -164,7 +164,7 @@ pub fn build_align(ui: &mut Ui) {
                  the text sits inside the rect.",
             )
             .auto_id()
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .show(ui);
 
             Panel::vstack()
