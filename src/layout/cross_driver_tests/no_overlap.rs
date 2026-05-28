@@ -87,7 +87,7 @@ fn grid_columns_with_wrapping_text_do_not_overlap() {
                                 Text::new(long_text)
                                     .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
-                                    .text_wrap(TextWrap::Wrap)
+                                    .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -141,7 +141,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                 Text::new(PARAGRAPH)
                                     .auto_id()
                                     .style(TextStyle::default().with_font_size(14.0))
-                                    .text_wrap(TextWrap::Wrap)
+                                    .text_wrap(TextWrap::WrapWithOverflow)
                                     .grid_cell((0, 0))
                                     .show(ui)
                                     .node(),
@@ -179,7 +179,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
                                 )
                                 .auto_id()
                                 .style(TextStyle::default().with_font_size(14.0))
-                                .text_wrap(TextWrap::Wrap)
+                                .text_wrap(TextWrap::WrapWithOverflow)
                                 .grid_cell((0, 1))
                                 .show(ui)
                                 .node(),
@@ -233,7 +233,7 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
                         Text::new("Lorem Ipsum is simply dummy text of the printing industry.")
                             .auto_id()
                             .style(TextStyle::default().with_font_size(14.0))
-                            .text_wrap(TextWrap::Wrap)
+                            .text_wrap(TextWrap::WrapWithOverflow)
                             .grid_cell((0, 1))
                             .show(ui);
                         Text::new("Description:")
@@ -292,7 +292,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                     .show(ui, |ui| {
                                         Text::new(PARAGRAPH).auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
-                                            .text_wrap(TextWrap::Wrap)
+                                            .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((0, 0))
                                             .show(ui);
                                         Text::new("right column").auto_id()
@@ -316,7 +316,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                             "Lorem Ipsum is simply dummy text of the printing industry.",
                                         ).auto_id()
                                         .style(TextStyle::default().with_font_size(14.0))
-                                        .text_wrap(TextWrap::Wrap)
+                                        .text_wrap(TextWrap::WrapWithOverflow)
                                         .grid_cell((0, 1))
                                         .show(ui);
                                         Text::new("Description:").auto_id()
@@ -325,7 +325,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                             .show(ui);
                                         Text::new(PARAGRAPH).auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
-                                            .text_wrap(TextWrap::Wrap)
+                                            .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((1, 1))
                                             .show(ui);
                                         Text::new("Tags:").auto_id()
@@ -334,7 +334,7 @@ fn text_layouts_full_showcase_drawtext_dump() {
                                             .show(ui);
                                         Text::new("layout, grid, intrinsic, wrapping, css").auto_id()
                                             .style(TextStyle::default().with_font_size(14.0))
-                                            .text_wrap(TextWrap::Wrap)
+                                            .text_wrap(TextWrap::WrapWithOverflow)
                                             .grid_cell((2, 1))
                                             .show(ui);
                                     });

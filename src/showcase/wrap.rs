@@ -31,7 +31,7 @@ pub fn build(ui: &mut Ui) {
             ))
             .id_salt(("hdr", "sub"))
             .style(caption_style())
-            .text_wrap(TextWrap::Wrap)
+            .text_wrap(TextWrap::WrapWithOverflow)
             .show(ui);
 
             // Tag-cloud style — many small chips wrapping in a fixed width.

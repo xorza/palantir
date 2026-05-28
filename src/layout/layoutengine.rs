@@ -739,7 +739,7 @@ impl LayoutEngine {
         // `SingleLine`/`Ellipsis` it's the path that cuts the run to one
         // line at the committed width.
         let fit = match ts.wrap {
-            TextWrap::Wrap => LineFit::Wrap,
+            TextWrap::Wrap | TextWrap::WrapWithOverflow => LineFit::Wrap,
             TextWrap::Ellipsis => LineFit::Ellipsis,
             // `Overflow` never reaches the bounded branch (excluded below);
             // `Clip` is harmless as its fallthrough value.
@@ -748,14 +748,15 @@ impl LayoutEngine {
         let single_line = matches!(ts.wrap, TextWrap::SingleLine | TextWrap::Ellipsis);
         let bounded = matches!(
             ts.wrap,
-            TextWrap::Wrap | TextWrap::SingleLine | TextWrap::Ellipsis
+            TextWrap::Wrap | TextWrap::WrapWithOverflow | TextWrap::SingleLine | TextWrap::Ellipsis
         ) && available_w.is_finite();
 
         let result = if bounded {
-            // Wrap floors the target at the longest word (overflow rather
-            // than break mid-word); single-line modes truncate freely, so
-            // they take the committed width verbatim.
-            let target = if single_line {
+            // `WrapWithOverflow` floors the target at the longest word so
+            // cosmic never breaks mid-word; `Wrap` lets cosmic glyph-break
+            // when a word doesn't fit, so it takes the committed width
+            // verbatim. Single-line modes truncate freely.
+            let target = if single_line || matches!(ts.wrap, TextWrap::Wrap) {
                 available_w
             } else {
                 available_w.max(unbounded.intrinsic_min)

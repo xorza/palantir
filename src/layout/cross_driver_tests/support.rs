@@ -44,7 +44,7 @@ pub(crate) fn two_hug_cols_with_wrap(ui: &mut Ui, paragraph: &'static str) -> No
                 Text::new(paragraph)
                     .auto_id()
                     .style(TextStyle::default().with_font_size(16.0))
-                    .text_wrap(TextWrap::Wrap)
+                    .text_wrap(TextWrap::WrapWithOverflow)
                     .grid_cell((0, 0))
                     .show(ui)
                     .node(),
@@ -77,7 +77,7 @@ pub(crate) fn chat_message(ui: &mut Ui, avatar_w: f32, text: &'static str, text_
                         .auto_id()
                         .style(TextStyle::default().with_font_size(text_px))
                         .size((Sizing::FILL, Sizing::Hug))
-                        .text_wrap(TextWrap::Wrap)
+                        .text_wrap(TextWrap::WrapWithOverflow)
                         .show(ui)
                         .node(),
                 );

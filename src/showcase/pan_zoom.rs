@@ -30,7 +30,7 @@ pub fn build(ui: &mut Ui) {
             };
             palantir::Text::new(header)
                 .auto_id()
-                .text_wrap(TextWrap::Wrap)
+                .text_wrap(TextWrap::WrapWithOverflow)
                 .style(TextStyle::default().with_font_size(13.0))
                 .show(ui);
 
