@@ -29,9 +29,9 @@ pub(crate) struct CollisionRecord {
 }
 
 /// Background paint inputs for a chromed node, threaded by reference
-/// from `Ui::node_with_chrome` through [`Forest::open_node`] to
-/// `Tree::open_node` so the 168 B `Background` isn't copied on every
-/// chromed widget every frame. `None` chrome means no background paint.
+/// from `Ui::node` through [`Forest::open_node`] to `Tree::open_node`
+/// so the 168 B `Background` isn't copied on every chromed widget every
+/// frame. `None` chrome means no background paint.
 #[derive(Clone, Copy)]
 pub(crate) struct Chrome<'a> {
     pub(crate) bg: &'a Background,
@@ -200,7 +200,7 @@ impl Forest {
     /// `chrome` is `Some(Chrome { .. })` for nodes with a background
     /// paint and `None` otherwise. The `Background` is borrowed (not
     /// owned) so its 168 B don't get copied through the
-    /// `Ui::node_with_chrome → here → Tree::open_node →
+    /// `Ui::node → here → Tree::open_node →
     /// FrameArena::lower_background` chain on every chromed widget.
     #[inline]
     pub(crate) fn open_node(

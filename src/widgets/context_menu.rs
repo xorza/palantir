@@ -237,7 +237,7 @@ impl MenuItem {
             shadow: Shadow::NONE,
         };
         let id = ui.make_persistent_id(element.salt);
-        ui.node_with_chrome(id, element, &chrome, |_| {});
+        ui.node(id, element, Some(&chrome), |_| {});
         // Decorative separator: response is almost always discarded.
         Response::lazy(id, ui)
     }
@@ -293,7 +293,7 @@ impl MenuItem {
                     .show(ui);
             }
         };
-        ui.node_maybe_chrome(id, element, look_bg.as_ref(), body);
+        ui.node(id, element, look_bg.as_ref(), body);
 
         let mut state = ui.response_for(id);
         if shortcut_fired {

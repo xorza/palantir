@@ -2174,7 +2174,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
             .show(ui, |ui| {
                 let mut element = Element::new(LayoutMode::Leaf);
                 element.salt = Salt::Verbatim(leaf_id);
-                ui.node(leaf_id, element, |ui| {
+                ui.node(leaf_id, element, None, |ui| {
                     ui.add_shape(Shape::Text {
                         local_origin: Some(ORIGIN),
                         text: text.into(),

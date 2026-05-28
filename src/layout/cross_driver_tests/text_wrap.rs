@@ -527,7 +527,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
     Panel::vstack().auto_id().show(ui, |ui| {
         let mut element = Element::new(LayoutMode::Leaf);
         element.salt = Salt::Verbatim(leaf_id);
-        ui.node(leaf_id, element, |ui| {
+        ui.node(leaf_id, element, None, |ui| {
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 0.0)),
                 text: "first".into(),

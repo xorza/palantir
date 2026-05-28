@@ -108,7 +108,7 @@ impl Button {
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;
 
-        ui.node_with_chrome(id, element, &look.background, |ui| {
+        ui.node(id, element, Some(&look.background), |ui| {
             if !label.is_empty() {
                 ui.add_shape(Shape::Text {
                     local_origin: None,

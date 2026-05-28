@@ -896,8 +896,8 @@ impl Ui {
     }
 
     /// Resolve a [`Salt`] into the `WidgetId` that will be recorded
-    /// into the tree by the matching `ui.node` / `ui.node_with_chrome`
-    /// call. The egui-equivalent — same name, same role:
+    /// into the tree by the matching `ui.node` call. The egui-equivalent
+    /// — same name, same role:
     /// `ui.make_persistent_id(salt)` returns `parent.with(salt)` (or
     /// just the salt for `Salt::Auto`/`Salt::Verbatim`) so persistent
     /// state keys stay stable across frames.
@@ -912,8 +912,8 @@ impl Ui {
     /// derivation, animation slots, `state_mut`, and post-node
     /// `response_for`.
     ///
-    /// **Contract**: must be followed by exactly one `ui.node` /
-    /// `ui.node_with_chrome` opening a node with this id (carried via
+    /// **Contract**: must be followed by exactly one `ui.node` opening
+    /// a node with this id (carried via
     /// `element.salt`). The `SeenIds` slot reserved here is paired
     /// with the next opened node; calling `make_persistent_id` twice
     /// without an intervening `ui.node` will drift the occurrence
@@ -937,47 +937,33 @@ impl Ui {
         self.forest.ids.resolve(raw_id, salt.is_explicit())
     }
 
-    /// Open a node with no paint chrome — the common path for
-    /// layout-only containers, text leaves, and chrome-less Frames.
-    /// Avoids passing a 232-byte `Option<Background>` through the
-    /// call chain. `id` must be the [`Self::make_persistent_id`]
-    /// resolution of `element.salt`. Disambiguation already happened
-    /// in `make_persistent_id`, so this is the final id verbatim —
-    /// no further `SeenIds` work here.
+    /// Open a node, optionally with paint chrome, run its body, and
+    /// close it. `chrome` is `None` for the common layout-only / text-
+    /// leaf / chrome-less path and `Some(bg)` when the widget paints a
+    /// background — container widgets resolve an explicit-or-theme
+    /// `Option<Background>` and pass `chrome.as_ref()`. Taken as
+    /// `Option<&Background>` (an 8-byte niche-encoded pointer, not the
+    /// 168 B `Background` by value) so the chrome travels as one pointer
+    /// per hop down `Forest::open_node` → `Tree::open_node` →
+    /// `FrameArena::lower_background`, and the no-chrome path is just a
+    /// perfectly-predicted `None` branch.
+    ///
+    /// `id` must be the [`Self::make_persistent_id`] resolution of
+    /// `element.salt`. Disambiguation already happened there, so this is
+    /// the final id verbatim — no further `SeenIds` work here.
     pub(crate) fn node<R>(
         &mut self,
         id: WidgetId,
         element: Element,
+        chrome: Option<&Background>,
         f: impl FnOnce(&mut Ui) -> R,
     ) -> R {
-        self.forest.open_node(id, element, None);
-        let r = f(self);
-        self.forest.close_node();
-        r
-    }
-
-    /// Chrome variant of [`Self::node`]. Same `id` contract. `chrome`
-    /// is taken by reference because `Background` is 168 B and gets
-    /// threaded through 4 functions per call (here → `Forest::open_node`
-    /// → `Tree::open_node` → `FrameArena::lower_background`); passing by
-    /// value made `node_with_chrome` ~35 % YMM stack copies in the
-    /// `frame` bench (`vmovups`). One pointer write per hop instead.
-    pub(crate) fn node_with_chrome<R>(
-        &mut self,
-        id: WidgetId,
-        element: Element,
-        chrome: &Background,
-        f: impl FnOnce(&mut Ui) -> R,
-    ) -> R {
-        self.forest.open_node(
-            id,
-            element,
-            Some(Chrome {
-                bg: chrome,
-                arena: &self.frame_arena,
-                atlas: &self.caches.gradients,
-            }),
-        );
+        let chrome = chrome.map(|bg| Chrome {
+            bg,
+            arena: &self.frame_arena,
+            atlas: &self.caches.gradients,
+        });
+        self.forest.open_node(id, element, chrome);
         let r = f(self);
         self.forest.close_node();
         r

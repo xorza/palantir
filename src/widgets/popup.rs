@@ -167,7 +167,7 @@ impl Popup {
         let handle = PopupHandle::new();
         let measure_cap = Some(surface.size);
         ui.layer(Layer::Popup, placed, measure_cap, |ui| {
-            ui.node_maybe_chrome(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
+            ui.node(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
         });
         if first_open {
             // No measured size yet → `placed` fell back to the raw

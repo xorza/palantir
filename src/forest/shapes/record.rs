@@ -89,8 +89,8 @@ impl From<ShapeStroke> for Stroke {
 /// Lowered chrome row stored in `Tree.chrome_table`. The user-facing
 /// `Background` is ~232 B (inline `Brush` + `Stroke` with inline
 /// `Brush`); this row keeps the same fields in their lowered forms.
-/// Same lifecycle as shape records — written at
-/// `open_node_with_chrome`, cleared per frame. Gradient handle indexes
+/// Same lifecycle as shape records — written at `open_node` (when the
+/// node carries chrome), cleared per frame. Gradient handle indexes
 /// into `FrameArena.gradients` (the same arena `ShapeBrush::Gradient`
 /// uses), so chrome and shape paints share storage.
 ///
