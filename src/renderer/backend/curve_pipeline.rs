@@ -75,8 +75,8 @@ impl CurvePipeline {
     }
 
     /// Build the no-stencil color pipeline against `format`. Caller
-    /// passes the shared `gradient_bgl` (owned by the quad pipeline) so
-    /// the layout matches; the instance buffer is format-independent.
+    /// passes the shared `gradient_bgl` (owned by `GradientResources`)
+    /// so the layout matches; the instance buffer is format-independent.
     /// Shared by [`Self::new`] and [`Self::rebuild_for_format`].
     fn build_color_pipeline(
         device: &wgpu::Device,
@@ -121,8 +121,9 @@ impl CurvePipeline {
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Caller passes the shared `gradient_bgl` (owned by the quad
-    /// pipeline) so the variant matches the base pipeline's layout.
+    /// Caller passes the shared `gradient_bgl` (owned by
+    /// `GradientResources`) so the variant matches the base pipeline's
+    /// layout.
     #[profiling::function]
     pub(crate) fn ensure_stencil(
         &mut self,
@@ -162,15 +163,15 @@ impl CurvePipeline {
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
     /// `CurveBatch`. Viewport rides the shared immediate region;
-    /// `gradient_bg` is the group-0 handle owned by `QuadPipeline`
-    /// (one allocation, used by both pipelines).
+    /// `gradient_bg` is the group-0 handle owned by `GradientResources`
+    /// (one allocation, used by both the quad and curve pipelines).
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        stencil: bool,
+        use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        if stencil {
+        if use_stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
             pass.set_pipeline(p);
         } else {

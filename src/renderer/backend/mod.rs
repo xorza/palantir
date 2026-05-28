@@ -4,6 +4,7 @@ mod dynamic_buffer;
 pub(crate) mod gpu_ctx;
 pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
+mod gradient_resources;
 pub(crate) mod image_pipeline;
 mod mesh_pipeline;
 mod pipeline_utils;
@@ -23,6 +24,7 @@ use self::debug_overlay::{
 use self::gpu_ctx::GpuCtx;
 use self::gpu_pass_stats::{BatchKind, GpuPassStats};
 use self::gpu_timings::GpuTimings;
+use self::gradient_resources::GradientResources;
 use self::image_pipeline::ImagePipeline;
 use self::mesh_pipeline::MeshPipeline;
 use self::quad_pipeline::QuadPipeline;
@@ -130,6 +132,10 @@ pub(crate) struct WgpuBackend {
     /// or bind group anymore — the value rides command-buffer record
     /// state directly.
     viewport_size: glam::Vec2,
+    /// Shared gradient LUT atlas resources (texture + sampler + group-0
+    /// bind group), lent to the quad and curve pipelines — both render
+    /// gradient brushes off this one allocation.
+    gradient: GradientResources,
     quad: QuadPipeline,
     mesh: MeshPipeline,
     image: ImagePipeline,
@@ -220,13 +226,15 @@ impl WgpuBackend {
         // `IMMEDIATES_BYTES` region so the immediate state stays
         // valid across pipeline switches; the backend pushes it once
         // per pass open.
-        let quad = QuadPipeline::new(&device, format);
+        // Gradient LUT atlas resources, shared by the quad and curve
+        // pipelines (both sample gradient brushes). Owned here so
+        // neither pipeline owns the other's input — each composes its
+        // layout against `gradient.bgl` and binds `gradient.bg`.
+        let gradient = GradientResources::new(&device);
+        let quad = QuadPipeline::new(&device, &gradient.bgl, format);
         let mesh = MeshPipeline::new(&device, format);
         let image = ImagePipeline::new(&device, format, image_budget_bytes);
-        // Curve reuses quad's `gradient_bgl` + `gradient_bg` — same
-        // texture + sampler resources, identical layout, one bind
-        // group total instead of two.
-        let curve = CurvePipeline::new(&device, format, &quad.gradient_bgl);
+        let curve = CurvePipeline::new(&device, format, &gradient.bgl);
         let text = TextBackend::new(
             &device,
             format,
@@ -245,6 +253,7 @@ impl WgpuBackend {
             queue: Queue::new(queue),
             staging_belt,
             viewport_size: glam::Vec2::ZERO,
+            gradient,
             quad,
             mesh,
             image,
@@ -288,13 +297,15 @@ impl WgpuBackend {
             return;
         }
         let device = &self.device;
-        self.quad.rebuild_for_format(device, format);
+        // Gradient resources are format-independent — only the pipelines
+        // carry the color target. Re-thread the shared `bgl` so quad and
+        // curve rebuild against the same group-0 layout.
+        self.quad
+            .rebuild_for_format(device, &self.gradient.bgl, format);
         self.mesh.rebuild_for_format(device, format);
         self.image.rebuild_for_format(device, format);
-        // Curve shares the quad's gradient bind-group layout — pass the
-        // (preserved) handle so its rebuilt pipeline matches.
         self.curve
-            .rebuild_for_format(device, &self.quad.gradient_bgl, format);
+            .rebuild_for_format(device, &self.gradient.bgl, format);
         self.text.rebuild_for_format(
             device,
             format,
@@ -492,11 +503,10 @@ impl WgpuBackend {
         };
         if use_stencil {
             self.ensure_stencil();
-            self.quad.ensure_stencil(&self.device);
+            self.quad.ensure_stencil(&self.device, &self.gradient.bgl);
             self.mesh.ensure_stencil(&self.device);
             self.image.ensure_stencil(&self.device);
-            self.curve
-                .ensure_stencil(&self.device, &self.quad.gradient_bgl);
+            self.curve.ensure_stencil(&self.device, &self.gradient.bgl);
         }
 
         // Open the main encoder up front: every dynamic-buffer upload
@@ -532,7 +542,7 @@ impl WgpuBackend {
             //   magenta fallback plus any baked rows composer queued.
             // - image registry: first-frame images need a bind group
             //   ready when the schedule's draw call lands.
-            self.quad.upload_gradients(&ctx, &self.caches.gradients);
+            self.gradient.upload(&ctx, &self.caches.gradients);
             self.image.drain_registry(&mut ctx, &self.caches.images);
 
             if dim_undamaged {
@@ -686,8 +696,6 @@ impl WgpuBackend {
             t.after_submit(&self.device);
         }
 
-        self.quad.post_record();
-
         if self.text.prepared_anything {
             self.text.post_record();
         }
@@ -732,7 +740,8 @@ impl WgpuBackend {
         let viewport = ViewportPush {
             size: self.viewport_size,
         };
-        self.debug.draw_dim(&mut pass, &self.quad, &viewport);
+        self.debug
+            .draw_dim(&mut pass, &self.quad, &self.gradient.bg, &viewport);
     }
 
     /// Open the main render pass against the backbuffer and walk the
@@ -917,7 +926,7 @@ impl WgpuBackend {
                     // zero on the first PreClear of a partial pass,
                     // which lands the quad at garbage NDC and skips
                     // the damage-region clear.
-                    self.quad.bind_clear(pass, use_stencil);
+                    self.quad.bind_clear(pass, use_stencil, &self.gradient.bg);
                     viewport.push_into(pass);
                     pass.draw(0..4, 0..1);
                     // Distinct vertex buffer (clear_buffer); next
@@ -935,7 +944,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Mask);
                     pass.push_debug_group("mask");
                     if bound != Bound::MaskWrite {
-                        self.quad.bind_mask_write(pass);
+                        self.quad.bind_mask_write(pass, &self.gradient.bg);
                         viewport.push_into(pass);
                         bound = Bound::MaskWrite;
                     }
@@ -946,11 +955,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Quads);
                     pass.push_debug_group("quads");
                     if bound != Bound::QuadInstance {
-                        if use_stencil {
-                            self.quad.bind_stencil_test(pass);
-                        } else {
-                            self.quad.bind(pass);
-                        }
+                        self.quad.bind(pass, use_stencil, &self.gradient.bg);
                         viewport.push_into(pass);
                         bound = Bound::QuadInstance;
                     }
@@ -1017,7 +1022,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Curve);
                     pass.push_debug_group("curves");
                     if bound != Bound::Curve {
-                        self.curve.bind(pass, use_stencil, &self.quad.gradient_bg);
+                        self.curve.bind(pass, use_stencil, &self.gradient.bg);
                         viewport.push_into(pass);
                         bound = Bound::Curve;
                     }
@@ -1119,8 +1124,13 @@ impl WgpuBackend {
             let viewport = ViewportPush {
                 size: self.viewport_size,
             };
-            self.debug
-                .draw_overlays(&mut pass, &self.quad, &viewport, overlay_rects.len() as u32);
+            self.debug.draw_overlays(
+                &mut pass,
+                &self.quad,
+                &self.gradient.bg,
+                &viewport,
+                overlay_rects.len() as u32,
+            );
         }
     }
 

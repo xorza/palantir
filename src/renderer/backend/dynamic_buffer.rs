@@ -91,6 +91,11 @@ impl DynamicBuffer {
     /// (no grow) takes the normal belt path.
     /// `bytes.len()` must equal `item_count * self.item_size`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
+        debug_assert_eq!(
+            bytes.len(),
+            item_count * self.item_size,
+            "DynamicBuffer::upload byte/item-count mismatch — would write partial data",
+        );
         if self.grow_mapped(ctx.device, item_count) {
             // Buffer was just created mapped-at-creation; write
             // directly into the mapped range and unmap. No belt

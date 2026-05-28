@@ -172,6 +172,57 @@ pub(crate) fn for_each_step(
     // alone, so dedup spans across them.
     let mut active_mask: Option<u32> = None;
 
+    // The draws every non-skipped group emits, identical under both the
+    // stencil and non-stencil paths: the group's quads, then its text
+    // batches (drained after the quads so a child quad occludes a label),
+    // then its mesh / image / curve batches (each restoring the group's
+    // own scissor in case the text drain widened it). The stencil path
+    // wraps this with the mask bracket; the non-stencil path gates it on
+    // the group having any content. Shared so the two can't drift.
+    let emit_group_body = |i: usize,
+                           effective: URect,
+                           quads: Span,
+                           next_batch: &mut usize,
+                           next_mesh_batch: &mut usize,
+                           next_image_batch: &mut usize,
+                           next_curve_batch: &mut usize,
+                           emit: &mut dyn FnMut(RenderStep)| {
+        if quads.len != 0 {
+            emit(RenderStep::Quads {
+                group: i,
+                range: quads,
+            });
+        }
+        drain_text_batches(i + 1, next_batch, emit);
+        while *next_mesh_batch < buffer.mesh_batches.len()
+            && buffer.mesh_batches[*next_mesh_batch].last_group as usize == i
+        {
+            emit(RenderStep::SetScissor(effective));
+            emit(RenderStep::MeshBatch {
+                batch: *next_mesh_batch,
+            });
+            *next_mesh_batch += 1;
+        }
+        while *next_image_batch < buffer.image_batches.len()
+            && buffer.image_batches[*next_image_batch].last_group as usize == i
+        {
+            emit(RenderStep::SetScissor(effective));
+            emit(RenderStep::ImageBatch {
+                batch: *next_image_batch,
+            });
+            *next_image_batch += 1;
+        }
+        while *next_curve_batch < buffer.curve_batches.len()
+            && buffer.curve_batches[*next_curve_batch].last_group as usize == i
+        {
+            emit(RenderStep::SetScissor(effective));
+            emit(RenderStep::CurveBatch {
+                batch: *next_curve_batch,
+            });
+            *next_curve_batch += 1;
+        }
+    };
+
     for (i, g) in buffer.groups.iter().enumerate() {
         // Silently drop mesh batches that anchored in earlier
         // damage-skipped groups — they had no visible scissor so their
@@ -233,43 +284,16 @@ pub(crate) fn for_each_step(
                     emit(RenderStep::SetStencilRef(0));
                 }
             }
-            if g.quads.len != 0 {
-                emit(RenderStep::Quads {
-                    group: i,
-                    range: g.quads,
-                });
-            }
-            drain_text_batches(i + 1, &mut next_batch, &mut emit);
-            // Drain mesh batches anchored at this group. Restore the
-            // group's own scissor in case text drain widened it; mesh
-            // draws clip against the group's region same as quads.
-            while next_mesh_batch < buffer.mesh_batches.len()
-                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::MeshBatch {
-                    batch: next_mesh_batch,
-                });
-                next_mesh_batch += 1;
-            }
-            while next_image_batch < buffer.image_batches.len()
-                && buffer.image_batches[next_image_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::ImageBatch {
-                    batch: next_image_batch,
-                });
-                next_image_batch += 1;
-            }
-            while next_curve_batch < buffer.curve_batches.len()
-                && buffer.curve_batches[next_curve_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::CurveBatch {
-                    batch: next_curve_batch,
-                });
-                next_curve_batch += 1;
-            }
+            emit_group_body(
+                i,
+                effective,
+                g.quads,
+                &mut next_batch,
+                &mut next_mesh_batch,
+                &mut next_image_batch,
+                &mut next_curve_batch,
+                &mut emit,
+            );
             active_mask = mask_idx;
         } else if g.quads.len != 0
             || (next_batch < buffer.text_batches.len()
@@ -281,40 +305,16 @@ pub(crate) fn for_each_step(
             || (next_curve_batch < buffer.curve_batches.len()
                 && buffer.curve_batches[next_curve_batch].last_group as usize == i)
         {
-            if g.quads.len != 0 {
-                emit(RenderStep::Quads {
-                    group: i,
-                    range: g.quads,
-                });
-            }
-            drain_text_batches(i + 1, &mut next_batch, &mut emit);
-            while next_mesh_batch < buffer.mesh_batches.len()
-                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::MeshBatch {
-                    batch: next_mesh_batch,
-                });
-                next_mesh_batch += 1;
-            }
-            while next_image_batch < buffer.image_batches.len()
-                && buffer.image_batches[next_image_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::ImageBatch {
-                    batch: next_image_batch,
-                });
-                next_image_batch += 1;
-            }
-            while next_curve_batch < buffer.curve_batches.len()
-                && buffer.curve_batches[next_curve_batch].last_group as usize == i
-            {
-                emit(RenderStep::SetScissor(effective));
-                emit(RenderStep::CurveBatch {
-                    batch: next_curve_batch,
-                });
-                next_curve_batch += 1;
-            }
+            emit_group_body(
+                i,
+                effective,
+                g.quads,
+                &mut next_batch,
+                &mut next_mesh_batch,
+                &mut next_image_batch,
+                &mut next_curve_batch,
+                &mut emit,
+            );
         }
     }
     // Trailing drain — batches anchored in tail-skipped groups.

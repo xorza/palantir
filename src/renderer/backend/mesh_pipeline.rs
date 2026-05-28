@@ -161,8 +161,8 @@ impl MeshPipeline {
     /// at slot 0 is set once per pass by `WgpuBackend::run_main_pass`
     /// — switching pipelines doesn't invalidate it because all four
     /// pipelines share the same `@group(0)` layout.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, stencil: bool) {
-        if stencil {
+    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
+        if use_stencil {
             let p = self.stencil_test.as_ref().expect("ensure_stencil first");
             pass.set_pipeline(p);
         } else {
