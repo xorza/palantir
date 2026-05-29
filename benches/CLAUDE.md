@@ -95,8 +95,8 @@ below). Two pin a floor and fail; one only measures.
   Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
   is either a palantir bug or a wgpu/cosmic-text version drift.
 - **`alloc_resize`** — same CPU pipeline as `alloc_free`, but rotates
-  the `Display` size each frame to bust the measure / cascade /
-  text-shaping caches the way `frame/resizing_cpu` does. **Not
+  the `Display` size each frame to bust the measure / text-shaping
+  caches the way `frame/resizing_cpu` does. **Not
   strict-zero — measures, doesn't assert.** Two arms: `pool-rotation`
   (cycles four sizes, matching `frame/resizing_cpu`) and
   `continuous-drag` (a unique width every frame, modelling a
@@ -104,8 +104,8 @@ below). Two pin a floor and fail; one only measures.
   bytes/frame per arm; use it to find which call sites still allocate
   on the resize path. **Builds `Ui::for_test_text()` (real cosmic-text),
   hence `required-features = ["internals"]`** — with the `Ui::default()`
-  mono fallback the paint count is constant across sizes, so
-  `CascadeCache::capture` reuses arena slots in place and the bench
+  mono fallback the paint count is constant across sizes, so the damage
+  `PaintSnapArena` reuses arena slots in place and the bench
   reports a false 0. This was a real blind spot: until 2026-05 the bench
   used the fallback and reported 0 blocks/frame while the live arm
   reallocated ~1.3 MB/frame.
