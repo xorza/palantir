@@ -684,6 +684,7 @@ impl Ui {
         profiling::scope!("Ui::finalize_frame");
         let removed = self.forest.ids.rollover();
         self.text.sweep_removed(removed);
+        self.text.end_frame();
         self.layout_engine.sweep_removed(removed);
         self.cascades_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
