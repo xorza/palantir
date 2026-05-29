@@ -62,6 +62,59 @@ struct Snapshot {
     nodes: Span,
     /// Slice in `paints` arena.
     paints: Span,
+    /// Set by `blit`, cleared by `capture` — was this snapshot served at
+    /// least once since it was last (re)captured? Drives the thrash gate:
+    /// a snapshot re-captured without ever being blitted was pure copy
+    /// cost.
+    blitted: bool,
+    /// Consecutive `capture` attempts for this `wid` whose prior snapshot
+    /// was never blitted. Grows while a subtree's key shifts every frame
+    /// (resize / scroll); resets to 0 the moment a blit lands. See
+    /// [`thrash_decision`].
+    cold_streak: u16,
+}
+
+/// Wasted captures tolerated before the thrash gate starts skipping. Two
+/// gives a one-off miss (a content change that then stabilizes) room to
+/// re-establish its snapshot before we conclude the key is thrashing.
+const THRASH_STREAK: u16 = 2;
+/// Once thrashing, capture only one in this many attempts. The skipped
+/// frames pay nothing; the periodic capture is a self-heal probe — if the
+/// workload has stabilized, the next frame blits it and the streak resets
+/// to full-rate capture. 8 → ~7/8 of the wasted copy cost removed during a
+/// sustained drag, recovery within ≤8 frames of stabilizing.
+const BACKOFF_PERIOD: u16 = 8;
+
+/// Outcome of the per-`wid` thrash gate.
+struct ThrashDecision {
+    /// Whether to actually write the capture this frame.
+    capture: bool,
+    /// The `cold_streak` to store on the (kept or rewritten) snapshot.
+    cold_streak: u16,
+}
+
+/// Decide whether to capture `wid` this frame given its prior snapshot's
+/// `(blitted_since_capture, cold_streak)` — `None` when no snapshot
+/// exists. A subtree whose key shifts every frame is captured but never
+/// blitted (resize / scroll): pure copy cost. Once the cold streak
+/// crosses [`THRASH_STREAK`] we capture only one in [`BACKOFF_PERIOD`]
+/// frames. It self-heals: a prior snapshot that *was* blitted resets the
+/// streak (the cache is paying off → keep capturing at full rate), and a
+/// periodic self-heal capture that the next frame blits does the same.
+fn thrash_decision(prior_blitted: Option<bool>, prior_streak: u16) -> ThrashDecision {
+    // Cold only when the prior snapshot existed and went un-blitted; a
+    // missing or blitted prior means the cache is (or could be) earning
+    // its keep, so reset to full-rate capture.
+    let cold_streak = if prior_blitted == Some(false) {
+        prior_streak.saturating_add(1)
+    } else {
+        0
+    };
+    let capture = cold_streak < THRASH_STREAK || cold_streak.is_multiple_of(BACKOFF_PERIOD);
+    ThrashDecision {
+        capture,
+        cold_streak,
+    }
 }
 
 /// Floor on the size of a cacheable subtree. The bench shows one
@@ -115,6 +168,9 @@ pub struct CascadeCache {
     pub misses: u32,
     #[cfg(any(test, feature = "internals"))]
     pub captures: u32,
+    /// Capture attempts the thrash gate skipped this frame.
+    #[cfg(any(test, feature = "internals"))]
+    pub skips: u32,
     #[cfg(any(test, feature = "internals"))]
     pub nodes_blit: u32,
 }
@@ -126,6 +182,7 @@ impl CascadeCache {
             self.hits = 0;
             self.misses = 0;
             self.captures = 0;
+            self.skips = 0;
             self.nodes_blit = 0;
         }
     }
@@ -155,10 +212,18 @@ impl CascadeCache {
         cascades: &mut LayerCascades,
         entries: &mut Soa<EntryRow>,
     ) -> Rect {
-        let snap = *self
-            .snapshots
-            .get(&wid)
-            .expect("blit called without a successful probe");
+        // The snapshot pays off this frame: mark it served and reset the
+        // thrash streak (so `capture` keeps refreshing it at full rate)
+        // while we hold the lookup, then copy it out for the blit below.
+        let snap = {
+            let s = self
+                .snapshots
+                .get_mut(&wid)
+                .expect("blit called without a successful probe");
+            s.blitted = true;
+            s.cold_streak = 0;
+            *s
+        };
         let span = subtree_end - root_idx;
         // Release asserts (not debug): a mis-sized blit or cursor
         // misalignment silently corrupts the `entries_base + node.0`
@@ -219,6 +284,28 @@ impl CascadeCache {
     ) {
         let span = subtree_end - root_idx;
         if !Self::is_cacheable(span) {
+            return;
+        }
+
+        // Thrash gate: a subtree whose key shifts every frame (resize /
+        // scroll) is captured but never blitted — pure copy cost. Back
+        // off to one capture per `BACKOFF_PERIOD` once it's clearly
+        // thrashing, keeping the (stale) snapshot so the streak survives.
+        let decision = match self.snapshots.get(&wid) {
+            Some(s) => thrash_decision(Some(s.blitted), s.cold_streak),
+            None => thrash_decision(None, 0),
+        };
+        if !decision.capture {
+            // A skip implies a prior un-blitted snapshot (the streak can't
+            // grow otherwise), so the entry is always present here.
+            self.snapshots
+                .get_mut(&wid)
+                .expect("skip implies a prior un-blitted snapshot")
+                .cold_streak = decision.cold_streak;
+            #[cfg(any(test, feature = "internals"))]
+            {
+                self.skips += 1;
+            }
             return;
         }
 
@@ -306,6 +393,8 @@ impl CascadeCache {
                 key,
                 nodes: Span::new(nodes_start, span),
                 paints: Span::new(paints_start, paints_len),
+                blitted: false,
+                cold_streak: decision.cold_streak,
             },
         );
         #[cfg(any(test, feature = "internals"))]
@@ -464,6 +553,8 @@ mod tests {
                 },
                 nodes: Span::new(nodes_start, nodes),
                 paints: Span::new(paints_start, paints),
+                blitted: false,
+                cold_streak: 0,
             },
         );
     }
@@ -566,6 +657,111 @@ mod tests {
             cache.paints.items[1].hash,
             NodeHash(3000),
             "C's paint slid intact"
+        );
+    }
+
+    /// Pins the pure thrash-gate logic: a missing or blitted prior keeps
+    /// full-rate capture; an un-blitted prior grows the streak and, past
+    /// `THRASH_STREAK`, captures only on `BACKOFF_PERIOD` boundaries.
+    #[test]
+    fn thrash_decision_table() {
+        // No prior snapshot → capture at full rate, streak 0.
+        let d = thrash_decision(None, 0);
+        assert!(d.capture && d.cold_streak == 0, "no prior → capture");
+
+        // Prior was blitted (cache earning its keep) → reset + capture,
+        // regardless of how cold it previously was.
+        let d = thrash_decision(Some(true), 99);
+        assert!(d.capture && d.cold_streak == 0, "blitted prior resets");
+
+        // First wasted capture: streak 0→1, still below threshold → capture.
+        let d = thrash_decision(Some(false), 0);
+        assert!(d.capture && d.cold_streak == 1);
+
+        // Reaching THRASH_STREAK flips to back-off (skip).
+        let d = thrash_decision(Some(false), THRASH_STREAK - 1);
+        assert_eq!(d.cold_streak, THRASH_STREAK);
+        assert!(!d.capture, "at the streak threshold the gate skips");
+
+        // Every streak between the threshold and the next period boundary
+        // skips...
+        for prior in (THRASH_STREAK - 1)..(BACKOFF_PERIOD - 1) {
+            let d = thrash_decision(Some(false), prior);
+            assert!(!d.capture, "streak {} should skip", d.cold_streak);
+        }
+        // ...and the boundary captures (the self-heal probe).
+        let d = thrash_decision(Some(false), BACKOFF_PERIOD - 1);
+        assert_eq!(d.cold_streak, BACKOFF_PERIOD);
+        assert!(d.capture, "periodic self-heal capture lands");
+    }
+
+    /// End-to-end: a >`MIN_CACHEABLE_SPAN` subtree whose `rect_q` shifts
+    /// every frame (rotating surface size) is captured but never blitted,
+    /// so the gate must engage (`skips > 0`). The identical fixture held
+    /// at a *stable* size must blit instead — proving the gate never backs
+    /// off a cache that's paying off (`skips == 0`, `hits > 0`).
+    #[test]
+    fn capture_throttles_under_resize_thrash_but_not_when_stable() {
+        use crate::Ui;
+        use crate::forest::element::Configure;
+        use crate::layout::types::sizing::Sizing;
+        use crate::widgets::frame::Frame;
+        use crate::widgets::panel::Panel;
+        use glam::UVec2;
+
+        // Panel fills the surface width so its arranged rect — and thus
+        // its cascade key — shifts with every surface resize. (A hugging
+        // panel would be width-independent and hit the cache forever,
+        // exercising no thrash.)
+        let build = |ui: &mut Ui| {
+            Panel::vstack()
+                .id(WidgetId::from_hash("big"))
+                .size((Sizing::FILL, Sizing::Hug))
+                .show(ui, |ui| {
+                    for i in 0..(MIN_CACHEABLE_SPAN + 16) {
+                        Frame::new()
+                            .id(WidgetId::from_hash(("f", i)))
+                            .size(4.0)
+                            .show(ui);
+                    }
+                });
+        };
+
+        // Continuous drag: a strictly-increasing width every frame so the
+        // subtree key never re-matches a stale snapshot (no hits possible).
+        // Counters reset per run, so accumulate across frames.
+        let frames = 60u32;
+        let mut ui = Ui::for_test();
+        let (mut total_caps, mut total_skips, mut total_hits) = (0u32, 0u32, 0u32);
+        for f in 0..frames {
+            ui.run_at_acked(UVec2::new(400 + f * 3, 400), &mut |ui: &mut Ui| build(ui));
+            total_caps += ui.cascades_engine.cache.captures;
+            total_skips += ui.cascades_engine.cache.skips;
+            total_hits += ui.cascades_engine.cache.hits;
+        }
+        assert!(
+            total_skips > 0,
+            "continuous drag must engage the gate (skips={total_skips})",
+        );
+        assert!(
+            total_caps < frames,
+            "captures must be throttled well below one-per-frame \
+             (captures={total_caps}, frames={frames}, skips={total_skips}, hits={total_hits})",
+        );
+
+        // Stable: same size every frame → the subtree blits after warmup,
+        // so the gate must never engage.
+        let mut stable = Ui::for_test();
+        for _ in 0..40 {
+            stable.run_at_acked(UVec2::new(400, 400), &mut |ui: &mut Ui| build(ui));
+        }
+        assert_eq!(
+            stable.cascades_engine.cache.skips, 0,
+            "stable workload must not back off",
+        );
+        assert!(
+            stable.cascades_engine.cache.hits > 0,
+            "stable workload must serve from the cache",
         );
     }
 }
