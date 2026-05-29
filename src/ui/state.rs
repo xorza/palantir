@@ -61,6 +61,7 @@ impl StateMap {
     }
 }
 
+#[derive(Debug)]
 struct Store<T> {
     map: FxHashMap<WidgetId, u32>,
     data: Vec<T>,

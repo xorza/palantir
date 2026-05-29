@@ -53,6 +53,36 @@ fn would_wrap(line_main: f32, gap: f32, m: f32, main_avail: f32) -> bool {
     line_main > 0.0 && line_main + gap + m > main_avail
 }
 
+/// Advance the line-packing state by one child. When the child won't fit
+/// on the current line, `complete_line(line_main, line_cross)` runs for
+/// the just-finished line and a fresh line starts with this child;
+/// otherwise the current line extends. The wrap decision **and** the
+/// line-extent arithmetic live here so measure and arrange can't drift on
+/// where lines break.
+#[inline]
+fn pack_child(
+    line_main: &mut f32,
+    line_cross: &mut f32,
+    gap: f32,
+    main_avail: f32,
+    pack: ChildPack,
+    mut complete_line: impl FnMut(f32, f32),
+) {
+    let ChildPack { m, x } = pack;
+    if would_wrap(*line_main, gap, m, main_avail) {
+        complete_line(*line_main, *line_cross);
+        *line_main = m;
+        *line_cross = x;
+    } else {
+        *line_main = if *line_main > 0.0 {
+            *line_main + gap + m
+        } else {
+            m
+        };
+        *line_cross = line_cross.max(x);
+    }
+}
+
 /// Flat per-frame scratch for wrap arrange. One contiguous
 /// `Vec<NodeId>` pool serves all nesting depths: each `enter()`
 /// pushes the current pool length onto `starts`, so the depth's
@@ -121,6 +151,11 @@ pub(crate) fn measure(
     let mut line_cross = 0.0f32;
     let mut line_count = 0usize;
 
+    let mut complete_line = |lm: f32, lx: f32| {
+        max_line_main = max_line_main.max(lm);
+        total_cross += lx;
+        line_count += 1;
+    };
     for c in tree.active_children(node) {
         let d = layout.measure(
             tree,
@@ -129,27 +164,19 @@ pub(crate) fn measure(
             tc,
             out,
         );
-        let ChildPack { m, x } = child_pack(axis, layouts[c.idx()].size, d);
-        if would_wrap(line_main, gap, m, main_avail) {
-            max_line_main = max_line_main.max(line_main);
-            total_cross += line_cross;
-            line_count += 1;
-            line_main = m;
-            line_cross = x;
-        } else {
-            line_main = if line_main > 0.0 {
-                line_main + gap + m
-            } else {
-                m
-            };
-            line_cross = line_cross.max(x);
-        }
+        let pack = child_pack(axis, layouts[c.idx()].size, d);
+        pack_child(
+            &mut line_main,
+            &mut line_cross,
+            gap,
+            main_avail,
+            pack,
+            &mut complete_line,
+        );
     }
     // Flush last line.
     if line_main > 0.0 {
-        max_line_main = max_line_main.max(line_main);
-        total_cross += line_cross;
-        line_count += 1;
+        complete_line(line_main, line_cross);
     }
     // `n_lines - 1` line gaps between lines.
     if line_count > 1 {
@@ -266,28 +293,19 @@ pub(crate) fn arrange(
 
         let i = c.idx();
         let d = layout.scratch.desired[i];
-        let ChildPack { m, x } = child_pack(axis, layouts[i].size, d);
-        if would_wrap(line_main, gap, m, main_avail) {
-            place_line(
-                layout,
-                out,
-                line_main,
-                line_cross,
-                &mut cross_cursor,
-                &mut first_line,
-            );
-            layout.scratch.wrap.pool.push(c);
-            line_main = m;
-            line_cross = x;
-        } else {
-            layout.scratch.wrap.pool.push(c);
-            line_main = if line_main > 0.0 {
-                line_main + gap + m
-            } else {
-                m
-            };
-            line_cross = line_cross.max(x);
-        }
+        let pack = child_pack(axis, layouts[i].size, d);
+        // On wrap, `pack_child` places the just-finished line (which
+        // empties the pool back to this depth's start); the child that
+        // triggered the wrap is then pushed as the new line's first node.
+        pack_child(
+            &mut line_main,
+            &mut line_cross,
+            gap,
+            main_avail,
+            pack,
+            |lm, lx| place_line(layout, out, lm, lx, &mut cross_cursor, &mut first_line),
+        );
+        layout.scratch.wrap.pool.push(c);
     }
     place_line(
         layout,

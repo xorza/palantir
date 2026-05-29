@@ -139,31 +139,6 @@ impl Color {
         }
     }
 
-    /// Invert the RGB channels in linear space (`1 − c`), preserving
-    /// alpha. A pure linear reflection — no sRGB round-trip — so a double
-    /// inversion returns to the original within f32 rounding (≤ ~1 ULP,
-    /// orders of magnitude below 8-bit display precision), which makes it
-    /// safe to drive a light/dark toggle.
-    pub const fn inverted(self) -> Self {
-        Self {
-            r: 1.0 - self.r,
-            g: 1.0 - self.g,
-            b: 1.0 - self.b,
-            a: self.a,
-        }
-    }
-
-    /// Multiply the linear RGB channels by `mul`, preserve alpha. Used by the
-    /// encoder to dim disabled subtrees.
-    pub const fn dim_rgb(self, mul: f32) -> Self {
-        Self {
-            r: self.r * mul,
-            g: self.g * mul,
-            b: self.b * mul,
-            a: self.a,
-        }
-    }
-
     /// Scale all four channels by `mul`. Premultiplied-correct fade:
     /// scaling RGB and A by the same factor moves a premultiplied
     /// color along the line toward transparent. Stroke tessellation
@@ -297,17 +272,6 @@ impl ColorU8 {
 
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self { r, g, b, a: 0xff }
-    }
-
-    /// Per-channel invert (`255 − v`) of the linear RGB channels, alpha
-    /// kept. The u8 analogue of [`Color::inverted`]; exactly reversible.
-    pub const fn inverted(self) -> Self {
-        Self {
-            r: 255 - self.r,
-            g: 255 - self.g,
-            b: 255 - self.b,
-            a: self.a,
-        }
     }
 
     /// Pack the four channels into a single `u32` as `0xRRGGBBAA`
@@ -480,7 +444,6 @@ const fn srgb_to_linear(c: f32) -> f32 {
 // Used by the gradient LUT bake; no other in-crate caller until slice 2
 // wires the atlas through the encoder/composer. `dead_code` would
 // otherwise trip `clippy -D warnings` on a clean step-1-only branch.
-#[allow(dead_code)]
 /// Linear-RGB → Oklab. Matrix constants from Björn Ottosson's reference
 /// (https://bottosson.github.io/posts/oklab/). Used by the gradient LUT
 /// bake when `Interp::Oklab` is selected — interpolation in Oklab gives
@@ -502,7 +465,6 @@ pub(crate) fn linear_to_oklab(r: f32, g: f32, b: f32) -> [f32; 3] {
     ]
 }
 
-#[allow(dead_code)]
 /// Inverse of `linear_to_oklab`. Cube of the intermediate trichromatic
 /// values can be negative for out-of-gamut Oklab values — gradient
 /// lerps stay in-gamut by construction (both endpoints are valid

@@ -217,7 +217,6 @@ impl ImageRegistry {
     /// uploads to GPU and stores the `GpuTexture` in its own cache.
     /// Bytes stay in the registry — the `Rc` keeps the CPU copy alive
     /// for future re-uploads after eviction.
-    #[allow(dead_code)] // wired by backend image pipeline (slice 1 Phase B)
     pub(crate) fn drain_pending(&self) -> Vec<(ImageHandle, Rc<Image>)> {
         let mut inner = self.inner.borrow_mut();
         let Inner { by_id, pending } = &mut *inner;
@@ -230,7 +229,6 @@ impl ImageRegistry {
     /// Backend-side: flag `handle` for re-upload on next draw. Called
     /// when the GPU-side LRU evicts a texture so the registry's
     /// `Rc<Image>` is re-handed-out next `drain_pending`.
-    #[allow(dead_code)] // GPU-side LRU lands in slice 2
     pub(crate) fn mark_pending(&self, handle: ImageHandle) {
         let mut inner = self.inner.borrow_mut();
         if inner.by_id.contains_key(&handle.id) && !inner.pending.iter().any(|h| h.id == handle.id)

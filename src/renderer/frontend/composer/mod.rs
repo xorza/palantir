@@ -508,8 +508,8 @@ impl Composer {
 
         out.quads.clear();
         out.texts.clear();
-        out.meshes.clear();
-        out.images.clear();
+        out.meshes.rows.clear();
+        out.images.rows.clear();
         out.groups.clear();
         out.text_batches.clear();
         out.mesh_batches.clear();

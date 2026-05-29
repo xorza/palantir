@@ -51,7 +51,7 @@ pub struct ZoomConfig {
     /// Inclusive `[min, max]` zoom range. Default `0.1..=10.0`.
     pub range: RangeInclusive<f32>,
     /// Multiplicative factor per wheel notch; `step.powf(notches)`.
-    /// Default `1.1` (10% per notch).
+    /// Default `1.03` (3% per notch).
     pub step: f32,
     /// Wheel-vs-pinch routing. Default [`ZoomModifier::Ctrl`].
     pub modifier: ZoomModifier,
@@ -369,6 +369,18 @@ impl Scroll {
     #[track_caller]
     pub fn both() -> Self {
         Self::with_axes(LayoutMode::SCROLL_PAN_X | LayoutMode::SCROLL_PAN_Y)
+    }
+
+    /// Paint chrome for the inner scroll surface (background under
+    /// children, painted before the scrollbar overlay).
+    ///
+    /// Unlike the other containers (`Panel`/`Grid`/`Popup`), Scroll does
+    /// **not** fall back to `theme.panel_background` when unset — an
+    /// unstyled scroll surface paints no background. Pass one explicitly
+    /// to fill it.
+    pub fn background(mut self, bg: Background) -> Self {
+        self.chrome = Some(bg);
+        self
     }
 
     #[track_caller]
@@ -879,15 +891,6 @@ impl Scroll {
             response: Response::eager(id, ui, resp_state),
             inner: inner_value,
         }
-    }
-}
-
-impl Scroll {
-    /// Paint chrome for the inner scroll surface (background under
-    /// children, painted before the scrollbar overlay).
-    pub fn background(mut self, bg: Background) -> Self {
-        self.chrome = Some(bg);
-        self
     }
 }
 

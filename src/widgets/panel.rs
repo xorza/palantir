@@ -6,7 +6,7 @@ use crate::widgets::Response;
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
-/// [`Configure::background`]) and/or installs a clip (via
+/// [`Self::background`]) and/or installs a clip (via
 /// [`Configure::clip_rect`] / [`Configure::clip_rounded`]). Cards,
 /// rows, columns, and layered overlays all share this one type —
 /// `HStack::new()` / `VStack::new()` / `ZStack::new()` just preselect
@@ -47,7 +47,7 @@ impl Panel {
     /// is identity-preserving (when `scale == 1`, the anchor is a
     /// no-op).
     ///
-    /// Chrome ([`Configure::background`]) is the one exception — it
+    /// Chrome ([`Self::background`]) is the one exception — it
     /// paints in the *parent's* space, anchored under any ancestor
     /// clip/transform. That's deliberate: a transformed panel acts as
     /// a pan/zoom viewport over its body, and the background frames

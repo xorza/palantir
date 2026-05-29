@@ -1,9 +1,9 @@
-//! Bookkeeping primitive used by `MeasureCache`: a `Vec<T>` arena
-//! paired with a `live: usize` element count, plus the
-//! compaction-trigger heuristics. The cache holds one `LiveArena<T>`
-//! per independently-tracked element type and coordinates them at
-//! the snapshot level (the per-snapshot type and the in-place rewrite
-//! work stay cache-specific).
+//! Bookkeeping primitive behind the cross-frame caches (`MeasureCache`
+//! and the cascade cache): a `Vec<T>` arena paired with a `live: usize`
+//! element count, plus the compaction-trigger heuristics. A cache holds
+//! one `LiveArena<T>` per independently-tracked element type and
+//! coordinates them at the snapshot level (the per-snapshot type and
+//! the in-place rewrite work stay cache-specific).
 //!
 //! Multiple parallel arenas of identical length share a single live
 //! counter (e.g. measure-cache `text` and `available` ride on

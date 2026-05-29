@@ -14,7 +14,7 @@ use glam::Vec2;
 
 pub(crate) struct QuadPipeline {
     /// The no-stencil base pipeline. Reached only via methods —
-    /// `bind`, `draw_clear`, and `bind_debug` (the debug-overlay
+    /// `bind`, `bind_clear`, and `bind_debug` (the debug-overlay
     /// entrypoint) own the `set_pipeline` / `set_bind_group` pair so
     /// the public surface is "what to do", not "what to bind." Group 0
     /// (gradient atlas + sampler) is owned by
@@ -52,7 +52,7 @@ pub(crate) struct QuadPipeline {
     /// Last `(viewport, color)` written to `clear_buffer`. `None`
     /// before the first call to [`Self::upload_clear`]; thereafter
     /// holds the last upload's inputs so steady-state Partial frames
-    /// can short-circuit the `queue.write_buffer`. [`Self::draw_clear`]
+    /// can short-circuit the `queue.write_buffer`. [`Self::bind_clear`]
     /// asserts `Some` — catches a future refactor that decorrelates
     /// the upload guard in `submit` from the per-pass `PreClear` emit
     /// in the schedule.

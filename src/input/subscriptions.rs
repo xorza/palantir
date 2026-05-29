@@ -4,8 +4,9 @@
 //! pre-record, both re-asserted by widgets each frame they're
 //! active (symmetric to `Sense` on a node):
 //!
-//! 1. [`Subscriptions::any_mask`] — category flags ([`PointerSense`])
-//!    answering "does this event class wake the frame?"
+//! 1. [`Subscriptions::pointer_mask`] / [`Subscriptions::keyboard_mask`]
+//!    — category flags ([`PointerSense`]) answering "does this event
+//!    class wake the frame?"
 //! 2. [`Subscriptions::keys`] — specific `(Key, Modifiers)` chords for
 //!    modal Escape / command-palette shortcuts.
 //!
@@ -15,9 +16,9 @@
 //!
 //! Delivery isn't routed through subscriptions. Pointer events flow
 //! into [`InputState::frame_pointer_events`](super::InputState),
-//! keys into [`InputState::frame_keys`](super::InputState). Both
-//! buffers are populated only when a relevant subscription is active
-//! (the `any_mask` check short-circuits the push), so idle frames
+//! keys into [`InputState::frame_keyboard_events`](super::InputState).
+//! Both buffers are populated only when a relevant subscription is
+//! active (the mask check short-circuits the push), so idle frames
 //! pay nothing.
 
 use crate::input::keyboard::{Key, Modifiers};

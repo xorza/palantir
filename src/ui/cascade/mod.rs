@@ -163,7 +163,7 @@ struct Frame {
 /// and a snapshot of it would be dead weight). The two states are
 /// observationally identical to `finalize_and_capture`, so they share
 /// one variant.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 enum CaptureState {
     /// Don't capture this subtree on pop.
     Skip,

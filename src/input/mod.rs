@@ -483,8 +483,8 @@ pub struct InputState {
     /// when the press lands on a focusable widget. Evicted in
     /// [`Self::post_record`] when the focused widget vanishes from the
     /// tree (matches the per-id state map's eviction model). Read by
-    /// keyboard consumers to decide whether to drain `frame_keys` /
-    /// `frame_text` (step 5 of the TextEdit plan).
+    /// keyboard consumers to decide whether to drain
+    /// `frame_keyboard_events`.
     pub(crate) focused: Option<WidgetId>,
     /// Press-on-non-focusable-widget behavior. See [`FocusPolicy`].
     pub(crate) focus_policy: FocusPolicy,
@@ -690,10 +690,12 @@ impl InputState {
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
                     || self.scroll_target.is_some()
+                    || self.pinch_target.is_some()
                     || self.captures.iter().any(|c| c.active.is_some());
                 self.pointer_pos = None;
                 self.hovered = None;
                 self.scroll_target = None;
+                self.pinch_target = None;
                 // `Leave` is rare; emit whenever any pointer-class
                 // subscription is active so subscribers can clean up
                 // (clear crosshair, dismiss hover preview).

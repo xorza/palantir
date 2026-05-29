@@ -180,13 +180,6 @@ pub(crate) struct MeshScene {
     pub(crate) rows: Soa<MeshDrawRow>,
 }
 
-impl MeshScene {
-    #[inline]
-    pub(crate) fn clear(&mut self) {
-        self.rows.clear();
-    }
-}
-
 /// Scene-wide image pool, SoA-stored as `Soa<ImageDrawRow>`. The
 /// backend binds a per-handle texture and issues one draw per row
 /// (no shared vertex/index buffers — every quad is implicit
@@ -194,13 +187,6 @@ impl MeshScene {
 #[derive(Default)]
 pub(crate) struct ImageScene {
     pub(crate) rows: Soa<ImageDrawRow>,
-}
-
-impl ImageScene {
-    #[inline]
-    pub(crate) fn clear(&mut self) {
-        self.rows.clear();
-    }
 }
 
 /// One image draw row. Composer pushes one of these per image; the

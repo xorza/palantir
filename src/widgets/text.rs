@@ -24,7 +24,7 @@ use crate::widgets::theme::text_style::TextStyle;
 /// the field you want:
 ///
 /// ```ignore
-/// Text::new("hi").auto_id().style(TextStyle { color: red, ..ui.theme.text })
+/// Text::new("hi").style(TextStyle { color: red, ..ui.theme.text })
 /// ```
 pub struct Text {
     element: Element,

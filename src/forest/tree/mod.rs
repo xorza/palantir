@@ -522,15 +522,13 @@ impl Tree {
             layout: cols.layout,
             attrs: cols.attrs,
         });
-        // Column length-equality. `records` + `extras_idx` must agree
-        // on `len`; a missed push silently shifts every later node's
-        // index. Invariant is structurally guarded by the unconditional
-        // pushes above — debug-only check.
-        #[cfg(debug_assertions)]
-        {
-            let n = self.records.len();
-            assert_eq!(self.extras_idx.len(), n);
-        }
+        // Column length-equality. `records` + `extras_idx` are the two
+        // per-node SoA columns and must agree on `len`; a missed push
+        // silently shifts every later node's index. (The `bounds`/`panel`/
+        // `chrome` tables are `Slot`-indexed and sparse, so they're not
+        // 1:1 with `records`.) One integer compare per node — cheap enough
+        // to keep in release per the invariant-assert convention.
+        assert_eq!(self.extras_idx.len(), self.records.len());
         let ancestor_or_self_disabled =
             parent_frame.is_some_and(|f| f.ancestor_or_self_disabled) || cols.attrs.is_disabled();
         scratch.open_frames.push(OpenFrame {
