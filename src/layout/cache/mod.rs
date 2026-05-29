@@ -19,9 +19,10 @@
 //! constants live in `src/common/live_arena.rs`.
 //!
 //! Compaction kicks in when an arena holds more than `live ×
-//! COMPACT_RATIO` items. It walks every snapshot, rewrites their
-//! `start` indices to point at a freshly-packed arena, and drops the
-//! old one. O(live) — a one-frame cost paid infrequently.
+//! COMPACT_RATIO` items. It slides every snapshot's live range down
+//! over released garbage in place (`copy_within`) and truncates the
+//! dead tail, rewriting each snapshot's `start` to its slid position —
+//! no reallocation. O(live) — a one-frame cost paid infrequently.
 //!
 //! Eviction (via [`MeasureCache::sweep_removed`]) drops the snapshot
 //! and releases its arena ranges; the slots stay as garbage until the
@@ -174,13 +175,6 @@ impl NodeArenas {
         start
     }
 
-    fn extend_from_within(&mut self, src: &Self, range: Range<usize>) -> u32 {
-        let start = self.desired.len() as u32;
-        self.desired.extend_from_slice(&src.desired[range.clone()]);
-        self.text_spans.extend_from_slice(&src.text_spans[range]);
-        start
-    }
-
     fn acquire(&mut self, len: u32) {
         self.live += len as usize;
         assert!(self.live <= self.desired.len());
@@ -195,20 +189,23 @@ impl NodeArenas {
         self.desired.len() > self.live.saturating_mul(COMPACT_RATIO) && self.live > COMPACT_FLOOR
     }
 
-    fn with_capacity(cap: usize) -> Self {
-        Self {
-            desired: Vec::with_capacity(cap),
-            text_spans: Vec::with_capacity(cap),
-            live: 0,
-        }
-    }
-
     #[cfg(any(test, feature = "internals"))]
     pub(crate) fn clear(&mut self) {
         self.desired.clear();
         self.text_spans.clear();
         self.live = 0;
     }
+}
+
+/// One live snapshot's arena spans, collected into
+/// [`MeasureCache::compact_scratch`] and sorted by `nodes.start` to
+/// drive the in-place repack.
+#[derive(Clone, Copy, Debug)]
+struct CompactEntry {
+    wid: WidgetId,
+    nodes: Span,
+    hugs: Span,
+    text: Span,
 }
 
 #[derive(Default)]
@@ -234,6 +231,11 @@ pub(crate) struct MeasureCache {
     /// Per-`WidgetId` snapshot index. Each value points at a range in
     /// the arenas above.
     pub(crate) snapshots: WidgetIdMap<ArenaSnapshot>,
+    /// Reusable scratch for in-place [`Self::compact`]: one
+    /// [`CompactEntry`] per live snapshot, sorted by `nodes.start`.
+    /// Retained across frames (capacity reused) so compaction allocates
+    /// nothing.
+    compact_scratch: Vec<CompactEntry>,
 }
 
 impl MeasureCache {
@@ -351,26 +353,74 @@ impl MeasureCache {
         }
     }
 
-    /// Walk every snapshot, copy its live range into a freshly-packed
-    /// arena, and rewrite snapshot pointers. O(live) — runs at most
-    /// once per ~N writes given `COMPACT_RATIO = 2`.
+    /// Repack the three arenas **in place**, sliding each live
+    /// snapshot's ranges down over released garbage and truncating the
+    /// dead tail. O(live) `copy_within`, no allocation — `truncate`
+    /// keeps the `Vec` capacities. Runs at most once per ~N writes given
+    /// `COMPACT_RATIO = 2`.
+    ///
+    /// Snapshots are processed in ascending `nodes.start` order, so for
+    /// every arena the cumulative live length of earlier snapshots is
+    /// `<=` the current snapshot's source start — each `copy_within`
+    /// writes toward the front (`dst <= src`), never clobbering an
+    /// unmoved snapshot. The three arenas share one order: `write_subtree`
+    /// appends to (and rewrites in place) all three in lockstep, and this
+    /// compaction preserves that order, so sorting by `nodes.start` also
+    /// orders `hugs` and `text_shapes`.
+    ///
+    /// (The earlier implementation rebuilt all arenas with
+    /// `Vec::with_capacity`; on a resize workload this fires ~every frame
+    /// — `LayoutEngine::sweep_removed` was the #2 allocator in
+    /// `alloc_resize`'s dhat dump — so the fresh-`Vec` rebuild was pure
+    /// per-frame churn. See the matching fix in `CascadeCache::compact`.)
     fn compact(&mut self) {
-        let mut new_nodes = NodeArenas::with_capacity(self.nodes.live);
-        let mut new_hugs: Vec<f32> = Vec::with_capacity(self.hugs.live);
-        let mut new_text_shapes: Vec<ShapedText> = Vec::with_capacity(self.text_shapes_arena.live);
-        for snap in self.snapshots.values_mut() {
-            snap.nodes.start = new_nodes.extend_from_within(&self.nodes, snap.nodes.range());
-            let hugs = snap.hugs.range();
-            snap.hugs.start = new_hugs.len() as u32;
-            new_hugs.extend_from_slice(&self.hugs.items[hugs]);
-            let text = snap.text_shapes.range();
-            snap.text_shapes.start = new_text_shapes.len() as u32;
-            new_text_shapes.extend_from_slice(&self.text_shapes_arena.items[text]);
+        let mut scratch = std::mem::take(&mut self.compact_scratch);
+        scratch.clear();
+        scratch.extend(self.snapshots.iter().map(|(wid, snap)| CompactEntry {
+            wid: *wid,
+            nodes: snap.nodes,
+            hugs: snap.hugs,
+            text: snap.text_shapes,
+        }));
+        scratch.sort_unstable_by_key(|e| e.nodes.start);
+
+        let mut node_w = 0u32;
+        let mut hug_w = 0u32;
+        let mut text_w = 0u32;
+        for e in scratch.iter() {
+            if e.nodes.start != node_w {
+                let src = e.nodes.range();
+                let dst = node_w as usize;
+                self.nodes.desired.copy_within(src.clone(), dst);
+                self.nodes.text_spans.copy_within(src, dst);
+            }
+            if e.hugs.start != hug_w {
+                self.hugs.items.copy_within(e.hugs.range(), hug_w as usize);
+            }
+            if e.text.start != text_w {
+                self.text_shapes_arena
+                    .items
+                    .copy_within(e.text.range(), text_w as usize);
+            }
+            let snap = self
+                .snapshots
+                .get_mut(&e.wid)
+                .expect("snapshot present: scratch built from snapshots this call");
+            snap.nodes = Span::new(node_w, e.nodes.len);
+            snap.hugs = Span::new(hug_w, e.hugs.len);
+            snap.text_shapes = Span::new(text_w, e.text.len);
+            node_w += e.nodes.len;
+            hug_w += e.hugs.len;
+            text_w += e.text.len;
         }
-        new_nodes.live = self.nodes.live;
-        self.nodes = new_nodes;
-        self.hugs.items = new_hugs;
-        self.text_shapes_arena.items = new_text_shapes;
+
+        // `live` is unchanged — only the garbage tail is dropped.
+        self.nodes.desired.truncate(node_w as usize);
+        self.nodes.text_spans.truncate(node_w as usize);
+        self.hugs.items.truncate(hug_w as usize);
+        self.text_shapes_arena.items.truncate(text_w as usize);
+
+        self.compact_scratch = scratch;
     }
 }
 
