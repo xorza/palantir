@@ -315,9 +315,13 @@ impl<T: Animatable> AnimMapTyped<T> {
         match spec {
             AnimSpec::Duration { secs, ease } => {
                 row.elapsed += dt;
-                let t = (row.elapsed / secs).clamp(0.0, 1.0);
-                row.current = T::lerp(row.segment_start.clone(), row.target.clone(), ease.apply(t));
-                let settled = t >= 1.0;
+                let progress = row.elapsed / secs;
+                row.current = T::lerp(
+                    row.segment_start.clone(),
+                    row.target.clone(),
+                    ease.apply(progress),
+                );
+                let settled = progress >= 1.0;
                 if settled {
                     row.current = row.target.clone();
                 }

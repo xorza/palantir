@@ -1,6 +1,6 @@
 use super::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    RenderCmdBuffer,
+    GpuFillFields, RenderCmdBuffer,
 };
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
@@ -15,7 +15,6 @@ use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
-use crate::primitives::paint::LutRow;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
@@ -208,7 +207,7 @@ fn emit_one_shape(
             // Two paths share the same `DrawText` payload:
             // - `local_rect: None` → encoder owns positioning. Place
             //   the shaped bbox inside the owner's padded inner rect
-            //   via `align_text_in`.
+            //   via `text_in_rect`.
             // - `local_rect: Some(origin)` → widget owns positioning.
             //   Origin is `owner.min + origin`; bbox size is the
             //   shaped measurement. `align`'s placement axes are
@@ -300,11 +299,14 @@ fn emit_one_shape(
             content_hash: _,
         } => {
             // Curves are owner-local; composer adds `origin` + active
-            // transform before scaling to physical px.
-            let (color, fill_kind, fill_lut_row) = match shape_brush_source(ctx.gradients, *fill) {
-                BrushSource::Solid(c) => (c, FillKind::SOLID, LutRow::FALLBACK),
-                BrushSource::Gradient(g) => (ColorF16::TRANSPARENT, g.kind, g.row),
-            };
+            // transform before scaling to physical px. Curves carry no
+            // gradient axis, so `axis` is dropped.
+            let GpuFillFields {
+                color,
+                kind: fill_kind,
+                lut_row: fill_lut_row,
+                ..
+            } = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
             out.draw_curve(DrawCurvePayload {
                 bbox: *bbox,
                 origin: owner_rect.min,

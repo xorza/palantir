@@ -16,7 +16,7 @@
 //!
 //! `NodeArenas` owns one shared `live` counter for its two columns;
 //! each variable-length `LiveArena` tracks its own. Compaction
-//! constants live in `src/common/cache_arena.rs`.
+//! constants live in `src/common/live_arena.rs`.
 //!
 //! Compaction kicks in when an arena holds more than `live ×
 //! COMPACT_RATIO` items. It walks every snapshot, rewrites their
@@ -27,7 +27,7 @@
 //! and releases its arena ranges; the slots stay as garbage until the
 //! next compact.
 
-use crate::common::cache_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
+use crate::common::live_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
 use crate::forest::rollups::NodeHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::layout::ShapedText;

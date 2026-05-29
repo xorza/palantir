@@ -81,14 +81,9 @@ impl Size {
     /// negative from degenerate construction). The shared "paints no
     /// pixels" predicate — call from any gate that wants to drop
     /// zero-extent geometry before emit / cache work runs.
-    ///
-    /// The negated-comparison form (`!(x > EPS)`) catches NaN
-    /// (a forward compare against NaN is always false → negated is
-    /// true) where `x <= EPS` wouldn't.
     #[inline]
-    #[allow(clippy::neg_cmp_op_on_partial_ord)]
     pub const fn is_paint_empty(self) -> bool {
-        !(self.w > super::approx::EPS) || !(self.h > super::approx::EPS)
+        super::approx::noop_f32(self.w) || super::approx::noop_f32(self.h)
     }
 
     pub const fn min(self, other: Self) -> Self {

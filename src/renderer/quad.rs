@@ -42,7 +42,7 @@ const _: () = assert!(
     "SPREAD_REFLECT"
 );
 
-/// Per-instance quad data (84 B). Field types are the matching
+/// Per-instance quad data (60 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
 /// `vertex_attr_array` in `QuadPipeline::new` (in the backend) for the
 /// explicit attribute offsets, which is the only thing constraining
@@ -55,8 +55,8 @@ const _: () = assert!(
 /// **Linear-gradient fill:** `fill_kind` low byte = 1, bits 8..16 carry
 /// the `Spread` enum, `fill_lut_row` indexes the gradient atlas texture
 /// row, `fill_axis = (dir_x, dir_y, t0, t1)` gives the object-space
-/// projection axis and parametric range. `fill: Color` is unused (set
-/// to zero by the composer).
+/// projection axis and parametric range. `fill` is unused (set to zero
+/// by the composer).
 ///
 /// **Stroke** is stored as inline `stroke_color` + `stroke_width`
 /// fields rather than an embedded `Stroke` so the user-facing `Stroke`
@@ -67,11 +67,10 @@ const _: () = assert!(
 #[derive(Copy, Clone, Debug, Default, Pod, Zeroable)]
 pub(crate) struct Quad {
     pub(crate) rect: Rect,
-    /// sRGB-encoded fill (4 B). GPU vertex attribute is
-    /// `Unorm8x4` — the shader normalizes u8/255 → 0..1 and decodes
-    /// sRGB→linear via the same cubic fit used CPU-side
-    /// (`Color::srgb_to_linear`). Saves 12 B per Quad instance on
-    /// every GPU upload vs. `Color` (16 B).
+    /// Linear-RGB fill, packed as four `f16` (8 B). Straight-alpha per
+    /// the colour-pipeline contract — the shader premultiplies at
+    /// output. Halves the 16 B a full `Color` would cost per instance
+    /// while keeping enough precision for linear blending.
     pub(crate) fill: ColorF16,
     pub(crate) corners: Corners,
     pub(crate) stroke_color: ColorF16,

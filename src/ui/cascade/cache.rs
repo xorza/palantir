@@ -19,7 +19,7 @@
 //! slots garbage in place and `sweep_removed` then repacks via
 //! `compact` once garbage dominates (same trigger as `MeasureCache`).
 
-use crate::common::cache_arena::LiveArena;
+use crate::common::live_arena::LiveArena;
 use crate::forest::rollups::NodeHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::primitives::rect::Rect;

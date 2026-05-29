@@ -13,7 +13,7 @@ use crate::forest::shapes::record::{
     ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
-use crate::primitives::bezier::{cubic_bezier_bbox, quadratic_to_cubic};
+use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
 use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::interned_str::InternedStr;
@@ -287,9 +287,9 @@ impl FrameArena {
     ) -> ShapeRecord {
         assert_curve_brush(&brush);
         let [p0, c, p2] = ctrl;
-        let (q1, q2) = quadratic_to_cubic(p0, c, p2);
+        let cubic = quadratic_to_cubic(p0, c, p2);
         let lowered = self.0.borrow_mut().lower_brush_inner(brush, atlas);
-        lower_curve_inner([p0, q1, q2, p2], width, lowered, cap, 1)
+        lower_curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap, 1)
     }
 }
 
@@ -327,7 +327,7 @@ fn lower_curve_inner(
     use crate::renderer::stroke_tessellate::HALF_FRINGE;
     let [p0, p1, p2, p3] = ctrl;
 
-    let (lo, hi) = cubic_bezier_bbox(p0, p1, p2, p3);
+    let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
     let half = (width * 0.5).max(0.0);
     // Round/Square caps extend the strip by `half_w` past each
     // endpoint along the local tangent. Since the bbox is axis-

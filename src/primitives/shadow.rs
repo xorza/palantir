@@ -1,4 +1,5 @@
 use crate::primitives::color::Color;
+use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 
@@ -57,10 +58,10 @@ impl std::hash::Hash for Shadow {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.color.hash(state);
-        state.write_u32(self.offset.x.to_bits());
-        state.write_u32(self.offset.y.to_bits());
-        state.write_u32(self.blur.to_bits());
-        state.write_u32(self.spread.to_bits());
+        state.write_u32(canon_bits(self.offset.x));
+        state.write_u32(canon_bits(self.offset.y));
+        state.write_u32(canon_bits(self.blur));
+        state.write_u32(canon_bits(self.spread));
         state.write_u8(self.inset as u8);
     }
 }

@@ -110,31 +110,6 @@ impl DynamicBuffer {
         ctx.write(&self.buffer, 0, bytes);
     }
 
-    /// Generic upload path for callers that need more than one belt
-    /// write per logical upload (e.g. the mesh index buffer's
-    /// odd-length padded path schedules two copies to honor wgpu's
-    /// 4-byte copy alignment). The `write` closure receives
-    /// `(&dst_buffer, &mut ctx)`. Always takes the belt path —
-    /// the mapped-at-creation fast path can't run a caller-supplied
-    /// multi-write closure without leaking the mapped state.
-    pub(crate) fn upload_with<F>(&mut self, ctx: &mut GpuCtx<'_>, item_count: usize, write: F)
-    where
-        F: FnOnce(&wgpu::Buffer, &mut GpuCtx<'_>),
-    {
-        self.grow(ctx.device, item_count);
-        write(&self.buffer, ctx);
-    }
-
-    /// Grow to fit `needed_len` items, rounding up to the next power
-    /// of two (floored at `min_capacity`). `mapped_at_creation: false`
-    /// — the caller writes via the belt.
-    fn grow(&mut self, device: &wgpu::Device, needed_len: usize) {
-        if needed_len <= self.capacity {
-            return;
-        }
-        self.realloc(device, needed_len, false);
-    }
-
     /// Grow to fit `needed_len` items with the new buffer
     /// `mapped_at_creation: true`. Returns `true` when the buffer was
     /// recreated (caller must write into the mapped range then call

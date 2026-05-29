@@ -15,9 +15,9 @@
 //! - [`Shortcut::matches`] compares the modifier set *exactly*: Ctrl+A
 //!   does NOT match Ctrl+Shift+A. `Char` keys compare ignore-case
 //!   because [`Key::Char`] arrives post-shift-layout.
-//! - [`Shortcut::label`] returns `Cow::Borrowed` from a const table
-//!   for the hot set (`ctrl[+shift] + ASCII letter`). Rare combos
-//!   allocate once via `Display`.
+//! - [`Shortcut::label`] formats a platform-native string via
+//!   `Display`. Labels render once per menu-open, so the allocation
+//!   is cold.
 //!
 //! [`KeyboardEvent::Down`]: crate::input::keyboard::KeyboardEvent::Down
 
@@ -29,6 +29,12 @@ use std::fmt;
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
 /// key — Cmd on macOS, Ctrl on Win/Linux (see [`Mods::from_event`]);
 /// `shift` and `alt` are literal.
+///
+/// Distinct from event-state [`Modifiers`] on purpose: that type also
+/// carries `mac_ctrl` (the raw macOS Control), which shortcut matching
+/// must *ignore*. Comparing a `Modifiers` directly would let a held
+/// macOS Control break an otherwise-matching chord, so [`Mods`] is the
+/// 3-field projection the matcher compares against.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash)]
 pub struct Mods {
     pub ctrl: bool,
@@ -141,13 +147,10 @@ impl Shortcut {
 
     /// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
     /// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier
-    /// renders as ⌘ on macOS (it *is* Cmd there). The `ctrl[+shift] +
-    /// ASCII letter` hot set is a borrowed const; rarer combinations
-    /// format via [`Display`] and allocate once.
+    /// renders as ⌘ on macOS (it *is* Cmd there). Formats via
+    /// [`Display`] — labels render once per menu-open, not per frame,
+    /// so the allocation is cold.
     pub fn label(self) -> Cow<'static, str> {
-        if let Some(s) = label_const(self) {
-            return Cow::Borrowed(s);
-        }
         Cow::Owned(self.to_string())
     }
 }
@@ -227,153 +230,6 @@ fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
     }
 }
 
-/// Const-table fast path for `ctrl[+shift] + ASCII letter` — the
-/// shortcuts menus actually display. Returns `None` for anything
-/// outside this set; the slow path falls back to `Display`.
-const fn label_const(s: Shortcut) -> Option<&'static str> {
-    let Key::Char(c) = s.key else { return None };
-    if !c.is_ascii_alphabetic() {
-        return None;
-    }
-    let upper = c.to_ascii_uppercase();
-    // Two tables indexed by ASCII letter, one per common mod set.
-    if matches!(s.mods, Mods::CTRL) {
-        return Some(ctrl_label(upper));
-    }
-    if matches!(s.mods, Mods::CTRL_SHIFT) {
-        return Some(ctrl_shift_label(upper));
-    }
-    None
-}
-
-const fn ctrl_label(c: char) -> &'static str {
-    if matches!(PLATFORM, Platform::Mac) {
-        match c {
-            'A' => "⌘A",
-            'B' => "⌘B",
-            'C' => "⌘C",
-            'D' => "⌘D",
-            'E' => "⌘E",
-            'F' => "⌘F",
-            'G' => "⌘G",
-            'H' => "⌘H",
-            'I' => "⌘I",
-            'J' => "⌘J",
-            'K' => "⌘K",
-            'L' => "⌘L",
-            'M' => "⌘M",
-            'N' => "⌘N",
-            'O' => "⌘O",
-            'P' => "⌘P",
-            'Q' => "⌘Q",
-            'R' => "⌘R",
-            'S' => "⌘S",
-            'T' => "⌘T",
-            'U' => "⌘U",
-            'V' => "⌘V",
-            'W' => "⌘W",
-            'X' => "⌘X",
-            'Y' => "⌘Y",
-            'Z' => "⌘Z",
-            _ => "?",
-        }
-    } else {
-        match c {
-            'A' => "Ctrl+A",
-            'B' => "Ctrl+B",
-            'C' => "Ctrl+C",
-            'D' => "Ctrl+D",
-            'E' => "Ctrl+E",
-            'F' => "Ctrl+F",
-            'G' => "Ctrl+G",
-            'H' => "Ctrl+H",
-            'I' => "Ctrl+I",
-            'J' => "Ctrl+J",
-            'K' => "Ctrl+K",
-            'L' => "Ctrl+L",
-            'M' => "Ctrl+M",
-            'N' => "Ctrl+N",
-            'O' => "Ctrl+O",
-            'P' => "Ctrl+P",
-            'Q' => "Ctrl+Q",
-            'R' => "Ctrl+R",
-            'S' => "Ctrl+S",
-            'T' => "Ctrl+T",
-            'U' => "Ctrl+U",
-            'V' => "Ctrl+V",
-            'W' => "Ctrl+W",
-            'X' => "Ctrl+X",
-            'Y' => "Ctrl+Y",
-            'Z' => "Ctrl+Z",
-            _ => "?",
-        }
-    }
-}
-
-const fn ctrl_shift_label(c: char) -> &'static str {
-    if matches!(PLATFORM, Platform::Mac) {
-        match c {
-            'A' => "⇧⌘A",
-            'B' => "⇧⌘B",
-            'C' => "⇧⌘C",
-            'D' => "⇧⌘D",
-            'E' => "⇧⌘E",
-            'F' => "⇧⌘F",
-            'G' => "⇧⌘G",
-            'H' => "⇧⌘H",
-            'I' => "⇧⌘I",
-            'J' => "⇧⌘J",
-            'K' => "⇧⌘K",
-            'L' => "⇧⌘L",
-            'M' => "⇧⌘M",
-            'N' => "⇧⌘N",
-            'O' => "⇧⌘O",
-            'P' => "⇧⌘P",
-            'Q' => "⇧⌘Q",
-            'R' => "⇧⌘R",
-            'S' => "⇧⌘S",
-            'T' => "⇧⌘T",
-            'U' => "⇧⌘U",
-            'V' => "⇧⌘V",
-            'W' => "⇧⌘W",
-            'X' => "⇧⌘X",
-            'Y' => "⇧⌘Y",
-            'Z' => "⇧⌘Z",
-            _ => "?",
-        }
-    } else {
-        match c {
-            'A' => "Ctrl+Shift+A",
-            'B' => "Ctrl+Shift+B",
-            'C' => "Ctrl+Shift+C",
-            'D' => "Ctrl+Shift+D",
-            'E' => "Ctrl+Shift+E",
-            'F' => "Ctrl+Shift+F",
-            'G' => "Ctrl+Shift+G",
-            'H' => "Ctrl+Shift+H",
-            'I' => "Ctrl+Shift+I",
-            'J' => "Ctrl+Shift+J",
-            'K' => "Ctrl+Shift+K",
-            'L' => "Ctrl+Shift+L",
-            'M' => "Ctrl+Shift+M",
-            'N' => "Ctrl+Shift+N",
-            'O' => "Ctrl+Shift+O",
-            'P' => "Ctrl+Shift+P",
-            'Q' => "Ctrl+Shift+Q",
-            'R' => "Ctrl+Shift+R",
-            'S' => "Ctrl+Shift+S",
-            'T' => "Ctrl+Shift+T",
-            'U' => "Ctrl+Shift+U",
-            'V' => "Ctrl+Shift+V",
-            'W' => "Ctrl+Shift+W",
-            'X' => "Ctrl+Shift+X",
-            'Y' => "Ctrl+Shift+Y",
-            'Z' => "Ctrl+Shift+Z",
-            _ => "?",
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -439,9 +295,8 @@ mod tests {
     }
 
     #[test]
-    fn label_hot_path_borrowed() {
+    fn label_ctrl_letter() {
         let s = Shortcut::ctrl('C').label();
-        assert!(matches!(s, Cow::Borrowed(_)));
         let expected = match PLATFORM {
             Platform::Mac => "⌘C",
             _ => "Ctrl+C",
@@ -450,9 +305,8 @@ mod tests {
     }
 
     #[test]
-    fn label_shift_combo_borrowed() {
+    fn label_ctrl_shift_letter() {
         let s = Shortcut::ctrl_shift('K').label();
-        assert!(matches!(s, Cow::Borrowed(_)));
         let expected = match PLATFORM {
             Platform::Mac => "⇧⌘K",
             _ => "Ctrl+Shift+K",
@@ -461,9 +315,8 @@ mod tests {
     }
 
     #[test]
-    fn label_non_letter_key_falls_back_to_display() {
+    fn label_non_letter_key() {
         let s = Shortcut::new(Mods::CTRL, Key::ArrowLeft).label();
-        assert!(matches!(s, Cow::Owned(_)));
         let expected = match PLATFORM {
             Platform::Mac => "⌘←",
             _ => "Ctrl+←",

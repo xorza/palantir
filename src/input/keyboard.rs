@@ -128,7 +128,7 @@ impl TextChunk {
     }
 
     pub fn as_str(&self) -> &str {
-        // SAFETY: `from_str` only stores valid UTF-8 from a `&str`,
+        // SAFETY: `new` only stores valid UTF-8 from a `&str`,
         // and `len` always reflects the byte count written.
         unsafe { std::str::from_utf8_unchecked(&self.bytes[..self.len as usize]) }
     }

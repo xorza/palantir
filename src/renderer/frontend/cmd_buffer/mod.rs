@@ -73,6 +73,38 @@ impl BrushSource {
             Self::Gradient(_) => false,
         }
     }
+
+    /// Lower to the GPU fill fields shared by every draw-rect/curve
+    /// payload: a `Solid` carries its colour with the `SOLID` kind and
+    /// the magenta fallback row; a `Gradient` zeroes the colour (the
+    /// atlas row supplies it) and forwards kind/row/axis.
+    #[inline]
+    pub(crate) fn to_gpu_fields(self) -> GpuFillFields {
+        match self {
+            Self::Solid(c) => GpuFillFields {
+                color: c,
+                kind: FillKind::SOLID,
+                lut_row: LutRow::FALLBACK,
+                axis: FillAxis::ZERO,
+            },
+            Self::Gradient(g) => GpuFillFields {
+                color: ColorF16::TRANSPARENT,
+                kind: g.kind,
+                lut_row: g.row,
+                axis: g.axis,
+            },
+        }
+    }
+}
+
+/// GPU fill fields a [`BrushSource`] lowers to. Curve payloads carry no
+/// `axis`, so they read only the first three.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GpuFillFields {
+    pub(crate) color: ColorF16,
+    pub(crate) kind: FillKind,
+    pub(crate) lut_row: LutRow,
+    pub(crate) axis: FillAxis,
 }
 
 #[repr(u8)]
@@ -144,8 +176,8 @@ pub(crate) struct PushClipPayload {
 pub(crate) struct DrawRectPayload {
     pub(crate) rect: Rect,
     pub(crate) corners: Corners,
-    /// sRGB-encoded fill. Zeroed for gradients; the atlas row at
-    /// `fill_lut_row` supplies the colour in that case.
+    /// Linear-RGB fill (straight alpha). Zeroed for gradients; the
+    /// atlas row at `fill_lut_row` supplies the colour in that case.
     pub(crate) fill: ColorF16,
     pub(crate) stroke_color: ColorF16,
     pub(crate) stroke_width: f32,
@@ -418,10 +450,12 @@ impl RenderCmdBuffer {
         }
 
         // Stroke stays solid-only — gradient strokes are a non-goal.
-        let (fill_color, fill_kind, fill_lut_row, fill_axis) = match fill {
-            BrushSource::Solid(c) => (c, FillKind::SOLID, LutRow::FALLBACK, FillAxis::ZERO),
-            BrushSource::Gradient(g) => (ColorF16::TRANSPARENT, g.kind, g.row, g.axis),
-        };
+        let GpuFillFields {
+            color: fill_color,
+            kind: fill_kind,
+            lut_row: fill_lut_row,
+            axis: fill_axis,
+        } = fill.to_gpu_fields();
 
         let (stroke_color, stroke_width) = if stroke.is_noop() {
             (ColorF16::TRANSPARENT, 0.0)

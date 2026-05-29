@@ -351,7 +351,7 @@ fn arena_invariant_holds_under_fragmentation() {
     // Compaction is triggered lazily inside `write_subtree`; we don't
     // assert *which* write fired it, only that the invariant holds at
     // the end.
-    use crate::common::cache_arena::COMPACT_RATIO;
+    use crate::common::live_arena::COMPACT_RATIO;
     const N_FIRST: usize = 256;
     const N_INNER: usize = 68;
     let mut ui = Ui::for_test();
@@ -412,7 +412,7 @@ fn cache_hits_remain_valid_after_compaction() {
     // widget which survives compaction still produces correct
     // `desired` data on subsequent cache hits — i.e. the snapshot's
     // new arena range still contains the right bytes.
-    use crate::common::cache_arena::COMPACT_RATIO;
+    use crate::common::live_arena::COMPACT_RATIO;
     const N_FIRST: usize = 256;
     const N_INNER: usize = 68;
     let mut ui = Ui::for_test();
@@ -676,7 +676,7 @@ fn cache_handles_widget_reappearance_after_eviction() {
 // `COMPACT_FLOOR > 0` left small apps without reclamation forever
 // (live never crossed the floor under thrash).
 //
-// `COMPACT_FLOOR` is now `0` (see `src/common/cache_arena.rs`); these
+// `COMPACT_FLOOR` is now `0` (see `src/common/live_arena.rs`); these
 // two probes characterize the resulting bounded behavior for both
 // small and large workloads.
 // ---------------------------------------------------------------------------

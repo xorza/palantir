@@ -6,16 +6,31 @@
 
 use glam::Vec2;
 
+/// The two inner control points of a cubic Bezier.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CubicControls {
+    pub(crate) c1: Vec2,
+    pub(crate) c2: Vec2,
+}
+
+/// Axis-aligned bounds of a curve trace.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct CurveBounds {
+    pub(crate) lo: Vec2,
+    pub(crate) hi: Vec2,
+}
+
 /// Promote a quadratic Bezier `(p0, c, p2)` to a cubic with the same
 /// curve trace. Standard reparameterization: lift the inner two control
 /// points to `p0 + 2/3·(c - p0)` and `p2 + 2/3·(c - p2)`. Exact, not an
 /// approximation — every t in [0,1] evaluates to the same point on both
 /// forms.
 #[inline]
-pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> (Vec2, Vec2) {
-    let q1 = p0 + (c - p0) * (2.0 / 3.0);
-    let q2 = p2 + (c - p2) * (2.0 / 3.0);
-    (q1, q2)
+pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> CubicControls {
+    CubicControls {
+        c1: p0 + (c - p0) * (2.0 / 3.0),
+        c2: p2 + (c - p2) * (2.0 / 3.0),
+    }
 }
 
 /// Tight axis-aligned bbox of the cubic Bezier curve trace (not the
@@ -27,7 +42,7 @@ pub(crate) fn quadratic_to_cubic(p0: Vec2, c: Vec2, p2: Vec2) -> (Vec2, Vec2) {
 /// `B'(t)/3 = (p1 - p0) + 2t(p0 - 2p1 + p2) + t²(-p0 + 3p1 - 3p2 + p3)`,
 /// so per axis: `a = -p0 + 3p1 - 3p2 + p3`, `b = 2(p0 - 2p1 + p2)`,
 /// `c = p1 - p0`.
-pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> (Vec2, Vec2) {
+pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> CurveBounds {
     let mut lo = p0.min(p3);
     let mut hi = p0.max(p3);
     for axis in 0..2 {
@@ -52,7 +67,7 @@ pub(crate) fn cubic_bezier_bbox(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> (Vec2
             }
         }
     }
-    (lo, hi)
+    CurveBounds { lo, hi }
 }
 
 /// Real roots of `a·t² + b·t + c = 0`. Returns `[NaN, NaN]` when there
@@ -82,7 +97,7 @@ mod tests {
         let p0 = Vec2::new(0.0, 0.0);
         let c = Vec2::new(50.0, 100.0);
         let p2 = Vec2::new(100.0, 0.0);
-        let (q1, q2) = quadratic_to_cubic(p0, c, p2);
+        let CubicControls { c1: q1, c2: q2 } = quadratic_to_cubic(p0, c, p2);
         // q1 = p0 + 2/3·(c - p0) = (100/3, 200/3) ≈ (33.33, 66.67).
         // q2 = p2 + 2/3·(c - p2) = (200/3, 200/3) ≈ (66.67, 66.67).
         assert!((q1 - Vec2::new(100.0 / 3.0, 200.0 / 3.0)).length() < 1.0e-4);
@@ -97,7 +112,7 @@ mod tests {
         let p1 = Vec2::new(33.0, 0.0);
         let p2 = Vec2::new(66.0, 0.0);
         let p3 = Vec2::new(100.0, 0.0);
-        let (lo, hi) = cubic_bezier_bbox(p0, p1, p2, p3);
+        let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
         assert!((lo - Vec2::new(0.0, 0.0)).length() < 1.0e-4);
         assert!((hi - Vec2::new(100.0, 0.0)).length() < 1.0e-4);
     }
@@ -111,7 +126,7 @@ mod tests {
         let p1 = Vec2::new(33.0, 100.0);
         let p2 = Vec2::new(66.0, -100.0);
         let p3 = Vec2::new(100.0, 0.0);
-        let (lo, hi) = cubic_bezier_bbox(p0, p1, p2, p3);
+        let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
         // Hull would give y ∈ [-100, 100]; tight bbox is ±25·√(1/3)·3 ≈ ±25/√3·... .
         // Don't pin the exact analytic value — just assert "well inside the hull".
         assert!(lo.y > -50.0, "lo.y = {}", lo.y);
@@ -131,7 +146,7 @@ mod tests {
         let p1 = Vec2::new(-30.0, 80.0);
         let p2 = Vec2::new(120.0, -40.0);
         let p3 = Vec2::new(90.0, 50.0);
-        let (lo, hi) = cubic_bezier_bbox(p0, p1, p2, p3);
+        let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
         for i in 0..=100 {
             let t = i as f32 / 100.0;
             let u = 1.0 - t;
@@ -157,7 +172,7 @@ mod tests {
         let p0 = Vec2::new(1.0, 2.0);
         let c = Vec2::new(10.0, 30.0);
         let p2 = Vec2::new(-5.0, 7.0);
-        let (q1, q2) = quadratic_to_cubic(p0, c, p2);
+        let CubicControls { c1: q1, c2: q2 } = quadratic_to_cubic(p0, c, p2);
         let q_mid = 0.25 * p0 + 0.5 * c + 0.25 * p2;
         let c_mid = 0.125 * p0 + 0.375 * q1 + 0.375 * q2 + 0.125 * p2;
         assert!((q_mid - c_mid).length() < 1.0e-5);

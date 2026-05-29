@@ -24,6 +24,9 @@ pub(crate) struct MeshPipeline {
     stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
+    /// Retained scratch for the odd-length index pad-to-even path; one
+    /// upload instead of two belt writes. Capacity retained across frames.
+    index_scratch: Vec<u16>,
 }
 
 impl MeshPipeline {
@@ -49,6 +52,7 @@ impl MeshPipeline {
             stencil_test: None,
             shader,
             color_format: format,
+            index_scratch: Vec::new(),
         }
     }
 
@@ -138,21 +142,18 @@ impl MeshPipeline {
         // The index buffer's binding stride is 2 bytes (u16). wgpu
         // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
         // so pad the upload to an even count when the index list is
-        // odd-length: write the even prefix + a single padded tail u16.
+        // odd-length: copy into a retained scratch with a trailing 0 and
+        // do a single upload.
         let padded = (indices.len() + 1) & !1;
         if indices.len() == padded {
             self.index_buffer
                 .upload(ctx, bytemuck::cast_slice(indices), padded);
         } else {
-            self.index_buffer.upload_with(ctx, padded, |buf, ctx| {
-                ctx.write(buf, 0, bytemuck::cast_slice(&indices[..indices.len() - 1]));
-                let tail = [indices[indices.len() - 1], 0u16];
-                ctx.write(
-                    buf,
-                    ((indices.len() - 1) * std::mem::size_of::<u16>()) as u64,
-                    bytemuck::cast_slice(&tail),
-                );
-            });
+            self.index_scratch.clear();
+            self.index_scratch.extend_from_slice(indices);
+            self.index_scratch.push(0);
+            self.index_buffer
+                .upload(ctx, bytemuck::cast_slice(&self.index_scratch), padded);
         }
     }
 

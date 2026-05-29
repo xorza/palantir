@@ -7,7 +7,7 @@ use crate::widgets::Response;
 /// plus an optional `Sense`. Used directly for dividers / hit-areas /
 /// bg swatches, and as the rendering primitive inside `Button`.
 /// Chrome + clip behavior come from
-/// [`Configure::background`] / [`Configure::clip_rect`] /
+/// [`Self::background`] / [`Configure::clip_rect`] /
 /// [`Configure::clip_rounded`].
 pub struct Frame {
     element: Element,
