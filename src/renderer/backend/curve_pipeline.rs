@@ -14,7 +14,9 @@
 
 use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
+use super::pipeline_utils::{
+    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
+};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::CurveInstance;
 use crate::shape::LineCap;
@@ -34,9 +36,8 @@ const _: () = {
 };
 
 pub(crate) struct CurvePipeline {
-    pipeline: wgpu::RenderPipeline,
+    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
 }
@@ -60,47 +61,57 @@ impl CurvePipeline {
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        let pipeline = Self::build_color_pipeline(device, &shader, gradient_bgl, format);
+        let pipeline = Self::build_variant(device, &shader, gradient_bgl, format, false);
 
         let instance_buffer =
             DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64, 64);
 
         Self {
-            pipeline,
+            stencil: StencilVariant::new(pipeline),
             instance_buffer,
-            stencil_test: None,
             shader,
             color_format: format,
         }
     }
 
-    /// Build the no-stencil color pipeline against `format`. Caller
-    /// passes the shared `gradient_bgl` (owned by `GradientResources`)
-    /// so the layout matches; the instance buffer is format-independent.
-    /// Shared by [`Self::new`] and [`Self::rebuild_for_format`].
-    fn build_color_pipeline(
+    /// Build the color pipeline against `format`. Caller passes the
+    /// shared `gradient_bgl` (owned by `GradientResources`) so the layout
+    /// matches; the instance buffer is format-independent. `stencil`
+    /// selects the rounded-clip variant (adds the shared
+    /// `stencil_test_state`). Shared by [`Self::new`],
+    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`].
+    fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
+        color_format: wgpu::TextureFormat,
+        stencil: bool,
     ) -> wgpu::RenderPipeline {
+        let (label, layout_label, depth_stencil) = if stencil {
+            (
+                "palantir.curve.pipeline.stencil_test",
+                "palantir.curve.pl.stencil",
+                Some(super::stencil::stencil_test_state()),
+            )
+        } else {
+            ("palantir.curve.pipeline", "palantir.curve.pl", None)
+        };
         // Gradient at group 0 — viewport rides the shared immediate
         // region, no bind-group slot needed for it.
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.curve.pl", &[Some(gradient_bgl)]);
+        let layout = build_pipeline_layout(device, layout_label, &[Some(gradient_bgl)]);
         build_pipeline(
             device,
             PipelineRecipe {
-                label: "palantir.curve.pipeline",
+                label,
                 shader,
-                layout: &pipeline_layout,
+                layout: &layout,
                 vertex_buffers: &[curve_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: format,
+                color_format,
                 fragment_entry: "fs",
                 color_writes: wgpu::ColorWrites::ALL,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
+                depth_stencil,
             },
         )
     }
@@ -115,9 +126,14 @@ impl CurvePipeline {
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) {
-        self.pipeline = Self::build_color_pipeline(device, &self.shader, gradient_bgl, format);
+        self.stencil.set_base(Self::build_variant(
+            device,
+            &self.shader,
+            gradient_bgl,
+            format,
+            false,
+        ));
         self.color_format = format;
-        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
@@ -130,26 +146,9 @@ impl CurvePipeline {
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
     ) {
-        if self.stencil_test.is_some() {
-            return;
-        }
-        let layout =
-            build_pipeline_layout(device, "palantir.curve.pl.stencil", &[Some(gradient_bgl)]);
-        self.stencil_test = Some(build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.curve.pipeline.stencil_test",
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers: &[curve_instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: self.color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: Some(super::stencil::stencil_test_state()),
-            },
-        ));
+        let (shader, color_format) = (&self.shader, self.color_format);
+        self.stencil
+            .ensure(|| Self::build_variant(device, shader, gradient_bgl, color_format, true));
     }
 
     #[profiling::function]
@@ -171,12 +170,7 @@ impl CurvePipeline {
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        if use_stencil {
-            let p = self.stencil_test.as_ref().expect("ensure_stencil first");
-            pass.set_pipeline(p);
-        } else {
-            pass.set_pipeline(&self.pipeline);
-        }
+        pass.set_pipeline(self.stencil.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }

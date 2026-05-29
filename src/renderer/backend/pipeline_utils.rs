@@ -60,6 +60,51 @@ pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
     })
 }
 
+/// A color render pipeline paired with its lazily-built stencil-test
+/// twin. The `base` runs on plain frames; `test` (a copy of the same
+/// recipe plus [`super::stencil::stencil_test_state`]) is built on the
+/// first rounded-clip frame via [`Self::ensure`] and runs in the
+/// stencil-attached pass. Shared by the mesh / image / curve pipelines
+/// so the "select base-vs-test", "build-once", and "drop the twin on
+/// format rebuild" logic can't drift across them.
+#[derive(Debug)]
+pub(super) struct StencilVariant {
+    base: wgpu::RenderPipeline,
+    test: Option<wgpu::RenderPipeline>,
+}
+
+impl StencilVariant {
+    pub(super) fn new(base: wgpu::RenderPipeline) -> Self {
+        Self { base, test: None }
+    }
+
+    /// The pipeline to bind: the stencil-test twin in a rounded-clip
+    /// pass, otherwise the base. Panics if `use_stencil` is set but
+    /// [`Self::ensure`] hasn't run this format generation.
+    pub(super) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
+        if use_stencil {
+            self.test.as_ref().expect("ensure_stencil first")
+        } else {
+            &self.base
+        }
+    }
+
+    /// Build the stencil-test twin if absent. `build` runs at most once
+    /// per format generation; idempotent thereafter.
+    pub(super) fn ensure(&mut self, build: impl FnOnce() -> wgpu::RenderPipeline) {
+        if self.test.is_none() {
+            self.test = Some(build());
+        }
+    }
+
+    /// Swap in a freshly-format-built base and drop the stale twin so it
+    /// rebuilds against the new format on the next rounded-clip frame.
+    pub(super) fn set_base(&mut self, base: wgpu::RenderPipeline) {
+        self.base = base;
+        self.test = None;
+    }
+}
+
 /// Build a group-0 bind-group layout pairing a filterable 2D float
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas
