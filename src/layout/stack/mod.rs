@@ -123,13 +123,13 @@ pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    inner: Size,
+    inner_avail: Size,
     axis: Axis,
     tc: &TextCtx<'_>,
     out: &mut Layout,
 ) -> Size {
     let gap = tree.panel(node).gaps.gap();
-    let cross_avail = axis.cross(inner);
+    let cross_avail = axis.cross(inner_avail);
 
     // Pass 1: measure non-Fill children with the stack's committed
     // cross *and* its committed main extent. This is *height-given-width*
@@ -148,7 +148,7 @@ pub(crate) fn measure(
     // child whose content exceeds the bound overflows, same as on the
     // cross axis.
     let layouts = tree.records.layout();
-    let main_avail = axis.main(inner);
+    let main_avail = axis.main(inner_avail);
     let mut sum_non_fill_main = 0.0f32;
     let mut total_weight = 0.0f32;
     let mut max_cross = 0.0f32;
@@ -182,9 +182,9 @@ pub(crate) fn measure(
     // On a Hug stack (INF main) the freeze loop is a no-op — every
     // Fill child measures at INF main and reports its natural width.
     //
-    // Soundness: the `axis.main(inner)` we use as the budget here must
-    // equal the `axis.main(inner)` the matching `arrange` call sees,
-    // otherwise wrap text in Fill children shapes against the wrong
+    // Soundness: the `axis.main(inner_avail)` we use as the budget here
+    // must equal the `axis.main(inner.size)` the matching `arrange` call
+    // sees, otherwise wrap text in Fill children shapes against the wrong
     // width. It does, because the Stack's outer main size is a
     // deterministic function of (its own `Sizing` + parent-supplied
     // `available`) via `resolve_axis_size`, and the parent passes the
@@ -193,7 +193,7 @@ pub(crate) fn measure(
     // *between* its own measure and arrange would break this.
     let mut fill_main = 0.0f32;
     if total_weight > 0.0 {
-        let main_finite = axis.main(inner).is_finite();
+        let main_finite = axis.main(inner_avail).is_finite();
         if main_finite {
             // Reentrancy-safe flat pool: record pool-end on entry,
             // push entries, slice through `[start..]`, truncate at
@@ -201,7 +201,7 @@ pub(crate) fn measure(
             let pool_start = push_fill_entries(layout, tree, node, axis, |layout, c| {
                 layout.intrinsic(tree, c, axis, LenReq::MinContent, tc)
             });
-            let leftover = (axis.main(inner) - sum_non_fill_main - total_gap).max(0.0);
+            let leftover = (axis.main(inner_avail) - sum_non_fill_main - total_gap).max(0.0);
             freeze_distribute(
                 &mut layout.scratch.stack_fill.pool[pool_start..],
                 leftover,

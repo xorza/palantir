@@ -44,7 +44,7 @@ pub(crate) mod node;
 pub(crate) mod rollups;
 pub(crate) mod seen_ids;
 pub(crate) mod shapes;
-pub mod tree;
+pub(crate) mod tree;
 pub(crate) mod visibility;
 
 /// Paint / hit-test order across layers. Lower variants paint first

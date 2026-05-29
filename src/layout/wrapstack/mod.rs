@@ -100,7 +100,7 @@ pub(crate) fn measure(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
-    inner: Size,
+    inner_avail: Size,
     axis: Axis,
     tc: &TextCtx<'_>,
     out: &mut Layout,
@@ -108,8 +108,8 @@ pub(crate) fn measure(
     let panel = tree.panel(node);
     let gap = panel.gaps.gap();
     let line_gap = panel.gaps.line_gap();
-    let main_avail = axis.main(inner);
-    let cross_avail = axis.cross(inner);
+    let main_avail = axis.main(inner_avail);
+    let cross_avail = axis.cross(inner_avail);
 
     // Measure each non-collapsed child once. Pass `INF` on main with the
     // committed cross — same height-given-width pattern as Stack pass-1
