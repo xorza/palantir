@@ -69,6 +69,11 @@ harness = false
 [[bench]]
 name = "alloc_resize"
 harness = false
+# Needs `Ui::for_test_text()` (internals-gated) so it shapes with real
+# cosmic-text. With the mono fallback the resize path's paint counts
+# stay constant, the cascade cache reuses in place, and the bench
+# reports a false 0 — see the module docs.
+required-features = ["internals"]
 
 [[bench]]
 name = "alloc_free_gpu"
