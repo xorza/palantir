@@ -190,12 +190,25 @@ fn hug_scroll_height(count: u32, min_h: f32, max_h: f32) -> f32 {
     scroll_height(&ui, "scroll")
 }
 
-/// A `Hug` scroll sizes to its content (3 × 50 = 150) when below the
-/// cap — the same "size to content" `Hug` means for every other widget,
-/// rather than collapsing to zero or filling the parent.
+/// A `Hug` scroll sizes to its content, clamped to `[min, max]` — the
+/// same "size to content, then clamp" `Hug` means for every other
+/// widget, rather than collapsing to zero or filling the parent. Below
+/// the cap it tracks content (3 × 50 = 150); under the floor it pins to
+/// `min_size` (1 × 50 floored at 120, the 400 cap left as slack).
 #[test]
-fn hug_scroll_fits_content_below_max() {
-    assert_eq!(hug_scroll_height(3, 0.0, 400.0), 150.0);
+fn hug_scroll_clamps_viewport_to_content() {
+    // (label, row_count, min_h, max_h, expected viewport height)
+    let cases: &[(&str, u32, f32, f32, f32)] = &[
+        ("fits_content_below_max", 3, 0.0, 400.0, 150.0),
+        ("floors_at_min", 1, 120.0, 400.0, 120.0),
+    ];
+    for (label, count, min_h, max_h, want) in cases {
+        assert_eq!(
+            hug_scroll_height(*count, *min_h, *max_h),
+            *want,
+            "case: {label}",
+        );
+    }
 }
 
 /// Past the cap: 8 × 50 = 400 of content in a `Hug` scroll capped at
@@ -228,13 +241,6 @@ fn hug_scroll_caps_at_max_and_scrolls() {
     let st = state_for(&mut ui, "scroll");
     assert_eq!(st.content.h, 400.0, "records full content extent");
     assert!(st.overflow.1, "content past the cap overflows on Y");
-}
-
-/// Below the floor: 1 × 50 = 50 of content in a `Hug` scroll with
-/// `min_size = 120` floors the viewport at 120 (the cap, 400, is slack).
-#[test]
-fn hug_scroll_floors_at_min() {
-    assert_eq!(hug_scroll_height(1, 120.0, 400.0), 120.0);
 }
 
 /// Counterpart guard: a `Fill` scroll keeps the content-independent
