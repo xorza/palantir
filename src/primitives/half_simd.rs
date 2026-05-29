@@ -1,5 +1,6 @@
-//! Direct 4-lane f16 ↔ f32 pack/unpack used by `Spacing`, `Corners`,
-//! `ColorF16`, and `Brush`'s `[u16; 4]` lane storage.
+//! Direct 4-lane f16 ↔ f32 pack/unpack, plus the [`F16x4`] newtype that
+//! `Spacing`, `Corners`, `ColorF16`, and `FillAxis` wrap as their shared
+//! `[u16; 4]` lane-storage core.
 //!
 //! Bypasses `half::slice::HalfFloatSliceExt::convert_{to,from}_f32_slice`,
 //! which gates every call on a runtime `is_x86_feature_detected!("f16c")`
@@ -14,6 +15,59 @@
 //! the feature is statically enabled and the wrapper compiles to a
 //! single instruction. The non-x86 fallback walks the four lanes via
 //! `half::f16::{from_bits,to_f32}` / `from_f32` — no slice dispatch.
+
+/// Four f16 lanes packed in 8 B (`[u16; 4]`, align 2) — the shared
+/// storage core behind `Corners`, `Spacing`, `FillAxis`, and
+/// `ColorF16`. Each of those wraps an `F16x4` for type safety and adds
+/// its own lane-naming + domain methods; `F16x4` owns only the
+/// pack/unpack/hash idiom so the four types can't drift apart.
+///
+/// `Pod`/`Zeroable` with `repr(transparent)`, so a `repr(transparent)`
+/// wrapper of `F16x4` keeps the exact `[u16; 4]` GPU-wire layout. Lane
+/// *meaning* (order, units) is entirely the wrapper's business.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct F16x4(pub(crate) [u16; 4]);
+
+impl F16x4 {
+    /// All-zero lanes (`0.0` in f16). Also the `Default`.
+    pub const ZERO: Self = Self([0; 4]);
+
+    /// Pack four runtime f32 lanes — single SIMD instruction on
+    /// F16C/fp16 targets, scalar fallback elsewhere.
+    #[inline]
+    pub fn from_lanes(lanes: [f32; 4]) -> Self {
+        Self(f16x4_from_f32x4(lanes))
+    }
+
+    /// Unpack all four lanes to f32 at once via the batched slice path.
+    #[inline]
+    pub fn lanes(self) -> [f32; 4] {
+        f16x4_to_f32x4(self.0)
+    }
+
+    /// Per-lane f32 multiply, re-quantized through the f16 round-trip.
+    #[inline]
+    pub fn scaled(self, k: f32) -> Self {
+        let [a, b, c, d] = self.lanes();
+        Self::from_lanes([a * k, b * k, c * k, d * k])
+    }
+
+    /// The 8 storage bytes as one `u64` — lets wrappers hash with a
+    /// single hasher write instead of four `write_u16`s.
+    #[inline]
+    pub fn as_u64(self) -> u64 {
+        u64::from_ne_bytes(bytemuck::cast(self.0))
+    }
+}
+
+impl std::hash::Hash for F16x4 {
+    /// One `u64` write — wrappers `#[derive(Hash)]` and delegate here.
+    #[inline]
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write_u64(self.as_u64());
+    }
+}
 
 #[cfg(any(test, not(all(target_arch = "x86_64", target_feature = "f16c"))))]
 use half::f16;

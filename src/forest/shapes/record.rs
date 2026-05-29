@@ -144,7 +144,7 @@ impl LoweredShadow {
     /// bit-trick — see that fn for the IEEE 754 rationale).
     #[inline]
     pub(crate) fn is_noop(self) -> bool {
-        crate::primitives::approx::noop_f16_bits(self.color.0[3])
+        self.color.is_noop()
     }
 
     /// Unpack the four f16 geom lanes at once via the shared SIMD

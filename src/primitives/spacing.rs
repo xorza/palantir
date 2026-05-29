@@ -1,42 +1,25 @@
-use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
+use super::half_simd::F16x4;
 use super::num::Num;
-
-/// Runtime f32→f16 pack — single F16C / fp16 instruction on supported
-/// targets, scalar fallback elsewhere. Used by every public constructor
-/// so widget builders and per-frame padding adjustments never hit the
-/// 4-call scalar `from_f32_const` path that showed up at 2.5% self-time
-/// in the `frame` bench.
-#[inline]
-fn pack(left: f32, top: f32, right: f32, bottom: f32) -> [u16; 4] {
-    f16x4_from_f32x4([left, top, right, bottom])
-}
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
 ///
 /// Precision: lossless for integer values up to 2048, ~0.25 px error
 /// at 4096. UI spacing never approaches the f16 ceiling.
+///
+/// Hash delegates to [`F16x4`] (one `u64` write) — `LayoutCore::hash`
+/// folds this twice per node every frame (padding + margin), so the
+/// single-write form matters.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Spacing([u16; 4]);
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Spacing(F16x4);
 
 impl Spacing {
     /// Packed 8-byte form. Used by `LayoutCore::hash` to fold the
     /// padding + margin lanes into the parent hasher write.
     #[inline]
     pub(crate) fn as_u64(self) -> u64 {
-        u64::from_ne_bytes(bytemuck::cast(self.0))
-    }
-}
-
-impl std::hash::Hash for Spacing {
-    /// Hash the 8 storage bytes as one `u64` — single hasher call
-    /// instead of four `write_u16`s. `LayoutCore::hash` calls this
-    /// twice per node every frame (padding + margin) when building
-    /// `SubtreeRollups`, so the write count adds up.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(self.as_u64());
+        self.0.as_u64()
     }
 }
 
@@ -52,123 +35,62 @@ impl std::fmt::Debug for Spacing {
     }
 }
 
-// Serialize Spacing compactly:
-// - all four equal              → bare scalar `4.0`
-// - left=right, top=bottom      → 2-element array `[horizontal, vertical]`
-// - otherwise                   → 4-element array `[left, top, right, bottom]`
-// Deserialize accepts all three forms plus the original struct shape
-// `{ left, top, right, bottom }` for backward-compat with hand-written configs.
+// Compact serde via the shared `lane_serde` codec:
+// - all four equal         → bare scalar `4.0`
+// - left=right, top=bottom → 2-element array `[horizontal, vertical]`
+// - otherwise              → 4-element array `[left, top, right, bottom]`
+// Deserialize also accepts the `{ left, top, right, bottom }` table for
+// hand-written configs.
+impl crate::primitives::lane_serde::LaneCodec for Spacing {
+    const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
+
+    #[inline]
+    fn from_lane_array(l: [f32; 4]) -> Self {
+        Self::new(l[0], l[1], l[2], l[3])
+    }
+    #[inline]
+    fn to_lane_array(&self) -> [f32; 4] {
+        self.as_array()
+    }
+    #[inline]
+    fn two_form(l: [f32; 4]) -> Option<[f32; 2]> {
+        // left==right && top==bottom → [horizontal, vertical].
+        (l[0] == l[2] && l[1] == l[3]).then_some([l[0], l[1]])
+    }
+    #[inline]
+    fn expand_two([horiz, vert]: [f32; 2]) -> [f32; 4] {
+        [horiz, vert, horiz, vert]
+    }
+}
+
 impl serde::Serialize for Spacing {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeSeq;
-        let [l, t, r, b] = self.as_array();
-        if l == r && t == b && l == t {
-            return s.serialize_f32(l);
-        }
-        if l == r && t == b {
-            let mut seq = s.serialize_seq(Some(2))?;
-            seq.serialize_element(&l)?;
-            seq.serialize_element(&t)?;
-            return seq.end();
-        }
-        let mut seq = s.serialize_seq(Some(4))?;
-        seq.serialize_element(&l)?;
-        seq.serialize_element(&t)?;
-        seq.serialize_element(&r)?;
-        seq.serialize_element(&b)?;
-        seq.end()
+        crate::primitives::lane_serde::serialize(self, s)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Spacing {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct V;
-        impl<'de> serde::de::Visitor<'de> for V {
-            type Value = Spacing;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("a number, a [horizontal, vertical] or [left, top, right, bottom] array, or a {left, top, right, bottom} table")
-            }
-
-            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Spacing, E> {
-                Ok(Spacing::all(v as f32))
-            }
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Spacing, E> {
-                Ok(Spacing::all(v as f32))
-            }
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Spacing, E> {
-                Ok(Spacing::all(v as f32))
-            }
-
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(
-                self,
-                mut a: A,
-            ) -> Result<Spacing, A::Error> {
-                let v0: f32 = a
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-                let Some(v1) = a.next_element::<f32>()? else {
-                    return Ok(Spacing::all(v0));
-                };
-                let Some(v2) = a.next_element::<f32>()? else {
-                    return Ok(Spacing::xy(v0, v1));
-                };
-                let v3: f32 = a
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?;
-                Ok(Spacing::new(v0, v1, v2, v3))
-            }
-
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut m: A,
-            ) -> Result<Spacing, A::Error> {
-                let mut left = None;
-                let mut top = None;
-                let mut right = None;
-                let mut bottom = None;
-                while let Some(k) = m.next_key::<String>()? {
-                    match k.as_str() {
-                        "left" => left = Some(m.next_value()?),
-                        "top" => top = Some(m.next_value()?),
-                        "right" => right = Some(m.next_value()?),
-                        "bottom" => bottom = Some(m.next_value()?),
-                        other => {
-                            return Err(serde::de::Error::unknown_field(
-                                other,
-                                &["left", "top", "right", "bottom"],
-                            ));
-                        }
-                    }
-                }
-                Ok(Spacing::new(
-                    left.unwrap_or(0.0),
-                    top.unwrap_or(0.0),
-                    right.unwrap_or(0.0),
-                    bottom.unwrap_or(0.0),
-                ))
-            }
-        }
-        d.deserialize_any(V)
+        crate::primitives::lane_serde::deserialize(d)
     }
 }
 
 impl Spacing {
-    pub const ZERO: Self = Self([0; 4]);
+    pub const ZERO: Self = Self(F16x4::ZERO);
 
     #[inline]
     pub fn all(v: f32) -> Self {
-        Self(pack(v, v, v, v))
+        Self(F16x4::from_lanes([v, v, v, v]))
     }
 
     #[inline]
     pub fn xy(x: f32, y: f32) -> Self {
-        Self(pack(x, y, x, y))
+        Self(F16x4::from_lanes([x, y, x, y]))
     }
 
     #[inline]
     pub fn new(left: f32, top: f32, right: f32, bottom: f32) -> Self {
-        Self(pack(left, top, right, bottom))
+        Self(F16x4::from_lanes([left, top, right, bottom]))
     }
 
     /// All four lanes unpacked at once. Routes through `half`'s
@@ -177,14 +99,14 @@ impl Spacing {
     /// Use at hot sites that read 3+ lanes to amortize feature dispatch.
     #[inline]
     pub fn as_array(&self) -> [f32; 4] {
-        f16x4_to_f32x4(self.0)
+        self.0.lanes()
     }
 
     /// Inverse of [`Self::as_array`] — batched runtime f32→f16 pack.
     /// See `Corners::from_array` for the SIMD rationale.
     #[inline]
     pub fn from_array(v: [f32; 4]) -> Self {
-        Self(f16x4_from_f32x4(v))
+        Self(F16x4::from_lanes(v))
     }
 
     #[inline]

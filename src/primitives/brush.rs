@@ -1,6 +1,6 @@
 use crate::animation::animatable::Animatable;
 use crate::primitives::color::{Color, ColorU8};
-use crate::primitives::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
+use crate::primitives::half_simd::F16x4;
 use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -24,27 +24,27 @@ pub const MAX_STOPS: usize = 8;
 /// up to ~2048 px, then degrading like `Corners`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct FillAxis(pub [u16; 4]);
+pub struct FillAxis(F16x4);
 
 impl FillAxis {
     /// All-zero axis used for solid quads. The shader ignores it when
     /// `FillKind == SOLID`, so the value doesn't matter — keep it
     /// zeroed so Pod-byte cache keys are deterministic for solid
     /// quads.
-    pub const ZERO: Self = Self([0; 4]);
+    pub const ZERO: Self = Self(F16x4::ZERO);
 
     /// Build from four runtime f32 lanes via the batched f16 slice
     /// path. Single SIMD instruction on F16C/fp16 targets.
     #[inline]
     pub fn from_lanes(a: f32, b: f32, c: f32, d: f32) -> Self {
-        Self(f16x4_from_f32x4([a, b, c, d]))
+        Self(F16x4::from_lanes([a, b, c, d]))
     }
 
     /// All four lanes unpacked at once via the batched slice path —
     /// matches `Corners::as_array`.
     #[inline]
     pub fn lanes(self) -> [f32; 4] {
-        f16x4_to_f32x4(self.0)
+        self.0.lanes()
     }
 
     /// Per-lane f32 setter helper for the composer's
@@ -52,8 +52,7 @@ impl FillAxis {
     /// scalar f16 round-trip.
     #[inline]
     pub fn scaled(self, s: f32) -> Self {
-        let [a, b, c, d] = self.lanes();
-        Self::from_lanes(a * s, b * s, c * s, d * s)
+        Self(self.0.scaled(s))
     }
 }
 
@@ -64,10 +63,37 @@ impl FillAxis {
 /// Stops are storage-only (never animated; snap on morph), feed a u8
 /// LUT, and out-of-range positions clamp at construction — 8-bit
 /// precision is sufficient and saves ~24 B per gradient.
-#[derive(Copy, Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
+///
+/// Serde uses the **float** `offset` (0..1) as the wire form, not the
+/// internal `offset_u8` byte — theme authors write `offset = 0.5`,
+/// matching how every other spatial value in the crate is authored;
+/// the u8 quantization stays an implementation detail.
+#[derive(Copy, Clone, Debug, Default, PartialEq)]
 pub struct Stop {
     pub offset_u8: u8,
     pub color: ColorU8,
+}
+
+impl serde::Serialize for Stop {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        use serde::ser::SerializeStruct;
+        let mut st = s.serialize_struct("Stop", 2)?;
+        st.serialize_field("offset", &self.offset())?;
+        st.serialize_field("color", &self.color)?;
+        st.end()
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for Stop {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            offset: f32,
+            color: ColorU8,
+        }
+        let r = Raw::deserialize(d)?;
+        Ok(Stop::new(r.offset, r.color))
+    }
 }
 
 impl Stop {
@@ -152,18 +178,13 @@ impl std::hash::Hash for LinearGradient {
     /// buffer dedup; the atlas hashes `(stops, interp)` separately
     /// (variant-agnostic) in `gradient_atlas::hash_stops`.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        // Pack `(angle, spread, interp, len)` into one u64 — angle's
-        // canonical bits go in the high lane, the three u8 tags
-        // (spread/interp/len, total 24 bits) ride in the low lane.
+        // Angle's canonical bits in the high lane; the shared
+        // (spread/interp/len) tag in the low 24 bits.
         state.write_u64(
             ((canon_bits(self.angle) as u64) << 32)
-                | ((self.spread as u64) << 16)
-                | ((self.interp as u64) << 8)
-                | (self.stops.len() as u64),
+                | stops_tag(self.spread, self.interp, self.stops.len()),
         );
-        for s in self.stops.iter() {
-            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
-        }
+        hash_stops(state, &self.stops);
     }
 }
 
@@ -196,22 +217,6 @@ impl LinearGradient {
             angle,
             [Stop::new(0.0, c0), Stop::new(0.5, c1), Stop::new(1.0, c2)],
         )
-    }
-
-    pub fn with_spread(mut self, spread: Spread) -> Self {
-        self.spread = spread;
-        self
-    }
-
-    pub fn with_interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
-        self
-    }
-
-    /// Paints nothing visible when every stop is transparent.
-    #[inline]
-    pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|s| s.color.is_noop())
     }
 
     /// Gradient axis for the shader. `dir = (cos(angle), sin(angle))`;
@@ -255,12 +260,8 @@ impl std::hash::Hash for RadialGradient {
         state.write_u64(
             ((canon_bits(self.radius.x) as u64) << 32) | (canon_bits(self.radius.y) as u64),
         );
-        state.write_u64(
-            ((self.spread as u64) << 16) | ((self.interp as u64) << 8) | (self.stops.len() as u64),
-        );
-        for s in self.stops.iter() {
-            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
-        }
+        state.write_u64(stops_tag(self.spread, self.interp, self.stops.len()));
+        hash_stops(state, &self.stops);
     }
 }
 
@@ -286,21 +287,6 @@ impl RadialGradient {
             Vec2::splat(0.5),
             [Stop::new(0.0, c0), Stop::new(1.0, c1)],
         )
-    }
-
-    pub fn with_spread(mut self, spread: Spread) -> Self {
-        self.spread = spread;
-        self
-    }
-
-    pub fn with_interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
-        self
-    }
-
-    #[inline]
-    pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|s| s.color.is_noop())
     }
 
     /// Pack `(center, radius)` into a `FillAxis` wire slot. The shader
@@ -337,18 +323,13 @@ impl std::hash::Hash for ConicGradient {
         state.write_u64(
             ((canon_bits(self.center.x) as u64) << 32) | (canon_bits(self.center.y) as u64),
         );
-        // Pack `(start_angle, spread, interp, len)` into one u64 like
-        // `LinearGradient` — the f32 sits in the high lane, three u8
-        // tags in the low lane.
+        // `start_angle` bits in the high lane; shared tag in the low —
+        // same layout as `LinearGradient`.
         state.write_u64(
             ((canon_bits(self.start_angle) as u64) << 32)
-                | ((self.spread as u64) << 16)
-                | ((self.interp as u64) << 8)
-                | (self.stops.len() as u64),
+                | stops_tag(self.spread, self.interp, self.stops.len()),
         );
-        for s in self.stops.iter() {
-            state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
-        }
+        hash_stops(state, &self.stops);
     }
 }
 
@@ -372,21 +353,6 @@ impl ConicGradient {
             0.0,
             [Stop::new(0.0, c0), Stop::new(1.0, c1)],
         )
-    }
-
-    pub fn with_spread(mut self, spread: Spread) -> Self {
-        self.spread = spread;
-        self
-    }
-
-    pub fn with_interp(mut self, interp: Interp) -> Self {
-        self.interp = interp;
-        self
-    }
-
-    #[inline]
-    pub fn is_noop(&self) -> bool {
-        self.stops.iter().all(|s| s.color.is_noop())
     }
 
     /// Pack `(center, start_angle)` into a `FillAxis` wire slot. The
@@ -417,6 +383,57 @@ fn collect_stops<const N: usize>(
     );
     sv
 }
+
+/// Per-stop hash loop, identical across all three gradient variants —
+/// only the geometry prefix differs. Each stop folds its colour + 8-bit
+/// offset into one `u64` write.
+#[inline]
+fn hash_stops<H: std::hash::Hasher>(state: &mut H, stops: &ArrayVec<[Stop; MAX_STOPS]>) {
+    for s in stops.iter() {
+        state.write_u64(((s.color.to_u32() as u64) << 32) | (s.offset_u8 as u64));
+    }
+}
+
+/// `(spread, interp, len)` packed into the low 24 bits of a `u64` — the
+/// shared tail tag every gradient hash writes. Linear/Conic OR it with
+/// `canon_bits(angle) << 32`; Radial writes it standalone after its
+/// centre/radius words.
+#[inline]
+const fn stops_tag(spread: Spread, interp: Interp, len: usize) -> u64 {
+    ((spread as u64) << 16) | ((interp as u64) << 8) | (len as u64)
+}
+
+/// Generate the builder + `is_noop` methods shared verbatim by all
+/// three gradient variants. The fields (`stops`/`spread`/`interp`) stay
+/// direct on each struct — external consumers read them positionally —
+/// so only the identical method bodies are centralized here.
+macro_rules! gradient_common {
+    ($($t:ty),+ $(,)?) => {$(
+        impl $t {
+            /// Override how the gradient repeats outside the 0..1
+            /// parametric range. Builder-style.
+            pub fn with_spread(mut self, spread: Spread) -> Self {
+                self.spread = spread;
+                self
+            }
+
+            /// Override the colour space interpolation runs in.
+            /// Builder-style.
+            pub fn with_interp(mut self, interp: Interp) -> Self {
+                self.interp = interp;
+                self
+            }
+
+            /// Paints nothing visible when every stop is transparent.
+            #[inline]
+            pub fn is_noop(&self) -> bool {
+                self.stops.iter().all(|s| s.color.is_noop())
+            }
+        }
+    )+};
+}
+
+gradient_common!(LinearGradient, RadialGradient, ConicGradient);
 
 /// Paint source for fills and strokes.
 ///
