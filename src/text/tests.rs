@@ -964,7 +964,6 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
     use rustc_hash::FxHashSet;
 
     let mut c = CosmicMeasure::with_bundled_fonts();
-    let empty = FxHashSet::default();
     let mut keys = Vec::new();
     for i in 0..10u32 {
         // Distinct width per frame ⇒ distinct cache key ⇒ a fresh insert
@@ -978,9 +977,9 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
             HAlign::Left,
         );
         keys.push(r.key);
-        // Advance the generation without evicting (budget far exceeds the
-        // live count) so the next insert lands in a later frame.
-        c.end_frame_evict(&empty, 1000);
+        // Step the frame generation so the next insert lands in a later
+        // frame — gives each entry a strictly increasing `last_used`.
+        c.advance_frame();
     }
     assert_eq!(c.cache_len(), 10, "ten distinct widths, ten buffers");
 
@@ -1027,7 +1026,7 @@ fn end_frame_evict_is_noop_under_budget() {
             HAlign::Left,
         );
         keys.push(r.key);
-        c.end_frame_evict(&empty, 1000);
+        c.advance_frame();
     }
     // Four widths, nothing pinned, generous budget ⇒ no eviction even
     // though the most-recent (pinned=∅) entries are "newer" than the rest.

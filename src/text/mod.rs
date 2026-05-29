@@ -571,14 +571,24 @@ impl ShaperInner {
         let Some(cosmic) = self.cosmic.as_mut() else {
             return;
         };
-        self.cosmic_pins.clear();
-        for e in self.reuse.values() {
-            self.cosmic_pins.insert(e.unbounded.key);
-            if let Some(w) = &e.wrap {
-                self.cosmic_pins.insert(w.result.key);
+        // Cheap pre-gate: rebuilding the pin set is O(reuse) hashset
+        // inserts every frame, so skip it unless the cache could actually
+        // be over budget. Each `reuse` entry pins at most 2 keys, so
+        // `2 * reuse.len()` upper-bounds the pin count; if the cache
+        // hasn't outgrown that plus a full stale budget there is nothing
+        // to evict and `end_frame_evict`'s own (exact) gate would no-op
+        // anyway. Either way `gen` still advances so recency stays ordered.
+        if cosmic.over_budget(2 * self.reuse.len() + STALE_BUFFER_BUDGET) {
+            self.cosmic_pins.clear();
+            for e in self.reuse.values() {
+                self.cosmic_pins.insert(e.unbounded.key);
+                if let Some(w) = &e.wrap {
+                    self.cosmic_pins.insert(w.result.key);
+                }
             }
+            cosmic.end_frame_evict(&self.cosmic_pins, STALE_BUFFER_BUDGET);
         }
-        cosmic.end_frame_evict(&self.cosmic_pins, STALE_BUFFER_BUDGET);
+        cosmic.advance_frame();
     }
 
     /// Bypass-cache dispatch: cosmic if installed, mono otherwise.

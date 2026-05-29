@@ -145,8 +145,8 @@ pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextCacheKey, CacheEntry>,
     /// Monotonic frame counter, advanced once per frame by
-    /// [`Self::end_frame_evict`]. Stamped onto each entry's `last_used`
-    /// on every measure-time touch so eviction can drop the
+    /// [`Self::advance_frame`]. Stamped onto each entry's `last_used` on
+    /// every measure-time touch so eviction can drop the
     /// least-recently-shaped unpinned buffers.
     frame_gen: u64,
     /// Reusable scratch holding the `last_used` of every unpinned entry
@@ -428,17 +428,31 @@ impl CosmicMeasure {
         })
     }
 
-    /// Repack-free eviction run once per frame from
-    /// [`crate::text::ShaperInner::end_frame`]. `pinned` is the set of
-    /// keys referenced by a live `reuse` entry this frame — exactly the
-    /// keys the renderer can ask for — so they are never evicted
-    /// regardless of recency. Among the *unpinned* remainder (stale
-    /// rotation widths, drag orphans), keep at most `keep_unpinned` by
-    /// `last_used` recency and drop the rest. Bounds the cache on a
-    /// continuous resize drag (every width unique → a fresh orphan per
-    /// run per frame) without touching the working set of a bounded
-    /// multi-size rotation, whose unpinned widths stay under the budget
-    /// and keep hitting. Advances `frame_gen` last.
+    /// `true` when the cache holds more than `max_keep` buffers — the
+    /// cheap pre-gate [`crate::text::ShaperInner::end_frame`] checks
+    /// before building the (O(reuse)) pin set, so the per-frame pin
+    /// rebuild only happens when there is actually something to evict.
+    pub(crate) fn over_budget(&self, max_keep: usize) -> bool {
+        self.cache.len() > max_keep
+    }
+
+    /// Advance the frame generation. Called once per frame (eviction or
+    /// not) so `last_used` stamps from different frames stay ordered —
+    /// the LRU recency signal `end_frame_evict` reads.
+    pub(crate) fn advance_frame(&mut self) {
+        self.frame_gen = self.frame_gen.wrapping_add(1);
+    }
+
+    /// Repack-free eviction run from [`crate::text::ShaperInner::end_frame`]
+    /// when the cache is over budget. `pinned` is the set of keys
+    /// referenced by a live `reuse` entry this frame — exactly the keys
+    /// the renderer can ask for — so they are never evicted regardless of
+    /// recency. Among the *unpinned* remainder (stale rotation widths,
+    /// drag orphans), keep at most `keep_unpinned` by `last_used` recency
+    /// and drop the rest. Bounds the cache on a continuous resize drag
+    /// (every width unique → a fresh orphan per run per frame) without
+    /// touching the working set of a bounded multi-size rotation, whose
+    /// unpinned widths stay under the budget and keep hitting.
     pub(crate) fn end_frame_evict(
         &mut self,
         pinned: &FxHashSet<TextCacheKey>,
@@ -462,7 +476,6 @@ impl CosmicMeasure {
                     .retain(|k, e| pinned.contains(k) || e.last_used >= cutoff);
             }
         }
-        self.frame_gen = self.frame_gen.wrapping_add(1);
     }
 }
 
