@@ -5,8 +5,8 @@ use crate::primitives::interned_str::InternedStr;
 use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::theme::button::ButtonTheme;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 pub struct Button {
     element: Element,
@@ -68,20 +68,15 @@ impl Button {
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
         let mut element = self.element;
-        // Resolve `.id_salt(...)`'s parent-scoping now so per-id
-        // state lookups (response_for, animate) below see the same
-        // `WidgetId` `Forest::open_node` will record.
-        let id = ui.make_persistent_id(element.salt);
-        // One `response_for` call covers both theme-picking (with
-        // self-disabled merged in) and the returned `Response.state`
-        // (without the merge). The button's `ui.node` body doesn't
-        // mutate input state, so a re-read after `node` would return
-        // the same `ResponseState` minus the merge.
-        let raw_state = ui.response_for(id);
-        let mut picked_state = raw_state;
-        // Cascade lags by a frame; OR self-disabled in so a freshly
-        // toggled `.disabled(true)` lands disabled visuals immediately.
-        picked_state.disabled |= element.flags.is_disabled();
+        // `picked_state` (self-disabled merged) drives theme picking;
+        // `raw_state` feeds the eager `Response` — the button's
+        // `ui.node` body doesn't mutate input, so the pre-`node` probe
+        // stays valid for the caller. See `enter_widget`.
+        let WidgetEntry {
+            id,
+            raw: raw_state,
+            merged: picked_state,
+        } = enter_widget(ui, &element);
         let fallback_text = ui.theme.text;
         // Borrow either the user override or the default theme without
         // cloning the ~540-byte `ButtonTheme`. Copy out the four

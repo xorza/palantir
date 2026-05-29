@@ -6,8 +6,8 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::toggle::toggle_row;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 /// One option in a radio group. `current` is the group's shared
 /// selection; `value` is the option this row represents. Selected
@@ -47,10 +47,11 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let id = ui.make_persistent_id(self.element.salt);
-        let raw_state = ui.response_for(id);
-        let mut state = raw_state;
-        state.disabled |= self.element.flags.is_disabled();
+        let WidgetEntry {
+            id,
+            raw: raw_state,
+            merged: state,
+        } = enter_widget(ui, &self.element);
         let selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
         // matches platform behavior on every OS.
