@@ -36,6 +36,12 @@ const JBMONO_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Bold
 
 const MAX_W_NONE: u32 = u32::MAX;
 
+/// Cap on [`CosmicMeasure::ellipsis_cache`] entries. The cache keys on
+/// `(quantized size, family)` — a handful in normal use, but unbounded
+/// under a continuous font-size zoom. Cleared wholesale past this; a
+/// miss is one cheap "…" shape, so the occasional reset is negligible.
+pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
+
 fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
 }
@@ -153,6 +159,18 @@ pub struct CosmicMeasure {
     /// during [`Self::end_frame_evict`] — kept across frames so the
     /// (infrequent) eviction pass allocates nothing.
     evict_scratch: Vec<u64>,
+    /// Scratch buffer reused for the [`Self::measure_truncated`] *probe*
+    /// shape. The probe shapes the full (untruncated) string just to find
+    /// the cut point and is thrown away; reusing one buffer lets cosmic
+    /// retain its internal line/shape allocations, so a continuous resize
+    /// drag stops `Buffer::new`-ing and reallocating per truncated run per
+    /// frame. Never handed to the cache — only the final buffer is.
+    probe_buffer: Buffer,
+    /// Trailing advance of "…" per `(quantized font size, family)`. The
+    /// ellipsis width is constant for a given size + family, so this turns
+    /// the per-truncation ellipsis reshape into a map lookup (one shape
+    /// per distinct size+family, ever).
+    ellipsis_cache: FxHashMap<(u32, u8), f32>,
 }
 
 impl CosmicMeasure {
@@ -170,6 +188,10 @@ impl CosmicMeasure {
             cache: FxHashMap::default(),
             frame_gen: 0,
             evict_scratch: Vec::new(),
+            // Placeholder metrics; reset via `set_metrics` on every use.
+            // `new_empty` needs no `FontSystem`, only a non-zero line height.
+            probe_buffer: Buffer::new_empty(Metrics::new(16.0, 16.0)),
+            ellipsis_cache: FxHashMap::default(),
         }
     }
 
@@ -335,13 +357,17 @@ impl CosmicMeasure {
         let metrics = Metrics::new(font_size_px, line_height_px);
         let attrs = attrs_for(family);
         // Probe: unbounded single-pass shape to read glyph advances and
-        // decide whether (and where) to cut.
-        let mut probe = Buffer::new(&mut self.font_system, metrics);
-        probe.set_size(None, None);
-        probe.set_text(text, &attrs, Shaping::Advanced, None);
-        probe.shape_until_scroll(&mut self.font_system, false);
-        let line_w = first_line_right(&probe);
-        let multiline = probe.layout_runs().count() > 1;
+        // decide whether (and where) to cut. Reuses `probe_buffer` (reset
+        // per call) so the throwaway probe doesn't reallocate cosmic's
+        // shape vecs on every miss — the hot path on a continuous drag.
+        self.probe_buffer.set_metrics(metrics);
+        self.probe_buffer.set_size(None, None);
+        self.probe_buffer
+            .set_text(text, &attrs, Shaping::Advanced, None);
+        self.probe_buffer
+            .shape_until_scroll(&mut self.font_system, false);
+        let line_w = first_line_right(&self.probe_buffer);
+        let multiline = self.probe_buffer.layout_runs().count() > 1;
 
         let truncated = if line_w <= w && !multiline {
             None
@@ -349,12 +375,12 @@ impl CosmicMeasure {
             // Reserve the ellipsis width only when we'll append one; a plain
             // clip cuts flush to the full available width.
             let avail = if with_ellipsis {
-                (w - self.advance_of("…", metrics, family)).max(0.0)
+                (w - self.ellipsis_advance(metrics, family)).max(0.0)
             } else {
                 w
             };
             let mut cut = 0usize;
-            if let Some(run) = probe.layout_runs().next() {
+            if let Some(run) = self.probe_buffer.layout_runs().next() {
                 for g in run.glyphs {
                     if g.x + g.w > avail {
                         break;
@@ -401,15 +427,32 @@ impl CosmicMeasure {
         }
     }
 
-    /// Trailing-edge width of `text` shaped unbounded on one line — used
-    /// to size the ellipsis. Not cached (one short shape, only on an
-    /// elision cache miss).
-    fn advance_of(&mut self, text: &str, metrics: Metrics, family: FontFamily) -> f32 {
+    /// Trailing advance of "…" at `metrics`/`family`, memoized per
+    /// `(quantized size, family)`. The width is constant for a given
+    /// size + family, so this is a map lookup after the first shape. The
+    /// rare miss shapes into a throwaway buffer rather than `probe_buffer`
+    /// so it can't clobber an in-flight truncation probe whose glyphs the
+    /// caller reads next.
+    fn ellipsis_advance(&mut self, metrics: Metrics, family: FontFamily) -> f32 {
+        let key = (quantize(metrics.font_size), family as u8);
+        if let Some(&w) = self.ellipsis_cache.get(&key) {
+            return w;
+        }
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(None, None);
-        buffer.set_text(text, &attrs_for(family), Shaping::Advanced, None);
+        buffer.set_text("…", &attrs_for(family), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
-        first_line_right(&buffer)
+        let w = first_line_right(&buffer);
+        // Bounded: the key space is (discrete font sizes × families) and
+        // normally tiny, but a continuous font-size zoom over ellipsized
+        // text mints a new quantized size each frame. Entries are trivially
+        // recomputable (one "…" shape), so clear wholesale on overflow
+        // rather than track recency.
+        if self.ellipsis_cache.len() >= ELLIPSIS_CACHE_CAP {
+            self.ellipsis_cache.clear();
+        }
+        self.ellipsis_cache.insert(key, w);
+        w
     }
 
     /// A cached entry's `MeasureResult` for `key`, or `None` on a miss.
@@ -543,6 +586,12 @@ mod test_support {
         /// in-tree eviction tests.
         pub(crate) fn cache_len(&self) -> usize {
             self.cache.len()
+        }
+
+        /// Number of memoized ellipsis advances. Reach-in for the
+        /// ellipsis-cache-bound test.
+        pub(crate) fn ellipsis_cache_len(&self) -> usize {
+            self.ellipsis_cache.len()
         }
     }
 }
