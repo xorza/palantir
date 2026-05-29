@@ -7,7 +7,7 @@ use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::toggle::toggle_row;
+use crate::widgets::toggle::{ToggleChrome, toggle_row};
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 /// One option in a radio group. `current` is the group's shared
@@ -70,31 +70,27 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
         }
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.radio);
-        let look_target = theme.pick(state, selected).clone();
-        let row_gap = theme.row_gap;
-        let pip_size = theme.box_size;
-        let dot_inset = theme.indicator_inset;
-        let anim = theme.anim;
+        // `pill: true` forces the box chrome to a circle regardless of
+        // any re-themed `radio.checked.normal.background.radius` — the
+        // pip must never square-corner. Applied in `toggle_row`.
+        let chrome = ToggleChrome {
+            look_target: theme.pick(state, selected).clone(),
+            anim: theme.anim,
+            box_size: theme.box_size,
+            row_gap: theme.row_gap,
+            pill: true,
+        };
         let indicator = theme.indicator;
-        let fallback_text = ui.theme.text;
-
-        // Force pill radius regardless of any look's stored radius so a
-        // re-themed `theme.radio.checked.normal.background.radius`
-        // can't accidentally square-corner the pip. Baked into the look
-        // before `toggle_row` records the box chrome.
-        let mut look = look_target.animate(ui, id, fallback_text, anim);
-        look.background.corners = Corners::all(pip_size * 0.5);
+        let dot_inset = theme.indicator_inset;
 
         toggle_row(
             ui,
             id,
             self.element,
             raw_state,
-            look,
-            pip_size,
-            row_gap,
+            chrome,
             self.label,
-            |ui| {
+            |ui, pip_size| {
                 if selected {
                     let dot_size = pip_size - 2.0 * dot_inset;
                     let dot = Rect::new(dot_inset, dot_inset, dot_size, dot_size);
