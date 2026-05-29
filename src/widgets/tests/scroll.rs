@@ -1541,3 +1541,37 @@ fn line_wheel_step_scales_with_theme_font_size() {
         );
     }
 }
+
+/// Regression: a non-zoomable scroll must pull its offset back into
+/// range when the content *shrinks* with no wheel/drag input —
+/// otherwise the viewport stays stranded in the now-empty tail. The
+/// record-time clamp reads the previous frame's arranged content, so
+/// the correction lands the frame after the shrink's arrange (hence the
+/// extra settle frame); the bug was that the clamp only ran on nonzero
+/// pan input, so a passive shrink never triggered it.
+#[test]
+fn shrinking_content_unstrands_offset_without_input() {
+    let mut ui = Ui::for_test();
+    // Scroll an 800px content to the bottom of a 200px viewport.
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 10_000.0)));
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    assert_eq!(
+        read_state(&mut ui).offset.y,
+        600.0,
+        "precondition: scrolled to max (800 - 200)",
+    );
+
+    // Content shrinks to 300px (new max = 100), NO input. Frame 1
+    // records against the stale 800px content (offset stays 600) and
+    // arranges the new 300px content; frame 2 records against the fresh
+    // 300px content and clamps the stranded offset down.
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 300.0));
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 300.0));
+    assert_eq!(
+        read_state(&mut ui).offset.y,
+        100.0,
+        "offset must clamp to the new max (300 - 200) after a passive content shrink",
+    );
+}
