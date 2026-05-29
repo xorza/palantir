@@ -44,6 +44,28 @@ pub(crate) fn resolve_container_chrome(
     chrome
 }
 
+/// Per-frame entry probe shared by interactive widgets
+/// (`Button`/`Checkbox`/`RadioButton`): resolve the element's stable
+/// [`WidgetId`] and probe its response exactly once. `raw` is the
+/// un-merged state for the returned [`Response::eager`]; `merged` has
+/// `Element::disabled` OR-ed in so a freshly toggled `.disabled(true)`
+/// paints disabled visuals on the same frame — the cascade lags by one.
+/// Centralizes the disabled-merge that the three widgets previously
+/// hand-mirrored.
+pub(crate) struct WidgetEntry {
+    pub(crate) id: WidgetId,
+    pub(crate) raw: ResponseState,
+    pub(crate) merged: ResponseState,
+}
+
+pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
+    let id = ui.make_persistent_id(element.salt);
+    let raw = ui.response_for(id);
+    let mut merged = raw;
+    merged.disabled |= element.flags.is_disabled();
+    WidgetEntry { id, raw, merged }
+}
+
 /// Lazy handle to a widget's per-frame interaction state. Holds a
 /// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
 /// `ui.response_for(self.id)` on first access and memoizes the result.

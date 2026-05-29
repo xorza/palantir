@@ -3,8 +3,8 @@ use crate::input::sense::Sense;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::toggle::toggle_row;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 use glam::Vec2;
 
 /// Two-state boolean toggle. Takes a `&mut bool` whose owner controls
@@ -43,13 +43,11 @@ impl<'a> Checkbox<'a> {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let id = ui.make_persistent_id(self.element.salt);
-        let raw_state = ui.response_for(id);
-        let mut state = raw_state;
-        // Cascade lags by a frame; OR self-disabled in so a freshly
-        // disabled checkbox doesn't toggle or paint hovered on its
-        // first frame. Mirrors Button.
-        state.disabled |= self.element.flags.is_disabled();
+        let WidgetEntry {
+            id,
+            raw: raw_state,
+            merged: state,
+        } = enter_widget(ui, &self.element);
         if state.clicked && !state.disabled {
             *self.value = !*self.value;
         }
