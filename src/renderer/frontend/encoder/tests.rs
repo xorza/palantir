@@ -2,9 +2,9 @@ use super::super::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
 use crate::Ui;
-use crate::common::frame_arena::FrameArena;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::frame_arena::FrameArena;
 use crate::forest::shapes::record::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;

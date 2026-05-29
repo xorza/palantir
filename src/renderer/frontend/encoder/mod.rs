@@ -2,7 +2,7 @@ use super::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     RenderCmdBuffer,
 };
-use crate::common::frame_arena::FrameArenaInner;
+use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
     text_in_rect,

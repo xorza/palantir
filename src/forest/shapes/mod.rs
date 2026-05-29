@@ -1,7 +1,7 @@
 pub(crate) mod hash;
 pub(crate) mod record;
 
-use crate::common::frame_arena::FrameArena;
+use crate::forest::frame_arena::FrameArena;
 use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};

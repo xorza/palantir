@@ -211,7 +211,7 @@ impl DrawTextPayload {
 /// (the owner-rect top-left) before the active push-transform stack.
 /// `bbox` is in the same owner-local space.
 ///
-/// [`FrameArena`]: crate::common::frame_arena::FrameArena
+/// [`FrameArena`]: crate::forest::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
@@ -249,7 +249,7 @@ impl DrawPolylinePayload {
 /// into the per-instance translate so the vertex stream stays
 /// content-stable across frames.
 ///
-/// [`FrameArena`]: crate::common::frame_arena::FrameArena
+/// [`FrameArena`]: crate::forest::frame_arena::FrameArena
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]

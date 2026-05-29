@@ -4,9 +4,9 @@
 //! and never interleaves.
 
 use crate::animation::paint::PaintAnim;
-use crate::common::frame_arena::FrameArena;
-use crate::common::per_layer::PerLayer;
 use crate::forest::element::Element;
+use crate::forest::frame_arena::FrameArena;
+use crate::forest::per_layer::PerLayer;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::paint_anims::PaintAnimEntry;
 use crate::forest::tree::{PendingAnchor, RecordingScratch, Tree};
@@ -40,7 +40,9 @@ pub(crate) struct Chrome<'a> {
 }
 
 pub(crate) mod element;
+pub(crate) mod frame_arena;
 pub(crate) mod node;
+pub(crate) mod per_layer;
 pub(crate) mod rollups;
 pub(crate) mod seen_ids;
 pub(crate) mod shapes;

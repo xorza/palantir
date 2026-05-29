@@ -10,9 +10,9 @@
 pub(crate) mod cache;
 
 use crate::common::hash::Hasher;
-use crate::common::per_layer::PerLayer;
 use crate::forest::Forest;
 use crate::forest::Layer;
+use crate::forest::per_layer::PerLayer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
