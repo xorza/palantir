@@ -226,8 +226,8 @@ runs its full layout under the finite cross — wrap text shapes
 at the constrained width, nested grids resolve cols at the
 constrained width — and reports the resulting main-axis size.
 That answer is height-given-width by definition. ZStack and
-Canvas use the same pattern on their Hug axes via
-`child_avail_per_axis_hug`.
+Canvas use the same pattern on their Hug axes via the per-axis-hug
+availability computed inside `measure_per_axis_hug`.
 
 This is **not** equivalent to `intrinsic(child, main, MaxContent)`,
 which would not see the cross. For wrap text the intrinsic

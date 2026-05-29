@@ -11,9 +11,7 @@ use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
 use crate::layout::types::align::HAlign;
-use crate::layout::types::{
-    align::Align, align::AxisAlign, justify::Justify, sizing::Sizes, sizing::Sizing,
-};
+use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::TextWrap;
 use crate::text::{FontFamily, TextShaper};
@@ -241,27 +239,6 @@ pub(crate) fn children_max_intrinsic(
 /// see the committed slot), `INFINITY` on Hug axes (avoids recursive sizing).
 /// Used by ZStack and Canvas. Stack uses a different rule (always INF on main).
 ///
-/// `INF` here is *height-given-width* via measure, not an intrinsic-replaceable
-/// sentinel. Replacing it with `intrinsic(MaxContent)` looks equivalent for
-/// leaves but is wrong for nested containers whose main-axis size depends on
-/// cross-axis (Grid with wrapping cells, etc.) — intrinsic queries the
-/// unbounded shape, while INF-measure runs the child's full layout under the
-/// committed cross.
-pub(crate) fn child_avail_per_axis_hug(size: Sizes, inner_avail: Size) -> Size {
-    Size::new(
-        if matches!(size.w(), Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.w
-        },
-        if matches!(size.h(), Sizing::Hug) {
-            f32::INFINITY
-        } else {
-            inner_avail.h
-        },
-    )
-}
-
 /// Main-axis offset + effective inter-child gap for one row of
 /// `justify`-distributed children. Single source of truth for Stack and
 /// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules
@@ -318,7 +295,26 @@ pub(crate) fn measure_per_axis_hug(
     mut contrib: impl FnMut(&Tree, NodeId, Size) -> Size,
 ) -> Size {
     let style = tree.records.layout()[node.idx()];
-    let child_avail = child_avail_per_axis_hug(style.size, inner_avail);
+    // Per-axis-hug availability: a `Hug` axis passes `INF` so the child
+    // reports its natural size; a bounded axis passes the committed inner
+    // extent. `INF` here is *height-given-width* via measure, not an
+    // intrinsic-replaceable sentinel — replacing it with
+    // `intrinsic(MaxContent)` looks equivalent for leaves but is wrong for
+    // nested containers whose main-axis size depends on cross-axis (Grid
+    // with wrapping cells, etc.): intrinsic queries the unbounded shape,
+    // while INF-measure runs the child's full layout under the committed cross.
+    let child_avail = Size::new(
+        if matches!(style.size.w(), Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.w
+        },
+        if matches!(style.size.h(), Sizing::Hug) {
+            f32::INFINITY
+        } else {
+            inner_avail.h
+        },
+    );
     let mut max_w = 0.0f32;
     let mut max_h = 0.0f32;
     for c in tree.active_children(node) {
