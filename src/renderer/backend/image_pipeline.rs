@@ -79,6 +79,13 @@ pub(crate) struct ImagePipeline {
     /// borrow is hot-loop-shaped but uncontended within a frame
     /// (single-threaded). Drained + applied at end-of-frame.
     touched: RefCell<Vec<u64>>,
+    /// Reused eviction scratch — `pick_evictions` clears + refills these
+    /// each over-budget frame instead of allocating. `evict_candidates`
+    /// holds the sortable [`EvictionCandidate`] rows; `evict_out` the
+    /// chosen ids, drained by `end_of_frame_evict`. Both retain capacity
+    /// across frames (steady-state alloc-free, like `touched`).
+    evict_candidates: Vec<EvictionCandidate>,
+    evict_out: Vec<u64>,
 }
 
 impl ImagePipeline {
@@ -123,6 +130,8 @@ impl ImagePipeline {
             budget_bytes,
             total_bytes: 0,
             touched: RefCell::new(Vec::new()),
+            evict_candidates: Vec::new(),
+            evict_out: Vec::new(),
         }
     }
 
@@ -366,15 +375,19 @@ impl ImagePipeline {
             return;
         }
         let over_before = self.total_bytes;
-        let evictions = pick_evictions(
-            self.cache
-                .iter()
-                .map(|(id, e)| (*id, e.last_used_frame, e.bytes)),
+        pick_evictions(
+            self.cache.iter().map(|(id, e)| EvictionCandidate {
+                id: *id,
+                last_used_frame: e.last_used_frame,
+                bytes: e.bytes,
+            }),
             self.frame_id,
             self.total_bytes,
             self.budget_bytes,
+            &mut self.evict_candidates,
+            &mut self.evict_out,
         );
-        if evictions.is_empty() {
+        if self.evict_out.is_empty() {
             // Every cached entry was drawn this frame — releasing one
             // would force a same-frame re-upload next frame, so we
             // refuse. Frame stays over budget; the host is holding more
@@ -392,7 +405,7 @@ impl ImagePipeline {
             );
             return;
         }
-        for id in evictions {
+        for id in self.evict_out.drain(..) {
             if let Some(entry) = self.cache.remove(&id) {
                 self.total_bytes = self.total_bytes.saturating_sub(entry.bytes as u64);
                 images.mark_pending(ImageHandle {
@@ -418,38 +431,52 @@ impl ImagePipeline {
     }
 }
 
-/// Pure eviction policy. Picks ids to drop, oldest-first, skipping any
-/// entry touched this frame (`last_used_frame == current_frame`), until
-/// projected total drops at or below `budget`. Returned in eviction
-/// order. Pulled out as a free fn so it can be unit-tested without a
-/// GPU device.
+/// One cache entry weighed for eviction — the `(id, last_used_frame,
+/// bytes)` triple [`pick_evictions`] sorts oldest-first.
+#[derive(Debug, Clone, Copy)]
+struct EvictionCandidate {
+    id: u64,
+    last_used_frame: u32,
+    bytes: u32,
+}
+
+/// Pure eviction policy. Fills `out` with ids to drop, oldest-first,
+/// skipping any entry touched this frame (`last_used_frame ==
+/// current_frame`), until projected total drops at or below `budget`.
+/// `out` is in eviction order. `candidates` is reused sort scratch; both
+/// buffers are cleared on entry, so the caller can hand in retained
+/// `Vec`s for steady-state alloc-free eviction. Pulled out as a free fn
+/// so it can be unit-tested without a GPU device.
 fn pick_evictions(
-    entries: impl Iterator<Item = (u64, u32, u32)>,
+    entries: impl Iterator<Item = EvictionCandidate>,
     current_frame: u32,
     total_bytes: u64,
     budget: u64,
-) -> Vec<u64> {
+    candidates: &mut Vec<EvictionCandidate>,
+    out: &mut Vec<u64>,
+) {
+    candidates.clear();
+    out.clear();
     if total_bytes <= budget {
-        return Vec::new();
+        return;
     }
-    let mut candidates: Vec<(u32, u32, u64)> = entries
-        .filter(|(_, last, _)| *last != current_frame)
-        .map(|(id, last, bytes)| (last, bytes, id))
-        .collect();
+    candidates.extend(entries.filter(|c| c.last_used_frame != current_frame));
     // Ascending by last_used_frame (oldest first); tie-break by bytes
     // desc so each eviction frees more.
-    candidates.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+    candidates.sort_by(|a, b| {
+        a.last_used_frame
+            .cmp(&b.last_used_frame)
+            .then(b.bytes.cmp(&a.bytes))
+    });
     let mut freed: u64 = 0;
     let need = total_bytes - budget;
-    let mut out = Vec::new();
-    for (_, bytes, id) in candidates {
+    for c in candidates.iter() {
         if freed >= need {
             break;
         }
-        freed = freed.saturating_add(bytes as u64);
-        out.push(id);
+        freed = freed.saturating_add(c.bytes as u64);
+        out.push(c.id);
     }
-    out
 }
 
 const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array![
@@ -494,21 +521,40 @@ pub(crate) mod test_support {
 mod tests {
     use super::*;
 
-    fn e(id: u64, last: u32, bytes: u32) -> (u64, u32, u32) {
-        (id, last, bytes)
+    fn e(id: u64, last: u32, bytes: u32) -> EvictionCandidate {
+        EvictionCandidate {
+            id,
+            last_used_frame: last,
+            bytes,
+        }
+    }
+
+    /// Run `pick_evictions` with fresh local scratch and return the
+    /// chosen ids — mirrors how `end_of_frame_evict` reuses its
+    /// retained `evict_candidates` / `evict_out` buffers.
+    fn run(entries: Vec<EvictionCandidate>, frame: u32, total: u64, budget: u64) -> Vec<u64> {
+        let mut candidates = Vec::new();
+        let mut out = Vec::new();
+        pick_evictions(
+            entries.into_iter(),
+            frame,
+            total,
+            budget,
+            &mut candidates,
+            &mut out,
+        );
+        out
     }
 
     #[test]
     fn under_budget_evicts_nothing() {
-        let entries = vec![e(1, 5, 100), e(2, 6, 100)];
-        let out = pick_evictions(entries.into_iter(), 10, 200, 1024);
+        let out = run(vec![e(1, 5, 100), e(2, 6, 100)], 10, 200, 1024);
         assert!(out.is_empty());
     }
 
     #[test]
     fn evicts_oldest_first_until_under_budget() {
-        let entries = vec![e(1, 1, 100), e(2, 2, 100), e(3, 3, 100)];
-        let out = pick_evictions(entries.into_iter(), 10, 300, 150);
+        let out = run(vec![e(1, 1, 100), e(2, 2, 100), e(3, 3, 100)], 10, 300, 150);
         // need to free 150; oldest is id=1 (100), then id=2 (100) → frees 200, done.
         assert_eq!(out, vec![1, 2]);
     }
@@ -516,16 +562,19 @@ mod tests {
     #[test]
     fn skips_entries_touched_this_frame() {
         // id=1 is oldest by frame stamp, but matches current_frame → skip.
-        let entries = vec![e(1, 10, 100), e(2, 2, 100), e(3, 3, 100)];
-        let out = pick_evictions(entries.into_iter(), 10, 300, 150);
+        let out = run(
+            vec![e(1, 10, 100), e(2, 2, 100), e(3, 3, 100)],
+            10,
+            300,
+            150,
+        );
         assert_eq!(out, vec![2, 3]);
     }
 
     #[test]
     fn tie_break_prefers_larger_entry() {
-        let entries = vec![e(1, 5, 50), e(2, 5, 200)];
         // Both same age; need 100 freed → pick the larger (id=2).
-        let out = pick_evictions(entries.into_iter(), 10, 250, 150);
+        let out = run(vec![e(1, 5, 50), e(2, 5, 200)], 10, 250, 150);
         assert_eq!(out, vec![2]);
     }
 
@@ -534,8 +583,39 @@ mod tests {
         // Every entry was touched this frame; eviction yields nothing
         // even though we're over budget. Caller is over budget for one
         // frame — acceptable, next frame's draws may not touch all.
-        let entries = vec![e(1, 10, 1_000_000), e(2, 10, 1_000_000)];
-        let out = pick_evictions(entries.into_iter(), 10, 2_000_000, 100);
+        let out = run(
+            vec![e(1, 10, 1_000_000), e(2, 10, 1_000_000)],
+            10,
+            2_000_000,
+            100,
+        );
         assert!(out.is_empty());
+    }
+
+    #[test]
+    fn reuses_scratch_buffers_across_calls() {
+        // Same buffers, two calls: the second must fully overwrite the
+        // first's results (clear-on-entry), not append to them.
+        let mut candidates = Vec::new();
+        let mut out = Vec::new();
+        pick_evictions(
+            vec![e(1, 1, 100), e(2, 2, 100)].into_iter(),
+            10,
+            200,
+            150,
+            &mut candidates,
+            &mut out,
+        );
+        assert_eq!(out, vec![1]);
+        pick_evictions(
+            vec![e(3, 3, 100), e(4, 4, 100)].into_iter(),
+            10,
+            200,
+            1024,
+            &mut candidates,
+            &mut out,
+        );
+        assert!(out.is_empty(), "under budget must clear prior results");
+        assert!(candidates.is_empty(), "candidates must clear on entry");
     }
 }
