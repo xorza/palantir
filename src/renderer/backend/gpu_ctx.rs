@@ -17,6 +17,9 @@
 
 use super::Queue;
 
+// `pub` (not `pub(crate)`) is load-bearing: the text backend's gated
+// `test_support` re-exports `GpuCtx` via `pub use` for external benches,
+// and a `pub(crate)` item can't be `pub use`d out of the crate.
 pub struct GpuCtx<'a> {
     pub(crate) device: &'a wgpu::Device,
     pub(crate) queue: &'a Queue,
