@@ -179,13 +179,6 @@ impl CosmicMeasure {
         &mut self.font_system
     }
 
-    /// Number of shaped buffers currently cached. Reach-in for the
-    /// in-tree eviction tests.
-    #[cfg(test)]
-    pub(crate) fn cache_len(&self) -> usize {
-        self.cache.len()
-    }
-
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextCacheKey::INVALID`].
@@ -525,5 +518,18 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
     ShapedExtent {
         size: Size::new(max_w.ceil(), total_h.ceil()),
         intrinsic_min,
+    }
+}
+
+#[cfg(test)]
+mod test_support {
+    use super::CosmicMeasure;
+
+    impl CosmicMeasure {
+        /// Number of shaped buffers currently cached. Reach-in for the
+        /// in-tree eviction tests.
+        pub(crate) fn cache_len(&self) -> usize {
+            self.cache.len()
+        }
     }
 }
