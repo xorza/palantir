@@ -245,11 +245,17 @@ impl MenuItem {
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
         let id = ui.make_persistent_id(self.element.salt);
         let disabled = self.element.flags.is_disabled();
-        let mut raw_state = ui.response_for(id);
-        raw_state.disabled = disabled;
+        // Single `response_for` probe, reused below: the row's body
+        // records only decorative `Text` leaves, so the state is
+        // identical before and after `ui.node`. `picked_state` carries
+        // the row's own disabled flag for theme picking; `raw_state`
+        // stays pristine for the returned `Response`.
+        let raw_state = ui.response_for(id);
+        let mut picked_state = raw_state;
+        picked_state.disabled = disabled;
 
         let theme = ui.theme.context_menu.item.clone();
-        let look = theme.pick(raw_state);
+        let look = theme.pick(picked_state);
         let look_bg = look.background.clone();
         let text_style = look.text.unwrap_or(ui.theme.text);
         // Shortcut hint reads muted — same style as the label but the
@@ -295,12 +301,12 @@ impl MenuItem {
         };
         ui.node(id, element, look_bg.as_ref(), body);
 
-        let mut state = ui.response_for(id);
+        let mut state = raw_state;
         if shortcut_fired {
             state.clicked = true;
         }
-        // Eager: state was mutated above to fold in `shortcut_fired`;
-        // a lazy re-probe would lose the override.
+        // Eager: `state` folds in the synthesized shortcut click, which
+        // a lazy re-probe would drop.
         let resp = Response::eager(id, ui, state);
         if resp.clicked() {
             popup.close();
