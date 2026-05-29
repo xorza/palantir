@@ -1,6 +1,6 @@
-use crate::animation::paint::PaintAnim;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;

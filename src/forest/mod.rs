@@ -3,12 +3,11 @@
 //! body recording dispatches into a different arena than `Main`
 //! and never interleaves.
 
-use crate::animation::paint::PaintAnim;
 use crate::forest::element::Element;
 use crate::forest::frame_arena::FrameArena;
 use crate::forest::per_layer::PerLayer;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
-use crate::forest::tree::paint_anims::PaintAnimEntry;
+use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
 use crate::forest::tree::{PendingAnchor, RecordingScratch, Tree};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
