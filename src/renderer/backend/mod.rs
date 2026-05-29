@@ -910,6 +910,20 @@ impl WgpuBackend {
         // it does, but the symptom of a missed push is silent NDC
         // corruption (wrong-scaled quads painting outside their
         // damage scissor). Re-push is the unambiguous fix.
+        //
+        // `rebind!` bundles the "bind ⇒ re-push viewport ⇒ record bound"
+        // triple so no draw arm can bind a pipeline and forget the
+        // viewport push. Arms that set their own state and reset `bound`
+        // to `None` (PreClear, Text) stay open-coded.
+        macro_rules! rebind {
+            ($target:expr, $bind:expr) => {
+                if bound != $target {
+                    $bind;
+                    viewport.push_into(pass);
+                    bound = $target;
+                }
+            };
+        }
 
         for_each_step(
             buffer,
@@ -943,22 +957,20 @@ impl WgpuBackend {
                 RenderStep::MaskQuad(mi) => {
                     mark(pass, BatchKind::Mask);
                     pass.push_debug_group("mask");
-                    if bound != Bound::MaskWrite {
-                        self.quad.bind_mask_write(pass, &self.gradient.bg);
-                        viewport.push_into(pass);
-                        bound = Bound::MaskWrite;
-                    }
+                    rebind!(
+                        Bound::MaskWrite,
+                        self.quad.bind_mask_write(pass, &self.gradient.bg)
+                    );
                     self.quad.draw_mask(pass, mi);
                     pass.pop_debug_group();
                 }
                 RenderStep::Quads { range, .. } => {
                     mark(pass, BatchKind::Quads);
                     pass.push_debug_group("quads");
-                    if bound != Bound::QuadInstance {
-                        self.quad.bind(pass, use_stencil, &self.gradient.bg);
-                        viewport.push_into(pass);
-                        bound = Bound::QuadInstance;
-                    }
+                    rebind!(
+                        Bound::QuadInstance,
+                        self.quad.bind(pass, use_stencil, &self.gradient.bg)
+                    );
                     self.quad.draw_range(pass, range);
                     pass.pop_debug_group();
                 }
@@ -977,11 +989,7 @@ impl WgpuBackend {
                 RenderStep::MeshBatch { batch } => {
                     mark(pass, BatchKind::Mesh);
                     pass.push_debug_group("meshes");
-                    if bound != Bound::Mesh {
-                        self.mesh.bind(pass, use_stencil);
-                        viewport.push_into(pass);
-                        bound = Bound::Mesh;
-                    }
+                    rebind!(Bound::Mesh, self.mesh.bind(pass, use_stencil));
                     let range = buffer.mesh_batches[batch].meshes;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
@@ -1003,11 +1011,7 @@ impl WgpuBackend {
                 RenderStep::ImageBatch { batch } => {
                     mark(pass, BatchKind::Image);
                     pass.push_debug_group("images");
-                    if bound != Bound::Image {
-                        self.image.bind(pass, use_stencil);
-                        viewport.push_into(pass);
-                        bound = Bound::Image;
-                    }
+                    rebind!(Bound::Image, self.image.bind(pass, use_stencil));
                     let range = buffer.image_batches[batch].images;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
@@ -1021,11 +1025,10 @@ impl WgpuBackend {
                 RenderStep::CurveBatch { batch } => {
                     mark(pass, BatchKind::Curve);
                     pass.push_debug_group("curves");
-                    if bound != Bound::Curve {
-                        self.curve.bind(pass, use_stencil, &self.gradient.bg);
-                        viewport.push_into(pass);
-                        bound = Bound::Curve;
-                    }
+                    rebind!(
+                        Bound::Curve,
+                        self.curve.bind(pass, use_stencil, &self.gradient.bg)
+                    );
                     let range = buffer.curve_batches[batch].instances;
                     self.curve.draw(pass, range.start..range.start + range.len);
                     pass.pop_debug_group();

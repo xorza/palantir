@@ -12,16 +12,17 @@
 
 use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
+use super::pipeline_utils::{
+    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
+};
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
-    pipeline: wgpu::RenderPipeline,
+    stencil: StencilVariant,
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
     instance_buffer: DynamicBuffer,
-    stencil_test: Option<wgpu::RenderPipeline>,
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
     /// Retained scratch for the odd-length index pad-to-even path; one
@@ -36,7 +37,7 @@ impl MeshPipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
         });
 
-        let pipeline = Self::build_color_pipeline(device, &shader, format);
+        let pipeline = Self::build_variant(device, &shader, format, false);
 
         let vertex_buffer =
             DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256, 64);
@@ -45,41 +46,52 @@ impl MeshPipeline {
             DynamicBuffer::vertex::<MeshInstance>(device, "palantir.mesh.instances", 64, 16);
 
         Self {
-            pipeline,
+            stencil: StencilVariant::new(pipeline),
             vertex_buffer,
             index_buffer,
             instance_buffer,
-            stencil_test: None,
             shader,
             color_format: format,
             index_scratch: Vec::new(),
         }
     }
 
-    /// Build the no-stencil color pipeline against `format` — the only
+    /// Build the color pipeline against `format` — the only
     /// format-dependent object; the vertex / index / instance buffers
-    /// are reused. Shared by [`Self::new`] and [`Self::rebuild_for_format`].
-    fn build_color_pipeline(
+    /// are reused. `stencil` selects the rounded-clip variant (adds the
+    /// shared `stencil_test_state`). Shared by [`Self::new`],
+    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`].
+    fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
-        format: wgpu::TextureFormat,
+        color_format: wgpu::TextureFormat,
+        stencil: bool,
     ) -> wgpu::RenderPipeline {
+        let (label, layout_label, depth_stencil) = if stencil {
+            (
+                "palantir.mesh.pipeline.stencil_test",
+                "palantir.mesh.pl.stencil",
+                Some(super::stencil::stencil_test_state()),
+            )
+        } else {
+            ("palantir.mesh.pipeline", "palantir.mesh.pl", None)
+        };
         // Mesh shader uses no bind groups — only the shared immediate
         // region for viewport. Empty bind-group-layout list.
-        let pipeline_layout = build_pipeline_layout(device, "palantir.mesh.pl", &[]);
+        let layout = build_pipeline_layout(device, layout_label, &[]);
         build_pipeline(
             device,
             PipelineRecipe {
-                label: "palantir.mesh.pipeline",
+                label,
                 shader,
-                layout: &pipeline_layout,
+                layout: &layout,
                 vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: format,
+                color_format,
                 fragment_entry: "fs",
                 color_writes: wgpu::ColorWrites::ALL,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
+                depth_stencil,
             },
         )
     }
@@ -93,33 +105,17 @@ impl MeshPipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) {
-        self.pipeline = Self::build_color_pipeline(device, &self.shader, format);
+        self.stencil
+            .set_base(Self::build_variant(device, &self.shader, format, false));
         self.color_format = format;
-        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
     #[profiling::function]
     pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
-        if self.stencil_test.is_some() {
-            return;
-        }
-        let layout = build_pipeline_layout(device, "palantir.mesh.pl.stencil", &[]);
-        self.stencil_test = Some(build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.mesh.pipeline.stencil_test",
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format: self.color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: Some(super::stencil::stencil_test_state()),
-            },
-        ));
+        let (shader, color_format) = (&self.shader, self.color_format);
+        self.stencil
+            .ensure(|| Self::build_variant(device, shader, color_format, true));
     }
 
     #[profiling::function]
@@ -163,12 +159,7 @@ impl MeshPipeline {
     /// — switching pipelines doesn't invalidate it because all four
     /// pipelines share the same `@group(0)` layout.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
-        if use_stencil {
-            let p = self.stencil_test.as_ref().expect("ensure_stencil first");
-            pass.set_pipeline(p);
-        } else {
-            pass.set_pipeline(&self.pipeline);
-        }
+        pass.set_pipeline(self.stencil.select(use_stencil));
         pass.set_vertex_buffer(0, self.vertex_buffer.buffer.slice(..));
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(

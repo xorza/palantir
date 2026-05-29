@@ -9,7 +9,7 @@ use super::Queue;
 use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
+    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
 };
 use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
@@ -40,12 +40,11 @@ struct GpuImage {
 }
 
 pub(crate) struct ImagePipeline {
-    pipeline: wgpu::RenderPipeline,
+    /// Base color pipeline + its lazy stencil-test twin (built on the
+    /// first rounded-clip frame that draws an image).
+    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    /// Stencil-test variant — lazy-built when the first rounded-clip
-    /// frame uses an image.
-    stencil_test: Option<wgpu::RenderPipeline>,
-    /// Cached creation inputs needed to lazy-build `stencil_test`.
+    /// Cached creation inputs needed to lazy-build the stencil twin.
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
     /// Group 0 layout (per-image texture + sampler). Built once;
@@ -112,15 +111,14 @@ impl ImagePipeline {
             ..Default::default()
         });
 
-        let pipeline = Self::build_color_pipeline(device, &shader, &image_bgl, format);
+        let pipeline = Self::build_variant(device, &shader, &image_bgl, format, false);
 
         let instance_buffer =
             DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16, 16);
 
         Self {
-            pipeline,
+            stencil: StencilVariant::new(pipeline),
             instance_buffer,
-            stencil_test: None,
             shader,
             color_format: format,
             image_bgl,
@@ -135,33 +133,44 @@ impl ImagePipeline {
         }
     }
 
-    /// Build the no-stencil color pipeline. The only format-dependent
-    /// object in the whole pipeline — the per-image textures, bind
-    /// groups, sampler, and layout are all format-independent. Shared by
-    /// [`Self::new`] and [`Self::rebuild_for_format`].
-    fn build_color_pipeline(
+    /// Build the color pipeline against `format`. The only
+    /// format-dependent object in the whole pipeline — the per-image
+    /// textures, bind groups, sampler, and layout are all
+    /// format-independent. `stencil` selects the rounded-clip variant
+    /// (adds the shared `stencil_test_state`). Shared by [`Self::new`],
+    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`].
+    fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         image_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
+        color_format: wgpu::TextureFormat,
+        stencil: bool,
     ) -> wgpu::RenderPipeline {
+        let (label, layout_label, depth_stencil) = if stencil {
+            (
+                "palantir.image.pipeline.stencil_test",
+                "palantir.image.pl.stencil",
+                Some(super::stencil::stencil_test_state()),
+            )
+        } else {
+            ("palantir.image.pipeline", "palantir.image.pl", None)
+        };
         // Per-image tex+sampler at group 0 — viewport rides the
         // shared immediate region.
-        let pipeline_layout =
-            build_pipeline_layout(device, "palantir.image.pl", &[Some(image_bgl)]);
+        let layout = build_pipeline_layout(device, layout_label, &[Some(image_bgl)]);
         build_pipeline(
             device,
             PipelineRecipe {
-                label: "palantir.image.pipeline",
+                label,
                 shader,
-                layout: &pipeline_layout,
+                layout: &layout,
                 vertex_buffers: &[instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: format,
+                color_format,
                 fragment_entry: "fs",
                 color_writes: wgpu::ColorWrites::ALL,
                 blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: None,
+                depth_stencil,
             },
         )
     }
@@ -178,38 +187,23 @@ impl ImagePipeline {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) {
-        self.pipeline = Self::build_color_pipeline(device, &self.shader, &self.image_bgl, format);
+        self.stencil.set_base(Self::build_variant(
+            device,
+            &self.shader,
+            &self.image_bgl,
+            format,
+            false,
+        ));
         self.color_format = format;
-        self.stencil_test = None;
     }
 
     /// Lazy-build the stencil-test variant for rounded-clip frames.
     /// Idempotent.
     #[profiling::function]
     pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
-        if self.stencil_test.is_some() {
-            return;
-        }
-        let layout = build_pipeline_layout(
-            device,
-            "palantir.image.pl.stencil",
-            &[Some(&self.image_bgl)],
-        );
-        self.stencil_test = Some(build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.image.pipeline.stencil_test",
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers: &[instance_layout()],
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: self.color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: Some(super::stencil::stencil_test_state()),
-            },
-        ));
+        let (shader, color_format, image_bgl) = (&self.shader, self.color_format, &self.image_bgl);
+        self.stencil
+            .ensure(|| Self::build_variant(device, shader, image_bgl, color_format, true));
     }
 
     /// Drain pending images from the registry and upload them to GPU.
@@ -316,12 +310,7 @@ impl ImagePipeline {
     /// Bind once per pass. Viewport rides immediates; per-image
     /// group 0 is set in [`Self::draw`] from the cached `GpuImage`.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
-        if use_stencil {
-            let p = self.stencil_test.as_ref().expect("ensure_stencil first");
-            pass.set_pipeline(p);
-        } else {
-            pass.set_pipeline(&self.pipeline);
-        }
+        pass.set_pipeline(self.stencil.select(use_stencil));
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
