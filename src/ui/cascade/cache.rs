@@ -72,6 +72,16 @@ struct Snapshot {
 /// surfaces a beneficial mid-size cacheable subtree.
 const MIN_CACHEABLE_SPAN: u32 = 512;
 
+/// One live snapshot's arena spans, collected into
+/// [`CascadeCache::compact_scratch`] and sorted by `nodes.start` to
+/// drive the in-place repack.
+#[derive(Clone, Copy, Debug)]
+struct CompactEntry {
+    wid: WidgetId,
+    nodes: Span,
+    paints: Span,
+}
+
 #[derive(Default)]
 pub struct CascadeCache {
     snapshots: WidgetIdMap<Snapshot>,
@@ -90,6 +100,12 @@ pub struct CascadeCache {
     /// paint base — rebased on blit.
     paint_spans: Vec<Span>,
     paints: LiveArena<Paint>,
+    /// Reusable scratch for in-place [`Self::compact`]: one
+    /// [`CompactEntry`] per live snapshot, sorted by `nodes.start` so
+    /// the repack packs front-to-back without a snapshot clobbering one
+    /// it hasn't moved yet. Retained across frames (capacity reused) so
+    /// compaction allocates nothing.
+    compact_scratch: Vec<CompactEntry>,
     /// Stats for the most recent `CascadesEngine::run`. Reset at the
     /// top of each run. Gated behind `internals` so production builds
     /// don't carry per-blit / per-capture increments.
@@ -325,34 +341,231 @@ impl CascadeCache {
         }
     }
 
-    /// Walk every snapshot, copy its live node + paint ranges into
-    /// freshly-packed arenas, and rewrite the snapshot offsets. O(live);
-    /// mirrors `MeasureCache::compact`. The per-node parallel `Vec`s
+    /// Repack the arenas **in place**, sliding each live snapshot's
+    /// node and paint ranges down over the garbage left by released or
+    /// length-changed snapshots, then truncating the dead tail. O(live)
+    /// `copy_within` and no allocation — the backing `Vec`s keep their
+    /// capacity (`truncate` doesn't shrink). The per-node parallel `Vec`s
     /// (`subtree_paint_rects`, `entry_rows`, `paint_spans`) ride on
-    /// `rows`'s span, so they repack with the same range.
+    /// `rows`'s span, so they slide with the same range.
+    ///
+    /// Snapshots are processed in ascending `nodes.start` order so the
+    /// write cursor never overtakes an unmoved snapshot: the cumulative
+    /// live length of all earlier snapshots is `<=` the current
+    /// snapshot's original start, so each `copy_within` writes to an
+    /// offset `<=` its source (a safe overlapping move toward the front).
+    /// Node and paint arenas share that order — both are appended (and
+    /// repacked) in lockstep — so a snapshot earlier in node order is
+    /// earlier in paint order too, and `paint_w <= snap.paints.start`
+    /// holds by the same argument.
+    ///
+    /// (The earlier implementation rebuilt all five arenas with
+    /// `Vec::with_capacity`. On a resize / text-reflow workload this
+    /// fires roughly every frame — `CascadeCache::sweep_removed` was the
+    /// single largest allocator in `alloc_resize`'s dhat dump — so the
+    /// fresh-`Vec` rebuild meant ~1 MB/frame of churn the in-place form
+    /// removes entirely.)
     fn compact(&mut self) {
-        let mut new_rows: Vec<Cascade> = Vec::with_capacity(self.rows.live);
-        let mut new_subtree_paint_rects: Vec<Rect> = Vec::with_capacity(self.rows.live);
-        let mut new_entry_rows: Vec<EntryRow> = Vec::with_capacity(self.rows.live);
-        let mut new_paint_spans: Vec<Span> = Vec::with_capacity(self.rows.live);
-        let mut new_paints: Vec<Paint> = Vec::with_capacity(self.paints.live);
-        for snap in self.snapshots.values_mut() {
-            let nodes = snap.nodes.range();
-            snap.nodes.start = new_rows.len() as u32;
-            new_rows.extend_from_slice(&self.rows.items[nodes.clone()]);
-            new_subtree_paint_rects.extend_from_slice(&self.subtree_paint_rects[nodes.clone()]);
-            new_entry_rows.extend_from_slice(&self.entry_rows[nodes.clone()]);
-            new_paint_spans.extend_from_slice(&self.paint_spans[nodes]);
-            let paints = snap.paints.range();
-            snap.paints.start = new_paints.len() as u32;
-            new_paints.extend_from_slice(&self.paints.items[paints]);
+        let mut scratch = std::mem::take(&mut self.compact_scratch);
+        scratch.clear();
+        scratch.extend(self.snapshots.iter().map(|(wid, snap)| CompactEntry {
+            wid: *wid,
+            nodes: snap.nodes,
+            paints: snap.paints,
+        }));
+        scratch.sort_unstable_by_key(|e| e.nodes.start);
+
+        let mut node_w = 0u32;
+        let mut paint_w = 0u32;
+        for e in scratch.iter() {
+            if e.nodes.start != node_w {
+                let src = e.nodes.range();
+                let dst = node_w as usize;
+                self.rows.items.copy_within(src.clone(), dst);
+                self.subtree_paint_rects.copy_within(src.clone(), dst);
+                self.entry_rows.copy_within(src.clone(), dst);
+                self.paint_spans.copy_within(src, dst);
+            }
+            if e.paints.start != paint_w {
+                self.paints
+                    .items
+                    .copy_within(e.paints.range(), paint_w as usize);
+            }
+            // Rewrite the snapshot's offsets to match the slid position,
+            // then advance the write cursors.
+            let snap = self
+                .snapshots
+                .get_mut(&e.wid)
+                .expect("snapshot present: scratch built from snapshots this call");
+            snap.nodes = Span::new(node_w, e.nodes.len);
+            snap.paints = Span::new(paint_w, e.paints.len);
+            node_w += e.nodes.len;
+            paint_w += e.paints.len;
         }
+
         // `live` is unchanged — only the garbage tail is dropped, so the
         // repacked `items.len()` now equals `live`.
-        self.rows.items = new_rows;
-        self.subtree_paint_rects = new_subtree_paint_rects;
-        self.entry_rows = new_entry_rows;
-        self.paint_spans = new_paint_spans;
-        self.paints.items = new_paints;
+        self.rows.items.truncate(node_w as usize);
+        self.subtree_paint_rects.truncate(node_w as usize);
+        self.entry_rows.truncate(node_w as usize);
+        self.paint_spans.truncate(node_w as usize);
+        self.paints.items.truncate(paint_w as usize);
+
+        self.compact_scratch = scratch;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::forest::rollups::CascadeInputHash;
+    use crate::input::sense::Sense;
+
+    /// Append a snapshot for `wid` directly into the arenas, tagging
+    /// every row with `tag * 1000 + local_offset` so the slid position
+    /// is verifiable after compaction.
+    fn push_snapshot(cache: &mut CascadeCache, wid: WidgetId, tag: u64, nodes: u32, paints: u32) {
+        let nodes_start = cache.rows.items.len() as u32;
+        let paints_start = cache.paints.items.len() as u32;
+        for off in 0..nodes {
+            let id = tag * 1000 + off as u64;
+            cache.rows.items.push(Cascade {
+                paint_rect: Rect::new(id as f32, 0.0, 0.0, 0.0),
+                cascade_input: CascadeInputHash(id),
+            });
+            cache
+                .subtree_paint_rects
+                .push(Rect::new(id as f32, 0.0, 0.0, 0.0));
+            cache.entry_rows.push(EntryRow {
+                widget_id: WidgetId::from_hash(id),
+                rect: Rect::ZERO,
+                sense: Sense::NONE,
+                focusable: false,
+                disabled: false,
+                layout_rect: Rect::ZERO,
+            });
+            cache.paint_spans.push(Span::new(id as u32, 0));
+        }
+        for off in 0..paints {
+            cache.paints.items.push(Paint {
+                screen: Rect::ZERO,
+                hash: NodeHash(tag * 1000 + off as u64),
+            });
+        }
+        cache.rows.acquire(nodes);
+        cache.paints.acquire(paints);
+        cache.snapshots.insert(
+            wid,
+            Snapshot {
+                key: ProbeKey {
+                    subtree_hash: NodeHash(tag),
+                    parent_prefix: 0,
+                    rect_q: [0; 4],
+                },
+                nodes: Span::new(nodes_start, nodes),
+                paints: Span::new(paints_start, paints),
+            },
+        );
+    }
+
+    /// `compact()` repacks **in place**: it slides surviving snapshots
+    /// down over a released snapshot's garbage with `copy_within` +
+    /// `truncate`, never reallocating. We lay down three snapshots
+    /// A/B/C, release the middle one, and assert (1) the backing `Vec`s
+    /// keep their pre-compact capacity and pointer — the pre-fix code
+    /// rebuilt into `Vec::with_capacity(live)`, which would shrink
+    /// capacity and move the pointer — and (2) the surviving rows carry
+    /// their original tags at the slid offsets, with snapshot spans
+    /// rewritten to match.
+    #[test]
+    fn compact_repacks_in_place_without_reallocating() {
+        let (a, b, c) = (
+            WidgetId::from_hash("a"),
+            WidgetId::from_hash("b"),
+            WidgetId::from_hash("c"),
+        );
+        let mut cache = CascadeCache::default();
+        push_snapshot(&mut cache, a, 1, 2, 1);
+        push_snapshot(&mut cache, b, 2, 3, 2);
+        push_snapshot(&mut cache, c, 3, 2, 1);
+        assert_eq!(cache.rows.items.len(), 7);
+        assert_eq!(cache.paints.items.len(), 4);
+
+        // Release the middle snapshot — its slots become garbage that
+        // compaction must slide C over.
+        let removed = cache.snapshots.remove(&b).unwrap();
+        cache.release(removed);
+
+        let rows_cap = cache.rows.items.capacity();
+        let rows_ptr = cache.rows.items.as_ptr();
+        let paints_cap = cache.paints.items.capacity();
+        let paints_ptr = cache.paints.items.as_ptr();
+
+        cache.compact();
+
+        // Garbage tail dropped; len now equals live.
+        assert_eq!(cache.rows.items.len(), 4, "A(2) + C(2) survive");
+        assert_eq!(cache.paints.items.len(), 2, "A(1) + C(1) survive");
+        assert_eq!(cache.rows.live, 4);
+        assert_eq!(cache.paints.live, 2);
+
+        // In place: capacity and backing pointer are untouched (a
+        // rebuild would shrink capacity to `live` and move the pointer).
+        assert_eq!(
+            cache.rows.items.capacity(),
+            rows_cap,
+            "node arena reallocated — compact must be in place",
+        );
+        assert_eq!(
+            cache.rows.items.as_ptr(),
+            rows_ptr,
+            "node backing pointer moved"
+        );
+        assert_eq!(
+            cache.paints.items.capacity(),
+            paints_cap,
+            "paint arena reallocated"
+        );
+        assert_eq!(
+            cache.paints.items.as_ptr(),
+            paints_ptr,
+            "paint backing pointer moved"
+        );
+
+        // A stayed put; C slid from start 4 → 2 (nodes) and 3 → 1 (paints).
+        let snap_a = cache.snapshots[&a];
+        let snap_c = cache.snapshots[&c];
+        assert_eq!(snap_a.nodes, Span::new(0, 2));
+        assert_eq!(snap_a.paints, Span::new(0, 1));
+        assert_eq!(
+            snap_c.nodes,
+            Span::new(2, 2),
+            "C slid down over B's garbage"
+        );
+        assert_eq!(snap_c.paints, Span::new(1, 1));
+
+        // Data integrity: every surviving row carries its original tag at
+        // the slid offset (A: tag 1, C: tag 3; cascade_input = tag*1000+off).
+        let tag_of = |i: usize| cache.rows.items[i].cascade_input.0;
+        assert_eq!([tag_of(0), tag_of(1)], [1000, 1001], "A intact at front");
+        assert_eq!([tag_of(2), tag_of(3)], [3000, 3001], "C slid intact");
+        // A parallel per-node column must slide on `rows`'s range in
+        // lockstep — `subtree_paint_rects[i].min.x` carries the same tag.
+        let rect_tag = |i: usize| cache.subtree_paint_rects[i].min.x;
+        assert_eq!(
+            [rect_tag(0), rect_tag(1), rect_tag(2), rect_tag(3)],
+            [1000.0, 1001.0, 3000.0, 3001.0],
+            "subtree_paint_rects slid in lockstep with rows",
+        );
+        assert_eq!(
+            cache.paints.items[0].hash,
+            NodeHash(1000),
+            "A's paint intact"
+        );
+        assert_eq!(
+            cache.paints.items[1].hash,
+            NodeHash(3000),
+            "C's paint slid intact"
+        );
     }
 }

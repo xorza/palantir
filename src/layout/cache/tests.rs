@@ -796,3 +796,78 @@ fn write_subtree_large_oscillating_subtree_stays_bounded() {
          compact_runs={compact_runs}",
     );
 }
+
+/// `compact()` must repack **in place** — it slides live ranges down
+/// over garbage with `copy_within` + `truncate`, never reallocating.
+/// Pins the resize-path alloc-free property: pre-fix `compact` rebuilt
+/// every arena with `Vec::with_capacity`, so on a thrashing workload
+/// (`compact` firing ~every frame) the backing pointer changed on each
+/// run — `LayoutEngine::sweep_removed` was the #2 allocator in
+/// `alloc_resize`'s dhat dump. We warm the arena until its capacity
+/// stabilizes, snapshot the backing pointer, then drive many more
+/// thrash frames (which keep triggering `compact`) and assert the
+/// pointer never moves: no append outgrows the retained capacity and no
+/// compact reallocates.
+#[test]
+fn compact_repacks_in_place_without_reallocating() {
+    let mut ui = Ui::for_test();
+    let thrash_panel = WidgetId::from_hash("thrash");
+    let render = |ui: &mut Ui, extra: usize| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            Panel::vstack().id(thrash_panel).show(ui, |ui| {
+                for i in 0..12 {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("row", i)))
+                        .size(16.0)
+                        .show(ui);
+                }
+                for e in 0..extra {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("extra", e)))
+                        .size(16.0)
+                        .show(ui);
+                }
+            });
+        });
+    };
+
+    // Warm up until the arena capacity stops growing — the oscillation
+    // settles into append-into-retained-capacity + in-place compact.
+    for frame in 0..40 {
+        render(&mut ui, frame % 3);
+    }
+    let cap0 = ui.layout_engine.cache.nodes.desired.capacity();
+    let ptr0 = ui.layout_engine.cache.nodes.desired.as_ptr();
+    let hugs_cap0 = ui.layout_engine.cache.text_shapes_arena.items.capacity();
+    let mut compactions = 0usize;
+    let mut prev_len = ui.layout_engine.cache.nodes.desired.len();
+
+    for frame in 40..120 {
+        render(&mut ui, frame % 3);
+        let len = ui.layout_engine.cache.nodes.desired.len();
+        if len < prev_len {
+            compactions += 1;
+        }
+        prev_len = len;
+        assert_eq!(
+            ui.layout_engine.cache.nodes.desired.capacity(),
+            cap0,
+            "node arena reallocated after warmup (frame {frame}) — compact must be in place",
+        );
+        assert_eq!(
+            ui.layout_engine.cache.nodes.desired.as_ptr(),
+            ptr0,
+            "node arena backing pointer moved (frame {frame}) — a realloc slipped in",
+        );
+        assert_eq!(
+            ui.layout_engine.cache.text_shapes_arena.items.capacity(),
+            hugs_cap0,
+            "text-shapes arena reallocated after warmup (frame {frame})",
+        );
+    }
+
+    assert!(
+        compactions > 0,
+        "test must actually exercise compact() in the steady-state window",
+    );
+}
