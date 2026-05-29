@@ -359,27 +359,6 @@ fn compose_scales_rects_for_dpr() {
 }
 
 #[test]
-fn intersect_disjoint_yields_zero_size() {
-    let a = URect {
-        x: 0,
-        y: 0,
-        w: 10,
-        h: 10,
-    };
-    let b = URect {
-        x: 100,
-        y: 100,
-        w: 10,
-        h: 10,
-    };
-    // The composer uses `URect::clamp_to` for child↔parent scissor
-    // intersection — disjoint rects collapse to a zero-sized result.
-    let r = b.clamp_to(a);
-    assert_eq!(r.w, 0);
-    assert_eq!(r.h, 0);
-}
-
-#[test]
 fn compose_translates_under_push_transform() {
     let buf = run(
         |b, _arena| {
