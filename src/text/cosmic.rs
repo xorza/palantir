@@ -1,6 +1,11 @@
 //! Real text shaping via [`cosmic_text`]. Caches one `Buffer` per
 //! `(text, font_size, max_width)` triple so steady-state measurement is
-//! `HashMap` lookup only — no reshape, no allocation.
+//! `HashMap` lookup only — no reshape, no allocation. The cache is
+//! bounded: [`CosmicMeasure::end_frame_evict`] drops the
+//! least-recently-shaped buffers each frame (keeping every buffer a live
+//! layout entry still references), so a continuous resize drag — every
+//! width unique, a fresh entry per run per frame — stays bounded instead
+//! of growing without limit.
 //!
 //! The renderer (`WgpuBackend`) downcasts the trait object to this concrete
 //! type to reach the cached `Buffer`s and the `FontSystem` for
@@ -18,7 +23,7 @@ use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     fontdb,
 };
-use rustc_hash::{FxHashMap, FxHasher};
+use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::Hasher;
 use std::sync::Arc;
 
@@ -125,6 +130,9 @@ struct CacheEntry {
     /// insert from the unbounded shaping result and reused for every later
     /// `measure` call that hits this entry.
     intrinsic_min: f32,
+    /// Frame generation at the last measure-time touch (insert or
+    /// `cache_hit`). The LRU recency key for [`CosmicMeasure::end_frame_evict`].
+    last_used: u64,
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
@@ -136,6 +144,15 @@ struct CacheEntry {
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextCacheKey, CacheEntry>,
+    /// Monotonic frame counter, advanced once per frame by
+    /// [`Self::end_frame_evict`]. Stamped onto each entry's `last_used`
+    /// on every measure-time touch so eviction can drop the
+    /// least-recently-shaped unpinned buffers.
+    frame_gen: u64,
+    /// Reusable scratch holding the `last_used` of every unpinned entry
+    /// during [`Self::end_frame_evict`] — kept across frames so the
+    /// (infrequent) eviction pass allocates nothing.
+    evict_scratch: Vec<u64>,
 }
 
 impl CosmicMeasure {
@@ -151,6 +168,8 @@ impl CosmicMeasure {
         Self {
             font_system,
             cache: FxHashMap::default(),
+            frame_gen: 0,
+            evict_scratch: Vec::new(),
         }
     }
 
@@ -158,6 +177,13 @@ impl CosmicMeasure {
     /// or for `glyphon::TextRenderer::prepare_append`).
     pub fn font_system_mut(&mut self) -> &mut FontSystem {
         &mut self.font_system
+    }
+
+    /// Number of shaped buffers currently cached. Reach-in for the
+    /// in-tree eviction tests.
+    #[cfg(test)]
+    pub(crate) fn cache_len(&self) -> usize {
+        self.cache.len()
     }
 
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
@@ -260,6 +286,7 @@ impl CosmicMeasure {
                 buffer,
                 measured: extent.size,
                 intrinsic_min: extent.intrinsic_min,
+                last_used: self.frame_gen,
             },
         );
         MeasureResult {
@@ -371,6 +398,7 @@ impl CosmicMeasure {
                 buffer,
                 measured,
                 intrinsic_min: 0.0,
+                last_used: self.frame_gen,
             },
         );
         MeasureResult {
@@ -392,12 +420,56 @@ impl CosmicMeasure {
     }
 
     /// A cached entry's `MeasureResult` for `key`, or `None` on a miss.
-    fn cache_hit(&self, key: TextCacheKey) -> Option<MeasureResult> {
-        self.cache.get(&key).map(|entry| MeasureResult {
-            size: entry.measured,
-            key,
-            intrinsic_min: entry.intrinsic_min,
+    /// Refreshes the entry's `last_used` so a hit counts as recent for
+    /// eviction — a buffer reused on a multi-size rotation must not age
+    /// out as if it were a one-shot drag orphan.
+    fn cache_hit(&mut self, key: TextCacheKey) -> Option<MeasureResult> {
+        let now = self.frame_gen;
+        self.cache.get_mut(&key).map(|entry| {
+            entry.last_used = now;
+            MeasureResult {
+                size: entry.measured,
+                key,
+                intrinsic_min: entry.intrinsic_min,
+            }
         })
+    }
+
+    /// Repack-free eviction run once per frame from
+    /// [`crate::text::ShaperInner::end_frame`]. `pinned` is the set of
+    /// keys referenced by a live `reuse` entry this frame — exactly the
+    /// keys the renderer can ask for — so they are never evicted
+    /// regardless of recency. Among the *unpinned* remainder (stale
+    /// rotation widths, drag orphans), keep at most `keep_unpinned` by
+    /// `last_used` recency and drop the rest. Bounds the cache on a
+    /// continuous resize drag (every width unique → a fresh orphan per
+    /// run per frame) without touching the working set of a bounded
+    /// multi-size rotation, whose unpinned widths stay under the budget
+    /// and keep hitting. Advances `frame_gen` last.
+    pub(crate) fn end_frame_evict(
+        &mut self,
+        pinned: &FxHashSet<TextCacheKey>,
+        keep_unpinned: usize,
+    ) {
+        if self.cache.len() > pinned.len() + keep_unpinned {
+            self.evict_scratch.clear();
+            self.evict_scratch.extend(
+                self.cache
+                    .iter()
+                    .filter(|(k, _)| !pinned.contains(*k))
+                    .map(|(_, e)| e.last_used),
+            );
+            if self.evict_scratch.len() > keep_unpinned {
+                // Cutoff = the `keep_unpinned`-th largest `last_used`;
+                // keep entries at or above it. Ties at the cutoff retain
+                // a few extra — harmless slack, not unbounded.
+                let cut = self.evict_scratch.len() - keep_unpinned;
+                let (_, &mut cutoff, _) = self.evict_scratch.select_nth_unstable(cut);
+                self.cache
+                    .retain(|k, e| pinned.contains(k) || e.last_used >= cutoff);
+            }
+        }
+        self.frame_gen = self.frame_gen.wrapping_add(1);
     }
 }
 

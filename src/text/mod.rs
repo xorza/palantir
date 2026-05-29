@@ -136,7 +136,22 @@ pub(crate) struct ShaperInner {
     /// quantization is layout policy chosen at the call site. Read by
     /// tests via [`test_support::has_reuse_entry`].
     pub(crate) reuse: FxHashMap<(WidgetId, u16), TextReuseEntry>,
+    /// Reusable scratch for [`Self::end_frame`]: every `TextCacheKey`
+    /// referenced by a live `reuse` entry this frame — the pin set
+    /// handed to `CosmicMeasure::end_frame_evict`. Retained across
+    /// frames so the eviction pass allocates nothing.
+    cosmic_pins: FxHashSet<TextCacheKey>,
 }
+
+/// Max *unpinned* cosmic buffers retained after a frame's
+/// [`ShaperInner::end_frame`]. Pinned entries (referenced by a live
+/// `reuse` entry) are always kept; this caps only the stale remainder —
+/// past rotation widths and continuous-drag orphans. Generous enough
+/// that a bounded multi-size rotation (the `frame/resizing_cpu`
+/// workload) stays entirely under budget and never reshapes, while a
+/// continuous window-edge drag is bounded instead of growing without
+/// limit.
+const STALE_BUFFER_BUDGET: usize = 2048;
 
 impl TextShaper {
     /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide;
@@ -519,6 +534,15 @@ impl TextShaper {
             .retain(|(wid, _), _| !removed.contains(wid));
     }
 
+    /// Per-frame maintenance hook. Called once per frame from
+    /// `Ui::finalize_frame`, **after** [`Self::sweep_removed`] has pruned
+    /// dead `reuse` entries. Currently bounds the cosmic buffer cache
+    /// (drag-orphan eviction); the home for any future per-frame text
+    /// upkeep. No-op on the mono fallback.
+    pub(crate) fn end_frame(&self) {
+        self.inner.borrow_mut().end_frame();
+    }
+
     /// Run `body` against a [`RenderSplit`] of the inner cosmic state
     /// (`&mut FontSystem` + read-only buffer lookup). Returns `None`
     /// when the shaper is mono (no cosmic to split). The borrow is
@@ -535,6 +559,28 @@ impl TextShaper {
 }
 
 impl ShaperInner {
+    /// Per-frame maintenance. Pins every `TextCacheKey` a live `reuse`
+    /// entry can return this frame (the only keys the renderer looks up)
+    /// and hands them to `CosmicMeasure::end_frame_evict`, which drops
+    /// unpinned surplus above [`STALE_BUFFER_BUDGET`]. The pin invariant
+    /// is what makes eviction safe: after `record_pass` every renderable
+    /// key lives in `reuse`, so a pinned key is never evicted out from
+    /// under the render pass — and a `reuse`-hit that returns a stored
+    /// key without re-touching cosmic still can't dangle.
+    fn end_frame(&mut self) {
+        let Some(cosmic) = self.cosmic.as_mut() else {
+            return;
+        };
+        self.cosmic_pins.clear();
+        for e in self.reuse.values() {
+            self.cosmic_pins.insert(e.unbounded.key);
+            if let Some(w) = &e.wrap {
+                self.cosmic_pins.insert(w.result.key);
+            }
+        }
+        cosmic.end_frame_evict(&self.cosmic_pins, STALE_BUFFER_BUDGET);
+    }
+
     /// Bypass-cache dispatch: cosmic if installed, mono otherwise.
     /// Caller is responsible for incrementing `measure_calls` on cache
     /// misses (we don't bump it here because some paths — `shape_wrap`

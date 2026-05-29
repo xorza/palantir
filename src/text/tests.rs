@@ -950,3 +950,90 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
         "wrap keeps a longest-word floor"
     );
 }
+
+/// `end_frame_evict` must (1) never drop a pinned key regardless of how
+/// old it is, and (2) among the unpinned remainder keep exactly the
+/// `keep_unpinned` most-recently-used by `last_used`. We shape ten
+/// distinct widths one-per-frame so each entry gets a strictly
+/// increasing `last_used`, then evict with the *oldest* key pinned and a
+/// budget of 2 — proving recency loses to pinning and that the cap is
+/// honoured.
+#[test]
+fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
+    use crate::text::cosmic::CosmicMeasure;
+    use rustc_hash::FxHashSet;
+
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let empty = FxHashSet::default();
+    let mut keys = Vec::new();
+    for i in 0..10u32 {
+        // Distinct width per frame ⇒ distinct cache key ⇒ a fresh insert
+        // stamped with that frame's generation.
+        let r = c.measure(
+            "hello world",
+            14.0,
+            lh(18.0),
+            Some(40.0 + i as f32 * 5.0),
+            FontFamily::Sans,
+            HAlign::Left,
+        );
+        keys.push(r.key);
+        // Advance the generation without evicting (budget far exceeds the
+        // live count) so the next insert lands in a later frame.
+        c.end_frame_evict(&empty, 1000);
+    }
+    assert_eq!(c.cache_len(), 10, "ten distinct widths, ten buffers");
+
+    // Pin the OLDEST key; keep only 2 unpinned by recency.
+    let pins: FxHashSet<TextCacheKey> = [keys[0]].into_iter().collect();
+    c.end_frame_evict(&pins, 2);
+
+    assert_eq!(c.cache_len(), 3, "1 pinned + 2 most-recent unpinned");
+    assert!(
+        c.buffer_for(keys[0]).is_some(),
+        "pinned key survives despite being least-recently-used",
+    );
+    assert!(c.buffer_for(keys[9]).is_some(), "newest unpinned kept");
+    assert!(
+        c.buffer_for(keys[8]).is_some(),
+        "second-newest unpinned kept"
+    );
+    for evicted in [1usize, 2, 5, 7] {
+        assert!(
+            c.buffer_for(keys[evicted]).is_none(),
+            "older unpinned key {evicted} evicted",
+        );
+    }
+}
+
+/// Below budget the cache is left completely untouched — the no-regression
+/// guarantee for bounded multi-size rotation (`frame/resizing_cpu`), whose
+/// working set never crosses the budget and so must never reshape.
+#[test]
+fn end_frame_evict_is_noop_under_budget() {
+    use crate::text::cosmic::CosmicMeasure;
+    use rustc_hash::FxHashSet;
+
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let empty = FxHashSet::default();
+    let mut keys = Vec::new();
+    for i in 0..4u32 {
+        let r = c.measure(
+            "rotation",
+            14.0,
+            lh(18.0),
+            Some(100.0 + i as f32 * 20.0),
+            FontFamily::Sans,
+            HAlign::Left,
+        );
+        keys.push(r.key);
+        c.end_frame_evict(&empty, 1000);
+    }
+    // Four widths, nothing pinned, generous budget ⇒ no eviction even
+    // though the most-recent (pinned=∅) entries are "newer" than the rest.
+    c.end_frame_evict(&empty, 64);
+    assert_eq!(c.cache_len(), 4, "under-budget eviction is a no-op");
+    for k in &keys {
+        assert!(c.buffer_for(*k).is_some(), "every rotation width retained");
+    }
+}
