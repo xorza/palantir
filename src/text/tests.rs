@@ -951,6 +951,97 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     );
 }
 
+/// The truncation probe reuses one shared `Buffer` across calls, so a
+/// prior shape must not leak into a later measurement. Measure the same
+/// (text, size, width) on a fresh measurer vs one that first shaped
+/// several unrelated strings through the shared probe + ellipsis cache;
+/// the result must be identical. Also pins that truncation actually
+/// fired (ellipsized width is below the unbounded width).
+#[test]
+fn truncation_probe_reuse_is_order_independent() {
+    use crate::text::cosmic::CosmicMeasure;
+
+    let long = "the quick brown fox jumps over the lazy dog";
+    let (fs, w) = (14.0, 80.0);
+
+    // Fresh measurer: only the target measurement.
+    let mut fresh = CosmicMeasure::with_bundled_fonts();
+    let r_fresh =
+        fresh.measure_truncated(long, fs, lh(fs), w, FontFamily::Sans, HAlign::Left, true);
+
+    // Reused measurer: drive several unrelated shapes through the shared
+    // `probe_buffer` (different texts, sizes, families) and the ellipsis
+    // cache first, then measure the identical target.
+    let mut reused = CosmicMeasure::with_bundled_fonts();
+    reused.measure_truncated(
+        "a considerably longer string that grows the probe buffer capacity",
+        20.0,
+        lh(20.0),
+        220.0,
+        FontFamily::Mono,
+        HAlign::Left,
+        true,
+    );
+    reused.measure_truncated(
+        "short",
+        10.0,
+        lh(10.0),
+        30.0,
+        FontFamily::Sans,
+        HAlign::Left,
+        false,
+    );
+    let r_reused =
+        reused.measure_truncated(long, fs, lh(fs), w, FontFamily::Sans, HAlign::Left, true);
+
+    assert_eq!(
+        r_fresh.size, r_reused.size,
+        "probe-buffer reuse changed the measured size",
+    );
+    assert_eq!(
+        r_fresh.key, r_reused.key,
+        "same inputs must map to the same cache key regardless of prior shaping",
+    );
+
+    // Truncation actually fired: the ellipsized line is narrower than the
+    // full unbounded shape (and fits within the width budget).
+    let unbounded = fresh.measure(long, fs, lh(fs), None, FontFamily::Sans, HAlign::Left);
+    assert!(
+        r_fresh.size.w < unbounded.size.w,
+        "expected truncation: ellipsized {} should be < unbounded {}",
+        r_fresh.size.w,
+        unbounded.size.w,
+    );
+    assert!(
+        r_fresh.size.w <= w + 1.0,
+        "ellipsized width {} should fit within budget {w}",
+        r_fresh.size.w,
+    );
+}
+
+/// The ellipsis-advance memo is keyed on quantized size, so a continuous
+/// font-size zoom over ellipsized text would grow it without bound. Drive
+/// far more distinct sizes than the cap and assert it stays bounded (the
+/// clear-on-overflow path), while still returning correct widths.
+#[test]
+fn ellipsis_cache_bounded_under_size_churn() {
+    use crate::text::cosmic::{CosmicMeasure, ELLIPSIS_CACHE_CAP};
+
+    let mut c = CosmicMeasure::with_bundled_fonts();
+    let long = "the quick brown fox jumps over the lazy dog";
+    for i in 0..(ELLIPSIS_CACHE_CAP * 2 + 5) {
+        // Distinct quantized size each iteration (0.1px steps × 64 ≥ 1).
+        let fs = 8.0 + i as f32 * 0.1;
+        let r = c.measure_truncated(long, fs, lh(fs), 60.0, FontFamily::Sans, HAlign::Left, true);
+        assert!(r.size.w <= 61.0, "still truncates to budget at size {fs}");
+    }
+    assert!(
+        c.ellipsis_cache_len() <= ELLIPSIS_CACHE_CAP,
+        "ellipsis cache must stay bounded ({} > cap {ELLIPSIS_CACHE_CAP})",
+        c.ellipsis_cache_len(),
+    );
+}
+
 /// `end_frame_evict` must (1) never drop a pinned key regardless of how
 /// old it is, and (2) among the unpinned remainder keep exactly the
 /// `keep_unpinned` most-recently-used by `last_used`. We shape ten
