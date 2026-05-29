@@ -1,6 +1,7 @@
-use super::gradient_atlas::LutRow;
-use super::quad::{FillKind, Quad};
+use super::quad::Quad;
 use crate::primitives::image::ImageHandle;
+use crate::primitives::paint::FillKind;
+use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::text::TextCacheKey;

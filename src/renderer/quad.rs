@@ -4,76 +4,9 @@
 //! frontend↔backend contract, so neither side owns them.
 
 use crate::primitives::brush::{FillAxis, Spread};
+use crate::primitives::paint::{FillKind, LutRow};
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
-use crate::renderer::gradient_atlas::LutRow;
 use bytemuck::{Pod, Zeroable};
-
-/// Packed fill-brush metadata for `Quad.fill_kind` and the matching
-/// cmd-buffer payload fields. Low byte: kind tag (0 = solid,
-/// 1 = linear). Bits 8..16: `Spread` discriminant (only meaningful
-/// when kind == linear).
-///
-/// `repr(transparent)` over `u32` so the GPU wire layout is just a
-/// `u32` vertex attribute — `vertex_attr_array![..., 6 => Uint32, ...]`
-/// in the pipeline matches the shader's `@location(6) fill_kind: u32`
-/// against this wrapper directly.
-///
-/// **Shader-side mapping** (`quad.wgsl`): the bit-layout constants
-/// `BRUSH_KIND_SOLID = 0u` / `BRUSH_KIND_LINEAR = 1u` and the spread
-/// tags `0..2` are hand-mirrored. Reordering `Brush` or `Spread`
-/// without updating WGSL silently desyncs; the slice-2 visual goldens
-/// catch it.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, Pod, Zeroable)]
-pub(crate) struct FillKind(pub(crate) u32);
-
-impl FillKind {
-    /// Solid-fill marker; `Quad.fill: Color` carries the colour, the
-    /// LUT / axis / row fields are ignored by the shader.
-    pub(crate) const SOLID: Self = Self(0);
-
-    /// Linear-gradient marker with the spread mode packed into bits
-    /// 8..16. The atlas row id and axis vector ride along in
-    /// `Quad.fill_lut_row` / `Quad.fill_axis`.
-    pub(crate) const fn linear(spread: Spread) -> Self {
-        Self(1 | ((spread as u32) << 8))
-    }
-
-    /// Radial-gradient marker. `fill_axis` carries `(cx, cy, rx, ry)`
-    /// in object-space 0..1 coords; the shader projects each fragment
-    /// onto the elliptical radius to derive `t`.
-    pub(crate) const fn radial(spread: Spread) -> Self {
-        Self(2 | ((spread as u32) << 8))
-    }
-
-    /// Conic-gradient marker. `fill_axis` carries `(cx, cy,
-    /// start_angle, _)`; the shader uses `atan2` to derive `t`.
-    pub(crate) const fn conic(spread: Spread) -> Self {
-        Self(3 | ((spread as u32) << 8))
-    }
-
-    /// Drop-shadow marker. `fill: Color` carries the shadow colour,
-    /// `fill_axis = (offset.x, offset.y, sigma, spread)`,
-    /// `radius` carries the *source* shape's corner radii (the shadow
-    /// is paint-bbox-aligned but conceptually wraps a source rect at
-    /// `rect_centre - offset`). The shader runs `shadow_coverage` and
-    /// multiplies `fill.rgb * fill.a * cov`.
-    pub(crate) const SHADOW_DROP: Self = Self(4);
-
-    /// Inset-shadow marker. Same packing as `SHADOW_DROP`; the
-    /// shader inverts coverage and clips to inside the source rect.
-    pub(crate) const SHADOW_INSET: Self = Self(5);
-
-    /// True iff this `FillKind` marks a shadow draw. Shadow blur
-    /// extends visually past the stored rect, so shadows are never
-    /// safe to drop in the occlusion-prune sweep — checked at
-    /// `Composer::flush` time before marking a quad for removal.
-    #[inline]
-    pub(crate) const fn is_shadow(self) -> bool {
-        let kind = self.0 & 0xFF;
-        kind == Self::SHADOW_DROP.0 || kind == Self::SHADOW_INSET.0
-    }
-}
 
 // Compile-time pins for the shader↔CPU discriminant contract. Mirrors
 // `BRUSH_KIND_*` / `SPREAD_*` in `src/renderer/backend/quad.wgsl`.

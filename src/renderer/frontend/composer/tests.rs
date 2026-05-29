@@ -443,12 +443,12 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     let q = &out.quads[0];
     assert_eq!(
         q.fill_kind,
-        crate::renderer::quad::FillKind::SOLID,
+        crate::primitives::paint::FillKind::SOLID,
         "solid quad must carry kind=solid",
     );
     assert_eq!(
         q.fill_lut_row,
-        crate::renderer::gradient_atlas::LutRow::FALLBACK,
+        crate::primitives::paint::LutRow::FALLBACK,
         "solid quad has no LUT row",
     );
     assert_eq!(
@@ -467,9 +467,9 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::color::ColorU8;
+    use crate::primitives::paint::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
-    use crate::renderer::quad::FillKind;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
@@ -509,9 +509,9 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::color::ColorU8;
+    use crate::primitives::paint::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
-    use crate::renderer::quad::FillKind;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = GradientAtlas::default();
     let lowered = LoweredGradient {
@@ -1191,9 +1191,9 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::brush::Spread;
+    use crate::primitives::paint::FillKind;
+    use crate::primitives::paint::LutRow;
     use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
-    use crate::renderer::gradient_atlas::LutRow;
-    use crate::renderer::quad::FillKind;
     let buf = run(
         |b, _arena| {
             // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
@@ -1605,7 +1605,7 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
     use crate::primitives::brush::FillAxis;
-    use crate::renderer::quad::FillKind;
+    use crate::primitives::paint::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
     // outer halo would be lost. Predicate must never drop shadows.

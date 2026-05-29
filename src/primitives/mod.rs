@@ -9,6 +9,7 @@ pub(crate) mod image;
 pub(crate) mod interned_str;
 pub(crate) mod mesh;
 pub(crate) mod num;
+pub(crate) mod paint;
 pub(crate) mod rect;
 pub(crate) mod shadow;
 pub(crate) mod size;

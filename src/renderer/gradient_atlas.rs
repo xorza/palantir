@@ -31,26 +31,10 @@
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorU8, linear_to_oklab, oklab_to_linear};
+use crate::primitives::paint::LutRow;
 use std::cell::{Cell, RefCell};
 use std::hash::Hasher;
 use std::rc::Rc;
-
-/// Index into the gradient LUT atlas texture. `LutRow(0)` is the
-/// magenta debug fallback (so a stray default value paints obviously
-/// wrong); real registrations occupy `1..ATLAS_ROWS`. Newtype keeps
-/// the atlas-row identifier from being silently swapped with another
-/// `u32` field on `Quad`.
-#[repr(transparent)]
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct LutRow(pub(crate) u32);
-
-impl LutRow {
-    /// Sentinel for solid (non-gradient) quads. The shader only samples
-    /// the LUT when `fill_kind` is a gradient, so the value is unused
-    /// in that path; a stray `FALLBACK` reaching the sampler paints
-    /// magenta.
-    pub(crate) const FALLBACK: LutRow = LutRow(0);
-}
 
 /// Number of rows in the LUT atlas texture. One row per distinct
 /// gradient currently in use. Row 0 is reserved as a debug-magenta
