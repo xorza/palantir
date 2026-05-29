@@ -262,6 +262,10 @@ impl Default for Ui {
     }
 }
 
+/// Construction + host-driven frame lifecycle: `frame` and the private
+/// record / clock / classify / cascade / finalize passes it runs. User
+/// code never calls these directly — `Host` drives them. The widget
+/// authoring API lives in the second `impl Ui` block below.
 impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
     /// animation tickers instead of teleporting; [`Self::time`]
@@ -605,6 +609,96 @@ impl Ui {
         action_flag
     }
 
+    /// Shared inserter for [`Self::request_repaint_after`] (REAL) and
+    /// paint-anim quantum boundaries (ANIM, filed from
+    /// [`Self::post_record`]). Maintains the sorted-ascending
+    /// invariant on [`Self::repaint_wakes`], coalesces requests within
+    /// [`REPAINT_COALESCE_DT`] onto the later deadline, and OR-merges
+    /// reasons when two requests land on the same slot. Merging is
+    /// what lets the frame-entry classifier see a wake that *both* an
+    /// anim and a widget asked for as `REAL | ANIM`, which forces the
+    /// Full path (correct — the widget needs record).
+    fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
+        let pos = match self
+            .repaint_wakes
+            .binary_search_by_key(&deadline, |w| w.deadline)
+        {
+            Ok(i) => {
+                self.repaint_wakes[i].reasons = self.repaint_wakes[i].reasons.merge(reasons);
+                return;
+            }
+            Err(pos) => pos,
+        };
+        let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
+        // Coalesce to the later of (existing, requested) — collapse
+        // bursts into a single wake at the back of the window to avoid
+        // unnecessary host wakes. pos-1 is earlier than deadline
+        // (overwrite with ours, but keep merged reasons); pos is later
+        // (keep its deadline, merge our reasons in).
+        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
+            self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
+            return;
+        }
+        if pos > 0 && near(self.repaint_wakes[pos - 1].deadline) {
+            self.repaint_wakes[pos - 1].deadline = deadline;
+            self.repaint_wakes[pos - 1].reasons =
+                self.repaint_wakes[pos - 1].reasons.merge(reasons);
+            return;
+        }
+        self.repaint_wakes.insert(pos, Wake { deadline, reasons });
+    }
+
+    /// Record-half of `frame`: finalize hashes, run measure / arrange,
+    /// then cascade. Cascade runs here (not in `finalize_frame`) so
+    /// pass B of a `request_relayout` frame reads pass A's arranged
+    /// rects via [`Self::response_for`] like steady-state frames do.
+    /// Stale cache entries (for widgets recorded last frame but
+    /// absent this pass) are tolerated through `layout.run` — they
+    /// can't match live keys — and reaped once in `finalize_frame`
+    /// against the final pass's id set.
+    fn post_record(&mut self) {
+        profiling::scope!("Ui::post_record");
+        self.forest.post_record();
+        let arena = self.frame_arena.inner();
+        let tc = crate::layout::support::TextCtx {
+            bytes: &arena.fmt_scratch,
+            shaper: &self.text,
+        };
+        self.layout_engine.run(
+            &self.forest,
+            &tc,
+            self.display.logical_rect(),
+            &mut self.layout,
+        );
+        drop(arena);
+        self.cascades_engine.run(&self.forest, &mut self.layout);
+    }
+
+    /// Paint-half of `frame`: diff seen ids against the last painted
+    /// frame, fan the `removed` set out to per-widget caches, run
+    /// input/damage against the final pass's cascade. Sweep runs
+    /// here (once per `frame`) rather than per `post_record` so a
+    /// widget that vanishes in pass A but returns in pass B keeps
+    /// its state across the discard.
+    fn finalize_frame(&mut self) {
+        profiling::scope!("Ui::finalize_frame");
+        let removed = self.forest.ids.rollover();
+        self.text.sweep_removed(removed);
+        self.layout_engine.sweep_removed(removed);
+        self.cascades_engine.sweep_removed(removed);
+        self.state.sweep_removed(removed);
+        self.anim.sweep_removed(removed);
+
+        self.input.post_record(&self.layout.cascades);
+    }
+}
+
+/// Widget- and host-facing authoring API: input feed, subscriptions,
+/// repaint/relayout requests, shape recording, per-widget state, and
+/// animation. Distinct from the host-driven frame lifecycle above
+/// (`frame` + its private record/cascade/finalize passes), which user
+/// code never calls directly.
+impl Ui {
     /// Feed a palantir-native input event. Returns an [`InputDelta`]
     /// the host reads to decide whether to request a redraw — pointer
     /// moves over inert surfaces leave `requests_repaint` false so the
@@ -730,89 +824,6 @@ impl Ui {
         );
         let deadline = self.time.saturating_add(after);
         self.schedule_wake(deadline, WakeReasons::REAL);
-    }
-
-    /// Shared inserter for [`Self::request_repaint_after`] (REAL) and
-    /// paint-anim quantum boundaries (ANIM, filed from
-    /// [`Self::post_record`]). Maintains the sorted-ascending
-    /// invariant on [`Self::repaint_wakes`], coalesces requests within
-    /// [`REPAINT_COALESCE_DT`] onto the later deadline, and OR-merges
-    /// reasons when two requests land on the same slot. Merging is
-    /// what lets the frame-entry classifier see a wake that *both* an
-    /// anim and a widget asked for as `REAL | ANIM`, which forces the
-    /// Full path (correct — the widget needs record).
-    fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
-        let pos = match self
-            .repaint_wakes
-            .binary_search_by_key(&deadline, |w| w.deadline)
-        {
-            Ok(i) => {
-                self.repaint_wakes[i].reasons = self.repaint_wakes[i].reasons.merge(reasons);
-                return;
-            }
-            Err(pos) => pos,
-        };
-        let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
-        // Coalesce to the later of (existing, requested) — collapse
-        // bursts into a single wake at the back of the window to avoid
-        // unnecessary host wakes. pos-1 is earlier than deadline
-        // (overwrite with ours, but keep merged reasons); pos is later
-        // (keep its deadline, merge our reasons in).
-        if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
-            self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
-            return;
-        }
-        if pos > 0 && near(self.repaint_wakes[pos - 1].deadline) {
-            self.repaint_wakes[pos - 1].deadline = deadline;
-            self.repaint_wakes[pos - 1].reasons =
-                self.repaint_wakes[pos - 1].reasons.merge(reasons);
-            return;
-        }
-        self.repaint_wakes.insert(pos, Wake { deadline, reasons });
-    }
-
-    /// Record-half of `frame`: finalize hashes, run measure / arrange,
-    /// then cascade. Cascade runs here (not in `finalize_frame`) so
-    /// pass B of a `request_relayout` frame reads pass A's arranged
-    /// rects via [`Self::response_for`] like steady-state frames do.
-    /// Stale cache entries (for widgets recorded last frame but
-    /// absent this pass) are tolerated through `layout.run` — they
-    /// can't match live keys — and reaped once in `finalize_frame`
-    /// against the final pass's id set.
-    fn post_record(&mut self) {
-        profiling::scope!("Ui::post_record");
-        self.forest.post_record();
-        let arena = self.frame_arena.inner();
-        let tc = crate::layout::support::TextCtx {
-            bytes: &arena.fmt_scratch,
-            shaper: &self.text,
-        };
-        self.layout_engine.run(
-            &self.forest,
-            &tc,
-            self.display.logical_rect(),
-            &mut self.layout,
-        );
-        drop(arena);
-        self.cascades_engine.run(&self.forest, &mut self.layout);
-    }
-
-    /// Paint-half of `frame`: diff seen ids against the last painted
-    /// frame, fan the `removed` set out to per-widget caches, run
-    /// input/damage against the final pass's cascade. Sweep runs
-    /// here (once per `frame`) rather than per `post_record` so a
-    /// widget that vanishes in pass A but returns in pass B keeps
-    /// its state across the discard.
-    fn finalize_frame(&mut self) {
-        profiling::scope!("Ui::finalize_frame");
-        let removed = self.forest.ids.rollover();
-        self.text.sweep_removed(removed);
-        self.layout_engine.sweep_removed(removed);
-        self.cascades_engine.sweep_removed(removed);
-        self.state.sweep_removed(removed);
-        self.anim.sweep_removed(removed);
-
-        self.input.post_record(&self.layout.cascades);
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
