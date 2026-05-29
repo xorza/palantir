@@ -43,9 +43,9 @@
 use crate::forest::shapes::record::{LoweredGradient, ShapeStroke};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
+use crate::primitives::paint::FillKind;
+use crate::primitives::paint::LutRow;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
-use crate::renderer::gradient_atlas::LutRow;
-use crate::renderer::quad::FillKind;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 

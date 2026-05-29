@@ -1,4 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
+use crate::layout::grid::GridDef;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
@@ -6,37 +7,6 @@ use crate::ui::Ui;
 use crate::widgets::Response;
 use std::rc::Rc;
 use std::sync::OnceLock;
-
-/// Track definitions + axis gaps for a `Grid` panel. Stored on
-/// `GridArena` (a `Tree`-owned `Vec<GridDef>`) and addressed from
-/// `LayoutMode::Grid(u16)`. Track defs live behind `Rc<[Track]>` so
-/// callers can cache and share them across frames without the
-/// framework copying — the builder stores the `Rc`, the layout pass
-/// reads through it directly. Per-track hug sizes (computed in
-/// measure, read in arrange) live on `Layout` keyed by grid def
-/// index — the tree is read-only after recording.
-#[derive(Clone, Debug)]
-pub(crate) struct GridDef {
-    pub rows: Rc<[Track]>,
-    pub cols: Rc<[Track]>,
-    pub row_gap: f32,
-    pub col_gap: f32,
-}
-
-impl std::hash::Hash for GridDef {
-    fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
-        h.write_u32(self.rows.len() as u32);
-        for t in self.rows.iter() {
-            t.hash(h);
-        }
-        h.write_u32(self.cols.len() as u32);
-        for t in self.cols.iter() {
-            t.hash(h);
-        }
-        h.write_u32(self.row_gap.to_bits());
-        h.write_u32(self.col_gap.to_bits());
-    }
-}
 
 /// WPF-style grid: explicit row + column track definitions, per-track
 /// `Pixel`/`Auto`/`Star` sizing with optional `[min, max]` clamps, and

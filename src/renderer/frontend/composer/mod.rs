@@ -7,9 +7,10 @@ use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::image::ImageHandle;
+use crate::primitives::paint::FillKind;
+use crate::primitives::paint::LutRow;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
-use crate::renderer::gradient_atlas::LutRow;
-use crate::renderer::quad::{FillKind, Quad};
+use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
     CurveBatch, CurveInstance, DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch,
     MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
