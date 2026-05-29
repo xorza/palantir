@@ -5,8 +5,16 @@
 //! measures, doesn't assert. Use the output to find which call sites
 //! are still allocating after warmup.
 //!
-//! Run with: `cargo bench --bench alloc_resize`
-//! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize`
+//! Uses `Ui::for_test_text()` (real cosmic-text), NOT `Ui::default()`
+//! (mono fallback): the fallback emits a constant paint count across
+//! sizes, so `CascadeCache::capture` reuses its arena slots in place
+//! and the bench reports a misleading 0 blocks/frame. Real shaping
+//! reflows text per size, drifting the paint count and exercising the
+//! capture evict/append path the live `frame/resizing_cpu` arm hits.
+//! That dependency is why this bench requires the `internals` feature.
+//!
+//! Run with: `cargo bench --bench alloc_resize --features internals`
+//! Verbose JSON: `DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals`
 
 #[path = "support/frame_fixture.rs"]
 mod fixture;
@@ -52,7 +60,7 @@ fn main() {
         Some(dhat::Profiler::builder().testing().build())
     };
 
-    let mut ui = Ui::default();
+    let mut ui = Ui::for_test_text();
     let mut state = FormState::default();
 
     // Two arms: pool-rotation (matches `frame/resizing_cpu` exactly)

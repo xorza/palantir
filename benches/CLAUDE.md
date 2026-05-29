@@ -69,13 +69,13 @@ collapses damage to `Full` fails loudly instead of measuring the wrong
 thing.
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`):
-- **No features needed**: `alloc_free`, `alloc_resize`, `input_throughput`.
-- **`internals`**: everything else (`frame`, `alloc_free_gpu`,
-  `scrollzoom`, `text_atlas`, `caches`, `damage`).
+- **No features needed**: `alloc_free`, `input_throughput`.
+- **`internals`**: everything else (`frame`, `alloc_resize`,
+  `alloc_free_gpu`, `scrollzoom`, `text_atlas`, `caches`, `damage`).
+  `alloc_resize` needs it for `Ui::for_test_text()` — see below.
 
-`cargo bench --no-run` without features only builds `alloc_free`,
-`alloc_resize`, and `input_throughput`; everything else requires
-`--features internals`.
+`cargo bench --no-run` without features only builds `alloc_free` and
+`input_throughput`; everything else requires `--features internals`.
 
 ## Allocation invariants (three benches)
 
@@ -102,15 +102,21 @@ below). Two pin a floor and fail; one only measures.
   `continuous-drag` (a unique width every frame, modelling a
   window-edge drag with no cache hits possible). Prints blocks/frame +
   bytes/frame per arm; use it to find which call sites still allocate
-  on the resize path.
+  on the resize path. **Builds `Ui::for_test_text()` (real cosmic-text),
+  hence `required-features = ["internals"]`** — with the `Ui::default()`
+  mono fallback the paint count is constant across sizes, so
+  `CascadeCache::capture` reuses arena slots in place and the bench
+  reports a false 0. This was a real blind spot: until 2026-05 the bench
+  used the fallback and reported 0 blocks/frame while the live arm
+  reallocated ~1.3 MB/frame.
 
 ```sh
-cargo bench --bench alloc_free                          # strict CPU invariant
-cargo bench --bench alloc_free_gpu                      # GPU baseline gate
-cargo bench --bench alloc_resize                        # resize-path measurement
-DHAT_DUMP=1 cargo bench --bench alloc_free              # emits dhat-heap.json on drop
-DHAT_DUMP=1 cargo bench --bench alloc_free_gpu          # same, for the GPU path
-DHAT_DUMP=1 cargo bench --bench alloc_resize            # same, for the resize path
+cargo bench --bench alloc_free                              # strict CPU invariant
+cargo bench --bench alloc_free_gpu                          # GPU baseline gate
+cargo bench --bench alloc_resize --features internals       # resize-path measurement
+DHAT_DUMP=1 cargo bench --bench alloc_free                  # emits dhat-heap.json on drop
+DHAT_DUMP=1 cargo bench --bench alloc_free_gpu              # same, for the GPU path
+DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals  # same, for the resize path
 ```
 
 If either fails, load `dhat-heap.json` at
