@@ -21,10 +21,52 @@ cargo bench --bench caches --features internals        # gated benches
   per-run header in `benches/results/<machine>.txt`
   (`=== <utc> — [<mode>] <note> ===`) so each appended row carries
   context for why it was measured.
-- `PALANTIR_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which
-  sync-mode arms run; `both` is the full ~90 s matrix, `cpu`/`gpu`
+- `PALANTIR_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which of
+  the two benches run; `both` is the full ~90 s matrix, `cpu`/`gpu`
   alone is ~45 s. Forces every invocation to be an explicit decision
   rather than defaulting to the full matrix.
+
+### `frame` is two benches in one file
+
+`frame.rs` defines two independent criterion groups (`cpu_benches`,
+`gpu_benches`) plus a `results_group` finalizer that prepends the
+per-machine row last. `PALANTIR_BENCH_MODE` gates each group wholesale,
+so **`MODE=cpu` runs zero GPU code** — no adapter / device request, no
+`write_stats` — which is the point: a `perf` / `samply` capture of the
+CPU bench is uncontaminated by driver activity.
+
+- **`frame/*_cpu`** — palantir's CPU pipeline measured on a **bare `Ui`
+  + standalone `Frontend` with no `wgpu::Device` at all** (`CpuHarness`,
+  same deviceless path as `alloc_free`). Each iter runs record →
+  measure → arrange → cascade → damage and then, when the frame
+  produces a render plan, encode + compose — then acks the present
+  (`Ui::mark_submitted_for_test`) so `classify_frame` matches a real
+  host. **Driving the CPU arms through `Host::frame_offscreen` + a poll
+  was the old shape and was wrong**: a non-blocking `device.poll`
+  charges each iter a driver ioctl, and on `RenderPlan::Skip` the host
+  does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on
+  `cached_cpu` and ~50 % on `resizing_cpu` (multi-MB backbuffer
+  realloc per size, `ensure_backbuffer → create_texture`), swamping the
+  palantir cost. Time is advanced from a real `Instant` like
+  `Host::cpu_frame` so wake cadence matches production.
+- **`frame/*_gpu`** — the full public path: `Host::frame_offscreen`
+  against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
+  covers the whole CPU + GPU pipeline. The per-frame `write_stats` dump
+  (upload counts, GPU pass timings) lives here since it's inherently GPU.
+
+Arms (both benches): `cached` (steady state, MeasureCache hits, damage
+`Skip`), `partial` (mutates one footer counter → small `Partial` rect),
+`resizing` (rotates four surface sizes to bust `available_q`),
+`scrolling` (shifts a `Panel::transform` so only the cascade walk
+changes). **Every CPU arm runs the full pipeline including encode +
+compose** so the numbers are apples-to-apples: a `Skip` frame produces
+no render plan, so `CpuHarness::frame` substitutes a `Full` plan for the
+encoder (the `cached_cpu` arm thus measures a whole-tree repaint cost,
+not a no-op). `partial` keeps its small `Partial` region — the
+partial-encode path is its real workload. `cpu_partial` asserts the
+`Partial` invariant (deviceless) before timing so a fixture change that
+collapses damage to `Full` fails loudly instead of measuring the wrong
+thing.
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`):
 - **No features needed**: `alloc_free`, `alloc_resize`, `input_throughput`.

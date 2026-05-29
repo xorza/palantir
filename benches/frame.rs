@@ -1,28 +1,45 @@
-//! Per-frame aggregate benchmark — CPU + GPU.
+//! Per-frame aggregate benchmark — two cleanly-separated benches in one
+//! file, selected by `PALANTIR_BENCH_MODE` (`cpu` / `gpu` / `both`):
 //!
-//! Drives the canonical public API: `Host::frame_offscreen` against an
-//! offscreen `wgpu::Texture`. Three arms × two sync modes:
+//! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
+//!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
+//!   wgpu device at all** (same deviceless path as `alloc_free`). Each
+//!   iter runs record → measure → arrange → cascade → damage → encode +
+//!   compose and acks the present; nothing touches the GPU. This is the
+//!   clean signal: no queue submit, no `device.poll` ioctl, no
+//!   per-size framebuffer reconfiguration. Going through
+//!   `Host::frame_offscreen` + a poll (the old shape) charged every iter
+//!   driver work that profiled as NVIDIA / kernel self-time — ~20% on
+//!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
+//!   reallocations per size) — swamping the palantir cost being measured.
+//! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
+//!   `Host::frame_offscreen` against an offscreen `wgpu::Texture` +
+//!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
+//!   dominated by GPU exec on large views. The per-frame `write_stats`
+//!   dump (upload counts, GPU pass timings) lives here since it's
+//!   inherently GPU.
 //!
-//! - **`frame/cached_*`** — fixed viewport, MeasureCache hits.
+//! Running `MODE=cpu` executes **zero** GPU code (no adapter/device
+//! request, no `write_stats`), so a `perf` / `samply` capture of the CPU
+//! bench is uncontaminated by driver activity.
+//!
+//! The three arms are shared in spirit across both benches:
+//!
+//! - **`frame/cached_*`** — fixed viewport, MeasureCache hits, damage
+//!   resolves to `Skip` in steady state. The `_cpu` arm still runs a
+//!   full-tree encode + compose (a synthesized `Full` plan) so it
+//!   measures the same pipeline as the other arms rather than skipping
+//!   paint; see `CpuHarness::frame`.
 //! - **`frame/partial_*`** — fixed viewport, mutates a single fixture
 //!   counter per iter so damage resolves to one small `Partial` rect
 //!   over an otherwise-static tree. Models the steady-state of an
 //!   interactive UI (animating counter / blinking caret / hover).
 //! - **`frame/resizing_*`** — rotates a pool of differently-sized
-//!   targets so `available_q` busts each iter.
+//!   surfaces so `available_q` busts the measure cache each iter.
+//! - **`frame/scrolling_*`** — fixed viewport, shifts a `Panel::transform`
+//!   each iter so only the cascade walk sees change.
 //!
-//! Each arm runs in both sync modes:
-//!
-//! - **`*_gpu`** — `PollType::Wait` between iters. Wall time covers
-//!   the full CPU + GPU pipeline. Useful as the "what does a frame
-//!   actually cost end-to-end" number; dominated by GPU exec on
-//!   large views.
-//! - **`*_cpu`** — `PollType::Poll` (non-blocking). Wall time covers
-//!   record + measure + arrange + cascade + encode + compose + the
-//!   CPU side of submit, but not GPU exec. Useful for measuring
-//!   palantir's CPU pipeline without GPU variance dominating.
-//!
-//! After all arms run, each arm's criterion `mean` estimate is
+//! After all selected arms run, each arm's criterion `mean` estimate is
 //! prepended to `benches/results/<machine>.txt` so per-machine history
 //! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
 //! filename derived from `hostname -s`.
@@ -35,8 +52,9 @@ mod fixture;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
+use palantir::renderer::frontend::Frontend;
 use palantir::ui::frame_report::RenderPlan;
-use palantir::{Color, Display, Host};
+use palantir::{Color, Display, Host, Ui};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
 use std::hint::black_box;
@@ -46,6 +64,10 @@ use std::sync::OnceLock;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const SCALE: f32 = 2.0;
+// Surface clear colour. Set on `theme.window_clear` in both harnesses
+// and reused as the `clear` for the synthesized `Full` plan the CPU
+// `cached` arm encodes against (see `CpuHarness::frame`).
+const WINDOW_CLEAR: Color = Color::BLACK;
 // View sized so `BENCH_SCALE = 32` content (36-row prop grid, 96-button
 // wrap, shape gallery, 96-dot canvas, chat scroll, notes) fits without
 // overflowing the main column.
@@ -57,27 +79,15 @@ const RESIZE_POOL: &[glam::UVec2] = &[
     glam::UVec2::new(4160, 5000),
 ];
 
-#[derive(Clone, Copy)]
-enum SyncMode {
-    /// Block on GPU completion between iters. Wall time = full
-    /// CPU + GPU frame.
-    Gpu,
-    /// Non-blocking poll between iters. Wall time = CPU pipeline only;
-    /// GPU work runs async and isn't counted.
-    Cpu,
-}
-
-impl SyncMode {
-    fn poll(self, device: &wgpu::Device) {
-        let pt = match self {
-            SyncMode::Gpu => wgpu::PollType::Wait {
-                submission_index: None,
-                timeout: None,
-            },
-            SyncMode::Cpu => wgpu::PollType::Poll,
-        };
-        device.poll(pt).expect("device poll");
-    }
+/// Block until the GPU has drained all submitted work. The `_gpu` arms
+/// call this between iters so wall time covers the full CPU + GPU frame.
+fn gpu_wait(device: &wgpu::Device) {
+    device
+        .poll(wgpu::PollType::Wait {
+            submission_index: None,
+            timeout: None,
+        })
+        .expect("device poll");
 }
 
 struct Gpu {
@@ -170,73 +180,136 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
     })
 }
 
-/// Shared scaffolding for every arm: build a fresh `Host`, run 4
-/// warmup frames with `PollType::Wait`, then hand criterion the same
-/// closure for timing. Each arm's `iter` closure owns target selection
-/// and any per-iter state mutation.
-fn run_arm<F>(c: &mut Criterion, name: &str, sync: SyncMode, mut iter: F)
+// ── CPU bench (deviceless) ────────────────────────────────────────────
+
+/// Deviceless CPU-pipeline harness: a bare `Ui` (bundled-font shaper)
+/// plus a standalone `Frontend` sharing the `Ui`'s frame arena. One
+/// `frame` runs record → measure → arrange → cascade → damage and then,
+/// when the frame produced a render plan, encode + compose — **stopping
+/// before any GPU submit**. No `wgpu::Device` is ever created, so the
+/// `frame/*_cpu` arms profile as pure palantir CPU work.
+///
+/// Time is advanced from a real `Instant` exactly like `Host::cpu_frame`
+/// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
+/// same cadence as production — otherwise a frozen clock could classify
+/// frames as `PaintOnly` and skip the record closure the arms depend on.
+struct CpuHarness {
+    ui: Ui,
+    frontend: Frontend,
+    start: std::time::Instant,
+}
+
+impl CpuHarness {
+    fn new() -> Self {
+        let ui = Ui::for_test_text();
+        let frontend = Frontend::for_test_sharing(&ui);
+        let mut h = Self {
+            ui,
+            frontend,
+            start: std::time::Instant::now(),
+        };
+        h.ui.theme.window_clear = WINDOW_CLEAR;
+        h
+    }
+
+    /// Drive one full CPU frame against `display` and ack the present so
+    /// the next frame's `classify_frame` matches what the host would see
+    /// after a real submit (lets `cached` settle into `Skip`).
+    ///
+    /// Encode + compose run on **every** frame so all CPU arms measure
+    /// the same pipeline. A steady-state `cached` frame resolves damage
+    /// to `Skip` and so produces no render plan — in production the host
+    /// would present the prior backbuffer and skip the encoder. Here we
+    /// substitute a `Full` plan instead, so `cached_cpu` measures the
+    /// whole-tree encode + compose cost rather than strictly less work
+    /// than the other arms. `partial` keeps its small `Partial` region
+    /// (the partial-encode path is its real workload); the substitution
+    /// only kicks in when there's nothing to paint at all.
+    fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
+        let stamp = palantir::FrameStamp::new(display, self.start.elapsed());
+        let report = self.ui.frame(stamp, record);
+        let plan = report.plan().unwrap_or(RenderPlan::Full {
+            clear: WINDOW_CLEAR,
+        });
+        self.frontend.build_for_test(&self.ui, plan);
+        self.ui.mark_submitted_for_test();
+    }
+}
+
+/// Shared CPU-arm scaffolding: build a fresh deviceless harness, run 4
+/// warmup frames to settle caches, then hand criterion the same closure.
+fn run_cpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
 where
-    F: FnMut(&mut Host, &mut FormState, SyncMode, &wgpu::Device),
+    F: FnMut(&mut CpuHarness, &mut FormState),
 {
-    let g = gpu();
-    let mut host = bench_host(g);
-    host.ui.theme.window_clear = Color::BLACK;
+    let mut h = CpuHarness::new();
     let mut state = FormState::default();
     for _ in 0..4 {
-        iter(&mut host, &mut state, SyncMode::Gpu, &g.device);
+        iter(&mut h, &mut state);
     }
     c.bench_function(name, |b| {
-        b.iter(|| iter(&mut host, &mut state, sync, &g.device));
-    });
-    // Drain pipelined GPU work before the next bench function reuses
-    // the device.
-    SyncMode::Gpu.poll(&g.device);
-}
-
-fn run_cached(c: &mut Criterion, name: &str, sync: SyncMode) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.cached");
-    run_arm(c, name, sync, |host, state, sync, device| {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
-        sync.poll(device);
-        black_box(&target);
+        b.iter(|| iter(&mut h, &mut state));
     });
 }
 
-/// Partial-damage arm. Same fixed target as `cached`; the only delta
-/// vs. cached is that `state.tick` increments each iter, which mutates
-/// the footer "Frame NNNNNNNN" text content. The footer Text is
-/// `Sizing::Fixed(120.0)` so the changing digits don't shift siblings —
-/// damage resolves to one small rect over an otherwise-static tree,
-/// and the renderer hits the `LoadOp::Load + set_scissor_rect` path.
-fn run_partial(c: &mut Criterion, name: &str, sync: SyncMode) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
-    assert_partial_invariant(&target);
-    run_arm(c, name, sync, |host, state, sync, device| {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+fn cpu_cached(c: &mut Criterion) {
+    run_cpu_arm(c, "frame/cached_cpu", |h, state| {
+        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
+    });
+}
+
+fn cpu_partial(c: &mut Criterion) {
+    assert_partial_invariant();
+    run_cpu_arm(c, "frame/partial_cpu", |h, state| {
+        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
         state.tick = state.tick.wrapping_add(1);
-        sync.poll(device);
-        black_box(&target);
     });
 }
 
-/// Pin the Partial invariant before the timing loop: spin up a
-/// throwaway Host, do a couple of priming frames, then run one frame
-/// through the split API so we can inspect `report.plan`. If this
+fn cpu_scrolling(c: &mut Criterion) {
+    run_cpu_arm(c, "frame/scrolling_cpu", |h, state| {
+        // Wraparound after a viewport's worth of pixels so the
+        // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
+        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+        h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
+    });
+}
+
+fn cpu_resizing(c: &mut Criterion) {
+    let mut idx = 0usize;
+    run_cpu_arm(c, "frame/resizing_cpu", move |h, state| {
+        let size = RESIZE_POOL[idx % RESIZE_POOL.len()];
+        idx = idx.wrapping_add(1);
+        h.frame(Display::from_physical(size, SCALE), |ui| {
+            build_ui(state, BENCH_SCALE, ui)
+        });
+    });
+}
+
+/// Pin the Partial invariant before the timing loop: prime a deviceless
+/// harness for a couple of frames, then inspect `report.plan`. If this
 /// ever silently regresses to `Full` (e.g. someone widens the text box
 /// and the digits drift the surrounding panel hash), the bench would
 /// still produce a number but be measuring the wrong thing.
-fn assert_partial_invariant(target: &wgpu::Texture) {
-    let g = gpu();
-    let mut host = bench_host(g);
-    host.ui.theme.window_clear = Color::BLACK;
+fn assert_partial_invariant() {
+    let mut h = CpuHarness::new();
     let mut state = FormState::default();
-    for _ in 0..2 {
-        host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-        state.tick = state.tick.wrapping_add(1);
-        SyncMode::Gpu.poll(&g.device);
-    }
     let display = Display::from_physical(CACHED_SIZE, SCALE);
-    let report = host.cpu_frame_for_test(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+    for _ in 0..2 {
+        h.frame(display, |ui| build_ui(&mut state, BENCH_SCALE, ui));
+        state.tick = state.tick.wrapping_add(1);
+    }
+    let report = h.ui.frame(
+        palantir::FrameStamp::new(display, h.start.elapsed()),
+        |ui| build_ui(&mut state, BENCH_SCALE, ui),
+    );
     assert!(
         matches!(report.plan(), Some(RenderPlan::Partial { .. })),
         "frame/partial expected RenderPlan::Partial, got {:?} \
@@ -245,27 +318,61 @@ fn assert_partial_invariant(target: &wgpu::Texture) {
     );
 }
 
-/// Scrolling arm: fixed viewport (so `MeasureCache` hits trivially)
-/// but mutate `state.scroll_offset` per iter so the main content
-/// panel's `Panel::transform` shifts every frame. Tests the cascade
-/// walk cost when only position changes — the target workload for a
-/// cascade delta-cache. If this arm is significantly faster than
-/// `resizing_cpu` it means cascade is already cheap on pure-translate;
-/// if it's comparable it means the delta-cache has a real target.
-fn run_scrolling(c: &mut Criterion, name: &str, sync: SyncMode) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.scrolling");
-    run_arm(c, name, sync, |host, state, sync, device| {
-        // Wraparound after a viewport's worth of pixels so the
-        // transform stays in-bounds. `scroll_offset` is `glam::Vec2`.
-        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
-        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+// ── GPU bench (full pipeline) ─────────────────────────────────────────
+
+/// Shared GPU-arm scaffolding: build a fresh `Host`, run 4 warmup frames
+/// with `PollType::Wait`, then hand criterion the same closure. Each
+/// arm's `iter` closure owns target selection and per-iter state mutation.
+fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
+where
+    F: FnMut(&mut Host, &mut FormState, &wgpu::Device),
+{
+    let g = gpu();
+    let mut host = bench_host(g);
+    host.ui.theme.window_clear = WINDOW_CLEAR;
+    let mut state = FormState::default();
+    for _ in 0..4 {
+        iter(&mut host, &mut state, &g.device);
+    }
+    c.bench_function(name, |b| {
+        b.iter(|| iter(&mut host, &mut state, &g.device));
+    });
+    // Drain pipelined GPU work before the next bench function reuses
+    // the device.
+    gpu_wait(&g.device);
+}
+
+fn gpu_cached(c: &mut Criterion) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.cached");
+    run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
         host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
-        sync.poll(device);
+        gpu_wait(device);
         black_box(&target);
     });
 }
 
-fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
+fn gpu_partial(c: &mut Criterion) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
+    run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        state.tick = state.tick.wrapping_add(1);
+        gpu_wait(device);
+        black_box(&target);
+    });
+}
+
+fn gpu_scrolling(c: &mut Criterion) {
+    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.scrolling");
+    run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
+        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
+        gpu_wait(device);
+        black_box(&target);
+    });
+}
+
+fn gpu_resizing(c: &mut Criterion) {
     let targets: Vec<wgpu::Texture> = RESIZE_POOL
         .iter()
         .enumerate()
@@ -278,11 +385,11 @@ fn run_resizing(c: &mut Criterion, name: &str, sync: SyncMode) {
         })
         .collect();
     let mut idx = 0usize;
-    run_arm(c, name, sync, |host, state, sync, device| {
+    run_gpu_arm(c, "frame/resizing_gpu", move |host, state, device| {
         let t = &targets[idx % targets.len()];
         idx = idx.wrapping_add(1);
         host.frame_offscreen(t, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
-        sync.poll(device);
+        gpu_wait(device);
         black_box(t);
     });
 }
@@ -299,7 +406,7 @@ fn report_write_stats() {
     fn run(label: &str, targets: &[wgpu::Texture], mut mutate: impl FnMut(&mut FormState, usize)) {
         let g = gpu();
         let mut host = bench_host(g);
-        host.ui.theme.window_clear = Color::BLACK;
+        host.ui.theme.window_clear = WINDOW_CLEAR;
         let mut state = FormState::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
@@ -307,7 +414,7 @@ fn report_write_stats() {
             let _ = palantir::renderer::write_stats::take();
             let target = &targets[frame % targets.len()];
             host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
-            SyncMode::Gpu.poll(&g.device);
+            gpu_wait(&g.device);
             let s = palantir::renderer::write_stats::take();
             // The pass-time readout lags by one frame (the
             // `map_async` callback that publishes a value fires off
@@ -407,8 +514,8 @@ fn bench_mode() -> BenchMode {
     }
 }
 
-/// Arm names criterion runs for a given mode, ordered as in
-/// `bench_frame`. Used by the per-machine results writer to know which
+/// Arm names criterion runs for a given mode, interleaved cpu/gpu per
+/// category. Used by the per-machine results writer to know which
 /// criterion estimate files to read after all arms have finished.
 fn arm_names(mode: BenchMode) -> Vec<&'static str> {
     let mut v = Vec::with_capacity(6);
@@ -439,37 +546,44 @@ fn arm_names(mode: BenchMode) -> Vec<&'static str> {
     v
 }
 
-fn bench_frame(c: &mut Criterion) {
-    // Fail fast before any work runs so a 90 s bench doesn't finish
-    // and then realise the results row has no context.
+/// CPU bench: the deviceless `frame/*_cpu` arms. Skipped wholesale when
+/// `MODE=gpu` so a GPU-only run executes no CPU-arm code (and, more
+/// importantly, a `MODE=cpu` run reaches this without `bench_gpu` having
+/// touched the GPU at all — pristine for profiling).
+fn bench_cpu(c: &mut Criterion) {
+    // Fail fast before any work runs so a long bench doesn't finish and
+    // then realise the results row has no context.
     let _ = bench_annotation();
-    let mode = bench_mode();
+    if !bench_mode().includes_cpu() {
+        return;
+    }
+    cpu_cached(c);
+    cpu_partial(c);
+    cpu_resizing(c);
+    cpu_scrolling(c);
+}
+
+/// GPU bench: the full-pipeline `frame/*_gpu` arms plus the per-frame
+/// `write_stats` dump. Skipped wholesale when `MODE=cpu`.
+fn bench_gpu(c: &mut Criterion) {
+    let _ = bench_annotation();
+    if !bench_mode().includes_gpu() {
+        return;
+    }
     report_write_stats();
-    if mode.includes_cpu() {
-        run_cached(c, "frame/cached_cpu", SyncMode::Cpu);
-    }
-    if mode.includes_gpu() {
-        run_cached(c, "frame/cached_gpu", SyncMode::Gpu);
-    }
-    if mode.includes_cpu() {
-        run_partial(c, "frame/partial_cpu", SyncMode::Cpu);
-    }
-    if mode.includes_gpu() {
-        run_partial(c, "frame/partial_gpu", SyncMode::Gpu);
-    }
-    if mode.includes_cpu() {
-        run_resizing(c, "frame/resizing_cpu", SyncMode::Cpu);
-    }
-    if mode.includes_gpu() {
-        run_resizing(c, "frame/resizing_gpu", SyncMode::Gpu);
-    }
-    if mode.includes_cpu() {
-        run_scrolling(c, "frame/scrolling_cpu", SyncMode::Cpu);
-    }
-    if mode.includes_gpu() {
-        run_scrolling(c, "frame/scrolling_gpu", SyncMode::Gpu);
-    }
-    prepend_machine_results(mode);
+    gpu_cached(c);
+    gpu_partial(c);
+    gpu_resizing(c);
+    gpu_scrolling(c);
+}
+
+/// Results finalizer — runs last in `criterion_main!`. Reads the
+/// criterion `mean` estimates the two benches just wrote and prepends a
+/// per-machine results row. Separated from the benches so it observes
+/// every arm regardless of mode, and so neither bench has to know it's
+/// the last one.
+fn write_results(_c: &mut Criterion) {
+    prepend_machine_results(bench_mode());
 }
 
 /// Read criterion's `mean` estimate out of `target/criterion/<slug>/new/estimates.json`
@@ -665,16 +779,32 @@ fn now_label() -> String {
 }
 
 // Longer per-arm measurement window than criterion's 5 s default —
-// the GPU arms (`*_gpu`) bounce ±15-25% on the M5 across back-to-back
-// runs because the fanless thermals + scheduler noise share budget
-// with everything else on the machine. Doubling the window roughly
-// halves the run-to-run spread; total bench wall time goes from ~50 s
-// to ~90 s, which is fine for an on-demand bench.
-criterion_group! {
-    name = benches;
-    config = Criterion::default()
+// the GPU arms (`*_gpu`) bounce ±15-25% across back-to-back runs because
+// thermals + scheduler noise share budget with everything else on the
+// machine. Doubling the window roughly halves the run-to-run spread;
+// total wall time goes from ~50 s to ~90 s, which is fine for an
+// on-demand bench. `cpu` and `gpu` are separate criterion groups so
+// `MODE=cpu` can run (and be profiled) without any GPU code executing;
+// `results` runs last to prepend the per-machine row.
+fn config() -> Criterion {
+    Criterion::default()
         .measurement_time(std::time::Duration::from_secs(12))
-        .warm_up_time(std::time::Duration::from_secs(3));
-    targets = bench_frame
+        .warm_up_time(std::time::Duration::from_secs(3))
 }
-criterion_main!(benches);
+
+criterion_group! {
+    name = cpu_benches;
+    config = config();
+    targets = bench_cpu
+}
+criterion_group! {
+    name = gpu_benches;
+    config = config();
+    targets = bench_gpu
+}
+criterion_group! {
+    name = results_group;
+    config = config();
+    targets = write_results
+}
+criterion_main!(cpu_benches, gpu_benches, results_group);

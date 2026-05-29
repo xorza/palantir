@@ -1218,6 +1218,15 @@ pub mod test_support {
             self.frame_state.mark_submitted();
         }
 
+        /// Ack the just-run frame as presented — mirrors what the host
+        /// does after a successful submit, so the next [`Self::frame`]
+        /// doesn't auto-escalate to `Full`. For benches that drive
+        /// `frame` + a standalone [`crate::renderer::frontend::Frontend::build_for_test`]
+        /// instead of going through `Host` (the `frame/*_cpu` arms).
+        pub fn mark_submitted_for_test(&self) {
+            self.frame_state.mark_submitted();
+        }
+
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.
         pub fn under_outer<F: FnMut(&mut Ui) -> NodeId>(
             &mut self,
