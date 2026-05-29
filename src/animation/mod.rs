@@ -11,12 +11,11 @@
 
 pub(crate) mod animatable;
 pub(crate) mod easing;
-pub(crate) mod paint;
 pub(crate) mod spring;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::easing::Easing;
-use crate::animation::spring::{step as spring_step, within_settle_eps};
+use crate::animation::spring::{step as spring_step, within_duration_snap_eps, within_settle_eps};
 use crate::primitives::approx::approx_zero;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -31,9 +30,10 @@ use std::collections::hash_map::Entry;
 /// hash key is `(WidgetId, AnimSlot)`).
 ///
 /// Stored as `&'static str` so the slot reads as a name at the call
-/// site instead of a magic number; equality / hashing falls through
-/// to pointer-then-bytes via the `&str` impls. Same string literal
-/// from multiple call sites compares equal regardless of dedup.
+/// site instead of a magic number; equality / hashing is by string
+/// *contents* (std's `str` impls compare length-then-bytes and hash
+/// the bytes — no pointer fast-path), so the same literal from
+/// multiple call sites compares equal regardless of interning.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct AnimSlot(pub &'static str);
 
@@ -271,17 +271,26 @@ impl<T: Animatable> AnimMapTyped<T> {
             row.settled = false;
         }
 
-        // Snap-if-close fast path. If `current` is already within
-        // settle epsilon of `target` and there's no residual velocity,
-        // skip the spec math: snap exactly, report settled, no
-        // repaint request. This swallows sub-eps drift in the caller
-        // (theme color rounded to nearest ulp, etc.) that would
-        // otherwise drive a full ease/spring cycle for a visually
-        // imperceptible change.
-        if within_settle_eps(
-            row.current.clone().sub(row.target.clone()),
-            row.velocity.clone(),
-        ) {
+        // Snap-if-close fast path. If `current` is already at its
+        // spec's "close enough" floor, skip the spec math: snap
+        // exactly, report settled, no repaint request. This swallows
+        // sub-eps drift in the caller (theme color rounded to nearest
+        // ulp, etc.) that would otherwise drive a full ease/spring
+        // cycle for a visually imperceptible change. The two specs use
+        // *different* floors: spring tolerates pixel-scale-loose
+        // residue (and checks velocity), duration uses a far tighter
+        // position-only floor so a real target change always runs its
+        // designed curve (see `spring.rs` for the rationale).
+        let close_enough = match spec {
+            AnimSpec::Duration { .. } => {
+                within_duration_snap_eps(row.current.clone().sub(row.target.clone()))
+            }
+            AnimSpec::Spring { .. } => within_settle_eps(
+                row.current.clone().sub(row.target.clone()),
+                row.velocity.clone(),
+            ),
+        };
+        if close_enough {
             row.current = row.target.clone();
             row.velocity = T::zero();
             row.settled = true;
@@ -355,15 +364,20 @@ impl<T: Animatable> AnimMapTyped<T> {
 }
 
 /// Type-erased operations every typed map exposes — end-of-frame
-/// sweep, plus `as_any_mut` for downcast back to the concrete map.
+/// sweep, an emptiness probe so the parent can drop drained maps, plus
+/// `as_any_mut` for downcast back to the concrete map.
 pub(crate) trait AnyTyped: 'static {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
+    fn is_empty(&self) -> bool;
     fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         AnimMapTyped::<T>::sweep_removed(self, removed);
+    }
+    fn is_empty(&self) -> bool {
+        self.rows.is_empty()
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
@@ -410,13 +424,20 @@ impl AnimMap {
     /// that owns the slot stopped reaching for it — without (b),
     /// abandoned slots would accumulate forever for any widget
     /// whose id lingers across motion-toggle states.
+    ///
+    /// A typed map that drains to empty is dropped entirely: it's
+    /// re-created lazily on the next `typed_mut::<T>`, and keeping it
+    /// would leave `by_type` non-empty forever, permanently disabling
+    /// the `by_type.is_empty()` fast path in `Ui::animate` once *any*
+    /// widget has ever animated — even after the app goes idle.
     pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         if self.by_type.is_empty() {
             return;
         }
-        for typed in self.by_type.values_mut() {
+        self.by_type.retain(|_, typed| {
             typed.sweep_removed(removed);
-        }
+            !typed.is_empty()
+        });
     }
 }
 

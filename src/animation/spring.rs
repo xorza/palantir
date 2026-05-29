@@ -6,26 +6,52 @@
 
 use crate::animation::animatable::Animatable;
 use crate::common::time::ANIM_SUBSTEP_DT;
+use crate::primitives::approx::EPS;
 
-// Settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to give
-// the integrator a more forgiving floor in pixel-scale animations
+// Spring settle tolerances. Bumped from 1e-3 / 1e-2 → 1e-2 / 1e-1 to
+// give the integrator a more forgiving floor in pixel-scale animations
 // where the f32 ULP near `cur ≈ 400` is already ~2.4e-5; sub-pixel
 // drift below 0.01 px is visually indistinguishable and lets the
 // spring settle a frame or two earlier on tight tolerances. The
 // fixed-step accumulator on `Ui` is the primary fix for the
 // NoVsync precision stall; this just trims residual settle time.
+//
+// These are intentionally *loose* — a spring's job is to converge, and
+// the eye can't see the last 0.01 of travel. The duration path uses a
+// far tighter floor (`DURATION_SNAP_EPS`); see `within_duration_snap_eps`.
 const POS_EPS: f32 = 0.01;
 const VEL_EPS: f32 = 0.1;
 const POS_EPS_SQ: f32 = POS_EPS * POS_EPS;
 const VEL_EPS_SQ: f32 = VEL_EPS * VEL_EPS;
 
+// Duration snap-if-close floor. Far tighter than the spring floor: a
+// duration animation should run its full designed curve for *any*
+// visible target change, and snap-without-animating only when the
+// target moved by sub-perceptual drift (ulp rounding in upstream theme
+// math). The spring floor is pixel-scale-loose; reusing it here made
+// sub-1% colour transitions (0..1 linear-RGB) snap instead of ease.
+// `EPS = 1e-4` is below 8-bit colour precision and sub-pixel position
+// resolution, so a target delta under it is genuinely invisible.
+// Duration rows carry no velocity, so this is a position-only check;
+// curve completion is handled by the `t >= 1.0` arm in `tick`, not here.
+const DURATION_SNAP_EPS_SQ: f32 = EPS * EPS;
+
 /// `(displacement, velocity)` is at the spring's settle floor — the
 /// caller can snap to target and clear residual motion. Single source
 /// of truth for the threshold; consumed both by [`step`] and by the
-/// snap-if-close fast path in `AnimMapTyped::tick`.
+/// spring arm of the snap-if-close fast path in `AnimMapTyped::tick`.
 #[inline]
 pub(crate) fn within_settle_eps<T: Animatable>(displacement: T, velocity: T) -> bool {
     displacement.magnitude_squared() < POS_EPS_SQ && velocity.magnitude_squared() < VEL_EPS_SQ
+}
+
+/// `displacement` is below the duration snap floor — the caller can
+/// snap to target without animating, because the target barely moved.
+/// Position-only (duration rows have no velocity). Consumed by the
+/// duration arm of the snap-if-close fast path in `AnimMapTyped::tick`.
+#[inline]
+pub(crate) fn within_duration_snap_eps<T: Animatable>(displacement: T) -> bool {
+    displacement.magnitude_squared() < DURATION_SNAP_EPS_SQ
 }
 
 pub(crate) struct SpringStep<T: Animatable> {

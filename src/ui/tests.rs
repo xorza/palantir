@@ -998,7 +998,7 @@ fn request_repaint_after_drains_fired_entries() {
 /// `FrameProcessing::PaintOnly`.
 #[test]
 fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
-    use crate::animation::paint::PaintAnim;
+    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::brush::Brush;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
@@ -1083,7 +1083,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 /// and then re-running the encoder against the retained shapes.
 #[test]
 fn paint_only_preserves_gradient_arena_for_retained_shapes() {
-    use crate::animation::paint::PaintAnim;
+    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::brush::{Brush, LinearGradient};
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
@@ -1160,7 +1160,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
 /// `REAL | ANIM` mix, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
-    use crate::animation::paint::PaintAnim;
+    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::brush::Brush;
     use crate::primitives::corners::Corners;
     use crate::primitives::stroke::Stroke;
@@ -1217,7 +1217,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    use crate::animation::paint::PaintAnim;
+    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::input::InputEvent;
     use crate::input::keyboard::Key;
     use crate::input::policy::InputPolicy;

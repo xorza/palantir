@@ -200,25 +200,28 @@ fn instant_duration_is_noop_and_drops_row() {
     });
 }
 
-/// Sub-epsilon drift between `target` and `current` must snap rather
+/// Sub-perceptual drift between `target` and `current` must snap rather
 /// than starting a full ease/spring cycle. Otherwise tiny float
 /// quantization in the caller (rounded theme colors, sub-pixel rect
 /// drift) would spuriously request repaints frame after frame for
-/// changes the user can't see.
+/// changes the user can't see. The duration floor is `approx::EPS`
+/// (1e-4), tighter than the spring floor (0.01), so a delta well under
+/// 1e-4 snaps on *both* specs.
 #[test]
-fn target_within_settle_eps_snaps_without_animating() {
+fn target_below_snap_floor_snaps_without_animating() {
     let duration = AnimSpec::Duration {
         secs: 1.0,
         ease: Easing::Linear,
     };
+    let tiny = 1.0e-5; // below the duration floor (1e-4), the tighter one
     let cases: &[(&str, AnimSpec)] = &[("duration", duration), ("spring", AnimSpec::SPRING)];
     for (label, spec) in cases {
         let mut map = AnimMapTyped::<f32>::default();
         let id = wid("a");
         let _ = map.tick(id, SLOT, 0.0, *spec, 0.016, next_frame());
-        let r = map.tick(id, SLOT, 0.0005, *spec, 0.016, next_frame());
+        let r = map.tick(id, SLOT, tiny, *spec, 0.016, next_frame());
         assert_eq!(
-            r.current, 0.0005,
+            r.current, tiny,
             "case {label}: snap-if-close must reach new target exactly",
         );
         assert!(
@@ -226,6 +229,40 @@ fn target_within_settle_eps_snaps_without_animating() {
             "case {label}: sub-eps drift must report settled (no repaint)",
         );
     }
+}
+
+/// The duration snap floor is far tighter than the spring floor: a
+/// delta of 5e-4 sits inside the loose spring floor (0.01) but above
+/// the tight duration floor (1e-4). So a spring snaps for that delta
+/// while a duration runs its designed curve — a subtle colour
+/// transition must not be silently swallowed just because the spring
+/// path tolerates pixel-scale residue. Pins the deliberate split.
+#[test]
+fn duration_floor_is_tighter_than_spring_floor() {
+    let delta = 5.0e-4_f32;
+
+    let mut spring_map = AnimMapTyped::<f32>::default();
+    let sid = wid("s");
+    let _ = spring_map.tick(sid, SLOT, 0.0, AnimSpec::SPRING, 0.016, next_frame());
+    let rs = spring_map.tick(sid, SLOT, delta, AnimSpec::SPRING, 0.016, next_frame());
+    assert_eq!(rs.current, delta, "spring snaps within its loose floor");
+    assert!(rs.settled, "spring reports settled after snap");
+
+    let duration = AnimSpec::Duration {
+        secs: 1.0,
+        ease: Easing::Linear,
+    };
+    let mut dur_map = AnimMapTyped::<f32>::default();
+    let did = wid("d");
+    let _ = dur_map.tick(did, SLOT, 0.0, duration, 0.016, next_frame());
+    let rd = dur_map.tick(did, SLOT, delta, duration, 0.016, next_frame());
+    // One linear step of 0.016/1.0 toward delta: 0.016 * 5e-4 = 8e-6.
+    assert!(
+        rd.current < delta && rd.current > 0.0,
+        "duration animates toward target, not snap; got {}",
+        rd.current,
+    );
+    assert!(!rd.settled, "duration mid-curve is not settled");
 }
 
 #[test]

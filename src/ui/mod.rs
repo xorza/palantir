@@ -6,7 +6,6 @@ pub(crate) mod frame_stats;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
-use crate::animation::paint::PaintAnim;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
@@ -15,6 +14,7 @@ use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::forest::frame_arena::FrameArena;
+use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::KeyboardEvent;
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
