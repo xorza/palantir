@@ -1,4 +1,4 @@
-use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
+use super::half_simd::F16x4;
 use super::num::Num;
 use super::size::Size;
 use glam::Vec2;
@@ -11,19 +11,12 @@ use glam::Vec2;
 ///
 /// Precision: lossless for integer radii up to 2048, ~0.25 px error at
 /// 4096, +Inf above ~65504. Plenty of headroom for UI workloads.
+///
+/// Hash delegates to [`F16x4`] — one `u64` write, fed every frame into
+/// `LayoutCore::hash` → `SubtreeRollups`.
 #[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Corners([u16; 4]);
-
-impl std::hash::Hash for Corners {
-    /// Hash the 8 storage bytes as one `u64` — single hasher call
-    /// instead of four `write_u16`s. Feeds every frame into
-    /// `LayoutCore::hash` → `SubtreeRollups`.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
-    }
-}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Default, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct Corners(F16x4);
 
 impl std::fmt::Debug for Corners {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -37,175 +30,106 @@ impl std::fmt::Debug for Corners {
     }
 }
 
-/// Runtime f32→f16 pack — single F16C / fp16 instruction on supported
-/// targets. See `Spacing::pack` for the rationale; this is the same path
-/// shared via `half_simd`.
-#[inline]
-fn pack(tl: f32, tr: f32, br: f32, bl: f32) -> [u16; 4] {
-    f16x4_from_f32x4([tl, tr, br, bl])
+// Compact serde via the shared `lane_serde` codec:
+// - all four equal → bare scalar `4.0`
+// - tl=tr, br=bl   → 2-element array `[top, bottom]` (CSS-style shorthand)
+// - otherwise      → 4-element array `[tl, tr, br, bl]`
+// Deserialize also accepts the `{ tl, tr, br, bl }` table for
+// hand-written configs.
+impl crate::primitives::lane_serde::LaneCodec for Corners {
+    const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
+
+    #[inline]
+    fn from_lane_array(l: [f32; 4]) -> Self {
+        Self::new(l[0], l[1], l[2], l[3])
+    }
+    #[inline]
+    fn to_lane_array(&self) -> [f32; 4] {
+        self.as_array()
+    }
+    #[inline]
+    fn two_form(l: [f32; 4]) -> Option<[f32; 2]> {
+        // tl==tr && br==bl → CSS-style [top, bottom].
+        (l[0] == l[1] && l[2] == l[3]).then_some([l[0], l[2]])
+    }
+    #[inline]
+    fn expand_two([top, bottom]: [f32; 2]) -> [f32; 4] {
+        [top, top, bottom, bottom]
+    }
 }
 
-// Serialize Corners compactly:
-// - all four equal     → bare scalar `4.0`
-// - tl=tr, br=bl       → 2-element array `[top, bottom]` (CSS-style shorthand)
-// - otherwise          → 4-element array `[tl, tr, br, bl]`
-// Deserialize accepts all three forms plus the original struct shape
-// `{ tl, tr, br, bl }` for backward-compat with hand-written configs.
 impl serde::Serialize for Corners {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        use serde::ser::SerializeSeq;
-        let [tl, tr, br, bl] = self.as_array();
-        if tl == tr && tr == br && br == bl {
-            return s.serialize_f32(tl);
-        }
-        if tl == tr && br == bl {
-            let mut seq = s.serialize_seq(Some(2))?;
-            seq.serialize_element(&tl)?;
-            seq.serialize_element(&br)?;
-            return seq.end();
-        }
-        let mut seq = s.serialize_seq(Some(4))?;
-        seq.serialize_element(&tl)?;
-        seq.serialize_element(&tr)?;
-        seq.serialize_element(&br)?;
-        seq.serialize_element(&bl)?;
-        seq.end()
+        crate::primitives::lane_serde::serialize(self, s)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Corners {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        struct V;
-        impl<'de> serde::de::Visitor<'de> for V {
-            type Value = Corners;
-
-            fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-                f.write_str("a number, a [top, bottom] or [tl, tr, br, bl] array, or a {tl, tr, br, bl} table")
-            }
-
-            fn visit_f64<E: serde::de::Error>(self, v: f64) -> Result<Corners, E> {
-                Ok(Corners::all(v as f32))
-            }
-            fn visit_i64<E: serde::de::Error>(self, v: i64) -> Result<Corners, E> {
-                Ok(Corners::all(v as f32))
-            }
-            fn visit_u64<E: serde::de::Error>(self, v: u64) -> Result<Corners, E> {
-                Ok(Corners::all(v as f32))
-            }
-
-            fn visit_seq<A: serde::de::SeqAccess<'de>>(
-                self,
-                mut a: A,
-            ) -> Result<Corners, A::Error> {
-                let v0: f32 = a
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-                let Some(v1) = a.next_element::<f32>()? else {
-                    return Ok(Corners::all(v0));
-                };
-                let Some(v2) = a.next_element::<f32>()? else {
-                    return Ok(Corners::new(v0, v0, v1, v1));
-                };
-                let v3: f32 = a
-                    .next_element()?
-                    .ok_or_else(|| serde::de::Error::invalid_length(3, &self))?;
-                Ok(Corners::new(v0, v1, v2, v3))
-            }
-
-            fn visit_map<A: serde::de::MapAccess<'de>>(
-                self,
-                mut m: A,
-            ) -> Result<Corners, A::Error> {
-                let mut tl = None;
-                let mut tr = None;
-                let mut br = None;
-                let mut bl = None;
-                while let Some(k) = m.next_key::<String>()? {
-                    match k.as_str() {
-                        "tl" => tl = Some(m.next_value()?),
-                        "tr" => tr = Some(m.next_value()?),
-                        "br" => br = Some(m.next_value()?),
-                        "bl" => bl = Some(m.next_value()?),
-                        other => {
-                            return Err(serde::de::Error::unknown_field(
-                                other,
-                                &["tl", "tr", "br", "bl"],
-                            ));
-                        }
-                    }
-                }
-                Ok(Corners::new(
-                    tl.unwrap_or(0.0),
-                    tr.unwrap_or(0.0),
-                    br.unwrap_or(0.0),
-                    bl.unwrap_or(0.0),
-                ))
-            }
-        }
-        d.deserialize_any(V)
+        crate::primitives::lane_serde::deserialize(d)
     }
 }
 
 impl Corners {
-    pub const ZERO: Self = Self([0; 4]);
+    pub const ZERO: Self = Self(F16x4::ZERO);
 
     #[inline]
     pub fn all(r: f32) -> Self {
-        Self(pack(r, r, r, r))
+        Self(F16x4::from_lanes([r, r, r, r]))
     }
 
     #[inline]
     pub fn new(tl: f32, tr: f32, br: f32, bl: f32) -> Self {
-        Self(pack(tl, tr, br, bl))
+        Self(F16x4::from_lanes([tl, tr, br, bl]))
     }
 
     /// Round the top edge only — `tl == tr == r`, `br == bl == 0`.
     #[inline]
     pub fn top(r: f32) -> Self {
-        Self(pack(r, r, 0.0, 0.0))
+        Self(F16x4::from_lanes([r, r, 0.0, 0.0]))
     }
 
     /// Round the bottom edge only.
     #[inline]
     pub fn bottom(r: f32) -> Self {
-        Self(pack(0.0, 0.0, r, r))
+        Self(F16x4::from_lanes([0.0, 0.0, r, r]))
     }
 
     /// Round the left edge only.
     #[inline]
     pub fn left(r: f32) -> Self {
-        Self(pack(r, 0.0, 0.0, r))
+        Self(F16x4::from_lanes([r, 0.0, 0.0, r]))
     }
 
     /// Round the right edge only.
     #[inline]
     pub fn right(r: f32) -> Self {
-        Self(pack(0.0, r, r, 0.0))
+        Self(F16x4::from_lanes([0.0, r, r, 0.0]))
     }
 
     /// CSS-style `[top, bottom]` shorthand.
     #[inline]
     pub fn top_bottom(top: f32, bottom: f32) -> Self {
-        Self(pack(top, top, bottom, bottom))
+        Self(F16x4::from_lanes([top, top, bottom, bottom]))
     }
 
     /// Round the `tl`/`br` diagonal pair (e.g. asymmetric chat bubble).
     #[inline]
     pub fn diag_main(r: f32) -> Self {
-        Self(pack(r, 0.0, r, 0.0))
+        Self(F16x4::from_lanes([r, 0.0, r, 0.0]))
     }
 
     /// Round the `tr`/`bl` diagonal pair.
     #[inline]
     pub fn diag_anti(r: f32) -> Self {
-        Self(pack(0.0, r, 0.0, r))
+        Self(F16x4::from_lanes([0.0, r, 0.0, r]))
     }
 
     /// All four lanes unpacked at once. See `Spacing::as_array` for the
     /// SIMD rationale — same `half` slice path.
     #[inline]
     pub fn as_array(&self) -> [f32; 4] {
-        f16x4_to_f32x4(self.0)
+        self.0.lanes()
     }
 
     /// Inverse of [`Self::as_array`] — pack 4 runtime f32s into the
@@ -215,13 +139,12 @@ impl Corners {
     /// compile-time-known values.
     #[inline]
     pub fn from_array(v: [f32; 4]) -> Self {
-        Self(f16x4_from_f32x4(v))
+        Self(F16x4::from_lanes(v))
     }
 
     #[inline]
     pub fn scaled_by(&self, scale: f32) -> Self {
-        let [tl, tr, br, bl] = self.as_array();
-        Self::from_array([tl * scale, tr * scale, br * scale, bl * scale])
+        Self(self.0.scaled(scale))
     }
 
     /// True when every corner is within UI epsilon of zero. Routes
@@ -231,10 +154,8 @@ impl Corners {
     #[inline]
     pub fn approx_zero(&self) -> bool {
         use super::approx::noop_f16_bits;
-        noop_f16_bits(self.0[0])
-            && noop_f16_bits(self.0[1])
-            && noop_f16_bits(self.0[2])
-            && noop_f16_bits(self.0[3])
+        let [tl, tr, br, bl] = self.0.0;
+        noop_f16_bits(tl) && noop_f16_bits(tr) && noop_f16_bits(br) && noop_f16_bits(bl)
     }
 }
 

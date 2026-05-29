@@ -1,4 +1,4 @@
-use super::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
+use super::half_simd::F16x4;
 
 #[repr(C)]
 #[derive(
@@ -333,18 +333,9 @@ impl ColorU8 {
     /// previous mid-tone like `0x22ccdd` (sRGB-perceptual) lands as
     /// the matching linear-u8 triplet, not as the verbatim bytes —
     /// otherwise a linear-format LUT would display it wildly too
-    /// bright.
+    /// bright. Opaque shorthand for [`Self::hexa`].
     pub const fn hex(rgb: u32) -> Self {
-        let r = ((rgb >> 16) & 0xff) as u8;
-        let g = ((rgb >> 8) & 0xff) as u8;
-        let b = (rgb & 0xff) as u8;
-        let c = Color::rgb_u8(r, g, b);
-        Self {
-            r: (c.r * 255.0 + 0.5) as u8,
-            g: (c.g * 255.0 + 0.5) as u8,
-            b: (c.b * 255.0 + 0.5) as u8,
-            a: 0xff,
-        }
+        Self::hexa((rgb << 8) | 0xff)
     }
     /// CSS-style `0xRRGGBBAA` hex with alpha — RGB sRGB-decoded to
     /// linear like [`Self::hex`]; alpha is linear by convention
@@ -415,13 +406,13 @@ impl From<ColorU8> for Color {
 ///
 /// Use this for storage sites that want half the footprint of
 /// `Color` (16 B) without `ColorU8`'s cubic-Newton sRGB roundtrip.
-/// Pod-compatible; the hash impl writes the whole struct as one u64.
-#[repr(C)]
-#[derive(Clone, Copy, Debug, Default, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct ColorF16(pub [u16; 4]);
+/// Pod-compatible; Hash delegates to [`F16x4`] (one `u64` write).
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
+pub struct ColorF16(F16x4);
 
 impl ColorF16 {
-    pub const TRANSPARENT: Self = Self([0, 0, 0, 0]);
+    pub const TRANSPARENT: Self = Self(F16x4::ZERO);
 
     /// True when alpha is below `EPS` — paints nothing visible. Reuses
     /// the shared `noop_f16_bits` bit-trick (mask sign, compare against
@@ -429,7 +420,7 @@ impl ColorF16 {
     #[inline]
     pub fn is_noop(self) -> bool {
         use crate::primitives::approx::noop_f16_bits;
-        noop_f16_bits(self.0[3])
+        noop_f16_bits(self.0.0[3])
     }
 
     /// True when alpha is within `EPS` of 1.0 — paints with full
@@ -440,20 +431,23 @@ impl ColorF16 {
     #[inline]
     pub fn is_opaque(self) -> bool {
         use crate::primitives::approx::opaque_f16_bits;
-        opaque_f16_bits(self.0[3])
+        opaque_f16_bits(self.0.0[3])
     }
 
     /// All four lanes unpacked to f32 at once via the batched f16→f32
     /// slice path. Single instruction on F16C/fp16 targets.
     #[inline]
     pub fn unpack(self) -> Color {
-        let out = f16x4_to_f32x4(self.0);
-        Color {
-            r: out[0],
-            g: out[1],
-            b: out[2],
-            a: out[3],
-        }
+        let [r, g, b, a] = self.0.lanes();
+        Color { r, g, b, a }
+    }
+
+    /// The 8 storage bytes as one `u64` — used by the frame arena's
+    /// solid-fill payload packing where a `ColorF16` rides in a `u64`
+    /// slot alongside the gradient-hash alternative.
+    #[inline]
+    pub(crate) fn as_u64(self) -> u64 {
+        self.0.as_u64()
     }
 }
 
@@ -462,7 +456,7 @@ impl From<Color> for ColorF16 {
     /// on F16C/fp16 targets, scalar fallback elsewhere.
     #[inline]
     fn from(c: Color) -> Self {
-        Self(f16x4_from_f32x4([c.r, c.g, c.b, c.a]))
+        Self(F16x4::from_lanes([c.r, c.g, c.b, c.a]))
     }
 }
 
@@ -470,15 +464,6 @@ impl From<ColorF16> for Color {
     #[inline]
     fn from(c: ColorF16) -> Self {
         c.unpack()
-    }
-}
-
-impl std::hash::Hash for ColorF16 {
-    /// Hash the 8 storage bytes as one `u64` — single hasher call
-    /// instead of four `write_u16`s. Mirrors `Corners::hash`.
-    #[inline]
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write_u64(u64::from_ne_bytes(bytemuck::cast(self.0)));
     }
 }
 

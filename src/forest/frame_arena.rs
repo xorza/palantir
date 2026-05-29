@@ -209,7 +209,7 @@ impl FrameArena {
             _pad: [u8; 3],
         }
         let fill_payload: u64 = match fill {
-            ShapeBrush::Solid(c) => u64::from_ne_bytes(bytemuck::cast(c.0)),
+            ShapeBrush::Solid(c) => c.as_u64(),
             ShapeBrush::Gradient(_) => fill_grad_hash,
         };
         let fill_tag: u8 = match fill {

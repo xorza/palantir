@@ -7,6 +7,7 @@ pub(crate) mod corners;
 pub mod half_simd;
 pub(crate) mod image;
 pub(crate) mod interned_str;
+pub(crate) mod lane_serde;
 pub(crate) mod mesh;
 pub(crate) mod num;
 pub(crate) mod paint;
