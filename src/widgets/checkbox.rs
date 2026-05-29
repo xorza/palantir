@@ -4,7 +4,7 @@ use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
 use crate::widgets::theme::toggle::ToggleTheme;
-use crate::widgets::toggle::toggle_row;
+use crate::widgets::toggle::{ToggleChrome, toggle_row};
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use glam::Vec2;
 
@@ -64,26 +64,24 @@ impl<'a> Checkbox<'a> {
         let checked = *self.value;
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
-        let look_target = theme.pick(state, checked).clone();
-        let row_gap = theme.row_gap;
-        let box_size = theme.box_size;
-        let indicator_stroke = theme.indicator_stroke;
-        let anim = theme.anim;
+        let chrome = ToggleChrome {
+            look_target: theme.pick(state, checked).clone(),
+            anim: theme.anim,
+            box_size: theme.box_size,
+            row_gap: theme.row_gap,
+            pill: false,
+        };
         let indicator = theme.indicator;
-        let fallback_text = ui.theme.text;
-
-        let look = look_target.animate(ui, id, fallback_text, anim);
+        let indicator_stroke = theme.indicator_stroke;
 
         toggle_row(
             ui,
             id,
             self.element,
             raw_state,
-            look,
-            box_size,
-            row_gap,
+            chrome,
             self.label,
-            |ui| {
+            |ui, box_size| {
                 if checked {
                     let pts = check_pts(box_size);
                     ui.add_shape(Shape::Polyline {
