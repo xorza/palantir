@@ -3,6 +3,7 @@ use crate::input::sense::Sense;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
 use crate::ui::Ui;
+use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::toggle_row;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use glam::Vec2;
@@ -23,6 +24,7 @@ pub struct Checkbox<'a> {
     element: Element,
     value: &'a mut bool,
     label: InternedStr,
+    style: Option<ToggleTheme>,
 }
 
 impl<'a> Checkbox<'a> {
@@ -34,11 +36,19 @@ impl<'a> Checkbox<'a> {
             element,
             value,
             label: InternedStr::default(),
+            style: None,
         }
     }
 
     pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
+        self
+    }
+
+    /// Override the theme for this checkbox. `None` (default) inherits
+    /// [`crate::Theme::checkbox`].
+    pub fn style(mut self, s: ToggleTheme) -> Self {
+        self.style = Some(s);
         self
     }
 
@@ -53,7 +63,7 @@ impl<'a> Checkbox<'a> {
         }
         let checked = *self.value;
 
-        let theme = &ui.theme.checkbox;
+        let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
         let look_target = theme.pick(state, checked).clone();
         let row_gap = theme.row_gap;
         let box_size = theme.box_size;
