@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
@@ -9,6 +10,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
+use crate::ui::frame_report::RenderPlan;
 use crate::widgets::panel::Panel;
 use glam::{UVec2, Vec2};
 
@@ -192,5 +194,90 @@ fn node_spans_sized_to_node_count() {
             .len(),
         nodes,
         "node_spans column must be sized to the layer's node count",
+    );
+}
+
+/// Cross-check that the cascade's transform/clip composition (which
+/// hit-test consumes via `paint_arena` / `EntryRow.rect`) agrees with
+/// the *independent* recomputation the encoder + composer perform to
+/// place the actual pixels. They are separate code paths — the encoder
+/// recomputes transform/clip from the tree rather than reading cascade
+/// output (`encoder/mod.rs`), kept in lockstep only by sharing the
+/// `TranslateScale`/`Rect` primitives. This pins that they don't drift:
+/// a transformed child's *composed quad rect* must equal the cascade's
+/// *screen rect* for that shape. A `ClipMode::Rect` is in the pipeline
+/// (exercises the encoder's clip-push + the composer's scissor) but the
+/// child sits fully inside the panel, so the clip doesn't reduce the
+/// painted geometry and the comparison stays apples-to-apples.
+#[test]
+fn cascade_screen_rect_matches_composed_quad_under_transform() {
+    // translate=(15,25), scale=2 — non-trivial on both axes.
+    let xform = TranslateScale::new(Vec2::new(15.0, 25.0), 2.0);
+
+    let mut ui = Ui::for_test();
+    ui.run_at(UVec2::new(400, 400), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::canvas()
+                .id(WidgetId::from_hash("xpanel"))
+                .size(Sizing::Fixed(300.0))
+                .clip(ClipMode::Rect)
+                .transform(xform)
+                .show(ui, |ui| {
+                    // Fully inside the 300×300 panel → clip never bites.
+                    ui.add_shape(Shape::RoundedRect {
+                        local_rect: Some(Rect::new(0.0, 0.0, 20.0, 20.0)),
+                        corners: Corners::ZERO,
+                        fill: Color::rgb(0.5, 0.5, 0.5).into(),
+                        stroke: Stroke::ZERO,
+                    });
+                });
+        });
+    });
+
+    // Cascade's screen rect for the child shape (what hit-test sees).
+    let layer = Layer::Main;
+    let cascade_rect = {
+        let cascades = &ui.layout.cascades;
+        let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
+        let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
+        cascades.layers[layer].paint_arena.rows[span.start as usize].screen
+    };
+
+    // Composer's actual painted quad. Surface scale = 1, so physical px
+    // == logical px and the rect compares directly. The transparent
+    // viewport / hstack / canvas chrome emit no quads — the child
+    // RoundedRect is the only one.
+    let mut frontend = crate::renderer::frontend::Frontend::for_test();
+    let buffer = frontend.build(
+        &ui,
+        RenderPlan::Full {
+            clear: ui.theme.window_clear,
+        },
+    );
+    assert_eq!(
+        buffer.quads.len(),
+        1,
+        "expected exactly the child quad; got {:?}",
+        buffer.quads,
+    );
+    let quad_rect = buffer.quads[0].rect;
+
+    // child-local (0,0,20,20) under (translate=(15,25), scale=2):
+    //   min = (0,0)*2 + (15,25) = (15,25);  size = (20,20)*2 = (40,40)
+    let eps = 1e-3;
+    assert!(
+        (cascade_rect.min.x - 15.0).abs() < eps
+            && (cascade_rect.min.y - 25.0).abs() < eps
+            && (cascade_rect.size.w - 40.0).abs() < eps
+            && (cascade_rect.size.h - 40.0).abs() < eps,
+        "cascade screen rect wrong: {cascade_rect:?} (expected min (15,25) size (40,40))",
+    );
+    assert!(
+        (quad_rect.min.x - cascade_rect.min.x).abs() < eps
+            && (quad_rect.min.y - cascade_rect.min.y).abs() < eps
+            && (quad_rect.size.w - cascade_rect.size.w).abs() < eps
+            && (quad_rect.size.h - cascade_rect.size.h).abs() < eps,
+        "composer quad {quad_rect:?} drifted from cascade screen rect {cascade_rect:?} — \
+         encoder/composer transform composition diverged from the cascade walk",
     );
 }

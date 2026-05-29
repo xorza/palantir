@@ -619,6 +619,24 @@ impl Scroll {
                 row.offset.y = (row.offset.y + pan_delta.y).clamp(lo, hi);
             }
 
+            // 2b) Settled clamp for non-zoomable scrolls. The
+            //    out-of-range preservation above exists only for
+            //    pivot-anchored zoom — a scroll with no zoom configured
+            //    has no legitimate reason to hold `offset` outside the
+            //    natural range, so the pan-gated clamp leaves a stale
+            //    offset stranded when `content` *shrinks* with no wheel
+            //    input (collapse a node, filter a list): nothing pulls
+            //    the viewport back from the now-empty tail. Clamp every
+            //    frame here. `[min, max]` already folds in
+            //    `content_margin`, so intentional margin overscroll is
+            //    preserved; only a genuine over-range offset snaps back.
+            //    Zoomable scrolls skip this and keep the gradual
+            //    pan-return behaviour the zoom path depends on.
+            if self.zoom.is_none() {
+                row.offset.x = row.offset.x.clamp(min_x.min(max_x), min_x.max(max_x));
+                row.offset.y = row.offset.y.clamp(min_y.min(max_y), min_y.max(max_y));
+            }
+
             // 3) Thumb-drag pan. Snapshot `offset` on the
             //    `drag_started` edge; subsequent frames compose
             //    `offset.main = anchor.main + drag_delta.main *
