@@ -686,7 +686,6 @@ impl Ui {
         self.text.sweep_removed(removed);
         self.text.end_frame();
         self.layout_engine.sweep_removed(removed);
-        self.cascades_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
 
@@ -1293,12 +1292,6 @@ pub mod test_support {
         /// Run only the cascade pass against the just-finished frame.
         pub fn run_cascades(&mut self) {
             self.cascades_engine.run(&self.forest, &mut self.layout);
-        }
-
-        /// Cascade subtree-skip cache stats from the most recent
-        /// `CascadesEngine::run`. Counters reset every run.
-        pub fn cascade_cache(&self) -> &crate::ui::cascade::cache::CascadeCache {
-            &self.cascades_engine.cache
         }
 
         // ── damage ──────────────────────────────────────────────

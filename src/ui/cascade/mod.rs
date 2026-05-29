@@ -7,8 +7,6 @@
 //! Downstream phases (damage diff, input hit-test, renderer encoder)
 //! take `&Cascades` as their single frozen-state handle.
 
-pub(crate) mod cache;
-
 use crate::common::hash::Hasher;
 use crate::forest::Forest;
 use crate::forest::Layer;
@@ -147,29 +145,8 @@ struct Frame {
     /// hash inputs (transform / clip / disabled / invisible). Cloned
     /// once per descendant to seed `cascade_input` — descendants only
     /// fold in their own `layout_rect`, avoiding a re-hash of the 32 B
-    /// ancestor prefix per node. See `hash_cascade_input`.
+    /// ancestor prefix per node. See `finish_cascade_input`.
     cascade_prefix: Hasher,
-    /// Whether this subtree should be captured into the cache when its
-    /// frame pops, and where its paint range starts. See [`CaptureState`].
-    capture: CaptureState,
-}
-
-/// What `finalize_and_capture` should do when this frame pops.
-///
-/// Two states reach `Skip`: the subtree was sub-threshold at push time
-/// (`!CascadeCache::is_cacheable(span)`), or a descendant cache hit
-/// mid-walk poisoned this ancestor (a subtree that contains a static
-/// cache-hitting child *and* arrived through a miss is itself dynamic
-/// and a snapshot of it would be dead weight). The two states are
-/// observationally identical to `finalize_and_capture`, so they share
-/// one variant.
-#[derive(Clone, Copy, Debug)]
-enum CaptureState {
-    /// Don't capture this subtree on pop.
-    Skip,
-    /// Capture this subtree on pop; the per-paint range starts at
-    /// `paint_arena.rows.len()` as of push time.
-    Capturing(u32),
 }
 
 /// All per-layer cascade state grouped on one struct. `rows` +
@@ -192,14 +169,14 @@ enum CaptureState {
 ///   would widen damage's per-row footprint by 16 B (~66 %) for a
 ///   read it doesn't perform.
 /// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
-///   [`Paint`]s, the `node_spans` index, and the `shape_to_paint`
-///   reverse map). Read only on cache-miss paths (vacant insert, hash
-///   mismatch, paint-anim lookup), so it sits behind a `node_spans[i]`
-///   indirection that damage's fast path skips entirely.
+///   [`Paint`]s plus the `node_spans` index). Read only on damage's
+///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
+///   so it sits behind a `node_spans[i]` indirection that damage's
+///   subtree-skip fast path skips entirely.
 ///
 /// Any new per-node datum that damage's hot scan needs to read every
 /// frame belongs inline on `Cascade`; anything read only by the
-/// encoder or only on cache-miss paths should stay parallel.
+/// encoder or only on damage's slow legs should stay parallel.
 #[derive(Default)]
 pub(crate) struct LayerCascades {
     /// Per-node cascade rows, indexed the same way as
@@ -219,8 +196,7 @@ pub(crate) struct LayerCascades {
     /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
     /// hidden subtree doesn't keep the cull from firing at ancestors.
     pub(crate) subtree_paint_rects: Vec<Rect>,
-    /// Unified paint arena (rows + per-node spans + shape→paint
-    /// translation).
+    /// Unified paint arena (rows + per-node spans).
     pub(crate) paint_arena: PaintArena,
     /// Offset of this layer's first `EntryRow` in
     /// [`Cascades::entries`] — fixed for the layer's run, set at
@@ -233,8 +209,8 @@ pub(crate) struct LayerCascades {
 }
 
 impl LayerCascades {
-    /// Reset all per-node columns for `n_nodes` and `n_shapes` and
-    /// stamp the layer's `entries_base` in one call — both prep this
+    /// Reset all per-node columns for `n_nodes` and stamp the layer's
+    /// `entries_base` in one call — both prep this
     /// layer for the upcoming `run_tree`, splitting them invites a
     /// caller that resets but forgets the offset (or vice versa).
     /// `rows` and `subtree_paint_rects` are cleared and reserved
@@ -387,12 +363,6 @@ pub(crate) struct HitTargets {
 #[derive(Default)]
 pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
-    /// Cross-frame subtree-skip cache. Snapshots cache the per-node
-    /// rows + per-paint contributions of a subtree keyed on
-    /// `(WidgetId, subtree_hash, parent_prefix, root_rect_q)`; a hit
-    /// blits the cached output and skips the walk for that subtree.
-    /// See `docs/roadmap/cascade-cache.md`.
-    pub(crate) cache: cache::CascadeCache,
 }
 
 impl CascadesEngine {
@@ -410,7 +380,6 @@ impl CascadesEngine {
             r.entries.clear();
             r.entries.reserve(total);
         }
-        self.cache.reset_counters();
 
         for (layer, tree) in forest.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
@@ -419,15 +388,7 @@ impl CascadesEngine {
             let entries_base = r.entries.len() as u32;
             r.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
-            run_tree(
-                tree,
-                layer_layout,
-                r,
-                layer,
-                &mut self.stack,
-                &mut self.cache,
-                entries_base,
-            );
+            run_tree(tree, layer_layout, r, layer, &mut self.stack);
             // Invariant guarding `Cascades::entry_idx_of`'s
             // `entries_base + node.0` arithmetic: every node in
             // `tree.records` must push exactly one `EntryRow`. An
@@ -452,10 +413,6 @@ impl CascadesEngine {
         // replaces N per-widget hashmap inserts.
         layout.cascades.by_id.clone_from(&forest.ids.curr);
     }
-
-    pub(crate) fn sweep_removed(&mut self, removed: &rustc_hash::FxHashSet<WidgetId>) {
-        self.cache.sweep_removed(removed);
-    }
 }
 
 /// Finalize one stack frame: write the rolled-up
@@ -471,73 +428,12 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
     }
 }
 
-/// `finalize_frame` + capture the popped subtree into the cross-frame
-/// cache. Called instead of `finalize_frame` from every pop site so
-/// snapshot storage stays in lockstep with the rollup writeback.
-#[inline]
-#[allow(clippy::too_many_arguments)]
-fn finalize_and_capture(
-    stack: &mut [Frame],
-    layer_cascades: &mut LayerCascades,
-    entries: &Soa<EntryRow>,
-    entries_base: u32,
-    tree: &Tree,
-    layer_layout: &LayerLayout,
-    root_prefix: &Hasher,
-    cache: &mut cache::CascadeCache,
-    popped: Frame,
-) {
-    let node_idx = popped.node_idx;
-    let subtree_end = popped.subtree_end;
-    let capture = popped.capture;
-    finalize_frame(stack, &mut layer_cascades.subtree_paint_rects, popped);
-    let CaptureState::Capturing(paint_capture_start) = capture else {
-        return;
-    };
-    let widget_id = entries.widget_id()[entries_base as usize + node_idx];
-    // Recompute the probe key at capture time — the parent's
-    // cascade_prefix is `stack.last()` (we already popped) or the root
-    // prefix. Saves stashing 32 B per Frame on the push side, and
-    // captures only fire on cacheable subtrees so the extra
-    // `finish()` is amortized.
-    let parent_prefix = match stack.last() {
-        Some(p) => p.cascade_prefix.finish(),
-        None => root_prefix.finish(),
-    };
-    let key = probe_key(tree, layer_layout.rect[node_idx], node_idx, parent_prefix);
-    cache.capture(
-        widget_id,
-        key,
-        node_idx as u32,
-        subtree_end,
-        layer_cascades,
-        entries,
-        entries_base,
-        paint_capture_start,
-    );
-}
-
-/// Build the cross-frame cache probe key for `node_idx`. Shared by the
-/// descent-time lookup and the pop-time capture so the two can't drift
-/// on which fields key the cache (the capture-side recompute is
-/// deliberate — see `finalize_and_capture`).
-#[inline]
-fn probe_key(tree: &Tree, rect: Rect, node_idx: usize, parent_prefix: u64) -> cache::ProbeKey {
-    cache::ProbeKey {
-        subtree_hash: tree.rollups.subtree[node_idx],
-        parent_prefix,
-        rect_q: cache::quantize_rect(rect),
-    }
-}
-
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
     cascades: &mut Cascades,
     layer: Layer,
     stack: &mut Vec<Frame>,
-    cache: &mut cache::CascadeCache,
-    entries_base: u32,
 ) {
     let n = tree.records.len() as u32;
     let layout_col = tree.records.layout();
@@ -548,21 +444,15 @@ fn run_tree(
 
     let mut i: u32 = 0;
     while i < n {
-        // Pop completed frames + capture their snapshots.
+        // Pop completed frames, rolling each up into its parent.
         while let Some(top) = stack.last() {
             if i < top.subtree_end {
                 break;
             }
             let popped = stack.pop().unwrap();
-            finalize_and_capture(
+            finalize_frame(
                 stack,
-                &mut cascades.layers[layer],
-                &cascades.entries,
-                entries_base,
-                tree,
-                layout,
-                &root_prefix,
-                cache,
+                &mut cascades.layers[layer].subtree_paint_rects,
                 popped,
             );
         }
@@ -586,53 +476,10 @@ fn run_tree(
         let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
 
         let layout_rect = layout.rect[iu];
-        // `.end()` strips the packed grid flag — downstream uses (cache
-        // span, walk cursor, leaf compare) need the clean pre-order end.
+        // `.end()` strips the packed grid flag — downstream uses (walk
+        // cursor, leaf compare) need the clean pre-order end.
         let subtree_end = ends[iu].end();
-
-        // Cache lookup. Only build the probe key + probe when this
-        // subtree is large enough to be worth caching — the size gate
-        // matches `capture`, and skips the per-leaf hashmap traffic +
-        // 24 B of key-building on every walk.
         let wid = widget_ids[iu];
-        let cacheable = cache::CascadeCache::is_cacheable(subtree_end - i);
-        if cacheable {
-            let cache_key = probe_key(tree, layout_rect, iu, parent_prefix.finish());
-            if cache.probe(wid, &cache_key) {
-                let root_paint_rect = cache.blit(
-                    wid,
-                    i,
-                    subtree_end,
-                    &mut cascades.layers[layer],
-                    &mut cascades.entries,
-                );
-                // Poison every ancestor's capture sentinel: a subtree
-                // that contains a static (cache-hitting) child *and*
-                // arrived here through a miss is itself dynamic — its
-                // own hash will keep shifting next frame and any
-                // snapshot of it would be dead weight. Walk top-down
-                // and stop at the first already-poisoned ancestor —
-                // an earlier sibling's hit already covered everything
-                // above it. Without this rule the partial-damage
-                // workload re-captures root-ish ancestors every frame
-                // and the cache becomes a net loss.
-                for ancestor in stack.iter_mut().rev() {
-                    if matches!(ancestor.capture, CaptureState::Skip) {
-                        break;
-                    }
-                    ancestor.capture = CaptureState::Skip;
-                }
-                // Fold the subtree's contribution into the parent's
-                // running rollup — the path the original walk's pop
-                // loop would have taken if we'd walked through this
-                // subtree.
-                if let Some(parent) = stack.last_mut() {
-                    parent.subtree_paint_rect = parent.subtree_paint_rect.union(root_paint_rect);
-                }
-                i = subtree_end;
-                continue;
-            }
-        }
 
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
@@ -660,15 +507,6 @@ fn run_tree(
             Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
         } else {
             parent_clip
-        };
-        // Snapshot the paint-arena cursor *before* `compute_paint_rect`
-        // runs so the popped frame captures every paint row emitted by
-        // this node's subtree. Non-cacheable subtrees push `Skip` so
-        // `finalize_and_capture` short-circuits at pop time.
-        let capture = if cacheable {
-            CaptureState::Capturing(cascades.layers[layer].paint_arena.rows.len() as u32)
-        } else {
-            CaptureState::Skip
         };
         let paint_rect = compute_paint_rect(
             PaintRectCtx {
@@ -753,22 +591,15 @@ fn run_tree(
             node_idx: iu,
             subtree_paint_rect: subtree_seed,
             cascade_prefix,
-            capture,
         });
         i += 1;
     }
     // Drain frames whose subtree extends to the end of the tree —
     // they never hit the `< top.subtree_end` exit at the loop head.
     while let Some(popped) = stack.pop() {
-        finalize_and_capture(
+        finalize_frame(
             stack,
-            &mut cascades.layers[layer],
-            &cascades.entries,
-            entries_base,
-            tree,
-            layout,
-            &root_prefix,
-            cache,
+            &mut cascades.layers[layer].subtree_paint_rects,
             popped,
         );
     }
@@ -864,32 +695,17 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
     }
 }
 
-/// Emit every paint row for `node` (chrome at row 0 when present,
-/// then direct shapes in record order), stamp each shape's paint
-/// index into `shape_to_paint` for the paint-anim reverse lookup,
-/// write the covering [`Span`] into `node_spans[node]`, and return
-/// the screen-space union of every row — fed into `Cascade.paint_rect`
-/// for the damage diff and rolled into `subtree_paint_rects` for the
-/// encoder's cull.
-///
-/// Chrome rides `parent_transform` (encoder emits chrome before the
-/// body push); shapes ride `shape_transform = parent ∘ self_anchored`
-/// (inside the body push, per `Panel::transform`). The two transforms
-/// are the only structural difference between the two row kinds —
-/// both flow through [`push_row`].
-///
-/// # Invariant
-///
-/// The returned `Rect` is bit-identical to the screen-space union of
-/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`.
-/// `Cascade.paint_rect` stores it as a precomputed scalar so damage's
-/// hot per-node scan reads `rows[i].paint_rect` in one load instead of
-/// looping over each node's Paint slice to recompute the union.
-/// Touching the union accumulator without also updating the per-paint
-/// `screen` (or vice versa) breaks the damage fast path silently —
-/// keep both legs in lockstep when adding new paint contributions.
-/// Inputs to [`compute_paint_rect`] threaded from `run_tree`.
-///
+/// Push one paint row and fold its screen rect into the running union
+/// in a single step. [`compute_paint_rect`]'s invariant requires the
+/// union to track exactly the set of pushed rows; doing both here makes
+/// the two legs impossible to desync at a call site.
+#[inline]
+fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, hash: NodeHash) {
+    *union = Some(union.map_or(screen, |a| a.union(screen)));
+    arena.rows.push(Paint { screen, hash });
+}
+
+/// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
 /// `self_transform` and `clips` are computed once at the call site and
 /// passed in so we don't re-probe the sparse `transform_of` column and
 /// the SoA `attrs` column — both showed up as duplicate work in cascade
@@ -906,6 +722,28 @@ struct PaintRectCtx<'a> {
     clips: bool,
 }
 
+/// Emit every paint row for `node` (chrome at row 0 when present, then
+/// direct shapes in record order) via [`push_paint`], write the
+/// covering [`Span`] into `node_spans[node]`, and return the
+/// screen-space union of every row — fed into `Cascade.paint_rect` for
+/// the damage diff and rolled into `subtree_paint_rects` for the
+/// encoder's cull.
+///
+/// Chrome rides `parent_transform` (encoder emits chrome before the
+/// body push); shapes ride `shape_transform = parent ∘ self_anchored`
+/// (inside the body push, per `Panel::transform`). The two transforms
+/// are the only structural difference between the two row kinds.
+///
+/// # Invariant
+///
+/// The returned `Rect` is bit-identical to the screen-space union of
+/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`.
+/// `Cascade.paint_rect` stores it as a precomputed scalar so damage's
+/// hot per-node scan reads `rows[i].paint_rect` in one load instead of
+/// looping over each node's Paint slice to recompute the union.
+/// [`push_paint`] keeps the union and the pushed rows in lockstep; the
+/// chromeless clip-only branch is the sole fold-without-push case (it
+/// contributes a cull rect but emits no pixels).
 fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     let PaintRectCtx {
         tree,
@@ -946,11 +784,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             ))
         };
         let screen = lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip);
-        union = Some(union.map_or(screen, |a| a.union(screen)));
-        arena.rows.push(Paint {
-            screen,
-            hash: bg.hash,
-        });
+        push_paint(arena, &mut union, screen, bg.hash);
     } else if clips {
         // Chromeless clip-only container: union the owner rect into
         // the cull rollup so the encoder emits the PushClip/PopClip
@@ -1001,11 +835,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             if let Some(measured) = text_measured {
                 screen = inflate_text_damage(screen, measured, shape_clip);
             }
-            union = Some(union.map_or(screen, |a| a.union(screen)));
-            arena.rows.push(Paint {
-                screen,
-                hash: shape_hashes[idx as usize],
-            });
+            push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
     }
 

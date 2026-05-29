@@ -428,10 +428,9 @@ fn report_write_stats() {
                 .last_pass_ms()
                 .map(|ms| format!("{ms:>5.2} ms"))
                 .unwrap_or_else(|| "  n/a   ".into());
-            let cc = host.ui.cascade_cache();
             eprintln!(
-                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}   cache: {:>3} hits / {:>3} misses, {:>3} captures, {:>4} nodes blit",
-                s.texture_calls, s.texture_bytes, cc.hits, cc.misses, cc.captures, cc.nodes_blit,
+                "  frame {frame}  texture: {:>2} calls, {:>9} B   gpu: {gpu}",
+                s.texture_calls, s.texture_bytes,
             );
             // Per-kind attribution (TIMESTAMP_QUERY_INSIDE_PASSES) and
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only

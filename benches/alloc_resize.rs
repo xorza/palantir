@@ -1,16 +1,16 @@
 //! Steady-state allocation count for the resize path. Mirrors
 //! `alloc_free.rs` but rotates the `Display` size each frame to bust
-//! `MeasureCache` / `CascadeCache` / text-shaping caches the way the
+//! `MeasureCache` / text-shaping caches the way the
 //! `frame/resizing_cpu` arm does. **Not strict-zero** — this bench
 //! measures, doesn't assert. Use the output to find which call sites
 //! are still allocating after warmup.
 //!
 //! Uses `Ui::for_test_text()` (real cosmic-text), NOT `Ui::default()`
 //! (mono fallback): the fallback emits a constant paint count across
-//! sizes, so `CascadeCache::capture` reuses its arena slots in place
+//! sizes, so the damage `PaintSnapArena` reuses its slots in place
 //! and the bench reports a misleading 0 blocks/frame. Real shaping
 //! reflows text per size, drifting the paint count and exercising the
-//! capture evict/append path the live `frame/resizing_cpu` arm hits.
+//! arena evict/append path the live `frame/resizing_cpu` arm hits.
 //! That dependency is why this bench requires the `internals` feature.
 //!
 //! Run with: `cargo bench --bench alloc_resize --features internals`

@@ -372,7 +372,7 @@ impl MeasureCache {
     /// `Vec::with_capacity`; on a resize workload this fires ~every frame
     /// — `LayoutEngine::sweep_removed` was the #2 allocator in
     /// `alloc_resize`'s dhat dump — so the fresh-`Vec` rebuild was pure
-    /// per-frame churn. See the matching fix in `CascadeCache::compact`.)
+    /// per-frame churn.)
     fn compact(&mut self) {
         let mut scratch = std::mem::take(&mut self.compact_scratch);
         scratch.clear();
