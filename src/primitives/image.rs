@@ -9,7 +9,7 @@
 //! [`ImageRegistry::mark_pending`] to flag the handle for re-upload.
 //!
 //! Single-threaded `Rc<RefCell<…>>` (same pattern as
-//! [`FrameArena`](crate::common::frame_arena::FrameArena)).
+//! [`FrameArena`](crate::forest::frame_arena::FrameArena)).
 //! Cheap to clone; the inner map is shared.
 
 use crate::common::hash::Hasher;

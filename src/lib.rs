@@ -34,7 +34,7 @@ pub mod ui;
 pub mod widgets;
 pub mod winit_host;
 
-pub use common::frame_arena::FrameArena;
+pub use forest::frame_arena::FrameArena;
 
 pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;

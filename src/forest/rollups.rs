@@ -21,11 +21,11 @@
 //! | What                                  | Producer site                                   | Consumer                                |
 //! | ------------------------------------- | ----------------------------------------------- | --------------------------------------- |
 //! | Per-shape canonical hash              | `forest::shapes::Shapes::add`                   | `Tree::compute_hashes`, damage diff     |
-//! | Per-chrome canonical hash             | `common::frame_arena::FrameArena::lower_background` | `Tree::compute_hashes`, damage diff |
-//! | Per-text bytes hash                   | `common::frame_arena::FrameArena::hash_text`    | `ShapeRecord::Text.text_hash`           |
-//! | Per-gradient content hash             | `common::frame_arena::grad_hash`                | `ShapeRecord::*.fill_grad_hash`         |
-//! | Per-polyline content hash             | `common::frame_arena::FrameArenaInner::lower_polyline_inner` | `ShapeRecord::Polyline.content_hash` |
-//! | Per-bezier content hash               | `common::frame_arena::lower_curve_inner`        | `ShapeRecord::Curve.content_hash`       |
+//! | Per-chrome canonical hash             | `forest::frame_arena::FrameArena::lower_background` | `Tree::compute_hashes`, damage diff |
+//! | Per-text bytes hash                   | `forest::frame_arena::FrameArena::hash_text`    | `ShapeRecord::Text.text_hash`           |
+//! | Per-gradient content hash             | `forest::frame_arena::grad_hash`                | `ShapeRecord::*.fill_grad_hash`         |
+//! | Per-polyline content hash             | `forest::frame_arena::FrameArenaInner::lower_polyline_inner` | `ShapeRecord::Polyline.content_hash` |
+//! | Per-bezier content hash               | `forest::frame_arena::lower_curve_inner`        | `ShapeRecord::Curve.content_hash`       |
 //! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
 //! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
 //! | Per-cascade input hash                | `ui::cascade::hash_cascade_input`               | damage subtree-skip predicate           |
@@ -131,7 +131,7 @@ impl SubtreeRollups {
 
 #[cfg(test)]
 mod tests {
-    use crate::common::frame_arena::FrameArena;
+    use crate::forest::frame_arena::FrameArena;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
     use crate::primitives::color::Color;

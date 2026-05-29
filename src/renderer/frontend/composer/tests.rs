@@ -1,6 +1,6 @@
 use super::super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
 use super::Composer;
-use crate::common::frame_arena::FrameArenaInner;
+use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::span::Span;
 use crate::primitives::{

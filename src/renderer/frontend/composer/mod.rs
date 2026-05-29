@@ -2,7 +2,7 @@ use super::cmd_buffer::{
     CmdKind, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     DrawRectPayload, DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
-use crate::common::frame_arena::FrameArenaInner;
+use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16, ColorU8};

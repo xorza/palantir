@@ -18,7 +18,7 @@ use glam::Vec2;
 use half::f16;
 use std::hash::Hash;
 
-/// Frame-local handle into [`crate::common::frame_arena::FrameArena::gradients`].
+/// Frame-local handle into [`crate::forest::frame_arena::FrameArena::gradients`].
 /// Stable only within one frame — cleared alongside the rest of the
 /// frame arena in `FrameArena::clear`.
 pub(crate) type GradientId = u32;

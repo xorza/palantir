@@ -168,7 +168,7 @@ pub(crate) struct RoundedClip {
 
 /// Scene-wide mesh pool, SoA-stored as `Soa<MeshDrawRow>`. The
 /// underlying vertex/index bytes live in the frame's
-/// [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
+/// [`FrameArena::meshes`](crate::forest::frame_arena::FrameArena::meshes);
 /// each row's `draw` field carries spans into that arena, and the
 /// `instance` field carries the Pod GPU state the backend uploads
 /// verbatim to the instance buffer (read as a contiguous
@@ -240,7 +240,7 @@ pub(crate) struct ImageInstance {
 }
 
 /// One mesh draw within a group. Vertex/index slices live in the
-/// frame's [`FrameArena::meshes`](crate::common::frame_arena::FrameArena::meshes);
+/// frame's [`FrameArena::meshes`](crate::forest::frame_arena::FrameArena::meshes);
 /// the per-instance transform + tint live alongside as
 /// [`MeshDrawRow::instance`] (same row in the SoA, separate column).
 #[derive(Clone, Copy, Debug, PartialEq)]
