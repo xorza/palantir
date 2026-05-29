@@ -6,6 +6,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::shape::Shape;
 use crate::ui::Ui;
+use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::toggle::toggle_row;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 
@@ -26,6 +27,7 @@ pub struct RadioButton<'a, T: PartialEq> {
     current: &'a mut T,
     value: T,
     label: InternedStr,
+    style: Option<ToggleTheme>,
 }
 
 impl<'a, T: PartialEq> RadioButton<'a, T> {
@@ -38,11 +40,19 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             current,
             value,
             label: InternedStr::default(),
+            style: None,
         }
     }
 
     pub fn label(mut self, s: impl Into<InternedStr>) -> Self {
         self.label = s.into();
+        self
+    }
+
+    /// Override the theme for this radio button. `None` (default)
+    /// inherits [`crate::Theme::radio`].
+    pub fn style(mut self, s: ToggleTheme) -> Self {
+        self.style = Some(s);
         self
     }
 
@@ -59,7 +69,7 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             *self.current = self.value;
         }
 
-        let theme = &ui.theme.radio;
+        let theme = self.style.as_ref().unwrap_or(&ui.theme.radio);
         let look_target = theme.pick(state, selected).clone();
         let row_gap = theme.row_gap;
         let pip_size = theme.box_size;
