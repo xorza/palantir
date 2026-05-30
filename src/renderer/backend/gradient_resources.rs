@@ -19,6 +19,14 @@ const _: () = assert!(
     GRADIENT_ATLAS_SIDE == 256,
     "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
 );
+// `write_texture`'s `bytes_per_row` must be a multiple of
+// `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guard the row pitch independently
+// of the shader assert above so relaxing one can't silently break the
+// upload alignment.
+const _: () = assert!(
+    (GRADIENT_ATLAS_SIDE * 4).is_multiple_of(256),
+    "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"
+);
 
 /// Gradient LUT atlas texture + sampler + bind group, shared by the
 /// quad and curve pipelines. Format-independent: survives a swapchain

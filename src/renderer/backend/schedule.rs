@@ -8,7 +8,7 @@
 
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::{CurveBatch, ImageBatch, MeshBatch, RenderBuffer, TextBatch};
 
 /// One conceptual step of the per-frame render schedule. Variants
 /// describe *what* to do, not *how*; the consumer holds context
@@ -98,33 +98,6 @@ pub(crate) fn for_each_step(
     use_stencil: bool,
     mut emit: impl FnMut(RenderStep),
 ) {
-    // Drain every text batch whose `last_group < target` — emit each
-    // with its own bounds-union scissor (intersected with the damage
-    // region) so the inlined text backend's missing per-fragment x-clip
-    // doesn't leak glyphs past a clipped owner's scissor (e.g. into a
-    // scrollbar gutter). `target = i` drains stuck batches before
-    // group `i`'s emits; `target = i + 1` drains the in-flight group's
-    // own batches after its quads; `target = usize::MAX` drains tail
-    // batches anchored in skipped groups.
-    let drain_text_batches =
-        |target: usize, next_batch: &mut usize, emit: &mut dyn FnMut(RenderStep)| {
-            while *next_batch < buffer.text_batches.len()
-                && (buffer.text_batches[*next_batch].last_group as usize) < target
-            {
-                let s = match damage_scissor {
-                    Some(d) => buffer.text_batches[*next_batch]
-                        .scissor
-                        .intersect(d)
-                        .unwrap_or_default(),
-                    None => buffer.text_batches[*next_batch].scissor,
-                };
-                if s.w != 0 && s.h != 0 {
-                    emit(RenderStep::SetScissor(s));
-                    emit(RenderStep::Text { batch: *next_batch });
-                }
-                *next_batch += 1;
-            }
-        };
     let full_viewport = URect::new(0, 0, buffer.viewport_phys.x, buffer.viewport_phys.y);
 
     if let Some(scissor) = damage_scissor {
@@ -132,38 +105,26 @@ pub(crate) fn for_each_step(
         emit(RenderStep::PreClear);
     }
 
-    // Text batches map to a group via their `last_group` field; the
-    // schedule emits `RenderStep::Text` when the walk reaches that
-    // group (after its quads, before its meshes). `last_group` values
-    // are monotonically increasing across batches (composer pushes in
-    // order), so one cursor suffices instead of a per-group scan.
+    // Per-kind walk cursors (see [`ScheduleCursors`]). Text batches map
+    // to a group via `last_group`; the schedule emits `RenderStep::Text`
+    // when the walk reaches that group (after its quads, before its
+    // meshes). `last_group` values are monotonically increasing across
+    // batches (composer pushes in order), so one cursor per kind
+    // suffices instead of a per-group scan.
     //
     // **Damage-pass drain.** A batch whose `last_group` falls in a
     // damage-skipped group must still render — earlier groups in the
     // batch may sit inside the damage rect, and dropping the whole
     // batch would silently erase their text. So before each rendered
-    // group's quads, drain any batches whose `last_group < j`: emit
+    // group's quads, drain any batches whose `last_group < i`: emit
     // them now (paint-safe — the composer's overlap rule guarantees
-    // no quad in `(last_group, j)` overlapped them, and any of those
+    // no quad in `(last_group, i)` overlapped them, and any of those
     // skipped groups' quads don't paint this pass). A trailing drain
     // after the loop catches batches anchored in tail-skipped groups.
     // Stencil limitation: under rounded clip the drained batch's mask
     // may differ from the active mask at the drain point — the text
     // will stencil-clip against the wrong mask. Accepted: rare combo.
-    let mut next_batch: usize = 0;
-    // Parallel cursor for mesh batches. Structural Phase 2 produces one
-    // mesh batch per group with meshes (no cross-group spanning, since
-    // meshes need per-group scissor). Stale entries pointing at
-    // damage-skipped groups are silently advanced past at the top of
-    // each iteration — meshes inside a skipped group don't paint.
-    let mut next_mesh_batch: usize = 0;
-    // Same shape as `next_mesh_batch`. Image batches anchor per group;
-    // structurally Phase 2 emits one per group with images.
-    let mut next_image_batch: usize = 0;
-    // Same shape as the other batch cursors. One curve batch per
-    // group with curves; stale entries pointing at damage-skipped
-    // groups silently advance.
-    let mut next_curve_batch: usize = 0;
+    let mut cursors = ScheduleCursors::default();
 
     // `Some(mi)` means the stencil currently has mask `mi` stamped
     // (ref=1 inside the SDF, 0 outside). `None` means stencil is
@@ -172,76 +133,14 @@ pub(crate) fn for_each_step(
     // alone, so dedup spans across them.
     let mut active_mask: Option<u32> = None;
 
-    // The draws every non-skipped group emits, identical under both the
-    // stencil and non-stencil paths: the group's quads, then its text
-    // batches (drained after the quads so a child quad occludes a label),
-    // then its mesh / image / curve batches (each restoring the group's
-    // own scissor in case the text drain widened it). The stencil path
-    // wraps this with the mask bracket; the non-stencil path gates it on
-    // the group having any content. Shared so the two can't drift.
-    let emit_group_body = |i: usize,
-                           effective: URect,
-                           quads: Span,
-                           next_batch: &mut usize,
-                           next_mesh_batch: &mut usize,
-                           next_image_batch: &mut usize,
-                           next_curve_batch: &mut usize,
-                           emit: &mut dyn FnMut(RenderStep)| {
-        if quads.len != 0 {
-            emit(RenderStep::Quads {
-                group: i,
-                range: quads,
-            });
-        }
-        drain_text_batches(i + 1, next_batch, emit);
-        while *next_mesh_batch < buffer.mesh_batches.len()
-            && buffer.mesh_batches[*next_mesh_batch].last_group as usize == i
-        {
-            emit(RenderStep::SetScissor(effective));
-            emit(RenderStep::MeshBatch {
-                batch: *next_mesh_batch,
-            });
-            *next_mesh_batch += 1;
-        }
-        while *next_image_batch < buffer.image_batches.len()
-            && buffer.image_batches[*next_image_batch].last_group as usize == i
-        {
-            emit(RenderStep::SetScissor(effective));
-            emit(RenderStep::ImageBatch {
-                batch: *next_image_batch,
-            });
-            *next_image_batch += 1;
-        }
-        while *next_curve_batch < buffer.curve_batches.len()
-            && buffer.curve_batches[*next_curve_batch].last_group as usize == i
-        {
-            emit(RenderStep::SetScissor(effective));
-            emit(RenderStep::CurveBatch {
-                batch: *next_curve_batch,
-            });
-            *next_curve_batch += 1;
-        }
-    };
-
     for (i, g) in buffer.groups.iter().enumerate() {
-        // Silently drop mesh batches that anchored in earlier
-        // damage-skipped groups — they had no visible scissor so their
-        // draws don't paint.
-        while next_mesh_batch < buffer.mesh_batches.len()
-            && (buffer.mesh_batches[next_mesh_batch].last_group as usize) < i
-        {
-            next_mesh_batch += 1;
-        }
-        while next_image_batch < buffer.image_batches.len()
-            && (buffer.image_batches[next_image_batch].last_group as usize) < i
-        {
-            next_image_batch += 1;
-        }
-        while next_curve_batch < buffer.curve_batches.len()
-            && (buffer.curve_batches[next_curve_batch].last_group as usize) < i
-        {
-            next_curve_batch += 1;
-        }
+        // Silently drop mesh/image/curve batches that anchored in
+        // earlier damage-skipped groups — they had no visible scissor
+        // so their draws don't paint.
+        advance_past_skipped(&buffer.mesh_batches, &mut cursors.mesh, i);
+        advance_past_skipped(&buffer.image_batches, &mut cursors.image, i);
+        advance_past_skipped(&buffer.curve_batches, &mut cursors.curve, i);
+
         let group_scissor = g.scissor.unwrap_or(full_viewport);
         let effective = match damage_scissor {
             Some(d) => match group_scissor.intersect(d) {
@@ -256,7 +155,7 @@ pub(crate) fn for_each_step(
         // Drain batches stuck behind earlier damage-skipped groups
         // BEFORE this group's own setup, so the next quad/meshes
         // emitted (in this group) can paint over the drained text.
-        drain_text_batches(i, &mut next_batch, &mut emit);
+        drain_text_batches(buffer, damage_scissor, i, &mut cursors.text, &mut emit);
         emit(RenderStep::SetScissor(effective));
 
         if use_stencil {
@@ -285,38 +184,193 @@ pub(crate) fn for_each_step(
                 }
             }
             emit_group_body(
+                buffer,
+                damage_scissor,
                 i,
                 effective,
                 g.quads,
-                &mut next_batch,
-                &mut next_mesh_batch,
-                &mut next_image_batch,
-                &mut next_curve_batch,
+                &mut cursors,
                 &mut emit,
             );
             active_mask = mask_idx;
         } else if g.quads.len != 0
-            || (next_batch < buffer.text_batches.len()
-                && buffer.text_batches[next_batch].last_group as usize == i)
-            || (next_mesh_batch < buffer.mesh_batches.len()
-                && buffer.mesh_batches[next_mesh_batch].last_group as usize == i)
-            || (next_image_batch < buffer.image_batches.len()
-                && buffer.image_batches[next_image_batch].last_group as usize == i)
-            || (next_curve_batch < buffer.curve_batches.len()
-                && buffer.curve_batches[next_curve_batch].last_group as usize == i)
+            || pending_at(&buffer.text_batches, cursors.text, i)
+            || pending_at(&buffer.mesh_batches, cursors.mesh, i)
+            || pending_at(&buffer.image_batches, cursors.image, i)
+            || pending_at(&buffer.curve_batches, cursors.curve, i)
         {
             emit_group_body(
+                buffer,
+                damage_scissor,
                 i,
                 effective,
                 g.quads,
-                &mut next_batch,
-                &mut next_mesh_batch,
-                &mut next_image_batch,
-                &mut next_curve_batch,
+                &mut cursors,
                 &mut emit,
             );
         }
     }
     // Trailing drain — batches anchored in tail-skipped groups.
-    drain_text_batches(usize::MAX, &mut next_batch, &mut emit);
+    drain_text_batches(
+        buffer,
+        damage_scissor,
+        usize::MAX,
+        &mut cursors.text,
+        &mut emit,
+    );
+}
+
+/// Per-kind walk cursors for [`for_each_step`]. Each field is the index
+/// of the next unconsumed batch of that kind; the cursors only advance
+/// (batches are emitted in `last_group` order), so the whole walk is
+/// linear in the batch count.
+#[derive(Default)]
+struct ScheduleCursors {
+    text: usize,
+    mesh: usize,
+    image: usize,
+    curve: usize,
+}
+
+/// A batch that anchors to a single draw group via its `last_group`
+/// index. Lets the advance / drain / pending helpers operate uniformly
+/// over the four batch kinds.
+trait PerGroupBatch {
+    fn last_group(&self) -> usize;
+}
+
+impl PerGroupBatch for TextBatch {
+    fn last_group(&self) -> usize {
+        self.last_group as usize
+    }
+}
+impl PerGroupBatch for MeshBatch {
+    fn last_group(&self) -> usize {
+        self.last_group as usize
+    }
+}
+impl PerGroupBatch for ImageBatch {
+    fn last_group(&self) -> usize {
+        self.last_group as usize
+    }
+}
+impl PerGroupBatch for CurveBatch {
+    fn last_group(&self) -> usize {
+        self.last_group as usize
+    }
+}
+
+/// Advance `cursor` past every batch whose `last_group` falls before
+/// group `before` — they anchored in damage-skipped groups and don't
+/// paint this pass.
+fn advance_past_skipped<B: PerGroupBatch>(batches: &[B], cursor: &mut usize, before: usize) {
+    while *cursor < batches.len() && batches[*cursor].last_group() < before {
+        *cursor += 1;
+    }
+}
+
+/// `true` if the batch at `cursor` anchors to group `group` — i.e. this
+/// group has a pending batch of that kind to emit.
+fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> bool {
+    cursor < batches.len() && batches[cursor].last_group() == group
+}
+
+/// Drain every batch anchored to group `group`, re-narrowing the scissor
+/// to `effective` before each (the text drain may have widened it) and
+/// emitting `step(idx)` for the batch's render step. Shared by the
+/// mesh / image / curve drains so their per-group emit shape can't drift.
+fn drain_group_batches<B: PerGroupBatch>(
+    batches: &[B],
+    cursor: &mut usize,
+    group: usize,
+    effective: URect,
+    mut step: impl FnMut(usize) -> RenderStep,
+    emit: &mut dyn FnMut(RenderStep),
+) {
+    while pending_at(batches, *cursor, group) {
+        emit(RenderStep::SetScissor(effective));
+        emit(step(*cursor));
+        *cursor += 1;
+    }
+}
+
+/// Drain every text batch whose `last_group < target`, emitting each
+/// with its own bounds-union scissor (intersected with the damage
+/// region) so the text backend's missing per-fragment x-clip doesn't
+/// leak glyphs past a clipped owner's scissor (e.g. into a scrollbar
+/// gutter). `target = i` drains stuck batches before group `i`'s emits;
+/// `target = i + 1` drains the in-flight group's own batches after its
+/// quads; `target = usize::MAX` drains tail batches anchored in skipped
+/// groups.
+fn drain_text_batches(
+    buffer: &RenderBuffer,
+    damage_scissor: Option<URect>,
+    target: usize,
+    cursor: &mut usize,
+    emit: &mut dyn FnMut(RenderStep),
+) {
+    while *cursor < buffer.text_batches.len() && buffer.text_batches[*cursor].last_group() < target
+    {
+        let s = match damage_scissor {
+            Some(d) => buffer.text_batches[*cursor]
+                .scissor
+                .intersect(d)
+                .unwrap_or_default(),
+            None => buffer.text_batches[*cursor].scissor,
+        };
+        if s.w != 0 && s.h != 0 {
+            emit(RenderStep::SetScissor(s));
+            emit(RenderStep::Text { batch: *cursor });
+        }
+        *cursor += 1;
+    }
+}
+
+/// The draws every non-skipped group emits, identical under both the
+/// stencil and non-stencil paths: the group's quads, then its text
+/// batches (drained after the quads so a child quad occludes a label),
+/// then its mesh / image / curve batches (each restoring the group's own
+/// scissor in case the text drain widened it). The stencil path wraps
+/// this with the mask bracket; the non-stencil path gates it on the group
+/// having any content. Shared so the two can't drift.
+fn emit_group_body(
+    buffer: &RenderBuffer,
+    damage_scissor: Option<URect>,
+    i: usize,
+    effective: URect,
+    quads: Span,
+    cursors: &mut ScheduleCursors,
+    emit: &mut dyn FnMut(RenderStep),
+) {
+    if quads.len != 0 {
+        emit(RenderStep::Quads {
+            group: i,
+            range: quads,
+        });
+    }
+    drain_text_batches(buffer, damage_scissor, i + 1, &mut cursors.text, emit);
+    drain_group_batches(
+        &buffer.mesh_batches,
+        &mut cursors.mesh,
+        i,
+        effective,
+        |batch| RenderStep::MeshBatch { batch },
+        emit,
+    );
+    drain_group_batches(
+        &buffer.image_batches,
+        &mut cursors.image,
+        i,
+        effective,
+        |batch| RenderStep::ImageBatch { batch },
+        emit,
+    );
+    drain_group_batches(
+        &buffer.curve_batches,
+        &mut cursors.curve,
+        i,
+        effective,
+        |batch| RenderStep::CurveBatch { batch },
+        emit,
+    );
 }

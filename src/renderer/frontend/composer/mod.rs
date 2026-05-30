@@ -17,7 +17,12 @@ use crate::renderer::render_buffer::{
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
-use tinyvec::TinyVec;
+
+mod occlusion;
+mod text_grid;
+
+use occlusion::OcclusionPruner;
+use text_grid::TextRectGrid;
 
 /// CPU-only compose engine: turns a `RenderCmdBuffer` stream into a `RenderBuffer`
 /// (physical-px quads + text runs + scissor groups). Owns its output buffer
@@ -93,44 +98,10 @@ pub(crate) struct Composer {
     /// `text_grid` so its tile vectors stay capacity-retained across
     /// open/close cycles (steady-state alloc-free).
     open_batch: Option<OpenBatch>,
-    /// Solid-opaque no-stroke occluders in the in-flight group.
-    /// Each entry pairs the quad's slice-relative index (for
-    /// "drawn-on-top" ordering — only indices `> i` can occlude
-    /// quad `i`) with its **cover rect**: the largest axis-aligned
-    /// rect guaranteed to receive full opaque coverage. For
-    /// sharp-cornered quads `cover == Quad.rect`; for rounded
-    /// quads, `cover` is `Quad.rect` deflated per-side by
-    /// `max(adjacent_radii) * (1 − 1/√2)` (the inscribed-square
-    /// offset of a corner arc). Populated in the `DrawRect` push
-    /// handler; consumed and cleared in `flush()`.
-    opaque_in_group: Vec<Occluder>,
-    /// Indices (relative to `cursors.quads`) of quads in the in-flight
-    /// group marked for removal by the prune sweep. Sorted ascending
-    /// by construction. Cleared at the end of each `flush()`.
-    drop_indices: Vec<u32>,
-    /// Prefix-max of `cover.size` (as a `Vec2` of `(w, h)`) over the
-    /// tail of `opaque_in_group`, built once per flush.
-    /// `prefix_max_cover[i]` = elementwise max over
-    /// `opaque_in_group[i..]`. Lets the prune sweep reject an
-    /// occludee with one size compare when no later occluder is
-    /// large enough to contain it — turns the common "nested
-    /// panels, child smaller than parent" case from O(N·K) into
-    /// O(N + K).
-    prefix_max_cover: Vec<Vec2>,
-}
-
-/// One entry in `Composer.opaque_in_group`. See the field docstring
-/// for the cover-rect contract.
-#[derive(Clone, Copy)]
-struct Occluder {
-    /// Index inside the in-flight group's quad slice
-    /// (`out.quads[cursors.quads + idx]`).
-    idx: u32,
-    /// Largest axis-aligned rect with full opaque coverage. Used
-    /// as the left-hand side of
-    /// `Rect::contains_rect(occludee.painted)` in the prune sweep,
-    /// where `painted = occludee.rect.inflated(stroke_width / 2)`.
-    cover: Rect,
+    /// Per-group occlusion-prune scratch: the solid-opaque occluders
+    /// pushed into the in-flight group and the sweep that drops earlier
+    /// quads they fully cover. See [`OcclusionPruner`].
+    occlusion: OcclusionPruner,
 }
 
 #[derive(Clone, Copy)]
@@ -187,7 +158,7 @@ impl Composer {
     /// the per-kind cursors and clear the overlap scratches. Scissor
     /// + rounded clip are preserved for the next group.
     fn flush(&mut self, out: &mut RenderBuffer) {
-        self.prune_occluded_quads(out);
+        self.occlusion.prune(out, self.cursors.quads);
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
         let m_end = out.meshes.rows.len() as u32;
@@ -235,126 +206,13 @@ impl Composer {
             curves: c_end,
         };
         self.higher_kind_rects.clear();
-        self.opaque_in_group.clear();
-        self.drop_indices.clear();
-        self.prefix_max_cover.clear();
+        self.occlusion.clear();
         // Closed-batch text is group-scoped: once we cross a group
         // boundary, any batch closed *in* this group has rendered (it
         // drains at its `last_group`), so its rects no longer gate quads.
         // The open-batch grid is NOT cleared here — it spans groups with
         // its (still-open) batch.
         self.closed_text_grid.clear();
-    }
-
-    /// Drop quads in the in-flight group that are fully covered by a
-    /// later opaque quad in the same group. Pure CPU prune — no
-    /// pipeline / shader changes. See `docs/roadmap/occlusion-pruning.md`.
-    ///
-    /// Preconditions:
-    /// - `out.quads[self.cursors.quads..]` is the in-flight group's
-    ///   contiguous slice (composer's flush boundary contract).
-    /// - `self.opaque_in_group` holds `Occluder` entries for every
-    ///   solid-opaque quad pushed into the slice, in push order
-    ///   (ascending `idx`). Each entry's `cover` is the largest
-    ///   axis-aligned rect with full coverage — `Quad.rect` for
-    ///   sharp corners, deflated by `KAPPA * max(adjacent_radii)`
-    ///   per side for rounded ones. Stroke status is irrelevant on
-    ///   this side (fill alone covers the interior).
-    ///
-    /// Behaviour:
-    /// - For each quad at slice index `i`, compute its painted
-    ///   extent as `q.rect.inflated(q.stroke_width / 2)` (centred
-    ///   strokes spill outward; non-stroked inflate by zero). Drop
-    ///   it if some occluder with `idx > i` (drawn on top) has
-    ///   `cover.contains_rect(painted)`.
-    /// - Shadows (`FillKind::is_shadow`) are never dropped — their
-    ///   visual blur extends past the stored rect.
-    /// - Compacts in place via `swap`-and-truncate; preserves the
-    ///   relative order of survivors.
-    fn prune_occluded_quads(&mut self, out: &mut RenderBuffer) {
-        let start = self.cursors.quads as usize;
-        if out.quads.len() - start < 2 || self.opaque_in_group.is_empty() {
-            return;
-        }
-        let slice = &out.quads[start..];
-        let occs = self.opaque_in_group.as_slice();
-
-        // Prefix-max of cover dimensions over the tail of occs. After
-        // this loop, `prefix_max_cover[i]` is the elementwise max
-        // `(w, h)` over `occs[i..]`. Used below as a one-comparison
-        // reject: if the occludee's painted rect is wider or taller
-        // than every remaining cover, no `contains_rect` can succeed.
-        self.prefix_max_cover.clear();
-        self.prefix_max_cover.resize(occs.len(), Vec2::ZERO);
-        let mut acc = Vec2::ZERO;
-        for (i, occ) in occs.iter().enumerate().rev() {
-            acc = acc.max(Vec2::new(occ.cover.size.w, occ.cover.size.h));
-            self.prefix_max_cover[i] = acc;
-        }
-
-        self.drop_indices.clear();
-        // Cursor into `occs` advancing in lockstep with `i`: it's
-        // always positioned at the first occluder with `idx > i`.
-        // Since `i` and `occs[*].idx` are both monotonically
-        // ascending, the cursor only moves forward across the outer
-        // loop — total work is O(N + K), not O(N·K).
-        let mut cursor = 0;
-        for (i, q) in slice.iter().enumerate() {
-            // Shadows paint past the stored rect by blur sigma (no
-            // closed-form extent we can test cheaply) — never drop.
-            if q.fill_kind.is_shadow() {
-                continue;
-            }
-            while cursor < occs.len() && occs[cursor].idx as usize <= i {
-                cursor += 1;
-            }
-            // No later occluder exists for this `i` — and since
-            // subsequent `i` values need even later occluders, none
-            // can be covered. Done.
-            if cursor >= occs.len() {
-                break;
-            }
-            // Centred strokes paint outside the rect by
-            // `stroke_width / 2` on every edge. Inflate the
-            // occludee's painted extent for the containment test;
-            // non-stroked quads inflate by zero. Rounded under-quads
-            // share their bounding rect with the painted region, so
-            // no corner-specific handling needed on this side.
-            let painted = q.rect.inflated(q.stroke_width * 0.5);
-            // Cheap reject: no remaining cover is large enough to
-            // contain `painted` on at least one axis. This catches
-            // the dominant "nested panels, parent larger than every
-            // descendant" pattern without touching the inner loop.
-            let max = self.prefix_max_cover[cursor];
-            if painted.size.w > max.x || painted.size.h > max.y {
-                continue;
-            }
-            for occ in &occs[cursor..] {
-                if occ.cover.contains_rect(painted) {
-                    self.drop_indices.push(i as u32);
-                    break;
-                }
-            }
-        }
-        if self.drop_indices.is_empty() {
-            return;
-        }
-        // Compact in place: walk forward, copy survivors down. The
-        // drop list is sorted ascending by construction.
-        let mut drop_iter = self.drop_indices.iter().copied().peekable();
-        let mut write = start;
-        for read in start..out.quads.len() {
-            let rel = (read - start) as u32;
-            if drop_iter.peek().copied() == Some(rel) {
-                drop_iter.next();
-                continue;
-            }
-            if read != write {
-                out.quads[write] = out.quads[read];
-            }
-            write += 1;
-        }
-        out.quads.truncate(write);
     }
 
     /// Finalize the open text batch (if any): push a [`TextBatch`]
@@ -427,6 +285,25 @@ impl Composer {
     fn cull_against_active_clip(&self, bounds: URect) -> bool {
         self.current_scissor
             .is_some_and(|s| bounds.intersect(s).is_none())
+    }
+
+    /// Cull a higher-kind (mesh / image / curve) draw against the active
+    /// clip and, if it survives, close any open text batch. Higher-kind
+    /// geometry paints above text under the backend's kind reorder, and a
+    /// batch renders at the END of its last group — past this draw if left
+    /// open — so the batch must close here for its text to emit first. Done
+    /// only after the cull: a culled draw must not split the batch. Returns
+    /// `false` when culled — the caller should `continue`.
+    ///
+    /// Polyline doesn't use this: its close must wait until after
+    /// tessellation (an empty tessellation must not split the batch), so it
+    /// culls early via [`Self::cull_against_active_clip`] and closes by hand.
+    fn enter_higher_kind(&mut self, scissor: URect, out: &mut RenderBuffer) -> bool {
+        if self.cull_against_active_clip(scissor) {
+            return false;
+        }
+        self.close_batch(out);
+        true
     }
 
     /// Force a flush / batch-close if a quad-tier draw at `overlap`
@@ -530,9 +407,7 @@ impl Composer {
         self.current_rounded = None;
         self.cursors = GroupCursors::default();
         self.open_batch = None;
-        self.opaque_in_group.clear();
-        self.drop_indices.clear();
-        self.prefix_max_cover.clear();
+        self.occlusion.clear();
         let mut current_transform = TranslateScale::IDENTITY;
 
         for i in 0..cmds.kinds.len() {
@@ -638,7 +513,7 @@ impl Composer {
                         let cover = phys_rect.inscribed_for_corners(phys_radius);
                         if !cover.is_paint_empty() {
                             let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
-                            self.opaque_in_group.push(Occluder { idx, cover });
+                            self.occlusion.record_opaque(idx, cover);
                         }
                     }
                 }
@@ -696,20 +571,13 @@ impl Composer {
                     let max = world_bbox.max() * scale;
                     let fringe = Vec2::splat(0.5);
                     let mesh_urect = urect_from_phys(min - fringe, max + fringe, viewport_phys);
-                    // Clip-cull: a mesh fully outside the active scissor
-                    // (e.g. scrolled out of an ancestor clip) would be
-                    // scissored away by the GPU — skip the upload. Same
-                    // reject every other shape draw performs.
-                    if self.cull_against_active_clip(mesh_urect) {
+                    // Clip-cull + batch-close: a mesh fully outside the
+                    // active scissor (e.g. scrolled out of an ancestor clip)
+                    // is skipped; a surviving one closes the open text batch
+                    // so its text emits before this above-text geometry.
+                    if !self.enter_higher_kind(mesh_urect, out) {
                         continue;
                     }
-                    // Mesh paints above text in the kind order, and a
-                    // batch renders at the END of its last group — past
-                    // this mesh if left open. Close so the batch's text
-                    // emits first. Done only now that the mesh will
-                    // actually draw: a culled mesh must not split the
-                    // batch.
-                    self.close_batch(out);
                     // Verts already live in FrameArena owner-local;
                     // span passes through to `MeshDraw` verbatim. The
                     // per-instance translate folds in both the owner
@@ -741,14 +609,12 @@ impl Composer {
                     let p: DrawImagePayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
                     let image_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
-                    if self.cull_against_active_clip(image_urect) {
+                    // Clip-cull + batch-close: image sits above text in the
+                    // kind order (same as mesh), so a surviving draw closes
+                    // the open text batch first.
+                    if !self.enter_higher_kind(image_urect, out) {
                         continue;
                     }
-                    // Image sits above text in the kind order (same as
-                    // mesh): close any open text batch so batched text
-                    // emits before this group's images. Only after the
-                    // cull — a culled image must not split the batch.
-                    self.close_batch(out);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let tint_color: Color = p.tint.into();
                     out.images.rows.push(ImageDrawRow {
@@ -787,14 +653,12 @@ impl Composer {
                         scale,
                         viewport_phys,
                     );
-                    if self.cull_against_active_clip(bbox_scissor) {
+                    // Clip-cull + batch-close: curve sits above text in the
+                    // kind order (same as mesh/image), so a surviving draw
+                    // closes the open text batch first.
+                    if !self.enter_higher_kind(bbox_scissor, out) {
                         continue;
                     }
-                    // Curve sits above text in the kind order (same as
-                    // mesh/image): close any open text batch so batched
-                    // text emits before this group's curves. Only after
-                    // the cull — a culled curve must not split the batch.
-                    self.close_batch(out);
                     // Transform control points to physical px. Owner
                     // origin folds in here so the record stays
                     // owner-local (cross-frame stable). No pixel
@@ -1009,174 +873,6 @@ impl Composer {
         }
         self.close_batch(out);
         self.flush(out);
-    }
-}
-
-/// Physical-pixel size of one tile in [`TextRectGrid`]. Each text rect
-/// is registered into every tile it overlaps; each
-/// `quad_forces_flush` walks the tiles a quad covers and intersects
-/// against per-tile rect lists. 64 px balances tile count (~4500 for a
-/// 4K viewport, fits in L1) against per-tile rect count (typically 1-3
-/// in dense UIs).
-const TILE_SIZE: u32 = 64;
-
-/// Per-tile inline capacity for the grid's index lists. Sized
-/// empirically from the `frame/resizing` workload (dense UI at 32×
-/// bench scale, viewport 3840×4800 phys px): observed max occupancy
-/// was **3**. `N = 8` keeps every tile fully inline with substantial
-/// headroom in any realistic UI — a 64-px tile holds 2-3 stacked
-/// labels in a typical column.
-///
-/// `TinyVec` rather than `ArrayVec` to keep pathological text-dense
-/// workloads (e.g. spreadsheet-grid layouts with tiny fonts and no
-/// padding) functional rather than panicking. Once a tile spills to
-/// the heap, its `clear()` between batches only resets `len`; the
-/// heap buffer is retained, so a one-time allocation amortizes across
-/// every subsequent frame. Steady-state alloc-free after warmup
-/// holds.
-type TileBucket = TinyVec<[u16; 8]>;
-
-/// Spatial index over the open batch's text-rect AABBs. Replaces a
-/// flat `Vec<URect>` linear scan that dominated compose time in
-/// text-dense UIs. Backed by a row-major grid of tiles
-/// ([`TILE_SIZE`] phys px); each rect lives in the tiles it covers,
-/// each query walks only the tiles its rect overlaps and may visit a
-/// rect twice for rects spanning >1 tile — fine, we early-exit on
-/// first hit so duplicate visits cost only constant-factor false
-/// positives.
-#[derive(Default)]
-struct TextRectGrid {
-    cols: u32,
-    rows: u32,
-    /// Per-tile rect-index lists. Row-major: `tiles[ty * cols + tx]`.
-    /// The outer `Vec` is retained across batches; each inner
-    /// `TinyVec` is cleared (cheap, no dealloc) on
-    /// [`Self::clear`].
-    tiles: Vec<TileBucket>,
-    /// Indices (into `tiles`) that received at least one `push` this
-    /// frame — the set we walk on [`Self::clear`] instead of the full
-    /// row-major grid. A tile is recorded the first time it
-    /// transitions from empty to non-empty within a frame; subsequent
-    /// pushes to the same tile skip the record. Capacity is retained
-    /// across frames.
-    ///
-    /// Profiling motivation: `Composer::compose` was spending ~37% of
-    /// its self-time clearing all ~4500 tiles every frame (4K viewport
-    /// / 64-px tiles), even though only ~100-300 actually held
-    /// anything in the bench fixture. Tracking touches drops the
-    /// per-frame clear walk to the tiles we genuinely touched.
-    touched: Vec<u32>,
-    /// All rects inserted into the current batch, in insertion order.
-    /// `tiles` stores indices into this vec.
-    rects: Vec<URect>,
-}
-
-impl TextRectGrid {
-    /// Reshape to cover `viewport` and reset all state. Called once
-    /// per frame at compose start. Cheap when the viewport hasn't
-    /// changed (no allocation — the outer `Vec` is already sized).
-    fn start_frame(&mut self, viewport: UVec2) {
-        let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
-        let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
-        let want = (cols * rows) as usize;
-        // Grow-only — never shrink. A smaller-viewport frame reuses
-        // the larger backing vector; tiles beyond the active grid
-        // never get touched because `push` clamps indices to
-        // `cols - 1` / `rows - 1`. `touched` stores absolute indices
-        // into `tiles`, so `clear` works the same regardless of how
-        // `cols × rows` map onto positions inside the vec.
-        //
-        // Profiling motivation: the resize-arm bench cycles through
-        // 4 different viewports per frame. With unconditional
-        // `tiles.clear()` + `resize_with(...)` the per-frame
-        // `drop_in_place` sweep over every old TinyVec dominated
-        // `Composer::compose` (~7% of the bench's CPU cycles).
-        if want > self.tiles.len() {
-            self.tiles.resize_with(want, TileBucket::default);
-        }
-        self.cols = cols;
-        self.rows = rows;
-        self.clear();
-    }
-
-    /// Drop every registered rect. Only walks the tiles that actually
-    /// got pushed to this frame (`touched`), not the full row-major
-    /// grid — `~100-300` tile clears in the dense-text fixture vs
-    /// `~4500` on the full sweep.
-    fn clear(&mut self) {
-        for &i in &self.touched {
-            self.tiles[i as usize].clear();
-        }
-        self.touched.clear();
-        self.rects.clear();
-    }
-
-    /// Register `r`. No-op for zero-area input (degenerate text rects
-    /// can't intersect anything anyway).
-    fn push(&mut self, r: URect) {
-        if r.w == 0 || r.h == 0 {
-            return;
-        }
-        // Tile buckets store rect indices as `u16`. Past 65 535 text
-        // rects in one batch the cast would wrap and the grid would
-        // point at the wrong rect — a silent paint-order corruption.
-        // Far above any real text-dense batch, but assert rather than
-        // truncate (the field comments anticipate spreadsheet grids).
-        assert!(
-            self.rects.len() < u16::MAX as usize,
-            "TextRectGrid batch exceeded {} rects — u16 index would wrap",
-            u16::MAX,
-        );
-        let idx = self.rects.len() as u16;
-        self.rects.push(r);
-        let max_x = self.cols - 1;
-        let max_y = self.rows - 1;
-        let cx0 = (r.x / TILE_SIZE).min(max_x);
-        let cy0 = (r.y / TILE_SIZE).min(max_y);
-        let cx1 = ((r.x + r.w - 1) / TILE_SIZE).min(max_x);
-        let cy1 = ((r.y + r.h - 1) / TILE_SIZE).min(max_y);
-        for ty in cy0..=cy1 {
-            let row = ty * self.cols;
-            for tx in cx0..=cx1 {
-                let tile_idx = (row + tx) as usize;
-                let tile = &mut self.tiles[tile_idx];
-                // First touch this frame? Track for the next `clear`
-                // so we don't have to walk the whole grid.
-                let was_empty = tile.is_empty();
-                tile.push(idx);
-                if was_empty {
-                    self.touched.push(tile_idx as u32);
-                }
-            }
-        }
-    }
-
-    /// `true` if any registered rect intersects `q`. Returns on first
-    /// hit. Walks every tile in `q`'s tile range and checks each
-    /// tile's rect list — typical workload visits 1-4 tiles with 1-3
-    /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
-    /// old flat scan).
-    fn any_overlap(&self, q: URect) -> bool {
-        if q.w == 0 || q.h == 0 || self.rects.is_empty() {
-            return false;
-        }
-        let max_x = self.cols - 1;
-        let max_y = self.rows - 1;
-        let cx0 = (q.x / TILE_SIZE).min(max_x);
-        let cy0 = (q.y / TILE_SIZE).min(max_y);
-        let cx1 = ((q.x + q.w - 1) / TILE_SIZE).min(max_x);
-        let cy1 = ((q.y + q.h - 1) / TILE_SIZE).min(max_y);
-        for ty in cy0..=cy1 {
-            let row = ty * self.cols;
-            for tx in cx0..=cx1 {
-                for &i in self.tiles[(row + tx) as usize].iter() {
-                    if self.rects[i as usize].intersect(q).is_some() {
-                        return true;
-                    }
-                }
-            }
-        }
-        false
     }
 }
 
