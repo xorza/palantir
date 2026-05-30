@@ -194,6 +194,15 @@ const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
     1 => Unorm8x4,
 ];
 
+// Compile-time guard: attribute offsets must match the struct fields they
+// feed. `array_stride == size_of` alone wouldn't catch a same-size field
+// reorder or a format/field size mismatch; `offset_of!` does.
+const _: () = {
+    use std::mem::offset_of;
+    assert!(MESH_VERTEX_ATTRS[0].offset == offset_of!(MeshVertex, pos) as u64);
+    assert!(MESH_VERTEX_ATTRS[1].offset == offset_of!(MeshVertex, color) as u64);
+};
+
 fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<MeshVertex>() as u64,
@@ -210,6 +219,13 @@ const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array!
     3 => Float32,
     4 => Unorm8x4,
 ];
+
+const _: () = {
+    use std::mem::offset_of;
+    assert!(MESH_INSTANCE_ATTRS[0].offset == offset_of!(MeshInstance, translate) as u64);
+    assert!(MESH_INSTANCE_ATTRS[1].offset == offset_of!(MeshInstance, scale) as u64);
+    assert!(MESH_INSTANCE_ATTRS[2].offset == offset_of!(MeshInstance, tint) as u64);
+};
 
 fn mesh_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {

@@ -455,6 +455,26 @@ const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array!
     8 => Uint32x2,    // fill_axis (packed 4x f16: lane0|lane1|lane2|lane3)
 ];
 
+// Compile-time guard: each attribute's byte offset must match the `Quad`
+// field it feeds. `vertex_attr_array!` packs offsets by summing format
+// sizes in declaration order, and `array_stride` is pinned to
+// `size_of::<Quad>()` — but neither catches a struct field reorder or a
+// format/field size mismatch (a same-size swap keeps the stride yet
+// mis-routes the data to the shader). `offset_of!` against the actual
+// fields closes that gap.
+const _: () = {
+    use std::mem::offset_of;
+    assert!(QUAD_INSTANCE_ATTRS[0].offset == offset_of!(Quad, rect.min) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[1].offset == offset_of!(Quad, rect.size) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[2].offset == offset_of!(Quad, fill) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[3].offset == offset_of!(Quad, corners) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[4].offset == offset_of!(Quad, stroke_color) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[5].offset == offset_of!(Quad, stroke_width) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[6].offset == offset_of!(Quad, fill_kind) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[7].offset == offset_of!(Quad, fill_lut_row) as u64);
+    assert!(QUAD_INSTANCE_ATTRS[8].offset == offset_of!(Quad, fill_axis) as u64);
+};
+
 fn quad_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<Quad>() as u64,

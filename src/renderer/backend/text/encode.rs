@@ -43,9 +43,16 @@ pub(crate) struct ResolvedRun<'a> {
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
 /// fractional component of `origin` that cosmic folds into per-glyph
 /// `CacheKey`s (so different fractional origins produce different
-/// atlas slots and can't share an entry). Area color is part of the
-/// key because per-glyph color overrides are baked into the cached
-/// `EncodedGlyph.color` field.
+/// atlas slots and can't share an entry).
+///
+/// `area_color` is in the key because the run's colour is baked into
+/// every cached [`EncodedGlyph::color`] at insert time. **This is only
+/// sufficient because palantir shapes every run with one uniform
+/// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
+/// cosmic never emits a per-glyph `color_opt`. If per-span colours are
+/// ever added, fold a colour-span fingerprint into this key *first*, or
+/// the cache will serve a stale run's baked colours. The `debug_assert`
+/// in `encode_batch`'s glyph loop is the tripwire for that invariant.
 #[derive(Clone, Copy, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
     pub(crate) text: TextCacheKey,
@@ -261,6 +268,18 @@ pub(crate) fn encode_batch<'a>(
             for glyph in run.glyphs.iter() {
                 let physical = glyph.physical((origin.x, origin.y), scale);
 
+                // `EncodedKey` caches on the run's `area_color`, not
+                // per-glyph colour — correct only while cosmic never
+                // produces a per-glyph override (palantir's `attrs_for`
+                // sets no per-span colour). If this fires, per-span
+                // colour was added without growing `EncodedKey`, and the
+                // encoded cache would alias runs differing only in glyph
+                // colour. `debug_assert` (not release): one Option check
+                // per glyph in the miss-path loop.
+                debug_assert!(
+                    glyph.color_opt.is_none(),
+                    "per-glyph colour override requires folding colour into EncodedKey",
+                );
                 let color = match glyph.color_opt {
                     Some(c) => cosmic_color_to_linear_rgba_u32(c),
                     None => area_color,
