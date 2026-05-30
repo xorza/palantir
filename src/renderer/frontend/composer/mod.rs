@@ -474,7 +474,11 @@ impl Composer {
                 CmdKind::DrawRect => {
                     let p: DrawRectPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
-                    let quad_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    // Scale to physical px once: the cull `URect` and the
+                    // emitted quad share this rect (the cull needs the
+                    // scaled bounds anyway, so a culled draw costs the same).
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     // Clip-cull: skip emitting the quad when it sits
                     // entirely outside the active scissor. The GPU
                     // would scissor it away anyway; this saves the
@@ -484,7 +488,6 @@ impl Composer {
                     }
                     self.quad_forces_flush(quad_urect, out);
                     let world_radius = p.corners.scaled_by(current_transform.scale);
-                    let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
                     let stroke_width_phys = p.stroke_width * current_transform.scale * scale;
                     out.quads.push(Quad {
@@ -520,7 +523,8 @@ impl Composer {
                 CmdKind::DrawShadow => {
                     let p: DrawShadowPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
-                    let quad_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     if self.cull_against_active_clip(quad_urect) {
                         continue;
                     }
@@ -536,7 +540,6 @@ impl Composer {
                     let overlap_urect = quad_urect.deflated((2.0 * sigma_phys) as u32);
                     self.quad_forces_flush(overlap_urect, out);
                     let world_radius = p.corners.scaled_by(current_transform.scale);
-                    let phys_rect = world_rect.scaled_by(scale, snap);
                     let phys_radius = world_radius.scaled_by(scale);
                     // Shadow params (offset, σ) are logical-px scalars;
                     // scale to physical px so the shader's `local`
@@ -608,14 +611,15 @@ impl Composer {
                 CmdKind::DrawImage => {
                     let p: DrawImagePayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(p.rect);
-                    let image_urect = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    let phys_rect = world_rect.scaled_by(scale, snap);
+                    let image_urect =
+                        urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     // Clip-cull + batch-close: image sits above text in the
                     // kind order (same as mesh), so a surviving draw closes
                     // the open text batch first.
                     if !self.enter_higher_kind(image_urect, out) {
                         continue;
                     }
-                    let phys_rect = world_rect.scaled_by(scale, snap);
                     let tint_color: Color = p.tint.into();
                     out.images.rows.push(ImageDrawRow {
                         // Composer doesn't need `size` (the encoder
@@ -802,13 +806,16 @@ impl Composer {
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
                     let world_rect = current_transform.apply_rect(t.rect);
+                    // Scale once: `unclipped` (overlap/cull bounds) and the
+                    // emitted run's `origin` both derive from this rect.
+                    let phys_rect = world_rect.scaled_by(scale, snap);
                     // Glyphon clips per-`TextArea` against the run's own
                     // `bounds`, ignoring whatever `wgpu` scissor is active.
                     // Intersect with the active clip-stack top so ancestor
                     // `clip = true` panels actually clip glyphs; an empty
                     // intersection means the run can't reach pixels — skip
                     // the push entirely (cull).
-                    let unclipped = scissor_from_logical(world_rect, scale, snap, viewport_phys);
+                    let unclipped = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     let bounds = match self.clip_stack.last() {
                         Some(parent) => unclipped.clamp_to(parent.scissor),
                         None => unclipped,
@@ -844,7 +851,6 @@ impl Composer {
                     let b = self.open_batch(out);
                     b.text_union = b.text_union.union(bounds);
                     b.strict |= new_strict;
-                    let phys_rect = world_rect.scaled_by(scale, snap);
                     out.texts.push(TextRun {
                         origin: phys_rect.min,
                         bounds,

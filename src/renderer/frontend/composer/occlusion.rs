@@ -107,7 +107,12 @@ impl OcclusionPruner {
         // always positioned at the first occluder with `idx > i`.
         // Since `i` and `occs[*].idx` are both monotonically
         // ascending, the cursor only moves forward across the outer
-        // loop — total work is O(N + K), not O(N·K).
+        // loop — so cursor advancement is O(N + K). The `contains_rect`
+        // inner loop below is still O(K) per surviving occludee (O(N·K)
+        // worst case), but the `prefix_max_cover` size reject keeps it
+        // off the hot path for the dominant nested-panel case (parent
+        // larger than every descendant). Bounded by group size either
+        // way.
         let mut cursor = 0;
         for (i, q) in slice.iter().enumerate() {
             // Shadows paint past the stored rect by blur sigma (no
