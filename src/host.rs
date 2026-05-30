@@ -15,7 +15,6 @@
 use std::time::Instant;
 
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-use crate::renderer::backend::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
@@ -25,28 +24,16 @@ use crate::{Display, FrameArena, FrameReport, FrameStamp};
 
 /// Host-level construction knobs. Grouped so [`Host::with_options`]
 /// has a fixed signature as new GPU-side settings get exposed.
-/// `Default`: 256 MB image budget, GPU instrumentation off.
+/// `Default`: GPU instrumentation off.
 /// `WinitHostConfig` forwards its corresponding fields here.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct HostConfig {
-    /// GPU texture cache budget; eviction kicks in past this. See
-    /// [`DEFAULT_IMAGE_BUDGET_BYTES`].
-    pub image_budget_bytes: u64,
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback
     /// round-trip is non-trivial. See
     /// [`WinitHostConfig::collect_gpu_stats`](crate::WinitHostConfig::collect_gpu_stats)
     /// — `WinitHost` forwards its flag through to this one.
     pub collect_gpu_stats: bool,
-}
-
-impl Default for HostConfig {
-    fn default() -> Self {
-        Self {
-            image_budget_bytes: DEFAULT_IMAGE_BUDGET_BYTES,
-            collect_gpu_stats: false,
-        }
-    }
 }
 
 /// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
@@ -84,8 +71,8 @@ pub struct Host {
 
 impl Host {
     /// Canonical ctor: caller supplies the shaper and a [`HostConfig`]
-    /// holding every other knob (image budget, GPU instrumentation
-    /// opt-in). `WinitHost` delegates here from `WinitHostConfig`.
+    /// holding every other knob (GPU instrumentation opt-in). `WinitHost`
+    /// delegates here from `WinitHostConfig`.
     pub fn with_options(
         device: wgpu::Device,
         queue: wgpu::Queue,
@@ -93,10 +80,7 @@ impl Host {
         shaper: TextShaper,
         config: HostConfig,
     ) -> Self {
-        let HostConfig {
-            image_budget_bytes,
-            collect_gpu_stats,
-        } = config;
+        let HostConfig { collect_gpu_stats } = config;
         // One canonical frame arena, cloned into every subsystem that
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
@@ -125,7 +109,6 @@ impl Host {
                 frame_arena,
                 caches,
                 WgpuBackendConfig {
-                    image_budget_bytes,
                     pass_stats: backend_sink,
                 },
             ),

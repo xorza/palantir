@@ -46,6 +46,7 @@ use crate::primitives::brush::FillAxis;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
+use crate::renderer::image_registry::ImageId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 
@@ -324,10 +325,11 @@ pub(crate) struct DrawImagePayload {
     pub(crate) uv_min: glam::Vec2,
     pub(crate) uv_size: glam::Vec2,
     pub(crate) tint: ColorF16,
-    /// `ImageHandle` unwrapped to its `u64` so the payload stays Pod —
-    /// the wrapper isn't `repr(transparent)` (carries the `NONE`
-    /// sentinel sourcing API contract on the wrapper type).
-    pub(crate) handle: u64,
+    /// The image's registration id ([`ImageId`],
+    /// a `repr(transparent)` `Pod` `u64`). The backend looks it up in its
+    /// texture cache; `ImageId(0)` (the `Zeroable` default) is "no
+    /// texture" and skips the draw.
+    pub(crate) handle: ImageId,
     /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
     /// `0` (the common case) samples the UV directly.
     pub(crate) tiled: u32,
@@ -338,7 +340,7 @@ impl DrawImagePayload {
     /// tint, or null handle (paints no pixels, no texture to sample).
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || self.tint.is_noop() || self.handle == 0
+        self.rect.is_paint_empty() || self.tint.is_noop() || self.handle.0 == 0
     }
 }
 

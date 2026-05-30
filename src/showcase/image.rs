@@ -1,11 +1,8 @@
 use glam::Vec2;
 use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
+use std::cell::RefCell;
 
-/// Synthesize a 64×64 sRGB checkerboard once, register it under a
-/// stable key. The framework's content-addressed `ImageRegistry`
-/// idempotently dedups on the key, so calling this every frame is
-/// cheap — the first frame builds + uploads; every later frame is a
-/// hash lookup.
+/// Synthesize a 64×64 sRGB checkerboard.
 fn checker() -> Image {
     const N: u32 = 64;
     const CELL: u32 = 8;
@@ -38,14 +35,24 @@ fn gradient() -> Image {
     Image::from_rgba8(W, H, pixels)
 }
 
-fn register(ui: &Ui) -> (ImageHandle, ImageHandle) {
-    let checker = ui.register_image("showcase.image.checker", checker());
-    let gradient = ui.register_image("showcase.image.gradient", gradient());
-    (checker, gradient)
+thread_local! {
+    /// The demo images are permanent content, so register them once and
+    /// hold the owning [`ImageHandle`]s here for the life of the process
+    /// — the GPU textures live as long as these handles do. (A real app
+    /// would store handles in its own state, dropping them to free VRAM.)
+    static IMAGES: RefCell<Option<(ImageHandle, ImageHandle)>> = const { RefCell::new(None) };
+}
+
+/// Clone out this frame's handles, registering on first call.
+fn handles(ui: &Ui) -> (ImageHandle, ImageHandle) {
+    IMAGES.with_borrow_mut(|slot| {
+        slot.get_or_insert_with(|| (ui.register_image(checker()), ui.register_image(gradient())))
+            .clone()
+    })
 }
 
 pub fn build(ui: &mut Ui) {
-    let (checker, gradient) = register(ui);
+    let (checker, gradient) = handles(ui);
     Panel::vstack()
         .auto_id()
         .gap(16.0)
@@ -58,10 +65,10 @@ pub fn build(ui: &mut Ui) {
                 .gap(16.0)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
-                    fit_cell(ui, "Fill", checker, ImageFit::Fill);
-                    fit_cell(ui, "Contain", checker, ImageFit::Contain);
-                    fit_cell(ui, "Cover", checker, ImageFit::Cover);
-                    fit_cell(ui, "None", checker, ImageFit::None);
+                    fit_cell(ui, "Fill", &checker, ImageFit::Fill);
+                    fit_cell(ui, "Contain", &checker, ImageFit::Contain);
+                    fit_cell(ui, "Cover", &checker, ImageFit::Cover);
+                    fit_cell(ui, "None", &checker, ImageFit::None);
                 });
             // Row 2: tint variations on the gradient.
             Panel::hstack()
@@ -70,12 +77,12 @@ pub fn build(ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, |ui| {
                     cell(ui, "no tint", |ui| {
-                        image(ui, gradient, ImageFit::Fill, Color::WHITE);
+                        image(ui, &gradient, ImageFit::Fill, Color::WHITE);
                     });
                     cell(ui, "red tint", |ui| {
                         image(
                             ui,
-                            gradient,
+                            &gradient,
                             ImageFit::Fill,
                             Color::rgba(1.0, 0.3, 0.3, 1.0),
                         );
@@ -83,7 +90,7 @@ pub fn build(ui: &mut Ui) {
                     cell(ui, "half alpha", |ui| {
                         image(
                             ui,
-                            gradient,
+                            &gradient,
                             ImageFit::Fill,
                             Color::rgba(1.0, 1.0, 1.0, 0.5),
                         );
@@ -100,28 +107,26 @@ pub fn build(ui: &mut Ui) {
                             offset: Vec2::ZERO,
                             scale: Vec2::splat(3.0),
                         };
-                        image(ui, checker, fit, Color::WHITE);
+                        image(ui, &checker, fit, Color::WHITE);
                     });
                     cell(ui, "tile 2×4 + offset", |ui| {
                         let fit = ImageFit::Tile {
                             offset: Vec2::new(0.25, 0.0),
                             scale: Vec2::new(2.0, 4.0),
                         };
-                        image(ui, gradient, fit, Color::WHITE);
+                        image(ui, &gradient, fit, Color::WHITE);
                     });
                 });
         });
 }
 
-fn fit_cell(ui: &mut Ui, label: &'static str, handle: ImageHandle, fit: ImageFit) {
-    cell(ui, label, move |ui| {
-        image(ui, handle, fit, Color::WHITE);
-    });
+fn fit_cell(ui: &mut Ui, label: &'static str, handle: &ImageHandle, fit: ImageFit) {
+    cell(ui, label, |ui| image(ui, handle, fit, Color::WHITE));
 }
 
-fn image(ui: &mut Ui, handle: ImageHandle, fit: ImageFit, tint: Color) {
+fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
     ui.add_shape(Shape::Image {
-        handle,
+        handle: handle.clone(),
         local_rect: None,
         fit,
         tint,

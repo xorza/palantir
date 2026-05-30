@@ -72,7 +72,7 @@ pub use primitives::brush::{
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
-pub use primitives::image::{Image, ImageFit, ImageHandle, ImageRegistry};
+pub use primitives::image::{Image, ImageFit};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;
@@ -83,7 +83,7 @@ pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
-pub use renderer::backend::image_pipeline::DEFAULT_IMAGE_BUDGET_BYTES;
+pub use renderer::image_registry::{ImageHandle, ImageRegistry};
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::cosmic::CosmicMeasure;
 pub use text::{FontFamily, TextShaper};

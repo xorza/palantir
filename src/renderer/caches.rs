@@ -7,8 +7,8 @@
 //! the surface goes away). Distinct from [`crate::forest::frame_arena::FrameArena`]
 //! which is per-frame scratch.
 
-use crate::primitives::image::ImageRegistry;
 use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::image_registry::ImageRegistry;
 
 #[derive(Clone, Default)]
 pub(crate) struct RenderCaches {

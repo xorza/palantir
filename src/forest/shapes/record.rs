@@ -3,7 +3,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
-use crate::primitives::image::{ImageFit, ImageHandle};
+use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::rect::Rect;
@@ -12,6 +12,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
+use crate::renderer::image_registry::ImageId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
@@ -335,18 +336,21 @@ pub(crate) enum ShapeRecord {
         corners: Corners,
         shadow: LoweredShadow,
     } = 4,
-    /// Textured rectangle. `handle` references an entry in the shared
-    /// [`ImageRegistry`](crate::ImageRegistry); the backend uploads on
-    /// first sight and keeps a GPU texture across frames. `local_rect =
-    /// None` paints into the owner's full arranged rect; `Some(r)`
-    /// paints `r` at owner-relative coords. `tint` multiplies sampled
-    /// pixels in linear-RGB premultiplied space.
+    /// Textured rectangle. `id` is the registration id behind an
+    /// [`ImageHandle`](crate::ImageHandle) — extracted at lowering so the
+    /// per-frame record carries no `Rc` (the user's held handle is what
+    /// keeps the GPU texture alive). The backend looks `id` up in its
+    /// texture cache and skips the draw on a miss. `local_rect = None`
+    /// paints into the owner's full arranged rect; `Some(r)` paints `r`
+    /// at owner-relative coords. `tint` multiplies sampled pixels in
+    /// linear-RGB premultiplied space.
     Image {
         local_rect: Option<Rect>,
         tint: ColorF16,
-        /// Intrinsic dims live in `handle.size`; the encoder reads
-        /// them directly with no registry borrow.
-        handle: ImageHandle,
+        id: ImageId,
+        /// Intrinsic dims, baked in at registration so the encoder reads
+        /// them with no registry borrow.
+        size: glam::U16Vec2,
         fit: ImageFit,
     } = 5,
     /// Native GPU bezier curve. Four control points (quadratic curves
@@ -587,20 +591,21 @@ mod tests {
 
     #[test]
     fn shape_image_hash_distinguishes_handle_and_tint() {
-        let make = |handle: u64, tint: Color| ShapeRecord::Image {
+        let make = |id: ImageId, tint: Color| ShapeRecord::Image {
             local_rect: None,
             tint: ColorF16::from(tint),
-            handle: ImageHandle {
-                id: handle,
-                size: glam::U16Vec2::new(64, 64),
-            },
+            id,
+            size: glam::U16Vec2::new(64, 64),
             fit: ImageFit::Fill,
         };
-        let baseline = compute_record_hash(&make(0xa, Color::WHITE));
-        assert_ne!(baseline, compute_record_hash(&make(0xb, Color::WHITE)));
+        let baseline = compute_record_hash(&make(ImageId(0xa), Color::WHITE));
         assert_ne!(
             baseline,
-            compute_record_hash(&make(0xa, Color::rgba(1.0, 0.0, 0.0, 1.0)))
+            compute_record_hash(&make(ImageId(0xb), Color::WHITE))
+        );
+        assert_ne!(
+            baseline,
+            compute_record_hash(&make(ImageId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
         );
     }
 }

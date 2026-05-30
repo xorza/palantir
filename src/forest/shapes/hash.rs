@@ -112,7 +112,8 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
         ShapeRecord::Image {
             local_rect,
             tint,
-            handle,
+            id,
+            size,
             fit,
         } => {
             match local_rect {
@@ -123,12 +124,11 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
                 }
             }
             tint.hash(&mut h);
-            // Hash `id` + `size` — handle's own `Hash` keys on `id` only,
-            // but cache identity needs both. Pack `size.x | size.y` into
-            // one u64, then fold in the fit (incl. `Tile`'s UV transform,
+            // Hash the registration `id` + intrinsic `size` (packed
+            // `x | y`), then fold in the fit (incl. `Tile`'s UV transform,
             // which changes every pan/zoom frame and must repaint).
-            h.write_u64(handle.id);
-            h.write_u64((handle.size.x as u64) | ((handle.size.y as u64) << 16));
+            h.write_u64(id.0);
+            h.write_u64((size.x as u64) | ((size.y as u64) << 16));
             hash_fit(fit, &mut h);
         }
         // `content_hash` summarizes p0..p3 + width + cap + (solid)

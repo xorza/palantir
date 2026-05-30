@@ -156,11 +156,22 @@ fn test_image() -> Image {
     Image::from_rgba8(N, N, px)
 }
 
-/// Scene drawing the test image stretched to fill. `register_image` is
-/// content-addressed and idempotent, so calling it each frame uploads
-/// once and is a hash lookup thereafter.
+thread_local! {
+    /// The owning handle must outlive every frame's submit (it keeps the
+    /// GPU texture alive), so register once and hold it here for the
+    /// whole test run — exactly what this fixture is asserting survives a
+    /// format change.
+    static TEST_IMAGE: std::cell::RefCell<Option<palantir::ImageHandle>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Scene drawing the test image stretched to fill. Registers once (held
+/// in `TEST_IMAGE`); later frames clone the handle.
 fn image_scene(ui: &mut palantir::Ui) {
-    let handle = ui.register_image("format_change.test_image", test_image());
+    let handle = TEST_IMAGE.with_borrow_mut(|slot| {
+        slot.get_or_insert_with(|| ui.register_image(test_image()))
+            .clone()
+    });
     Panel::zstack()
         .auto_id()
         .padding(8.0)

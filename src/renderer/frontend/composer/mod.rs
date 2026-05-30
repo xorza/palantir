@@ -6,7 +6,6 @@ use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
 use crate::primitives::color::{Color, ColorF16, ColorU8};
-use crate::primitives::image::ImageHandle;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
@@ -622,15 +621,10 @@ impl Composer {
                     }
                     let tint_color: Color = p.tint.into();
                     out.images.rows.push(ImageDrawRow {
-                        // Composer doesn't need `size` (the encoder
-                        // already resolved fit into `rect`+UV); pass
-                        // a size-less handle so paint-side equality
-                        // ignores the lane the registry uses for
-                        // bookkeeping.
-                        handle: ImageHandle {
-                            id: p.handle,
-                            size: glam::U16Vec2::ZERO,
-                        },
+                        // Just the registration id — the backend looks it
+                        // up in its texture cache; the encoder already
+                        // resolved fit into `rect` + UV.
+                        id: p.handle,
                         instance: ImageInstance {
                             rect: phys_rect,
                             uv_min: p.uv_min,

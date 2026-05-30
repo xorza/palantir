@@ -102,9 +102,6 @@ pub struct WinitHostConfig {
     pub min_inner_size: Option<LogicalSize<u32>>,
     pub present_mode: wgpu::PresentMode,
     pub power_preference: wgpu::PowerPreference,
-    /// GPU texture cache budget; eviction kicks in past this. See
-    /// [`DEFAULT_IMAGE_BUDGET_BYTES`](crate::DEFAULT_IMAGE_BUDGET_BYTES).
-    pub image_budget_bytes: u64,
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback
     /// round-trip is non-trivial.
@@ -119,7 +116,6 @@ impl Default for WinitHostConfig {
             min_inner_size: None,
             present_mode: wgpu::PresentMode::AutoVsync,
             power_preference: wgpu::PowerPreference::LowPower,
-            image_budget_bytes: HostConfig::default().image_budget_bytes,
             collect_gpu_stats: false,
         }
     }
@@ -365,7 +361,6 @@ where
             format,
             TextShaper::with_bundled_fonts(),
             HostConfig {
-                image_budget_bytes: cfg.image_budget_bytes,
                 collect_gpu_stats: cfg.collect_gpu_stats,
             },
         );
