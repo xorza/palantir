@@ -421,8 +421,9 @@ pub(crate) fn shadow_paint_rect_local(
 
 impl ShapeRecord {
     /// Owner-local paint bbox this shape draws into — cascade unions
-    /// across siblings to derive `Cascade.paint_rect`, encoder reads
-    /// the world-space form for damage culling. Drop shadows extend
+    /// across siblings to seed `subtree_paint_rects` (and damage
+    /// recomputes the same union on demand), encoder reads the
+    /// world-space form for damage culling. Drop shadows extend
     /// beyond the owner via [`shadow_paint_rect_local`]; `Polyline` /
     /// `Curve` carry a pre-computed owner-relative bbox; the rest
     /// paint into `local_rect` (when set) or the owner's full rect at

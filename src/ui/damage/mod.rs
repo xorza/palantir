@@ -54,14 +54,15 @@ pub mod region;
 /// a `Span` into it. Each row is either chrome (row 0 when present)
 /// or one direct shape, mirroring `Cascades::paint_arenas`.
 ///
-/// **No cached `rect`.** The node's `Cascade.paint_rect` is a pure
-/// function of `(hash, cascade_input)` — every geometry input
-/// (`layout_rect`, ancestor transform/clip) lives in `cascade_input`
-/// and every shape input lives in `hash` — so a snapshot field would
-/// be a redundant cache of those two. The diff keys the
-/// "node unchanged" fast path on `(hash, cascade_input)` directly; the
-/// per-shape screen rects needed when something *did* change are
-/// recovered from `paint_span`.
+/// **No cached `rect`.** The node's own paint extent (the union of its
+/// `paint_arena` rows — what the cascade used to store as
+/// `Cascade.paint_rect`) is a pure function of `(hash, cascade_input)`:
+/// every geometry input (`layout_rect`, ancestor transform/clip) lives
+/// in `cascade_input` and every shape input lives in `hash`, so a
+/// snapshot field would be a redundant cache of those two. The diff
+/// keys the "node unchanged" fast path on `(hash, cascade_input)`
+/// directly; the per-shape screen rects needed when something *did*
+/// change are recovered from `paint_span`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
     /// Slice into [`DamageEngine::arena`] describing this
@@ -522,10 +523,10 @@ impl DamageEngine {
     /// [`crate::forest::seen_ids::SeenIds`] so damage and `text` reuse
     /// the diff) are dropped afterwards.
     ///
-    /// Rects are tracked in **screen space** (read straight off
-    /// `Cascade.paint_rect` — the transformed layout rect inflated by
-    /// per-shape ink overhang, then ancestor-clipped). This makes
-    /// damage match where the GPU actually paints, so the backend
+    /// Rects are tracked in **screen space** (the per-shape
+    /// `Paint.screen` rects — each the transformed shape bbox inflated
+    /// by ink overhang, then ancestor-clipped — and their union). This
+    /// makes damage match where the GPU actually paints, so the backend
     /// scissor lands on the right pixels even under transformed
     /// parents or around a drop shadow.
     ///
@@ -584,7 +585,7 @@ impl DamageEngine {
 
         for (layer, tree) in forest.iter_paint_order() {
             let layer_cascades = &cascades.layers[layer];
-            let rows = layer_cascades.rows.as_slice();
+            let cascade_inputs = layer_cascades.cascade_inputs.as_slice();
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();
             let subtree_end = tree.records.subtree_end();
@@ -594,11 +595,10 @@ impl DamageEngine {
             while i < n {
                 let node_span = layer_node_paints[i];
                 let curr_paints_slice = &layer_paints[node_span.range()];
-                let curr_rect = rows[i].paint_rect;
                 let curr_paints = node_span.len > 0;
                 let curr_node_hash = tree.rollups.node[i];
                 let curr_subtree_hash = tree.rollups.subtree[i];
-                let curr_cascade_input = rows[i].cascade_input;
+                let curr_cascade_input = cascade_inputs[i];
                 // This node's next-frame snapshot — every field but
                 // `paint_span` is fixed per node, so the arms differ
                 // only in which span they pass.
@@ -609,7 +609,16 @@ impl DamageEngine {
                     cascade_input: curr_cascade_input,
                 };
                 let advance = match prev_map.entry(widget_ids[i]) {
-                    Entry::Vacant(_) if !curr_paints || !curr_rect.intersects(surface) => 1,
+                    // Skip the snapshot insert for a new node that paints
+                    // nothing or paints entirely off-surface. `union_screens`
+                    // is the former `Cascade.paint_rect`, recomputed here on
+                    // the cold (Vacant) path rather than stored per node.
+                    Entry::Vacant(_)
+                        if !union_screens(curr_paints_slice)
+                            .is_some_and(|u| u.intersects(surface)) =>
+                    {
+                        1
+                    }
                     Entry::Vacant(e) => {
                         let paint_span = arena.append(curr_paints_slice);
                         push_screens(raw_rects, curr_paints_slice);
@@ -662,8 +671,10 @@ impl DamageEngine {
                         // toggle (ancestor disable, clip-saturated pan)
                         // altered the pixels in place. Damage the union to
                         // repaint them.
-                        if leg.geometry_unchanged {
-                            raw_rects.push(curr_rect);
+                        if leg.geometry_unchanged
+                            && let Some(u) = union_screens(curr_paints_slice)
+                        {
+                            raw_rects.push(u);
                         }
                         *e.get_mut() = make_snapshot(leg.span);
                         #[cfg(any(test, feature = "internals"))]
@@ -767,6 +778,19 @@ fn push_screens(out: &mut Vec<Rect>, paints: &[Paint]) {
     for p in paints {
         out.push(p.screen);
     }
+}
+
+/// Screen-space union of a node's paint rows — the node's own paint
+/// extent, formerly stored as `Cascade.paint_rect`. The cascade no
+/// longer caches it; the damage diff recomputes it here on its cold
+/// paths (the Vacant surface-cull and the tier-3 cascade-state union
+/// push) from the same `paint_arena` slice those arms already touch.
+/// `None` for a non-painting node (empty slice).
+#[inline]
+fn union_screens(paints: &[Paint]) -> Option<Rect> {
+    let mut it = paints.iter();
+    let first = it.next()?.screen;
+    Some(it.fold(first, |acc, p| acc.union(p.screen)))
 }
 
 fn extend_predamaged(
