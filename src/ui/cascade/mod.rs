@@ -66,35 +66,6 @@ impl PaintArena {
     }
 }
 
-/// Per-node cascade row: what the encoder and damage diff need to
-/// know about node `i` after ancestor state has been folded in.
-/// Ancestor `transform` and `clip` themselves never leave `run_tree`
-/// — they live on its stack `Frame` and are baked into `paint_rect`
-/// before publishing.
-///
-/// Packed to 24 bytes (16 for `paint_rect`, 8 for the
-/// fingerprint-and-`invisible` u64). The encoder reads `invisible`
-/// via `cascade_input.invisible()`; damage compares the full u64.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Cascade {
-    /// **Own** paint extent: screen-space union of every [`Paint`] row
-    /// emitted for this node by [`compute_paint_rect`] — chrome
-    /// (inflated by drop-shadow halo when present) plus each direct
-    /// shape's tight bbox, all post-transform and clipped to the
-    /// ancestor clip. Used by [`crate::ui::damage::DamageEngine`] as
-    /// the per-widget paint snapshot; keeping it tight (no descendant
-    /// rollup) lets a leaf colour change produce a leaf-sized dirty
-    /// rect instead of an ancestor-sized one. Hit-test uses its own
-    /// `EntryRow.rect`; shadows aren't clickable.
-    pub(crate) paint_rect: Rect,
-    /// Fingerprint of the ancestor state + own arranged rect that
-    /// flowed into this row, packed with the cascade-resolved
-    /// `invisible` bit in the high position. Paired with
-    /// `Tree.rollups.subtree[i]` to drive damage's subtree-skip fast
-    /// path; read by the encoder via `cascade_input.invisible()`.
-    pub(crate) cascade_input: CascadeInputHash,
-}
-
 /// One hit-test row. Stored as `Soa<EntryRow>` on
 /// [`Cascades::entries`] so each field becomes its own contiguous
 /// slice — the hot reverse-scan in `hit_test*` reads `rect` and the
@@ -149,45 +120,43 @@ struct Frame {
     cascade_prefix: Hasher,
 }
 
-/// All per-layer cascade state grouped on one struct. `rows` +
-/// `subtree_paint_rects` + `paint_arena` are produced together in a
-/// single [`run_tree`] pass, reset together at frame start, and read
-/// together by the damage diff and encoder — keeping them on one
-/// struct means there's exactly one indexing point per layer and no
-/// chance of resetting one column but not another.
+/// All per-layer cascade state grouped on one struct. The
+/// `cascade_inputs`, `subtree_paint_rects`, and `paint_arena` columns
+/// are produced together in a single [`run_tree`] pass, reset together
+/// at frame start, and read together by the damage diff and encoder —
+/// keeping them on one struct means there's exactly one indexing point
+/// per layer and no chance of resetting one column but not another.
 ///
-/// ## AoS vs SoA split
+/// ## Columnar split
 ///
 /// The per-node data is deliberately divided three ways, driven by
 /// who reads what together:
 ///
-/// - [`Cascade`] (`paint_rect` + `cascade_input`) is **AoS**: damage's
-///   hot per-node scan reads both fields per iteration, so colocating
-///   them keeps the inner loop at 24 B/node and one indexed load.
-/// - [`Self::subtree_paint_rects`] is **split out**: read by the
-///   encoder cull but *not* by damage. Inlining it into `Cascade`
-///   would widen damage's per-row footprint by 16 B (~66 %) for a
-///   read it doesn't perform.
+/// - [`Self::cascade_inputs`] is the only datum on the per-node hot
+///   path: the encoder reads `cascade_input.invisible()` for every
+///   node it walks, and damage compares the full u64 on its skip /
+///   descend arms. At 8 B/node the encoder's per-frame walk and
+///   damage's scan stay cache-dense.
+/// - [`Self::subtree_paint_rects`] is read only by the encoder cull.
 /// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
 ///   [`Paint`]s plus the `node_spans` index). Read only on damage's
 ///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
 ///   so it sits behind a `node_spans[i]` indirection that damage's
-///   subtree-skip fast path skips entirely.
-///
-/// Any new per-node datum that damage's hot scan needs to read every
-/// frame belongs inline on `Cascade`; anything read only by the
-/// encoder or only on damage's slow legs should stay parallel.
+///   subtree-skip fast path skips entirely. A node's **own** paint
+///   extent (the former `Cascade.paint_rect`) is just the union of its
+///   `paint_arena` rows — recomputed on demand on damage's cold paths,
+///   not stored.
 #[derive(Default)]
 pub(crate) struct LayerCascades {
-    /// Per-node cascade rows, indexed the same way as
-    /// `Tree::records`: `rows[node.idx()]`.
-    pub(crate) rows: Vec<Cascade>,
-    /// Per-node subtree paint rect — [`Cascade::paint_rect`] rolled up
-    /// with every descendant's `subtree_paint_rects[i]`. Stored
-    /// alongside `rows` (not inline on `Cascade`) so the damage
-    /// diff's hot row scan stays cache-tight (reads `paint_rect` +
-    /// `cascade_input` only — 24 B/node); the encoder is the sole
-    /// reader and pays one indexed load per cull check. Computed
+    /// Per-node `cascade_input` fingerprint, indexed the same way as
+    /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
+    /// ancestor state + own arranged rect hash with the cascade-resolved
+    /// `invisible` bit in the high position (see [`CascadeInputHash`]).
+    /// The encoder reads `.invisible()`; damage pairs the full u64 with
+    /// `Tree.rollups.subtree[i]` for its subtree-skip fast path.
+    pub(crate) cascade_inputs: Vec<CascadeInputHash>,
+    /// Per-node subtree paint rect — the node's own paint extent rolled
+    /// up with every descendant's `subtree_paint_rects[i]`. Computed
     /// inline in [`run_tree`] via a stack-frame accumulator. Read by
     /// the encoder for the viewport + damage subtree culls where
     /// "may I skip the whole subtree?" must consider overhanging
@@ -213,12 +182,12 @@ impl LayerCascades {
     /// `entries_base` in one call — both prep this
     /// layer for the upcoming `run_tree`, splitting them invites a
     /// caller that resets but forgets the offset (or vice versa).
-    /// `rows` and `subtree_paint_rects` are cleared and reserved
-    /// (filled by per-node pushes during the walk); `paint_arena`
-    /// columns reset according to their own sizing rules.
+    /// `cascade_inputs` and `subtree_paint_rects` are cleared and
+    /// reserved (filled by per-node pushes during the walk);
+    /// `paint_arena` columns reset according to their own sizing rules.
     pub(crate) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
-        self.rows.clear();
-        self.rows.reserve(n_nodes);
+        self.cascade_inputs.clear();
+        self.cascade_inputs.reserve(n_nodes);
         self.subtree_paint_rects.clear();
         self.subtree_paint_rects.reserve(n_nodes);
         self.paint_arena.reset_for(n_nodes);
@@ -529,10 +498,9 @@ fn run_tree(
         // ancestor). Visibility is in `cascade_input` regardless, so
         // damage tracking is unaffected.
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        cascades.layers[layer].rows.push(Cascade {
-            paint_rect,
-            cascade_input: finish_cascade_input(parent_prefix, layout_rect, invisible),
-        });
+        cascades.layers[layer]
+            .cascade_inputs
+            .push(finish_cascade_input(parent_prefix, layout_rect, invisible));
         cascades.layers[layer]
             .subtree_paint_rects
             .push(subtree_seed);
@@ -725,9 +693,10 @@ struct PaintRectCtx<'a> {
 /// Emit every paint row for `node` (chrome at row 0 when present, then
 /// direct shapes in record order) via [`push_paint`], write the
 /// covering [`Span`] into `node_spans[node]`, and return the
-/// screen-space union of every row — fed into `Cascade.paint_rect` for
-/// the damage diff and rolled into `subtree_paint_rects` for the
-/// encoder's cull.
+/// screen-space union of every row — used locally as the
+/// `subtree_paint_rects` seed for the encoder's cull. Damage recomputes
+/// the same union from the `paint_arena` rows on demand (its cold
+/// paths), so it isn't stored per node.
 ///
 /// Chrome rides `parent_transform` (encoder emits chrome before the
 /// body push); shapes ride `shape_transform = parent ∘ self_anchored`
@@ -737,13 +706,11 @@ struct PaintRectCtx<'a> {
 /// # Invariant
 ///
 /// The returned `Rect` is bit-identical to the screen-space union of
-/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`.
-/// `Cascade.paint_rect` stores it as a precomputed scalar so damage's
-/// hot per-node scan reads `rows[i].paint_rect` in one load instead of
-/// looping over each node's Paint slice to recompute the union.
-/// [`push_paint`] keeps the union and the pushed rows in lockstep; the
-/// chromeless clip-only branch is the sole fold-without-push case (it
-/// contributes a cull rect but emits no pixels).
+/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`
+/// — the same union `damage::union_screens` recomputes from the stored
+/// rows. [`push_paint`] keeps the union and the pushed rows in lockstep;
+/// the chromeless clip-only branch is the sole fold-without-push case
+/// (it contributes a cull rect but emits no pixels).
 fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     let PaintRectCtx {
         tree,

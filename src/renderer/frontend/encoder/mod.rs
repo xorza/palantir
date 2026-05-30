@@ -3,6 +3,7 @@ use super::cmd_buffer::{
     GpuFillFields, RenderCmdBuffer,
 };
 use crate::forest::frame_arena::FrameArenaInner;
+use crate::forest::rollups::CascadeInputHash;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
     text_in_rect,
@@ -19,7 +20,6 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
-use crate::ui::cascade::Cascade;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::RenderPlan;
 use std::time::Duration;
@@ -94,7 +94,7 @@ pub(crate) fn encode(
         let ctx = LayerCtx {
             tree,
             layout: &ui.layout[layer],
-            rows: layer_cascades.rows.as_slice(),
+            cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
             subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
             gradients,
             damage_filter,
@@ -116,7 +116,7 @@ pub(crate) fn encode(
 struct LayerCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
-    rows: &'a [Cascade],
+    cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
     gradients: &'a [LoweredGradient],
     damage_filter: Option<&'a DamageRegion>,
@@ -357,7 +357,7 @@ fn emit_one_shape(
 }
 
 fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
-    if ctx.rows[id.idx()].cascade_input.invisible() {
+    if ctx.cascade_inputs[id.idx()].invisible() {
         return;
     }
 

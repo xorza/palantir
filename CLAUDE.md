@@ -127,6 +127,6 @@ cargo test --lib print_hot_struct_sizes -- --nocapture --ignored
 ```
 
 When changing any hot row (`NodeRecord`, `LayoutCore`, `ShapeRecord`,
-`Brush`, `DrawRectPayload`, `Cascade`, `DamageRegion`, `Quad`, etc.)
+`Brush`, `DrawRectPayload`, `CascadeInputHash`, `DamageRegion`, `Quad`, etc.)
 re-run the test and eyeball the printed sizes against the previous run
 to catch regressions.
