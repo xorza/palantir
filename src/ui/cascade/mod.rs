@@ -452,15 +452,25 @@ fn run_tree(
 
         let screen_rect = parent_transform.apply_rect(layout_rect);
         let visible_rect = parent_clip.map_or(screen_rect, |c| screen_rect.intersect(c));
-        // Self-transform is read once here and threaded into both
-        // descendant transform composition (below) and
-        // `compute_paint_rect`'s shape-transform composition —
-        // `tree.transform_of` is a sparse-column probe, and doing it
-        // twice per node showed up in the cascade self-time profile.
+        // The transform descendants inherit *and* direct shapes paint
+        // under (the `Panel::transform` contract): `parent ∘
+        // self_anchored`. Computed once here — `transform_of` is a
+        // sparse-column probe and `compose` is 3×mul+3×add, so the
+        // `None` arm (most nodes have no transform) skips the compose
+        // entirely, the steady-state path. `compute_paint_rect` reuses
+        // this as its `shape_transform` rather than recomposing.
+        //
+        // Scale pivots about the node's own `layout_rect.min`, not the
+        // cascade's (0, 0); `anchored_at` cancels the
+        // `panel.min * (1 - scale)` drift a raw compose against
+        // absolute-coord layout rects would introduce (identity-
+        // preserving — no-op at `scale == 1`). See
+        // `TranslateScale::anchored_at`.
         let node_transform = tree.transform_of(id);
-        let self_transform = node_transform
-            .map(|t| t.anchored_at(layout_rect.min))
-            .unwrap_or(TranslateScale::IDENTITY);
+        let desc_transform = match node_transform {
+            Some(t) => parent_transform.compose(t.anchored_at(layout_rect.min)),
+            None => parent_transform,
+        };
         let clips = attrs.clip_mode().is_clip();
         // Encoder's clip mask is `rect.deflated_by(padding)`, pushed
         // **before** the body. Direct shapes and descendants both
@@ -486,7 +496,7 @@ fn run_tree(
                 parent_transform,
                 parent_clip,
                 shape_clip,
-                self_transform,
+                shape_transform: desc_transform,
                 clips,
             },
             &mut cascades.layers[layer].paint_arena,
@@ -505,22 +515,6 @@ fn run_tree(
             .subtree_paint_rects
             .push(subtree_seed);
 
-        // `Panel::transform` semantics: scale pivots about the node's
-        // own `layout_rect.min`, not the cascade's (0, 0). The
-        // anchoring cancels the `panel.min * (1 - scale)` drift that
-        // a raw `self.compose` against absolute-coord layout rects
-        // would introduce. Identity-preserving — no-op when
-        // `scale == 1`. See `TranslateScale::anchored_at`.
-        // `self_transform` already incorporates the anchoring above;
-        // for descendants we compose it onto the parent's transform.
-        // When `node_transform` is `None`, `self_transform` is
-        // `IDENTITY` and `compose` would yield the same result,
-        // but skip the 3×mul + 3×add anyway — most nodes have no
-        // transform, so the early-out is the steady-state path.
-        let desc_transform = match node_transform {
-            Some(_) => parent_transform.compose(self_transform),
-            None => parent_transform,
-        };
         // Descendants inherit the deflated-mask clip — same value the
         // direct shapes were clipped to above and the encoder pushes
         // before the body.
@@ -674,10 +668,11 @@ fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, ha
 }
 
 /// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
-/// `self_transform` and `clips` are computed once at the call site and
-/// passed in so we don't re-probe the sparse `transform_of` column and
-/// the SoA `attrs` column — both showed up as duplicate work in cascade
-/// profiling.
+/// `shape_transform` (the `parent ∘ self_anchored` descendants also
+/// inherit) and `clips` are computed once at the call site and passed
+/// in so we don't re-probe the sparse `transform_of` column, recompose
+/// the transform, or re-read the SoA `attrs` column — all showed up as
+/// duplicate work in cascade profiling.
 struct PaintRectCtx<'a> {
     tree: &'a Tree,
     layout: &'a LayerLayout,
@@ -686,7 +681,7 @@ struct PaintRectCtx<'a> {
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
-    self_transform: TranslateScale,
+    shape_transform: TranslateScale,
     clips: bool,
 }
 
@@ -720,11 +715,10 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         parent_transform,
         parent_clip,
         shape_clip,
-        self_transform,
+        shape_transform,
         clips,
     } = ctx;
     let paints_start = arena.rows.len() as u32;
-    let shape_transform = parent_transform.compose(self_transform);
 
     // `Option<Rect>` because zero-size sentinels bias `Rect::union`
     // toward the origin and an owner-rect seed would inflate damage

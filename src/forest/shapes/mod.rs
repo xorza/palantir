@@ -27,13 +27,14 @@ use crate::shape::{PolylineColors, Shape};
 #[derive(Default)]
 pub(crate) struct Shapes {
     pub(crate) records: Vec<ShapeRecord>,
-    /// Per-shape authoring hash, parallel to `records`. Populated
-    /// during `Tree::compute_hashes` alongside the per-node hash —
-    /// the existing walk visits every record exactly once. Keys the
-    /// per-shape damage diff (`(WidgetId, ordinal)` identity) in
+    /// Per-shape authoring hash, parallel to `records`. Computed once
+    /// in [`Self::add`] at lowering time (the canonical value);
+    /// `Tree::compute_hashes` only folds the stored hash into the
+    /// owner's node hash, never recomputes it. Keys the per-shape
+    /// damage diff (`(WidgetId, ordinal)` identity) in
     /// `DamageEngine::compute`, letting a single moved shape on a
     /// multi-shape owner push only its own rect pair instead of the
-    /// owner's whole `paint_rect` union. Cleared per frame, capacity
+    /// owner's whole paint-rect union. Cleared per frame, capacity
     /// retained.
     pub(crate) hashes: Vec<NodeHash>,
 }
