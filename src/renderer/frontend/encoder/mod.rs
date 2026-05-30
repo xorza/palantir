@@ -30,6 +30,21 @@ use std::time::Duration;
 /// after every layer's regular paint.
 const COLLISION_OVERLAY_STROKE: Stroke = Stroke::solid(Color::rgb(1.0, 0.0, 1.0), 3.0);
 
+/// Resolve a shape's owner-relative `local_rect` against the owner's
+/// arranged rect. `None` means "paint the owner's full rect"; `Some(lr)`
+/// offsets `lr` by the owner's origin. Shared by the `RoundedRect` /
+/// `Image` arms so the offset convention can't drift.
+#[inline]
+fn resolve_local_rect(owner_rect: Rect, local_rect: Option<Rect>) -> Rect {
+    match local_rect {
+        None => owner_rect,
+        Some(lr) => Rect {
+            min: owner_rect.min + lr.min,
+            size: lr.size,
+        },
+    }
+}
+
 /// Build a `BrushSource` from a lowered `ShapeBrush` + the per-frame
 /// gradient arena. `Solid` stays inline; `Gradient(id)` reads the
 /// pre-baked `LoweredGradient` (row + axis + kind already finalised
@@ -177,13 +192,7 @@ fn emit_one_shape(
             stroke,
             ..
         } => {
-            let r = match local_rect {
-                None => owner_rect,
-                Some(lr) => Rect {
-                    min: owner_rect.min + lr.min,
-                    size: lr.size,
-                },
-            };
+            let r = resolve_local_rect(owner_rect, *local_rect);
             let src = shape_brush_source(ctx.gradients, *fill);
             out.draw_rect(r, *corners, src, *stroke);
         }
@@ -271,10 +280,7 @@ fn emit_one_shape(
             // Verts live in the host's FrameArena owner-local;
             // composer folds `origin` into the per-instance translate.
             // No per-frame copy here.
-            let origin = match local_rect {
-                None => owner_rect.min,
-                Some(lr) => owner_rect.min + lr.min,
-            };
+            let origin = resolve_local_rect(owner_rect, *local_rect).min;
             out.draw_mesh(DrawMeshPayload {
                 bbox: *bbox,
                 origin,
@@ -328,13 +334,7 @@ fn emit_one_shape(
             handle,
             fit,
         } => {
-            let base = match local_rect {
-                None => owner_rect,
-                Some(lr) => Rect {
-                    min: owner_rect.min + lr.min,
-                    size: lr.size,
-                },
-            };
+            let base = resolve_local_rect(owner_rect, *local_rect);
             // Dims live on the handle itself — no registry borrow.
             // `size == ZERO` (e.g. NONE handle) makes `resolve_fit`
             // fall through to the base rect + full UV.

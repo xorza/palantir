@@ -91,7 +91,10 @@ impl DynamicBuffer {
     /// (no grow) takes the normal belt path.
     /// `bytes.len()` must equal `item_count * self.item_size`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
-        debug_assert_eq!(
+        // Release `assert!`: a byte/count mismatch silently writes
+        // partial data to the GPU buffer — a logic bug we want caught in
+        // release, and the check is one multiply + compare.
+        assert_eq!(
             bytes.len(),
             item_count * self.item_size,
             "DynamicBuffer::upload byte/item-count mismatch — would write partial data",

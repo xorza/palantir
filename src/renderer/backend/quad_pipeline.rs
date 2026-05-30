@@ -4,7 +4,9 @@
 
 use super::dynamic_buffer::DynamicBuffer;
 use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{PipelineRecipe, build_pipeline, build_pipeline_layout};
+use super::pipeline_utils::{
+    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
+};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -13,20 +15,24 @@ use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
 
 pub(crate) struct QuadPipeline {
-    /// The no-stencil base pipeline. Reached only via methods —
-    /// `bind`, `bind_clear`, and `bind_debug` (the debug-overlay
-    /// entrypoint) own the `set_pipeline` / `set_bind_group` pair so
-    /// the public surface is "what to do", not "what to bind." Group 0
-    /// (gradient atlas + sampler) is owned by
+    /// Base (no-stencil) pipeline + its lazily-built stencil-test twin,
+    /// via the shared [`StencilVariant`] abstraction (same as
+    /// mesh/image/curve). Reached only via methods — `bind`,
+    /// `bind_clear`, and `bind_debug` own the `set_pipeline` /
+    /// `set_bind_group` pair so the public surface is "what to do", not
+    /// "what to bind." Group 0 (gradient atlas + sampler) is owned by
     /// [`GradientResources`](super::gradient_resources::GradientResources)
     /// and passed to every `bind*` call.
-    pipeline: wgpu::RenderPipeline,
+    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    /// Lazy stencil-aware pipeline variants — built on first need
-    /// (first frame with `FrameOutput::has_rounded_clip == true`) so
-    /// apps that never round-clip pay nothing. Once built, kept
-    /// indefinitely.
-    stencil: Option<StencilPipelines>,
+    /// Lazy mask-write pipeline — paints the rounded SDF shape into the
+    /// stencil buffer only (color writes off), stamping the clip mask.
+    /// Quad-specific: mesh/image/curve read the mask but never write one,
+    /// so this lives beside `StencilVariant` rather than inside it. Built
+    /// alongside the stencil-test twin on the first rounded-clip frame
+    /// (`FrameOutput::has_rounded_clip == true`); dropped on format
+    /// rebuild so it re-builds against the new format.
+    mask_write: Option<wgpu::RenderPipeline>,
     /// Lazy buffer holding one `Quad` per rounded clip in the current
     /// frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
     /// across frames; capacity grows monotonically. `None` until the
@@ -62,24 +68,6 @@ pub(crate) struct QuadPipeline {
     color_format: wgpu::TextureFormat,
 }
 
-/// Two pipelines built atop the same shader + viewport bind group as
-/// the no-stencil `pipeline`, used in the stencil-attached render pass.
-///
-/// - `mask_write` paints the rounded SDF shape into the stencil buffer
-///   only — color writes disabled — replacing stencil at the masked
-///   pixels with `stencil_reference`. Used once per rounded-clipped
-///   draw group before its color draws to "stamp" the mask.
-/// - `stencil_test` is the regular SDF quad pipeline plus a
-///   stencil-test op (`compare = Equal`) so color writes only land on
-///   pixels whose stencil matches the active reference. Used for every
-///   color draw in the stencil-attached pass — non-rounded groups run
-///   it at `stencil_reference = 0`, which always passes against the
-///   cleared stencil.
-struct StencilPipelines {
-    mask_write: wgpu::RenderPipeline,
-    stencil_test: wgpu::RenderPipeline,
-}
-
 impl QuadPipeline {
     /// `gradient_bgl` is the group-0 layout owned by
     /// [`GradientResources`](super::gradient_resources::GradientResources);
@@ -108,9 +96,9 @@ impl QuadPipeline {
         });
 
         Self {
-            pipeline,
+            stencil: StencilVariant::new(pipeline),
             instance_buffer,
-            stencil: None,
+            mask_write: None,
             mask_buffer: None,
             mask_indices: Vec::new(),
             masks: Vec::new(),
@@ -165,52 +153,91 @@ impl QuadPipeline {
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) {
-        self.pipeline = Self::build_base_pipeline(device, &self.shader, gradient_bgl, format);
+        self.stencil.set_base(Self::build_base_pipeline(
+            device,
+            &self.shader,
+            gradient_bgl,
+            format,
+        ));
+        self.mask_write = None;
         self.color_format = format;
-        self.stencil = None;
     }
 
-    /// Lazy-build the stencil-aware variants. Idempotent; called from
-    /// the rounded-clip render path before the first `set_pipeline`.
-    /// `gradient_bgl` is the shared group-0 layout (see [`Self::new`]).
+    /// Lazy-build the stencil-aware variants (stencil-test twin +
+    /// mask-write). Idempotent; called from the rounded-clip render path
+    /// before the first `set_pipeline`. `gradient_bgl` is the shared
+    /// group-0 layout (see [`Self::new`]).
     #[profiling::function]
     pub(crate) fn ensure_stencil(
         &mut self,
         device: &wgpu::Device,
         gradient_bgl: &wgpu::BindGroupLayout,
     ) {
-        if self.stencil.is_none() {
-            self.stencil = Some(self.build_stencil_pipelines(device, gradient_bgl));
+        let (shader, format) = (&self.shader, self.color_format);
+        self.stencil
+            .ensure(|| Self::build_stencil_test(device, shader, gradient_bgl, format));
+        if self.mask_write.is_none() {
+            self.mask_write = Some(Self::build_mask_write(device, shader, gradient_bgl, format));
         }
     }
 
-    fn build_stencil_pipelines(
-        &self,
+    /// Stencil-test variant: same `fs` as the no-stencil base, plus the
+    /// shared `stencil_test_state` so the four stencil-test pipelines
+    /// can't drift.
+    fn build_stencil_test(
         device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
-    ) -> StencilPipelines {
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
         let layout =
             build_pipeline_layout(device, "palantir.quad.pl.stencil", &[Some(gradient_bgl)]);
         let instance = quad_instance_layout();
-        let vertex_buffers = std::slice::from_ref(&instance);
+        build_pipeline(
+            device,
+            PipelineRecipe {
+                label: "palantir.quad.pipeline.stencil_test",
+                shader,
+                layout: &layout,
+                vertex_buffers: std::slice::from_ref(&instance),
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+                color_format: format,
+                fragment_entry: "fs",
+                color_writes: wgpu::ColorWrites::ALL,
+                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                depth_stencil: Some(super::stencil::stencil_test_state()),
+            },
+        )
+    }
 
-        // Mask-write: stencil Replace at every pixel the SDF passes
-        // (`fs_mask` discards outside). Color writes off, blend inert.
+    /// Mask-write variant: stencil Replace at every pixel the SDF passes
+    /// (`fs_mask` discards outside), color writes off, blend inert. Used
+    /// once per rounded-clipped draw group to stamp the mask before its
+    /// color draws.
+    fn build_mask_write(
+        device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        let layout =
+            build_pipeline_layout(device, "palantir.quad.pl.stencil", &[Some(gradient_bgl)]);
+        let instance = quad_instance_layout();
         let mask_face = wgpu::StencilFaceState {
             compare: wgpu::CompareFunction::Always,
             fail_op: wgpu::StencilOperation::Keep,
             depth_fail_op: wgpu::StencilOperation::Keep,
             pass_op: wgpu::StencilOperation::Replace,
         };
-        let mask_write = build_pipeline(
+        build_pipeline(
             device,
             PipelineRecipe {
                 label: "palantir.quad.pipeline.mask",
-                shader: &self.shader,
+                shader,
                 layout: &layout,
-                vertex_buffers,
+                vertex_buffers: std::slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: self.color_format,
+                color_format: format,
                 fragment_entry: "fs_mask",
                 color_writes: wgpu::ColorWrites::empty(),
                 blend: None,
@@ -227,31 +254,7 @@ impl QuadPipeline {
                     bias: wgpu::DepthBiasState::default(),
                 }),
             },
-        );
-
-        // Stencil-test: same `fs` as the no-stencil pipeline, plus the
-        // shared `stencil_test_state` so the four stencil-test
-        // pipelines can't drift.
-        let stencil_test = build_pipeline(
-            device,
-            PipelineRecipe {
-                label: "palantir.quad.pipeline.stencil_test",
-                shader: &self.shader,
-                layout: &layout,
-                vertex_buffers,
-                topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format: self.color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil: Some(super::stencil::stencil_test_state()),
-            },
-        );
-
-        StencilPipelines {
-            mask_write,
-            stencil_test,
-        }
+        )
     }
 
     #[profiling::function]
@@ -275,12 +278,7 @@ impl QuadPipeline {
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        if use_stencil {
-            let stencil = self.stencil.as_ref().expect("ensure_stencil first");
-            pass.set_pipeline(&stencil.stencil_test);
-        } else {
-            pass.set_pipeline(&self.pipeline);
-        }
+        pass.set_pipeline(self.stencil.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
@@ -295,7 +293,7 @@ impl QuadPipeline {
         pass: &mut wgpu::RenderPass<'a>,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        pass.set_pipeline(&self.pipeline);
+        pass.set_pipeline(self.stencil.select(false));
         pass.set_bind_group(0, gradient_bg, &[]);
     }
 
@@ -365,11 +363,10 @@ impl QuadPipeline {
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
         if use_stencil {
-            let s = self.stencil.as_ref().expect("ensure_stencil first");
-            pass.set_pipeline(&s.stencil_test);
+            pass.set_pipeline(self.stencil.select(true));
             pass.set_stencil_reference(0);
         } else {
-            pass.set_pipeline(&self.pipeline);
+            pass.set_pipeline(self.stencil.select(false));
         }
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
@@ -383,7 +380,7 @@ impl QuadPipeline {
     #[profiling::function]
     pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, groups: &[DrawGroup]) {
         debug_assert!(
-            self.stencil.is_some(),
+            self.mask_write.is_some(),
             "stage_masks requires ensure_stencil to have run this frame"
         );
         self.mask_indices.clear();
@@ -418,9 +415,9 @@ impl QuadPipeline {
         pass: &mut wgpu::RenderPass<'a>,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        let stencil = self.stencil.as_ref().expect("ensure_stencil first");
+        let mask_write = self.mask_write.as_ref().expect("ensure_stencil first");
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        pass.set_pipeline(&stencil.mask_write);
+        pass.set_pipeline(mask_write);
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, buf.buffer.slice(..));
     }
