@@ -156,7 +156,6 @@ fn bench_host(g: &Gpu) -> Host {
         palantir::TextShaper::with_bundled_fonts(),
         palantir::HostConfig {
             collect_gpu_stats: true,
-            ..Default::default()
         },
     )
 }

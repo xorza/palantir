@@ -331,24 +331,25 @@ fn emit_one_shape(
         ShapeRecord::Image {
             local_rect,
             tint,
-            handle,
+            id,
+            size,
             fit,
         } => {
             let base = resolve_local_rect(owner_rect, *local_rect);
-            // Dims live on the handle itself — no registry borrow.
-            // `size == ZERO` (e.g. NONE handle) makes `resolve_fit`
-            // fall through to the base rect + full UV.
+            // Dims baked into the record — no registry borrow.
+            // `size == ZERO` makes `resolve_fit` fall through to the base
+            // rect + full UV.
             let Resolved {
                 rect,
                 uv_min,
                 uv_size,
-            } = resolve_fit(base, handle.size(), *fit);
+            } = resolve_fit(base, size.as_uvec2(), *fit);
             out.draw_image(DrawImagePayload {
                 rect,
                 uv_min,
                 uv_size,
                 tint: *tint,
-                handle: handle.id,
+                handle: *id,
                 tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
                 ..bytemuck::Zeroable::zeroed()
             });

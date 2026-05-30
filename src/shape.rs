@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::image::{ImageFit, ImageHandle};
+use crate::primitives::image::ImageFit;
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{noop_f32, vec2_approx_eq},
@@ -11,6 +11,7 @@ use crate::primitives::{
     shadow::Shadow,
     stroke::Stroke,
 };
+use crate::renderer::image_registry::ImageHandle;
 use crate::text::FontFamily;
 use glam::Vec2;
 
@@ -127,9 +128,10 @@ pub enum Shape<'a> {
     /// is the owner's top-left). `fit` (default `Fill`) controls how
     /// the image's intrinsic size maps onto that rect — see
     /// [`ImageFit`]. `tint` multiplies the sampled pixel in linear-RGB
-    /// premultiplied space; `Color::WHITE` is "no tint." The image's
-    /// pixels live in [`crate::ImageRegistry`] and are uploaded to GPU
-    /// on first paint — the user just passes the handle every frame.
+    /// premultiplied space; `Color::WHITE` is "no tint." `handle` is the
+    /// RAII [`ImageHandle`] from [`crate::Ui::register_image`]; hold it to
+    /// keep the GPU texture resident (the bytes upload once, then free)
+    /// and `clone` it in here each frame.
     Image {
         handle: ImageHandle,
         local_rect: Option<Rect>,
@@ -447,11 +449,8 @@ impl Shape<'_> {
                 tint,
             } => local_rect_paint_empty(local_rect) || tint.is_noop() || mesh.is_noop(),
             Shape::Image {
-                handle,
-                local_rect,
-                tint,
-                ..
-            } => handle.is_none() || local_rect_paint_empty(local_rect) || tint.is_noop(),
+                local_rect, tint, ..
+            } => local_rect_paint_empty(local_rect) || tint.is_noop(),
             Shape::Shadow {
                 local_rect, shadow, ..
             } => local_rect_paint_empty(local_rect) || shadow.is_noop(),

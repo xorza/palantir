@@ -27,9 +27,10 @@ use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
-use crate::primitives::image::{Image, ImageHandle};
+use crate::primitives::image::Image;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
+use crate::renderer::image_registry::ImageHandle;
 
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
@@ -833,13 +834,13 @@ impl Ui {
             .add_shape(shape, &self.frame_arena, &self.caches.gradients);
     }
 
-    /// Register an image once under a stable, hashable `key`; returns a
-    /// handle to reference in [`Shape::Image`] every frame without
-    /// re-passing the bytes. Idempotent on the key — re-registering the
-    /// same key keeps the original bytes, so version the key (e.g.
-    /// `("logo", 2)`) to replace them.
-    pub fn register_image<K: std::hash::Hash>(&self, key: K, image: Image) -> ImageHandle {
-        self.caches.images.register(key, image)
+    /// Upload an image and get back an owning [`ImageHandle`]. **Hold the
+    /// handle** to keep the GPU texture resident — dropping the last
+    /// clone frees it; there is no `unregister`. Reference it in
+    /// [`Shape::Image`] every frame (`clone` it where it needs to live).
+    /// The CPU bytes are dropped right after the upload.
+    pub fn register_image(&self, image: Image) -> ImageHandle {
+        self.caches.images.register(image)
     }
 
     /// Format `args` directly into the per-frame text arena and return

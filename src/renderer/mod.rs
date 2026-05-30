@@ -36,6 +36,7 @@ pub mod write_stats {
 pub(crate) mod caches;
 pub mod frontend;
 pub(crate) mod gradient_atlas;
+pub(crate) mod image_registry;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
 /// Polyline → fringe-AA mesh tessellator consumed by `Composer`.

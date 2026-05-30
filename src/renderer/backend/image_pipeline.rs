@@ -1,9 +1,10 @@
 //! GPU side of user images. Mirrors [`super::mesh_pipeline::MeshPipeline`]
 //! but draws textured quads — per-instance rect + tint, plus a
 //! per-image bind group selected at draw time. The CPU texture bytes
-//! live in [`crate::ImageRegistry`]; this module drains its pending
-//! list each frame and uploads to GPU, then caches the resulting
-//! `GpuImage` by [`ImageHandle`] across frames.
+//! are staged in [`crate::ImageRegistry`] only until upload; this module
+//! drains the pending list each frame, uploads to GPU (dropping the
+//! bytes), and caches the resulting bind group by registration id until
+//! the owning handle drops.
 
 use super::Queue;
 use super::dynamic_buffer::DynamicBuffer;
@@ -11,33 +12,10 @@ use super::gpu_ctx::GpuCtx;
 use super::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
 };
-use crate::primitives::image::{Image, ImageHandle, ImageRegistry};
+use crate::primitives::image::Image;
+use crate::renderer::image_registry::{ImageId, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
-use std::cell::RefCell;
-use std::rc::Rc;
-
-/// Default GPU image cache budget — 256 MB. Holds ~16 full 4K
-/// RGBA8 images, or thousands of UI-sized icons. Override at construction
-/// via `Host::with_text_and_image_budget`.
-pub const DEFAULT_IMAGE_BUDGET_BYTES: u64 = 256 * 1024 * 1024;
-
-/// One uploaded image's GPU footprint. `bind_group` holds internal Arcs
-/// to the texture + view; dropping the `GpuImage` frees them.
-struct GpuImage {
-    bind_group: wgpu::BindGroup,
-    /// `width * height * 4` (sRGB RGBA8). `u32` caps each entry at
-    /// 4 GB which is well past anything sane.
-    bytes: u32,
-    /// Frame counter at last successful `draw()`. Initialised to the
-    /// frame the entry was uploaded so freshly-uploaded entries can't
-    /// be evicted before the user has a chance to draw them.
-    last_used_frame: u32,
-    /// Stored so eviction can re-form an `ImageHandle` for
-    /// `ImageRegistry::mark_pending` without round-tripping through
-    /// the registry to look up the image.
-    size: glam::U16Vec2,
-}
 
 pub(crate) struct ImagePipeline {
     /// Base color pipeline + its lazy stencil-test twin (built on the
@@ -48,51 +26,20 @@ pub(crate) struct ImagePipeline {
     shader: wgpu::ShaderModule,
     color_format: wgpu::TextureFormat,
     /// Group 0 layout (per-image texture + sampler). Built once;
-    /// every cached `GpuImage` references it through its bind group.
+    /// every cached bind group references it.
     image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
-    /// `id → GpuImage`. Keyed across frames; entries are reused until
-    /// (a) the user calls [`ImageRegistry::unregister`] (CPU only —
-    /// GPU side ages out naturally via LRU below), or (b) the
-    /// frames-since-used LRU evicts to stay under [`budget_bytes`].
-    /// Keyed by `u64` not `ImageHandle` because `ImageHandle::Hash`
-    /// keys on `id` only.
-    cache: FxHashMap<u64, GpuImage>,
-    /// Bumped once per frame in `drain_registry`. Drives the
-    /// `last_used_frame` stamps consumed by `end_of_frame_evict`.
-    /// `u32` wraps every ~2 years at 60 fps; the sort is ascending and
-    /// the only equality check is `last_used_frame == current_frame`,
-    /// so a wrapped frame just appears "ancient" and evicts first —
-    /// no correctness hazard. Not worth a `u64`.
-    frame_id: u32,
-    /// Eviction budget. When `total_bytes > budget_bytes` after the
-    /// frame's render pass, the oldest entries are evicted until
-    /// `total_bytes <= budget_bytes`.
-    budget_bytes: u64,
-    /// Sum of `bytes` over every entry in [`cache`]. Maintained
-    /// incrementally on insert / evict.
-    total_bytes: u64,
-    /// Per-frame scratch: ids touched by `draw()` since the last
-    /// `end_of_frame_evict`. `RefCell` because `draw` takes `&self`
-    /// (the schedule walk holds `&self` on the whole backend); the
-    /// borrow is hot-loop-shaped but uncontended within a frame
-    /// (single-threaded). Drained + applied at end-of-frame.
-    touched: RefCell<Vec<u64>>,
-    /// Reused eviction scratch — `pick_evictions` clears + refills these
-    /// each over-budget frame instead of allocating. `evict_candidates`
-    /// holds the sortable [`EvictionCandidate`] rows; `evict_out` the
-    /// chosen ids, drained by `end_of_frame_evict`. Both retain capacity
-    /// across frames (steady-state alloc-free, like `touched`).
-    evict_candidates: Vec<EvictionCandidate>,
-    evict_out: Vec<u64>,
+    /// `id → bind group` for every live registration's GPU texture. An
+    /// entry is inserted when the registry drains a pending upload, and
+    /// removed when the owning [`ImageHandle`](crate::ImageHandle) (and
+    /// all its clones) drops — the registry reports those ids via
+    /// `drain_dropped`. A `draw` for an absent id is skipped. Keyed by
+    /// [`ImageId`] (the registration id behind a handle).
+    cache: FxHashMap<ImageId, wgpu::BindGroup>,
 }
 
 impl ImagePipeline {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        budget_bytes: u64,
-    ) -> Self {
+    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.image.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
@@ -124,12 +71,6 @@ impl ImagePipeline {
             image_bgl,
             sampler,
             cache: FxHashMap::default(),
-            frame_id: 0,
-            budget_bytes,
-            total_bytes: 0,
-            touched: RefCell::new(Vec::new()),
-            evict_candidates: Vec::new(),
-            evict_out: Vec::new(),
         }
     }
 
@@ -206,29 +147,27 @@ impl ImagePipeline {
             .ensure(|| Self::build_variant(device, shader, image_bgl, color_format, true));
     }
 
-    /// Drain pending images from the registry and upload them to GPU.
-    /// Called once per frame from `WgpuBackend::submit` before the
-    /// render pass starts. After this returns, every handle the
-    /// composer routed into a `DrawImage` is guaranteed to have a
-    /// `GpuImage` in the cache (or be missing from the registry, in
-    /// which case the draw is silently skipped).
+    /// Reconcile the GPU texture cache with the registry, once per frame
+    /// from `WgpuBackend::submit` before the render pass. Frees textures
+    /// whose owning [`ImageHandle`](crate::ImageHandle) dropped, then
+    /// uploads newly registered images (dropping each `Image` right after
+    /// upload, so the CPU bytes don't outlive the GPU copy). After this,
+    /// every still-owned image has a bind group in the cache; a draw for
+    /// any other id is silently skipped.
+    ///
+    /// Uploads run *before* drop-frees so an image registered and dropped
+    /// in the same frame uploads then frees (no orphan) rather than
+    /// free-then-upload (which would leak it into the cache un-owned).
     #[profiling::function]
     pub(crate) fn drain_registry(&mut self, ctx: &mut GpuCtx<'_>, images: &ImageRegistry) {
-        self.frame_id = self.frame_id.wrapping_add(1);
-        for (handle, image) in images.drain_pending() {
-            let bind_group = self.upload(ctx.device, ctx.queue, handle.id, &image);
-            let bytes = image.width.saturating_mul(image.height).saturating_mul(4);
-            let entry = GpuImage {
-                bind_group,
-                bytes,
-                last_used_frame: self.frame_id,
-                size: handle.size,
-            };
-            if let Some(prev) = self.cache.insert(handle.id, entry) {
-                self.total_bytes = self.total_bytes.saturating_sub(prev.bytes as u64);
-            }
-            self.total_bytes = self.total_bytes.saturating_add(bytes as u64);
-        }
+        images.drain_pending(|id, image| {
+            let bind_group = self.upload(ctx.device, ctx.queue, id, &image);
+            self.cache.insert(id, bind_group);
+            // `image` (CPU bytes) dropped here — it lives only until upload.
+        });
+        images.drain_dropped(|id| {
+            self.cache.remove(&id);
+        });
     }
 
     /// Upload a fresh RGBA8 texture for `id` and build its per-image
@@ -240,9 +179,10 @@ impl ImagePipeline {
         &self,
         device: &wgpu::Device,
         queue: &Queue,
-        id: u64,
-        image: &Rc<Image>,
+        id: ImageId,
+        image: &Image,
     ) -> wgpu::BindGroup {
+        let id = id.0;
         let size = wgpu::Extent3d {
             width: image.width,
             height: image.height,
@@ -308,163 +248,24 @@ impl ImagePipeline {
     }
 
     /// Bind once per pass. Viewport rides immediates; per-image
-    /// group 0 is set in [`Self::draw`] from the cached `GpuImage`.
+    /// group 0 is set in [`Self::draw`] from the cached bind group.
     pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
         pass.set_pipeline(self.stencil.select(use_stencil));
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
     /// Issue one image draw. `instance` indexes into the per-frame
-    /// instance buffer. `handle` selects the bind group; misses log
-    /// a warning and skip — a miss means either (a) the user
-    /// unregistered between record and submit (legal but exotic), or
-    /// (b) the registry never saw `handle` because it was minted by a
-    /// different `ImageRegistry` clone (caller bug).
-    pub(crate) fn draw<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        handle: ImageHandle,
-        instance: u32,
-    ) {
-        let Some(entry) = self.cache.get(&handle.id) else {
-            tracing::warn!(
-                handle_id = format!("{:016x}", handle.id),
-                "ImagePipeline::draw: no GPU texture for handle (unregistered between \
-                 record and submit, or handle from a different registry?). Skipping draw."
-            );
+    /// instance buffer. `id` selects the bind group; an **absent id is
+    /// skipped** (no warning, no draw) — it just means the owning
+    /// [`ImageHandle`](crate::ImageHandle) was dropped before this draw,
+    /// or hasn't been uploaded yet. Drawing nothing is the defined
+    /// behaviour for a missing texture.
+    pub(crate) fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, id: ImageId, instance: u32) {
+        let Some(bind_group) = self.cache.get(&id) else {
             return;
         };
-        // Deferred mark — applied in `end_of_frame_evict`. Direct
-        // mutation would need `&mut self`, which the schedule walk
-        // can't provide. See `touched` doc.
-        self.touched.borrow_mut().push(handle.id);
-        pass.set_bind_group(0, &entry.bind_group, &[]);
+        pass.set_bind_group(0, bind_group, &[]);
         pass.draw(0..4, instance..instance + 1);
-    }
-
-    /// Apply this frame's `draw`-time touches and evict
-    /// least-recently-used entries until `total_bytes <= budget_bytes`.
-    /// Call exactly once per frame, *after* `queue.submit` finishes the
-    /// render pass (otherwise we could evict a handle this frame's
-    /// draws still need).
-    ///
-    /// Evicted entries are re-queued on the registry via
-    /// `mark_pending` so the next sighting re-uploads from the
-    /// retained `Rc<Image>`. Entries touched this frame are never
-    /// evicted — that would just force an immediate re-upload next
-    /// frame for zero memory benefit.
-    #[profiling::function]
-    pub(crate) fn end_of_frame_evict(&mut self, images: &ImageRegistry) {
-        for id in self.touched.borrow_mut().drain(..) {
-            if let Some(entry) = self.cache.get_mut(&id) {
-                entry.last_used_frame = self.frame_id;
-            }
-        }
-        if self.total_bytes <= self.budget_bytes {
-            return;
-        }
-        let over_before = self.total_bytes;
-        pick_evictions(
-            self.cache.iter().map(|(id, e)| EvictionCandidate {
-                id: *id,
-                last_used_frame: e.last_used_frame,
-                bytes: e.bytes,
-            }),
-            self.frame_id,
-            self.total_bytes,
-            self.budget_bytes,
-            &mut self.evict_candidates,
-            &mut self.evict_out,
-        );
-        if self.evict_out.is_empty() {
-            // Every cached entry was drawn this frame — releasing one
-            // would force a same-frame re-upload next frame, so we
-            // refuse. Frame stays over budget; the host is holding more
-            // live image data than the budget allows. Surface it so
-            // hosts notice instead of silently leaking VRAM.
-            tracing::error!(
-                total_bytes = over_before,
-                budget_bytes = self.budget_bytes,
-                over_by = over_before - self.budget_bytes,
-                live_entries = self.cache.len(),
-                "ImagePipeline: over GPU image budget but every cached image was \
-                 drawn this frame — nothing evictable. Raise the budget at \
-                 Host construction (Host::with_text_and_image_budget) or reduce \
-                 concurrent image draws."
-            );
-            return;
-        }
-        for id in self.evict_out.drain(..) {
-            if let Some(entry) = self.cache.remove(&id) {
-                self.total_bytes = self.total_bytes.saturating_sub(entry.bytes as u64);
-                images.mark_pending(ImageHandle {
-                    id,
-                    size: entry.size,
-                });
-            }
-        }
-        if self.total_bytes > self.budget_bytes {
-            // Evicted everything we could (all untouched entries) and
-            // still over budget — the touched-this-frame set alone
-            // exceeds the budget. Same remediation as the empty-
-            // evictions branch above.
-            tracing::error!(
-                total_bytes = self.total_bytes,
-                budget_bytes = self.budget_bytes,
-                over_by = self.total_bytes - self.budget_bytes,
-                "ImagePipeline: evicted all untouched entries but still over \
-                 budget — touched-this-frame set alone exceeds budget. Raise \
-                 the budget at Host construction or reduce concurrent draws."
-            );
-        }
-    }
-}
-
-/// One cache entry weighed for eviction — the `(id, last_used_frame,
-/// bytes)` triple [`pick_evictions`] sorts oldest-first.
-#[derive(Debug, Clone, Copy)]
-struct EvictionCandidate {
-    id: u64,
-    last_used_frame: u32,
-    bytes: u32,
-}
-
-/// Pure eviction policy. Fills `out` with ids to drop, oldest-first,
-/// skipping any entry touched this frame (`last_used_frame ==
-/// current_frame`), until projected total drops at or below `budget`.
-/// `out` is in eviction order. `candidates` is reused sort scratch; both
-/// buffers are cleared on entry, so the caller can hand in retained
-/// `Vec`s for steady-state alloc-free eviction. Pulled out as a free fn
-/// so it can be unit-tested without a GPU device.
-fn pick_evictions(
-    entries: impl Iterator<Item = EvictionCandidate>,
-    current_frame: u32,
-    total_bytes: u64,
-    budget: u64,
-    candidates: &mut Vec<EvictionCandidate>,
-    out: &mut Vec<u64>,
-) {
-    candidates.clear();
-    out.clear();
-    if total_bytes <= budget {
-        return;
-    }
-    candidates.extend(entries.filter(|c| c.last_used_frame != current_frame));
-    // Ascending by last_used_frame (oldest first); tie-break by bytes
-    // desc so each eviction frees more.
-    candidates.sort_by(|a, b| {
-        a.last_used_frame
-            .cmp(&b.last_used_frame)
-            .then(b.bytes.cmp(&a.bytes))
-    });
-    let mut freed: u64 = 0;
-    let need = total_bytes - budget;
-    for c in candidates.iter() {
-        if freed >= need {
-            break;
-        }
-        freed = freed.saturating_add(c.bytes as u64);
-        out.push(c.id);
     }
 }
 
@@ -517,108 +318,5 @@ pub(crate) mod test_support {
         pub(crate) fn gpu_cached_count(&self) -> usize {
             self.cache.len()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn e(id: u64, last: u32, bytes: u32) -> EvictionCandidate {
-        EvictionCandidate {
-            id,
-            last_used_frame: last,
-            bytes,
-        }
-    }
-
-    /// Run `pick_evictions` with fresh local scratch and return the
-    /// chosen ids — mirrors how `end_of_frame_evict` reuses its
-    /// retained `evict_candidates` / `evict_out` buffers.
-    fn run(entries: Vec<EvictionCandidate>, frame: u32, total: u64, budget: u64) -> Vec<u64> {
-        let mut candidates = Vec::new();
-        let mut out = Vec::new();
-        pick_evictions(
-            entries.into_iter(),
-            frame,
-            total,
-            budget,
-            &mut candidates,
-            &mut out,
-        );
-        out
-    }
-
-    #[test]
-    fn under_budget_evicts_nothing() {
-        let out = run(vec![e(1, 5, 100), e(2, 6, 100)], 10, 200, 1024);
-        assert!(out.is_empty());
-    }
-
-    #[test]
-    fn evicts_oldest_first_until_under_budget() {
-        let out = run(vec![e(1, 1, 100), e(2, 2, 100), e(3, 3, 100)], 10, 300, 150);
-        // need to free 150; oldest is id=1 (100), then id=2 (100) → frees 200, done.
-        assert_eq!(out, vec![1, 2]);
-    }
-
-    #[test]
-    fn skips_entries_touched_this_frame() {
-        // id=1 is oldest by frame stamp, but matches current_frame → skip.
-        let out = run(
-            vec![e(1, 10, 100), e(2, 2, 100), e(3, 3, 100)],
-            10,
-            300,
-            150,
-        );
-        assert_eq!(out, vec![2, 3]);
-    }
-
-    #[test]
-    fn tie_break_prefers_larger_entry() {
-        // Both same age; need 100 freed → pick the larger (id=2).
-        let out = run(vec![e(1, 5, 50), e(2, 5, 200)], 10, 250, 150);
-        assert_eq!(out, vec![2]);
-    }
-
-    #[test]
-    fn refuses_to_evict_only_touched_entries() {
-        // Every entry was touched this frame; eviction yields nothing
-        // even though we're over budget. Caller is over budget for one
-        // frame — acceptable, next frame's draws may not touch all.
-        let out = run(
-            vec![e(1, 10, 1_000_000), e(2, 10, 1_000_000)],
-            10,
-            2_000_000,
-            100,
-        );
-        assert!(out.is_empty());
-    }
-
-    #[test]
-    fn reuses_scratch_buffers_across_calls() {
-        // Same buffers, two calls: the second must fully overwrite the
-        // first's results (clear-on-entry), not append to them.
-        let mut candidates = Vec::new();
-        let mut out = Vec::new();
-        pick_evictions(
-            vec![e(1, 1, 100), e(2, 2, 100)].into_iter(),
-            10,
-            200,
-            150,
-            &mut candidates,
-            &mut out,
-        );
-        assert_eq!(out, vec![1]);
-        pick_evictions(
-            vec![e(3, 3, 100), e(4, 4, 100)].into_iter(),
-            10,
-            200,
-            1024,
-            &mut candidates,
-            &mut out,
-        );
-        assert!(out.is_empty(), "under budget must clear prior results");
-        assert!(candidates.is_empty(), "candidates must clear on entry");
     }
 }

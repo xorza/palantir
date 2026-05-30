@@ -1,9 +1,9 @@
 use super::quad::Quad;
-use crate::primitives::image::ImageHandle;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
+use crate::renderer::image_registry::ImageId;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};
@@ -190,14 +190,15 @@ pub(crate) struct ImageScene {
 }
 
 /// One image draw row. Composer pushes one of these per image; the
-/// SoA storage splits `handle` and `instance` into their own
-/// contiguous slices, so the backend uploads `rows.instance()` as a
-/// single `write_buffer` and walks `rows.handle()` for per-draw
-/// texture bindings.
+/// SoA storage splits `id` and `instance` into their own contiguous
+/// slices, so the backend uploads `rows.instance()` as a single
+/// `write_buffer` and walks `rows.id()` for per-draw texture bindings.
+/// `id` is the registration id behind an `ImageHandle`; the backend
+/// looks it up in its GPU texture cache (and skips the draw on a miss).
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct ImageDrawRow {
-    pub handle: ImageHandle,
+    pub id: ImageId,
     pub instance: ImageInstance,
 }
 

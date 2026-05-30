@@ -62,9 +62,6 @@ pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 /// `Host` / `WinitHost` call sites don't grow a long positional
 /// signature each time a new GPU-side setting is exposed.
 pub(crate) struct WgpuBackendConfig {
-    /// GPU texture cache budget; eviction kicks in past this. See
-    /// [`DEFAULT_IMAGE_BUDGET_BYTES`].
-    pub(crate) image_budget_bytes: u64,
     /// `Some(stats)` opts the backend into GPU instrumentation: the
     /// backend writes resolved samples through the shared handle and
     /// pays the per-frame `resolve_query_set` + `map_async` +
@@ -193,10 +190,7 @@ impl WgpuBackend {
         caches: RenderCaches,
         config: WgpuBackendConfig,
     ) -> Self {
-        let WgpuBackendConfig {
-            image_budget_bytes,
-            pass_stats,
-        } = config;
+        let WgpuBackendConfig { pass_stats } = config;
         // GPU pass timing collection is opt-in via `pass_stats`:
         // `Some(handle)` → wire up `GpuTimings` and write samples
         // through the handle; `None` → skip the whole readback path.
@@ -233,7 +227,7 @@ impl WgpuBackend {
         let gradient = GradientResources::new(&device);
         let quad = QuadPipeline::new(&device, &gradient.bgl, format);
         let mesh = MeshPipeline::new(&device, format);
-        let image = ImagePipeline::new(&device, format, image_budget_bytes);
+        let image = ImagePipeline::new(&device, format);
         let curve = CurvePipeline::new(&device, format, &gradient.bgl);
         let text = TextBackend::new(
             &device,
@@ -699,12 +693,6 @@ impl WgpuBackend {
         if self.text.prepared_anything {
             self.text.post_record();
         }
-
-        // Apply per-frame draw marks and evict the GPU image cache
-        // down to budget. Runs after submit so this frame's draws have
-        // already consumed every entry they referenced — evicting now
-        // can't strand an in-flight draw.
-        self.image.end_of_frame_evict(&self.caches.images);
     }
 
     /// Full-viewport pass that draws one 40%-translucent black quad
@@ -1015,10 +1003,8 @@ impl WgpuBackend {
                     let range = buffer.image_batches[batch].images;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for (offset, handle) in
-                        buffer.images.rows.handle()[start..end].iter().enumerate()
-                    {
-                        self.image.draw(pass, *handle, (start + offset) as u32);
+                    for (offset, id) in buffer.images.rows.id()[start..end].iter().enumerate() {
+                        self.image.draw(pass, *id, (start + offset) as u32);
                     }
                     pass.pop_debug_group();
                 }
