@@ -354,7 +354,12 @@ fn prev_frame_captures_painting_nodes() {
     let snap = &prev[&WidgetId::from_hash("a")];
 
     assert!(!prev.contains_key(&WidgetId::from_hash("root")));
-    assert_eq!(snap.rect, ui.layout[Layer::Main].rect[frame_node.idx()]);
+    assert_eq!(
+        ui.damage_engine
+            .prev_paint_rect(WidgetId::from_hash("a"))
+            .unwrap(),
+        ui.layout[Layer::Main].rect[frame_node.idx()],
+    );
     assert_eq!(
         snap.hash,
         ui.forest.tree(Layer::Main).rollups.node[frame_node.idx()],

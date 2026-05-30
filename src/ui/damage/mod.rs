@@ -3,10 +3,11 @@
 //! pass via the `entry()` API — vacant slots get inserted, occupied
 //! slots get diffed and either updated or evicted.
 //!
-//! A node is **dirty** if its `(rect, authoring-hash)` differs from
-//! the entry keyed by the same `WidgetId` in `DamageEngine.prev`, OR it
-//! had no entry (added). A `WidgetId` present in `DamageEngine.prev` with
-//! no matching node this frame contributes its prev rect (removed).
+//! A node is **dirty** if its `(authoring-hash, cascade-input)` differs
+//! from the entry keyed by the same `WidgetId` in `DamageEngine.prev`,
+//! OR it had no entry (added). A `WidgetId` present in
+//! `DamageEngine.prev` with no matching node this frame contributes its
+//! prev rect (removed).
 //! Each contribution is folded into a [`region::DamageRegion`] via
 //! its merge policy; the result drives the encoder filter and the
 //! per-pass scissor list in the backend.
@@ -19,8 +20,8 @@
 //! same diff loop; the prev rects contribute (clear those pixels), the
 //! curr rect doesn't.
 //!
-//! `DamageEngine.dirty` is the per-node dirty list (added /
-//! hash-changed / rect-changed) in pre-order paint order. It's
+//! `DamageEngine.dirty` is the per-node dirty list (added / hash- or
+//! cascade-changed / evicted) in pre-order paint order. It's
 //! gated behind `cfg(any(test, feature = "internals"))` — production
 //! builds skip the per-node `Vec::push` entirely; tests and benches
 //! assert on it through this gate.
@@ -52,20 +53,17 @@ pub mod region;
 /// arena shared by every painting widget, and this struct just holds
 /// a `Span` into it. Each row is either chrome (row 0 when present)
 /// or one direct shape, mirroring `Cascades::paint_arenas`.
+///
+/// **No cached `rect`.** The node's `Cascade.paint_rect` is a pure
+/// function of `(hash, cascade_input)` — every geometry input
+/// (`layout_rect`, ancestor transform/clip) lives in `cascade_input`
+/// and every shape input lives in `hash` — so a snapshot field would
+/// be a redundant cache of those two. The diff keys the
+/// "node unchanged" fast path on `(hash, cascade_input)` directly; the
+/// per-shape screen rects needed when something *did* change are
+/// recovered from `paint_span`.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct NodeSnapshot {
-    /// Screen-space rect from last frame's `Cascade.paint_rect`
-    /// (raw transformed rect inflated by per-shape ink overhang —
-    /// drop-shadow halos — then intersected with the ancestor clip).
-    /// Using `paint_rect` rather than `visible_rect` means a node
-    /// going away (e.g. on tab switch) contributes the full halo
-    /// it painted last frame, so the encoder clears the shadow bleed.
-    ///
-    /// Kept as the union (chrome ∪ shapes) so the Occupied-equal arm's
-    /// fast check stays `e.rect == curr_paint_rect`. The per-row
-    /// decomposition is recovered via `paint_span` indexing into
-    /// `DamageEngine::arena`.
-    pub(crate) rect: Rect,
     /// Slice into [`DamageEngine::arena`] describing this
     /// widget's per-paint snapshots in record order (chrome at row 0
     /// when present, then shapes). Empty span for non-painting nodes
@@ -163,7 +161,7 @@ pub(crate) struct DamageEngine {
     pub(crate) raw_rects: Vec<Rect>,
 
     /// Count of subtree-skip jumps the last `compute` performed —
-    /// every match of the Occupied-equal arm jumped `subtree_end - i`
+    /// every match of the tier-1 subtree-skip arm jumped `subtree_end - i`
     /// instead of advancing by 1. Read by tests and benches via
     /// `support::internals::damage_subtree_skips`; zero on first
     /// frame and on full-repaint fall-through. Gated alongside
@@ -288,6 +286,21 @@ impl Damage {
     }
 }
 
+/// Result of [`PaintSnapArena::diff_changed_leg`].
+pub(crate) struct ChangedLeg {
+    /// Span covering this frame's paints — `prev_span` reused on the
+    /// fast path, a fresh tail span on the slow path.
+    pub(crate) span: Span,
+    /// True when every `Paint` matched bit-identically (the fast path),
+    /// so the per-shape diff emitted *no* damage. Reaching the
+    /// changed-paints arm at all means `hash` or `cascade_input`
+    /// changed, so a `true` here means a cascade-state toggle (ancestor
+    /// disabled / clip-saturated pan) altered the node's pixels without
+    /// moving any shape — the caller must damage the union to repaint
+    /// it.
+    pub(crate) geometry_unchanged: bool,
+}
+
 impl PaintSnapArena {
     /// Reset to empty — caller's next `compute` will repopulate.
     pub(crate) fn clear(&mut self) {
@@ -301,21 +314,6 @@ impl PaintSnapArena {
         let start = self.snaps.len() as u32;
         self.snaps.extend_from_slice(paints);
         Span::new(start, paints.len() as u32)
-    }
-
-    /// Same-count refresh: overwrite the slots `prev_span` points to
-    /// with each `paints[i].screen`. Caller is the
-    /// `Entry::Occupied(e) if e.get().hash == curr_node_hash` arm of
-    /// [`DamageEngine::compute`], so identical per-node hashes
-    /// guarantee `prev_span.len == paints.len()` — debug asserted
-    /// rather than silently truncated, so a future rollup-hash
-    /// collision surfaces as a panic in tests.
-    pub(crate) fn refresh_screens(&mut self, prev_span: Span, paints: &[Paint]) {
-        debug_assert_eq!(prev_span.len as usize, paints.len());
-        let start = prev_span.start as usize;
-        for (ord, p) in paints.iter().enumerate() {
-            self.snaps[start + ord].screen = p.screen;
-        }
     }
 
     /// Per-paint diff leg for the changed-paints arm. Three strategies
@@ -357,14 +355,17 @@ impl PaintSnapArena {
         out: &mut Vec<Rect>,
         prev_span: Span,
         curr_paints: &[Paint],
-    ) -> Span {
+    ) -> ChangedLeg {
         let prev_start = prev_span.start as usize;
         let prev_len = prev_span.len as usize;
         let prev_slice = &self.snaps[prev_start..prev_start + prev_len];
 
         if prev_len == curr_paints.len() && prev_slice.iter().zip(curr_paints).all(|(p, c)| p == c)
         {
-            return prev_span;
+            return ChangedLeg {
+                span: prev_span,
+                geometry_unchanged: true,
+            };
         }
 
         // Split-borrow: the matching passes read prev_slice (& self.snaps)
@@ -426,7 +427,10 @@ impl PaintSnapArena {
         let new_start = snaps.len() as u32;
         snaps.extend_from_slice(curr_paints);
         self.mark_orphaned(prev_len as u32);
-        Span::new(new_start, curr_paints.len() as u32)
+        ChangedLeg {
+            span: Span::new(new_start, curr_paints.len() as u32),
+            geometry_unchanged: false,
+        }
     }
 
     /// Mark `n` paint entries as orphaned (their owning snapshot was
@@ -599,7 +603,6 @@ impl DamageEngine {
                 // `paint_span` is fixed per node, so the arms differ
                 // only in which span they pass.
                 let make_snapshot = |paint_span| NodeSnapshot {
-                    rect: curr_rect,
                     paint_span,
                     hash: curr_node_hash,
                     subtree_hash: curr_subtree_hash,
@@ -615,33 +618,54 @@ impl DamageEngine {
                         dirty_out.push(NodeId(i as u32));
                         1
                     }
-                    Entry::Occupied(mut e)
-                        if e.get().rect == curr_rect && e.get().hash == curr_node_hash =>
+                    // Tier 1 — whole-subtree skip. `subtree_hash` rolls
+                    // up this node's own `node_hash`, so a match already
+                    // implies the node itself is unchanged; paired with an
+                    // unchanged `cascade_input` (own `layout_rect` +
+                    // ancestor state) every descendant is bit-identical by
+                    // induction. Cheapest high-value check — the dominant
+                    // steady-state path skips the whole tree at the root —
+                    // so it goes first.
+                    Entry::Occupied(e)
+                        if e.get().subtree_hash == curr_subtree_hash
+                            && e.get().cascade_input == curr_cascade_input =>
                     {
-                        let prev = *e.get();
-                        if prev.subtree_hash == curr_subtree_hash
-                            && prev.cascade_input == curr_cascade_input
-                        {
-                            let span = (subtree_end[i].end() as usize) - i;
-                            #[cfg(any(test, feature = "internals"))]
-                            if span > 1 {
-                                *subtree_skips_out += 1;
-                            }
-                            span
-                        } else {
-                            if curr_paints && prev.cascade_input != curr_cascade_input {
-                                raw_rects.push(curr_rect);
-                            }
-                            arena.refresh_screens(prev.paint_span, curr_paints_slice);
-                            *e.get_mut() = make_snapshot(prev.paint_span);
-                            1
+                        let span = (subtree_end[i].end() as usize) - i;
+                        #[cfg(any(test, feature = "internals"))]
+                        if span > 1 {
+                            *subtree_skips_out += 1;
                         }
+                        span
+                    }
+                    // Tier 2 — node's own authoring + cascade state
+                    // unchanged but `subtree_hash` differs, so a descendant
+                    // changed. Own paints are identical (`hash` +
+                    // `cascade_input` equal ⇒ identical screens), so the
+                    // arena slots stay correct; just refresh the rollup and
+                    // descend.
+                    Entry::Occupied(mut e)
+                        if e.get().hash == curr_node_hash
+                            && e.get().cascade_input == curr_cascade_input =>
+                    {
+                        e.get_mut().subtree_hash = curr_subtree_hash;
+                        1
                     }
                     Entry::Occupied(mut e) if curr_paints => {
                         let prev = *e.get();
-                        let new_span =
+                        let leg =
                             arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
-                        *e.get_mut() = make_snapshot(new_span);
+                        // The per-shape diff covers shapes that moved or
+                        // changed. When it found every `Paint` identical
+                        // (`geometry_unchanged`) it emitted nothing — but
+                        // reaching this arm means `hash` or
+                        // `cascade_input` changed, so a cascade-state
+                        // toggle (ancestor disable, clip-saturated pan)
+                        // altered the pixels in place. Damage the union to
+                        // repaint them.
+                        if leg.geometry_unchanged {
+                            raw_rects.push(curr_rect);
+                        }
+                        *e.get_mut() = make_snapshot(leg.span);
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(i as u32));
                         1
@@ -786,6 +810,24 @@ fn extend_predamaged(
                 out.push(paints[paint_idx as usize].screen);
             }
         }
+    }
+}
+
+/// In-tree-test-only reach-in. Lives in a plain `#[cfg(test)]` impl
+/// (not the `internals`-gated `test_support` mod) because only the
+/// crate's own unit tests call it — so it needs no `allow(dead_code)`
+/// for the feature-only build.
+#[cfg(test)]
+impl DamageEngine {
+    /// Union of the paint screens retained for `wid` last frame — the
+    /// value the (now removed) `NodeSnapshot.rect` field used to cache.
+    /// Equal to the node's `Cascade.paint_rect`. `None` when `wid`
+    /// didn't paint last frame (no `prev` entry).
+    pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
+        let snap = self.prev.get(&wid)?;
+        let mut screens = self.arena.snaps[snap.paint_span.range()].iter();
+        let first = screens.next()?.screen;
+        Some(screens.fold(first, |acc, p| acc.union(p.screen)))
     }
 }
 
