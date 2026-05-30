@@ -371,7 +371,17 @@ impl GlyphAtlas {
     }
 
     /// Evict any glyph of `target` content with `last_use <
-    /// current_frame`. Linear scan; eviction is rare in practice.
+    /// current_frame`. Linear scan over the glyph cache — but the cache
+    /// is keyed on distinct `(glyph, scale, subpixel-bin)` rasterizations
+    /// *in view*, not glyph instances, so for UI text (small alphabets;
+    /// the `TEXT_SCALE_STEP` ladder bounding distinct scales) it stays in
+    /// the tens-to-low-hundreds. Profiling the worst case (`text_atlas/
+    /// zoom_cold` — a fresh scale rung every frame, so eviction fires for
+    /// nearly every glyph) put this below 0.3 % of frame: invisible next
+    /// to the per-glyph atlas `get_mut` LRU refresh and the GPU submit.
+    /// An O(1) intrusive LRU would only pay off for a
+    /// many-thousand-unique-glyph workload (zooming a full CJK document,
+    /// say); not worth the complexity until such a workload exists.
     fn evict_one(&mut self, target: ContentType) -> bool {
         let cf = self.current_frame;
         let Some(key) = self.cache.iter().find_map(|(k, s)| {
