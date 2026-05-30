@@ -206,6 +206,25 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_arra
     9 => Uint32,
 ];
 
+// Compile-time guard: attribute offsets must match the `CurveInstance`
+// fields they feed. `array_stride == size_of` alone wouldn't catch a
+// same-size field reorder or a format/field size mismatch; `offset_of!`
+// does. Attr 4 (`Float32x2`) spans the adjacent `t0`,`t1` pair — anchored
+// at `t0`, bracketed by the `width` check that follows.
+const _: () = {
+    use std::mem::offset_of;
+    assert!(CURVE_INSTANCE_ATTRS[0].offset == offset_of!(CurveInstance, p0) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[1].offset == offset_of!(CurveInstance, p1) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[2].offset == offset_of!(CurveInstance, p2) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[3].offset == offset_of!(CurveInstance, p3) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[4].offset == offset_of!(CurveInstance, t0) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[5].offset == offset_of!(CurveInstance, width) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, cap) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, fill_kind) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
+};
+
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<CurveInstance>() as u64,

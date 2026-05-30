@@ -480,6 +480,20 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     5 => Uint32,    // tiled (1 = fract-wrap UV)
 ];
 
+// Compile-time guard: attribute offsets must match the `ImageInstance`
+// fields they feed. `array_stride == size_of` alone wouldn't catch a
+// same-size field reorder or a format/field size mismatch; `offset_of!`
+// does.
+const _: () = {
+    use std::mem::offset_of;
+    assert!(IMAGE_INSTANCE_ATTRS[0].offset == offset_of!(ImageInstance, rect.min) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[1].offset == offset_of!(ImageInstance, rect.size) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[2].offset == offset_of!(ImageInstance, uv_min) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[3].offset == offset_of!(ImageInstance, uv_size) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, tiled) as u64);
+};
+
 fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
     wgpu::VertexBufferLayout {
         array_stride: std::mem::size_of::<ImageInstance>() as u64,
