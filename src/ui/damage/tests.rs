@@ -3,6 +3,7 @@ use super::{Damage, DamageEngine};
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::rollups::CascadeInputHash;
 use crate::forest::tree::NodeId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
@@ -484,7 +485,10 @@ fn removed_widget_contributes_prev_rect_to_damage() {
                     .show(ui);
             });
     });
-    let prev_button_rect = ui.damage_engine.prev[&WidgetId::from_hash("gone")].rect;
+    let prev_button_rect = ui
+        .damage_engine
+        .prev_paint_rect(WidgetId::from_hash("gone"))
+        .expect("gone painted last frame");
 
     frame(&mut ui, |ui| {
         Panel::hstack()
@@ -1153,17 +1157,17 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     ui.frame_state.mark_submitted();
     assert!(ui.damage_engine.dirty.is_empty());
 
-    // Inject: nudge widget "a"'s prev rect so the next diff sees a
-    // small change. Tiny rect (3×50 = 150 area) inside a 2000×2000
-    // surface (4M area) — ratio ≈ 0.004%, well below the 50%
-    // threshold.
+    // Inject: flip widget "small"'s prev `cascade_input` so the next
+    // diff sees it as a cascade-state change and damages its paint_rect
+    // (50×60 = 3000 area) inside a 2000×2000 surface (4M area) —
+    // ratio ≈ 0.075%, well below the full-repaint threshold.
     let target_wid = WidgetId::from_hash("small");
     let snap = ui
         .damage_engine
         .prev
         .get_mut(&target_wid)
         .expect("small in prev");
-    snap.rect.min.x += 3.0;
+    snap.cascade_input = CascadeInputHash(snap.cascade_input.0 ^ 1);
 
     let smaller = Display {
         physical: UVec2::new(1999, 2000),
@@ -1491,7 +1495,10 @@ fn drop_shadow_overhang_contributes_to_damage_on_remove() {
                 .id(WidgetId::from_hash("root"))
                 .show(ui, build);
         });
-        let prev_rect = ui.damage_engine.prev[&WidgetId::from_hash("card")].rect;
+        let prev_rect = ui
+            .damage_engine
+            .prev_paint_rect(WidgetId::from_hash("card"))
+            .expect("card painted last frame");
         assert!(
             prev_rect.size.w >= frame_size + 2.0 * expected_overhang - 0.5
                 && prev_rect.size.h >= frame_size + 2.0 * expected_overhang - 0.5,
