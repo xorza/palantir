@@ -1,4 +1,5 @@
 window_clear = "#1a1a1a"
+text_scale = 1.0
 
 [button]
 padding = [
@@ -8,41 +9,283 @@ padding = [
 margin = 0.0
 
 [button.normal.background]
-fill = "#3e3e3e"
-radius = 4.0
+corners = 4.0
+
+[button.normal.background.fill]
+Solid = "#3e3e3e"
 
 [button.normal.background.stroke]
-color = "#aaaaa82e"
 width = 1.0
+
+[button.normal.background.stroke.brush]
+Solid = "#aaaaa82e"
 
 [button.hovered.background]
-fill = "#4b4b4b"
-radius = 4.0
+corners = 4.0
+
+[button.hovered.background.fill]
+Solid = "#4b4b4b"
 
 [button.hovered.background.stroke]
-color = "#aaaaa82e"
 width = 1.0
+
+[button.hovered.background.stroke.brush]
+Solid = "#aaaaa82e"
 
 [button.pressed.background]
-fill = "#4b4b4b"
-radius = 4.0
+corners = 4.0
+
+[button.pressed.background.fill]
+Solid = "#4b4b4b"
 
 [button.pressed.background.stroke]
-color = "#105577"
 width = 1.0
+
+[button.pressed.background.stroke.brush]
+Solid = "#105577"
 
 [button.disabled.background]
-fill = "#343434"
-radius = 4.0
+corners = 4.0
+
+[button.disabled.background.fill]
+Solid = "#343434"
 
 [button.disabled.background.stroke]
-color = "#aaaaa82e"
 width = 1.0
+
+[button.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
 
 [button.disabled.text]
 font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
+family = "Sans"
+
+[menu_button]
+padding = [
+    8.0,
+    4.0,
+]
+margin = 0.0
+
+[menu_button.normal.background]
+corners = 4.0
+
+[menu_button.normal.background.fill]
+Solid = "#00000000"
+
+[menu_button.hovered.background]
+corners = 4.0
+
+[menu_button.hovered.background.fill]
+Solid = "#3e3e3e"
+
+[menu_button.pressed.background]
+corners = 4.0
+
+[menu_button.pressed.background.fill]
+Solid = "#4b4b4b"
+
+[menu_button.disabled.background]
+corners = 4.0
+
+[menu_button.disabled.background.fill]
+Solid = "#00000000"
+
+[checkbox]
+indicator = "#1a1a1a"
+box_size = 16.0
+indicator_stroke = 2.0
+indicator_inset = 4.0
+row_gap = 8.0
+
+[checkbox.unchecked.normal.background]
+corners = 3.0
+
+[checkbox.unchecked.normal.background.fill]
+Solid = "#3e3e3e"
+
+[checkbox.unchecked.normal.background.stroke]
+width = 1.0
+
+[checkbox.unchecked.normal.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[checkbox.unchecked.hovered.background]
+corners = 3.0
+
+[checkbox.unchecked.hovered.background.fill]
+Solid = "#4b4b4b"
+
+[checkbox.unchecked.hovered.background.stroke]
+width = 1.0
+
+[checkbox.unchecked.hovered.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[checkbox.unchecked.pressed.background]
+corners = 3.0
+
+[checkbox.unchecked.pressed.background.fill]
+Solid = "#4b4b4b"
+
+[checkbox.unchecked.pressed.background.stroke]
+width = 1.0
+
+[checkbox.unchecked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[checkbox.unchecked.disabled.background]
+corners = 3.0
+
+[checkbox.unchecked.disabled.background.fill]
+Solid = "#343434"
+
+[checkbox.unchecked.disabled.background.stroke]
+width = 1.0
+
+[checkbox.unchecked.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[checkbox.unchecked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+
+[checkbox.checked.normal.background]
+corners = 3.0
+
+[checkbox.checked.normal.background.fill]
+Solid = "#9adbfb"
+
+[checkbox.checked.hovered.background]
+corners = 3.0
+
+[checkbox.checked.hovered.background.fill]
+Solid = "#9adbfb"
+
+[checkbox.checked.pressed.background]
+corners = 3.0
+
+[checkbox.checked.pressed.background.fill]
+Solid = "#9adbfb"
+
+[checkbox.checked.pressed.background.stroke]
+width = 1.0
+
+[checkbox.checked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[checkbox.checked.disabled.background]
+corners = 3.0
+
+[checkbox.checked.disabled.background.fill]
+Solid = "#9adbfb73"
+
+[checkbox.checked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+
+[radio]
+indicator = "#1a1a1a"
+box_size = 16.0
+indicator_stroke = 2.0
+indicator_inset = 4.0
+row_gap = 8.0
+
+[radio.unchecked.normal.background]
+corners = 8.0
+
+[radio.unchecked.normal.background.fill]
+Solid = "#3e3e3e"
+
+[radio.unchecked.normal.background.stroke]
+width = 1.0
+
+[radio.unchecked.normal.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[radio.unchecked.hovered.background]
+corners = 8.0
+
+[radio.unchecked.hovered.background.fill]
+Solid = "#4b4b4b"
+
+[radio.unchecked.hovered.background.stroke]
+width = 1.0
+
+[radio.unchecked.hovered.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[radio.unchecked.pressed.background]
+corners = 8.0
+
+[radio.unchecked.pressed.background.fill]
+Solid = "#4b4b4b"
+
+[radio.unchecked.pressed.background.stroke]
+width = 1.0
+
+[radio.unchecked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[radio.unchecked.disabled.background]
+corners = 8.0
+
+[radio.unchecked.disabled.background.fill]
+Solid = "#343434"
+
+[radio.unchecked.disabled.background.stroke]
+width = 1.0
+
+[radio.unchecked.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[radio.unchecked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+
+[radio.checked.normal.background]
+corners = 8.0
+
+[radio.checked.normal.background.fill]
+Solid = "#9adbfb"
+
+[radio.checked.hovered.background]
+corners = 8.0
+
+[radio.checked.hovered.background.fill]
+Solid = "#9adbfb"
+
+[radio.checked.pressed.background]
+corners = 8.0
+
+[radio.checked.pressed.background.fill]
+Solid = "#9adbfb"
+
+[radio.checked.pressed.background.stroke]
+width = 1.0
+
+[radio.checked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[radio.checked.disabled.background]
+corners = 8.0
+
+[radio.checked.disabled.background.fill]
+Solid = "#9adbfb73"
+
+[radio.checked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
 
 [scrollbar]
 width = 8.0
@@ -60,41 +303,133 @@ caret = "#ffffff"
 caret_width = 1.5
 selection = "#9adbfb40"
 padding = [
-    8.0,
-    6.0,
+    5.0,
+    3.0,
 ]
 margin = 0.0
 
 [text_edit.normal.background]
-fill = "#3e3e3e"
-radius = 4.0
+corners = 4.0
+
+[text_edit.normal.background.fill]
+Solid = "#3e3e3e"
 
 [text_edit.normal.background.stroke]
-color = "#aaaaa82e"
-width = 1.0
-
-[text_edit.focused.background]
-fill = "#3e3e3e"
-radius = 4.0
-
-[text_edit.focused.background.stroke]
-color = "#105577"
 width = 1.5
 
+[text_edit.normal.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[text_edit.focused.background]
+corners = 4.0
+
+[text_edit.focused.background.fill]
+Solid = "#3e3e3e"
+
+[text_edit.focused.background.stroke]
+width = 1.5
+
+[text_edit.focused.background.stroke.brush]
+Solid = "#105577"
+
 [text_edit.disabled.background]
-fill = "#343434"
-radius = 4.0
+corners = 4.0
+
+[text_edit.disabled.background.fill]
+Solid = "#343434"
 
 [text_edit.disabled.background.stroke]
-color = "#aaaaa82e"
-width = 1.0
+width = 1.5
+
+[text_edit.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
 
 [text_edit.disabled.text]
 font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
+family = "Sans"
+
+[context_menu]
+padding = 4.0
+min_width = 160.0
+separator = "#aaaaa82e"
+
+[context_menu.panel]
+corners = 6.0
+
+[context_menu.panel.fill]
+Solid = "#343434"
+
+[context_menu.panel.stroke]
+width = 1.0
+
+[context_menu.panel.stroke.brush]
+Solid = "#aaaaa838"
+
+[context_menu.item]
+shortcut = "#aaaaa8"
+padding = [
+    10.0,
+    6.0,
+]
+
+[context_menu.item.normal]
+
+[context_menu.item.hovered.background]
+corners = 4.0
+
+[context_menu.item.hovered.background.fill]
+Solid = "#3e3e3e"
+
+[context_menu.item.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+
+[tooltip]
+padding = [
+    6.0,
+    4.0,
+]
+delay = 0.5
+warmup = 1.0
+gap = 6.0
+
+[tooltip.panel]
+corners = 4.0
+
+[tooltip.panel.fill]
+Solid = "#343434"
+
+[tooltip.panel.stroke]
+width = 1.0
+
+[tooltip.panel.stroke.brush]
+Solid = "#aaaaa838"
+
+[tooltip.panel.shadow]
+color = "#00000099"
+offset = [
+    2.0,
+    2.0,
+]
+blur = 5.0
+spread = 0.0
+inset = false
+
+[tooltip.text]
+font_size_px = 13.0
+color = "#ffffff"
+line_height_mult = 1.2
+family = "Sans"
+
+[tooltip.max_size]
+w = 280.0
 
 [text]
 font_size_px = 16.0
 color = "#ffffff"
 line_height_mult = 1.2
+family = "Sans"
