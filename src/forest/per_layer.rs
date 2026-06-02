@@ -12,6 +12,7 @@ use strum::EnumCount as _;
 /// `IntoIterator` for `&` and `&mut` so `for t in &per` works, plus
 /// the project's two common iteration shapes (`iter_paint_order` and
 /// the bare `iter` / `iter_mut`).
+#[derive(Debug)]
 #[repr(transparent)]
 pub(crate) struct PerLayer<T>(pub(crate) [T; Layer::COUNT]);
 

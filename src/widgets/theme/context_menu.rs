@@ -29,6 +29,13 @@ pub struct ContextMenuTheme {
     pub separator: Color,
 }
 
+impl ContextMenuTheme {
+    /// `panel` / `separator` are chrome only; the rows carry the text.
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        self.item.for_each_text(f);
+    }
+}
+
 /// Three-state row look for [`crate::widgets::context_menu::MenuItem`].
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MenuItemTheme {
@@ -43,6 +50,12 @@ pub struct MenuItemTheme {
 }
 
 impl MenuItemTheme {
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        self.normal.for_each_text(f);
+        self.hovered.for_each_text(f);
+        self.disabled.for_each_text(f);
+    }
+
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
         if state.disabled {
             &self.disabled

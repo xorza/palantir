@@ -18,7 +18,6 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
-use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
@@ -97,62 +96,24 @@ impl Theme {
         );
         let ratio = scale / self.text_scale;
         self.text_scale = scale;
-        scale_text(&mut self.text, ratio);
-        scale_button(&mut self.button, ratio);
-        scale_button(&mut self.menu_button, ratio);
-        scale_toggle(&mut self.checkbox, ratio);
-        scale_toggle(&mut self.radio, ratio);
-        scale_text_edit(&mut self.text_edit, ratio);
-        scale_context_menu(&mut self.context_menu, ratio);
-        scale_text(&mut self.tooltip.text, ratio);
+        self.for_each_text(|t| t.font_size_px *= ratio);
     }
-}
 
-// Text-size walk for `Theme::set_text_scale`. Lives here — only the
-// theme module reaches into the sub-themes' looks; the widgets and
-// their per-widget theme types stay unaware of any global scale.
-fn scale_text(t: &mut TextStyle, ratio: f32) {
-    t.font_size_px *= ratio;
-}
-
-fn scale_look(look: &mut WidgetLook, ratio: f32) {
-    // `None` text inherits `Theme::text` (already scaled above), so an
-    // unset look carries no size of its own.
-    if let Some(t) = &mut look.text {
-        scale_text(t, ratio);
+    /// Visit every `TextStyle` in the theme. `set_text_scale` drives the
+    /// walk; each sub-theme owns its own visit (see each `for_each_text`),
+    /// so adding a font-bearing field updates the walk in that field's own
+    /// file rather than silently escaping this one.
+    fn for_each_text(&mut self, mut f: impl FnMut(&mut TextStyle)) {
+        let f = &mut f;
+        f(&mut self.text);
+        self.button.for_each_text(f);
+        self.menu_button.for_each_text(f);
+        self.checkbox.for_each_text(f);
+        self.radio.for_each_text(f);
+        self.text_edit.for_each_text(f);
+        self.context_menu.for_each_text(f);
+        f(&mut self.tooltip.text);
     }
-}
-
-fn scale_stateful(s: &mut StatefulLook, ratio: f32) {
-    scale_look(&mut s.normal, ratio);
-    scale_look(&mut s.hovered, ratio);
-    scale_look(&mut s.pressed, ratio);
-    scale_look(&mut s.disabled, ratio);
-}
-
-fn scale_button(b: &mut ButtonTheme, ratio: f32) {
-    scale_look(&mut b.normal, ratio);
-    scale_look(&mut b.hovered, ratio);
-    scale_look(&mut b.pressed, ratio);
-    scale_look(&mut b.disabled, ratio);
-}
-
-fn scale_toggle(t: &mut ToggleTheme, ratio: f32) {
-    scale_stateful(&mut t.unchecked, ratio);
-    scale_stateful(&mut t.checked, ratio);
-}
-
-fn scale_text_edit(t: &mut TextEditTheme, ratio: f32) {
-    scale_look(&mut t.normal, ratio);
-    scale_look(&mut t.focused, ratio);
-    scale_look(&mut t.disabled, ratio);
-}
-
-fn scale_context_menu(c: &mut ContextMenuTheme, ratio: f32) {
-    // `panel` is chrome only; the rows carry the text.
-    scale_look(&mut c.item.normal, ratio);
-    scale_look(&mut c.item.hovered, ratio);
-    scale_look(&mut c.item.disabled, ratio);
 }
 
 impl Default for Theme {

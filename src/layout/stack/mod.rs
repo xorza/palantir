@@ -31,15 +31,22 @@ pub(crate) struct FillEntry {
 }
 
 /// Distribute `leftover` across the Fill entries by weight, with
-/// CSS-Flexbox-style freezing: any child whose weighted share is below
-/// its floor takes its floor and exits the pool; the remaining
-/// children re-share. After the loop, every entry's `frozen_alloc` is
-/// `Some(_)` — either set during a freeze pass or filled in at the
-/// end with the final share. Shared by `measure` (floor =
-/// `intrinsic(MinContent)`, leftover from the parent's `inner.main`)
+/// CSS-Flexbox-style freezing: any child whose weighted share falls
+/// outside its `[floor, cap]` takes the violated bound and exits the
+/// pool; the remaining children re-share. After the loop, every entry's
+/// `frozen_alloc` is `Some(_)` — either set during a freeze pass or
+/// filled in at the end with the final share. Shared by `measure` (floor
+/// = `intrinsic(MinContent)`, leftover from the parent's `inner.main`)
 /// and `arrange` (floor = `desired.main`, leftover from the parent's
-/// arranged slot). Same algorithm in both phases — the only
-/// difference is the floor source the caller pushes into each entry.
+/// arranged slot). Same algorithm in both phases — the only difference
+/// is the floor source the caller pushes into each entry.
+///
+/// Grid's Phase-3 Fill loop (`grid::resolve_axis`) solves the identical
+/// `[lo, hi]`-clamped weighted distribution. The two are kept in sync by
+/// hand rather than physically merged: this one freezes every violator
+/// per pass while grid freezes one, and the two converge differently for
+/// mixed min/max violations — so a shared solver would silently change
+/// one driver's edge-case results.
 fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_weight: f32) {
     loop {
         if active_weight <= 0.0 {
@@ -129,6 +136,46 @@ fn push_fill_entries(
     pool_start
 }
 
+/// Per-phase main-axis accounting for a stack, shared by `measure` and
+/// `arrange`. `count` and `total_weight` are pure tree functions; the
+/// non-Fill main sum is sourced per phase via `main_of` (measure: fresh
+/// `layout.measure`; arrange: cached `desired.main`). Keeps the two
+/// phases from drifting on the count / weight / gap construction.
+struct StackPlan {
+    sum_non_fill_main: f32,
+    total_weight: f32,
+    count: usize,
+    total_gap: f32,
+}
+
+fn stack_plan(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    gap: f32,
+    mut main_of: impl FnMut(&mut LayoutEngine, NodeId) -> f32,
+) -> StackPlan {
+    let layouts = tree.records.layout();
+    let mut sum_non_fill_main = 0.0f32;
+    let mut total_weight = 0.0f32;
+    let mut count = 0usize;
+    for c in tree.active_children(node) {
+        count += 1;
+        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) {
+            total_weight += w;
+        } else {
+            sum_non_fill_main += main_of(layout, c);
+        }
+    }
+    StackPlan {
+        sum_non_fill_main,
+        total_weight,
+        count,
+        total_gap: gap * count.saturating_sub(1) as f32,
+    }
+}
+
 #[profiling::function]
 pub(crate) fn measure(
     layout: &mut LayoutEngine,
@@ -158,23 +205,23 @@ pub(crate) fn measure(
     // box the cap only shrank. Children still clamp at arrange; a rigid
     // child whose content exceeds the bound overflows, same as on the
     // cross axis.
-    let layouts = tree.records.layout();
     let main_avail = axis.main(inner_avail);
-    let mut sum_non_fill_main = 0.0f32;
-    let mut total_weight = 0.0f32;
+    let layouts = tree.records.layout();
+    // Pass 1 measures non-Fill children (height-given-width). `stack_plan`
+    // shares the count / weight / gap accounting with `arrange`; the
+    // closure supplies the per-phase main source (here: fresh measurement)
+    // and folds in the cross-axis max.
     let mut max_cross = 0.0f32;
-    let mut count = 0usize;
-    for c in tree.active_children(node) {
-        count += 1;
-        if let Sizing::Fill(w) = axis.main_sizing(layouts[c.idx()].size) {
-            total_weight += w;
-            continue;
-        }
+    let StackPlan {
+        sum_non_fill_main,
+        total_weight,
+        total_gap,
+        ..
+    } = stack_plan(layout, tree, node, axis, gap, |layout, c| {
         let d = layout.measure(tree, c, axis.compose_size(main_avail, cross_avail), tc, out);
-        sum_non_fill_main += axis.main(d);
         max_cross = max_cross.max(axis.cross(d));
-    }
-    let total_gap = gap * count.saturating_sub(1) as f32;
+        axis.main(d)
+    });
 
     // Pass 2: measure Fill children with min-content-aware
     // distribution (CSS Flexbox-style). On a finite-main stack, each
@@ -284,30 +331,24 @@ pub(crate) fn arrange(
     // their measured content size and the parent's leftover would just
     // dead-space.
     let layouts = tree.records.layout();
-    let mut sum_non_fill_main = 0.0f32;
-    let mut total_weight = 0.0f32;
-    let mut count = 0usize;
-    // Non-Fill accounting in a first pass — Fill entries are pushed by
-    // `push_fill_entries` below so measure and arrange share the
-    // construction shape (the only difference is the floor source).
-    for c in tree.active_children(node) {
-        count += 1;
-        let i = c.idx();
-        let size = layouts[i].size;
-        match axis.main_sizing(size) {
-            Sizing::Fill(w) => total_weight += w,
-            _ => sum_non_fill_main += axis.main(layout.scratch.desired[i]),
-        }
-    }
-    // Floor = measured content (Fill children's `desired.main` after
-    // the resolve_axis_size change pinned Fill at content). Cap =
-    // `max_size`. The freeze loop below mirrors `measure`'s
-    // flexbox-style distribution: a child whose share < floor freezes
-    // at floor, the rest re-share remaining.
+    // Shares the count / weight / gap accounting with `measure`; the
+    // closure supplies the per-phase main source — here the cached
+    // `desired.main` (Fill children's content size, since the
+    // resolve_axis_size change pins Fill at content).
+    let StackPlan {
+        sum_non_fill_main,
+        total_weight,
+        count,
+        total_gap,
+    } = stack_plan(layout, tree, node, axis, gap, |layout, c| {
+        axis.main(layout.scratch.desired[c.idx()])
+    });
+    // Cap = `max_size`. The freeze loop below mirrors `measure`'s
+    // flexbox-style distribution: a child whose share is outside
+    // `[floor, cap]` freezes at the bound, the rest re-share remaining.
     let pool_start = push_fill_entries(layout, tree, node, axis, |layout, c| {
         axis.main(layout.scratch.desired[c.idx()])
     });
-    let total_gap = gap * count.saturating_sub(1) as f32;
     let main_total = axis.main(inner.size);
     let cross = axis.cross(inner.size);
     let leftover_for_fill = (main_total - sum_non_fill_main - total_gap).max(0.0);
@@ -398,7 +439,7 @@ pub(crate) fn intrinsic(
         }
         total + gap * count.saturating_sub(1) as f32
     } else {
-        children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
+        children_max_intrinsic(layout, tree, node, query_axis, req, tc)
     }
 }
 

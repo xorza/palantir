@@ -342,9 +342,7 @@ pub(crate) fn intrinsic(
         match req {
             // Widest single child sets the floor — one row of just that
             // child still has to fit.
-            LenReq::MinContent => {
-                children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
-            }
+            LenReq::MinContent => children_max_intrinsic(layout, tree, node, query_axis, req, tc),
             LenReq::MaxContent => {
                 let mut total = 0.0f32;
                 let mut count = 0usize;
@@ -360,7 +358,7 @@ pub(crate) fn intrinsic(
         // wrapped cross depends on resolved main width — height-given-
         // width — which we don't compute here. Conservative for typical
         // toolbar/badge use cases.
-        children_max_intrinsic(layout, tree, node, query_axis, req, tc, |_, _| 0.0)
+        children_max_intrinsic(layout, tree, node, query_axis, req, tc)
     }
 }
 

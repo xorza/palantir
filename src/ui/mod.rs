@@ -2,7 +2,6 @@ pub mod cascade;
 pub mod damage;
 pub mod frame_report;
 pub mod frame_state;
-pub(crate) mod frame_stats;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -32,6 +31,7 @@ use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::image_registry::ImageHandle;
 
+use crate::debug_overlay::record_frame_stats;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
@@ -39,7 +39,6 @@ use crate::ui::cascade::CascadesEngine;
 use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
-use crate::ui::frame_stats::record_frame_stats;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use std::time::Duration;

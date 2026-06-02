@@ -42,13 +42,13 @@ use std::rc::Rc;
 /// Pass-orchestration code (encode/compose/intrinsic) reaches the raw
 /// storage via [`Self::inner`] / [`Self::inner_mut`] once per pass and
 /// hands `&FrameArenaInner` down through the pass.
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 
 /// One arena per frame. All bulk shape-geometry bytes live here for
 /// the duration of a frame and are read by every later phase via
 /// spans recorded on tree shape records and cmd-buffer payloads.
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct FrameArenaInner {
     /// User-supplied mesh geometry plus the compose-time polyline
     /// tessellation output. The latter appends in

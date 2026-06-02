@@ -50,6 +50,12 @@ pub struct TextEditTheme {
 }
 
 impl TextEditTheme {
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        self.normal.for_each_text(f);
+        self.focused.for_each_text(f);
+        self.disabled.for_each_text(f);
+    }
+
     /// Pick the visual state. Disabled wins over focused; otherwise
     /// normal. `state.disabled` is the cascaded ancestor-or-self flag
     /// — caller can merge `state.disabled |= element.disabled` for
