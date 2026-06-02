@@ -647,7 +647,7 @@ impl ShaperInner {
 #[repr(C)]
 #[padding_struct::padding_struct]
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct TextCacheKey {
+pub(crate) struct TextCacheKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
     pub text_hash: u64,
     /// `font_size_px * 64`, rounded. Quantizing to 1/64 px is below any
@@ -725,8 +725,9 @@ impl TextCacheKey {
 pub struct MeasureResult {
     pub size: Size,
     /// Identifier of the shaped buffer, or [`TextCacheKey::INVALID`] when no
-    /// shaping happened (mono fallback).
-    pub key: TextCacheKey,
+    /// shaping happened (mono fallback). Crate-internal — the renderer's
+    /// cache key, not part of the public measurement result.
+    pub(crate) key: TextCacheKey,
     /// Width of the widest unbreakable run (typically the longest word).
     /// The wrapping path uses this as the floor when a parent commits a
     /// narrower width: text overflows rather than breaking inside a word.

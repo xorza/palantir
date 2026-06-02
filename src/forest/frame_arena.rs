@@ -49,7 +49,7 @@ pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 /// the duration of a frame and are read by every later phase via
 /// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default, Debug)]
-pub struct FrameArenaInner {
+pub(crate) struct FrameArenaInner {
     /// User-supplied mesh geometry plus the compose-time polyline
     /// tessellation output. The latter appends in
     /// [`crate::renderer::frontend::Composer::compose`], so the arena
