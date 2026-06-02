@@ -4,8 +4,9 @@
 use glam::{UVec2, Vec2};
 use image::Rgba;
 use palantir::{
-    Background, Brush, Button, Color, ColorU8, Configure, ConicGradient, Corners, Frame, LineCap,
-    LineJoin, LinearGradient, Panel, RadialGradient, Rect, Shadow, Shape, Sizing, Stroke,
+    Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
+    DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
+    Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Text, ToggleSwitch, ToggleTheme,
 };
 
 use crate::diff::Tolerance;
@@ -826,4 +827,157 @@ fn curve_caps_match_golden() {
             });
     });
     assert_matches_golden("curve_caps", &img, Tolerance::default());
+}
+
+/// ProgressBar at 50%: the two-`Fill`-leaf split resolves to a
+/// half-width accent fill over the rounded pill track.
+#[test]
+fn progress_bar_half_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 60), 1.0, DARK_BG, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ProgressBar::new(0.5).id_salt("pb").show(ui);
+            });
+    });
+    assert_matches_golden("progress_bar_half", &img, Tolerance::default());
+}
+
+/// ToggleSwitch on + off with animation disabled: pins the knob at each
+/// rest position and exercises the `Canvas` track + absolutely-positioned
+/// knob path (the only widget that places a child via `.position`).
+#[test]
+fn toggle_switch_states_matches_golden() {
+    let mut h = Harness::new();
+    let mut style = ToggleTheme::switch();
+    style.anim = None; // sit at the rest position, no first-frame transient
+    let img = h.render(UVec2::new(220, 110), 1.0, DARK_BG, |ui| {
+        let mut on = true;
+        let mut off = false;
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .gap(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ToggleSwitch::new(&mut on)
+                    .id_salt("on")
+                    .label("on")
+                    .style(style.clone())
+                    .show(ui);
+                ToggleSwitch::new(&mut off)
+                    .id_salt("off")
+                    .label("off")
+                    .style(style.clone())
+                    .show(ui);
+            });
+    });
+    assert_matches_golden("toggle_switch_states", &img, Tolerance::default());
+}
+
+/// Spinner at t=0 (phase 0): the comet arc renders as a round-capped
+/// polyline with a per-point alpha fade from tail to head.
+#[test]
+fn spinner_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(80, 80), 1.0, DARK_BG, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Spinner::new().size(48.0).id_salt("sp").show(ui);
+            });
+    });
+    assert_matches_golden("spinner", &img, Tolerance::default());
+}
+
+/// Slider at 30%: the two-tone rail (accent left, grey right) splits at
+/// the round knob via the `Fill`-weight trick — no record-time width.
+#[test]
+fn slider_thirty_percent_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(240, 60), 1.0, DARK_BG, |ui| {
+        let mut v = 0.3_f32;
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Slider::new(&mut v, 0.0..=1.0).id_salt("sl").show(ui);
+            });
+    });
+    assert_matches_golden("slider_thirty_percent", &img, Tolerance::default());
+}
+
+/// DragValue renders its formatted number + suffix inside button chrome.
+#[test]
+fn drag_value_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(140, 64), 1.0, DARK_BG, |ui| {
+        let mut v = 42.5_f32;
+        Panel::vstack()
+            .auto_id()
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                DragValue::new(&mut v)
+                    .decimals(1)
+                    .suffix(" px")
+                    .size((Sizing::Fixed(100.0), Sizing::Hug))
+                    .id_salt("dv")
+                    .show(ui);
+            });
+    });
+    assert_matches_golden("drag_value", &img, Tolerance::default());
+}
+
+/// ComboBox (closed): button-styled trigger showing the current choice
+/// with a down-chevron drawn as a polyline (font-independent), right of
+/// the label via `SpaceBetween`.
+#[test]
+fn combo_box_closed_matches_golden() {
+    let mut h = Harness::new();
+    let opts = ["Apple", "Banana", "Cherry"];
+    let img = h.render(UVec2::new(220, 70), 1.0, DARK_BG, |ui| {
+        let mut sel = 1usize;
+        Panel::vstack()
+            .auto_id()
+            .padding(16.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ComboBox::new(&mut sel, &opts)
+                    .size((Sizing::Fixed(160.0), Sizing::Hug))
+                    .id_salt("cb")
+                    .show(ui);
+            });
+    });
+    assert_matches_golden("combo_box_closed", &img, Tolerance::default());
+}
+
+/// Modal: a centered card over the dim backdrop, recorded into
+/// `Layer::Modal` so it composites above the `Main` content behind it.
+#[test]
+fn modal_dialog_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(300, 200), 1.0, DARK_BG, |ui| {
+        // Bright content behind, so the backdrop's dim is visible.
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .background(Background {
+                fill: Color::rgb(0.35, 0.45, 0.65).into(),
+                stroke: Stroke::ZERO,
+                corners: Corners::ZERO,
+                shadow: Shadow::NONE,
+            })
+            .show(ui, |_| {});
+        Modal::new().id_salt("m").show(ui, |ui| {
+            Text::new("Confirm?").id_salt("mt").show(ui);
+        });
+    });
+    assert_matches_golden("modal_dialog", &img, Tolerance::default());
 }

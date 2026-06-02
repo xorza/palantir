@@ -2,11 +2,10 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::InternedStr;
-use crate::primitives::spacing::Spacing;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, WidgetEntry, button_look, enter_widget};
 
 pub struct Button {
     element: Element,
@@ -77,28 +76,7 @@ impl Button {
             raw: raw_state,
             merged: picked_state,
         } = enter_widget(ui, &element);
-        let fallback_text = ui.theme.text;
-        // Borrow either the user override or the default theme without
-        // cloning the ~540-byte `ButtonTheme`. Copy out the four
-        // scalars we need (padding/margin/anim + picked `WidgetLook`)
-        // so the borrow on `ui.theme` ends before `animate(ui, ..)`
-        // reborrows `ui` mutably.
-        let style: &ButtonTheme = self.style.as_ref().unwrap_or(&ui.theme.button);
-        let style_padding = style.padding;
-        let style_margin = style.margin;
-        let style_anim = style.anim;
-        let look_target = style.pick(picked_state).clone();
-        // Apply theme padding/margin when the builder hasn't set
-        // anything (sentinel: `Spacing::ZERO` == "use theme"). User
-        // overrides — anything non-zero set via `.padding(...)` /
-        // `.margin(...)` — pass through unchanged.
-        if element.padding == Spacing::ZERO {
-            element.padding = style_padding;
-        }
-        if element.margin == Spacing::ZERO {
-            element.margin = style_margin;
-        }
-        let look = look_target.animate(ui, id, fallback_text, style_anim);
+        let look = button_look(ui, id, &mut element, picked_state, self.style.as_ref());
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

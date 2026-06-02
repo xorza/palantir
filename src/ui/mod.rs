@@ -789,6 +789,17 @@ impl Ui {
         self.relayout_requested = true;
     }
 
+    /// Monotonic time of the current frame, accumulated from the
+    /// per-frame `dt`s the host feeds in. Starts at zero on the first
+    /// frame and only moves forward. Read-only on purpose: the clock is
+    /// host-driven, and a direct write would desync it from the wake
+    /// queue. Use for time-driven animation that needs a continuous
+    /// clock rather than a tween toward a fixed target (e.g. `Spinner`);
+    /// pair with [`Self::request_repaint`] to keep the host awake.
+    pub fn now(&self) -> Duration {
+        self.time
+    }
+
     /// Ask the host to schedule another frame after this one. Cleared
     /// at the top of every `frame`; widgets/showcases that need
     /// continuous animation call this each frame to keep the host
