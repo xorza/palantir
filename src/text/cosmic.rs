@@ -198,7 +198,7 @@ impl CosmicMeasure {
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextCacheKey::INVALID`].
-    pub fn buffer_for(&self, key: TextCacheKey) -> Option<&Buffer> {
+    pub(crate) fn buffer_for(&self, key: TextCacheKey) -> Option<&Buffer> {
         if key.is_invalid() {
             return None;
         }
@@ -210,7 +210,7 @@ impl CosmicMeasure {
     /// up buffers — borrowck won't let us hand out a `&mut FontSystem` and
     /// call `buffer_for` simultaneously through `&mut self`. This method
     /// hands out the disjoint pieces.
-    pub fn split_for_render(&mut self) -> RenderSplit<'_> {
+    pub(crate) fn split_for_render(&mut self) -> RenderSplit<'_> {
         RenderSplit {
             font_system: &mut self.font_system,
             lookup: BufferLookup { cache: &self.cache },
@@ -219,14 +219,14 @@ impl CosmicMeasure {
 }
 
 /// Disjoint borrow handed out by [`CosmicMeasure::split_for_render`].
-pub struct RenderSplit<'a> {
+pub(crate) struct RenderSplit<'a> {
     pub font_system: &'a mut FontSystem,
     pub lookup: BufferLookup<'a>,
 }
 
 /// Read-only view into the buffer cache. Constructed by
 /// [`CosmicMeasure::split_for_render`]; held alongside a `&mut FontSystem`.
-pub struct BufferLookup<'a> {
+pub(crate) struct BufferLookup<'a> {
     cache: &'a FxHashMap<TextCacheKey, CacheEntry>,
 }
 

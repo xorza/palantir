@@ -41,7 +41,7 @@ use std::time::Duration;
 /// Sampling is a pure function of `now`. No accumulator state, so
 /// dropped frames / irregular `dt` don't drift.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum PaintAnim {
+pub(crate) enum PaintAnim {
     /// Solid for `half_period`, hidden for the next `half_period`,
     /// repeating from `started_at`. The caret-blink shape.
     BlinkOpacity {

@@ -47,7 +47,6 @@ pub use forest::Layer;
 pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::visibility::Visibility;
 pub use host::FramePresent;
-#[cfg(any(test, feature = "internals"))]
 pub use host::Host;
 pub use host::HostConfig;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
@@ -98,7 +97,7 @@ pub use widgets::grid::Grid;
 pub use widgets::panel::Panel;
 pub use widgets::popup::{ClickOutside, Popup, PopupHandle};
 pub use widgets::radio::RadioButton;
-pub use widgets::scroll::{BarMode, Scroll};
+pub use widgets::scroll::{BarMode, Scroll, ZoomConfig, ZoomModifier, ZoomPivot};
 pub use widgets::text::Text;
 pub use widgets::text_edit::TextEdit;
 pub use widgets::theme::Theme;

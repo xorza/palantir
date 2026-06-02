@@ -17,7 +17,7 @@
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
-pub mod encoder;
+pub(crate) mod encoder;
 
 use crate::forest::frame_arena::FrameArena;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;

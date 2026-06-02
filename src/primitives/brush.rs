@@ -9,7 +9,7 @@ use tinyvec::ArrayVec;
 /// (2-3 stops dominate, multi-stop bars rarely exceed 5). Hard-asserted
 /// in `LinearGradient::new` — exceeding the cap is a caller bug, not a
 /// silent truncation.
-pub const MAX_STOPS: usize = 8;
+pub(crate) const MAX_STOPS: usize = 8;
 
 /// GPU-wire form of a gradient's axis: four f16 lanes (`[u16; 4]`,
 /// 8 B). Variant-dependent layout — `[dir_x, dir_y, t0, t1]` for
@@ -24,7 +24,7 @@ pub const MAX_STOPS: usize = 8;
 /// up to ~2048 px, then degrading like `Corners`.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct FillAxis(F16x4);
+pub(crate) struct FillAxis(F16x4);
 
 impl FillAxis {
     /// All-zero axis used for solid quads. The shader ignores it when
@@ -228,7 +228,7 @@ impl LinearGradient {
     /// `(cos, sin)` axis; diagonal gradients project to a sub-1.0
     /// range and rely on `Spread::Pad` to clamp. CSS-style
     /// corner-to-corner scaling is a slice 2.5 polish task.
-    pub fn axis(&self) -> FillAxis {
+    pub(crate) fn axis(&self) -> FillAxis {
         let (sin, cos) = self.angle.sin_cos();
         FillAxis::from_lanes(cos, sin, 0.0, 1.0)
     }
@@ -291,7 +291,7 @@ impl RadialGradient {
 
     /// Pack `(center, radius)` into a `FillAxis` wire slot. The shader
     /// reads it as `(cx, cy, rx, ry)` for the radial branch.
-    pub fn axis(&self) -> FillAxis {
+    pub(crate) fn axis(&self) -> FillAxis {
         FillAxis::from_lanes(self.center.x, self.center.y, self.radius.x, self.radius.y)
     }
 }
@@ -358,7 +358,7 @@ impl ConicGradient {
     /// Pack `(center, start_angle)` into a `FillAxis` wire slot. The
     /// shader reads it as `(cx, cy, start_angle, _)` for the conic
     /// branch; `t1` is unused.
-    pub fn axis(&self) -> FillAxis {
+    pub(crate) fn axis(&self) -> FillAxis {
         FillAxis::from_lanes(self.center.x, self.center.y, self.start_angle, 0.0)
     }
 }

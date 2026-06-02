@@ -1,7 +1,7 @@
-pub mod cascade;
+pub(crate) mod cascade;
 pub mod damage;
 pub mod frame_report;
-pub mod frame_state;
+pub(crate) mod frame_state;
 pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
@@ -884,7 +884,7 @@ impl Ui {
     /// caller doesn't manage scheduling. Drops silently if the shape
     /// itself was noop-collapsed (zero stroke + transparent fill,
     /// etc.) — `PaintAnim` can't make a zero shape paintable.
-    pub fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
+    pub(crate) fn add_shape_animated(&mut self, shape: Shape<'_>, anim: PaintAnim) {
         self.forest
             .add_shape_animated(shape, anim, &self.frame_arena, &self.caches.gradients);
     }

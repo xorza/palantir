@@ -1,10 +1,10 @@
 pub(crate) mod axis;
-pub mod cache;
+pub(crate) mod cache;
 pub(crate) mod canvas;
 pub(crate) mod grid;
 pub(crate) mod intrinsic;
 pub(crate) mod layoutengine;
-pub mod scroll;
+pub(crate) mod scroll;
 pub(crate) mod stack;
 pub(crate) mod support;
 pub(crate) mod types;
