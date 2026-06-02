@@ -907,7 +907,7 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 
 /// Cached unbounded shape + most-recent wrap result, validity-checked
 /// by authoring `hash`.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct TextReuseEntry {
     hash: NodeHash,
     unbounded: MeasureResult,
@@ -917,7 +917,7 @@ pub(crate) struct TextReuseEntry {
 /// One cached width-bounded result — the most-recent `target_q` (caller-
 /// quantized target), halign, and overflow mode, plus the `MeasureResult`
 /// that came out of shaping at that target.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct WrapReuse {
     target_q: u32,
     /// Cached halign. Cosmic's per-line align changes glyph positions

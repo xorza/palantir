@@ -125,10 +125,12 @@ impl DamageRegion {
 
     /// Sums per-rect areas without subtracting overlap. The merge
     /// policy collapses overlapping pairs into one rect before they
-    /// reach this sum, so the only way to over-count is the
-    /// diagonal-overlap path where the budget rejects the merge —
-    /// rare and conservative (biases toward `Full` repaint at the
-    /// boundary). Drives the full-repaint coverage check in
+    /// reach this sum, so over-count arises only from two rare paths:
+    /// the diagonal-overlap case where the budget rejects the merge,
+    /// and the at-cap force-merge in `add` (which grows the min-growth
+    /// slot and can leave it overlapping a neighbour). Both are
+    /// conservative — they bias toward a `Full` repaint at the
+    /// boundary. Drives the full-repaint coverage check in
     /// `Damage::new`. Region rects are surface-clipped at
     /// `collapse_from`, so this is already "visible area" — no extra
     /// intersect needed at the threshold site.

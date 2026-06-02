@@ -39,6 +39,16 @@ pub struct ButtonTheme {
     pub anim: Option<AnimSpec>,
 }
 
+impl ButtonTheme {
+    /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        self.normal.for_each_text(f);
+        self.hovered.for_each_text(f);
+        self.pressed.for_each_text(f);
+        self.disabled.for_each_text(f);
+    }
+}
+
 impl Default for ButtonTheme {
     fn default() -> Self {
         // Buttons map to the palette's clickable-surface family:

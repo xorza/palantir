@@ -91,17 +91,6 @@ pub(crate) fn leaf_text_shapes<'a>(
         })
 }
 
-/// Resolve a node's outer slot size on one axis, given its sizing
-/// policy, content+padding (margin-exclusive), parent-supplied
-/// available, own margin, and clamps. The function works in
-/// margin-exclusive space and adds margin once at the return so the
-/// returned value is margin-inclusive (matching `available`'s
-/// convention).
-///
-/// Also reused by `intrinsic::compute` with `available = INFINITY`,
-/// which collapses Fill to its content size — the parent-independent
-/// rule for intrinsic queries (CSS Grid `1fr`-in-auto-context).
-///
 /// Per-axis inputs for [`resolve_axis_size`]. Bundles the seven
 /// numbers + `Sizing` into one struct so the call site reads as
 /// "given this axis context, resolve the outer size" rather than a
@@ -211,13 +200,29 @@ pub(crate) fn zero_subtree(
     out[layout.active_layer].rect[start..end].fill(zero);
 }
 
-/// Max over non-collapsed children's outer intrinsic on `axis`, plus an
-/// optional per-child positional offset on the same axis. Used by drivers
-/// whose own size on an axis is "the largest child wants this much"
-/// (ZStack, Stack cross-axis) and by Canvas (which adds the child's
-/// declared position to the contribution on Hug axes). Pass `|_, _| 0.0`
-/// when there's no positional contribution.
+/// Max over non-collapsed children's outer intrinsic on `axis`. Used by
+/// drivers whose own size on an axis is "the largest child wants this
+/// much" (ZStack, Stack cross-axis, WrapStack). Canvas, which also folds
+/// in each child's declared position, uses [`children_max_intrinsic_offset`].
 pub(crate) fn children_max_intrinsic(
+    layout: &mut LayoutEngine,
+    tree: &Tree,
+    node: NodeId,
+    axis: Axis,
+    req: LenReq,
+    tc: &TextCtx<'_>,
+) -> f32 {
+    let mut m = 0.0f32;
+    for c in tree.active_children(node) {
+        m = m.max(layout.intrinsic(tree, c, axis, req, tc));
+    }
+    m
+}
+
+/// Like [`children_max_intrinsic`] but adds a per-child positional offset
+/// on the same axis before taking the max. Canvas alone needs it — on Hug
+/// axes the child's declared position folds into its contribution.
+pub(crate) fn children_max_intrinsic_offset(
     layout: &mut LayoutEngine,
     tree: &Tree,
     node: NodeId,
@@ -234,11 +239,6 @@ pub(crate) fn children_max_intrinsic(
     m
 }
 
-/// Per-axis available size to pass to children of a panel that sizes per its
-/// own `Sizing` on each axis: pass `inner_avail` on Fill/Fixed axes (children
-/// see the committed slot), `INFINITY` on Hug axes (avoids recursive sizing).
-/// Used by ZStack and Canvas. Stack uses a different rule (always INF on main).
-///
 /// Main-axis offset + effective inter-child gap for one row of
 /// `justify`-distributed children. Single source of truth for Stack and
 /// WrapStack — keeps SpaceBetween / SpaceAround degeneracy rules

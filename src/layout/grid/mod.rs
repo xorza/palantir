@@ -610,11 +610,12 @@ fn measure_inner(
         }
     }
 
-    // Resolve row heights. Same Fill-marking rule as cols above —
-    // mark Fill rows resolved only when the grid is non-Hug on h.
-    // (Cells already measured by this point, so the resolved flag here
-    // doesn't affect the current measure; it carries forward into
-    // arrange's re-resolve via the persisted state.)
+    // Resolve row heights. Shares `resolve_axis` with the col pass, so
+    // Phase 4 still runs — but the row `resolved` marking is inert here:
+    // its only reader (`sum_spanned_known` in Phase 2) has already run,
+    // `resolved` is not part of the persisted arrange state (only `sizes`
+    // + `total` are), and arrange's re-resolve rebuilds it from scratch.
+    // Only the resolved `sizes` recorded below matter past this point.
     {
         let GridContext {
             depth_stack, hugs, ..
@@ -969,8 +970,9 @@ fn resolve_axis(
     // hug_min[i])`) clamps and exits the pool, remaining Fills
     // rebalance. The `hug_min` floor prevents a Fill cell with a rigid
     // descendant (Fixed widget, longest unbreakable word) from
-    // collapsing below its real min-content — matches Stack's
-    // freeze-loop floor.
+    // collapsing below its real min-content — mirrors the `[floor, cap]`
+    // freeze in `stack::freeze_distribute` (kept in sync by hand; see its
+    // doc for why the two aren't physically merged).
     let mut remaining = (total - consumed).max(0.0);
     a.flexible.clear();
     let mut flexible_weight = 0.0_f32;

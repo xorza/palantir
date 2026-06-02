@@ -2,7 +2,7 @@ use super::axis::Axis;
 use super::intrinsic::LenReq;
 use super::layoutengine::LayoutEngine;
 use super::support::{
-    TextCtx, children_max_intrinsic, measure_per_axis_hug, stretched_extent, zero_subtree,
+    TextCtx, children_max_intrinsic_offset, measure_per_axis_hug, stretched_extent, zero_subtree,
 };
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
@@ -115,7 +115,7 @@ pub(crate) fn intrinsic(
         axis.main_sizing(tree.records.layout()[node.idx()].size),
         Sizing::Hug
     );
-    children_max_intrinsic(layout, tree, node, axis, req, tc, |tree, c| {
+    children_max_intrinsic_offset(layout, tree, node, axis, req, tc, |tree, c| {
         if pos_inflates {
             axis.main_v(tree.bounds(c).position)
         } else {
