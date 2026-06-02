@@ -229,13 +229,7 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(&device, format);
         let image = ImagePipeline::new(&device, format);
         let curve = CurvePipeline::new(&device, format, &gradient.bgl);
-        let text = TextBackend::new(
-            &device,
-            format,
-            wgpu::MultisampleState::default(),
-            &Self::text_stencil_states(),
-            shaper,
-        );
+        let text = TextBackend::new(&device, format, &Self::text_stencil_states(), shaper);
         let debug = DebugOverlay::new(&device);
         // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
         // per-frame upload peak, so we land in 1-2 chunks during
@@ -300,12 +294,8 @@ impl WgpuBackend {
         self.image.rebuild_for_format(device, format);
         self.curve
             .rebuild_for_format(device, &self.gradient.bgl, format);
-        self.text.rebuild_for_format(
-            device,
-            format,
-            wgpu::MultisampleState::default(),
-            &Self::text_stencil_states(),
-        );
+        self.text
+            .rebuild_for_format(device, format, &Self::text_stencil_states());
         self.color_format = format;
         // Old backbuffer carries the previous format; force a fresh
         // allocation + full clear on the next submit.

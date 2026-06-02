@@ -24,6 +24,9 @@ pub(crate) mod atlas;
 pub(crate) mod encode;
 
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::{
+    PipelineRecipe, build_pipeline, build_pipeline_layout,
+};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
@@ -153,7 +156,6 @@ impl TextBackend {
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        multisample: wgpu::MultisampleState,
         depth_stencil_states: &[Option<wgpu::DepthStencilState>],
         shaper: TextShaper,
     ) -> Self {
@@ -198,13 +200,7 @@ impl TextBackend {
             &sampler,
         );
 
-        let pipelines = Self::build_pipelines(
-            device,
-            &atlas_bgl,
-            format,
-            multisample,
-            depth_stencil_states,
-        );
+        let pipelines = Self::build_pipelines(device, &atlas_bgl, format, depth_stencil_states);
 
         let vbuf_capacity = (std::mem::size_of::<GlyphInstance>() as u64) * 4096;
         let vbuf = device.create_buffer(&wgpu::BufferDescriptor {
@@ -242,32 +238,39 @@ impl TextBackend {
         device: &wgpu::Device,
         atlas_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
-        multisample: wgpu::MultisampleState,
         depth_stencil_states: &[Option<wgpu::DepthStencilState>],
     ) -> Vec<wgpu::RenderPipeline> {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir text shader"),
+            label: Some("palantir.text.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
         });
 
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("palantir text pipeline layout"),
-            // Group 0 = atlas textures + sampler. Viewport + atlas-
-            // size `Params` ride the shared immediate region.
-            bind_group_layouts: &[Some(atlas_bgl)],
-            immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
-        });
+        // Group 0 = atlas textures + sampler. Viewport + atlas-size
+        // `Params` ride the shared immediate region.
+        let layout = build_pipeline_layout(device, "palantir.text.pl", &[Some(atlas_bgl)]);
 
         depth_stencil_states
             .iter()
             .map(|ds| {
+                let label = if ds.is_some() {
+                    "palantir.text.pipeline.stencil_test"
+                } else {
+                    "palantir.text.pipeline"
+                };
                 build_pipeline(
                     device,
-                    &shader,
-                    &pipeline_layout,
-                    format,
-                    multisample,
-                    ds.clone(),
+                    PipelineRecipe {
+                        label,
+                        shader: &shader,
+                        layout: &layout,
+                        vertex_buffers: &[glyph_instance_layout()],
+                        topology: wgpu::PrimitiveTopology::TriangleStrip,
+                        color_format: format,
+                        fragment_entry: "fs",
+                        color_writes: wgpu::ColorWrites::ALL,
+                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                        depth_stencil: ds.clone(),
+                    },
                 )
             })
             .collect()
@@ -278,22 +281,16 @@ impl TextBackend {
     /// bind group, the sampler, and the encoded-run cache all survive —
     /// the atlas texture's format (`R8Unorm` / `Rgba8UnormSrgb`) is
     /// independent of the swapchain color format, so **no glyph
-    /// re-rasterization is needed**. Pass the same `multisample` /
-    /// `depth_stencil_states` the backend built the text pipelines with.
+    /// re-rasterization is needed**. Pass the same `depth_stencil_states`
+    /// the backend built the text pipelines with.
     pub(crate) fn rebuild_for_format(
         &mut self,
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
-        multisample: wgpu::MultisampleState,
         depth_stencil_states: &[Option<wgpu::DepthStencilState>],
     ) {
-        self.pipelines = Self::build_pipelines(
-            device,
-            &self.atlas_bgl,
-            format,
-            multisample,
-            depth_stencil_states,
-        );
+        self.pipelines =
+            Self::build_pipelines(device, &self.atlas_bgl, format, depth_stencil_states);
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
@@ -522,70 +519,33 @@ fn build_atlas_bg(
     })
 }
 
-fn build_pipeline(
-    device: &wgpu::Device,
-    shader: &wgpu::ShaderModule,
-    layout: &wgpu::PipelineLayout,
-    format: wgpu::TextureFormat,
-    multisample: wgpu::MultisampleState,
-    depth_stencil: Option<wgpu::DepthStencilState>,
-) -> wgpu::RenderPipeline {
-    let stride = std::mem::size_of::<GlyphInstance>() as wgpu::BufferAddress;
-    let vertex_buffer_layout = wgpu::VertexBufferLayout {
-        array_stride: stride,
-        step_mode: wgpu::VertexStepMode::Instance,
-        attributes: &[
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Sint32x2,
-                offset: 0,
-                shader_location: 0,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint32,
-                offset: 8,
-                shader_location: 1,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint32,
-                offset: 12,
-                shader_location: 2,
-            },
-            wgpu::VertexAttribute {
-                format: wgpu::VertexFormat::Uint32,
-                offset: 16,
-                shader_location: 3,
-            },
-        ],
-    };
+// `pos: Sint32x2 @0`, `dim: Uint32 @8`, `uv_and_kind: Uint32 @12`,
+// `color: Uint32 @16` — the per-instance `GlyphInstance` stream.
+const GLYPH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
+    0 => Sint32x2,
+    1 => Uint32,
+    2 => Uint32,
+    3 => Uint32,
+];
 
-    device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-        label: Some("palantir text pipeline"),
-        layout: Some(layout),
-        vertex: wgpu::VertexState {
-            module: shader,
-            entry_point: Some("vs_main"),
-            buffers: &[vertex_buffer_layout],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        },
-        fragment: Some(wgpu::FragmentState {
-            module: shader,
-            entry_point: Some("fs_main"),
-            targets: &[Some(wgpu::ColorTargetState {
-                format,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                write_mask: wgpu::ColorWrites::default(),
-            })],
-            compilation_options: wgpu::PipelineCompilationOptions::default(),
-        }),
-        primitive: wgpu::PrimitiveState {
-            topology: wgpu::PrimitiveTopology::TriangleStrip,
-            ..Default::default()
-        },
-        depth_stencil,
-        multisample,
-        cache: None,
-        multiview_mask: None,
-    })
+// Compile-time guard: attribute offsets must match the struct fields they
+// feed. `array_stride == size_of` alone wouldn't catch a same-size field
+// reorder; `offset_of!` does. Matches the guards on the quad / mesh / image
+// / curve pipelines.
+const _: () = {
+    use std::mem::offset_of;
+    assert!(GLYPH_INSTANCE_ATTRS[0].offset == offset_of!(GlyphInstance, pos) as u64);
+    assert!(GLYPH_INSTANCE_ATTRS[1].offset == offset_of!(GlyphInstance, dim) as u64);
+    assert!(GLYPH_INSTANCE_ATTRS[2].offset == offset_of!(GlyphInstance, uv_and_kind) as u64);
+    assert!(GLYPH_INSTANCE_ATTRS[3].offset == offset_of!(GlyphInstance, color) as u64);
+};
+
+fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
+    wgpu::VertexBufferLayout {
+        array_stride: std::mem::size_of::<GlyphInstance>() as u64,
+        step_mode: wgpu::VertexStepMode::Instance,
+        attributes: &GLYPH_INSTANCE_ATTRS,
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -625,13 +585,7 @@ pub mod test_support {
             format: wgpu::TextureFormat,
             shaper: TextShaper,
         ) -> Self {
-            Self::new(
-                device,
-                format,
-                wgpu::MultisampleState::default(),
-                &[None],
-                shaper,
-            )
+            Self::new(device, format, &[None], shaper)
         }
 
         /// Append-mode prepare into batch 0.
