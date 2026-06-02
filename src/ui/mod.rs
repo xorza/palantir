@@ -320,6 +320,9 @@ impl Ui {
 
         let first_frame = self.prev_stamp.is_none();
         self.advance_clock(stamp.time);
+        // Refresh the input clock so input handlers running before the
+        // next frame timestamp double-clicks on this deterministic time.
+        self.input.frame_time = self.time;
         let plan = self.classify_frame(stamp.display);
 
         self.repaint_requested = false;
