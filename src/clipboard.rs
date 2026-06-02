@@ -21,9 +21,9 @@ struct Inner {
     /// clipboard.
     #[cfg(not(test))]
     os: Option<arboard::Clipboard>,
-    /// Authoritative copy when `os` is `None`; also written through
-    /// on every `set` so a transient OS failure doesn't lose the
-    /// most recent value.
+    /// Authoritative copy when `os` is `None`, and the fallback when an
+    /// OS *read* fails. A silent OS *write* failure is not covered — a
+    /// later successful OS read still shadows this mirror.
     cache: String,
 }
 
@@ -54,8 +54,8 @@ pub fn get() -> String {
 }
 
 /// Overwrite the clipboard with `s`. Writes to the OS clipboard and
-/// mirrors into the cache so a later `get` round-trip is stable
-/// across an OS-clipboard hiccup.
+/// mirrors into the cache; the cache backs `get` when the OS *read*
+/// (not write) fails or the OS backend is absent.
 pub fn set(s: &str) {
     #[allow(unused_mut)]
     let mut g = instance().lock().expect("clipboard mutex poisoned");

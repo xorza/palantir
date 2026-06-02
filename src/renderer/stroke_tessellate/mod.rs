@@ -145,23 +145,39 @@ impl<'a> ColorPlan<'a> {
         }
     }
 
-    /// `(trailing, leading)` at kept point with original index `i`.
-    /// `is_first` / `is_last` signal endpoints — there the missing
-    /// side mirrors the present side so the walker has a single
-    /// cap color to use. Stored colours are `ColorU8`; widened to
-    /// `Color` here so the alpha-scale arithmetic in the walker
-    /// stays in f32.
-    fn at(self, i: usize, is_first: bool, is_last: bool) -> (Color, Color) {
+    /// Trailing/leading colours at the kept point with original index
+    /// `i`. `is_first` / `is_last` signal endpoints — there the missing
+    /// side mirrors the present side so the walker has a single cap
+    /// color to use. Stored colours are `ColorU8`; widened to `Color`
+    /// here so the alpha-scale arithmetic in the walker stays in f32.
+    fn at(self, i: usize, is_first: bool, is_last: bool) -> EdgeColors {
         match self {
-            ColorPlan::Single(c) => (c.into(), c.into()),
-            ColorPlan::PerPoint(cs) => (cs[i].into(), cs[i].into()),
+            ColorPlan::Single(c) => EdgeColors {
+                trailing: c.into(),
+                leading: c.into(),
+            },
+            ColorPlan::PerPoint(cs) => EdgeColors {
+                trailing: cs[i].into(),
+                leading: cs[i].into(),
+            },
             ColorPlan::PerSegment(cs) => {
                 let trailing = if is_first { cs[0] } else { cs[i - 1] };
                 let leading = if is_last { trailing } else { cs[i] };
-                (trailing.into(), leading.into())
+                EdgeColors {
+                    trailing: trailing.into(),
+                    leading: leading.into(),
+                }
             }
         }
     }
+}
+
+/// Trailing/leading edge colours at one kept polyline point. Equal for
+/// Single / PerPoint; they diverge at PerSegment colour boundaries.
+#[derive(Clone, Copy)]
+struct EdgeColors {
+    trailing: Color,
+    leading: Color,
 }
 
 /// Geometry + style parameters shared by both emit paths. Pre-
@@ -267,7 +283,10 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
 
         let is_first = prev_seg_normal.is_none();
         let is_last = next_seg_normal.is_none();
-        let (trailing_color, leading_color) = plan.at(i, is_first, is_last);
+        let EdgeColors {
+            trailing: trailing_color,
+            leading: leading_color,
+        } = plan.at(i, is_first, is_last);
         let trailing_color = trailing_color.scale_premultiplied(e.geo.alpha_scale);
         let leading_color = leading_color.scale_premultiplied(e.geo.alpha_scale);
         let current_offset = e.cursor();
@@ -392,10 +411,9 @@ impl<'a> Emitter<'a> {
         ]);
     }
 
-    /// Dispatch to bevel / round chrome plus the concave-side
-    /// notch fill. Shared between [`emit_simple`] and
-    /// [`emit_per_segment`] so the two paths can't drift on join
-    /// geometry.
+    /// Dispatch to bevel / round chrome plus the concave-side notch
+    /// fill — the shared join-geometry helper for [`emit_polyline`]'s
+    /// interior-join arms.
     fn push_join_chrome(
         &mut self,
         center: Vec2,

@@ -569,10 +569,16 @@ impl Composer {
                         min: p.bbox.min + p.origin,
                         size: p.bbox.size,
                     });
-                    let min = world_bbox.min * scale;
-                    let max = world_bbox.max() * scale;
+                    // Mesh skips snapping (matches polyline/curve); route
+                    // through the shared scaler so the cull tracks `DrawRect`
+                    // instead of open-coding `* scale`.
+                    let phys_bbox = world_bbox.scaled_by(scale, false);
                     let fringe = Vec2::splat(0.5);
-                    let mesh_urect = urect_from_phys(min - fringe, max + fringe, viewport_phys);
+                    let mesh_urect = urect_from_phys(
+                        phys_bbox.min - fringe,
+                        phys_bbox.max() + fringe,
+                        viewport_phys,
+                    );
                     // Clip-cull + batch-close: a mesh fully outside the
                     // active scissor (e.g. scrolled out of an ancestor clip)
                     // is skipped; a surviving one closes the open text batch

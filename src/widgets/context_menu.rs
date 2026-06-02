@@ -14,7 +14,7 @@ use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::{Response, ResponseSnapshot};
+use crate::widgets::{Response, ResponseSnapshot, WidgetEntry, enter_widget};
 
 use crate::primitives::interned_str::InternedStr;
 use glam::Vec2;
@@ -108,16 +108,23 @@ impl ContextMenu {
             return ContextMenuResponse::default();
         };
 
-        let theme = ui.theme.context_menu.clone();
         let body_id = self.for_id.with("ctx_menu_body");
+
+        // Borrow the sub-theme to copy out the two scalars and the single
+        // `Background` we keep — avoids cloning the whole `ContextMenuTheme`
+        // (including the unused per-item looks) every open frame.
+        let ctx = &ui.theme.context_menu;
+        let theme_padding = ctx.padding;
+        let theme_min_width = ctx.min_width;
+        let panel = self.chrome.unwrap_or_else(|| ctx.panel.clone());
 
         let mut e = self.element;
         e.salt = Salt::Verbatim(body_id);
         if e.padding == Spacing::ZERO {
-            e.padding = theme.padding;
+            e.padding = theme_padding;
         }
         if e.min_size.w <= 0.0 {
-            e.min_size.w = theme.min_width;
+            e.min_size.w = theme_min_width;
         }
 
         // `Popup::show` handles surface-aware placement (flip when
@@ -125,7 +132,7 @@ impl ContextMenu {
         // first open). ContextMenu just hands the raw anchor through.
         let mut popup = Popup::anchored_to(raw_anchor)
             .click_outside(ClickOutside::Dismiss)
-            .background(self.chrome.unwrap_or(theme.panel));
+            .background(panel);
         *popup.element_mut() = e;
         let PopupResponse {
             dismissed,
@@ -243,28 +250,34 @@ impl MenuItem {
     }
 
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
-        let id = ui.make_persistent_id(self.element.salt);
-        let disabled = self.element.flags.is_disabled();
-        // Single `response_for` probe, reused below: the row's body
-        // records only decorative `Text` leaves, so the state is
-        // identical before and after `ui.node`. `picked_state` carries
-        // the row's own disabled flag for theme picking; `raw_state`
-        // stays pristine for the returned `Response`.
-        let raw_state = ui.response_for(id);
-        let mut picked_state = raw_state;
-        picked_state.disabled = disabled;
+        // Single `response_for` probe via the shared entry helper: the
+        // row's body records only decorative `Text` leaves, so the state
+        // is identical before and after `ui.node`. `merged` ORs the row's
+        // own disabled flag onto the cascaded one (a disabled ancestor
+        // still disables the row); `raw` stays pristine for the returned
+        // `Response`.
+        let WidgetEntry {
+            id,
+            raw: raw_state,
+            merged: picked_state,
+        } = enter_widget(ui, &self.element);
+        let disabled = picked_state.disabled;
 
-        let theme = ui.theme.context_menu.item.clone();
-        let look = theme.pick(picked_state);
+        // Borrow the per-item theme and copy out only what the row paints
+        // — avoids cloning the whole `MenuItemTheme` (three looks) per
+        // row, per frame. `pick` returns a borrow, so read everything off
+        // it before the borrow ends.
+        let item = &ui.theme.context_menu.item;
+        let look = item.pick(picked_state);
         let look_bg = look.background.clone();
         let text_style = look.text.unwrap_or(ui.theme.text);
+        let padding = item.padding;
         // Shortcut hint reads muted — same style as the label but the
         // theme's `shortcut` color.
         let shortcut_style = TextStyle {
-            color: theme.shortcut,
+            color: item.shortcut,
             ..text_style
         };
-        let padding = theme.padding;
 
         let mut element = self.element;
         // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF — see `docs/popups.md`.

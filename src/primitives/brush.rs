@@ -539,6 +539,13 @@ impl std::hash::Hash for Brush {
 }
 
 impl Animatable for Brush {
+    // Gradients can't meaningfully interpolate, so every op here treats
+    // them as snap-only: `lerp` hands back an endpoint, and the additive
+    // ops (`add`/`sub`/`scale`) return their operand unchanged while
+    // `magnitude_squared` reports 0. So a spring driving a gradient makes
+    // no integrator progress and its zero magnitude settles it on the
+    // first tick — an effective snap, matching `lerp`. (Not a panic:
+    // spring-animating a gradient theme is a user choice, not a logic bug.)
     #[inline]
     fn lerp(a: Self, b: Self, t: f32) -> Self {
         // Match on `(&a, &b)` instead of `(a, b)` so the gradient
