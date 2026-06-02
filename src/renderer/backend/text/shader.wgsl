@@ -46,7 +46,7 @@ var<immediate> imm: Immediates;
 @group(0) @binding(2) var atlas_sampler: sampler;
 
 @vertex
-fn vs_main(in: VertexIn) -> VertexOut {
+fn vs(in: VertexIn) -> VertexOut {
     let w = in.dim & 0xFFFFu;
     let h = (in.dim >> 16u) & 0xFFFFu;
 
@@ -81,7 +81,7 @@ fn vs_main(in: VertexIn) -> VertexOut {
 }
 
 @fragment
-fn fs_main(in: VertexOut) -> @location(0) vec4<f32> {
+fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     if (in.kind == 0u) {
         // Mask: vertex color modulated by R-channel coverage.
         let cov = textureSampleLevel(mask_atlas, atlas_sampler, in.uv, 0.0).x;
