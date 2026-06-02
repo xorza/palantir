@@ -61,16 +61,27 @@ impl ToggleTheme {
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
     /// corner radius and a `TERMINAL_BG` check.
     pub fn checkbox() -> Self {
-        Self::with_radius(3.0)
+        Self::built(3.0, 16.0, 4.0, palette::TERMINAL_BG)
     }
 
     /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
     /// radius (`box_size * 0.5`) and a `TERMINAL_BG` dot.
     pub fn radio() -> Self {
-        Self::with_radius(8.0)
+        Self::built(8.0, 16.0, 4.0, palette::TERMINAL_BG)
     }
 
-    fn with_radius(corner: f32) -> Self {
+    /// Defaults sized for [`crate::ToggleSwitch`] — a 20 px-tall pill
+    /// track with a white sliding knob. `box_size` is the track height;
+    /// the knob diameter is `box_size - 2 * indicator_inset`. Unlike the
+    /// checkbox/radio, the switch defaults to an animated knob slide +
+    /// track cross-fade — the motion is the point of the control.
+    pub fn switch() -> Self {
+        let mut t = Self::built(10.0, 20.0, 3.0, palette::TEXT);
+        t.anim = Some(AnimSpec::SPRING);
+        t
+    }
+
+    fn built(corner: f32, box_size: f32, indicator_inset: f32, indicator: Color) -> Self {
         let radius = Corners::all(corner);
         let edge = palette::TEXT_MUTED.with_alpha(0.35);
         let bg = |fill: Color, stroke: Stroke| -> Option<Background> {
@@ -125,10 +136,10 @@ impl ToggleTheme {
         Self {
             unchecked,
             checked,
-            indicator: palette::TERMINAL_BG,
-            box_size: 16.0,
+            indicator,
+            box_size,
             indicator_stroke: 2.0,
-            indicator_inset: 4.0,
+            indicator_inset,
             row_gap: 8.0,
             anim: None,
         }

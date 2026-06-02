@@ -1,7 +1,9 @@
 pub(crate) mod button;
 pub(crate) mod context_menu;
 pub(crate) mod palette;
+pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
+pub(crate) mod slider;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod toggle;
@@ -13,7 +15,9 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
+use crate::widgets::theme::slider::SliderTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -37,10 +41,13 @@ pub struct Theme {
     pub menu_button: ButtonTheme,
     pub checkbox: ToggleTheme,
     pub radio: ToggleTheme,
+    pub switch: ToggleTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub context_menu: ContextMenuTheme,
     pub tooltip: TooltipTheme,
+    pub progress_bar: ProgressBarTheme,
+    pub slider: SliderTheme,
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
@@ -110,6 +117,7 @@ impl Theme {
         self.menu_button.for_each_text(f);
         self.checkbox.for_each_text(f);
         self.radio.for_each_text(f);
+        self.switch.for_each_text(f);
         self.text_edit.for_each_text(f);
         self.context_menu.for_each_text(f);
         f(&mut self.tooltip.text);
@@ -123,10 +131,13 @@ impl Default for Theme {
             menu_button: ButtonTheme::menu_button(),
             checkbox: ToggleTheme::checkbox(),
             radio: ToggleTheme::radio(),
+            switch: ToggleTheme::switch(),
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
             context_menu: ContextMenuTheme::default(),
             tooltip: TooltipTheme::default(),
+            progress_bar: ProgressBarTheme::default(),
+            slider: SliderTheme::default(),
             text: TextStyle::default(),
             window_clear: palette::TERMINAL_BG,
             panel_background: None,

@@ -6,10 +6,10 @@ use palantir::{
 mod showcase;
 use showcase::app_state::{self, AppState};
 use showcase::{
-    alignment, animations, bezier, buttons, checkbox, clip, context_menu, disabled, drag, gap,
-    gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom, pan_zoom_auto, panels,
-    popup, radio, rect_demo, scroll, shadow, sizing, spacing, text, text_edit, text_zorder,
-    tooltips, transform, visibility, wrap,
+    alignment, animations, bezier, buttons, checkbox, clip, context_menu, dialogs, disabled, drag,
+    gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom, pan_zoom_auto,
+    panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider, spacing, switch,
+    text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
 };
 
 /// State the showcase binary carries across frames: which tab is
@@ -51,6 +51,10 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("buttons", buttons::build),
     ("checkbox", checkbox::build),
     ("radio", radio::build),
+    ("progress", progress::build),
+    ("switch", switch::build),
+    ("slider", slider::build),
+    ("combo + modal", dialogs::build),
     ("popup", popup::build),
     ("tooltips", tooltips::build),
     ("context menu", context_menu::build),
