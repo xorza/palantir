@@ -9,12 +9,13 @@ use crate::input::keyboard::{
     Key, KeyPress, KeyboardEvent, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
 };
 use crate::input::pointer::{PointerButton, PointerEvent};
-use crate::input::sense::{DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
+use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
+use std::time::Duration;
 use strum::EnumCount as _;
 
 /// Per-button press/drag/click capture. One slot per [`PointerButton`].
@@ -43,14 +44,17 @@ pub(crate) struct Capture {
     /// One-frame edge: widget on which two consecutive clicks landed
     /// within [`DOUBLE_CLICK_WINDOW`]. Cleared by `post_record`.
     pub(crate) frame_double_click: Option<WidgetId>,
-    /// Instant of the most recent click on this button, used to detect
-    /// a follow-up click within [`DOUBLE_CLICK_WINDOW`]. Cleared once
-    /// a double-click fires so a third click within the same window
-    /// doesn't fire a second double-click.
-    pub(crate) last_click_at: Option<std::time::Instant>,
+    /// Frame time ([`crate::Ui`]'s clock) of the most recent click on
+    /// this button, used to detect a follow-up click within
+    /// [`DOUBLE_CLICK_WINDOW`]. Cleared once a double-click fires so a
+    /// third click within the same window doesn't fire a second one.
+    pub(crate) last_click_at: Option<Duration>,
     /// Widget id of the most recent click on this button. A double-
     /// click only fires when the follow-up click lands on the same id.
     pub(crate) last_click_id: Option<WidgetId>,
+    /// Pointer position of the most recent click. A double-click only
+    /// fires when the follow-up lands within [`DOUBLE_CLICK_RADIUS`].
+    pub(crate) last_click_pos: Option<Vec2>,
 }
 
 impl Capture {
@@ -532,6 +536,11 @@ pub(crate) struct InputState {
     /// pointer flag for `Leave`) — idle frames pay nothing. Cleared
     /// in [`Self::drain_per_frame_queues`].
     pub(crate) frame_pointer_events: Vec<PointerEvent>,
+    /// Frame clock (`Ui::time`) as of the last `Ui::frame`, refreshed
+    /// once per frame so input handlers running *between* frames stamp
+    /// events on the same deterministic clock the rest of the crate uses
+    /// (vs wall-clock `Instant`). Drives double-click timing.
+    pub(crate) frame_time: Duration,
 }
 
 impl Default for InputState {
@@ -565,6 +574,7 @@ impl InputState {
             repaint_requested_since_last_frame: false,
             subs: Subscriptions::default(),
             frame_pointer_events: Vec::new(),
+            frame_time: Duration::ZERO,
         }
     }
 
@@ -744,6 +754,9 @@ impl InputState {
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
+                // Frame clock for double-click timing — read before the
+                // `capture_mut` borrow.
+                let now = self.frame_time;
                 let cap = self.capture_mut(btn);
                 let drag_suppressed_click = cap.drag_latched;
                 let captured = cap.active.take();
@@ -753,22 +766,32 @@ impl InputState {
                     if hit == Some(a) && !drag_suppressed_click {
                         let cap = self.capture_mut(btn);
                         cap.frame_click = Some(a);
-                        // Double-click detection: two clicks on the same
-                        // widget within `DOUBLE_CLICK_WINDOW`. Resets the
-                        // last-click slot on a fire so a third click
-                        // doesn't pair with the second.
-                        let now = std::time::Instant::now();
+                        // Double-click: same widget, within
+                        // `DOUBLE_CLICK_WINDOW` on the frame clock *and*
+                        // `DOUBLE_CLICK_RADIUS` of the first press — a slow
+                        // drift between the two no longer false-fires.
+                        // Frame-time (not wall-clock `Instant`) keeps this
+                        // deterministic and testable. Resets the last-click
+                        // slot on a fire so a third click doesn't pair with
+                        // the second.
+                        let near = match (pointer_pos, cap.last_click_pos) {
+                            (Some(p), Some(q)) => p.distance(q) <= DOUBLE_CLICK_RADIUS,
+                            _ => false,
+                        };
                         let is_double = cap.last_click_id == Some(a)
                             && cap.last_click_at.is_some_and(|prev| {
-                                now.duration_since(prev) <= DOUBLE_CLICK_WINDOW
-                            });
+                                now.saturating_sub(prev) <= DOUBLE_CLICK_WINDOW
+                            })
+                            && near;
                         if is_double {
                             cap.frame_double_click = Some(a);
                             cap.last_click_at = None;
                             cap.last_click_id = None;
+                            cap.last_click_pos = None;
                         } else {
                             cap.last_click_at = Some(now);
                             cap.last_click_id = Some(a);
+                            cap.last_click_pos = pointer_pos;
                         }
                     }
                 }

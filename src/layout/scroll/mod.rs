@@ -116,6 +116,164 @@ impl Default for ScrollLayoutState {
     }
 }
 
+/// Normalized natural offset bounds, per axis (see
+/// [`ScrollLayoutState::natural_bounds`]). `lo`/`hi` are the ordered
+/// endpoints — either may be the larger raw value when content
+/// underflows the viewport.
+struct OffsetBounds {
+    lo: Vec2,
+    hi: Vec2,
+}
+
+/// Theme-derived click-to-page geometry for one axis, computed by the
+/// scroll widget (from the bar geometry) and handed to
+/// [`ScrollLayoutState::apply_track_page`]. Primitives only — the layout
+/// state stays unaware of `ScrollbarTheme`.
+pub(crate) struct TrackPage {
+    pub(crate) click_main: f32,
+    pub(crate) thumb_offset: f32,
+    pub(crate) thumb_size: f32,
+    pub(crate) page_step: f32,
+    pub(crate) max_off: f32,
+}
+
+/// Input-driven `offset` / `zoom` mutation. The scroll widget computes
+/// the per-frame inputs (wheel delta, pivot, thumb-drag state, bar
+/// geometry) and calls these; the offset-write invariant lives here on
+/// the type that owns `offset`, not in `Scroll::show`. All inputs are
+/// primitives so layout stays decoupled from widgets / input / theme.
+impl ScrollLayoutState {
+    /// Natural offset bounds per axis: `[0, content·zoom − viewport]`
+    /// extended by `content_margin·zoom` on each side.
+    fn natural_bounds(&self) -> OffsetBounds {
+        let [cml, cmt, cmr, cmb] = self.content_margin.as_array();
+        let min_x = -cml * self.zoom;
+        let max_x = self.content.w * self.zoom - self.viewport.w + cmr * self.zoom;
+        let min_y = -cmt * self.zoom;
+        let max_y = self.content.h * self.zoom - self.viewport.h + cmb * self.zoom;
+        OffsetBounds {
+            lo: Vec2::new(min_x.min(max_x), min_y.min(max_y)),
+            hi: Vec2::new(min_x.max(max_x), min_y.max(max_y)),
+        }
+    }
+
+    /// Pivot-anchored zoom step: clamp `zoom · delta` to
+    /// `[min_zoom, max_zoom]`, then shift `offset` so the widget-local
+    /// `pivot` point stays fixed across the scale change. No-op when the
+    /// effective scale is ~1.
+    pub(crate) fn apply_zoom(
+        &mut self,
+        min_zoom: f32,
+        max_zoom: f32,
+        pivot: Vec2,
+        zoom_delta: f32,
+    ) {
+        let new_zoom = (self.zoom * zoom_delta).clamp(min_zoom, max_zoom);
+        let dz_eff = if self.zoom > 0.0 {
+            new_zoom / self.zoom
+        } else {
+            1.0
+        };
+        if (dz_eff - 1.0).abs() > f32::EPSILON {
+            self.offset = (self.offset + pivot) * dz_eff - pivot;
+            self.zoom = new_zoom;
+        }
+    }
+
+    /// Wheel/touchpad pan. Each axis clamps to its natural range
+    /// *extended to include the current offset*, so a pan toward the
+    /// range works while a pan further out-of-range is blocked —
+    /// pivot-anchored zoom can legitimately leave `offset` outside the
+    /// range and a wheel-pan must not yank it back in one frame. Only
+    /// nonzero deltas clamp (a pure-zoom frame leaves `offset` alone).
+    pub(crate) fn apply_wheel_pan(&mut self, pan_x: bool, pan_y: bool, pan_delta: Vec2) {
+        let b = self.natural_bounds();
+        if pan_x && pan_delta.x != 0.0 {
+            let lo = self.offset.x.min(b.lo.x);
+            let hi = self.offset.x.max(b.hi.x);
+            self.offset.x = (self.offset.x + pan_delta.x).clamp(lo, hi);
+        }
+        if pan_y && pan_delta.y != 0.0 {
+            let lo = self.offset.y.min(b.lo.y);
+            let hi = self.offset.y.max(b.hi.y);
+            self.offset.y = (self.offset.y + pan_delta.y).clamp(lo, hi);
+        }
+    }
+
+    /// Clamp `offset` straight to the natural range on both axes. Used
+    /// by non-zoomable scrolls each frame, where there's no legitimate
+    /// reason to hold `offset` out of range and a shrunk `content` would
+    /// otherwise strand a stale offset past the now-empty tail. Zoomable
+    /// scrolls skip this — they need the out-of-range drift the pivot
+    /// path depends on.
+    pub(crate) fn clamp_to_natural(&mut self) {
+        let b = self.natural_bounds();
+        self.offset.x = self.offset.x.clamp(b.lo.x, b.hi.x);
+        self.offset.y = self.offset.y.clamp(b.lo.y, b.hi.y);
+    }
+
+    /// Thumb-drag pan on `axis`. Snapshots `offset` into `drag_anchor`
+    /// on the `drag_started` edge, then composes `offset.main =
+    /// anchor.main + drag_delta.main · factor` (cumulative delta against
+    /// a stable anchor keeps it idempotent across re-records). `geom` is
+    /// the theme-derived `(factor, max_off)` for this axis, `None` when
+    /// the bar has no thumb.
+    pub(crate) fn apply_thumb_drag(
+        &mut self,
+        axis: Axis,
+        drag_started: bool,
+        drag_delta: Option<Vec2>,
+        geom: Option<(f32, f32)>,
+    ) {
+        if drag_started {
+            self.drag_anchor = Some((axis, self.offset));
+        }
+        let Some((anchor_axis, anchor)) = self.drag_anchor else {
+            return;
+        };
+        if anchor_axis != axis {
+            return;
+        }
+        let Some(delta) = drag_delta else {
+            // Drag ended on this thumb — drop the anchor so the next
+            // press starts a fresh snapshot.
+            self.drag_anchor = None;
+            return;
+        };
+        let Some((factor, max_off)) = geom else {
+            return;
+        };
+        let target = axis.main_v(anchor) + axis.main_v(delta) * factor;
+        let clamped = target.clamp(0.0, max_off);
+        match axis {
+            Axis::X => self.offset.x = clamped,
+            Axis::Y => self.offset.y = clamped,
+        }
+    }
+
+    /// Click-on-track paging on `axis`: a press above the thumb pages
+    /// `offset` back one viewport, below it pages forward, clamped to
+    /// `[0, max_off]` (toward-natural only). `page` is `None` when there
+    /// was no qualifying click this frame.
+    pub(crate) fn apply_track_page(&mut self, axis: Axis, page: Option<TrackPage>) {
+        let Some(p) = page else {
+            return;
+        };
+        let cur = axis.main_v(self.offset);
+        let next = if p.click_main < p.thumb_offset {
+            (cur - p.page_step).max(0.0)
+        } else if p.click_main > p.thumb_offset + p.thumb_size {
+            (cur + p.page_step).min(p.max_off)
+        } else {
+            cur
+        };
+        match axis {
+            Axis::X => self.offset.x = next,
+            Axis::Y => self.offset.y = next,
+        }
+    }
+}
+
 /// Cross-frame map of [`ScrollLayoutState`] keyed by the inner
 /// viewport's `WidgetId`. Lives on [`LayoutEngine`]; the driver
 /// writes layout-derived fields, the widget mutates `offset` from

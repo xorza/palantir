@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
-use crate::layout::scroll::ScrollLayoutState;
+use crate::layout::scroll::{ScrollLayoutState, TrackPage};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
@@ -570,97 +570,25 @@ impl Scroll {
             // driver — measure inflates `content` by these totals so
             // overflow / slack / bar math sees the padded extent.
             row.content_margin = self.content_margin;
-            // 1) Zoom step (pivot-anchored). Clamp `new_zoom` to
-            //    `cfg.range`, derive the effective `dz_eff`, then
-            //    update `offset` so the pivot point in widget-local
-            //    coords stays fixed across the scale change.
+            // The offset/zoom-mutation math lives on `ScrollLayoutState`
+            // (the type that owns `offset`); the widget computes the
+            // per-frame inputs + the theme-derived bar geometry here and
+            // calls the row methods to apply them.
+            // 1) Pivot-anchored zoom step.
             if let (Some(cfg), Some(p)) = (self.zoom.as_ref(), pivot_local) {
-                let new_zoom = (row.zoom * zoom_delta).clamp(*cfg.range.start(), *cfg.range.end());
-                let dz_eff = if row.zoom > 0.0 {
-                    new_zoom / row.zoom
-                } else {
-                    1.0
-                };
-                if (dz_eff - 1.0).abs() > f32::EPSILON {
-                    row.offset = (row.offset + p) * dz_eff - p;
-                    row.zoom = new_zoom;
-                }
+                row.apply_zoom(*cfg.range.start(), *cfg.range.end(), p, zoom_delta);
             }
-            // 2) Pan from the wheel delta. Only clamp when pan_delta is
-            //    actually nonzero — pure-zoom frames must leave the
-            //    pivot-anchored offset alone (otherwise repeated tiny
-            //    pinches near a content edge would each snap offset
-            //    back into the natural range and drift the world point
-            //    under the cursor).
-            //
-            //    Natural range is `[min(0, slack), max(0, slack)]`:
-            //    `[0, slack]` for overflow, `[slack, 0]` for underflow.
-            //    Pivot-anchored zoom can legitimately leave `offset`
-            //    outside that range — e.g. user zooms out below slack=0
-            //    (offset goes negative to anchor the cursor), then
-            //    zooms back in so slack flips positive while offset is
-            //    still negative. A wheel-pan that frame must NOT yank
-            //    `offset` back to `[0, slack]` (that's the visible
-            //    "snap to top" when the bar reappears). Extend the
-            //    clamp range to include the current offset so pan
-            //    further out-of-range is blocked but pan toward the
-            //    natural range works — the user scrolls back gradually,
-            //    never with a one-frame yank.
-            // Natural offset range = `[0, content - viewport]` per
-            // axis (scaled by `zoom`), extended on each side by the
-            // user-set `content_margin`. Margin is invisible
-            // overscroll — doesn't show up in bars, just lets the
-            // user wheel/drag past the natural bounds.
-            let [cml, cmt, cmr, cmb] = row.content_margin.as_array();
-            let neg_x = cml * row.zoom;
-            let neg_y = cmt * row.zoom;
-            let slack_x = row.content.w * row.zoom - row.viewport.w;
-            let slack_y = row.content.h * row.zoom - row.viewport.h;
-            let min_x = -neg_x;
-            let max_x = slack_x + cmr * row.zoom;
-            let min_y = -neg_y;
-            let max_y = slack_y + cmb * row.zoom;
-            if pan.x && pan_delta.x != 0.0 {
-                let lo = row.offset.x.min(min_x.min(max_x));
-                let hi = row.offset.x.max(min_x.max(max_x));
-                row.offset.x = (row.offset.x + pan_delta.x).clamp(lo, hi);
-            }
-            if pan.y && pan_delta.y != 0.0 {
-                let lo = row.offset.y.min(min_y.min(max_y));
-                let hi = row.offset.y.max(min_y.max(max_y));
-                row.offset.y = (row.offset.y + pan_delta.y).clamp(lo, hi);
-            }
-
-            // 2b) Settled clamp for non-zoomable scrolls. The
-            //    out-of-range preservation above exists only for
-            //    pivot-anchored zoom — a scroll with no zoom configured
-            //    has no legitimate reason to hold `offset` outside the
-            //    natural range, so the pan-gated clamp leaves a stale
-            //    offset stranded when `content` *shrinks* with no wheel
-            //    input (collapse a node, filter a list): nothing pulls
-            //    the viewport back from the now-empty tail. Clamp every
-            //    frame here. `[min, max]` already folds in
-            //    `content_margin`, so intentional margin overscroll is
-            //    preserved; only a genuine over-range offset snaps back.
-            //    Zoomable scrolls skip this and keep the gradual
-            //    pan-return behaviour the zoom path depends on.
+            // 2) Wheel pan, then 2b) the settled clamp for non-zoomable
+            //    scrolls (zoomable ones keep the out-of-range drift the
+            //    pivot path depends on).
+            row.apply_wheel_pan(pan.x, pan.y, pan_delta);
             if self.zoom.is_none() {
-                row.offset.x = row.offset.x.clamp(min_x.min(max_x), min_x.max(max_x));
-                row.offset.y = row.offset.y.clamp(min_y.min(max_y), min_y.max(max_y));
+                row.clamp_to_natural();
             }
-
-            // 3) Thumb-drag pan. Snapshot `offset` on the
-            //    `drag_started` edge; subsequent frames compose
-            //    `offset.main = anchor.main + drag_delta.main *
-            //    factor` where `factor = max_off / (track - thumb)`.
-            //    Cumulative `drag_delta` against a stable anchor
-            //    keeps the math idempotent across re-records; the
-            //    alternative ("offset += this-frame-delta") would
-            //    double-apply because `drag_delta` is the total
-            //    travel since press, not the per-frame increment.
-            //    Bars use the *scaled* content extent so dragging
-            //    inside a zoomed-in viewport tracks the cursor at
-            //    1:1 with the visible thumb.
+            // 3) Thumb-drag pan. Bars use the *scaled* content extent so
+            //    dragging inside a zoomed viewport tracks the cursor 1:1
+            //    with the visible thumb; `(factor, max_off)` is the only
+            //    theme-derived input the row method needs.
             let bl = bar_layout(row, pan, self.element.padding, &theme, self.bar_mode);
             for (axis, resp) in [(Axis::Y, resp_v), (Axis::X, resp_h)] {
                 let panned = match axis {
@@ -670,54 +598,26 @@ impl Scroll {
                 if !panned {
                     continue;
                 }
-                if resp.drag_started() {
-                    row.drag_anchor = Some((axis, row.offset));
-                }
-                let Some((anchor_axis, anchor)) = row.drag_anchor else {
-                    continue;
-                };
-                if anchor_axis != axis {
-                    continue;
-                }
-                let Some(delta) = resp.drag_delta() else {
-                    // Drag ended on this thumb — drop the anchor so
-                    // the next press starts a fresh snapshot.
-                    row.drag_anchor = None;
-                    continue;
-                };
                 let track_main = axis.main(bl.bar_viewport);
                 let main_content = axis.main(bl.scaled_content);
-                let Some(geom) = bar_geometry(
+                let geom = bar_geometry(
                     track_main,
                     main_content,
                     axis.main_v(row.offset),
                     track_main,
                     &theme,
-                ) else {
-                    continue;
-                };
-                let travel = (track_main - geom.thumb_size).max(f32::EPSILON);
-                let max_off = (main_content - track_main).max(0.0);
-                let factor = max_off / travel;
-                let target = axis.main_v(anchor) + axis.main_v(delta) * factor;
-                let clamped = target.clamp(0.0, max_off);
-                match axis {
-                    Axis::X => row.offset.x = clamped,
-                    Axis::Y => row.offset.y = clamped,
-                }
+                )
+                .map(|g| {
+                    let travel = (track_main - g.thumb_size).max(f32::EPSILON);
+                    let max_off = (main_content - track_main).max(0.0);
+                    (max_off / travel, max_off)
+                });
+                row.apply_thumb_drag(axis, resp.drag_started(), resp.drag_delta(), geom);
             }
-
-            // 4) Click-on-track to page. Press on the empty track
-            //    above/below the thumb pages the offset by one viewport
-            //    in the click direction. The track's main-axis origin
-            //    is 0 in outer-local coords, so the click position
-            //    along the bar is `pointer.main - outer_origin.main`.
-            //    Pointer-position is the current pointer (release-
-            //    frame); good enough since clicks fire on release and
-            //    the pointer hasn't moved far. Clamped to `[0,
-            //    max_off]` — same range as thumb-drag, not the wheel's
-            //    extended range, because click-paging is always a
-            //    toward-natural motion.
+            // 4) Click-on-track to page. Press above/below the thumb pages
+            //    the offset by one viewport. The track's main-axis origin
+            //    is 0 in outer-local coords, so the click position along
+            //    the bar is `pointer.main - widget_origin.main`.
             let panned_axes = [
                 (Axis::Y, resp_track_v, pan.y),
                 (Axis::X, resp_track_h, pan.x),
@@ -729,32 +629,23 @@ impl Scroll {
                 let (Some(ptr), Some(origin)) = (pointer, widget_origin) else {
                     continue;
                 };
-                // page step = bar_viewport.main (one visible page).
                 let page_step = axis.main(bl.bar_viewport);
                 let main_content = axis.main(bl.scaled_content);
-                let Some(geom) = bar_geometry(
+                let page = bar_geometry(
                     page_step,
                     main_content,
                     axis.main_v(row.offset),
                     page_step,
                     &theme,
-                ) else {
-                    continue;
-                };
-                let click_main = axis.main_v(ptr) - axis.main_v(origin);
-                let max_off = (main_content - page_step).max(0.0);
-                let cur = axis.main_v(row.offset);
-                let next = if click_main < geom.thumb_offset {
-                    (cur - page_step).max(0.0)
-                } else if click_main > geom.thumb_offset + geom.thumb_size {
-                    (cur + page_step).min(max_off)
-                } else {
-                    cur
-                };
-                match axis {
-                    Axis::X => row.offset.x = next,
-                    Axis::Y => row.offset.y = next,
-                }
+                )
+                .map(|g| TrackPage {
+                    click_main: axis.main_v(ptr) - axis.main_v(origin),
+                    thumb_offset: g.thumb_offset,
+                    thumb_size: g.thumb_size,
+                    page_step,
+                    max_off: (main_content - page_step).max(0.0),
+                });
+                row.apply_track_page(axis, page);
             }
             *row
         };

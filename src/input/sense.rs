@@ -84,3 +84,9 @@ pub const DRAG_THRESHOLD: f32 = 4.0;
 /// Linux has no system-wide value to read. Tracked per-button on
 /// [`crate::input::Capture`].
 pub const DOUBLE_CLICK_WINDOW: std::time::Duration = std::time::Duration::from_millis(500);
+
+/// Maximum pointer travel (logical px) between two clicks for the second
+/// to still count as a double-click. A slow drift past this reads as two
+/// separate clicks — matches native behaviour and `TextEdit`'s
+/// `MULTI_CLICK_RADIUS`. Tracked per-button on [`crate::input::Capture`].
+pub const DOUBLE_CLICK_RADIUS: f32 = 5.0;

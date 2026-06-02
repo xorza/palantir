@@ -323,6 +323,38 @@ fn two_left_clicks_within_window_emit_double_clicked() {
 }
 
 #[test]
+fn two_clicks_outside_radius_do_not_double_click() {
+    // Same widget, within the window, but the second press lands more
+    // than `DOUBLE_CLICK_RADIUS` from the first — a slow drift between
+    // presses is two clicks, not a double.
+    let mut ui = Ui::for_test();
+    let surface = UVec2::new(200, 80);
+    let build = |ui: &mut Ui, double: &mut bool| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            let r = Button::new()
+                .id(WidgetId::from_hash("dc_radius_target"))
+                .label("dc")
+                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            *double |= r.double_clicked();
+        });
+    };
+    ui.run_at_acked(surface, |ui| build(ui, &mut false));
+
+    ui.click_at(Vec2::new(20.0, 20.0));
+    ui.run_at_acked(surface, |ui| build(ui, &mut false));
+
+    // Second click on the same Button but ~20px away — must NOT double.
+    ui.click_at(Vec2::new(40.0, 20.0));
+    let mut double = false;
+    ui.run_at_acked(surface, |ui| build(ui, &mut double));
+    assert!(
+        !double,
+        "clicks more than DOUBLE_CLICK_RADIUS apart must not double-click"
+    );
+}
+
+#[test]
 fn click_on_different_widget_resets_double_click() {
     // Two clicks within the window but on different widgets must NOT
     // fire double_clicked — the gesture is per-id.
