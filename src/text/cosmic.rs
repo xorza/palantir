@@ -195,12 +195,6 @@ impl CosmicMeasure {
         }
     }
 
-    /// Borrow the underlying `FontSystem` (e.g. to register additional fonts,
-    /// or for `glyphon::TextRenderer::prepare_append`).
-    pub fn font_system_mut(&mut self) -> &mut FontSystem {
-        &mut self.font_system
-    }
-
     /// Look up the shaped buffer for `key`. Returns `None` for keys that
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextCacheKey::INVALID`].
@@ -213,8 +207,8 @@ impl CosmicMeasure {
 
     /// Split borrow: `font_system` + `lookup`. Glyphon's `prepare` needs
     /// `&mut FontSystem` while we iterate `RenderBuffer.text_runs` and look
-    /// up buffers — borrowck won't let us call `buffer_for` and
-    /// `font_system_mut` simultaneously through `&mut self`. This method
+    /// up buffers — borrowck won't let us hand out a `&mut FontSystem` and
+    /// call `buffer_for` simultaneously through `&mut self`. This method
     /// hands out the disjoint pieces.
     pub fn split_for_render(&mut self) -> RenderSplit<'_> {
         RenderSplit {

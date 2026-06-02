@@ -1,4 +1,4 @@
-//! Per-frame damage detection. Computed in [`Ui::post_record`] after
+//! Per-frame damage detection. Computed in [`Ui::frame`] after
 //! `compute_hashes`; rebuilds the prev-frame snapshot in the same
 //! pass via the `entry()` API — vacant slots get inserted, occupied
 //! slots get diffed and either updated or evicted.
@@ -494,7 +494,7 @@ impl DamageEngine {
     /// Drop the per-widget previous-frame snapshot map. Pairs with
     /// the caller passing `force_full = true` into the next
     /// `compute` so the diff repopulates the map from scratch but
-    /// still returns `Damage::Full`. Called by `Ui::pre_record` when
+    /// still returns `Damage::Full`. Called by `Ui::frame` when
     /// the surface changed, the previous frame wasn't acked, or
     /// it's the first frame.
     pub(crate) fn invalidate_prev(&mut self) {

@@ -19,6 +19,7 @@ use crate::layout::{
 };
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
@@ -214,8 +215,14 @@ fn resolve_sizing(
     max_size: Size,
     dispatch: impl FnOnce(Size) -> Size,
 ) -> Size {
-    let (p_horiz, p_vert) = style.padding.sums();
-    let (m_horiz, m_vert) = style.margin.sums();
+    let Sums {
+        horiz: p_horiz,
+        vert: p_vert,
+    } = style.padding.sums();
+    let Sums {
+        horiz: m_horiz,
+        vert: m_vert,
+    } = style.margin.sums();
 
     let dispatch_avail = Size::new(
         available.w.max(intrinsic_min.w),

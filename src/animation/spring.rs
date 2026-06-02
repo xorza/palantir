@@ -71,7 +71,7 @@ pub(crate) fn step<T: Animatable>(
     // Sub-step so the inner Euler dt is always safely below the
     // stability boundary. `ceil(dt / ANIM_SUBSTEP_DT)` substeps of
     // equal width; for the typical 60Hz frame (dt = 0.016) this is 4
-    // substeps, for the worst-case stalled frame (dt = MAX_DT = 0.1)
+    // substeps, for the worst-case stalled frame (dt at its 0.1s clamp)
     // it's 24. Cheap relative to a single layout pass.
     let n = (dt / ANIM_SUBSTEP_DT).ceil().max(1.0);
     let sub_dt = dt / n;

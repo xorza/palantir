@@ -225,7 +225,7 @@ pub(crate) struct Tree {
 
     // -- Per-NodeId packed extras idx + dense tables ---------------------
     /// One row per node; each `u16` field indexes the matching dense
-    /// `*_table` `Vec` (or holds `ExtrasIdx::ABSENT`). See
+    /// `*_table` `Vec` (or holds `Slot::ABSENT`). See
     /// [`ExtrasIdx`] for the packing rationale.
     pub(crate) extras_idx: Vec<ExtrasIdx>,
     pub(crate) bounds_table: Vec<BoundsExtras>,
@@ -258,9 +258,9 @@ pub(crate) struct Tree {
     // -- Paint-anim registry ----------------------------------------------
     /// Shape-keyed paint animation registrations. Pushed in lockstep
     /// with `shapes.records` via `Forest::add_shape{,_animated}`,
-    /// cleared in `pre_record`. `last_quantum` on each entry is
-    /// initialised in `post_record` where `Duration now` is in scope.
-    /// See [`PaintAnims`] and `docs/roadmap/paint-tick.md`.
+    /// cleared in `pre_record`. Stateless: sampling is a pure function
+    /// of `Duration now` at encode time, so no per-entry timestamp is
+    /// stored. See [`PaintAnims`] and `docs/roadmap/paint-tick.md`.
     pub(crate) paint_anims: PaintAnims,
 
     // -- Output (populated by `post_record`) -------------------------------
@@ -293,10 +293,9 @@ impl Tree {
         self.roots.clear();
     }
 
-    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`,
-    /// initialise `paint_anims` entries' `last_quantum`. Capacity
-    /// retained across frames. The paint-anim wake fold lives on
-    /// [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
+    /// Finalize this tree: populate `rollups.node` + `rollups.subtree`.
+    /// Capacity retained across frames. The paint-anim wake fold lives
+    /// on [`crate::forest::Forest::min_paint_anim_wake`] — `Ui::frame`
     /// calls it at the tail of every frame (both record + paint-only
     /// paths) so the scheduling is centralised.
     pub(crate) fn post_record(&mut self) {

@@ -4,9 +4,9 @@
 //! `TextChunk` so [`crate::input::InputEvent`] stays `Copy`.
 //!
 //! Translation lives in [`crate::input::InputEvent::from_winit`].
-//! Today nothing consumes these events — they fall through
-//! [`crate::input::InputState::on_input`] silently. Step 2 (frame
-//! queues) and step 3 (focus) wire the consumers.
+//! Consumers: `TextEdit`, the [`crate::Shortcut`] matcher, and global
+//! [`crate::input::subscriptions::KeyboardSense`] subscribers, fed from
+//! the per-frame keyboard-event queue drained during the frame.
 
 use crate::common::platform::{PLATFORM, Platform};
 

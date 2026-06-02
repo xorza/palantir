@@ -50,9 +50,17 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
             if e.frozen_alloc.is_some() {
                 continue;
             }
-            let share = (leftover * e.weight / active_weight).min(e.cap);
-            if e.floor > share {
-                let alloc = e.floor.min(e.cap);
+            let share = leftover * e.weight / active_weight;
+            // Freeze any entry whose proportional share falls outside
+            // `[floor, cap]`: it takes the violated bound and the rest
+            // re-divide (CSS Flexbox-style). A `cap` below `floor`
+            // resolves to `cap` — the hard max wins.
+            if e.floor > share || share > e.cap {
+                let alloc = if e.floor > share {
+                    e.floor.min(e.cap)
+                } else {
+                    e.cap
+                };
                 e.frozen_alloc = Some(alloc);
                 leftover -= alloc;
                 active_weight -= e.weight;
@@ -66,11 +74,14 @@ fn freeze_distribute(entries: &mut [FillEntry], mut leftover: f32, mut active_we
     for e in entries.iter_mut() {
         if e.frozen_alloc.is_none() {
             let share = if active_weight > 0.0 {
-                (leftover * e.weight / active_weight).min(e.cap)
+                leftover * e.weight / active_weight
             } else {
                 e.floor
             };
-            e.frozen_alloc = Some(share.max(e.floor));
+            // In-pool entries satisfy `floor <= share <= cap`; the
+            // `active_weight == 0` fallback (`share = floor`) still clamps
+            // so a `cap < floor` entry never exceeds its hard max.
+            e.frozen_alloc = Some(share.clamp(e.floor.min(e.cap), e.cap));
         }
     }
 }

@@ -66,22 +66,6 @@ pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
     WidgetEntry { id, raw, merged }
 }
 
-/// Lazy handle to a widget's per-frame interaction state. Holds a
-/// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
-/// `ui.response_for(self.id)` on first access and memoizes the result.
-/// Dropping the handle without reading any field skips the probe
-/// entirely — the common case for decorative widgets (Text, Frame,
-/// Panel chrome, etc.).
-///
-/// Widgets that already had to call `ui.response_for(id)` for their
-/// own theme-picking / interaction logic (Button, Checkbox, …) hand
-/// the already-paid-for state to [`Response::eager`] so callers
-/// inherit the cached result without a second probe.
-///
-/// For multi-field reads or to detach from the `&Ui` borrow (e.g.
-/// before calling another `&mut Ui` op while still holding the
-/// state), use [`Response::snapshot`] to materialize a
-/// [`ResponseSnapshot`].
 /// Generates the shared read-only accessor surface for [`Response`]
 /// and [`ResponseSnapshot`]. Both forward to a private
 /// `resolved_state(&self) -> ResponseState` (lazy probe on `Response`,
@@ -197,6 +181,22 @@ macro_rules! response_accessors {
     };
 }
 
+/// Lazy handle to a widget's per-frame interaction state. Holds a
+/// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
+/// `ui.response_for(self.id)` on first access and memoizes the result.
+/// Dropping the handle without reading any field skips the probe
+/// entirely — the common case for decorative widgets (Text, Frame,
+/// Panel chrome, etc.).
+///
+/// Widgets that already had to call `ui.response_for(id)` for their
+/// own theme-picking / interaction logic (Button, Checkbox, …) hand
+/// the already-paid-for state to [`Response::eager`] so callers
+/// inherit the cached result without a second probe.
+///
+/// For multi-field reads or to detach from the `&Ui` borrow (e.g.
+/// before calling another `&mut Ui` op while still holding the
+/// state), use [`Response::snapshot`] to materialize a
+/// [`ResponseSnapshot`].
 pub struct Response<'a> {
     pub(crate) id: WidgetId,
     pub(crate) ui: &'a Ui,

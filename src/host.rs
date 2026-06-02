@@ -319,7 +319,7 @@ impl Host {
 ///   delays where idle pixels don't change but a frame is still
 ///   needed at a known moment.
 /// - [`Self::Idle`] — nothing pending; sleep until the next input.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum FramePresent {
     Immediate,
     At(Instant),

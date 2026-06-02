@@ -60,11 +60,6 @@ impl Sense {
         self.intersects(Self::CLICK.union(Self::DRAG))
     }
 
-    /// True if this sense participates in drag gestures.
-    pub const fn drags(self) -> bool {
-        self.contains(Self::DRAG)
-    }
-
     /// True if this sense captures scroll deltas.
     pub const fn scrolls(self) -> bool {
         self.contains(Self::SCROLL)

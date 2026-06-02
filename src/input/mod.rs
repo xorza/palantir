@@ -422,7 +422,7 @@ impl ResponseState {
 /// Live input state machine: the things that survive across input events
 /// independently of whether the tree was rebuilt. Per-frame rebuilt data
 /// (last-frame rects, cascade scratch) lives in [`crate::ui::cascade::Cascade`].
-pub struct InputState {
+pub(crate) struct InputState {
     /// Pointer position in logical pixels, `None` when off-surface.
     pub(crate) pointer_pos: Option<Vec2>,
     pub(crate) hovered: Option<WidgetId>,
@@ -541,7 +541,7 @@ impl Default for InputState {
 }
 
 impl InputState {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             pointer_pos: None,
             hovered: None,
@@ -654,8 +654,8 @@ impl InputState {
                 // independently latches once travel crosses
                 // `DRAG_THRESHOLD`. `ResponseState::drag_delta` reports
                 // the left button; other buttons go through
-                // [`crate::Ui::drag_delta_by`] /
-                // [`crate::Ui::drag_started_by`]. Right-drag latching
+                // [`crate::Response::drag_delta_by`] /
+                // [`crate::Response::drag_started_by`]. Right-drag latching
                 // just suppresses the click (same as left), so a slow
                 // right-press that wiggles no longer pops a context
                 // menu — consistent with click-suppression semantics.

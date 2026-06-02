@@ -794,7 +794,7 @@ impl Ui {
     #[track_caller]
     pub fn request_repaint(&mut self) {
         let caller = std::panic::Location::caller();
-        tracing::info!(
+        tracing::trace!(
             target: "palantir.repaint",
             "request_repaint @ {}:{} (frame={})",
             caller.file(),
