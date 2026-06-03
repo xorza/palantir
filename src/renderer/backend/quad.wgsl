@@ -10,8 +10,10 @@ struct Immediates {
 };
 var<immediate> imm: Immediates;
 // Gradient LUT atlas: rows of baked 256-texel gradients, sampled at
-// fragment time for `Brush::Linear`. Format is sRGB so the sampler
-// returns linear-RGB on read; matches the rest of the pipeline.
+// fragment time for `Brush::Linear`. Format is `Rgba16Float` storing
+// straight-alpha linear-RGB, so the sampler returns linear directly on
+// read (f16 precision keeps dark gradients band-free); matches the rest
+// of the pipeline.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 

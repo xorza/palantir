@@ -19,12 +19,17 @@ const _: () = assert!(
     GRADIENT_ATLAS_SIDE == 256,
     "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
 );
+/// Bytes per atlas texel: `Rgba16Float` = 4 × f16 = 8 bytes. Derived
+/// from the CPU-side `ColorF16` row store (`gradient_atlas::LutRowTexels`)
+/// so the GPU upload row-pitch can't silently drift from the texel type
+/// the bake writes.
+const GRADIENT_ATLAS_TEXEL_BYTES: u32 = size_of::<crate::primitives::color::ColorF16>() as u32;
 // `write_texture`'s `bytes_per_row` must be a multiple of
 // `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guard the row pitch independently
 // of the shader assert above so relaxing one can't silently break the
 // upload alignment.
 const _: () = assert!(
-    (GRADIENT_ATLAS_SIDE * 4).is_multiple_of(256),
+    (GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES).is_multiple_of(256),
     "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"
 );
 
@@ -32,10 +37,13 @@ const _: () = assert!(
 /// quad and curve pipelines. Format-independent: survives a swapchain
 /// format change untouched (only the pipelines carry the color target).
 pub(crate) struct GradientResources {
-    /// LUT atlas texture. 256 cols × 256 rows of `Rgba8Unorm`
-    /// (linear, no sampler decode — the LUT bake quantizes linear-RGB
-    /// directly via `From<Color> for ColorU8`, so the GPU sees
+    /// LUT atlas texture. 256 cols × 256 rows of `Rgba16Float`
+    /// (linear, no sampler decode — the LUT bake stores linear-RGB
+    /// directly via `From<Color> for ColorF16`, so the GPU sees
     /// ready-to-blend linear values; see `CLAUDE.md` "Colour pipeline").
+    /// f16 over 8-bit linear: dark gradient stops linearise to tiny
+    /// values, and an 8-bit linear row crushes them onto a handful of
+    /// levels (visible banding) — see `gradient_atlas` module docs.
     /// Uploaded each dirty frame by [`Self::upload`].
     texture: wgpu::Texture,
     /// Group-0 layout (gradient texture + sampler). Quad and curve build
@@ -62,7 +70,7 @@ impl GradientResources {
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
+            format: wgpu::TextureFormat::Rgba16Float,
             usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
@@ -103,7 +111,7 @@ impl GradientResources {
     /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
     /// Idle frames (no new gradients) hit the early `None` return in
     /// `flush_with` and do nothing. Dirty frames upload the entire
-    /// 256 KB atlas in a single `write_texture` — see the dirty-tracking
+    /// 512 KB atlas in a single `write_texture` — see the dirty-tracking
     /// note in `GradientCpuAtlas` for why per-row uploads aren't worth
     /// the API overhead. Called from `WgpuBackend::submit` before the
     /// render pass starts.
@@ -120,7 +128,7 @@ impl GradientResources {
                 bytes,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * 4),
+                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES),
                     rows_per_image: Some(GRADIENT_ATLAS_SIDE),
                 },
                 wgpu::Extent3d {
