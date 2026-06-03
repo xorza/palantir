@@ -7,6 +7,8 @@ Status: pre-1.0, under active development. APIs break freely.
 
 ![Showcase screenshot](docs/Screenshot%202026-05-23%20at%2014.48.49.png)
 
+![Darkroom app screenshot](docs/Screenshot%202026-06-03%20at%2017.16.43.png)
+
 Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
 ![Frame 146 profile](docs/frame-146-profile.png)
