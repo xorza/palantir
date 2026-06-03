@@ -28,7 +28,7 @@ struct Viewport { size: vec2<f32> };
 struct Immediates { viewport: Viewport };
 var<immediate> imm: Immediates;
 // Gradient LUT atlas, shared with the quad pipeline. Sampled per
-// fragment when `fill_kind != 0`. Same `Rgba8Unorm` (linear) format
+// fragment when `fill_kind != 0`. Same `Rgba16Float` (linear) format
 // + linear filter / clamp-to-edge sampler as quad.wgsl — the curve's
 // `t` is already in [0, 1] by construction, so spread is a no-op.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;

@@ -5,13 +5,22 @@
 //!
 //! ## Bake output convention
 //!
-//! Each baked row is 256 RGBA texels = 1024 bytes, **straight (non-
-//! premultiplied) linear-RGB** quantised to u8. The backend uploads
-//! these into an `Rgba8Unorm` texture (no auto-decode); the shader
-//! samples and gets the stored linear value directly as `u8/255`
-//! floats. Premultiply happens in the shader on the sampled value —
-//! same convention as the rest of the pipeline (see "Colour pipeline"
-//! in `CLAUDE.md`).
+//! Each baked row is 256 [`ColorF16`] texels = 2048 bytes, **straight
+//! (non-premultiplied) linear-RGB** f16. The backend uploads these into
+//! an `Rgba16Float` texture (no auto-decode); the shader samples and
+//! gets the stored linear value directly as f16-decoded floats.
+//! Premultiply happens in the shader on the sampled value — same
+//! convention as the rest of the pipeline (see "Colour pipeline" in
+//! `CLAUDE.md`).
+//!
+//! f16, not u8: a dark stop linearises to a tiny value (`#1a1a2e`'s red
+//! is linear ≈ 0.010 ≈ 3/255), so an 8-bit *linear* row crushes the
+//! dark half of a dark→bright gradient onto a handful of integer
+//! levels — `#1a1a2e → #4c5cdb` spans red 3..19, ~16 steps over 256
+//! texels, i.e. ~16 visible bands. f16 carries ~11 bits of mantissa at
+//! that magnitude (ulp ≈ 8e-6), far finer than the per-texel delta, so
+//! the row is smooth and only the 8-bit sRGB framebuffer quantises the
+//! output. See `dark_gradient_row_has_no_banding`.
 //!
 //! ## Interpolation spaces
 //!
@@ -30,7 +39,7 @@
 
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
-use crate::primitives::color::{Color, ColorU8, linear_to_oklab, oklab_to_linear};
+use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
 use crate::primitives::paint::LutRow;
 use std::cell::{Cell, RefCell};
 use std::hash::Hasher;
@@ -47,21 +56,23 @@ pub(crate) const ATLAS_ROWS: u32 = 256;
 /// well below 8-bit display precision.
 pub(crate) const LUT_ROW_TEXELS: usize = 256;
 
-/// Width of one baked row in bytes. Each texel is `[r, g, b, a]: u8`.
-pub(crate) const LUT_ROW_BYTES: usize = LUT_ROW_TEXELS * 4;
+/// One baked LUT row: 256 straight-alpha linear-RGB f16 texels
+/// (`ColorF16`, 8 bytes each → 2048 bytes/row). Contiguous and `Pod`,
+/// so the atlas casts `&[LutRowTexels]` straight to `&[u8]` for upload.
+pub(crate) type LutRowTexels = [ColorF16; LUT_ROW_TEXELS];
 
 /// Bake a [`LinearGradient`] into a single LUT row.
 ///
-/// Output is straight (non-premultiplied) sRGB bytes — see module docs.
-/// `out` is a `&mut [u8; LUT_ROW_BYTES]`, written in place; the buffer
-/// is fully overwritten, no read-before-write.
+/// Output is straight (non-premultiplied) linear-RGB f16 — see module
+/// docs. `out` is a `&mut LutRowTexels`, written in place; the buffer is
+/// fully overwritten, no read-before-write.
 ///
 /// Edge clamp: `t < first_stop.offset()` paints `first_stop.color`;
 /// `t > last_stop.offset()` paints `last_stop.color`. Spread modes
 /// (`Pad`/`Repeat`/`Reflect`) are applied **shader-side** on the
 /// sampling `t` coordinate, not at bake time — one row serves all
 /// spread modes for the same gradient.
-pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_BYTES]) {
+pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut LutRowTexels) {
     // Caller invariant: 2..=MAX_STOPS. Asserted so accidental callers
     // from elsewhere in the crate trip immediately instead of UB-ing
     // through `lerp_at`'s `stops[len-1]` / bracket reads.
@@ -85,9 +96,6 @@ pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_
         }
     }
 
-    let first_color = sorted[0].color;
-    let last_color = sorted[n - 1].color;
-
     // Precompute the per-stop forms the inner loop wants — once for
     // the row, not once per texel. Linear `Color` is needed by every
     // interp (both `Linear` and `Oklab` math run in linear space).
@@ -105,22 +113,16 @@ pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_
         }
     }
 
-    for i in 0..LUT_ROW_TEXELS {
+    for (i, texel) in out.iter_mut().enumerate() {
         let t = i as f32 / (LUT_ROW_TEXELS - 1) as f32;
-        let texel = lerp_at(
+        let color = lerp_at(
             &sorted[..n],
             &linear_stops[..n],
             &oklab_stops[..n],
-            first_color,
-            last_color,
             t,
             interp,
         );
-        let off = i * 4;
-        out[off] = texel.r;
-        out[off + 1] = texel.g;
-        out[off + 2] = texel.b;
-        out[off + 3] = texel.a;
+        *texel = ColorF16::from(color);
     }
 }
 
@@ -130,20 +132,12 @@ pub(crate) fn bake_stops(stops: &[Stop], interp: Interp, out: &mut [u8; LUT_ROW_
 /// every texel reads pre-decoded forms and never re-runs the cubic
 /// or Oklab decode.
 #[inline]
-fn lerp_at(
-    stops: &[Stop],
-    linear: &[Color],
-    oklab: &[[f32; 3]],
-    first: ColorU8,
-    last: ColorU8,
-    t: f32,
-    interp: Interp,
-) -> ColorU8 {
+fn lerp_at(stops: &[Stop], linear: &[Color], oklab: &[[f32; 3]], t: f32, interp: Interp) -> Color {
     if t <= stops[0].offset() {
-        return first;
+        return linear[0];
     }
     if t >= stops[stops.len() - 1].offset() {
-        return last;
+        return linear[stops.len() - 1];
     }
     let mut i = 1;
     while i < stops.len() && stops[i].offset() < t {
@@ -154,7 +148,7 @@ fn lerp_at(
     let denom = b_off - a_off;
     // Equal-offset hard transition: pick the right-hand stop.
     let u = if denom.abs() <= f32::EPSILON {
-        return stops[i].color;
+        return linear[i];
     } else {
         (t - a_off) / denom
     };
@@ -168,23 +162,23 @@ fn lerp_at(
 }
 
 /// Lerp in linear-RGB. Stops are pre-decoded to `Color` once in
-/// `bake_stops`; this just runs the four lerps and quantises.
+/// `bake_stops`; this just runs the four lerps. f16 quantization
+/// happens once at the `ColorF16::from` in `bake_stops`.
 #[inline]
-fn lerp_linear(ca: Color, cb: Color, u: f32) -> ColorU8 {
+fn lerp_linear(ca: Color, cb: Color, u: f32) -> Color {
     Color {
         r: ca.r + (cb.r - ca.r) * u,
         g: ca.g + (cb.g - ca.g) * u,
         b: ca.b + (cb.b - ca.b) * u,
         a: ca.a + (cb.a - ca.a) * u,
     }
-    .into()
 }
 
 /// Lerp in Oklab. `lab_a` / `lab_b` are precomputed from
 /// `linear_to_oklab` in `bake_stops`; this only runs the three lerps
 /// and the inverse Oklab transform per texel.
 #[inline]
-fn lerp_oklab(ca: Color, cb: Color, lab_a: [f32; 3], lab_b: [f32; 3], u: f32) -> ColorU8 {
+fn lerp_oklab(ca: Color, cb: Color, lab_a: [f32; 3], lab_b: [f32; 3], u: f32) -> Color {
     let lab = [
         lab_a[0] + (lab_b[0] - lab_a[0]) * u,
         lab_a[1] + (lab_b[1] - lab_a[1]) * u,
@@ -197,7 +191,6 @@ fn lerp_oklab(ca: Color, cb: Color, lab_a: [f32; 3], lab_b: [f32; 3], u: f32) ->
         b: rgb[2],
         a: ca.a + (cb.a - ca.a) * u,
     }
-    .into()
 }
 
 /// CPU side of the gradient LUT atlas. Owns the baked row bytes and a
@@ -215,10 +208,10 @@ pub(crate) struct GradientCpuAtlas {
     /// payload in `baked[0]` is the real fallback contract.
     rows: [Option<u64>; ATLAS_ROWS as usize],
     /// Baked LUT row bytes, indexed by row id. Row 0's contents are
-    /// the magenta-fallback fill. Storage is a single 256 KB heap
-    /// allocation — `Vec<[u8; 1024]>` is contiguous, so casting to
+    /// the magenta-fallback fill. Storage is a single 512 KB heap
+    /// allocation — `Vec<LutRowTexels>` is contiguous, so casting to
     /// `&[u8]` for the GPU upload is a free reinterpret.
-    baked: Vec<[u8; LUT_ROW_BYTES]>,
+    baked: Vec<LutRowTexels>,
     /// Per-row "last touched" timestamp. Bumped on every `register_stops`
     /// hit and on bake. The LRU victim is the row with the smallest
     /// stamp; row 0 is excluded. `u64` so wrap is unreachable in any
@@ -231,8 +224,8 @@ pub(crate) struct GradientCpuAtlas {
     /// a strict-order comparator, not wall-clock semantics).
     clock: u64,
     /// Any row changed since the last `flush`. Per-row tracking is
-    /// overkill at 256 KB total: one `queue.write_texture` call of
-    /// 256 KB beats N calls of 1 KB each on the common warmup path
+    /// overkill at 512 KB total: one `queue.write_texture` call of
+    /// 512 KB beats N calls of 2 KB each on the common warmup path
     /// (N ≥ 2 distinct gradients) thanks to fixed-cost API overhead
     /// per call; for the N = 1 edge case the two are roughly tied.
     ///
@@ -246,7 +239,7 @@ impl Default for GradientCpuAtlas {
     fn default() -> Self {
         let mut atlas = Self {
             rows: [None; ATLAS_ROWS as usize],
-            baked: vec![[0u8; LUT_ROW_BYTES]; ATLAS_ROWS as usize],
+            baked: vec![[ColorF16::TRANSPARENT; LUT_ROW_TEXELS]; ATLAS_ROWS as usize],
             last_used: [0; ATLAS_ROWS as usize],
             clock: 0,
             dirty: Cell::new(false),
@@ -262,14 +255,10 @@ impl GradientCpuAtlas {
     /// catches "registered with the atlas but the resulting row id
     /// didn't flow through to the quad."
     fn init_row_zero_magenta(&mut self) {
-        let row = &mut self.baked[0];
-        for i in 0..LUT_ROW_TEXELS {
-            let off = i * 4;
-            row[off] = 0xff;
-            row[off + 1] = 0x00;
-            row[off + 2] = 0xff;
-            row[off + 3] = 0xff;
-        }
+        // Linear (1, 0, 1, 1): the sRGB framebuffer encodes this to
+        // #ff00ff on write, so the fallback reads as bright magenta.
+        let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+        self.baked[0].fill(magenta);
         // No `rows[0]` sentinel: the probe range is `1..ATLAS_ROWS`,
         // so row 0 is unreachable regardless of what hash a real
         // gradient produces.
@@ -339,8 +328,9 @@ impl GradientCpuAtlas {
     }
 
     /// If any row changed since the last flush, return the full atlas
-    /// bytes (`ATLAS_ROWS × LUT_ROW_BYTES` = 256 KB, contiguous) for
-    /// one-shot upload, and clear the dirty flag. Returns `None` when
+    /// bytes (`ATLAS_ROWS × size_of::<LutRowTexels>()` = 512 KB,
+    /// contiguous) for one-shot upload, and clear the dirty flag.
+    /// Returns `None` when
     /// nothing has changed — the steady-state idle frame uploads
     /// zero bytes.
     pub(crate) fn flush(&self) -> Option<&[u8]> {
@@ -403,37 +393,48 @@ fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
 mod tests {
     use super::*;
     use crate::primitives::brush::LinearGradient;
+    use crate::primitives::color::ColorU8;
+    use std::collections::HashSet;
 
-    fn texel(out: &[u8; LUT_ROW_BYTES], i: usize) -> ColorU8 {
-        ColorU8 {
-            r: out[i * 4],
-            g: out[i * 4 + 1],
-            b: out[i * 4 + 2],
-            a: out[i * 4 + 3],
-        }
+    /// One baked texel decoded back to a linear `Color`. The f16 store
+    /// round-trips losslessly enough that `≈` comparisons hold to well
+    /// under a u8 LSB (1/255).
+    fn texel(out: &LutRowTexels, i: usize) -> Color {
+        out[i].unpack()
+    }
+
+    /// Expected linear value of a `ColorU8` channel: `ColorU8` is linear
+    /// storage, so the stored byte / 255 *is* the linear value the bake
+    /// interpolates between (no sRGB decode).
+    fn lin(byte: u8) -> f32 {
+        byte as f32 / 255.0
+    }
+
+    /// Fresh f16 LUT row, all texels transparent before bake.
+    fn fresh_row() -> LutRowTexels {
+        [ColorF16::TRANSPARENT; LUT_ROW_TEXELS]
     }
 
     /// `Interp::Linear`: midpoint of black→white in linear-RGB space
-    /// is exactly linear 0.5. Stored in the linear-u8 atlas as u8 ≈
-    /// 128. The sampler pulls these bytes as plain `u8/255`, so what
-    /// we store *is* the linear value the shader uses. Regression
-    /// check: an accidental sRGB-space lerp would produce linear ≈
-    /// 0.215 → u8 ≈ 55, far below the 100 threshold.
+    /// is exactly linear 0.5. The sampler reads the f16 store directly
+    /// as the linear value the shader uses. Regression check: an
+    /// accidental sRGB-space lerp would produce linear ≈ 0.215, far
+    /// below the 0.4 threshold.
     #[test]
-    fn linear_midpoint_black_to_white_is_128() {
+    fn linear_midpoint_black_to_white_is_half() {
         let g = LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE)
             .with_interp(Interp::Linear);
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
         let mid = texel(&out, 127);
         assert!(
-            mid.r >= 100 && mid.r <= 150,
-            "linear-RGB midpoint should be near linear 0.5 (u8 ≈ 128), got {}",
+            (0.4..=0.6).contains(&mid.r),
+            "linear-RGB midpoint should be near linear 0.5, got {}",
             mid.r,
         );
         assert_eq!(mid.r, mid.g);
         assert_eq!(mid.g, mid.b);
-        assert_eq!(mid.a, 255);
+        assert_eq!(mid.a, 1.0);
     }
 
     /// `Interp::Oklab`: red→green midpoint should *not* be muddy
@@ -446,16 +447,16 @@ mod tests {
         let red = ColorU8::rgb(255, 0, 0);
         let green = ColorU8::rgb(0, 255, 0);
         let g = LinearGradient::two_stop(0.0, red, green).with_interp(Interp::Oklab);
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
         let mid = texel(&out, 127);
         // Both channels should be non-trivial at midpoint — Oklab
         // hits a yellowish midpoint, not the dark muddy brown that
-        // linear-RGB lerp produces. Linear-u8 storage: the bytes
-        // *are* the linear values; we expect high red (>120) and
-        // moderate green (>80) reflecting the warm-yellow midpoint.
+        // linear-RGB lerp produces. The f16 store holds linear values
+        // directly; expect high red (>0.47 ≈ 120/255) and moderate
+        // green (>0.31 ≈ 80/255) reflecting the warm-yellow midpoint.
         assert!(
-            mid.r > 120 && mid.g > 80,
+            mid.r > 0.47 && mid.g > 0.31,
             "Oklab red→green midpoint should preserve luminance; got ({}, {}, {})",
             mid.r,
             mid.g,
@@ -472,26 +473,27 @@ mod tests {
         let c1 = ColorU8::rgb(244, 233, 222);
         for interp in [Interp::Linear, Interp::Oklab] {
             let g = LinearGradient::two_stop(0.0, c0, c1).with_interp(interp);
-            let mut out = [0u8; LUT_ROW_BYTES];
+            let mut out = fresh_row();
             bake_stops(&g.stops, g.interp, &mut out);
             let first = texel(&out, 0);
             let last = texel(&out, LUT_ROW_TEXELS - 1);
-            // Linear/Oklab roundtrip through f32 can drift ±1 LSB on
-            // extreme bytes — accept that.
-            let drift = 1;
+            // Endpoints are an exact edge-clamp to the stop's linear
+            // value; the only loss is the f16 quantize, well under a
+            // u8 LSB (1/255 ≈ 0.004).
+            let tol = 1.0 / 255.0;
             for (chan, (got, want)) in [
-                (first.r, c0.r),
-                (first.g, c0.g),
-                (first.b, c0.b),
-                (last.r, c1.r),
-                (last.g, c1.g),
-                (last.b, c1.b),
+                (first.r, lin(c0.r)),
+                (first.g, lin(c0.g)),
+                (first.b, lin(c0.b)),
+                (last.r, lin(c1.r)),
+                (last.g, lin(c1.g)),
+                (last.b, lin(c1.b)),
             ]
             .into_iter()
             .enumerate()
             {
                 assert!(
-                    (got as i16 - want as i16).abs() <= drift,
+                    (got - want).abs() <= tol,
                     "interp={interp:?} chan {chan}: got {got} want {want}",
                 );
             }
@@ -510,33 +512,43 @@ mod tests {
             ColorU8::rgb(0, 0, 255), // stop at 1.0
         )
         .with_interp(Interp::Linear);
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
         // Texel at i=64 ≈ t=0.251 → halfway between stops 0 and 1.
-        // r channel: lerp(0, 255, 0.502) ≈ 128.
+        // r channel: lerp(0.0, 1.0, 0.502) ≈ 0.502.
         let q = texel(&out, 64);
         assert!(
-            (q.r as i16 - 128).abs() <= 2,
-            "quarter-texel r={} not ~128 (bracketing first pair)",
+            (q.r - 0.502).abs() <= 0.01,
+            "quarter-texel r={} not ~0.502 (bracketing first pair)",
             q.r,
         );
-        // b should still be near 0 (stop 2's b=255 isn't reached yet).
-        assert!(q.b <= 5, "quarter-texel b={} leaked from stop 2", q.b);
+        // b should still be near 0 (stop 2's b=1.0 isn't reached yet).
+        assert!(q.b <= 0.02, "quarter-texel b={} leaked from stop 2", q.b);
     }
 
-    /// Pin the byte layout: 256 texels × 4 bytes = 1024 bytes total,
-    /// in `[r, g, b, a]` order per texel.
+    /// Pin the row layout: 256 `ColorF16` texels = 2048 bytes total,
+    /// `[r, g, b, a]` f16 lanes per texel. Endpoint texels decode back
+    /// to their stops' linear values.
     #[test]
-    fn lut_row_byte_layout() {
-        assert_eq!(LUT_ROW_BYTES, 1024);
+    fn lut_row_layout() {
         assert_eq!(LUT_ROW_TEXELS, 256);
+        assert_eq!(size_of::<LutRowTexels>(), 2048);
+        assert_eq!(size_of::<ColorF16>(), 8);
         let g = LinearGradient::two_stop(0.0, ColorU8::rgb(1, 2, 3), ColorU8::rgb(4, 5, 6));
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
-        // First texel: explicit byte order check.
-        assert_eq!(&out[..4], &[1, 2, 3, 255]);
-        // Last texel.
-        assert_eq!(&out[1020..1024], &[4, 5, 6, 255]);
+        let tol = 1.0 / 255.0;
+        let approx = |got: f32, want: f32| assert!((got - want).abs() <= tol, "{got} vs {want}");
+        let first = texel(&out, 0);
+        approx(first.r, lin(1));
+        approx(first.g, lin(2));
+        approx(first.b, lin(3));
+        assert_eq!(first.a, 1.0);
+        let last = texel(&out, LUT_ROW_TEXELS - 1);
+        approx(last.r, lin(4));
+        approx(last.g, lin(5));
+        approx(last.b, lin(6));
+        assert_eq!(last.a, 1.0);
     }
 
     /// Unsorted stops are sorted at bake time. Authors shouldn't rely
@@ -549,13 +561,13 @@ mod tests {
             Stop::new(0.0, ColorU8::rgb(0, 0, 255)),
         ];
         let g = LinearGradient::new(0.0, stops);
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
         // First texel should be blue (the stop at 0.0), last should be red.
         let first = texel(&out, 0);
         let last = texel(&out, LUT_ROW_TEXELS - 1);
-        assert_eq!((first.r, first.g, first.b), (0, 0, 255));
-        assert_eq!((last.r, last.g, last.b), (255, 0, 0));
+        assert_eq!((first.r, first.g, first.b), (0.0, 0.0, 1.0));
+        assert_eq!((last.r, last.g, last.b), (1.0, 0.0, 0.0));
     }
 
     /// Stops covering only `0.25..0.75` clamp at the edges: texels
@@ -570,12 +582,65 @@ mod tests {
             Stop::new(0.75, ColorU8::rgb(0, 0, 255)),
         ];
         let g = LinearGradient::new(0.0, stops);
-        let mut out = [0u8; LUT_ROW_BYTES];
+        let mut out = fresh_row();
         bake_stops(&g.stops, g.interp, &mut out);
-        // Texel 0 (t=0): clamped to first stop colour.
-        assert_eq!(texel(&out, 0).g, 255);
-        // Texel 255 (t=1): clamped to last stop colour.
-        assert_eq!(texel(&out, LUT_ROW_TEXELS - 1).b, 255);
+        // Texel 0 (t=0): clamped to first stop colour (green).
+        assert_eq!(texel(&out, 0).g, 1.0);
+        // Texel 255 (t=1): clamped to last stop colour (blue).
+        assert_eq!(texel(&out, LUT_ROW_TEXELS - 1).b, 1.0);
+    }
+
+    /// The showcase's dark `#1a1a2e → #4c5cdb` gradient is the
+    /// motivating case for the f16 store. Both stops linearise to tiny
+    /// reds (3/255 → 19/255), so an 8-bit *linear* row crushes the
+    /// red channel onto ~16 integer steps across 256 texels — the
+    /// visible banding. The f16 row keeps a distinct value at nearly
+    /// every texel. This asserts both sides: the f16 row is smooth,
+    /// and re-quantizing the same reds to 8-bit linear reproduces the
+    /// banding (so the test fails loudly if the premise ever changes).
+    #[test]
+    fn dark_gradient_row_has_no_banding() {
+        let navy = ColorU8::hex(0x1a1a2e);
+        let blue = ColorU8::hex(0x4c5cdb);
+        // The whole problem: both stops linearise to tiny reds (≈ 2/255
+        // and 18/255), so the bake walks a narrow span that an 8-bit
+        // linear row can't resolve. Bounded, not exact-pinned, so a
+        // tweak to the sRGB cubic fit doesn't break this test.
+        assert!(
+            navy.r < 6 && blue.r < 24,
+            "stops not dark: navy.r={} blue.r={}",
+            navy.r,
+            blue.r
+        );
+        let g = LinearGradient::two_stop(0.0, navy, blue); // default Oklab
+        let mut out = fresh_row();
+        bake_stops(&g.stops, g.interp, &mut out);
+
+        let reds: Vec<f32> = (0..LUT_ROW_TEXELS).map(|i| texel(&out, i).r).collect();
+
+        // f16 store: per-texel red delta (~2.5e-4) dwarfs the f16 ulp
+        // (~8e-6) at this magnitude, so distinct reds ≈ texel count.
+        let distinct_f16 = reds
+            .iter()
+            .map(|r| r.to_bits())
+            .collect::<HashSet<_>>()
+            .len();
+        assert!(
+            distinct_f16 >= 180,
+            "f16 red banded: only {distinct_f16} distinct levels"
+        );
+
+        // Counterfactual: the old `Rgba8Unorm` store quantized these
+        // same reds to 8-bit linear, collapsing onto ≤ 20 levels.
+        let distinct_u8 = reds
+            .iter()
+            .map(|r| (r * 255.0).round() as u8)
+            .collect::<HashSet<_>>()
+            .len();
+        assert!(
+            distinct_u8 <= 20,
+            "premise check: 8-bit linear should band hard, got {distinct_u8} levels",
+        );
     }
 
     // ----- GradientCpuAtlas tests ------------------------------------
@@ -617,12 +682,10 @@ mod tests {
     #[test]
     fn row_zero_reserved_as_magenta_fallback() {
         let atlas = GradientCpuAtlas::default();
-        // Row 0 is magenta sRGB across all texels.
-        let row0 = &atlas.baked[0];
-        for i in 0..LUT_ROW_TEXELS {
-            let off = i * 4;
-            assert_eq!(&row0[off..off + 4], &[0xff, 0x00, 0xff, 0xff]);
-        }
+        // Row 0 is linear (1, 0, 1, 1) across all texels — encodes to
+        // #ff00ff on the sRGB framebuffer.
+        let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+        assert!(atlas.baked[0].iter().all(|&t| t == magenta));
     }
 
     /// First real `register` goes through the probe path. The atlas
@@ -715,10 +778,8 @@ mod tests {
             "newest registration must land in the LRU slot",
         );
         // Row 0 still magenta after eviction.
-        for i in 0..LUT_ROW_TEXELS {
-            let off = i * 4;
-            assert_eq!(&atlas.baked[0][off..off + 4], &[0xff, 0x00, 0xff, 0xff]);
-        }
+        let magenta = ColorF16::from(Color::linear_rgba(1.0, 0.0, 1.0, 1.0));
+        assert!(atlas.baked[0].iter().all(|&t| t == magenta));
     }
 
     /// Hit-path bumps the row stamp: a gradient registered first, then
@@ -803,7 +864,7 @@ mod tests {
     fn freshly_constructed_atlas_flushes_magenta_once() {
         let atlas = GradientCpuAtlas::default();
         let first = atlas.flush().expect("first flush carries magenta init");
-        assert_eq!(first.len(), ATLAS_ROWS as usize * LUT_ROW_BYTES);
+        assert_eq!(first.len(), ATLAS_ROWS as usize * size_of::<LutRowTexels>());
         assert!(atlas.flush().is_none());
     }
 }
