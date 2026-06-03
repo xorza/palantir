@@ -1,5 +1,5 @@
-use super::half_simd::F16x4;
-use super::num::Num;
+use crate::primitives::half_simd::F16x4;
+use crate::primitives::num::Num;
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
 /// `[u16; 4]` (8 bytes). Lane order: `left | top | right | bottom`.
@@ -171,7 +171,7 @@ impl<L: Num, T: Num, R: Num, B: Num> From<(L, T, R, B)> for Spacing {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::spacing::*;
 
     fn ser(s: Spacing) -> String {
         #[derive(serde::Serialize)]

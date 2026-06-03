@@ -1,5 +1,3 @@
-use super::region::DamageRegion;
-use super::{Damage, DamageEngine};
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
@@ -11,6 +9,8 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::ui::FrameStamp;
+use crate::ui::damage::region::DamageRegion;
+use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame_report::RenderPlan;
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -948,7 +948,7 @@ fn no_damage_means_skip() {
 /// equals the input sum since they tile cleanly).
 #[test]
 fn damage_filter_threshold_cases() {
-    use super::region::DamageRegion;
+    use crate::ui::damage::region::DamageRegion;
     fn region(rects: &[Rect]) -> DamageRegion {
         let mut r = DamageRegion::default();
         for rect in rects {

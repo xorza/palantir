@@ -88,8 +88,8 @@ pub(crate) mod test_support {
 mod tests {
     // `cfg(test)` forces the in-memory backend so these assertions
     // don't touch the developer's real OS clipboard.
-    use super::test_support::test_serialize_guard;
-    use super::*;
+    use crate::common::clipboard::test_support::test_serialize_guard;
+    use crate::common::clipboard::*;
 
     #[test]
     fn set_get_roundtrip() {

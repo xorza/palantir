@@ -74,7 +74,7 @@ impl Frontend {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
+    use crate::renderer::frontend::*;
 
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
@@ -96,7 +96,11 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(&mut self, ui: &crate::ui::Ui, plan: super::RenderPlan) {
+        pub fn build_for_test(
+            &mut self,
+            ui: &crate::ui::Ui,
+            plan: crate::renderer::frontend::RenderPlan,
+        ) {
             let _ = self.build(ui, plan);
         }
     }

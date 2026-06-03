@@ -9,12 +9,12 @@
 //! [`ImagePipeline`]: rounded-clip frames use a stencil-test pipeline,
 //! plain frames use the unconditional one.
 //!
-//! [`MeshPipeline`]: super::mesh_pipeline::MeshPipeline
-//! [`ImagePipeline`]: super::image_pipeline::ImagePipeline
+//! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
+//! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
-use super::dynamic_buffer::DynamicBuffer;
-use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
@@ -91,7 +91,7 @@ impl CurvePipeline {
             (
                 "palantir.curve.pipeline.stencil_test",
                 "palantir.curve.pl.stencil",
-                Some(super::stencil::stencil_test_state()),
+                Some(crate::renderer::backend::stencil::stencil_test_state()),
             )
         } else {
             ("palantir.curve.pipeline", "palantir.curve.pl", None)

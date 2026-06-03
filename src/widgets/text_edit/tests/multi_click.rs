@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 /// Double-click selects the word under the caret; triple-click
 /// selects the whole buffer. Pin the multi-click state machine in

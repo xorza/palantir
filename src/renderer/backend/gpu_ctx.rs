@@ -15,7 +15,7 @@
 //! every uploader. Dropping the ctx releases all four borrows so
 //! render passes can resume using the encoder afterward.
 
-use super::Queue;
+use crate::renderer::backend::Queue;
 
 // `pub` (not `pub(crate)`) is load-bearing: the text backend's gated
 // `test_support` re-exports `GpuCtx` via `pub use` for external benches,

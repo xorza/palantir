@@ -111,8 +111,8 @@ impl FrameReport {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
     use crate::primitives::rect::Rect;
+    use crate::ui::frame_report::*;
 
     impl FrameReport {
         /// Read `self.plan`. Benches assert against this to pin the

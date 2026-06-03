@@ -31,7 +31,7 @@ struct Occluder {
 /// deflated per-side by `max(adjacent_radii) * (1 − 1/√2)` (the
 /// inscribed-square offset of a corner arc).
 #[derive(Default)]
-pub(super) struct OcclusionPruner {
+pub(crate) struct OcclusionPruner {
     /// Solid-opaque no-stroke occluders in the in-flight group, in push
     /// order (ascending `idx`).
     opaque_in_group: Vec<Occluder>,
@@ -50,7 +50,7 @@ pub(super) struct OcclusionPruner {
 impl OcclusionPruner {
     /// Reset all scratch — called at each group flush and at compose
     /// start.
-    pub(super) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         self.opaque_in_group.clear();
         self.drop_indices.clear();
         self.prefix_max_cover.clear();
@@ -58,7 +58,7 @@ impl OcclusionPruner {
 
     /// Record a solid-opaque quad's cover rect at its group-slice index
     /// `idx` so the prune sweep can drop earlier quads contained in it.
-    pub(super) fn record_opaque(&mut self, idx: u32, cover: Rect) {
+    pub(crate) fn record_opaque(&mut self, idx: u32, cover: Rect) {
         self.opaque_in_group.push(Occluder { idx, cover });
     }
 
@@ -81,7 +81,7 @@ impl OcclusionPruner {
     /// - Shadows (`FillKind::is_shadow`) are never dropped — their visual
     ///   blur extends past the stored rect.
     /// - Compacts in place via copy-down; preserves survivor order.
-    pub(super) fn prune(&mut self, out: &mut RenderBuffer, quads_cursor: u32) {
+    pub(crate) fn prune(&mut self, out: &mut RenderBuffer, quads_cursor: u32) {
         let start = quads_cursor as usize;
         if out.quads.len() - start < 2 || self.opaque_in_group.is_empty() {
             return;

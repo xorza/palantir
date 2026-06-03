@@ -87,7 +87,7 @@ impl CascadeInputHash {
     }
 }
 
-/// Per-node hash columns populated by [`super::Tree::post_record`].
+/// Per-node hash columns populated by [`crate::forest::Tree::post_record`].
 /// Both slices index by `NodeId.0` and are length `records.len()`
 /// after `post_record`. Capacity retained across frames.
 ///

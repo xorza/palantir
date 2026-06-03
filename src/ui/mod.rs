@@ -1123,7 +1123,6 @@ impl Ui {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
     use crate::FrameStamp;
     use crate::animation::animatable::Animatable;
     use crate::forest::Layer;
@@ -1138,6 +1137,7 @@ pub mod test_support {
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
     use crate::ui::frame_report::RenderPlan;
+    use crate::ui::*;
     use glam::{UVec2, Vec2};
     use std::time::Duration;
 

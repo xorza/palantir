@@ -185,7 +185,7 @@ fn clamp_range(value: f32, min: f32, max: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
+    use crate::widgets::slider::{
         clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step, value_to_fraction,
     };
 

@@ -15,8 +15,8 @@
 //! to still be set when the next click outside lands.
 //!
 //! Delivery isn't routed through subscriptions. Pointer events flow
-//! into [`InputState::frame_pointer_events`](super::InputState),
-//! keys into [`InputState::frame_keyboard_events`](super::InputState).
+//! into [`InputState::frame_pointer_events`](crate::input::InputState),
+//! keys into [`InputState::frame_keyboard_events`](crate::input::InputState).
 //! Both buffers are populated only when a relevant subscription is
 //! active (the mask check short-circuits the push), so idle frames
 //! pay nothing.

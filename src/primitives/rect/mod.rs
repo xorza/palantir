@@ -46,7 +46,7 @@ impl Rect {
     /// [`Size::approx_zero`] semantic.
     #[inline]
     pub const fn approx_zero(self) -> bool {
-        use super::approx::approx_zero;
+        use crate::primitives::approx::approx_zero;
         approx_zero(self.min.x) && approx_zero(self.min.y) && self.size.approx_zero()
     }
 

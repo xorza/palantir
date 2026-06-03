@@ -1,4 +1,4 @@
-//! GPU side of user images. Mirrors [`super::mesh_pipeline::MeshPipeline`]
+//! GPU side of user images. Mirrors [`crate::renderer::backend::mesh_pipeline::MeshPipeline`]
 //! but draws textured quads — per-instance rect + tint, plus a
 //! per-image bind group selected at draw time. The CPU texture bytes
 //! are staged in [`crate::ImageRegistry`] only until upload; this module
@@ -6,13 +6,13 @@
 //! bytes), and caches the resulting bind group by registration id until
 //! the owning handle drops.
 
-use super::Queue;
-use super::dynamic_buffer::DynamicBuffer;
-use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{
+use crate::primitives::image::Image;
+use crate::renderer::backend::Queue;
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
 };
-use crate::primitives::image::Image;
 use crate::renderer::image_registry::{ImageId, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -91,7 +91,7 @@ impl ImagePipeline {
             (
                 "palantir.image.pipeline.stencil_test",
                 "palantir.image.pl.stencil",
-                Some(super::stencil::stencil_test_state()),
+                Some(crate::renderer::backend::stencil::stencil_test_state()),
             )
         } else {
             ("palantir.image.pipeline", "palantir.image.pl", None)
@@ -308,7 +308,7 @@ pub(crate) mod test_support {
     //! Reach-in for the surface-format-change tests: GPU texture-cache
     //! occupancy, used to assert the cache survives a pipeline rebuild.
 
-    use super::*;
+    use crate::renderer::backend::image_pipeline::*;
 
     impl ImagePipeline {
         /// Count of images currently resident in the GPU texture cache.

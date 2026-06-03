@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 /// Fixed-size editor: scroll offset stays at zero while text fits, grows
 /// to keep the caret visible once content overflows the inner width, and

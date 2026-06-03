@@ -16,9 +16,9 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
-use super::{FontFamily, LineFit, MeasureResult, TextCacheKey};
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
+use crate::text::{FontFamily, LineFit, MeasureResult, TextCacheKey};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     fontdb,
@@ -573,7 +573,7 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
 
 #[cfg(test)]
 mod test_support {
-    use super::CosmicMeasure;
+    use crate::text::cosmic::CosmicMeasure;
 
     impl CosmicMeasure {
         /// Number of shaped buffers currently cached. Reach-in for the

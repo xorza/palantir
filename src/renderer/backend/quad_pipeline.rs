@@ -2,14 +2,14 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use super::dynamic_buffer::DynamicBuffer;
-use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{
-    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
-};
 use crate::primitives::color::ColorF16;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::{
+    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
+};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
@@ -21,7 +21,7 @@ pub(crate) struct QuadPipeline {
     /// `bind_clear`, and `bind_debug` own the `set_pipeline` /
     /// `set_bind_group` pair so the public surface is "what to do", not
     /// "what to bind." Group 0 (gradient atlas + sampler) is owned by
-    /// [`GradientResources`](super::gradient_resources::GradientResources)
+    /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources)
     /// and passed to every `bind*` call.
     stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
@@ -70,7 +70,7 @@ pub(crate) struct QuadPipeline {
 
 impl QuadPipeline {
     /// `gradient_bgl` is the group-0 layout owned by
-    /// [`GradientResources`](super::gradient_resources::GradientResources);
+    /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources);
     /// the pipeline composes its layout against it and the matching bind
     /// group arrives at each `bind*` call.
     pub(crate) fn new(
@@ -128,7 +128,7 @@ impl QuadPipeline {
             (
                 "palantir.quad.pipeline.stencil_test",
                 "palantir.quad.pl.stencil",
-                Some(super::stencil::stencil_test_state()),
+                Some(crate::renderer::backend::stencil::stencil_test_state()),
             )
         } else {
             ("palantir.quad.pipeline", "palantir.quad.pl", None)
@@ -225,7 +225,7 @@ impl QuadPipeline {
                 color_writes: wgpu::ColorWrites::empty(),
                 blend: None,
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: super::stencil::STENCIL_FORMAT,
+                    format: crate::renderer::backend::stencil::STENCIL_FORMAT,
                     depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::Always),
                     stencil: wgpu::StencilState {

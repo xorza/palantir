@@ -7,9 +7,9 @@
 //! See `text_edit::mod.rs::show` ("Text or placeholder…" block) and
 //! `support::place_axis` for the two invariants this test guards.
 
-use super::*;
 use crate::forest::Layer;
 use crate::forest::tree::NodeId;
+use crate::widgets::text_edit::tests::*;
 
 const SIZE: UVec2 = UVec2::new(400, 80);
 const PLACEHOLDER: &str = "type something here";

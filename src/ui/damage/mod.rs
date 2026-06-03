@@ -857,8 +857,8 @@ impl DamageEngine {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
-    use super::{DamageEngine, PaintSnapArena};
     use crate::forest::Forest;
+    use crate::ui::damage::{DamageEngine, PaintSnapArena};
 
     impl PaintSnapArena {
         /// Live entries in the arena (sum of every live

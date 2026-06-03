@@ -1,4 +1,4 @@
-use super::half_simd::F16x4;
+use crate::primitives::half_simd::F16x4;
 
 #[repr(C)]
 #[derive(
@@ -101,7 +101,7 @@ impl Color {
     /// across primitives.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        super::approx::noop_f32(self.a)
+        crate::primitives::approx::noop_f32(self.a)
     }
 
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).
@@ -509,7 +509,7 @@ fn linear_to_srgb(y: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::color::*;
 
     /// Reference: spec-exact piecewise sRGB→linear (the previous in-tree
     /// implementation). Used as ground truth for the cubic approximation.

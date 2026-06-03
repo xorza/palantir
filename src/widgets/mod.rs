@@ -371,8 +371,8 @@ impl<'a, R> std::ops::Deref for InnerResponse<'a, R> {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code, private_interfaces)]
-    use super::*;
     use crate::forest::tree::NodeId;
+    use crate::widgets::*;
 
     impl Response<'_> {
         /// Old `Response.node` field as an inherent test-only method.

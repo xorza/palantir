@@ -1,14 +1,14 @@
 //! Shared gradient LUT atlas GPU resources — the texture, its sampler,
 //! and the group-0 bind group every gradient-aware pipeline samples.
 //!
-//! Owned by [`WgpuBackend`](super::WgpuBackend) and lent to the quad and
+//! Owned by [`WgpuBackend`](crate::renderer::backend::WgpuBackend) and lent to the quad and
 //! curve pipelines (both render gradient brushes). Keeping the resource
 //! here — rather than on whichever pipeline happens to build first —
 //! means neither pipeline owns the other's input: each takes `&bgl` at
 //! build time and `&bg` at bind time.
 
-use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::texture_sampler_bgl;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::texture_sampler_bgl;
 use crate::renderer::gradient_atlas::GradientAtlas;
 
 /// Side of the gradient LUT atlas texture (square: 256 × 256). Must

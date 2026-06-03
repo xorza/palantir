@@ -1,4 +1,4 @@
-use super::num::Num;
+use crate::primitives::num::Num;
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -70,11 +70,12 @@ impl Size {
 
     /// True if both axes are within `EPS` of zero — i.e. this size
     /// is approximately `Size::ZERO`. Strict (both-axis) semantic to
-    /// match the [`super::approx::approx_zero`] free fn on `f32`.
+    /// match the [`crate::primitives::approx::approx_zero`] free fn on `f32`.
     /// For "paints no pixels" use [`Self::is_paint_empty`] —
     /// different (looser) predicate.
     pub const fn approx_zero(self) -> bool {
-        super::approx::approx_zero(self.w) && super::approx::approx_zero(self.h)
+        crate::primitives::approx::approx_zero(self.w)
+            && crate::primitives::approx::approx_zero(self.h)
     }
 
     /// True when either axis is at or below `EPS` (including NaN /
@@ -83,7 +84,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        super::approx::noop_f32(self.w) || super::approx::noop_f32(self.h)
+        crate::primitives::approx::noop_f32(self.w) || crate::primitives::approx::noop_f32(self.h)
     }
 
     pub const fn min(self, other: Self) -> Self {

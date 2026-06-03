@@ -1,5 +1,5 @@
-use super::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use crate::primitives::rect::Rect;
+use crate::ui::damage::region::{DAMAGE_RECT_CAP, DEFAULT_PASS_BUDGET_PX, DamageRegion};
 
 fn collect(region: &DamageRegion) -> Vec<Rect> {
     region.iter_rects().collect()

@@ -250,7 +250,7 @@ impl PaintAnims {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::forest::tree::paint_anims::*;
 
     const HP: Duration = Duration::from_millis(500);
     const START: Duration = Duration::from_secs(1);

@@ -151,7 +151,7 @@ fn switch_geom(track_h: f32, inset: f32) -> SwitchGeom {
 
 #[cfg(test)]
 mod tests {
-    use super::switch_geom;
+    use crate::widgets::switch::switch_geom;
 
     /// Geometry math: knob diameter, both rest positions, and the
     /// symmetry of the off/on insets. Hand-computed for the 20 px

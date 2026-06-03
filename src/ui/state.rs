@@ -131,7 +131,7 @@ impl<T: 'static> AnyTyped for Store<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::ui::state::*;
 
     fn wid(n: u64) -> WidgetId {
         WidgetId::from_hash(n)

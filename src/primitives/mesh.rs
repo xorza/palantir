@@ -249,8 +249,8 @@ fn compute_aabb(verts: &[MeshVertex]) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::primitives::color::Color;
+    use crate::primitives::mesh::*;
 
     #[test]
     fn mesh_vertex_is_12_bytes_no_padding() {

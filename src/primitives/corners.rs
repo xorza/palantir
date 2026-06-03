@@ -1,6 +1,6 @@
-use super::half_simd::F16x4;
-use super::num::Num;
-use super::size::Size;
+use crate::primitives::half_simd::F16x4;
+use crate::primitives::num::Num;
+use crate::primitives::size::Size;
 use glam::Vec2;
 
 /// Per-corner radii, packed as four f16 lanes in a `u64` (8 bytes).
@@ -153,7 +153,7 @@ impl Corners {
     /// semantics.
     #[inline]
     pub fn approx_zero(&self) -> bool {
-        use super::approx::noop_f16_bits;
+        use crate::primitives::approx::noop_f16_bits;
         let [tl, tr, br, bl] = self.0.0;
         noop_f16_bits(tl) && noop_f16_bits(tr) && noop_f16_bits(br) && noop_f16_bits(bl)
     }
@@ -179,7 +179,7 @@ impl From<Size> for Corners {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::corners::*;
 
     /// Wrap in a tiny struct so we can use TOML — top-level must be a table.
     fn ser(c: Corners) -> String {
@@ -253,11 +253,11 @@ mod tests {
             "-0.0 lanes (sign bit set)"
         );
         assert!(
-            Corners::all(super::super::approx::EPS * 0.5).approx_zero(),
+            Corners::all(crate::primitives::approx::EPS * 0.5).approx_zero(),
             "sub-EPS positive",
         );
         assert!(
-            !Corners::all(super::super::approx::EPS * 10.0).approx_zero(),
+            !Corners::all(crate::primitives::approx::EPS * 10.0).approx_zero(),
             "10×EPS must NOT register as zero",
         );
         // One asymmetric lane above EPS — short-circuit must not

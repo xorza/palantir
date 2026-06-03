@@ -236,7 +236,7 @@ pub(crate) fn modifiers_from_winit(m: &winit::keyboard::ModifiersState) -> Modif
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::input::keyboard::*;
 
     #[test]
     fn text_chunk_new_handles_cap_boundary() {

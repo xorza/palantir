@@ -259,7 +259,7 @@ impl SeenIds {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::forest::seen_ids::*;
     use crate::forest::tree::NodeId;
 
     fn ep(node: u32) -> Endpoint {

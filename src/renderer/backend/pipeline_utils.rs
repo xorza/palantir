@@ -1,6 +1,6 @@
 //! Render-pipeline + bind-group-layout construction recipes shared by
 //! the four pipeline modules so they can't drift on descriptor flags.
-//! The dynamic-buffer abstraction lives in `super::dynamic_buffer`.
+//! The dynamic-buffer abstraction lives in `crate::renderer::backend::dynamic_buffer`.
 
 /// Render-pipeline recipe. Threads the call-site fields each pipeline
 /// genuinely varies (label, shader, layout, vertex buffers, topology,
@@ -12,7 +12,7 @@
 /// `'a` is the lifetime of the references passed in; the returned
 /// [`wgpu::RenderPipeline`] retains its own internal references and
 /// outlives the recipe.
-pub(super) struct PipelineRecipe<'a> {
+pub(crate) struct PipelineRecipe<'a> {
     pub label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
     pub layout: &'a wgpu::PipelineLayout,
@@ -29,7 +29,7 @@ pub(super) struct PipelineRecipe<'a> {
 /// truth for the descriptor fields each pipeline doesn't vary —
 /// vertex entry, sample count, multiview mask. The mesh / quad /
 /// image pipelines + their lazy stencil variants all go through here.
-pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
+pub(crate) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(r.label),
         layout: Some(r.layout),
@@ -62,26 +62,26 @@ pub(super) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
 
 /// A color render pipeline paired with its lazily-built stencil-test
 /// twin. The `base` runs on plain frames; `test` (a copy of the same
-/// recipe plus [`super::stencil::stencil_test_state`]) is built on the
+/// recipe plus [`crate::renderer::backend::stencil::stencil_test_state`]) is built on the
 /// first rounded-clip frame via [`Self::ensure`] and runs in the
 /// stencil-attached pass. Shared by the mesh / image / curve pipelines
 /// so the "select base-vs-test", "build-once", and "drop the twin on
 /// format rebuild" logic can't drift across them.
 #[derive(Debug)]
-pub(super) struct StencilVariant {
+pub(crate) struct StencilVariant {
     base: wgpu::RenderPipeline,
     test: Option<wgpu::RenderPipeline>,
 }
 
 impl StencilVariant {
-    pub(super) fn new(base: wgpu::RenderPipeline) -> Self {
+    pub(crate) fn new(base: wgpu::RenderPipeline) -> Self {
         Self { base, test: None }
     }
 
     /// The pipeline to bind: the stencil-test twin in a rounded-clip
     /// pass, otherwise the base. Panics if `use_stencil` is set but
     /// [`Self::ensure`] hasn't run this format generation.
-    pub(super) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
+    pub(crate) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
         if use_stencil {
             self.test.as_ref().expect("ensure_stencil first")
         } else {
@@ -91,7 +91,7 @@ impl StencilVariant {
 
     /// Build the stencil-test twin if absent. `build` runs at most once
     /// per format generation; idempotent thereafter.
-    pub(super) fn ensure(&mut self, build: impl FnOnce() -> wgpu::RenderPipeline) {
+    pub(crate) fn ensure(&mut self, build: impl FnOnce() -> wgpu::RenderPipeline) {
         if self.test.is_none() {
             self.test = Some(build());
         }
@@ -99,7 +99,7 @@ impl StencilVariant {
 
     /// Swap in a freshly-format-built base and drop the stale twin so it
     /// rebuilds against the new format on the next rounded-clip frame.
-    pub(super) fn set_base(&mut self, base: wgpu::RenderPipeline) {
+    pub(crate) fn set_base(&mut self, base: wgpu::RenderPipeline) {
         self.base = base;
         self.test = None;
     }
@@ -109,7 +109,7 @@ impl StencilVariant {
 /// texture at binding 0 with a filtering sampler at binding 1, both
 /// fragment-visible. The shape shared by the gradient LUT atlas
 /// (`GradientResources`) and the per-image bind group (`ImagePipeline`).
-pub(super) fn texture_sampler_bgl(
+pub(crate) fn texture_sampler_bgl(
     device: &wgpu::Device,
     label: &'static str,
 ) -> wgpu::BindGroupLayout {
@@ -137,11 +137,11 @@ pub(super) fn texture_sampler_bgl(
 }
 
 /// Build a pipeline layout. Every palantir pipeline declares the same
-/// immediate-region size ([`super::IMMEDIATES_BYTES`]) so the
+/// immediate-region size ([`crate::renderer::backend::IMMEDIATES_BYTES`]) so the
 /// immediate state set by the backend at pass open (viewport) stays
 /// valid as pipelines switch, and the text pipeline can additionally
 /// write its `Params` at offset 8.
-pub(super) fn build_pipeline_layout(
+pub(crate) fn build_pipeline_layout(
     device: &wgpu::Device,
     label: &'static str,
     bind_group_layouts: &[Option<&wgpu::BindGroupLayout>],
@@ -149,6 +149,6 @@ pub(super) fn build_pipeline_layout(
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(label),
         bind_group_layouts,
-        immediate_size: super::IMMEDIATES_BYTES,
+        immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
     })
 }

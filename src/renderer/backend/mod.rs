@@ -1168,7 +1168,7 @@ pub(crate) mod test_support {
     //! used to assert a format flip rebuilds pipelines without dropping
     //! or re-uploading cached textures.
 
-    use super::*;
+    use crate::renderer::backend::*;
 
     impl WgpuBackend {
         /// Current swapchain color format the pipelines were built for.

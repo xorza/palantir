@@ -1,5 +1,5 @@
-use super::swatch::section;
 use crate::showcase::swatch;
+use crate::showcase::swatch::section;
 use palantir::TextWrap;
 use palantir::Track;
 use palantir::{

@@ -5,8 +5,8 @@
 //! (group split on text→quad transition) and
 //! `src/renderer/backend/text.rs` (per-group prepare/render pool).
 
-use super::swatch::{caption_style, swatch_bg};
 use crate::showcase::swatch;
+use crate::showcase::swatch::{caption_style, swatch_bg};
 use palantir::TextWrap;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
 
