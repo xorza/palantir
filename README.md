@@ -7,8 +7,6 @@ Status: pre-1.0, under active development. APIs break freely.
 
 ![Showcase screenshot](docs/Screenshot%202026-05-23%20at%2014.48.49.png)
 
-![Darkroom app screenshot](docs/Screenshot%202026-06-03%20at%2017.16.43.png)
-
 Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
 ![Frame 146 profile](docs/frame-146-profile.png)
@@ -19,6 +17,9 @@ P-core, 5.4 GHz): **~1.75 M instructions retired**, **~586 K cycles**,
 
 A short screen recording of the showcase tabs lives at
 [`docs/Screen Recording 2026-05-23 at 15.06.44.mov`](docs/Screen%20Recording%202026-05-23%20at%2015.06.44.mov).
+
+[Darkroom app](https://github.com/xorza/Scenarium/tree/main/darkroom)
+![Darkroom app screenshot](docs/Screenshot%202026-06-03%20at%2017.16.43.png)
 
 ## Highlights
 
