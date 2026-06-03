@@ -1,20 +1,47 @@
 # Visual Testing Suite
 
-Headless wgpu renderer → PNG → diff against committed golden images.
-
-Status legend: ✅ done · 🟡 partial · ⏳ not started
+Headless wgpu renderer → PNG → diff against per-machine golden images. The
+eyeball-replacement for rendering changes: pins the pixel output of
+representative scenes so an unintended render/layout regression surfaces as
+a failing diff.
 
 ## Goals
 
-- Pin visual output of representative scenes (widgets, layout drivers, text).
-- Catch unintended rendering/layout regressions in PRs.
-- Stay opt-in on CI initially (GPU/driver variance — see CI posture).
+- Pin visual output of representative scenes (widgets, layout drivers, text,
+  shapes, gradients).
+- Catch unintended rendering/layout regressions that `cargo test` (semantics,
+  not pixels) can't see.
 
 ## Non-goals
 
-- Bit-exact cross-GPU reproducibility.
-- Replacing layout/unit tests.
-- Animation / multi-frame capture (single static frame per fixture for now).
+- Bit-exact cross-GPU reproducibility — the diff is tolerance-based, not an
+  exact match.
+- Replacing layout/unit tests — this is a coarse backstop, not a substitute
+  for `#[test]`s that pin semantics.
+- Animation / multi-frame capture — one captured frame per fixture (a few
+  fixtures render N frames to settle state first, but still capture one).
+
+## Running
+
+The suite is gated behind the `internals` feature (it reaches into
+`test_support` helpers), so the bare `cargo test --test visual` errors —
+always pass the feature:
+
+```sh
+cargo test --test visual --features internals                 # whole suite
+cargo test --test visual --features internals gradient        # filter by name
+UPDATE_GOLDEN=1 cargo test --test visual --features internals <filter>  # rewrite goldens
+```
+
+A missing golden is auto-created on first run (passes with a `NEW GOLDEN`
+notice). When a render change is **intentional**, inspect the failure
+artifacts under `tests/visual/output/<name>/{actual,expected,diff}.png`
+first, then regenerate with `UPDATE_GOLDEN=1` and re-run to confirm green.
+
+Cargo auto-discovers the single test binary from `tests/visual/main.rs` per
+the [project-layout][] convention.
+
+[project-layout]: https://doc.rust-lang.org/cargo/guide/project-layout.html
 
 ## Layout
 
@@ -26,74 +53,77 @@ tests/visual/
 ├── golden.rs            assert_matches_golden + auto-create + UPDATE_GOLDEN
 ├── fixtures.rs          mod decls + shared DARK_BG const
 ├── fixtures/
-│   ├── widgets.rs       per-widget minimal scenes + shape/curve fixtures
-│   ├── layout.rs        vstack/grid/zstack drivers
+│   ├── widgets.rs       per-widget scenes + shape / curve / gradient fixtures
+│   ├── layout.rs        vstack / grid / zstack drivers
 │   ├── text.rs          text rendering + partial-damage smoke
 │   ├── scroll.rs        scrollbar visuals + warm-cache parity
 │   ├── damage.rs        DamageEngine visualization fixtures
+│   ├── format_change.rs surface-format-change recreate path
 │   └── hidpi.rs         scale > 1.0 scenes
-├── golden/              committed PNG references
-├── output/              gitignored — written on failure
+├── golden/              gitignored — per-machine PNG references, auto-created on first run
+├── output/              gitignored — diff artifacts written on failure
 └── visual-testing.md    this file
 ```
 
-Single test binary (`cargo test --test visual`); Cargo auto-discovers
-`tests/visual/main.rs` per the [project-layout][] convention.
+## How it works
 
-[project-layout]: https://doc.rust-lang.org/cargo/guide/project-layout.html
+- **Harness** (`harness.rs`) — `LowPower` adapter, no surface, renders to an
+  offscreen `Rgba8UnormSrgb` texture. `Harness::new()` clones a process-global
+  `OnceLock<Gpu>` (device + queue) and a per-thread `COSMIC` `TextShaper`
+  (fonts loaded once per worker thread). `Harness::render(physical, scale,
+  clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)`
+  for fixtures that need warmup frames before capture (e.g. scrollbars reading
+  populated state), `render_with_overlay(cfg, …)` for the damage-vis tests.
+  Private `readback()` honors the 256-byte row alignment.
+- **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }`, default
+  `(2, 0.001)`: a pixel passes if every channel is within `per_channel`, and
+  the image passes if the differing-pixel ratio stays under `max_ratio`.
+  Diffing is row-parallel via rayon, reducing to `RowStats { max_delta,
+  differing }`. The dumped diff image dims passing pixels to 25 % and marks
+  failing pixels solid red. `diff.rs` carries 6 unit tests pinning the
+  contract.
+- **Golden workflow** (`golden.rs`) — `assert_matches_golden(name, &actual,
+  tol)`. Missing golden → auto-write + pass. `UPDATE_GOLDEN=1` force-rewrites.
+  On failure, dumps `actual.png` / `expected.png` / `diff.png` into
+  `tests/visual/output/<name>/`.
 
-## Status
+## Fixtures
 
-### Infrastructure ✅
-- **Dev-deps** — `image` (PNG-only features). `pollster` reused from regular deps.
-- **Harness** (`harness.rs`) — `LowPower` adapter, no surface, `Rgba8UnormSrgb`. `Harness::new()` clones a process-global `OnceLock<Gpu>` (device + queue) and a per-thread `COSMIC` `TextShaper` (fonts loaded once per worker thread). `Harness::render(physical, scale, clear, scene)` returns an `RgbaImage`. Helpers: `render_after_settle(N, …)` for fixtures that need warmup frames before capture (scroll bars reading populated state), `render_with_overlay(cfg, …)` for the damage-vis tests. Private `readback()` honors the 256-byte row alignment via `RgbaImage::from_raw`.
-- **Diff** (`diff.rs`) — `Tolerance { per_channel, max_ratio }` defaults `(2, 0.001)`. `diff(actual, expected, tol)` is row-parallel via rayon; reduces to a `RowStats { max_delta, differing }`. Diff image dims passing pixels to 25%, marks failing pixels solid red. 6 unit tests pin the contract (identical / within-channel / sparse-outlier-ratio / saturated-fail / strict-zero / dimension-mismatch).
-- **Golden workflow** (`golden.rs`) — `assert_matches_golden(name, &actual, tol)`. Missing golden → auto-write + pass with `NEW GOLDEN (no prior image)` notice. `UPDATE_GOLDEN=1` force-rewrites. On failure dumps `actual.png`, `expected.png`, `diff.png` into `tests/visual/output/<name>/`.
+Grouped by file under `fixtures/`; **the files are the authoritative list.**
+Most fixtures diff against a golden; some are **assertion-only** (no golden)
+— they check a pixel-pattern invariant directly, which is robust across
+machines. Per-fixture tolerance overrides via the `Tolerance` arg (text
+fixtures loosen it for glyph AA).
 
-### Fixtures ✅ (26 goldens, 35 test fns + 1 sanity)
-- `widgets` (17 tests): `button_hello`, `frame_filled_with_stroke`,
-  `frame_linear_gradient`, `add_shape_rounded_rect_linear_gradient`,
-  `showcase_gradients_tab`, `radial_and_conic_gradient`,
-  `surface_rounded_clips_full_fill_child`,
-  `rounded_clip_partially_offscreen`,
-  `rounded_clip_survives_surface_resize` (smoke, no golden),
-  `interleaved_shapes_paint_in_record_order`, `line_diagonal_aa`,
-  `polyline_gradient`, `polyline_bevel_join`,
-  `polyline_round_caps`, `polyline_round_join`,
-  `polyline_translucent_premultiplies_in_mesh_shader` (assert-only,
-  no golden), `curve_caps`.
-- `layout` (3 tests): `vstack_fill_weights`, `grid_mixed_tracks`,
-  `zstack_centered_button`.
-- `text` (3 tests): `text_paragraph` and `text_row_list_batched`
-  (looser tolerance for glyph AA), plus
-  `text_row_list_survives_partial_damage_smoke` (glyph-ink heuristic,
-  no golden).
-- `hidpi` (1 test): `dashboard_hidpi` — complex multi-region scene
-  at scale 2.0 (header / sidebar / 2×2 cards / footer).
-- `scroll` (6 tests): `scroll_vertical_overflow`,
-  `scroll_horizontal_overflow`, `scroll_xy_overflow` (corner
-  avoidance), `scroll_no_bar_when_fits`,
-  `scroll_with_user_padding` (bar lands in reserved strip, not user
-  padding). Each renders the scene twice from the same `Harness` so
-  frame 2 sees the populated `ScrollState` and emits the bar — the
-  golden captures frame 2. Plus
-  `scroll_warm_cache_matches_cold_encoded_second_frame` — three
-  renders, asserts frame 3 is byte-identical to frame 2 (catches
-  encoder-cache-replay corruption like the `exit_idx` bug we hit;
-  no golden, pure intra-test invariant).
-- `damage` (5 tests): `static_scene_repeats_clean` (Skip path),
-  `single_button_change_repaints_something`,
-  `damage_rect_overlay_strokes_dirty_region`,
-  `corner_pair_change_keeps_center_unpainted` (multi-rect
-  centre-stays-unpainted invariant),
-  `corner_pair_overlay_strokes_each_rect`. All assertion-based, no
-  golden — they use `DebugOverlayConfig::{dim_undamaged, damage_rect}`
-  + a magenta clear to expose the dirty region as pixel patterns.
-- `main`: `readback_returns_clear_color_for_empty_scene` — sRGB
-  round-trip sanity, no golden.
-
-### CI ⏳
-Local-only. No GitHub Actions job yet. Once we have a second hidpi fixture or any flake reports, gate the suite behind `#[ignore]` and wire one pinned-runner job that runs `cargo test --test visual -- --ignored`.
+- **`widgets`** — per-widget minimal scenes (button, stroked frame), the
+  gradient family (linear / radial / conic, both `Frame` background and
+  `add_shape` rounded-rect), rounded-clip surfaces (full-fill child,
+  partially-offscreen, survives-resize smoke), shape/curve primitives (AA
+  lines, polylines with bevel/round joins + caps, beziers), and record-order
+  layering. A few are assert-only (translucent-polyline premultiply, resize
+  smoke).
+- **`layout`** — vstack fill-weights, grid mixed tracks, zstack centering.
+- **`text`** — paragraph and batched row-list rendering, plus a partial-damage
+  smoke using a glyph-ink heuristic (assert-only).
+- **`scroll`** — vertical / horizontal / xy overflow (corner avoidance),
+  no-bar-when-fits, bar-in-reserved-strip. Each renders the scene twice from
+  one `Harness` so frame 2 sees the populated `ScrollState` and emits the bar
+  (the golden captures frame 2). Plus a warm-cache invariant: three renders,
+  asserting frame 3 is byte-identical to frame 2 (catches encoder-cache-replay
+  corruption; assert-only).
+- **`damage`** — `DamageEngine` visualizations via
+  `DebugOverlayConfig::{dim_undamaged, damage_rect}` + a magenta clear that
+  exposes the dirty region as a pixel pattern: Skip-path static scene,
+  single-change repaint, dirty-region stroke, and multi-rect
+  centre-stays-unpainted invariants. All assert-only.
+- **`format_change`** — the `Host::set_surface_format` recreate path. Flips
+  the swapchain color format mid-session, rebuilds every format-dependent
+  pipeline (quad / mesh / image / curve / text atlas), and asserts the rebuilt
+  renderer produces matching pixels (and that skipping the rebuild fails
+  loud).
+- **`hidpi`** — a complex multi-region dashboard at scale 2.0 (header /
+  sidebar / 2×2 cards / footer).
+- **`main`** — a clear-color readback sanity check (sRGB round-trip).
 
 ### Adding a fixture
 
@@ -108,26 +138,9 @@ fn my_scene_matches_golden() {
 }
 ```
 
-Drop in the appropriate `fixtures/*.rs` (or create a new file + add a
-`mod` to `fixtures.rs`). First run auto-creates the golden — eyeball it
-before committing. Per-fixture tolerance overrides via the `Tolerance`
-arg.
-
-## Deviations from the original plan
-
-- Harness lives in `tests/visual/`, not `src/support/visual_test.rs`. Integration-test-only, no need to ship in the public crate.
-- Not `#[ignore]` by default. Suite is fast (~1.2s) and currently deterministic on dev machines.
-- Auto-create on missing golden (added to the original `UPDATE_GOLDEN=1` workflow).
-- No fixture table — individual `#[test]` fns. Topical grouping under `fixtures/` covers organization without macros.
-
-## Deferred
-
-- Auto-import `examples/showcase/` tabs as fixtures.
-- HTML diff report (gallery of failures).
-- Multi-frame / interaction capture (hover, focus).
-- Additional hidpi variants (scale 1.5, 3.0).
-- Promote harness to its own internal crate if/when benches or other
-  test binaries want to reuse it (current scale doesn't justify).
+Drop it in the appropriate `fixtures/*.rs` (or add a new file + a `mod` to
+`fixtures.rs`). First run auto-creates the golden — eyeball it before relying
+on it. Override tolerance via the `Tolerance` arg.
 
 ## Slow startup? `cargo clean`.
 
@@ -149,8 +162,17 @@ recurs, run `cargo clean` again, or set `CARGO_INCREMENTAL=0` for
 test runs (trades incremental rebuild speed for not accumulating
 rcgu files).
 
-## Open questions
+## Current limitations
 
-- **Adapter selection** — `LowPower`. Revisit if dev-machine vs CI runners diverge.
-- **Golden storage** — raw PNG in repo. Largest current golden is `dashboard_hidpi` at 53 KB. Re-evaluate at ~50+ fixtures or if any single golden exceeds ~200 KB.
-- **CI gating** — `#[ignore]` + pinned runner is the safe default; the alternative is per-platform goldens (`golden/<arch>/...`) which is more work but catches more.
+- **Local-only, no CI.** No GitHub Actions job; the suite runs on dev
+  machines only. It is **not** `#[ignore]`d — it's fast (~1 s) and
+  deterministic on dev machines. If flakiness appears, the intended path is to
+  gate behind `#[ignore]` + a pinned runner (`cargo test --test visual
+  --features internals -- --ignored`).
+- **Goldens are per-machine.** `.gitignore` excludes `tests/visual/golden/`,
+  so goldens are local and auto-created: the suite catches regressions against
+  *your own* last-accepted render, not a shared baseline. Committing them
+  (likely per-arch, `golden/<arch>/...`) is the prerequisite for a shared CI
+  baseline.
+- **Adapter selection** — `LowPower`. Revisit if dev-machine vs CI runners
+  diverge.
