@@ -754,12 +754,12 @@ impl LayoutEngine {
             TextWrap::Ellipsis => LineFit::Ellipsis,
             // `Overflow` never reaches the bounded branch (excluded below);
             // `Clip` is harmless as its fallthrough value.
-            TextWrap::SingleLine | TextWrap::Overflow => LineFit::Clip,
+            TextWrap::Truncate | TextWrap::SingleLine => LineFit::Clip,
         };
-        let single_line = matches!(ts.wrap, TextWrap::SingleLine | TextWrap::Ellipsis);
+        let single_line = matches!(ts.wrap, TextWrap::Truncate | TextWrap::Ellipsis);
         let bounded = matches!(
             ts.wrap,
-            TextWrap::Wrap | TextWrap::WrapWithOverflow | TextWrap::SingleLine | TextWrap::Ellipsis
+            TextWrap::Wrap | TextWrap::WrapWithOverflow | TextWrap::Truncate | TextWrap::Ellipsis
         ) && available_w.is_finite();
 
         let result = if bounded {

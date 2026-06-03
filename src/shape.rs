@@ -343,6 +343,13 @@ impl ColorMode {
 /// Wrap mode for [`ShapeRecord::Text`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
+    /// Single line shaped once at unbounded width and never reshaped, so it
+    /// overflows a too-narrow slot rather than truncating. Min-content equals
+    /// the full line width, so a Hug track won't shrink below it. The explicit
+    /// opt-out from the truncating default — for editable buffers and
+    /// horizontally-scrolled text that are *meant* to run past the viewport.
+    #[default]
+    SingleLine,
     /// **Default.** Single line, hard-truncated to the committed width with
     /// no trailing marker — glyphs past the box edge are simply dropped.
     /// Min-content is zero (the run can shrink to nothing), so a bounded
@@ -350,8 +357,7 @@ pub enum TextWrap {
     /// is limited to its available width like any other widget. In an
     /// unbounded / Hug-width parent the full line shows; truncation only
     /// bites once a parent commits a narrower width.
-    #[default]
-    SingleLine,
+    Truncate,
     /// Single line, truncated to the committed width with a trailing `…`.
     /// Identical to [`TextWrap::SingleLine`] (min-content zero, clipped to the
     /// slot) except the cut is marked with an ellipsis. For labels where the
@@ -368,12 +374,6 @@ pub enum TextWrap {
     /// width overflow rather than breaking mid-word. Matches WPF's
     /// `TextWrapping="WrapWithOverflow"`.
     WrapWithOverflow,
-    /// Single line shaped once at unbounded width and never reshaped, so it
-    /// overflows a too-narrow slot rather than truncating. Min-content equals
-    /// the full line width, so a Hug track won't shrink below it. The explicit
-    /// opt-out from the truncating default — for editable buffers and
-    /// horizontally-scrolled text that are *meant* to run past the viewport.
-    Overflow,
 }
 
 /// True iff `local_rect` is set with a degenerate or negative extent

@@ -90,7 +90,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
         .expect("button label text shape");
     assert_eq!(
         wrap,
-        TextWrap::SingleLine,
+        TextWrap::Truncate,
         "a button label defaults to the truncating wrap mode"
     );
 
@@ -305,7 +305,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                         )
                                         .id(WidgetId::from_hash("section-title"))
                                         .style(TextStyle::default().with_font_size(12.0))
-                                        .text_wrap(TextWrap::Overflow)
+                                        .text_wrap(TextWrap::SingleLine)
                                         .show(ui);
                                         grid_node = Some(
                                             Grid::new()
@@ -325,7 +325,7 @@ fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
                                                             TextStyle::default()
                                                                 .with_font_size(14.0),
                                                         )
-                                                        .text_wrap(TextWrap::Overflow)
+                                                        .text_wrap(TextWrap::SingleLine)
                                                         .grid_cell((0, 1))
                                                         .show(ui);
                                                 })
@@ -407,7 +407,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
             Text::new("right column")
                 .auto_id()
                 .style(TextStyle::default().with_font_size(14.0))
-                .text_wrap(TextWrap::Overflow)
+                .text_wrap(TextWrap::SingleLine)
                 .show(ui)
                 .node(),
         );
@@ -470,7 +470,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
                     Text::new("right column")
                         .auto_id()
                         .style(TextStyle::default().with_font_size(14.0))
-                        .text_wrap(TextWrap::Overflow)
+                        .text_wrap(TextWrap::SingleLine)
                         .grid_cell((0, 1))
                         .show(ui)
                         .node(),
@@ -517,6 +517,79 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     }
 }
 
+/// Regression for the showcase "two Hug columns" grid: a **bare** label
+/// (no `.text_wrap(...)`, so it takes the `Text` default) in a Hug+Hug grid
+/// next to a wrapping paragraph must keep its full natural width — the
+/// paragraph wraps to absorb the squeeze. This pins the default: `Text`
+/// defaults to `TextWrap::Overflow`, whose MinContent equals its full line,
+/// so the grid's Hug solver floors the label column at the label width and
+/// never shrinks it (the old `SingleLine` default reported MinContent 0 and
+/// the slack split clipped "right column" → "right col").
+#[test]
+fn two_hug_cols_default_label_hugs_full_width() {
+    fn build(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
+        let mut label_node = None;
+        Grid::new()
+            .id(WidgetId::from_hash("grid"))
+            .cols(Rc::from([Track::hug(), Track::hug()]))
+            .rows(Rc::from([Track::hug()]))
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(ui, |ui| {
+                Text::new("the quick brown fox jumps over the lazy dog. pack my box with five dozen liquor jugs")
+                    .auto_id()
+                    .style(TextStyle::default().with_font_size(14.0))
+                    .text_wrap(TextWrap::WrapWithOverflow)
+                    .grid_cell((0, 0))
+                    .show(ui);
+                // No `.text_wrap(...)` — exercises the default.
+                label_node = Some(
+                    Text::new("right column")
+                        .auto_id()
+                        .style(TextStyle::default().with_font_size(14.0))
+                        .grid_cell((0, 1))
+                        .show(ui)
+                        .node(),
+                );
+            });
+        label_node.unwrap()
+    }
+
+    // Label's natural unbroken width, probed unconstrained.
+    let mut probe = Ui::for_test_at_text(UVec2::new(2000, 400));
+    let mut probe_label = None;
+    probe.run_at_acked(UVec2::new(2000, 400), |ui| {
+        probe_label = Some(build(ui));
+    });
+    let label_full = probe.layout_engine.intrinsic(
+        probe.forest.tree(Layer::Main),
+        probe_label.unwrap(),
+        Axis::X,
+        LenReq::MaxContent,
+        &crate::layout::support::TextCtx {
+            bytes: &probe.frame_arena.inner().fmt_scratch,
+            shaper: &probe.text,
+        },
+    );
+    assert!(label_full > 0.0);
+
+    // The long paragraph's max-content dwarfs these surfaces, so the grid
+    // is in the slack-distribution regime (paragraph wraps). The default
+    // label must still occupy its full width at each.
+    for surface_w in [600u32, 500, 400, 300] {
+        let mut ui = Ui::for_test_at_text(UVec2::new(surface_w, 400));
+        let mut label = None;
+        ui.run_at_acked(UVec2::new(surface_w, 400), |ui| {
+            label = Some(build(ui));
+        });
+        let label_rect_w = ui.layout[Layer::Main].rect[label.unwrap().idx()].size.w;
+        assert!(
+            label_rect_w >= label_full - 0.5,
+            "default-wrap label shrank below its natural width — it would clip. \
+             surface_w={surface_w} label_full={label_full} label_rect_w={label_rect_w}",
+        );
+    }
+}
+
 /// Two `ShapeRecord::Text` runs in one leaf:
 ///   slot 0: "first" at `local_rect: Some((0, 0)+100x20)`,
 ///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
@@ -534,7 +607,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
-                wrap: TextWrap::SingleLine,
+                wrap: TextWrap::Truncate,
                 align: Default::default(),
                 family: crate::text::FontFamily::Sans,
             });
@@ -544,7 +617,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 brush: Color::WHITE.into(),
                 font_size_px: 14.0,
                 line_height_px: 16.0,
-                wrap: TextWrap::SingleLine,
+                wrap: TextWrap::Truncate,
                 align: Default::default(),
                 family: crate::text::FontFamily::Sans,
             });

@@ -118,7 +118,7 @@ impl<'a> DragValue<'a> {
                 brush: look.text.color.into(),
                 font_size_px: look.text.font_size_px,
                 line_height_px: look.line_height_px(),
-                wrap: TextWrap::SingleLine,
+                wrap: TextWrap::Truncate,
                 align: Align::CENTER,
                 family: look.text.family,
             });

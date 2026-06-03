@@ -197,12 +197,12 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
             // floor, and the text would overflow its slot at arrange.
             (Axis::X, LenReq::MinContent) => match ts.wrap {
                 TextWrap::WrapWithOverflow => m.intrinsic_min,
-                TextWrap::Overflow => m.size.w,
+                TextWrap::SingleLine => m.size.w,
                 // `Wrap` can break inside a word at the glyph level, so its
                 // min-content is effectively zero; a truncating run likewise
                 // shrinks to nothing. In both cases the box width wins and
                 // the run reflows/cuts to it.
-                TextWrap::Wrap | TextWrap::SingleLine | TextWrap::Ellipsis => 0.0,
+                TextWrap::Wrap | TextWrap::Truncate | TextWrap::Ellipsis => 0.0,
             },
             (Axis::X, LenReq::MaxContent) => m.size.w,
             (Axis::Y, _) => m.size.h,

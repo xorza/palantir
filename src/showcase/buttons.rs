@@ -76,7 +76,7 @@ pub fn build(ui: &mut Ui) {
                 Button::new()
                     .id_salt("e-2")
                     .size((Sizing::Fixed(140.0), Sizing::Hug))
-                    .text_wrap(TextWrap::Overflow)
+                    .text_wrap(TextWrap::SingleLine)
                     .label("Screenshot 2026-05-28 at 01.21.25.png")
                     .show(ui);
                 Button::new()

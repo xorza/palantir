@@ -33,7 +33,7 @@ impl Button {
             // label's natural line (Fixed/Fill button); then the label is cut
             // to fit instead of spilling outside the chrome. Override the mode
             // via `.text_wrap(...)`.
-            label_wrap: TextWrap::SingleLine,
+            label_wrap: TextWrap::Truncate,
         }
     }
 
