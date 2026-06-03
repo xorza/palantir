@@ -2,6 +2,7 @@
 //! Submodules are `pub(crate)`; canonical paths are
 //! `crate::common::<sub>::<item>`.
 
+pub(crate) mod clipboard;
 pub(crate) mod hash;
 pub(crate) mod live_arena;
 pub(crate) mod platform;

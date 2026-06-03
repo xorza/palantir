@@ -9,8 +9,8 @@ fn context_menu_cut_copy_paste_clear() {
     use crate::widgets::context_menu::ContextMenu;
     // Whole test holds the clipboard guard so a parallel test in
     // the lib binary can't slip between our `set`/`get` checks.
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
-    crate::clipboard::set("");
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
+    crate::common::clipboard::set("");
 
     fn editor_id() -> WidgetId {
         WidgetId::from_hash("ctx-ed")
@@ -60,7 +60,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 1); // row 1 == Copy
     assert_eq!(buf, "hello", "copy doesn't mutate the buffer");
-    assert_eq!(crate::clipboard::get(), "ell");
+    assert_eq!(crate::common::clipboard::get(), "ell");
     assert!(
         !ContextMenu::is_open(&ui, editor_id()),
         "item click auto-closes menu",
@@ -75,7 +75,7 @@ fn context_menu_cut_copy_paste_clear() {
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 0); // row 0 == Cut
     assert_eq!(buf, "ho", "cut removes the selection");
-    assert_eq!(crate::clipboard::get(), "ell");
+    assert_eq!(crate::common::clipboard::get(), "ell");
     let st = ui.state_mut::<TextEditState>(editor_id()).clone();
     assert_eq!(st.caret, 1);
     assert_eq!(st.selection, None);
@@ -99,7 +99,7 @@ fn context_menu_cut_copy_paste_clear() {
     // sanitize the same way the Cmd+V keypress does — otherwise the
     // single-line buffer ends up with literal line breaks it can't
     // render or hit-test. Earlier menu code lacked the sanitize call.
-    crate::clipboard::set("foo\nbar");
+    crate::common::clipboard::set("foo\nbar");
     open_menu_and_record(&mut ui, &mut buf);
     click_menu_row(&mut ui, &mut buf, 2); // Paste
     assert_eq!(
@@ -114,7 +114,7 @@ fn context_menu_cut_copy_paste_clear() {
 /// per platform.
 #[test]
 fn clipboard_shortcuts_apply_keypresses() {
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
 
     // Primary command modifier (`Modifiers::ctrl` is platform-
     // normalized — Cmd on macOS, Ctrl elsewhere).
@@ -141,7 +141,7 @@ fn clipboard_shortcuts_apply_keypresses() {
         }
     }
 
-    crate::clipboard::set("");
+    crate::common::clipboard::set("");
     let mut text = String::from("hello");
     let mut state = TextEditState {
         caret: 4,
@@ -152,12 +152,12 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Copy: clipboard ← "ell", buffer unchanged.
     apply_key(&mut text, &mut state, primary('c'));
     assert_eq!(text, "hello");
-    assert_eq!(crate::clipboard::get(), "ell");
+    assert_eq!(crate::common::clipboard::get(), "ell");
 
     // Cut: clipboard keeps "ell", buffer drops it, caret collapses.
     apply_key(&mut text, &mut state, primary('x'));
     assert_eq!(text, "ho");
-    assert_eq!(crate::clipboard::get(), "ell");
+    assert_eq!(crate::common::clipboard::get(), "ell");
     assert_eq!(state.caret, 1);
     assert_eq!(state.selection, None);
 
@@ -169,7 +169,7 @@ fn clipboard_shortcuts_apply_keypresses() {
     // Non-primary modifier must NOT trigger any clipboard action.
     // (On macOS, raw Ctrl+C is not Copy; on Win/Linux, Super+C is
     // not Copy.) Reset state and verify a no-op.
-    crate::clipboard::set("CLIP");
+    crate::common::clipboard::set("CLIP");
     let mut text2 = String::from("hello");
     let mut state2 = TextEditState {
         caret: 4,
@@ -177,7 +177,11 @@ fn clipboard_shortcuts_apply_keypresses() {
         ..TextEditState::default()
     };
     apply_key(&mut text2, &mut state2, non_primary('c'));
-    assert_eq!(crate::clipboard::get(), "CLIP", "non-primary must not copy");
+    assert_eq!(
+        crate::common::clipboard::get(),
+        "CLIP",
+        "non-primary must not copy"
+    );
     apply_key(&mut text2, &mut state2, non_primary('v'));
     assert_eq!(text2, "hello", "non-primary must not paste");
 }
@@ -209,8 +213,8 @@ fn paste_strips_newlines() {
     // End-to-end via Cmd+V (Ctrl+V on non-Mac): a multi-line
     // clipboard string lands in the buffer as a single
     // space-separated line.
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
-    crate::clipboard::set("first\r\nsecond\nthird");
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
+    crate::common::clipboard::set("first\r\nsecond\nthird");
     let mut text = String::new();
     let mut state = TextEditState::default();
     apply_key(&mut text, &mut state, ctrl_press(Key::Char('v')));
@@ -222,8 +226,8 @@ fn paste_strips_newlines() {
 /// shortcut branch suppresses the printable-char insert path.
 #[test]
 fn clipboard_shortcut_does_not_insert_char() {
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
-    crate::clipboard::set("");
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
+    crate::common::clipboard::set("");
 
     let mut text = String::from("ab");
     let mut state = TextEditState {
@@ -251,7 +255,7 @@ fn clipboard_shortcut_does_not_insert_char() {
 #[test]
 fn secondary_click_opens_text_edit_menu() {
     use crate::widgets::context_menu::ContextMenu;
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
 
     let editor_id = WidgetId::from_hash("ctx-ed-sec");
     fn body(ui: &mut Ui, buf: &mut String) {

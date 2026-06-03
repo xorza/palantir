@@ -46,8 +46,8 @@ fn single_line_enter_does_not_insert_newline() {
 /// sanitize-on-paste behaviour is gated to single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
-    let _cb_guard = crate::clipboard::test_support::test_serialize_guard();
-    crate::clipboard::set("line1\nline2\nline3");
+    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
+    crate::common::clipboard::set("line1\nline2\nline3");
 
     let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
     let mut buf = String::new();
