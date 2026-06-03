@@ -32,7 +32,8 @@ tests/alloc/
 ├── harness_tests.rs     unit tests for the harness itself
 ├── fixtures.rs          mod decls
 ├── fixtures/
-│   └── widgets.rs       per-widget minimal scenes
+│   ├── widgets.rs       per-widget minimal scenes
+│   └── renderer.rs      higher shape counts + polyline/mesh encode/compose
 └── alloc-testing.md     this file
 ```
 
@@ -94,26 +95,47 @@ shouldn't.
 
 ### Infrastructure ✅
 - `allocator.rs` — counting wrapper around `System` + `with_audit`.
-- `harness/mod.rs` — `run_audit` + `audit_steady_state` with
-  `AllocBudget`.
+- `harness/mod.rs` — `run_audit` + `audit_steady_state`; the budget is
+  a plain `max_allocs: u64`.
 - `harness/format.rs` — `user_frames` backtrace filter.
 - `harness_tests.rs` — unit tests for the harness itself.
 
 ### Fixtures
-All use `audit_steady_state` (warmup auto-discovered) and pin **budget 0**.
+All pin **budget 0** via `audit_steady_state` (warmup auto-discovered),
+split across two files by what they stress.
 
-- `empty_frame` ✅ — `Ui` with no widgets. Sanity baseline.
-- `button_only` ✅ — single `Button::label("hello")` with FILL/FILL.
-  Pins the static-string label round-trip.
-- `nested_vstack_64` ✅ — 64-deep `Panel::vstack_with_id` recursion,
-  exercises layout scratch growth at depth.
-- `grid_8x8` ✅ — `Grid` with 8×8 `Track::fill` and a `Frame` per cell;
+`fixtures/widgets.rs` — per-widget minimal scenes:
+
+- `empty_frame` — `Ui` with no widgets. Sanity baseline.
+- `button_only` — single `Button::label("hello")` with FILL/FILL. Pins
+  the static-string label round-trip.
+- `nested_vstack_64` — 64-deep `Panel::vstack().id_salt(depth)`
+  recursion; exercises layout scratch growth at depth.
+- `grid_8x8` — `Grid` with 8×8 `Track::fill` and a `Frame` per cell;
   exercises grid driver scratch + track-list `Rc` reuse.
-- `damage_animated_rect` ✅ — `Frame` whose width changes every frame,
-  exercising the damage diff + cascade rebuild on a mutating tree.
-- `static_text_label` ✅ — `Text::new("hello world")`. Held the
-  surprise: cosmic shaping caches across frames and `Cow<'static, str>`
-  storage means the audit window stays at 0 once warmed.
+- `damage_animated_rect` — `Frame` whose width changes every frame;
+  exercises the damage diff + cascade rebuild on a mutating tree.
+- `static_text_label` — `Text::new("hello world")`. Held the surprise:
+  cosmic shaping caches across frames and `Cow<'static, str>` storage
+  keep the audit window at 0 once warmed.
+- `state_map_counter` — `Frame` + a per-frame `ui.state_mut::<u32>`
+  increment; pins that `StateMap` access stays alloc-free.
+- `scroll_overflow` — `Scroll::vertical` with tall content; pins
+  `PostArrangeRegistry` typed-bucket reuse + `ScrollHook::run` in place.
+- `scroll_fits` — `Scroll::vertical` with content fitting the viewport;
+  pins the hook's `overflow == new_overflow` early-exit.
+
+`fixtures/renderer.rs` — scale up shape counts + exercise the
+non-`RoundedRect` variants so an encode/compose `Vec::new()` can't slip
+in unnoticed:
+
+- `many_rects_compose` — 16×16 `Frame` grid (256 quads); stresses
+  `RenderCmdBuffer` + `RenderBuffer.quads` capacity reuse far harder
+  than `grid_8x8`'s 64.
+- `polyline_static` — a static `Shape::Polyline` pushed every frame;
+  pins the polyline tessellator's scratch reuse.
+- `mesh_static` — a static `Shape::Mesh` pushed every frame; pins that
+  the mesh-encoding command path stays alloc-free.
 
 ### CI ⏳
 Local-only. Same posture as `tests/visual` — wire one pinned-runner job
