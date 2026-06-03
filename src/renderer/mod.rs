@@ -17,22 +17,6 @@
 //! Both halves are owned and driven from [`Host`](crate::host::Host),
 //! the public top-level handle.
 pub mod backend;
-/// Shared handle types for the most recent GPU instrumentation
-/// sample, refreshed each frame by the backend's timestamp-query +
-/// pipeline-statistics readback. Consumers (debug overlay, benches)
-/// hold a `Clone` of the same `GpuPassStats` the backend writes into
-/// — no global state. `Host::gpu_pass_stats` exposes the canonical
-/// handle.
-pub mod gpu_pass_stats {
-    pub use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
-}
-/// Per-frame counters for `queue.write_buffer` / `write_texture` calls
-/// issued through [`Queue`]. Gated behind `internals` for the frame
-/// bench's write-attribution arm.
-#[cfg(feature = "internals")]
-pub mod write_stats {
-    pub use crate::renderer::backend::write_stats::{Stats, take};
-}
 pub(crate) mod caches;
 pub mod frontend;
 pub(crate) mod gradient_atlas;
