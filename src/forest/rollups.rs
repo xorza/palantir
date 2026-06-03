@@ -146,7 +146,7 @@ mod tests {
             color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,
-            wrap: TextWrap::SingleLine,
+            wrap: TextWrap::Truncate,
             align: Align::default(),
             family: crate::text::FontFamily::Sans,
         }

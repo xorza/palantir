@@ -4,8 +4,9 @@
 use glam::UVec2;
 use palantir::{
     Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing,
-    Stroke, Track,
+    Stroke, Text, TextStyle, TextWrap, Track,
 };
+use std::rc::Rc;
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -135,4 +136,50 @@ fn zstack_centered_button_matches_golden() {
             });
     });
     assert_matches_golden("zstack_centered_button", &img, Tolerance::default());
+}
+
+/// Two `Hug` columns: a wrapping paragraph in col 0 and a bare
+/// (default-wrap) label in col 1. Pins the showcase "two Hug columns"
+/// fix — with `Text` defaulting to `TextWrap::Overflow`, the label keeps
+/// its full natural width (the grid floors its column at the label width)
+/// while the paragraph wraps to absorb the squeeze. Under the old
+/// `SingleLine` default the label clipped to "right col".
+#[test]
+fn grid_two_hug_cols_label_not_clipped_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(440, 120), 1.0, DARK_BG, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(12.0)
+            .size((Sizing::FILL, Sizing::Hug))
+            .show(ui, |ui| {
+                Grid::new()
+                    .id_salt("two-hug")
+                    .cols(Rc::from([Track::hug(), Track::hug()]))
+                    .rows(Rc::from([Track::hug()]))
+                    .gap_xy(16.0, 0.0)
+                    .show(ui, |ui| {
+                        Text::new(
+                            "The quick brown fox jumps over the lazy dog. \
+                             Pack my box with five dozen liquor jugs.",
+                        )
+                        .id_salt("paragraph")
+                        .style(TextStyle::default().with_font_size(14.0))
+                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .grid_cell((0, 0))
+                        .show(ui);
+                        // Bare label — exercises the default wrap mode.
+                        Text::new("right column")
+                            .id_salt("label")
+                            .style(TextStyle::default().with_font_size(14.0))
+                            .grid_cell((0, 1))
+                            .show(ui);
+                    });
+            });
+    });
+    assert_matches_golden(
+        "grid_two_hug_cols_label_not_clipped",
+        &img,
+        Tolerance::default(),
+    );
 }
