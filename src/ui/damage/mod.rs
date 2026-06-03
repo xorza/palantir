@@ -665,13 +665,23 @@ impl DamageEngine {
                             arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
                         // The per-shape diff covers shapes that moved or
                         // changed. When it found every `Paint` identical
-                        // (`geometry_unchanged`) it emitted nothing — but
-                        // reaching this arm means `hash` or
-                        // `cascade_input` changed, so a cascade-state
-                        // toggle (ancestor disable, clip-saturated pan)
-                        // altered the pixels in place. Damage the union to
-                        // repaint them.
+                        // (`geometry_unchanged`) it emitted nothing — and
+                        // only a `cascade_input` change (ancestor disable,
+                        // clip-saturated pan, visibility toggle) can alter
+                        // this node's pixels while leaving every `Paint`
+                        // bit-identical, so we repaint the union only then.
+                        // A pure `node_hash` flip with unchanged
+                        // `cascade_input` means the authoring stream
+                        // differed without touching own pixels — most
+                        // commonly a child added/removed (the per-child
+                        // marker folded into `node_hash` by
+                        // `compute_hashes`), already covered by the
+                        // subtree/eviction diff. Repainting the union there
+                        // spuriously re-damages every direct shape — e.g.
+                        // all canvas connections when an unrelated node is
+                        // deleted.
                         if leg.geometry_unchanged
+                            && prev.cascade_input != curr_cascade_input
                             && let Some(u) = union_screens(curr_paints_slice)
                         {
                             raw_rects.push(u);
