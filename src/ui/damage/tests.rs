@@ -6,8 +6,10 @@ use crate::forest::tree::NodeId;
 use crate::input::InputEvent;
 use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::background::Background;
+use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
+use crate::shape::{LineCap, LineJoin, Shape};
 use crate::ui::FrameStamp;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::damage::{Damage, DamageEngine};
@@ -103,6 +105,71 @@ fn unchanged_authoring_produces_no_damage() {
     assert_eq!(
         Damage::new(ui.display.logical_rect(), ui.damage_region()),
         Damage::Skip,
+    );
+}
+
+/// Pin: removing a child of a fixed-size canvas that paints its own
+/// direct shapes must **not** re-damage those shapes. A node's
+/// `node_hash` folds in a per-immediate-child marker (`compute_hashes`),
+/// so dropping a child flips the parent's `node_hash` and routes it to
+/// the per-shape diff arm — but with `cascade_input` unchanged and every
+/// own `Paint` bit-identical, the parent's pixels didn't move. Only the
+/// vacated child's footprint is damage. Regression: darkroom deleting a
+/// node redrew every canvas connection, because the `geometry_unchanged`
+/// fallback repainted the union of all direct shapes on any `node_hash`
+/// flip rather than only on a `cascade_input` change.
+#[test]
+fn removing_canvas_child_does_not_redamage_sibling_shapes() {
+    // Direct shape lives far from both children so its potential
+    // (buggy) re-damage is geometrically distinguishable from the
+    // legitimate vacated-child damage.
+    const LINE_PROBE: Rect = Rect::new(140.0, 140.0, 20.0, 20.0);
+    const REMOVED_CHILD: Rect = Rect::new(60.0, 10.0, 20.0, 20.0);
+
+    let canvas = |ui: &mut Ui, n_children: usize| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            // Fixed size (not the default hug) so dropping a child can't
+            // change the canvas's own rect — isolating the `node_hash`
+            // path from any `cascade_input` change.
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(Shape::Line {
+                    a: Vec2::new(120.0, 120.0),
+                    b: Vec2::new(180.0, 180.0),
+                    width: 2.0,
+                    brush: Brush::Solid(BLUE),
+                    cap: LineCap::Round,
+                    join: LineJoin::Round,
+                });
+                for i in 0..n_children {
+                    Frame::new()
+                        .id(WidgetId::from_hash(("child", i)))
+                        .position((10.0 + i as f32 * 50.0, 10.0))
+                        .size(20.0)
+                        .background(Background {
+                            fill: RED.into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                }
+            });
+    };
+
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| canvas(ui, 2));
+    frame(&mut ui, |ui| canvas(ui, 1));
+
+    let region = ui.damage_region();
+    assert!(
+        region.any_intersects(REMOVED_CHILD),
+        "the vacated child's footprint must be damaged",
+    );
+    assert!(
+        !region.any_intersects(LINE_PROBE),
+        "the canvas's own line shape must not be re-damaged by a sibling \
+         removal; region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
     );
 }
 
