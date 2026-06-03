@@ -19,7 +19,6 @@ extern crate self as palantir;
 // tests as `palantir::foo::bar::test_support::*`. Items inside that
 // aren't `pub` remain unreachable to external consumers.
 pub mod animation;
-pub mod clipboard;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 pub mod forest;

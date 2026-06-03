@@ -172,7 +172,7 @@ fn apply_redo(text: &mut String, state: &mut TextEditState) {
 /// menu / shortcut UI affordances.
 fn cut_selection(text: &mut String, state: &mut TextEditState) {
     let Some(r) = state.sel_range() else { return };
-    crate::clipboard::set(&text[r.clone()]);
+    crate::common::clipboard::set(&text[r.clone()]);
     record_edit(text, state, EditKind::Other);
     text.replace_range(r.clone(), "");
     state.caret = r.start;
@@ -957,9 +957,9 @@ impl<'a> TextEdit<'a> {
                 .clicked()
                 && let Some(r) = sel.clone()
             {
-                crate::clipboard::set(&text[r]);
+                crate::common::clipboard::set(&text[r]);
             }
-            let cb_has = !crate::clipboard::get().is_empty();
+            let cb_has = !crate::common::clipboard::get().is_empty();
             if MenuItem::new("Paste")
                 .shortcut(Shortcut::ctrl('V'))
                 .enabled(cb_has)
@@ -969,7 +969,7 @@ impl<'a> TextEdit<'a> {
                 paste_at_caret(
                     text,
                     ui.state_mut::<TextEditState>(id),
-                    &crate::clipboard::get(),
+                    &crate::common::clipboard::get(),
                     ctx.multiline,
                     self.max_chars,
                 );
@@ -1269,7 +1269,7 @@ fn dispatch_shortcut(
     }
     if COPY.matches(kp) {
         if let Some(r) = state.sel_range() {
-            crate::clipboard::set(&text[r]);
+            crate::common::clipboard::set(&text[r]);
         }
         return true;
     }
@@ -1278,7 +1278,13 @@ fn dispatch_shortcut(
         return true;
     }
     if PASTE.matches(kp) {
-        paste_at_caret(text, state, &crate::clipboard::get(), multiline, max_chars);
+        paste_at_caret(
+            text,
+            state,
+            &crate::common::clipboard::get(),
+            multiline,
+            max_chars,
+        );
         return true;
     }
     false
