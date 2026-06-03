@@ -82,7 +82,7 @@ impl<T> LiveArena<T> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::common::live_arena::*;
 
     #[test]
     fn release_decrements_live_without_touching_items() {

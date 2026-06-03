@@ -150,12 +150,12 @@ pub mod test_support {
     //! Bench reach-in: exposes the same pack/unpack entry points under
     //! the canonical `test_support` gate so external benches can call
     //! them without making the module `pub`.
-    pub use super::{f16x4_from_f32x4, f16x4_to_f32x4};
+    pub use crate::primitives::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::half_simd::*;
 
     #[test]
     fn round_trip_matches_half_slice() {

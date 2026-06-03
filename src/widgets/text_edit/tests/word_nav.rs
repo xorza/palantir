@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn word_boundary_helpers_step_word_then_skip_whitespace() {

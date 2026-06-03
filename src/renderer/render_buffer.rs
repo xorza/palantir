@@ -1,9 +1,9 @@
-use super::quad::Quad;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::image_registry::ImageId;
+use crate::renderer::quad::Quad;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};

@@ -1,6 +1,6 @@
-//! Driver-level tests for [`super::measure`] and [`super::arrange`]:
+//! Driver-level tests for [`crate::layout::scroll::measure`] and [`crate::layout::scroll::arrange`]:
 //! INF-axis measure, content-extent recording into the persistent
-//! [`super::ScrollLayoutState`] row, and the cache-hit fallback
+//! [`crate::layout::scroll::ScrollLayoutState`] row, and the cache-hit fallback
 //! (driver doesn't fire; row keeps last frame's `content`).
 
 use crate::Ui;

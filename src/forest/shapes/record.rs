@@ -559,8 +559,8 @@ pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::forest::shapes::hash::compute_record_hash;
+    use crate::forest::shapes::record::*;
 
     #[test]
     fn shape_mesh_hash_excludes_span_offsets() {

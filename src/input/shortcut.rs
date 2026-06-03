@@ -232,7 +232,7 @@ fn write_key(f: &mut fmt::Formatter<'_>, key: Key) -> fmt::Result {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::input::shortcut::*;
 
     fn kp(mods: Modifiers, key: Key) -> KeyPress {
         KeyPress {

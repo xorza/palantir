@@ -1,4 +1,4 @@
-use super::URect;
+use crate::primitives::urect::URect;
 
 #[test]
 fn intersect_cases() {

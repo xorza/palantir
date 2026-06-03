@@ -8,12 +8,12 @@
 //! is the color — so the inner rect doesn't shift when the user
 //! clicks in. Effective padding is (6.5, 4.5), inner rect 267×31.
 
-use super::*;
 use crate::Align;
 use crate::forest::Layer;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::NodeId;
 use crate::primitives::transform::TranslateScale;
+use crate::widgets::text_edit::tests::*;
 
 const EDIT_W: f32 = 280.0;
 const EDIT_H: f32 = 40.0;
@@ -347,8 +347,8 @@ fn selection_rects_offset_matches_text() {
 /// `dx_per_line = (line_width - line_w) * factor` where factor is
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
-    use super::super::*;
     use crate::text::FontFamily;
+    use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};
     use glam::UVec2;
 

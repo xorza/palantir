@@ -2,7 +2,7 @@
 //! [`ViewportPush`] carrier every shader's shared `Immediates`
 //! region reads as `imm.viewport` (offset 0). The whole quad / curve
 //! / mesh / image / text family shares the same immediate layout
-//! ([`super::IMMEDIATES_BYTES`]), so a single `set_immediates(0, ..)`
+//! ([`crate::renderer::backend::IMMEDIATES_BYTES`]), so a single `set_immediates(0, ..)`
 //! per pass covers all of them — no bind group, no uniform buffer.
 
 use crate::primitives::rect::Rect;
@@ -24,7 +24,7 @@ const DAMAGE_AA_PADDING: u32 = 2;
 /// by [`DAMAGE_AA_PADDING`] on every side and clamped to the viewport.
 /// Returns `None` if the result clamps to zero area — callers degrade
 /// that case to "loaded but not drawn" inside the pass.
-pub(super) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
+pub(crate) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
     let phys = r.scaled_by(buffer.scale, true);
     let pad = DAMAGE_AA_PADDING as f32;
     let mins_x = (phys.min.x - pad).max(0.0) as u32;
@@ -46,7 +46,7 @@ pub(super) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Op
 /// the frame to a Full repaint (correct, just wasteful — won't happen
 /// in practice unless damage lies entirely outside the surface).
 #[profiling::function]
-pub(super) fn build_damage_scissors(
+pub(crate) fn build_damage_scissors(
     out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,
     plan: RenderPlan,
     buffer: &RenderBuffer,

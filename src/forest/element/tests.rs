@@ -1,4 +1,4 @@
-use super::*;
+use crate::forest::element::*;
 
 #[test]
 fn flag_setters_round_trip_each_field_independently() {

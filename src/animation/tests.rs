@@ -3,8 +3,8 @@
 //! spring convergence, settle clears repaint, removed-widget eviction,
 //! plus typed-slot dispatch via `Vec2` and `Color`.
 
-use super::*;
 use crate::Ui;
+use crate::animation::*;
 use crate::forest::element::Configure;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;

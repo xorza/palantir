@@ -1,6 +1,3 @@
-use super::super::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
-};
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
@@ -18,6 +15,9 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
+use crate::renderer::frontend::cmd_buffer::{
+    CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
+};
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -970,8 +970,8 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
 /// - `None` paints at intrinsic 100×50 centered.
 #[test]
 fn image_fit_modes_resolve_to_expected_rects_and_uv() {
-    use super::resolve_fit;
     use crate::ImageFit;
+    use crate::renderer::frontend::encoder::resolve_fit;
     use glam::{UVec2, Vec2};
 
     let base = Rect::new(0.0, 0.0, 200.0, 200.0);

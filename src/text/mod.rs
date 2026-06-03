@@ -949,7 +949,7 @@ pub(crate) enum LineFit {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
+    use crate::text::*;
 
     impl TextShaper {
         /// Total cache-miss `measure` dispatches.

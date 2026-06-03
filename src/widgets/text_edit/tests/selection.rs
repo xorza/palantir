@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 struct SelCase {
     label: &'static str,

@@ -391,9 +391,9 @@ fn hash_stops(stops: &[Stop], interp: Interp) -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::color::ColorU8;
+    use crate::renderer::gradient_atlas::*;
     use std::collections::HashSet;
 
     /// One baked texel decoded back to a linear `Color`. The f16 store

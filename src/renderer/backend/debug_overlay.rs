@@ -11,14 +11,14 @@
 //! never enable debug overlays still allocate these buffers (a few
 //! hundred bytes total) but never upload to them.
 
-use super::dynamic_buffer::DynamicBuffer;
-use super::gpu_ctx::GpuCtx;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,
     rect::Rect,
     size::Size,
 };
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::quad::Quad;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use glam::Vec2;
@@ -27,19 +27,19 @@ use tinyvec::ArrayVec;
 /// Stroke color for the damage-rect overlay outline. Bright opaque
 /// red — picked for contrast against any UI palette, not
 /// theme-driven.
-pub(super) const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
+pub(crate) const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
 
 /// Stroke width for the damage-rect overlay outline, in logical
 /// pixels. Multiplied by `scale_factor` at submit time.
-pub(super) const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
+pub(crate) const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
 
 /// Gap between the overlay outline and the damage edge, in logical
 /// pixels. `Partial` rects outset by this (so thin damage like a 1px
 /// text caret still gets a visible box instead of collapsing to zero
 /// width); the full-viewport outline insets by it to stay on-screen.
-pub(super) const DAMAGE_OVERLAY_GAP: f32 = 1.0;
+pub(crate) const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 
-pub(super) struct DebugOverlay {
+pub(crate) struct DebugOverlay {
     /// Single-instance buffer holding a translucent-black full-viewport
     /// quad. Drawn into the backbuffer with `LoadOp::Load` before any
     /// partial-damage passes when `DebugOverlayConfig::dim_undamaged` is
@@ -57,7 +57,7 @@ pub(super) struct DebugOverlay {
 }
 
 impl DebugOverlay {
-    pub(super) fn new(device: &wgpu::Device) -> Self {
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
         let dim_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.quad.dim"),
             size: std::mem::size_of::<Quad>() as u64,
@@ -78,7 +78,7 @@ impl DebugOverlay {
     /// the showcase default. Premultiplied-alpha blending means the
     /// rgb channel doubles as the "remaining brightness" multiplier:
     /// 40% alpha → 60% of the underlying pixel survives.
-    pub(super) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2, alpha: f32) {
+    pub(crate) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2, alpha: f32) {
         let q = Quad {
             rect: Rect {
                 min: Vec2::ZERO,
@@ -100,12 +100,12 @@ impl DebugOverlay {
     /// and draw one instance. The dim pass runs without a stencil
     /// attachment (uniform dim across the viewport), so the
     /// no-stencil pipeline is always correct here.
-    pub(super) fn draw_dim<'a>(
+    pub(crate) fn draw_dim<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a super::QuadPipeline,
+        quad: &'a crate::renderer::backend::QuadPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &super::ViewportPush,
+        viewport: &crate::renderer::backend::ViewportPush,
     ) {
         quad.bind_debug(pass, gradient_bg);
         // Pipeline is now bound — safe to push the shared viewport
@@ -120,7 +120,7 @@ impl DebugOverlay {
     /// physical px, transparent fill). [`DynamicBuffer`] grows the
     /// buffer when needed; the staging uses stack-bounded scratch
     /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
-    pub(super) fn upload_overlays(
+    pub(crate) fn upload_overlays(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         rects: &[Rect],
@@ -150,12 +150,12 @@ impl DebugOverlay {
     /// buffer and draw `count` instances. Used in the post-copy
     /// overlay pass on the swapchain texture (no stencil attachment,
     /// no scissor).
-    pub(super) fn draw_overlays<'a>(
+    pub(crate) fn draw_overlays<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a super::QuadPipeline,
+        quad: &'a crate::renderer::backend::QuadPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &super::ViewportPush,
+        viewport: &crate::renderer::backend::ViewportPush,
         count: u32,
     ) {
         quad.bind_debug(pass, gradient_bg);

@@ -555,15 +555,14 @@ pub mod test_support {
     //! without going through `Host`'s full record/measure/cascade/encode
     //! pipeline.
 
-    use super::{StencilMode, ViewportPush};
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
+    use crate::renderer::backend::text::{StencilMode, ViewportPush};
 
     use crate::text::{FontFamily, TextShaper};
     use glam::{UVec2, Vec2};
 
-    pub use super::TextBackend;
     /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
     /// one to feed `prepare`/`flush`. The full path
     /// (`crate::renderer::backend::dynamic_buffer::GpuCtx`) is
@@ -572,6 +571,7 @@ pub mod test_support {
     /// Re-export the counting `Queue` wrapper so benches can build one
     /// to feed `GpuCtx::new`.
     pub use crate::renderer::backend::queue::Queue;
+    pub use crate::renderer::backend::text::TextBackend;
     /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
@@ -646,7 +646,7 @@ pub mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use super::{GlyphInstance, Params};
+    use crate::renderer::backend::text::{GlyphInstance, Params};
     use std::mem::{align_of, offset_of, size_of};
 
     #[test]
@@ -689,9 +689,9 @@ mod tests {
 #[cfg(feature = "internals")]
 #[cfg(test)]
 mod gpu_regression {
-    use super::TextBackend;
     use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::queue::Queue;
+    use crate::renderer::backend::text::TextBackend;
     use crate::text::TextShaper;
     use glam::{UVec2, Vec2};
     use pollster::FutureExt;

@@ -100,7 +100,7 @@ fn fill_weights(fraction: f32) -> WeightSplit {
 
 #[cfg(test)]
 mod tests {
-    use super::fill_weights;
+    use crate::widgets::progress_bar::fill_weights;
 
     #[test]
     fn fill_weights_clamp_and_split() {

@@ -5,13 +5,13 @@
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 
-use super::support;
-use super::support::two_hug_cols_with_wrap;
 use crate::TextStyle;
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
+use crate::layout::cross_driver_tests::support;
+use crate::layout::cross_driver_tests::support::two_hug_cols_with_wrap;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;

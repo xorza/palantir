@@ -3,13 +3,13 @@
 //! `LayoutEngine` references threaded through where needed for intrinsic
 //! caching and result writing.
 
-use super::axis::Axis;
-use super::intrinsic::LenReq;
-use super::layoutengine::LayoutEngine;
 use crate::forest::element::LayoutCore;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::Layout;
+use crate::layout::axis::Axis;
+use crate::layout::intrinsic::LenReq;
+use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};

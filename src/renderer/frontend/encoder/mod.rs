@@ -1,7 +1,3 @@
-use super::cmd_buffer::{
-    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    GpuFillFields, RenderCmdBuffer,
-};
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::rollups::CascadeInputHash;
 use crate::forest::shapes::record::{
@@ -18,6 +14,10 @@ use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
+use crate::renderer::frontend::cmd_buffer::{
+    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+    GpuFillFields, RenderCmdBuffer,
+};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;

@@ -5,8 +5,8 @@ use etagere::{AllocId, BucketedAtlasAllocator, size2};
 use rustc_hash::FxHashMap;
 use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 
-use super::ContentType;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::text::ContentType;
 
 /// Initial atlas side length. Bumped from glyphon's 256 to skip the
 /// 256→512→1024 grow chain on first frame with non-trivial text.

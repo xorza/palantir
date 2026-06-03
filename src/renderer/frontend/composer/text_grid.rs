@@ -38,7 +38,7 @@ type TileBucket = TinyVec<[u16; 8]>;
 /// first hit so duplicate visits cost only constant-factor false
 /// positives.
 #[derive(Default)]
-pub(super) struct TextRectGrid {
+pub(crate) struct TextRectGrid {
     cols: u32,
     rows: u32,
     /// Per-tile rect-index lists. Row-major: `tiles[ty * cols + tx]`.
@@ -67,7 +67,7 @@ impl TextRectGrid {
     /// Reshape to cover `viewport` and reset all state. Called once
     /// per frame at compose start. Cheap when the viewport hasn't
     /// changed (no allocation — the outer `Vec` is already sized).
-    pub(super) fn start_frame(&mut self, viewport: UVec2) {
+    pub(crate) fn start_frame(&mut self, viewport: UVec2) {
         let cols = viewport.x.div_ceil(TILE_SIZE).max(1);
         let rows = viewport.y.div_ceil(TILE_SIZE).max(1);
         let want = (cols * rows) as usize;
@@ -95,7 +95,7 @@ impl TextRectGrid {
     /// got pushed to this frame (`touched`), not the full row-major
     /// grid — `~100-300` tile clears in the dense-text fixture vs
     /// `~4500` on the full sweep.
-    pub(super) fn clear(&mut self) {
+    pub(crate) fn clear(&mut self) {
         for &i in &self.touched {
             self.tiles[i as usize].clear();
         }
@@ -105,7 +105,7 @@ impl TextRectGrid {
 
     /// Register `r`. No-op for zero-area input (degenerate text rects
     /// can't intersect anything anyway).
-    pub(super) fn push(&mut self, r: URect) {
+    pub(crate) fn push(&mut self, r: URect) {
         if r.w == 0 || r.h == 0 {
             return;
         }
@@ -148,7 +148,7 @@ impl TextRectGrid {
     /// tile's rect list — typical workload visits 1-4 tiles with 1-3
     /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
     /// old flat scan).
-    pub(super) fn any_overlap(&self, q: URect) -> bool {
+    pub(crate) fn any_overlap(&self, q: URect) -> bool {
         if q.w == 0 || q.h == 0 || self.rects.is_empty() {
             return false;
         }
@@ -174,8 +174,8 @@ impl TextRectGrid {
 
 #[cfg(test)]
 mod tests {
-    use super::TextRectGrid;
     use crate::primitives::urect::URect;
+    use crate::renderer::frontend::composer::text_grid::TextRectGrid;
     use glam::UVec2;
 
     #[test]

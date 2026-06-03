@@ -142,7 +142,7 @@ fn apply_drag(anchor: f32, delta_x: f32, speed: f32, min: f32, max: f32) -> f32 
 
 #[cfg(test)]
 mod tests {
-    use super::apply_drag;
+    use crate::widgets::drag_value::apply_drag;
 
     #[test]
     fn apply_drag_offsets_from_anchor_by_speed() {

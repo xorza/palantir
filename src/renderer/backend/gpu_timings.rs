@@ -28,7 +28,7 @@
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
 //! handle (e.g. via `Host::gpu_pass_stats`).
 
-use super::gpu_pass_stats::{BatchKind, GpuPassStats};
+use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -102,7 +102,7 @@ struct Inner {
     segment_kinds: RefCell<Vec<BatchKind>>,
 }
 
-pub(super) struct GpuTimings {
+pub(crate) struct GpuTimings {
     /// `MAX_TIMESTAMPS` slots in per-batch mode, 2 in basic mode.
     timestamp_query_set: wgpu::QuerySet,
     /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is available. False
@@ -128,7 +128,7 @@ pub(super) struct GpuTimings {
 }
 
 impl GpuTimings {
-    pub(super) fn new(
+    pub(crate) fn new(
         device: &wgpu::Device,
         period_ns: f32,
         inside_passes: bool,
@@ -210,7 +210,7 @@ impl GpuTimings {
     /// mode. `None` when per-batch mode is active — there we write
     /// pass begin / end inline via `RenderPass::write_timestamp`
     /// instead, so we don't double-write index 0.
-    pub(super) fn pass_writes(&self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
+    pub(crate) fn pass_writes(&self) -> Option<wgpu::RenderPassTimestampWrites<'_>> {
         if self.inside_passes {
             return None;
         }
@@ -225,14 +225,14 @@ impl GpuTimings {
     /// the caller invokes [`Self::pass_begin`] / [`Self::mark`] /
     /// [`Self::pass_end`] (yes) or relies on the descriptor's begin/end
     /// (no).
-    pub(super) fn inside_passes(&self) -> bool {
+    pub(crate) fn inside_passes(&self) -> bool {
         self.inside_passes
     }
 
     /// Reset per-frame state, then write the pass-begin timestamp.
     /// Per-batch mode only. Called immediately after
     /// `begin_render_pass`.
-    pub(super) fn pass_begin(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(crate) fn pass_begin(&self, pass: &mut wgpu::RenderPass<'_>) {
         debug_assert!(self.inside_passes);
         self.inner.next_index.set(0);
         self.inner.current_kind.set(None);
@@ -247,7 +247,7 @@ impl GpuTimings {
     /// segment's kind, and advances. Capacity guard: once the query
     /// set is full minus one (reserved for pass-end), subsequent marks
     /// fold the transition into the current kind silently.
-    pub(super) fn mark(&self, pass: &mut wgpu::RenderPass<'_>, kind: BatchKind) {
+    pub(crate) fn mark(&self, pass: &mut wgpu::RenderPass<'_>, kind: BatchKind) {
         if !self.inside_passes {
             return;
         }
@@ -274,7 +274,7 @@ impl GpuTimings {
     /// Write the pass-end timestamp, closing the final segment.
     /// Per-batch mode only. Called immediately before the pass is
     /// dropped.
-    pub(super) fn pass_end(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(crate) fn pass_end(&self, pass: &mut wgpu::RenderPass<'_>) {
         debug_assert!(self.inside_passes);
         let idx = self.inner.next_index.get();
         pass.write_timestamp(&self.timestamp_query_set, idx);
@@ -285,14 +285,14 @@ impl GpuTimings {
 
     /// Start the pipeline-statistics query around the pass. No-op when
     /// the feature is off.
-    pub(super) fn begin_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(crate) fn begin_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
         if let Some(qs) = &self.stats_query_set {
             pass.begin_pipeline_statistics_query(qs, 0);
         }
     }
 
     /// End the pipeline-statistics query. No-op when the feature is off.
-    pub(super) fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
+    pub(crate) fn end_pipeline_stats(&self, pass: &mut wgpu::RenderPass<'_>) {
         if self.stats_query_set.is_some() {
             pass.end_pipeline_statistics_query();
         }
@@ -301,7 +301,7 @@ impl GpuTimings {
     /// Emit `resolve_query_set` + `copy_buffer_to_buffer` into the
     /// caller's encoder. Picks the first idle staging slot; if both
     /// are in-flight, drops this frame's measurement.
-    pub(super) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
+    pub(crate) fn resolve(&mut self, encoder: &mut wgpu::CommandEncoder) {
         let Some(slot) = (0..NUM_STAGING).find(|&i| !self.slots[i].in_flight) else {
             self.pending_slot = None;
             return;
@@ -354,7 +354,7 @@ impl GpuTimings {
     /// written slot, polls the device so prior `map_async` callbacks
     /// fire, and publishes any slot whose readback has landed into
     /// [`gpu_pass_stats`].
-    pub(super) fn after_submit(&mut self, device: &wgpu::Device) {
+    pub(crate) fn after_submit(&mut self, device: &wgpu::Device) {
         if let Some(slot_idx) = self.pending_slot.take() {
             let ready = self.slots[slot_idx].ready.clone();
             // Map the timestamps buffer; once it fires we'll also read

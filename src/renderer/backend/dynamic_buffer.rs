@@ -9,7 +9,7 @@
 //! Used by every pipeline (`quad`, `mesh`, `image`, `curve`) plus
 //! the `text` backend's vbuf.
 
-use super::gpu_ctx::GpuCtx;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
 
 pub(crate) struct DynamicBuffer {
     pub(crate) buffer: wgpu::Buffer,

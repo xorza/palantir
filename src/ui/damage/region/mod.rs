@@ -1,5 +1,5 @@
 //! Bounded set of screen-space damage rects produced by
-//! [`super::DamageEngine::compute`] and consumed by the encoder filter +
+//! [`crate::ui::damage::DamageEngine::compute`] and consumed by the encoder filter +
 //! backend scissor.
 //!
 //! Merge policy: agglomerative bottom-up clustering driven by the
@@ -60,7 +60,7 @@ pub(crate) const DAMAGE_RECT_CAP: usize = 8;
 pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 
 /// Set of damage rects, kept in screen space. `Copy` so
-/// [`super::Damage`] threads through `FrameOutput` and the
+/// [`crate::ui::damage::Damage`] threads through `FrameOutput` and the
 /// encoder by value without lifetimes. The `budget_px` field drives
 /// the merge predicate — see the module docs.
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -214,8 +214,8 @@ impl From<Rect> for DamageRegion {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
     use crate::primitives::rect::Rect;
+    use crate::ui::damage::region::*;
 
     /// `DamageRegion` rect count after adding `rects` in order (merge policy runs).
     /// Free fn rather than `impl DamageRegion` because `DamageRegion` is

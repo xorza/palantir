@@ -643,7 +643,7 @@ fn next_kept(points: &[Vec2], i: usize) -> usize {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
+    use crate::renderer::stroke_tessellate::*;
     use crate::shape::{ColorMode, LineCap, LineJoin};
 
     /// Bench-public mirror of internal `ColorMode`.

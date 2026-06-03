@@ -149,13 +149,13 @@ impl Default for Theme {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use crate::input::ResponseState;
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
     use crate::text::FontFamily;
     use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
+    use crate::widgets::theme::*;
 
     /// `set_text_scale` multiplies every font size by `new/old` (so
     /// it's an absolute target, not cumulative), touches both the

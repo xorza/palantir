@@ -1,5 +1,5 @@
-use super::swatch::swatch_bg;
 use crate::showcase::swatch;
+use crate::showcase::swatch::swatch_bg;
 use palantir::{Color, Configure, Frame, Panel, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {

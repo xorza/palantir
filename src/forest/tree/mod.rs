@@ -806,7 +806,7 @@ pub(crate) mod paint_anims;
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use super::*;
+    use crate::forest::tree::*;
 
     impl Tree {
         /// Direct shapes of `node`, including parent-pushed sub-rects interleaved between children.

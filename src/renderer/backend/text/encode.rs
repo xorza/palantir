@@ -28,8 +28,8 @@ use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, CacheKey, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
-use super::atlas::GlyphAtlas;
-use super::{ContentType, GlyphInstance};
+use crate::renderer::backend::text::atlas::GlyphAtlas;
+use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// One text run resolved to a cosmic buffer + placement.
 pub(crate) struct ResolvedRun<'a> {
@@ -360,7 +360,7 @@ fn rasterize_and_insert(
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
     key: cosmic_text::CacheKey,
-) -> Option<super::atlas::GlyphSlot> {
+) -> Option<crate::renderer::backend::text::atlas::GlyphSlot> {
     let image = swash_cache.get_image_uncached(font_system, key)?;
     let content = match image.content {
         SwashContent::Color => ContentType::Color,
@@ -385,7 +385,9 @@ fn cosmic_color_to_linear_rgba_u32(c: cosmic_text::Color) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContentType, cosmic_color_to_linear_rgba_u32, pack_uv};
+    use crate::renderer::backend::text::encode::{
+        ContentType, cosmic_color_to_linear_rgba_u32, pack_uv,
+    };
 
     #[test]
     fn cosmic_to_rgba_byteswap() {

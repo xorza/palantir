@@ -90,7 +90,7 @@ pub(crate) struct Quad {
 
 #[cfg(test)]
 mod tests {
-    use super::Quad;
+    use crate::renderer::quad::Quad;
     use std::mem::offset_of;
 
     /// Pin: `Quad` is exactly 60 bytes — pos(8) + size(8) +

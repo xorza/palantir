@@ -1,6 +1,6 @@
 /// Axis-aligned rectangle in physical pixels (`u32`). Used for scissors,
 /// glyph clip bounds, viewport extents — anywhere the renderer hands
-/// integer pixel rects to the GPU. Logical-px rects use [`super::Rect`].
+/// integer pixel rects to the GPU. Logical-px rects use [`crate::primitives::Rect`].
 ///
 /// Stored as origin + size so it round-trips with wgpu's
 /// `set_scissor_rect(x, y, w, h)` without arithmetic.

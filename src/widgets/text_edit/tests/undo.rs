@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn undo_redo_round_trips_typed_chars() {

@@ -12,13 +12,13 @@
 //! alongside that driver's `measure`/`arrange` in its own module — same
 //! per-driver-file convention as the rest of layout.
 
-use super::axis::Axis;
-use super::layoutengine::LayoutEngine;
-use super::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
-use super::{canvas, grid, stack, wrapstack, zstack};
 use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
+use crate::layout::axis::Axis;
+use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::sizing::Sizing;
+use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::shape::TextWrap;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
@@ -218,7 +218,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::layout::intrinsic::*;
 
     use crate::Ui;
     use crate::forest::Layer;

@@ -1,5 +1,5 @@
 //! GPU side of user-supplied colored triangle meshes. Mirrors
-//! [`super::quad_pipeline::QuadPipeline`] but draws indexed
+//! [`crate::renderer::backend::quad_pipeline::QuadPipeline`] but draws indexed
 //! triangle lists with per-vertex pos+color and per-instance
 //! transform+tint. The vertex stream is content-stable across frames;
 //! per-draw state lives in a parallel instance buffer.
@@ -8,14 +8,14 @@
 //! always stamped by [`QuadPipeline`]'s `mask_write` variant
 //! (`quad.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant
 //! (see [`Self::ensure_stencil`]) — it reads the mask but never
-//! writes one. Same shape for [`super::image_pipeline::ImagePipeline`].
+//! writes one. Same shape for [`crate::renderer::backend::image_pipeline::ImagePipeline`].
 
-use super::dynamic_buffer::DynamicBuffer;
-use super::gpu_ctx::GpuCtx;
-use super::pipeline_utils::{
+use crate::primitives::mesh::MeshVertex;
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
+use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
-use crate::primitives::mesh::MeshVertex;
 use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
@@ -71,7 +71,7 @@ impl MeshPipeline {
             (
                 "palantir.mesh.pipeline.stencil_test",
                 "palantir.mesh.pl.stencil",
-                Some(super::stencil::stencil_test_state()),
+                Some(crate::renderer::backend::stencil::stencil_test_state()),
             )
         } else {
             ("palantir.mesh.pipeline", "palantir.mesh.pl", None)

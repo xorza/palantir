@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn multiline_enter_inserts_newline() {

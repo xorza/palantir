@@ -122,8 +122,8 @@ fn comet_colors(base: Color) -> [Color; SAMPLES] {
 
 #[cfg(test)]
 mod tests {
-    use super::{SAMPLES, SWEEP, arc_points, comet_colors};
     use crate::primitives::color::Color;
+    use crate::widgets::spinner::{SAMPLES, SWEEP, arc_points, comet_colors};
 
     /// Every sampled point sits on the inset circle, and the arc spans
     /// exactly `SWEEP` from first to last sample. `phase` rigidly

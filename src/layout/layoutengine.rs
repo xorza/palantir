@@ -803,7 +803,7 @@ impl LayoutEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::layout::layoutengine::*;
 
     /// The wrap target must quantize to the same 1px grid the measure
     /// cache keys on (`cache::quantize_available`), so a sub-pixel parent

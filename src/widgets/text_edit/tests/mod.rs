@@ -1,4 +1,4 @@
-use super::{
+use crate::widgets::text_edit::{
     TextEditState, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
     prev_word_boundary, word_range_at,
 };
@@ -9,11 +9,11 @@ use super::{
 /// motion sink is always `None`. Menu-intercept gating is exercised
 /// end-to-end via the integration tests instead.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
-    if super::dispatch_shortcut(text, state, kp, false, false, None) {
+    if crate::widgets::text_edit::dispatch_shortcut(text, state, kp, false, false, None) {
         return false;
     }
     let mut vert = None;
-    super::apply_key(text, state, kp, false, None, &mut vert)
+    crate::widgets::text_edit::apply_key(text, state, kp, false, None, &mut vert)
 }
 use crate::Spacing;
 use crate::Ui;

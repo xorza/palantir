@@ -293,7 +293,7 @@ fn quantize_available_axis_invariants() {
     // measure cache's `(subtree_hash, available_q)` key. Pin:
     // `INFINITY` quantizes to `i32::MAX` independently per axis, both
     // axes together also do.
-    use super::quantize_available;
+    use crate::layout::cache::quantize_available;
     let inf = f32::INFINITY;
     assert_eq!(
         quantize_available(Size::new(inf, 100.4)),

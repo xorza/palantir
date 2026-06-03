@@ -1,4 +1,4 @@
-use super::*;
+use crate::widgets::text_edit::tests::*;
 
 #[test]
 fn backspace_deletes_whole_grapheme_cluster() {

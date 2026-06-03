@@ -1,4 +1,4 @@
-use super::*;
+use crate::text::*;
 
 /// Line-height equal to font size keeps the mono-fallback line
 /// height numerically equal to `font_size`, matching the legacy

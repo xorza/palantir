@@ -1,15 +1,15 @@
 //! Pin per-frame render schedule against `for_each_step`'s actual
 //! emit order — same module the production renderer
-//! ([`super::WgpuBackend::render_groups`]) consumes, so the asserted
+//! ([`crate::renderer::backend::WgpuBackend::render_groups`]) consumes, so the asserted
 //! sequence can't drift from the real wgpu dispatch.
 
-use super::schedule::{RenderStep, for_each_step};
 use crate::primitives::color::{Color, ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
+use crate::renderer::backend::schedule::{RenderStep, for_each_step};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
     DrawGroup, MeshBatch, MeshScene, RenderBuffer, RoundedClip, TextBatch, TextRun,

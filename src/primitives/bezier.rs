@@ -90,7 +90,7 @@ fn solve_quadratic(a: f32, b: f32, c: f32) -> [f32; 2] {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::bezier::*;
 
     #[test]
     fn quadratic_to_cubic_promotes_inner_cps() {

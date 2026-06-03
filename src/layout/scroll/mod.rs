@@ -28,10 +28,10 @@ use crate::primitives::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-use super::layoutengine::LayoutEngine;
-use super::stack;
-use super::support::TextCtx;
-use super::zstack;
+use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::stack;
+use crate::layout::support::TextCtx;
+use crate::layout::zstack;
 
 // ---------------------------------------------------------------------------
 // Cross-frame state — what the scroll widget reads at record time

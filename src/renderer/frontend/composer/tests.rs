@@ -1,5 +1,3 @@
-use super::super::cmd_buffer::{DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer};
-use super::Composer;
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::span::Span;
@@ -7,6 +5,10 @@ use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
+use crate::renderer::frontend::cmd_buffer::{
+    DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
+};
+use crate::renderer::frontend::composer::Composer;
 use crate::renderer::image_registry::ImageId;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
@@ -993,7 +995,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
 
 #[test]
 fn compose_emits_image_batch_for_drawimage() {
-    use super::super::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload {
@@ -1026,7 +1028,7 @@ fn compose_emits_image_batch_for_drawimage() {
 
 #[test]
 fn compose_image_forwards_uv_crop_for_cover_fit() {
-    use super::super::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload {
@@ -1052,7 +1054,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 
 #[test]
 fn compose_forwards_tiled_flag_and_repeat_uv() {
-    use super::super::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             // Non-tiled draw: flag stays 0.

@@ -1,4 +1,4 @@
-use super::Rect;
+use crate::primitives::rect::Rect;
 
 #[test]
 fn intersects_cases() {

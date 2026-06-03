@@ -372,7 +372,7 @@ pub mod test_support {
     //! benches can sample it directly without going through the
     //! overlay layout pass.
 
-    use super::*;
+    use crate::host::*;
 
     impl Host {
         /// Cloneable handle to the most-recent GPU instrumentation

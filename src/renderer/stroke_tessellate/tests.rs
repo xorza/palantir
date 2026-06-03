@@ -1,5 +1,5 @@
-use super::*;
 use crate::primitives::color::ColorU8;
+use crate::renderer::stroke_tessellate::*;
 
 fn red() -> ColorU8 {
     ColorU8::from(Color {

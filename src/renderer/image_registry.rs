@@ -190,7 +190,7 @@ fn u16_size(image: &Image) -> glam::U16Vec2 {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::renderer::image_registry::*;
 
     fn img(w: u32, h: u32) -> Image {
         Image::from_rgba8(w, h, vec![0u8; (w * h * 4) as usize])

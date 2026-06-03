@@ -601,7 +601,7 @@ impl Animatable for Brush {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::primitives::brush::*;
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
 

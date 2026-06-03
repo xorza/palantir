@@ -89,7 +89,7 @@ impl std::hash::Hasher for Hasher {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use crate::common::hash::*;
 
     #[test]
     fn pod_matches_write_of_bytes_of() {
