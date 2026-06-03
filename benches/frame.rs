@@ -397,7 +397,7 @@ fn gpu_resizing(c: &mut Criterion) {
 /// arm, frames 0..=5, so the cold→warm transition is visible.
 /// Upload columns come from the counting `palantir::renderer::backend::queue::Queue`
 /// wrapper; the GPU pass column comes from `wgpu` timestamp queries
-/// surfaced via [`palantir::renderer::gpu_pass_stats::last_pass_ms`].
+/// surfaced via [`palantir::gpu_pass_stats::last_pass_ms`].
 /// The pass readout is one frame lagged (the `map_async` callback
 /// fires after the next `device.poll`), so frame 0's column is
 /// omitted.
@@ -410,11 +410,11 @@ fn report_write_stats() {
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
             mutate(&mut state, frame);
-            let _ = palantir::renderer::write_stats::take();
+            let _ = palantir::write_stats::take();
             let target = &targets[frame % targets.len()];
             host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
             gpu_wait(&g.device);
-            let s = palantir::renderer::write_stats::take();
+            let s = palantir::write_stats::take();
             // The pass-time readout lags by one frame (the
             // `map_async` callback that publishes a value fires off
             // the *next* `device.poll`). One extra Poll here drains
@@ -435,7 +435,7 @@ fn report_write_stats() {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            use palantir::renderer::gpu_pass_stats::BatchKind;
+            use palantir::gpu_pass_stats::BatchKind;
             use strum::IntoEnumIterator;
             let per_kind: Vec<String> = BatchKind::iter()
                 .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))

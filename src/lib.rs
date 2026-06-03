@@ -33,6 +33,22 @@ pub mod ui;
 pub mod widgets;
 pub mod winit_host;
 
+/// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
+/// the backend (timestamp-query + pipeline-statistics readback).
+/// Consumers (debug overlay, benches) hold a `Clone` of the same
+/// `GpuPassStats` the backend writes into — no global state;
+/// `Host::gpu_pass_stats` is the canonical handle. Published here because
+/// the backing `renderer::backend::gpu_pass_stats` module is `pub(crate)`.
+pub mod gpu_pass_stats {
+    pub use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
+}
+/// Per-frame `queue.write_buffer` / `write_texture` counters, gated behind
+/// `internals` for the frame bench's write-attribution arm.
+#[cfg(feature = "internals")]
+pub mod write_stats {
+    pub use crate::renderer::backend::write_stats::{Stats, take};
+}
+
 pub use forest::frame_arena::FrameArena;
 
 pub use animation::animatable::Animatable;
