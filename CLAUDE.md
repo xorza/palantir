@@ -66,6 +66,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `src/debug_overlay.rs` — `DebugOverlayConfig` on `Ui` (damage-rect / clear-damage / frame-stats visualizations)
 - `src/showcase/` — multi-page demo content; `src/main.rs` — showcase binary (uses `WinitHost`)
 - `examples/` — `dump_theme` (theme TOML round-trip), `counter`, `frame_visual`
+- `tests/visual/` — headless wgpu → PNG → golden-diff suite (`cargo test --test visual --features internals`); the canonical eyeball-replacement for rendering changes. Golden PNGs are gitignored and per-machine (auto-created on first run); after an intentional render change, regenerate with `UPDATE_GOLDEN=1 cargo test --test visual --features internals <filter>` and inspect the diff artifacts under `tests/visual/output/<name>/` first. Full reference: `tests/visual/visual-testing.md`
 - `benches/` — criterion (alloc_free, alloc_free_gpu, alloc_resize, caches, damage, frame, input_throughput, scrollzoom, text_atlas; only `alloc_free`, `alloc_resize`, `input_throughput` build without `--features internals`); `docs/` — in-flight notes + `roadmap/` (per-feature design notes); `DESIGN.md` — full rationale
 
 Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
@@ -113,6 +114,18 @@ matrix instead:
 scripts/test-all.sh       # fmt + clippy + tests across all feature combos
 FAST=1 scripts/test-all.sh # skip fmt + clippy, just run tests per combo
 ```
+
+For changes that touch **rendering** (shaders, encoder/composer, gradient
+or text atlas, colour pipeline, layout that moves pixels), also run the
+visual suite — `cargo test` alone won't catch a render regression:
+
+```sh
+cargo test --test visual --features internals
+```
+
+If goldens legitimately move (an intentional visual change), inspect the
+`tests/visual/output/<name>/{actual,expected,diff}.png` artifacts, then
+regenerate with `UPDATE_GOLDEN=1` and re-run to confirm green.
 
 Fix anything that fails. Don't tell the user a change is complete unless these all pass.
 
