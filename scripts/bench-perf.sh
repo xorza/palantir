@@ -187,13 +187,16 @@ if [ -z "${SKIP_MICRO:-}" ]; then
       # *uncore* (amd_l3 / amd_df) and need -a (system-wide), so they're
       # omitted here. Zen4+ also exposes a real slot-based topdown
       # (Pipeline_Util_*) — add it if `perf list metricgroups` lists it.
-      AMD_GROUPS="l2_cache,tlb,branch_prediction"
+      # Keep the default lean (two small core groups) so the ~6 PMCs don't
+      # oversubscribe. Zen4+ adds a real slot-based topdown — prefer it.
+      AMD_GROUPS="branch_prediction,tlb"
       perf list metricgroups 2>/dev/null | grep -qiE 'pipeline_util|topdown' \
-        && AMD_GROUPS="Pipeline_Util_Level1,$AMD_GROUPS"
+        && AMD_GROUPS="Pipeline_Util_Level1"
       run perf stat -M "$AMD_GROUPS" -o "$PERF_MICRO" >/dev/null 2>&1 \
         || echo "    (AMD metric groups unavailable)"
-      echo "    groups: $AMD_GROUPS  (multiplexed — for clean per-group counts run one -M group at a time;"
-      echo "             uncore L3/data-fabric need: perf stat -a -M l3_cache,data_fabric)"
+      echo "    groups: $AMD_GROUPS"
+      echo "    more (run one at a time for clean counts): l2_cache, decoder, data_fabric"
+      echo "    uncore (need -a, system-wide): perf stat -a -M l3_cache,data_fabric"
       ;;
   esac
 fi
