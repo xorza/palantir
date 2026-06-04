@@ -301,43 +301,65 @@ investigation tool.
 
 ## Profiling on Linux
 
-`scripts/bench-perf.sh` is the Linux companion: it runs four `perf`
-passes pinned to P-core 0 (cpu_core PMU explicit — generic `-e cycles`
-auto-expands across cpu_core + cpu_atom and reports half-counts on a
-pinned run):
+`scripts/bench-perf.sh` is the Linux companion. It is **vendor-aware**:
+it reads `/proc/cpuinfo` `vendor_id` and picks the right PMU layout,
+microarch metrics, and precise-sampling mechanism. It pins to one core
+(`PIN_CPU`, default 2) and runs up to five passes:
 
-1. **`perf stat`** — hardware counters: cycles, instructions (→ IPC),
-   branches/branch-misses, cache-references/misses, L1-dcache-misses,
-   dTLB-misses, plus task-clock/context-switches/page-faults.
+1. **`perf stat`** — hardware counters → IPC, branches, cache, TLB.
+   Intel: explicit `cpu_core/.../` events (generic `-e cycles`
+   auto-expands across cpu_core + cpu_atom on a hybrid and half-counts).
+   AMD: plain `cpu` PMU via `perf stat -d` (homogeneous cores; LLC shows
+   `<not supported>` — it's an uncore PMU).
    → `tmp/palantir-perf-stat.txt`
-2. **`perf stat -M TopdownL1`** — Intel Top-down Microarchitecture
-   Analysis (TMA) L1 buckets: retiring / frontend_bound /
-   backend_bound / bad_speculation.
-   → `tmp/palantir-perf-topdown.txt`
-3. **`perf record`** — flat sample profile with callgraph
-   (`dwarf,16384` by default — full depth, ~5-10× overhead; switch to
-   `CALLGRAPH=lbr` for 32-entry low-overhead).
-   → `tmp/palantir-perf.data` + `tmp/palantir-perf-report.txt`
-4. **`perf mem record -t load --ldlat=50`** — PEBS load-latency
-   sampling, captures only loads >=50 cycles (filters L1 hits, keeps
-   L2/L3/DRAM misses). Report sorted by `mem,sym,dso` attributes
-   stalls to cache levels and source lines.
+2. **microarch metrics** — Intel: `perf stat -M TopdownL1` (TMA L1
+   buckets: retiring / frontend / backend / bad-spec). AMD: `perf stat
+   -M branch_prediction,tlb` (Zen<4 has **no** slot-based topdown; Zen4+
+   adds `Pipeline_Util_*`, auto-detected). Other AMD groups —
+   `l2_cache`, `decoder`, and the uncore `l3_cache`/`data_fabric` (need
+   `-a`) — run one at a time for clean (un-multiplexed) counts.
+   → `tmp/palantir-perf-micro.txt`
+3. **`perf record`** (cycles + callgraph) — the flat/inclusive
+   workhorse. `dwarf,16384` default (full depth, ~5-10×). `CALLGRAPH=lbr`
+   is Intel-only (AMD Zen3 BRS isn't wired for cycles → falls back to
+   dwarf). → `tmp/palantir-perf.data` + `tmp/palantir-perf-report.txt`
+4. **precise-IP** (no skid) — Intel: `cpu_core/cycles/ppp` (PEBS). AMD:
+   `ibs_op//` (IBS). Tags the exact retiring op, unlike skid-prone cycles
+   sampling — pair with `perf annotate` to land on the instruction.
+   → `tmp/palantir-perf-ibs.txt`
+5. **`perf mem record`** — load/store data-source (cache-level). Intel:
+   PEBS `-t load --ldlat=50`. AMD: IBS (no `--ldlat` on Zen<5 — the
+   ibs_op `ldlat` cap is absent, and Intel's `50` is outside AMD's valid
+   128–2048 range anyway). Report sorted by `mem,sym,dso`.
    → `tmp/palantir-perf-mem.txt`
+
+IBS / raw events / kernel symbols need `kernel.perf_event_paranoid <= -1`
+(`sudo sysctl kernel.perf_event_paranoid=-1`); the script warns if it's
+higher. For 100% counter coverage also `sudo sysctl kernel.nmi_watchdog=0`
+(the watchdog reserves one PMC).
 
 ### Usage
 
 ```sh
 scripts/bench-perf.sh                                # frame bench, 5s
 BENCH=damage FILTER='damage/workload' scripts/bench-perf.sh
-CALLGRAPH=lbr scripts/bench-perf.sh                  # low-overhead callgraph
-LDLAT=30 scripts/bench-perf.sh                       # finer load-latency cutoff
-SKIP_MEM=1 SKIP_TOPDOWN=1 scripts/bench-perf.sh      # skip optional passes
+CALLGRAPH=lbr scripts/bench-perf.sh                  # Intel only; AMD → dwarf
+IBS_PERIOD=500000 scripts/bench-perf.sh              # sparser AMD IBS sampling
+SKIP_MEM=1 SKIP_MICRO=1 SKIP_IBS=1 scripts/bench-perf.sh   # skip optional passes
 FEATURES=internals BENCH=caches scripts/bench-perf.sh
 ```
 
 Env: `BENCH` (default `frame`), `FILTER` (criterion regex),
 `FEATURES` (default `internals`), `CALLGRAPH` (`dwarf`|`lbr`),
-`LDLAT` (cycles, default 50), `SKIP_MEM`, `SKIP_TOPDOWN`.
+`PIN_CPU` (default 2), `FREQ` (cycles Hz, default 4000),
+`IBS_PERIOD` (AMD, default 250000), `LDLAT` (Intel PEBS cycles, default
+50), `SKIP_MEM`, `SKIP_MICRO`, `SKIP_IBS`.
+
+> The **top-down drill recipe and Raptor-Lake pitfalls below are
+> Intel-specific** (cpu_core / TopdownL1 / PEBS). On AMD there's no
+> slot-based TMA on Zen<4 — read `perf-micro.txt`'s cache/TLB/branch
+> counters and the precise `perf-ibs.txt` directly, then
+> `perf annotate -i tmp/palantir-perf-ibs.data <symbol>`.
 
 ### Workflow (top-down)
 
@@ -510,20 +532,86 @@ perf annotate -i tmp/perf-stfwd.data -M intel palantir::forest::Forest::open_nod
 - **`tma_dram_bound`** — L3 missed. The real "memory locality"
   problem. >5% is worth a `perf mem`-driven layout investigation.
 
+### AMD (Zen) drill recipe
+
+The Intel top-down above doesn't apply on AMD — there's **no slot-based
+TMA before Zen4**. `bench-perf.sh` auto-selects the AMD path (IBS +
+metric groups); read it like this.
+
+**Finding — the frame bench is retiring-bound.** Every CPU arm runs at
+**IPC ≈ 3.3** (Zen3+ peaks ~6) with branch-mispredict < 0.2%, ~3% L1-d
+miss, < 4% frontend-idle. The pipeline is busy *retiring instructions*,
+not stalling — so wins come from **executing fewer instructions**
+(algorithmic / less per-frame recompute), not cache or branch tuning.
+The metric groups are confirmation; let the IBS flat report + callgraph
+drive. (This is why the O1 intrinsic-cache win came from *deleting* a
+sibling re-walk, not microarch tuning — see `docs/cpu-arm-profiling.md`.)
+
+**Drill order:**
+
+1. `tmp/palantir-perf-ibs.txt` — precise (no-skid) self-time
+   leaderboard. Trust it over the cycles flat report, whose IP skids
+   past the costly instruction.
+2. `tmp/palantir-perf-stat.txt` — IPC = insn/cycles. >2.5 with low
+   miss rates ⇒ retiring-bound (do less work); <1.0 ⇒ stalled, go to (4).
+3. `perf annotate -i tmp/palantir-perf-ibs.data <symbol>` — IBS lands on
+   the exact retiring op, so the hot source line is real (no skid).
+4. *Only if stalled:* `tmp/palantir-perf-mem.txt` (IBS data-source)
+   buckets loads by level — the label column reads `L2 hit` / `L3 hit` /
+   `core, same node Any cache hit` / `Local RAM`. Lots of `RAM` = the
+   locality problem; mostly `L1`/`L2` is fine.
+5. Per-dimension rates — **one metric group per run** (combining them
+   oversubscribes the 6 general PMCs → multiplexing, coverage ~14%):
+
+   ```sh
+   taskset -c 2 perf stat -M branch_prediction -- "$BIN" --bench cached_cpu --profile-time 4
+   taskset -c 2 perf stat -M tlb       -- "$BIN" ...      # i/d-TLB miss rates
+   taskset -c 2 perf stat -M l2_cache  -- "$BIN" ...      # l2 hit/miss, ic/dc fill
+   taskset -c 2 perf stat -a -M l3_cache -- "$BIN" ...    # uncore (amd_l3) — needs -a
+   ```
+
+**IBS knobs** (hand-rolled `perf record -e ibs_op/.../`):
+
+- `-c <period>` = sample period in cycles (`IBS_PERIOD`, default 250000
+  ≈ 35k samples / 2 s). Lower = denser + heavier.
+- `cnt_ctl=1` = µop-count periods instead of cycles — uniform over ops,
+  good for finding high-CPI ops rather than where cycles pool.
+- `l3missonly=1` / `ldlat=128..2048` cut overhead (L3-miss-only /
+  high-latency loads) — **Zen4+/Zen5+ only**, a no-op on this Zen3+ box.
+
+**Pitfalls (AMD, Family 19h — verified on a Ryzen 7 6800U):**
+
+- `cpu_core/event/` syntax is Intel-hybrid-only — use the bare event
+  name (`-e cycles`, not `-e cpu_core/cycles/`).
+- L3 / data-fabric counters read `<not counted>` per-process — they're
+  uncore (`amd_l3` / `amd_df`), add `-a` (system-wide).
+- IBS / raw events / kernel symbols need
+  `kernel.perf_event_paranoid <= -1`.
+- The NMI watchdog reserves one of the 6 PMCs (`sudo sysctl
+  kernel.nmi_watchdog=0` for 100% counter coverage).
+- Zen3 has no usable LBR/BRS for cycles, so callgraphs are dwarf-only
+  (`CALLGRAPH=lbr` falls back).
+
 ## When to use what
 
 - **CPU hotspots**: samply (macOS) / perf (Linux). Always first pass.
   → `scripts/profile-bench.sh` (macOS) or `scripts/bench-perf.sh` (Linux).
 - **Microarchitectural attribution** ("where is time really going" when
   the flat profile is flat): Intel TMA via `perf stat -M TopdownL1`,
-  then drill into the dominant leaf's metric group. Linux only — wired
-  into `bench-perf.sh`. On Apple Silicon use Instruments' "CPU
-  Counters" template with `xcrun xctrace record --template 'CPU
-  Counters'`. macOS has no TMA equivalent.
-- **Cache-miss attribution** (which loads stall, at which level):
-  `perf mem record -t load --ldlat=50` + `perf mem report` — wired
-  into `bench-perf.sh`, source-line resolved via PEBS. macOS has no
-  direct equivalent.
+  then drill into the dominant leaf's metric group. AMD has no
+  slot-based topdown before Zen4 — use the metric groups
+  (`perf stat -M branch_prediction,tlb,l2_cache`) and the precise IBS
+  report instead. Both wired into `bench-perf.sh` (vendor-detected). On
+  Apple Silicon use Instruments' "CPU Counters" template with `xcrun
+  xctrace record --template 'CPU Counters'`. macOS has no TMA equivalent.
+- **Cache-miss attribution** (which loads stall, at which level): Intel
+  `perf mem record -t load --ldlat=50` (PEBS); AMD `perf mem record`
+  (IBS Op — no `ldlat` before Zen5) + `perf mem report`. Wired into
+  `bench-perf.sh`, source-line resolved. macOS has no direct equivalent.
+- **Precise instruction attribution** (no sampling skid): Intel PEBS
+  (`cycles/ppp`); AMD IBS (`ibs_op//`). The `bench-perf.sh` precise pass
+  emits `tmp/palantir-perf-ibs.txt`; `perf annotate -i
+  tmp/palantir-perf-ibs.data <symbol>` lands on the exact instruction.
 - **False sharing** in multithreaded code: `perf c2c record/report`.
   Not wired in — single-threaded benches don't need it.
 - **HW counters** (IPC, L1/L2/TLB miss rates, branch mispredicts) on
