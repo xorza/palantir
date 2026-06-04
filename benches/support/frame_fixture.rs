@@ -177,80 +177,12 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                         .gap(10.0)
                         .size((Sizing::FILL, Sizing::FILL))
                         .show(ui, |ui| {
-                            // Per-frame `Rc::from([...])` / `Vec::collect()` would each
-                            // allocate; the strict-zero `alloc_free` bench catches it.
-                            // Cache the canonical `Rc<[Track]>`s once per thread so the
-                            // hot path is a refcount bump. Each bench process feeds a
-                            // single `scale`, so keying on it isn't needed.
-                            thread_local! {
-                                static GRID_COLS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
-                                static GRID_ROWS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
-                            }
-                            let cols = GRID_COLS.with(|c| {
-                                c.get_or_init(|| {
-                                    Rc::from([
-                                        Track::hug().min(80.0),
-                                        Track::fill(),
-                                        Track::fixed(60.0),
-                                    ])
-                                })
-                                .clone()
-                            });
-                            let rows = GRID_ROWS.with(|c| {
-                                c.get_or_init(|| {
-                                    (0..prop_rows)
-                                        .map(|_| Track::hug())
-                                        .collect::<Vec<_>>()
-                                        .into()
-                                })
-                                .clone()
-                            });
-                            Grid::new()
-                                .id_salt("props")
-                                .cols(cols)
-                                .rows(rows)
-                                .gap(6.0)
-                                .padding(4.0)
-                                .size((Sizing::FILL, Sizing::Hug))
-                                .show(ui, |ui| {
-                                    let labels = [
-                                        "Name",
-                                        "Description",
-                                        "Author",
-                                        "License",
-                                        "Created",
-                                        "Modified",
-                                        "Tags",
-                                        "Notes",
-                                    ];
-                                    let values = [
-                                        "the quick brown fox jumps over the lazy dog",
-                                        "Lorem ipsum dolor sit amet consectetur adipiscing elit \
-                                         sed do eiusmod tempor",
-                                        "Jane Doe and a long author name to force wrapping",
-                                        "MIT-or-Apache-2.0",
-                                    ];
-                                    for row in 0..prop_rows {
-                                        let r = row as u16;
-                                        Text::new(labels[row % labels.len()])
-                                            .id_salt(("plbl", row))
-                                            .style(TextStyle::default().with_font_size(14.0))
-                                            .grid_cell((r, 0))
-                                            .show(ui);
-                                        Text::new(values[row % values.len()])
-                                            .id_salt(("pval", row))
-                                            .style(TextStyle::default().with_font_size(14.0))
-                                            .text_wrap(TextWrap::Wrap)
-                                            .grid_cell((r, 1))
-                                            .show(ui);
-                                        Button::new()
-                                            .id_salt(("pact", row))
-                                            .label("Edit")
-                                            .grid_cell((r, 2))
-                                            .show(ui);
-                                    }
-                                });
-
+                            // Children are ordered diverse-first: the visually varied
+                            // widgets lead so they fill the `frame_visual` viewport, while
+                            // the bulky repetitive lists (property grid, tag cloud) trail at
+                            // the bottom. All stay direct siblings, so the bench's painted
+                            // tree (tall offscreen target, everything fits) is identical
+                            // regardless of order.
                             Panel::hstack()
                                 .id_salt("form-row")
                                 .gap(8.0)
@@ -328,25 +260,33 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                     ProgressBar::new(0.62).id_salt("progress").show(ui);
                                 });
 
-                            Panel::wrap_hstack()
-                                .id_salt("tags")
-                                .gap(4.0)
-                                .padding(6.0)
-                                .size((Sizing::FILL, Sizing::Hug))
-                                .background(panel_bg.clone())
-                                .show(ui, |ui| {
-                                    for i in 0..tag_count {
-                                        let label = ui.fmt(format_args!("#tag{i}"));
-                                        Button::new().id_salt(("tag", i)).label(label).show(ui);
-                                    }
-                                });
-
                             Panel::canvas()
                                 .id_salt("shape-gallery")
                                 .size((Sizing::FILL, Sizing::Fixed(140.0)))
                                 .background(panel_bg.clone())
                                 .show(ui, |ui| {
                                     add_shape_gallery(ui);
+                                });
+
+                            Panel::canvas()
+                                .id_salt("dot-canvas")
+                                .size((Sizing::FILL, Sizing::Fixed(80.0)))
+                                .show(ui, |ui| {
+                                    for i in 0..canvas_dots {
+                                        Frame::new()
+                                            .id_salt(("dot", i))
+                                            .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
+                                            .position((
+                                                i as f32 * 22.0,
+                                                12.0 + (i % 3) as f32 * 18.0,
+                                            ))
+                                            .background(Background {
+                                                fill: Color::rgb(0.32, 0.46, 0.66).into(),
+                                                corners: Corners::all(8.0),
+                                                ..Default::default()
+                                            })
+                                            .show(ui);
+                                    }
                                 });
 
                             Scroll::vertical()
@@ -409,24 +349,90 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                     }
                                 });
 
-                            Panel::canvas()
-                                .id_salt("dot-canvas")
-                                .size((Sizing::FILL, Sizing::Fixed(80.0)))
+                            // Per-frame `Rc::from([...])` / `Vec::collect()` would each
+                            // allocate; the strict-zero `alloc_free` bench catches it.
+                            // Cache the canonical `Rc<[Track]>`s once per thread so the
+                            // hot path is a refcount bump. Each bench process feeds a
+                            // single `scale`, so keying on it isn't needed.
+                            thread_local! {
+                                static GRID_COLS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
+                                static GRID_ROWS: OnceCell<Rc<[Track]>> = const { OnceCell::new() };
+                            }
+                            let cols = GRID_COLS.with(|c| {
+                                c.get_or_init(|| {
+                                    Rc::from([
+                                        Track::hug().min(80.0),
+                                        Track::fill(),
+                                        Track::fixed(60.0),
+                                    ])
+                                })
+                                .clone()
+                            });
+                            let rows = GRID_ROWS.with(|c| {
+                                c.get_or_init(|| {
+                                    (0..prop_rows)
+                                        .map(|_| Track::hug())
+                                        .collect::<Vec<_>>()
+                                        .into()
+                                })
+                                .clone()
+                            });
+                            Grid::new()
+                                .id_salt("props")
+                                .cols(cols)
+                                .rows(rows)
+                                .gap(6.0)
+                                .padding(4.0)
+                                .size((Sizing::FILL, Sizing::Hug))
                                 .show(ui, |ui| {
-                                    for i in 0..canvas_dots {
-                                        Frame::new()
-                                            .id_salt(("dot", i))
-                                            .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
-                                            .position((
-                                                i as f32 * 22.0,
-                                                12.0 + (i % 3) as f32 * 18.0,
-                                            ))
-                                            .background(Background {
-                                                fill: Color::rgb(0.32, 0.46, 0.66).into(),
-                                                corners: Corners::all(8.0),
-                                                ..Default::default()
-                                            })
+                                    let labels = [
+                                        "Name",
+                                        "Description",
+                                        "Author",
+                                        "License",
+                                        "Created",
+                                        "Modified",
+                                        "Tags",
+                                        "Notes",
+                                    ];
+                                    let values = [
+                                        "the quick brown fox jumps over the lazy dog",
+                                        "Lorem ipsum dolor sit amet consectetur adipiscing elit \
+                                         sed do eiusmod tempor",
+                                        "Jane Doe and a long author name to force wrapping",
+                                        "MIT-or-Apache-2.0",
+                                    ];
+                                    for row in 0..prop_rows {
+                                        let r = row as u16;
+                                        Text::new(labels[row % labels.len()])
+                                            .id_salt(("plbl", row))
+                                            .style(TextStyle::default().with_font_size(14.0))
+                                            .grid_cell((r, 0))
                                             .show(ui);
+                                        Text::new(values[row % values.len()])
+                                            .id_salt(("pval", row))
+                                            .style(TextStyle::default().with_font_size(14.0))
+                                            .text_wrap(TextWrap::Wrap)
+                                            .grid_cell((r, 1))
+                                            .show(ui);
+                                        Button::new()
+                                            .id_salt(("pact", row))
+                                            .label("Edit")
+                                            .grid_cell((r, 2))
+                                            .show(ui);
+                                    }
+                                });
+
+                            Panel::wrap_hstack()
+                                .id_salt("tags")
+                                .gap(4.0)
+                                .padding(6.0)
+                                .size((Sizing::FILL, Sizing::Hug))
+                                .background(panel_bg.clone())
+                                .show(ui, |ui| {
+                                    for i in 0..tag_count {
+                                        let label = ui.fmt(format_args!("#tag{i}"));
+                                        Button::new().id_salt(("tag", i)).label(label).show(ui);
                                     }
                                 });
 
