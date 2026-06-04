@@ -70,13 +70,20 @@ impl ShapeStroke {
     }
 }
 
-impl From<Stroke> for ShapeStroke {
+impl From<&Stroke> for ShapeStroke {
     #[inline]
-    fn from(s: Stroke) -> Self {
+    fn from(s: &Stroke) -> Self {
         Self {
             color: ColorF16::from(s.brush.expect_solid()),
             width_f16: f16::from_f32(s.width).to_bits(),
         }
+    }
+}
+
+impl From<Stroke> for ShapeStroke {
+    #[inline]
+    fn from(s: Stroke) -> Self {
+        Self::from(&s)
     }
 }
 
