@@ -169,7 +169,7 @@ impl FrameArena {
     /// `ShapeRecord` / `ChromeRow` and keep their `Hash` impls
     /// context-free (no need to thread the arena into hashing).
     pub(crate) fn lower_brush(&self, brush: Brush, atlas: &GradientAtlas) -> LoweredBrush {
-        self.0.borrow_mut().lower_brush_inner(brush, atlas)
+        self.0.borrow_mut().lower_brush_inner(&brush, atlas)
     }
 
     /// Lower a user-facing `Background` to a `ChromeRow`. Same
@@ -183,8 +183,8 @@ impl FrameArena {
         let LoweredBrush {
             brush: fill,
             hash: fill_grad_hash,
-        } = a.lower_brush_inner(bg.fill.clone(), atlas);
-        let stroke = ShapeStroke::from(bg.stroke.clone());
+        } = a.lower_brush_inner(&bg.fill, atlas);
+        let stroke = ShapeStroke::from(&bg.stroke);
         let corners = bg.corners;
         let shadow: crate::forest::shapes::record::LoweredShadow = bg.shadow.into();
         // Canonical authoring hash: fold all inputs into one
@@ -270,7 +270,7 @@ impl FrameArena {
         atlas: &GradientAtlas,
     ) -> ShapeRecord {
         assert_curve_brush(&brush);
-        let lowered = self.0.borrow_mut().lower_brush_inner(brush, atlas);
+        let lowered = self.0.borrow_mut().lower_brush_inner(&brush, atlas);
         lower_curve_inner(ctrl, width, lowered, cap, 0)
     }
 
@@ -288,7 +288,7 @@ impl FrameArena {
         assert_curve_brush(&brush);
         let [p0, c, p2] = ctrl;
         let cubic = quadratic_to_cubic(p0, c, p2);
-        let lowered = self.0.borrow_mut().lower_brush_inner(brush, atlas);
+        let lowered = self.0.borrow_mut().lower_brush_inner(&brush, atlas);
         lower_curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap, 1)
     }
 }
@@ -380,28 +380,28 @@ pub(crate) struct LoweredBrush {
 }
 
 impl FrameArenaInner {
-    fn lower_brush_inner(&mut self, brush: Brush, atlas: &GradientAtlas) -> LoweredBrush {
+    fn lower_brush_inner(&mut self, brush: &Brush, atlas: &GradientAtlas) -> LoweredBrush {
         let (kind, axis, stops, interp, hash) = match brush {
             Brush::Solid(c) => {
                 return LoweredBrush {
-                    brush: ShapeBrush::Solid(c.into()),
+                    brush: ShapeBrush::Solid((*c).into()),
                     hash: 0,
                 };
             }
             Brush::Linear(g) => {
-                let h = grad_hash(0, &g);
-                (FillKind::linear(g.spread), g.axis(), g.stops, g.interp, h)
+                let h = grad_hash(0, g);
+                (FillKind::linear(g.spread), g.axis(), &g.stops, g.interp, h)
             }
             Brush::Radial(g) => {
-                let h = grad_hash(1, &g);
-                (FillKind::radial(g.spread), g.axis(), g.stops, g.interp, h)
+                let h = grad_hash(1, g);
+                (FillKind::radial(g.spread), g.axis(), &g.stops, g.interp, h)
             }
             Brush::Conic(g) => {
-                let h = grad_hash(2, &g);
-                (FillKind::conic(g.spread), g.axis(), g.stops, g.interp, h)
+                let h = grad_hash(2, g);
+                (FillKind::conic(g.spread), g.axis(), &g.stops, g.interp, h)
             }
         };
-        let row = atlas.register_stops(&stops, interp);
+        let row = atlas.register_stops(stops, interp);
         let id = self.gradients.len() as u32;
         self.gradients.push(LoweredGradient { axis, row, kind });
         LoweredBrush {
