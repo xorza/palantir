@@ -114,14 +114,18 @@ internals = []
 profile-with-tracy = ["profiling/profile-with-tracy", "dep:tracy-client"]
 profile-with-puffin = ["profiling/profile-with-puffin"]
 
+[profile.bench]
+debug = true
+opt-level = 3
+strip = "none"
+split-debuginfo = "off"
+lto = "thin"
+
 [profile.release]
-debug = "line-tables-only"
-# Thin LTO lets cross-crate generics like `soa_rs::Soa::push` inline
-# at their call sites. Without it the per-`open_node` SoA push stays
-# an out-of-line call (~2.6 % self in the `frame` bench); with it the
-# 5 field stores + len bump fold into the caller. Thin LTO compile
-# overhead is ~1.5× the no-LTO baseline; fat LTO (`release-max`)
-# adds ~3× more on top.
+debug = true
+opt-level = 3
+strip = "none"
+split-debuginfo = "off"
 lto = "thin"
 
 [profile.release-max]
