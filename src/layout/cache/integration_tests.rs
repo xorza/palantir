@@ -508,3 +508,60 @@ fn cache_rects_match_cold_oracle_across_width_changes() {
         );
     }
 }
+
+/// O1 regression: a measure-cache hit restores the subtree root's
+/// intrinsics, so when a deep sibling changes and forces the ancestor
+/// chain to re-measure, the ancestor's `children_max_intrinsic` reads the
+/// unchanged sibling's cached intrinsic instead of cold-recursing through
+/// its whole subtree (which would re-probe the text cache per leaf).
+/// Pinned via the per-frame `intrinsic_computes` counter.
+#[test]
+fn measure_cache_restores_intrinsics_so_localized_change_skips_sibling_rewalk() {
+    const HEAVY: usize = 30;
+
+    fn build(ui: &mut Ui, tick: u32) {
+        Panel::vstack()
+            .auto_id()
+            .size((Sizing::Hug, Sizing::Hug))
+            .show(ui, |ui| {
+                // Unchanging heavy subtree: many text leaves.
+                Panel::vstack()
+                    .id_salt("heavy")
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui| {
+                        for i in 0..HEAVY {
+                            Text::new("lorem ipsum dolor").id_salt(("h", i)).show(ui);
+                        }
+                    });
+                // Tiny sibling whose text changes each frame. Constant
+                // width under the mono test shaper, so layout is stable
+                // and `heavy` stays a cache hit.
+                let label = ui.fmt(format_args!("tick {tick:04}"));
+                Text::new(label).id_salt("tiny").show(ui);
+            });
+    }
+
+    let mut ui = Ui::for_test();
+    let size = UVec2::new(400, 600);
+
+    // Cold frame computes intrinsics across the whole tree.
+    ui.run_at_acked(size, |ui| build(ui, 0));
+    let cold = ui.layout_engine.scratch.intrinsic_computes as usize;
+    assert!(
+        cold > HEAVY,
+        "cold frame should compute the whole tree's intrinsics, got {cold}",
+    );
+
+    // Warm frame: only `tiny` changes. `heavy` hits the cache; its
+    // restored intrinsics keep the root re-measure from re-walking it, so
+    // the count collapses to the changed ancestor chain (~root + tiny),
+    // not ~2·HEAVY for a full sibling re-walk.
+    ui.run_at_acked(size, |ui| build(ui, 1));
+    let warm = ui.layout_engine.scratch.intrinsic_computes as usize;
+    assert!(
+        warm < HEAVY / 2,
+        "localized change re-walked the unchanged sibling: {warm} intrinsic \
+         computes (heavy={HEAVY}, cold={cold}); the cache-hit intrinsic restore \
+         should bound this to the changed ancestor chain",
+    );
+}

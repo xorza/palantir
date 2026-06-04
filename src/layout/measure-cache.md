@@ -21,11 +21,18 @@ Code lives in `cache/` (this directory's sibling).
   variance.
 - **Single-arena storage.** Three flat node-indexed arenas
   (`desired`, `text_spans`, `scroll_content`) shared across all
-  snapshots, plus a per-`WidgetId` map of 40-byte
-  `ArenaSnapshot { subtree_hash, available_q, nodes: Span, hugs: Span,
-  text_shapes: Span }`. The dimensional cache key (`available_q`) is
-  inline on the snapshot — the validity check on `try_lookup` doesn't
-  hit a parallel arena. Per-grid hug arrays for `LayoutMode::Grid`
+  snapshots, plus a per-`WidgetId` map of
+  `ArenaSnapshot { subtree_hash, available_q, root_intrinsics, nodes: Span,
+  hugs: Span, text_shapes: Span }`. The dimensional cache key
+  (`available_q`) is inline on the snapshot — the validity check on
+  `try_lookup` doesn't hit a parallel arena. `root_intrinsics`
+  (`[f32; SLOT_COUNT]`, X/Y × Min/Max-content) is the subtree root's
+  cached intrinsic; `MeasureCache::lookup_root_intrinsic` serves it to
+  `LayoutEngine::intrinsic` keyed on `subtree_hash` **alone** (intrinsics
+  are computed at `available = ∞`, so they're valid across `available_q`
+  buckets). This stops an ancestor's `intrinsic_min` query — which runs
+  *before* its children are measured — from cold-recursing through
+  unchanged sibling subtrees on a localized change or a resize. Per-grid hug arrays for `LayoutMode::Grid`
   descendants live in a separate `hugs` arena; flat shaped-text runs
   live in `text_shapes_arena`. Liveness bookkeeping rides on the
   shared [`LiveArena`] primitive (`src/common/cache_arena.rs`); the
@@ -62,6 +69,9 @@ Steady-state cache hits dominate by ~25 % on the nested workload.
 Per-snapshot memory footprint on that workload is ~77 KB across the
 arenas and the `FxHashMap` index.
 
-Future-work items (intrinsic-query cache, real-workload validation,
-cold-cache mitigations, coarser quantization) live in
-`docs/roadmap/caches.md`.
+The cross-frame intrinsic-query cache landed as `root_intrinsics` on
+the snapshot (above) — it reuses the subtree root's intrinsic, which
+covers the dominant `children_max_intrinsic` re-walk; a full
+per-descendant intrinsic snapshot is still open. Remaining future-work
+items (real-workload validation, cold-cache mitigations, coarser
+quantization) live in `docs/roadmap/caches.md`.

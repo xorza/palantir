@@ -340,6 +340,11 @@ mod tests {
                 })
                 .node();
         });
+        // Drop the measure-cache snapshots so `engine.intrinsic` can't
+        // answer the root query from last frame's cached intrinsic — this
+        // test pins the *recursive compute* path that populates descendant
+        // scratch slots, which the cross-frame lookup would otherwise skip.
+        ui.clear_measure_cache();
         let slot = LenReq::MaxContent.slot(Axis::X);
         for entry in ui.layout_engine.scratch.intrinsics.iter_mut() {
             entry[slot] = f32::NAN;
