@@ -2,7 +2,8 @@
 //! example. A synthetic but realistic UI tree exercising every public
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapStack/Scroll),
 //! every public widget (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/
-//! RadioButton/TextEdit/Tooltip/Popup), every `Shape` variant
+//! RadioButton/ToggleSwitch/Slider/DragValue/ComboBox/ProgressBar/
+//! Separator/TextEdit/Tooltip/Popup), every `Shape` variant
 //! (RoundedRect / Line / Polyline / CubicBezier / QuadraticBezier /
 //! Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
 //! Conic), and the popup/tooltip layers.
@@ -14,10 +15,11 @@ use std::cell::OnceCell;
 use std::rc::Rc;
 
 use palantir::{
-    Align, Background, Brush, Button, Checkbox, Color, ColorU8, Configure, ConicGradient, Corners,
-    Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel, PolylineColors, Popup,
-    RadialGradient, RadioButton, Rect, Scroll, Shadow, Shape, Sizing, Stop, Stroke, Text, TextEdit,
-    TextStyle, TextWrap, Tooltip, Track, Ui,
+    Align, Background, Brush, Button, Checkbox, Color, ColorU8, ComboBox, Configure, ConicGradient,
+    Corners, DragValue, Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel,
+    PolylineColors, Popup, ProgressBar, RadialGradient, RadioButton, Rect, Scroll, Separator,
+    Shadow, Shape, Sizing, Slider, Stop, Stroke, Text, TextEdit, TextStyle, TextWrap, ToggleSwitch,
+    Tooltip, Track, Ui,
 };
 
 // Each include site (bench / example) only uses one constant; the other
@@ -35,7 +37,6 @@ pub const VISUAL_SCALE: usize = 6;
 /// node is sized `Fixed(120.0)` so the changing digits don't shift
 /// sibling layout — the damage rect collapses to that single node's
 /// arranged box.
-#[derive(Default)]
 pub struct FormState {
     pub name: String,
     pub notes: String,
@@ -49,6 +50,33 @@ pub struct FormState {
     /// whether a cascade delta-cache (cached output translated by
     /// `parent_transform`) would meaningfully reduce cascade cost.
     pub scroll_offset: glam::Vec2,
+    /// Backing values for the controls row (Slider / DragValue /
+    /// ComboBox / ToggleSwitch). Held constant across bench iterations —
+    /// only `tick` mutates — so they never perturb the steady-state
+    /// damage `Skip` / `Partial` invariants the arms assert; they widen
+    /// widget coverage only. Seeded to mid-range values so the visual
+    /// harness shows them in a representative, non-empty state.
+    pub volume: f32,
+    pub zoom: f32,
+    pub quality: usize,
+    pub dark_mode: bool,
+}
+
+impl Default for FormState {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            notes: String::new(),
+            enabled: true,
+            role: 1,
+            tick: 0,
+            scroll_offset: glam::Vec2::ZERO,
+            volume: 0.65,
+            zoom: 42.0,
+            quality: 2,
+            dark_mode: true,
+        }
+    }
 }
 
 pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
@@ -246,6 +274,58 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                             .show(ui);
                                     }
                                     Button::new().id_salt("submit").label("Submit").show(ui);
+                                });
+
+                            Panel::vstack()
+                                .id_salt("controls")
+                                .gap(8.0)
+                                .padding(6.0)
+                                .size((Sizing::FILL, Sizing::Hug))
+                                .background(panel_bg.clone())
+                                .show(ui, |ui| {
+                                    Panel::hstack()
+                                        .id_salt("controls-row")
+                                        .gap(10.0)
+                                        .child_align(Align::CENTER)
+                                        .size((Sizing::FILL, Sizing::Hug))
+                                        .show(ui, |ui| {
+                                            ToggleSwitch::new(&mut state.dark_mode)
+                                                .id_salt("dark-mode")
+                                                .label("dark mode")
+                                                .show(ui);
+                                            Separator::vertical().id_salt("controls-vsep").show(ui);
+                                            let quality_opts = ["Low", "Medium", "High", "Ultra"];
+                                            ComboBox::new(&mut state.quality, &quality_opts)
+                                                .id_salt("quality")
+                                                .size((Sizing::Fixed(140.0), Sizing::Hug))
+                                                .show(ui);
+                                            DragValue::new(&mut state.zoom)
+                                                .id_salt("zoom")
+                                                .speed(0.5)
+                                                .range(0.0..=100.0)
+                                                .decimals(0)
+                                                .suffix("%")
+                                                .size((Sizing::Fixed(90.0), Sizing::Hug))
+                                                .show(ui);
+                                        });
+                                    Panel::hstack()
+                                        .id_salt("slider-row")
+                                        .gap(8.0)
+                                        .child_align(Align::CENTER)
+                                        .size((Sizing::FILL, Sizing::Hug))
+                                        .show(ui, |ui| {
+                                            Text::new("Volume")
+                                                .id_salt("vol-label")
+                                                .style(TextStyle::default().with_font_size(13.0))
+                                                .size((Sizing::Fixed(56.0), Sizing::Hug))
+                                                .show(ui);
+                                            Slider::new(&mut state.volume, 0.0..=1.0)
+                                                .id_salt("volume")
+                                                .step(0.05)
+                                                .show(ui);
+                                        });
+                                    Separator::horizontal().id_salt("controls-hsep").show(ui);
+                                    ProgressBar::new(0.62).id_salt("progress").show(ui);
                                 });
 
                             Panel::wrap_hstack()
