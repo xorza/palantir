@@ -1575,3 +1575,32 @@ fn shrinking_content_unstrands_offset_without_input() {
         "offset must clamp to the new max (300 - 200) after a passive content shrink",
     );
 }
+
+/// O5 stage 0 completeness: a scroll-offset change must bust the cascade
+/// skip. The offset lives in `LayoutEngine.scroll_states` (not in
+/// `subtree_hash`), so it's folded into the cascade fingerprint
+/// explicitly — without that, a scroll would wrongly skip the cascade
+/// and leave stale geometry. Pinned via `dbg_cascade_ran`.
+#[test]
+fn cascade_skip_busts_on_scroll_offset_change() {
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    assert!(ui.dbg_cascade_ran, "first frame runs the cascade");
+
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    assert!(
+        !ui.dbg_cascade_ran,
+        "unchanged scroll frame skips the cascade"
+    );
+
+    // Scroll the viewport: the offset shifts, so the content re-arranges
+    // and the cascade must re-run.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 50.0)));
+    ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
+    assert_eq!(read_state(&mut ui).offset.y, 50.0, "offset advanced");
+    assert!(
+        ui.dbg_cascade_ran,
+        "scroll offset change must re-run the cascade (offset is in the fingerprint)",
+    );
+}

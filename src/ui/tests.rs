@@ -1500,3 +1500,37 @@ fn for_test_constructors_skip_warmup() {
         "for_test() ctor pre-marks warm; first user frame is single-pass",
     );
 }
+
+/// O5 stage 0: an unchanged frame skips the cascade (its output is
+/// provably identical); any cascade-input change — authoring or the
+/// exact surface — re-runs it. Pinned via `dbg_cascade_ran`.
+#[test]
+fn cascade_skip_fires_on_unchanged_reruns_on_change() {
+    use crate::layout::types::sizing::Sizing;
+
+    fn build(ui: &mut Ui, w: f32) {
+        Frame::new()
+            .id(WidgetId::from_hash("f"))
+            .size((Sizing::Fixed(w), Sizing::Fixed(50.0)))
+            .show(ui);
+    }
+
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| build(ui, 50.0));
+    assert!(ui.dbg_cascade_ran, "first frame runs the cascade");
+
+    ui.run_at_acked(SURFACE, |ui| build(ui, 50.0));
+    assert!(!ui.dbg_cascade_ran, "unchanged frame skips the cascade");
+
+    ui.run_at_acked(SURFACE, |ui| build(ui, 80.0));
+    assert!(ui.dbg_cascade_ran, "authoring change re-runs the cascade");
+
+    ui.run_at_acked(SURFACE, |ui| build(ui, 80.0));
+    assert!(!ui.dbg_cascade_ran, "settles back to skipping");
+
+    ui.run_at_acked(UVec2::new(SURFACE.x + 1, SURFACE.y), |ui| build(ui, 80.0));
+    assert!(
+        ui.dbg_cascade_ran,
+        "exact-surface change re-runs the cascade"
+    );
+}
