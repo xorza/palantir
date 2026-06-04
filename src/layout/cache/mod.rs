@@ -32,6 +32,7 @@ use crate::common::live_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
 use crate::forest::rollups::NodeHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::layout::ShapedText;
+use crate::layout::intrinsic::SLOT_COUNT;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
@@ -52,6 +53,18 @@ pub(crate) struct ArenaSnapshot {
     /// Quantized `available` size at snapshot time — the dimensional
     /// half of the cache-validity check.
     pub(crate) available_q: AvailableKey,
+    /// The snapshot root's per-slot intrinsic values (`[f32; SLOT_COUNT]`,
+    /// X/Y × Min/Max-content). Served by [`MeasureCache::lookup_root_intrinsic`]
+    /// to `LayoutEngine::intrinsic` so a re-measuring *parent*'s
+    /// `children_max_intrinsic` reads the cached value instead of
+    /// cold-recursing through this (unchanged) subtree — intrinsics are
+    /// `available`-independent (computed at `available = ∞`), so a value
+    /// keyed on `subtree_hash` stays valid across `available_q` buckets.
+    /// A `NaN` slot is one the root never computed (e.g. a `Fixed` axis,
+    /// or a `MaxContent` query that didn't fire); `lookup_root_intrinsic`
+    /// returns `None` for it, so that slot recomputes on demand exactly as
+    /// before.
+    pub(crate) root_intrinsics: [f32; SLOT_COUNT],
     /// Range over [`NodeArenas`]. `nodes.desired[range()]` is the
     /// subtree's `desired` in pre-order; index 0 is the snapshot root's
     /// own size.
@@ -268,6 +281,30 @@ impl MeasureCache {
         })
     }
 
+    /// Cross-frame intrinsic lookup for one node's subtree root. Unlike
+    /// [`Self::try_lookup`] this ignores `available_q` — intrinsics are
+    /// computed at `available = ∞`, so a value is valid for any available
+    /// as long as `subtree_hash` matches. Returns `None` when there's no
+    /// snapshot for `wid`, the hash differs, or the slot was never
+    /// populated (`NaN`). Lets `LayoutEngine::intrinsic` answer a query
+    /// from last frame's snapshot instead of recursing through an
+    /// unchanged subtree — even on a resize frame where `try_lookup`
+    /// misses on the dimensional half of the key.
+    #[inline]
+    pub(crate) fn lookup_root_intrinsic(
+        &self,
+        wid: WidgetId,
+        subtree_hash: NodeHash,
+        slot: usize,
+    ) -> Option<f32> {
+        let snap = self.snapshots.get(&wid)?;
+        if snap.subtree_hash != subtree_hash {
+            return None;
+        }
+        let v = snap.root_intrinsics[slot];
+        (!v.is_nan()).then_some(v)
+    }
+
     /// Overwrite (or insert) `wid`'s snapshot. `arenas.hugs` is the
     /// per-grid hug payload for every Grid descendant of the subtree,
     /// packed in `HUG_ORDER` (see grid module); empty for grid-free
@@ -281,6 +318,7 @@ impl MeasureCache {
         wid: WidgetId,
         subtree_hash: NodeHash,
         available_q: AvailableKey,
+        root_intrinsics: [f32; SLOT_COUNT],
         arenas: SubtreeArenas<'_>,
     ) {
         assert_eq!(arenas.desired.len(), arenas.text_spans.len());
@@ -302,6 +340,7 @@ impl MeasureCache {
             let text_range = prev.text_shapes.range();
             prev.subtree_hash = subtree_hash;
             prev.available_q = available_q;
+            prev.root_intrinsics = root_intrinsics;
             self.nodes.write_in_place(nodes, &arenas);
             self.hugs.items[hugs_range].copy_from_slice(arenas.hugs);
             self.text_shapes_arena.items[text_range].copy_from_slice(arenas.text_shapes);
@@ -332,6 +371,7 @@ impl MeasureCache {
             ArenaSnapshot {
                 subtree_hash,
                 available_q,
+                root_intrinsics,
                 nodes,
                 hugs: hugs_span,
                 text_shapes: text_span,

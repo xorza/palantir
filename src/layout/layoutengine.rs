@@ -82,6 +82,13 @@ pub(crate) struct LayoutScratch {
     pub(crate) desired: Vec<Size>,
     pub(crate) intrinsics: Vec<[f32; SLOT_COUNT]>,
     pub(crate) tmp_hugs: Vec<f32>,
+    /// Count of `intrinsic::compute` (cache-miss) calls this frame —
+    /// test observability for the intrinsic cache. Reset at the top of
+    /// `run`; read by tests to assert a localized change doesn't trigger
+    /// a whole-tree intrinsic re-walk. Test-only so production / bench
+    /// builds carry no counter in the hot `intrinsic` path.
+    #[cfg(test)]
+    pub(crate) intrinsic_computes: u32,
 }
 
 impl LayoutScratch {
@@ -313,12 +320,32 @@ impl LayoutEngine {
         tc: &TextCtx<'_>,
     ) -> f32 {
         let slot = req.slot(axis);
-        let cached = self.scratch.intrinsics[node.idx()][slot];
+        let idx = node.idx();
+        let cached = self.scratch.intrinsics[idx][slot];
         if !cached.is_nan() {
             return cached;
         }
+        // Cross-frame reuse: an unchanged subtree's intrinsic is valid from
+        // last frame's measure-cache snapshot. Intrinsic is
+        // `available`-independent, so this hits even on a resize frame
+        // where the desired-cache (`try_lookup`) misses on `available_q`.
+        // Crucially it fires at the *query* site: a parent computes its
+        // `intrinsic_min` (which queries children) before measuring those
+        // children, so the children's own cache-hit restore comes too late
+        // — only a lookup here stops the ancestor cold-recursing through
+        // every unchanged sibling subtree.
+        let wid = tree.records.widget_id()[idx];
+        let hash = tree.rollups.subtree[idx];
+        if let Some(v) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
+            self.scratch.intrinsics[idx][slot] = v;
+            return v;
+        }
+        #[cfg(test)]
+        {
+            self.scratch.intrinsic_computes += 1;
+        }
         let v = intrinsic::compute(self, tree, node, axis, req, tc);
-        self.scratch.intrinsics[node.idx()][slot] = v;
+        self.scratch.intrinsics[idx][slot] = v;
         v
     }
 
@@ -339,6 +366,10 @@ impl LayoutEngine {
             self.scratch.grid.depth_stack.depth, 0,
             "LayoutEngine::run entered with non-zero grid depth"
         );
+        #[cfg(test)]
+        {
+            self.scratch.intrinsic_computes = 0;
+        }
         let surface_end = surface.min + glam::Vec2::new(surface.size.w, surface.size.h);
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
@@ -543,10 +574,18 @@ impl LayoutEngine {
             // round-trip through `saturating_sub` correctly: 0 - lo
             // = 0.
             let text_shapes_hi = out[self.active_layer].text_shapes.len() as u32;
+            // Snapshot the root's intrinsics (MinContent is always populated
+            // by the `intrinsic_min` query above; MaxContent only if it was
+            // queried). Served back by `lookup_root_intrinsic` from
+            // `intrinsic()` on a later frame — not on the measure-cache hit
+            // path, which would be too late: a parent queries a child's
+            // intrinsic before it measures that child.
+            let root_intrinsics = self.scratch.intrinsics[start];
             self.cache.write_subtree(
                 cache_wid,
                 cache_hash,
                 cache_avail,
+                root_intrinsics,
                 SubtreeArenas {
                     desired: &self.scratch.desired[start..end],
                     text_spans: &out[self.active_layer].text_spans[start..end],
