@@ -6,6 +6,7 @@ pub(crate) mod state;
 
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
+use crate::common::hash::Hasher;
 use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Chrome;
@@ -181,6 +182,18 @@ pub struct Ui {
     /// (`anim.next_wake(prev.time) <= now`). Updated at the bottom
     /// of `frame` on every path.
     pub(crate) prev_stamp: Option<FrameStamp>,
+    /// Fingerprint of last frame's cascade inputs (all roots'
+    /// `subtree_hash` + exact surface + scroll offsets/zoom). When this
+    /// frame's fingerprint matches, the cascade output is provably
+    /// identical, so `post_record` skips `CascadesEngine::run` and reuses
+    /// last frame's `layout.cascades` (O5 stage 0 — full-frame skip).
+    /// `None` before the first cascade run.
+    pub(crate) prev_cascade_fp: Option<u64>,
+    /// Test-only: did the most recent `post_record` actually run the
+    /// cascade, or skip it via [`Self::prev_cascade_fp`]? Pins the O5
+    /// stage-0 skip gate (fires on an unchanged frame, not on a change).
+    #[cfg(test)]
+    pub(crate) dbg_cascade_ran: bool,
     /// EMA of `1/raw_dt` across frames. Zero on the first frame
     /// (no prior `time` to diff against); updated in
     /// [`Self::frame`]. Surfaced by the `frame_stats` debug overlay.
@@ -249,6 +262,9 @@ impl Default for Ui {
             frame_id: 0,
             time: Duration::ZERO,
             prev_stamp: None,
+            prev_cascade_fp: None,
+            #[cfg(test)]
+            dbg_cascade_ran: false,
             fps_ema: 0.0,
             repaint_requested: false,
             repaint_wakes: Vec::new(),
@@ -674,7 +690,62 @@ impl Ui {
             &mut self.layout,
         );
         drop(arena);
+        // O5 stage 0: skip the cascade when nothing feeding it changed.
+        // The cascade is a pure function of subtree authoring + arranged
+        // rects, and the arranged rects are determined by (subtree_hash,
+        // exact surface, scroll offset/zoom) — so a matching fingerprint
+        // means identical cascade output, and last frame's
+        // `layout.cascades` can be reused verbatim (the tree is rebuilt
+        // with identical structure when `subtree_hash` matches, so its
+        // NodeId-indexed rows still line up).
+        let fp = self.cascade_fingerprint();
+        if self.prev_cascade_fp == Some(fp) {
+            #[cfg(test)]
+            {
+                self.dbg_cascade_ran = false;
+            }
+            return;
+        }
+        #[cfg(test)]
+        {
+            self.dbg_cascade_ran = true;
+        }
+        self.prev_cascade_fp = Some(fp);
         self.cascades_engine.run(&self.forest, &mut self.layout);
+    }
+
+    /// Fingerprint of everything the cascade reads, cheaply. Equal
+    /// fingerprints across two frames ⇒ identical cascade output (see
+    /// [`Self::prev_cascade_fp`]). Folds:
+    /// - the exact surface (a sub-quantum resize can hit the measure
+    ///   cache yet still re-arrange, so the *exact* rect must be here);
+    /// - every root's `subtree_hash`, which already captures all cascade
+    ///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
+    ///   (`attrs`), visibility, shapes, chrome;
+    /// - scroll `offset`/`zoom`, the one cross-frame arrange input that
+    ///   lives in `LayoutEngine.scroll_states`, not in `subtree_hash`.
+    fn cascade_fingerprint(&self) -> u64 {
+        use std::hash::Hasher as _;
+        let mut h = Hasher::new();
+        h.write_u32(self.display.physical.x);
+        h.write_u32(self.display.physical.y);
+        h.write_u32(self.display.scale_factor.to_bits());
+        for (_layer, tree) in self.forest.iter_paint_order() {
+            for slot in &tree.roots {
+                h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
+            }
+        }
+        // XOR fold so map iteration order doesn't matter.
+        let mut scroll_fold = 0u64;
+        for (wid, st) in self.layout_engine.scroll_states.iter() {
+            let mut sh = Hasher::new();
+            sh.write_u64(wid.0);
+            sh.write_u32(st.offset.x.to_bits());
+            sh.write_u32(st.offset.y.to_bits());
+            sh.write_u32(st.zoom.to_bits());
+            scroll_fold ^= sh.finish();
+        }
+        h.finish() ^ scroll_fold
     }
 
     /// Paint-half of `frame`: diff seen ids against the last painted
