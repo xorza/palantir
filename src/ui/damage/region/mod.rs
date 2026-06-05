@@ -95,7 +95,7 @@ impl DamageRegion {
     /// rect bigger than the viewport, and the GPU scissor would be
     /// asked to paint pixels off-screen. Source rects (paint_rects on
     /// root-level transformed canvases with no clip ancestor — see
-    /// `cascade::compute_paint_rect`) routinely overflow at high zoom,
+    /// `cascade::paint_rect::compute_paint_rect`) routinely overflow at high zoom,
     /// so the clip is mandatory at the chokepoint, not optional at
     /// individual callsites.
     pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> Self {

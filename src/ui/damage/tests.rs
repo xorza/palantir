@@ -1660,7 +1660,7 @@ fn shadow_overhang_inside_clipped_parent_is_clamped() {
 /// surface before folding it into the region. Without this, a
 /// paint_rect whose bounds extend past the viewport (root-level
 /// transformed canvas with no clip ancestor, plus high zoom —
-/// `parent_clip` stays `None` so `cascade::compute_paint_rect` never
+/// `parent_clip` stays `None` so `cascade::paint_rect::compute_paint_rect` never
 /// clips down) would inflate `total_area` past the threshold despite
 /// only a tiny visible fraction. Reproduces the darkroom graph
 /// pan/zoom regression where a few zoomed-up node panels off-screen
