@@ -754,11 +754,24 @@ impl Composer {
                     // lines off-axis. Hairline regime (<1 phys px)
                     // handled inside the tessellator.
                     self.polyline_scratch.clear();
-                    self.polyline_scratch.extend(
-                        src_points
-                            .iter()
-                            .map(|&q| current_transform.apply_point(q + p.origin) * scale),
-                    );
+                    if p.rotation == 0.0 {
+                        self.polyline_scratch.extend(
+                            src_points
+                                .iter()
+                                .map(|&q| current_transform.apply_point(q + p.origin) * scale),
+                        );
+                    } else {
+                        // Spin: rotate each owner-local point about the
+                        // bbox centre (the pivot the encoder widened bbox
+                        // to) before placing it via the ancestor
+                        // transform, so the shape rotates in place.
+                        let pivot = p.bbox.center();
+                        let rotor = Vec2::from_angle(p.rotation);
+                        self.polyline_scratch.extend(src_points.iter().map(|&q| {
+                            let local = rotor.rotate(q - pivot) + pivot;
+                            current_transform.apply_point(local + p.origin) * scale
+                        }));
+                    }
 
                     let phys_v_start = arena.meshes.vertices.len() as u32;
                     let phys_i_start = arena.meshes.indices.len() as u32;
