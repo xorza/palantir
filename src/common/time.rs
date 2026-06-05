@@ -13,8 +13,8 @@ pub(crate) const ANIM_SUBSTEP_DT: f32 = 1.0 / 240.0;
 /// Fallback repaint-wake coalesce floor, used when the display's
 /// refresh rate is unknown — headless, an unmapped window, a monitor
 /// that reports no rate, or VRR. The live floor is normally derived
-/// per-display by [`coalesce_dt_for_refresh`] and stored on
-/// `Ui::repaint_coalesce_dt`. 1/120 s is a safe middle ground: fast
+/// per-display by [`coalesce_dt_for_refresh`] from the active
+/// `Display::refresh_millihertz`. 1/120 s is a safe middle ground: fast
 /// enough not to throttle a 60 Hz panel, slow enough to cap runaway
 /// `request_repaint_after` bursts.
 pub(crate) const DEFAULT_REPAINT_COALESCE_DT: Duration = Duration::from_nanos(1_000_000_000 / 120);

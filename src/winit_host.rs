@@ -32,6 +32,9 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
+use glam::UVec2;
+
+use crate::Display;
 use crate::host::{FramePresent, Host, HostConfig};
 use crate::input::InputEvent;
 use crate::text::TextShaper;
@@ -221,18 +224,23 @@ where
             return;
         };
         let window = rt.window.clone();
-        // Queried each frame so a window dragged onto a different-refresh
-        // monitor re-paces immediately — winit fires no reliable
-        // "refresh changed" event to cache against.
-        let refresh = rt
-            .window
-            .current_monitor()
-            .and_then(|m| m.refresh_rate_millihertz());
+        // `refresh_millihertz` is queried each frame so a window dragged
+        // onto a different-refresh monitor re-paces immediately — winit
+        // fires no reliable "refresh changed" event to cache against.
+        let display = Display {
+            refresh_millihertz: rt
+                .window
+                .current_monitor()
+                .and_then(|m| m.refresh_rate_millihertz()),
+            ..Display::from_physical(
+                UVec2::new(rt.config.width, rt.config.height),
+                rt.scale_factor,
+            )
+        };
         rt.next = rt.host.frame(
             &rt.surface,
             &rt.config,
-            rt.scale_factor,
-            refresh,
+            display,
             |ui| app.frame(ui),
             || window.pre_present_notify(),
         );

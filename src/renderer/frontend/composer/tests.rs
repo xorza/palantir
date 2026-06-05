@@ -37,6 +37,7 @@ fn params(scale: f32, physical: UVec2) -> Display {
         physical,
         scale_factor: scale,
         pixel_snap: false,
+        refresh_millihertz: None,
     }
 }
 

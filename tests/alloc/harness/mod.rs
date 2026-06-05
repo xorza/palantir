@@ -33,6 +33,7 @@ const DISPLAY: Display = Display {
     physical: glam::UVec2::new(800, 600),
     scale_factor: 1.0,
     pixel_snap: true,
+    refresh_millihertz: None,
 };
 
 /// Run `scene` for `warmup` frames untracked, then audit each of

@@ -2,16 +2,16 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use glam::UVec2;
 
-/// Display state read by the renderer at submit time and by hosts
-/// computing the logical surface rect for layout. Carries everything
-/// the renderer needs to project logical pixels to physical: the
-/// surface's physical pixel size, the DPR scale factor, and the
-/// snap-to-physical-pixel-edge flag.
+/// Display state for the current output: read by the renderer at
+/// submit time, by hosts computing the logical surface rect for
+/// layout, and by the repaint scheduler for frame pacing. Carries the
+/// surface's physical pixel size, the DPR scale factor, the
+/// snap-to-physical-pixel-edge flag, and the monitor's refresh rate.
 ///
-/// The host calls [`Ui::set_display`](crate::ui::Ui::set_display) on
-/// init and on every winit event that changes one of these (resize,
-/// scale-factor change). Each call is change-detected — re-setting
-/// the same value is a free no-op.
+/// The driving host rebuilds this each frame from the window's surface
+/// config, scale factor, and monitor, then hands it to `Host::frame`.
+/// Surface-size changes are detected via `logical_rect`, so `pixel_snap`
+/// and `refresh_millihertz` ride along without ever forcing a relayout.
 ///
 /// Group exists so future rasterization knobs (sRGB correction, MSAA,
 /// gamma) have a clear home.
@@ -31,6 +31,13 @@ pub struct Display {
     /// to `wgpu::RenderPass::set_scissor_rect`, which only accepts
     /// `u32`) always snap regardless of this flag.
     pub pixel_snap: bool,
+    /// Monitor refresh rate in millihertz (Hz × 1000), or `None` when
+    /// the host can't determine it (headless, unmapped window, VRR).
+    /// Read only by repaint-wake coalescing (`coalesce_dt_for_refresh`
+    /// turns it into the scheduler's floor); it is *not* a projection
+    /// input, so — like `pixel_snap` — it stays out of `logical_rect`
+    /// and the cascade fingerprint and never forces a relayout.
+    pub refresh_millihertz: Option<u32>,
 }
 
 impl Default for Display {
@@ -39,6 +46,7 @@ impl Default for Display {
             physical: UVec2::ZERO,
             scale_factor: 1.0,
             pixel_snap: true,
+            refresh_millihertz: None,
         }
     }
 }
@@ -52,6 +60,7 @@ impl Display {
             physical,
             scale_factor,
             pixel_snap: true,
+            refresh_millihertz: None,
         }
     }
 

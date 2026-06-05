@@ -25,6 +25,7 @@ const DISPLAY: Display = Display {
     physical: UVec2::new(200, 200),
     scale_factor: 1.0,
     pixel_snap: true,
+    refresh_millihertz: None,
 };
 
 /// Drive one frame through the real [`Ui::frame`] path, simulate a
