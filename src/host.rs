@@ -174,11 +174,15 @@ impl Host {
     /// Skip frames bypass surface acquisition entirely.
     ///
     /// Derives `Display`'s physical size from `config.width`/`config.height`.
+    /// `refresh_millihertz` (the monitor's reported rate, or `None` when
+    /// unknown) sets the repaint-wake coalesce floor so timed wakes never
+    /// out-pace the panel — see `Ui::set_display_refresh_rate`.
     pub fn frame(
         &mut self,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         scale_factor: f32,
+        refresh_millihertz: Option<u32>,
         record: impl FnMut(&mut Ui),
         pre_present: impl FnOnce(),
     ) -> FramePresent {
@@ -206,6 +210,7 @@ impl Host {
         }
 
         let display = Display::from_physical(size, scale_factor);
+        self.ui.set_display_refresh_rate(refresh_millihertz);
         let report = self.cpu_frame(display, record);
         self.present(surface, config, report, pre_present)
     }

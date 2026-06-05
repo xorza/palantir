@@ -1,5 +1,6 @@
 use crate::TextStyle;
 use crate::Ui;
+use crate::common::time::coalesce_dt_for_refresh;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
@@ -913,9 +914,9 @@ fn request_repaint_after_queues_distinct_deadlines() {
 
 /// Re-requesting an already-queued deadline within the same frame
 /// is a no-op — the queue is sorted + dedup'd. Near-duplicates within
-/// `REPAINT_COALESCE_DT` (1/120 s) collapse onto the later wake to
-/// minimize host wake-ups; entries spaced beyond the window stay
-/// distinct.
+/// `DEFAULT_REPAINT_COALESCE_DT` (1/120 s, the headless default)
+/// collapse onto the later wake to minimize host wake-ups; entries
+/// spaced beyond the window stay distinct.
 #[test]
 fn request_repaint_after_dedups_within_frame() {
     let mut ui = Ui::for_test();
@@ -964,6 +965,45 @@ fn request_repaint_after_dedups_within_frame() {
             Duration::from_secs_f32(0.600),
         ],
         "near-duplicate wakes collapse onto the later deadline",
+    );
+}
+
+/// The coalesce floor tracks the display refresh rate: two wakes
+/// 12 ms apart stay distinct under the 120 Hz default (≈8.33 ms
+/// window) but collapse under a 60 Hz floor (≈16.67 ms window),
+/// proving `Ui::repaint_coalesce_dt` actually drives `schedule_wake`.
+#[test]
+fn coalesce_floor_follows_refresh_rate() {
+    let display = Display::from_physical(SURFACE, 1.0);
+    let schedule_pair = |ui: &mut Ui| {
+        ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
+            ui.request_repaint_after(Duration::from_millis(500));
+            ui.request_repaint_after(Duration::from_millis(512));
+        });
+    };
+
+    // 120 Hz default: 12 ms > 8.33 ms window → two distinct wakes.
+    let mut ui = Ui::for_test();
+    schedule_pair(&mut ui);
+    assert_eq!(
+        ui.repaint_wakes.len(),
+        2,
+        "120 Hz floor: 12 ms-apart wakes stay distinct",
+    );
+
+    // 60 Hz floor: 12 ms < 16.67 ms window → collapse onto the later.
+    let mut ui = Ui::for_test();
+    ui.repaint_coalesce_dt = coalesce_dt_for_refresh(Some(60_000));
+    schedule_pair(&mut ui);
+    assert_eq!(
+        ui.repaint_wakes.len(),
+        1,
+        "60 Hz floor: 12 ms-apart wakes collapse",
+    );
+    assert_eq!(
+        ui.repaint_wakes[0].deadline,
+        Duration::from_millis(512),
+        "the later deadline survives the collapse",
     );
 }
 

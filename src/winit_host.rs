@@ -221,10 +221,18 @@ where
             return;
         };
         let window = rt.window.clone();
+        // Queried each frame so a window dragged onto a different-refresh
+        // monitor re-paces immediately — winit fires no reliable
+        // "refresh changed" event to cache against.
+        let refresh = rt
+            .window
+            .current_monitor()
+            .and_then(|m| m.refresh_rate_millihertz());
         rt.next = rt.host.frame(
             &rt.surface,
             &rt.config,
             rt.scale_factor,
+            refresh,
             |ui| app.frame(ui),
             || window.pre_present_notify(),
         );
