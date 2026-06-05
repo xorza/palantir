@@ -281,3 +281,141 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
          encoder/composer transform composition diverged from the cascade walk",
     );
 }
+
+/// Stage 1 incremental cascade: a localized change (one leaf's size)
+/// must skip every unchanged sibling subtree and recompute only the
+/// spine down to the change. The cross-check (`assert_cascades_eq`, run
+/// automatically on every incremental frame under test) already proves
+/// the *output* equals a full recompute; this pins that the skip gate
+/// actually *fires* so the work is genuinely saved.
+#[test]
+fn incremental_skips_unchanged_sibling_subtrees() {
+    const SIBLINGS: usize = 6;
+    fn build(ui: &mut Ui, footer_w: f32) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                for i in 0..SIBLINGS {
+                    Panel::vstack()
+                        .id(WidgetId::from_hash(("sib", i)))
+                        .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                        .show(ui, |ui| {
+                            Panel::hstack()
+                                .id(WidgetId::from_hash(("leaf", i)))
+                                .size((Sizing::Fixed(10.0), Sizing::Fixed(10.0)))
+                                .show(ui, |_| {});
+                        });
+                }
+                Panel::hstack()
+                    .id(WidgetId::from_hash("footer"))
+                    .size((Sizing::Fixed(footer_w), Sizing::Fixed(10.0)))
+                    .show(ui, |_| {});
+            });
+    }
+
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 30.0));
+    assert!(
+        !ui.cascades_engine.dbg.incremental,
+        "first cascade run has no prev — must be a full recompute",
+    );
+
+    // Frame 2: only the footer's width changes. Its subtree_hash (and
+    // every ancestor's) flips, but the six sibling subtrees' authoring
+    // and arranged origins are untouched, so each is bulk-copied as a
+    // unit while only the spine (root → footer) is recomputed.
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 80.0));
+    let dbg = ui.cascades_engine.dbg;
+    assert!(
+        dbg.incremental,
+        "stable structure + a change ⇒ incremental path",
+    );
+    // Each of the 6 static sibling subtrees is bulk-copied as one unit;
+    // only the spine that actually changed (the surface/root ancestors
+    // + the footer leaf) is recomputed.
+    assert_eq!(
+        dbg.skipped, SIBLINGS as u32,
+        "one skip per static sibling subtree; got {dbg:?}",
+    );
+    let total = ui.forest.tree(Layer::Main).records.len() as u32;
+    assert!(
+        dbg.recascaded > 0 && dbg.recascaded < total,
+        "incremental must recompute the changed spine only (1..{total}); got {dbg:?}",
+    );
+}
+
+/// A structural change (different node count / id mapping) invalidates
+/// NodeId-indexed reuse, so the frame must fall back to a full
+/// recompute rather than risk copying a prev row into the wrong node.
+#[test]
+fn incremental_falls_back_to_full_on_structure_change() {
+    fn build(ui: &mut Ui, n: usize) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                for i in 0..n {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash(("child", i)))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .show(ui, |_| {});
+                }
+            });
+    }
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 3));
+    // Frame 2 adds a 4th child: node count + id mapping shift.
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 4));
+    assert!(
+        !ui.cascades_engine.dbg.incremental,
+        "structure change must drop to the full recompute path",
+    );
+}
+
+/// A node whose authoring is unchanged can still *move* when an earlier
+/// sibling reflows — `subtree_hash` (authoring only) won't catch it, so
+/// the skip gate also compares the arranged rect. Without that compare
+/// `body` would be wrongly skipped and keep last frame's stale position.
+/// (The automatic cross-check would also catch this; the explicit
+/// assertion names the exact subtlety.)
+#[test]
+fn incremental_busts_skip_when_unchanged_sibling_reflows() {
+    fn body_y(ui: &Ui) -> f32 {
+        let idx = ui
+            .layout
+            .cascades
+            .entry_idx_of(WidgetId::from_hash("body"))
+            .expect("body recorded") as usize;
+        ui.layout.cascades.entries.layout_rect()[idx].min.y
+    }
+    fn build(ui: &mut Ui, head_h: f32) {
+        Panel::vstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("head"))
+                    .size((Sizing::Fixed(30.0), Sizing::Fixed(head_h)))
+                    .show(ui, |_| {});
+                // Identical authoring every frame, but pushed down when
+                // `head` grows — a moved-but-unchanged subtree.
+                Panel::hstack()
+                    .id(WidgetId::from_hash("body"))
+                    .size((Sizing::Fixed(30.0), Sizing::Fixed(30.0)))
+                    .show(ui, |_| {});
+            });
+    }
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 40.0));
+    let y1 = body_y(&ui);
+    ui.run_at_acked(UVec2::new(200, 400), |ui| build(ui, 90.0));
+    assert!(
+        ui.cascades_engine.dbg.incremental,
+        "stable structure ⇒ incremental path",
+    );
+    let y2 = body_y(&ui);
+    assert_eq!(
+        y2 - y1,
+        50.0,
+        "body must follow head's +50 growth (origin gate must bust the stale-skip); \
+         got y1={y1} y2={y2}",
+    );
+}

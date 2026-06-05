@@ -102,6 +102,12 @@ struct Frame {
     clip: Option<Rect>,
     disabled: bool,
     invisible: bool,
+    /// True when this node's inherited context (parent transform / clip
+    /// / disabled / invisible) and its own arranged origin + authoring
+    /// are unchanged from last frame — so a descendant with an unchanged
+    /// `subtree_hash` and origin can be skipped (its cascade output is
+    /// provably identical). Always false on the full-recompute path.
+    ctx_unchanged: bool,
     subtree_end: u32,
     /// Node index this frame represents — used to write back
     /// `subtree_paint_rect` into `Cascades::subtree_paint_rects` when
@@ -329,59 +335,240 @@ pub(crate) struct HitTargets {
     pub(crate) pinch: Option<WidgetId>,
 }
 
+/// Per-node reuse-gate inputs, snapshotted each frame so the next frame
+/// can decide — per subtree — whether the cascade output is unchanged.
+/// NodeId-indexed (parallel to `Tree::records`), one `Vec` per layer on
+/// [`CascadesEngine::prev_snap`]. Identity (`widget_id`) lives apart in
+/// [`CascadesEngine::prev_widget_ids`] — only the structure check reads
+/// it, so keeping it out of this struct shrinks the per-node gate read
+/// and the re-cascade write to the three fields the walk actually uses.
+#[derive(Clone, Copy, Debug, Default)]
+struct CascadeSnapshot {
+    /// `tree.rollups.node[i]` — own authoring. A match means this node's
+    /// own transform / clip / disabled / visibility / shapes / chrome
+    /// are unchanged, so it hands identical inherited context to its
+    /// children even when a deeper descendant changed.
+    node_hash: NodeHash,
+    /// `tree.rollups.subtree[i]` — authoring of the whole subtree. A
+    /// match, *with* unchanged inherited context and origin, means the
+    /// entire subtree's cascade output is identical and can be copied.
+    subtree_hash: NodeHash,
+    /// `layout.rect[i]` — arranged rect. Origin is an arrange *output*,
+    /// not folded into `subtree_hash`, so a Fill-sibling reflow can move
+    /// a node whose authoring is unchanged; the gate must compare it.
+    rect: Rect,
+}
+
+/// Walk telemetry: how many subtrees were skipped (bulk-copied) vs nodes
+/// recomputed. Read by tests to assert the skip gate actually fires;
+/// the gated [`CascadesEngine::dbg`] field is the only reader.
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct WalkStats {
+    /// Whether `run` took the incremental path (vs full recompute).
+    /// Test-only: set in `run`'s `cfg(test)` block and read by tests via
+    /// [`CascadesEngine::dbg`]; the walk itself never touches it.
+    #[cfg(test)]
+    pub(crate) incremental: bool,
+    pub(crate) skipped: u32,
+    pub(crate) recascaded: u32,
+}
+
+/// Previous frame's reuse data for one layer, handed to [`run_tree`].
+#[derive(Clone, Copy)]
+struct PrevTree<'a> {
+    cascades: &'a Cascades,
+    snap: &'a [CascadeSnapshot],
+}
+
 #[derive(Default)]
 pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
+    /// Previous frame's `Cascades`, swapped out of `layout.cascades` at
+    /// the top of each `run` so the walk can read it while rebuilding
+    /// into the freed buffer. The reuse source for skipped subtrees.
+    /// Boxed so it doesn't enlarge `Ui` inline — it's only touched when
+    /// the cascade actually runs, never on a Stage-0-skipped idle frame,
+    /// so the indirection is off the hot path and the smaller `Ui`
+    /// keeps the other passes' fields cache-resident.
+    prev: Box<Cascades>,
+    /// Previous frame's per-node gate snapshots (read by the skip gate),
+    /// one `Vec` per layer. [`Self::snap`] is this frame's write target;
+    /// the two are swapped at the end of each `run` so `prev_snap`
+    /// always describes the last frame. Boxed like [`Self::prev`].
+    prev_snap: Box<PerLayer<Vec<CascadeSnapshot>>>,
+    /// This frame's gate snapshots, written inline during the walk
+    /// (folded in rather than a separate post-pass over the rollups).
+    /// Swapped into `prev_snap` at the end of `run`.
+    snap: Box<PerLayer<Vec<CascadeSnapshot>>>,
+    /// Last frame's NodeId → `WidgetId` mapping, one contiguous `Vec`
+    /// per layer. Single-buffered: [`structure_matches`] compares the
+    /// current ids against it *before* the walk, then `run` overwrites
+    /// it with the current ids *after*. Held apart from `prev_snap` so
+    /// the structure check is a flat slice compare and the snapshot
+    /// stays the three fields the gate uses.
+    prev_widget_ids: Box<PerLayer<Vec<WidgetId>>>,
+    /// False until the first `run` populates `prev` / `prev_snap`; gates
+    /// the incremental path so the first frame recomputes fully.
+    valid: bool,
+    #[cfg(test)]
+    pub(crate) dbg: WalkStats,
 }
 
 impl CascadesEngine {
-    /// Walk every tree in paint order; produce one `Cascade` row per
-    /// node in each tree's slot, and append a global hit entry per
-    /// node. Writes into `layout.cascades`. Anchor offset for each
-    /// layer is read from the layer's own `RootSlot.anchor` — no
-    /// parent transform plumbing is needed because trees never share
-    /// NodeId space.
+    /// Walk every tree in paint order, producing one cascade row per
+    /// node plus a global hit entry per node, into `layout.cascades`.
+    ///
+    /// Cross-frame reuse (O5 stage 1): when the tree structure is stable
+    /// (same NodeId → `WidgetId` mapping as last frame), the walk skips
+    /// any subtree whose authoring (`subtree_hash`), inherited context,
+    /// and arranged origin are all unchanged — bulk-copying last frame's
+    /// rows instead of recomputing them — and recomputes the rest.
+    /// Otherwise it recomputes every node from scratch. Both paths
+    /// produce byte-identical output; a `#[cfg(test)]` cross-check
+    /// asserts that on every incremental frame.
     #[profiling::function]
     pub(crate) fn run(&mut self, forest: &Forest, layout: &mut Layout) {
-        let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
-        {
-            let r = &mut layout.cascades;
-            r.entries.clear();
-            r.entries.reserve(total);
-        }
+        let Layout { layers, cascades } = layout;
+        // Swap last frame's cascades out of `layout.cascades` so the
+        // walk reads it (`self.prev`) while rebuilding into the freed
+        // buffer (`cascades` now holds the frame-before-last's stale
+        // rows, fully overwritten below).
+        std::mem::swap(&mut *self.prev, cascades);
 
-        for (layer, tree) in forest.iter_paint_order() {
-            let layer_layout = &layout.layers[layer];
-            let r = &mut layout.cascades;
-            let n = tree.records.len();
-            let entries_base = r.entries.len() as u32;
-            r.layers[layer].reset_for(n, entries_base);
-            self.stack.clear();
-            run_tree(tree, layer_layout, r, layer, &mut self.stack);
-            // Invariant guarding `Cascades::entry_idx_of`'s
-            // `entries_base + node.0` arithmetic: every node in
-            // `tree.records` must push exactly one `EntryRow`. An
-            // early-continue / skip-invisible optimization inside
-            // `run_tree` that doesn't push would silently shift every
-            // later widget's entry by one. Release `assert!` —
-            // `n + entries_base` is already loaded, the equality is a
-            // single compare.
-            assert_eq!(
-                r.entries.len() as u32 - entries_base,
-                n as u32,
-                "run_tree pushed {} entries for layer with {n} nodes — every record must push exactly one row to keep entries_base + node.0 valid",
-                r.entries.len() as u32 - entries_base,
-            );
-        }
+        let incremental = self.valid && structure_matches(forest, &self.prev_widget_ids);
+        let prev = incremental.then_some((&*self.prev, &*self.prev_snap));
+        // The walk writes this frame's gate snapshots into `self.snap`
+        // inline (no separate pass over the rollups).
+        let stats = run_pass(
+            forest,
+            layers,
+            cascades,
+            prev,
+            &mut self.stack,
+            &mut self.snap,
+        );
 
         // Snapshot `seen.curr` for inter-pass `response_for` lookups.
-        // `request_relayout`'s second pass clears `curr` in
-        // `pre_record` *before* the second pass's widgets call
-        // `response_for(id)`, so the data has to live on `Cascades`
-        // instead. `clone_from` reuses storage — one O(N) memcpy
-        // replaces N per-widget hashmap inserts.
-        layout.cascades.by_id.clone_from(&forest.ids.curr);
+        // `request_relayout`'s second pass clears `curr` in `pre_record`
+        // *before* its widgets call `response_for(id)`, so the data has
+        // to live on `Cascades` instead. `clone_from` reuses storage —
+        // one O(N) memcpy replaces N per-widget hashmap inserts.
+        cascades.by_id.clone_from(&forest.ids.curr);
+
+        // `snap` now holds this frame's gate inputs; promote it to
+        // `prev_snap` for next frame. Combined with the `prev`/`cascades`
+        // swap above (which next frame moves `cascades` into `prev`),
+        // both reuse sources describe this frame by next frame's walk.
+        std::mem::swap(&mut self.prev_snap, &mut self.snap);
+        // Record this frame's ids for next frame's structure check, now
+        // that `structure_matches` has finished reading last frame's.
+        update_widget_ids(forest, &mut self.prev_widget_ids);
+        self.valid = true;
+
+        #[cfg(test)]
+        {
+            self.dbg = WalkStats {
+                incremental,
+                ..stats
+            };
+            if incremental {
+                // Every reuse frame is verified against a from-scratch
+                // recompute: the incremental walk must be byte-identical.
+                cross_check(forest, layers, cascades, &mut self.stack);
+            }
+        }
+        #[cfg(not(test))]
+        let _ = stats;
     }
+}
+
+/// True when every layer's NodeId → `WidgetId` mapping is identical to
+/// last frame's — the precondition for NodeId-indexed cross-frame reuse.
+/// A changed node count or any shifted id means the prev arrays no
+/// longer line up, so the caller must recompute fully. Both sides are
+/// contiguous `&[WidgetId]`, so this is a flat slice compare.
+fn structure_matches(forest: &Forest, prev_widget_ids: &PerLayer<Vec<WidgetId>>) -> bool {
+    for (layer, tree) in forest.iter_paint_order() {
+        if prev_widget_ids[layer].as_slice() != tree.records.widget_id() {
+            return false;
+        }
+    }
+    true
+}
+
+/// Overwrite `dst` with this frame's NodeId → `WidgetId` mapping (one
+/// bulk copy per layer from the already-contiguous record column) so
+/// next frame's [`structure_matches`] has last frame's ids to compare.
+fn update_widget_ids(forest: &Forest, dst: &mut PerLayer<Vec<WidgetId>>) {
+    for (layer, tree) in forest.iter_paint_order() {
+        let ids = &mut dst[layer];
+        ids.clear();
+        ids.extend_from_slice(tree.records.widget_id());
+    }
+}
+
+/// Per-layer walk driver shared by the live run and the test
+/// cross-check. `prev: Some` enables the incremental skip; `None`
+/// recomputes every node. Returns aggregate [`WalkStats`].
+fn run_pass(
+    forest: &Forest,
+    layers: &PerLayer<LayerLayout>,
+    out: &mut Cascades,
+    prev: Option<(&Cascades, &PerLayer<Vec<CascadeSnapshot>>)>,
+    stack: &mut Vec<Frame>,
+    snap_out: &mut PerLayer<Vec<CascadeSnapshot>>,
+) -> WalkStats {
+    let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
+    out.entries.clear();
+    out.entries.reserve(total);
+
+    let mut stats = WalkStats::default();
+    for (layer, tree) in forest.iter_paint_order() {
+        let layer_layout = &layers[layer];
+        let n = tree.records.len();
+        let entries_base = out.entries.len() as u32;
+        out.layers[layer].reset_for(n, entries_base);
+        let snap_layer = &mut snap_out[layer];
+        snap_layer.clear();
+        snap_layer.reserve(n);
+        stack.clear();
+        let prev_tree = prev.map(|(pc, ps)| PrevTree {
+            cascades: pc,
+            snap: ps[layer].as_slice(),
+        });
+        run_tree(
+            tree,
+            layer_layout,
+            out,
+            layer,
+            stack,
+            prev_tree,
+            snap_layer,
+            &mut stats,
+        );
+        // Invariant guarding `Cascades::entry_idx_of`'s
+        // `entries_base + node.0` arithmetic: every node in
+        // `tree.records` must push exactly one `EntryRow` (whether
+        // recomputed or copied). A skip that miscounts, or an
+        // early-continue that doesn't push, would silently shift every
+        // later widget's entry by one. Release `assert!` — the operands
+        // are already loaded, the equality is a single compare.
+        assert_eq!(
+            out.entries.len() as u32 - entries_base,
+            n as u32,
+            "run_tree produced {} entries for layer with {n} nodes — every record must yield exactly one row to keep entries_base + node.0 valid",
+            out.entries.len() as u32 - entries_base,
+        );
+        // The folded snapshot must likewise cover every node exactly
+        // once, so next frame's NodeId-indexed gate lines up.
+        debug_assert_eq!(
+            snap_layer.len(),
+            n,
+            "run_tree wrote {} snapshots for {n} nodes",
+            snap_layer.len(),
+        );
+    }
+    stats
 }
 
 /// Finalize one stack frame: write the rolled-up
@@ -397,12 +584,21 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
     }
 }
 
+// The central pre-order walk: read inputs (tree / layout / layer), the
+// reusable `stack` scratch, the optional `prev` reuse source, and three
+// output sinks (cascades, the folded gate snapshot, walk stats). The
+// sinks alias disjoint storage, so bundling them behind one `&mut`
+// struct would only add reborrow ceremony at the two call sites.
+#[allow(clippy::too_many_arguments)]
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
     cascades: &mut Cascades,
     layer: Layer,
     stack: &mut Vec<Frame>,
+    prev: Option<PrevTree<'_>>,
+    snap_out: &mut Vec<CascadeSnapshot>,
+    stats: &mut WalkStats,
 ) {
     let n = tree.records.len() as u32;
     let layout_col = tree.records.layout();
@@ -425,7 +621,7 @@ fn run_tree(
                 popped,
             );
         }
-        let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
+        let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix, parent_ctx_ok) =
             match stack.last() {
                 Some(p) => (
                     p.transform,
@@ -433,21 +629,68 @@ fn run_tree(
                     p.disabled,
                     p.invisible,
                     &p.cascade_prefix,
+                    p.ctx_unchanged,
                 ),
-                None => (TranslateScale::IDENTITY, None, false, false, &root_prefix),
+                // Root inherits a constant identity context, so it's
+                // always "unchanged" — gated on `prev` so the very first
+                // frame (no prev to copy) still recomputes.
+                None => (
+                    TranslateScale::IDENTITY,
+                    None,
+                    false,
+                    false,
+                    &root_prefix,
+                    prev.is_some(),
+                ),
             };
 
         let iu = i as usize;
+        let layout_rect = layout.rect[iu];
+        // `.end()` strips the packed grid flag — downstream uses (walk
+        // cursor, leaf compare) need the clean pre-order end.
+        let subtree_end = ends[iu].end();
+        // Read once: the skip gate compares it, the folded snapshot
+        // stores it, and every node needs it on one path or the other.
+        let subtree_hash = tree.rollups.subtree[iu];
+
+        // Incremental skip: when the inherited context, this subtree's
+        // authoring (`subtree_hash`), and its arranged rect all match
+        // last frame, the whole subtree's cascade output is identical —
+        // bulk-copy it from `prev` and jump past it. `subtree_hash`
+        // folds every descendant's authoring (incl. transforms, so a
+        // scroll-offset change dirties it); the rect compare catches a
+        // Fill-sibling reflow that `subtree_hash` can't see.
+        //
+        // Gated on `parent_ctx_ok` first so a node under a changed
+        // ancestor (every descendant of a scrolled / resized subtree —
+        // which can never skip) avoids even loading its snapshot.
+        if let Some(prev) = prev
+            && parent_ctx_ok
+        {
+            let snap = prev.snap[iu];
+            if subtree_hash == snap.subtree_hash && layout_rect == snap.rect {
+                copy_subtree(prev, cascades, snap_out, layer, iu, subtree_end as usize);
+                if let Some(top) = stack.last_mut() {
+                    top.subtree_paint_rect = top
+                        .subtree_paint_rect
+                        .union(prev.cascades.layers[layer].subtree_paint_rects[iu]);
+                }
+                stats.skipped += 1;
+                i = subtree_end;
+                continue;
+            }
+        }
+        stats.recascaded += 1;
+        // Read once: the child-context check and the folded snapshot
+        // both consume it (recompute path only — a skip never needs it).
+        let node_hash = tree.rollups.node[iu];
+
         let id = NodeId(i);
         let attrs = attrs_col[iu];
 
         let disabled = parent_dis || attrs.is_disabled();
         let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
 
-        let layout_rect = layout.rect[iu];
-        // `.end()` strips the packed grid flag — downstream uses (walk
-        // cursor, leaf compare) need the clean pre-order end.
-        let subtree_end = ends[iu].end();
         let wid = widget_ids[iu];
 
         let screen_rect = parent_transform.apply_rect(layout_rect);
@@ -535,6 +778,16 @@ fn run_tree(
             layout_rect,
         });
 
+        // Stamp this node's gate inputs for next frame, inline (the
+        // rollups + rect are already in cache from the work above). A
+        // skip copies the whole subtree's snapshots in `copy_subtree`,
+        // so every node is written exactly once, in NodeId order.
+        snap_out.push(CascadeSnapshot {
+            node_hash,
+            subtree_hash,
+            rect: layout_rect,
+        });
+
         // Leaves can't be a parent_prefix for anyone — skip the 32 B
         // prefix-hash work, push a fresh-state Hasher as a placeholder.
         // `Hasher::new()` is just `FxHasher { hash: 0 }`, ~free.
@@ -544,11 +797,35 @@ fn run_tree(
         } else {
             build_cascade_prefix(desc_transform, desc_clip, disabled, invisible)
         };
+        // Children inherit an unchanged context iff the inherited
+        // context already was, this node's own authoring (`node_hash` —
+        // its transform / clip / disabled / visibility) is unchanged,
+        // and — *only* when the node passes a rect-derived value down —
+        // its arranged rect is unchanged. A node feeds its rect into its
+        // children's context only via a transform (anchored at the
+        // node's origin) or a clip (screen clip = parent·rect); a plain
+        // container that merely resized hands children an unchanged
+        // transform/clip, so its rect is irrelevant to their context. A
+        // child that itself *moved* is still caught by the skip gate's
+        // own rect compare. A deeper subtree change leaves this true (so
+        // the changed node's siblings stay skippable).
+        let ctx_depends_on_rect = node_transform.is_some() || clips;
+        // Short-circuit on `parent_ctx_ok` (the guard) so descendants of
+        // a changed ancestor don't load their snapshot just to discard
+        // the result — child context is already dirty.
+        let child_ctx_ok = match prev {
+            Some(prev) if parent_ctx_ok => {
+                let snap = prev.snap[iu];
+                node_hash == snap.node_hash && (!ctx_depends_on_rect || layout_rect == snap.rect)
+            }
+            _ => false,
+        };
         stack.push(Frame {
             transform: desc_transform,
             clip: desc_clip,
             disabled,
             invisible,
+            ctx_unchanged: child_ctx_ok,
             subtree_end,
             node_idx: iu,
             subtree_paint_rect: subtree_seed,
@@ -565,6 +842,131 @@ fn run_tree(
             popped,
         );
     }
+}
+
+/// Bulk-copy the cascade output for the subtree `[start, end)` from the
+/// previous frame into `out`. Every column the recompute path would
+/// produce for these nodes is byte-identical to last frame (the skip
+/// gate guarantees it), so it's memcpy'd rather than recomputed.
+fn copy_subtree(
+    prev: PrevTree<'_>,
+    out: &mut Cascades,
+    snap_out: &mut Vec<CascadeSnapshot>,
+    layer: Layer,
+    start: usize,
+    end: usize,
+) {
+    // The subtree's gate snapshot is unchanged too (same authoring +
+    // ctx + rect ⇒ same `node_hash`/`subtree_hash`/`rect`/`widget_id`),
+    // so it carries over verbatim from last frame.
+    snap_out.extend_from_slice(&prev.snap[start..end]);
+    let pl = &prev.cascades.layers[layer];
+    {
+        let cl = &mut out.layers[layer];
+        cl.cascade_inputs
+            .extend_from_slice(&pl.cascade_inputs[start..end]);
+        cl.subtree_paint_rects
+            .extend_from_slice(&pl.subtree_paint_rects[start..end]);
+        // Paint rows are packed in pre-order, so an earlier changed
+        // sibling can shift this subtree's base offset. Copy the rows,
+        // then rebase each node's span by the prev→new offset delta. The
+        // subtree's rows are contiguous in `[start, end)` pre-order:
+        // from node `start`'s span start to node `end`'s (the first node
+        // past the subtree), or the row tail when the subtree ends the
+        // tree.
+        let node_count = pl.paint_arena.node_spans.len();
+        let src_start = pl.paint_arena.node_spans[start].start as usize;
+        let src_end = if end < node_count {
+            pl.paint_arena.node_spans[end].start as usize
+        } else {
+            pl.paint_arena.rows.len()
+        };
+        let delta = cl.paint_arena.rows.len() as i64 - src_start as i64;
+        cl.paint_arena
+            .rows
+            .extend_from_slice(&pl.paint_arena.rows[src_start..src_end]);
+        for j in start..end {
+            let s = pl.paint_arena.node_spans[j];
+            cl.paint_arena.node_spans[j] = Span::new((s.start as i64 + delta) as u32, s.len);
+        }
+    }
+    // Hit entries are one global Soa across layers; copy this subtree's
+    // rows from the prev frame at the same per-layer base (NodeId stable
+    // ⇒ same `entries_base` ⇒ same index).
+    let base = pl.entries_base as usize;
+    let pe = &prev.cascades.entries;
+    for j in start..end {
+        let k = base + j;
+        out.push_entry(EntryRow {
+            widget_id: pe.widget_id()[k],
+            rect: pe.rect()[k],
+            sense: pe.sense()[k],
+            focusable: pe.focusable()[k],
+            disabled: pe.disabled()[k],
+            layout_rect: pe.layout_rect()[k],
+        });
+    }
+}
+
+/// Oracle for the incremental path: recompute the whole cascade from
+/// scratch into a throwaway buffer and assert it's byte-identical to
+/// what the reuse walk produced. Runs on every incremental frame under
+/// test, so the entire frame-driving test suite verifies reuse
+/// correctness across whatever topologies it exercises.
+#[cfg(test)]
+fn cross_check(
+    forest: &Forest,
+    layers: &PerLayer<LayerLayout>,
+    built: &Cascades,
+    stack: &mut Vec<Frame>,
+) {
+    let mut scratch = Cascades::default();
+    let mut scratch_snap = PerLayer::<Vec<CascadeSnapshot>>::default();
+    run_pass(forest, layers, &mut scratch, None, stack, &mut scratch_snap);
+    scratch.by_id.clone_from(&forest.ids.curr);
+    assert_cascades_eq(built, &scratch);
+}
+
+/// Field-by-field equality of two `Cascades` (neither it nor its
+/// columns derive `PartialEq` — `entries` is a `Soa`). Used only by
+/// [`cross_check`].
+#[cfg(test)]
+fn assert_cascades_eq(got: &Cascades, want: &Cascades) {
+    for (layer, gl) in got.layers.iter_paint_order() {
+        let wl = &want.layers[layer];
+        assert_eq!(
+            gl.cascade_inputs, wl.cascade_inputs,
+            "cascade_inputs mismatch @ {layer:?}"
+        );
+        assert_eq!(
+            gl.subtree_paint_rects, wl.subtree_paint_rects,
+            "subtree_paint_rects mismatch @ {layer:?}"
+        );
+        assert_eq!(
+            gl.paint_arena.rows, wl.paint_arena.rows,
+            "paint rows mismatch @ {layer:?}"
+        );
+        assert_eq!(
+            gl.paint_arena.node_spans, wl.paint_arena.node_spans,
+            "node_spans mismatch @ {layer:?}"
+        );
+        assert_eq!(
+            gl.entries_base, wl.entries_base,
+            "entries_base mismatch @ {layer:?}"
+        );
+    }
+    let (ge, we) = (&got.entries, &want.entries);
+    assert_eq!(ge.len(), we.len(), "entries len mismatch");
+    assert_eq!(ge.widget_id(), we.widget_id(), "entries.widget_id mismatch");
+    assert_eq!(ge.rect(), we.rect(), "entries.rect mismatch");
+    assert_eq!(ge.sense(), we.sense(), "entries.sense mismatch");
+    assert_eq!(ge.focusable(), we.focusable(), "entries.focusable mismatch");
+    assert_eq!(ge.disabled(), we.disabled(), "entries.disabled mismatch");
+    assert_eq!(
+        ge.layout_rect(),
+        we.layout_rect(),
+        "entries.layout_rect mismatch"
+    );
 }
 
 /// Ancestor-derived portion of the `cascade_input` hash — folded once
