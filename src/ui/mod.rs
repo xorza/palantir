@@ -7,7 +7,7 @@ pub(crate) mod state;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::hash::Hasher;
-use crate::common::time::{ANIM_SUBSTEP_DT, REPAINT_COALESCE_DT};
+use crate::common::time::{ANIM_SUBSTEP_DT, DEFAULT_REPAINT_COALESCE_DT, coalesce_dt_for_refresh};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Chrome;
 use crate::forest::Forest;
@@ -210,6 +210,14 @@ pub struct Ui {
     /// pending entry off [`FrameReport::repaint_after`] and pair with
     /// `winit::ControlFlow::WaitUntil` (or equivalent).
     pub(crate) repaint_wakes: Vec<Wake>,
+    /// Minimum gap between two scheduled [`Self::repaint_wakes`]
+    /// deadlines — wakes closer than this collapse in
+    /// [`Self::schedule_wake`], so the host never schedules a wake
+    /// faster than the display can present. Set each frame by the
+    /// driving host from the monitor's refresh rate (see
+    /// [`Self::set_display_refresh_rate`]); defaults to
+    /// [`DEFAULT_REPAINT_COALESCE_DT`] for headless / unknown-rate.
+    pub(crate) repaint_coalesce_dt: Duration,
     pub(crate) anim: AnimMap,
     /// Submission status of the last *painted* frame. NOT reset in
     /// `pre_record` — `click_on_empty_bg_does_not_force_full`
@@ -268,6 +276,7 @@ impl Default for Ui {
             fps_ema: 0.0,
             repaint_requested: false,
             repaint_wakes: Vec::new(),
+            repaint_coalesce_dt: DEFAULT_REPAINT_COALESCE_DT,
             anim: Default::default(),
             frame_state: Default::default(),
             relayout_requested: false,
@@ -312,6 +321,15 @@ impl Ui {
             gpu_pass_stats,
             ..Self::default()
         }
+    }
+
+    /// Set the repaint-wake coalesce floor from the display's refresh
+    /// rate (winit `MonitorHandle::refresh_rate_millihertz`), so the
+    /// scheduler never wakes faster than the panel can present. The
+    /// driving host calls this each frame; `None` (headless, unknown
+    /// monitor, VRR) falls back to [`DEFAULT_REPAINT_COALESCE_DT`].
+    pub(crate) fn set_display_refresh_rate(&mut self, refresh_millihertz: Option<u32>) {
+        self.repaint_coalesce_dt = coalesce_dt_for_refresh(refresh_millihertz);
     }
 
     // ── Frame lifecycle ───────────────────────────────────────────────
@@ -632,7 +650,7 @@ impl Ui {
     /// paint-anim quantum boundaries (ANIM, filed from
     /// [`Self::post_record`]). Maintains the sorted-ascending
     /// invariant on [`Self::repaint_wakes`], coalesces requests within
-    /// [`REPAINT_COALESCE_DT`] onto the later deadline, and OR-merges
+    /// [`Self::repaint_coalesce_dt`] onto the later deadline, and OR-merges
     /// reasons when two requests land on the same slot. Merging is
     /// what lets the frame-entry classifier see a wake that *both* an
     /// anim and a widget asked for as `REAL | ANIM`, which forces the
@@ -648,7 +666,8 @@ impl Ui {
             }
             Err(pos) => pos,
         };
-        let near = |existing: Duration| existing.abs_diff(deadline) < REPAINT_COALESCE_DT;
+        let coalesce = self.repaint_coalesce_dt;
+        let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
         // Coalesce to the later of (existing, requested) — collapse
         // bursts into a single wake at the back of the window to avoid
         // unnecessary host wakes. pos-1 is earlier than deadline
