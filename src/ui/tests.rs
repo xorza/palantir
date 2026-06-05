@@ -1,6 +1,5 @@
 use crate::TextStyle;
 use crate::Ui;
-use crate::common::time::coalesce_dt_for_refresh;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
@@ -968,33 +967,35 @@ fn request_repaint_after_dedups_within_frame() {
     );
 }
 
-/// The coalesce floor tracks the display refresh rate: two wakes
-/// 12 ms apart stay distinct under the 120 Hz default (≈8.33 ms
-/// window) but collapse under a 60 Hz floor (≈16.67 ms window),
-/// proving `Ui::repaint_coalesce_dt` actually drives `schedule_wake`.
+/// The coalesce floor tracks `Display::refresh_millihertz`: two wakes
+/// 12 ms apart stay distinct at the unknown-rate 120 Hz fallback
+/// (≈8.33 ms window) but collapse at 60 Hz (≈16.67 ms window),
+/// proving the floor is derived from the display in `schedule_wake`.
 #[test]
 fn coalesce_floor_follows_refresh_rate() {
-    let display = Display::from_physical(SURFACE, 1.0);
-    let schedule_pair = |ui: &mut Ui| {
+    let schedule_pair = |ui: &mut Ui, display: Display| {
         ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             ui.request_repaint_after(Duration::from_millis(500));
             ui.request_repaint_after(Duration::from_millis(512));
         });
     };
 
-    // 120 Hz default: 12 ms > 8.33 ms window → two distinct wakes.
+    // Unknown refresh → 120 Hz fallback: 12 ms > 8.33 ms → distinct.
     let mut ui = Ui::for_test();
-    schedule_pair(&mut ui);
+    schedule_pair(&mut ui, Display::from_physical(SURFACE, 1.0));
     assert_eq!(
         ui.repaint_wakes.len(),
         2,
-        "120 Hz floor: 12 ms-apart wakes stay distinct",
+        "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
 
-    // 60 Hz floor: 12 ms < 16.67 ms window → collapse onto the later.
+    // 60 Hz refresh → 16.67 ms window: 12 ms < window → collapse.
     let mut ui = Ui::for_test();
-    ui.repaint_coalesce_dt = coalesce_dt_for_refresh(Some(60_000));
-    schedule_pair(&mut ui);
+    let display_60 = Display {
+        refresh_millihertz: Some(60_000),
+        ..Display::from_physical(SURFACE, 1.0)
+    };
+    schedule_pair(&mut ui, display_60);
     assert_eq!(
         ui.repaint_wakes.len(),
         1,

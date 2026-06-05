@@ -173,16 +173,15 @@ impl Host {
     /// variants call `surface.configure(_, config)` before returning.
     /// Skip frames bypass surface acquisition entirely.
     ///
-    /// Derives `Display`'s physical size from `config.width`/`config.height`.
-    /// `refresh_millihertz` (the monitor's reported rate, or `None` when
-    /// unknown) sets the repaint-wake coalesce floor so timed wakes never
-    /// out-pace the panel — see `Ui::set_display_refresh_rate`.
+    /// `display` carries the frame's surface size, DPR scale, and the
+    /// monitor's refresh rate (the last sets the repaint-wake coalesce
+    /// floor so timed wakes never out-pace the panel); its `physical`
+    /// size must equal `config.width`/`config.height`.
     pub fn frame(
         &mut self,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
-        scale_factor: f32,
-        refresh_millihertz: Option<u32>,
+        display: Display,
         record: impl FnMut(&mut Ui),
         pre_present: impl FnOnce(),
     ) -> FramePresent {
@@ -202,15 +201,18 @@ impl Host {
         // freely (resize events) without paying for a `surface.configure`
         // per event. We notice the mismatch here, reallocate once, and
         // record the new size. First-paint takes the same path because
-        // `configured` starts `None`.
+        // `configured` starts `None`. `display.physical` mirrors that
+        // size — the caller builds it from the same config.
         let size = glam::UVec2::new(config.width, config.height);
+        debug_assert_eq!(
+            display.physical, size,
+            "Display.physical must match the surface config size",
+        );
         if self.configured != Some(size) {
             self.backend.configure_surface(surface, config);
             self.configured = Some(size);
         }
 
-        let display = Display::from_physical(size, scale_factor);
-        self.ui.set_display_refresh_rate(refresh_millihertz);
         let report = self.cpu_frame(display, record);
         self.present(surface, config, report, pre_present)
     }
