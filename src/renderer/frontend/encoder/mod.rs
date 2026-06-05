@@ -250,10 +250,23 @@ fn emit_one_shape(
             // are forwarded verbatim. Owner-local convention — the
             // composer folds `origin` into the per-point transform
             // (no per-frame point copy any more).
+            let rotation = paint_mod.rotation;
+            // A spun polyline sweeps its whole owner box, so widen the
+            // scissor bbox to that box — its centre is also the pivot the
+            // composer rotates each point about.
+            let bbox = if rotation != 0.0 {
+                Rect {
+                    min: glam::Vec2::ZERO,
+                    size: owner_rect.size,
+                }
+            } else {
+                *bbox
+            };
             out.draw_polyline(DrawPolylinePayload {
-                bbox: *bbox,
+                bbox,
                 origin: owner_rect.min,
                 width: *width,
+                rotation,
                 points_start: points.start,
                 points_len: points.len,
                 colors_start: colors.start,

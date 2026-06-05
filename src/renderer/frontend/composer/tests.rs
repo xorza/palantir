@@ -946,6 +946,81 @@ fn compose_mesh_between_texts_splits_text_batch() {
     );
 }
 
+/// Wiring for the paint-time spin (spinner): the composer must read
+/// `DrawPolylinePayload::rotation` and rotate each point about
+/// `bbox.center()` before the ancestor transform. A horizontal segment
+/// through the box centre, spun 90°, comes out vertical and stays
+/// centred on the pivot — catches a dropped rotation or a wrong pivot
+/// that the analytic geometry test in `spinner` can't see.
+#[test]
+fn compose_spins_polyline_about_bbox_center() {
+    // bbox 100×100 ⇒ centre (50, 50) is both the pivot and the symmetry
+    // point of the segment, so a correct spin keeps the AABB centred.
+    let aabb = |rotation: f32| -> (Vec2, Vec2) {
+        let mut buffer = RenderCmdBuffer::default();
+        let mut arena = FrameArenaInner::default();
+        let p_start = arena.polyline_points.len() as u32;
+        arena.polyline_points.push(Vec2::new(15.0, 50.0));
+        arena.polyline_points.push(Vec2::new(85.0, 50.0));
+        let c_start = arena.polyline_colors.len() as u32;
+        arena.polyline_colors.push(Color::WHITE.into());
+        buffer.draw_polyline(DrawPolylinePayload {
+            bbox: rect(0.0, 0.0, 100.0, 100.0),
+            origin: Vec2::ZERO,
+            width: 2.0,
+            rotation,
+            points_start: p_start,
+            points_len: 2,
+            colors_start: c_start,
+            colors_len: 1,
+            color_mode: ColorModeBits::new(ColorMode::Single),
+            cap: LineCapBits::new(LineCap::Butt),
+            join: LineJoinBits::new(LineJoin::Miter),
+            ..bytemuck::Zeroable::zeroed()
+        });
+        let mut composer = Composer::default();
+        let mut out = RenderBuffer::default();
+        composer.compose(
+            &buffer,
+            &mut arena,
+            params(1.0, UVec2::new(200, 200)),
+            &mut out,
+        );
+        let vs = &arena.meshes.vertices;
+        assert!(!vs.is_empty(), "polyline must tessellate to a mesh");
+        let mut lo = Vec2::splat(f32::INFINITY);
+        let mut hi = Vec2::splat(f32::NEG_INFINITY);
+        for v in vs {
+            lo = lo.min(v.pos);
+            hi = hi.max(v.pos);
+        }
+        (lo, hi)
+    };
+    let (lo0, hi0) = aabb(0.0);
+    let (lor, hir) = aabb(std::f32::consts::FRAC_PI_2);
+    // Unrotated: a wide AABB (horizontal stroke).
+    assert!(
+        hi0.x - lo0.x > hi0.y - lo0.y,
+        "unrotated stroke should be wide: {lo0:?}..{hi0:?}",
+    );
+    // Spun 90°: a tall AABB (vertical stroke) — proves rotation applied.
+    assert!(
+        hir.y - lor.y > hir.x - lor.x,
+        "90° spin should be tall: {lor:?}..{hir:?}",
+    );
+    // Both stay centred on the pivot — proves the pivot is bbox.center().
+    let c0 = (lo0 + hi0) * 0.5;
+    let cr = (lor + hir) * 0.5;
+    assert!(
+        (c0 - Vec2::splat(50.0)).length() < 2.0,
+        "unrotated centre {c0:?}"
+    );
+    assert!(
+        (cr - Vec2::splat(50.0)).length() < 2.0,
+        "spun centre {cr:?}"
+    );
+}
+
 /// Pin: a higher-kind draw that gets *culled* (fully outside the active
 /// clip) does NOT split the text batch — the batch only closes once the
 /// draw will actually emit. Counterpart to

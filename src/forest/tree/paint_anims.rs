@@ -48,25 +48,37 @@ pub(crate) enum PaintAnim {
         half_period: Duration,
         started_at: Duration,
     },
+    /// Continuous rotation at `speed` radians/second, measured from
+    /// `started_at`. The sampled angle is `(now - started_at) * speed`
+    /// wrapped to `[0, TAU)`. Its [`Self::next_wake`] is always `now`, so
+    /// it repaints every frame (a spinner) without the widget changing
+    /// any geometry — the arc is recorded once and spun at paint time.
+    Spin { speed: f32, started_at: Duration },
 }
 
 /// Per-shape paint modification sampled from a `PaintAnim`. Encoder
-/// folds this into the shape's brush at emit time.
-///
-/// Today only `alpha` ships; a `transform: TranslateScale` field
-/// lands when marquee / rotation variants do.
+/// folds this into the shape's brush / geometry at emit time.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PaintMod {
     /// Multiplies the shape's fill alpha. `1.0` = pass-through;
     /// `0.0` = fully transparent (encoder may drop the emit).
     pub(crate) alpha: f32,
+    /// Rotation in radians applied to the shape's geometry about its
+    /// owner-box centre at paint time. `0.0` = no rotation. Only
+    /// [`PaintAnim::Spin`] produces a non-zero value today, and only the
+    /// polyline emit honours it (the composer rotates each point before
+    /// the ancestor transform).
+    pub(crate) rotation: f32,
 }
 
 impl PaintMod {
-    /// Pass-through sample. Returned by `sample_paint_anim` when a
+    /// Pass-through sample. Returned by [`PaintAnims::sample`] when a
     /// shape has no anim attached, so callers can fold the result
     /// unconditionally.
-    pub(crate) const IDENTITY: Self = Self { alpha: 1.0 };
+    pub(crate) const IDENTITY: Self = Self {
+        alpha: 1.0,
+        rotation: 0.0,
+    };
 
     #[allow(dead_code)] // consumed once Pulse/Marquee land
     #[inline]
@@ -76,7 +88,7 @@ impl PaintMod {
         // (`alpha > 1 + EPS`) is correctly *not* identity. Today's only
         // sampler emits {0.0, 1.0}, but the predicate must stay honest
         // for the non-binary variants it's reserved for.
-        approx_zero(self.alpha - 1.0)
+        approx_zero(self.alpha - 1.0) && approx_zero(self.rotation)
     }
 }
 
@@ -97,7 +109,20 @@ impl PaintAnim {
                 } else {
                     0.0
                 };
-                PaintMod { alpha }
+                PaintMod {
+                    alpha,
+                    rotation: 0.0,
+                }
+            }
+            PaintAnim::Spin { speed, started_at } => {
+                // Wrap to `[0, TAU)` so `sin_cos` keeps full precision no
+                // matter how long the spinner has been on screen.
+                let dt = now.saturating_sub(started_at).as_secs_f32();
+                let rotation = (dt * speed).rem_euclid(std::f32::consts::TAU);
+                PaintMod {
+                    alpha: 1.0,
+                    rotation,
+                }
             }
         }
     }
@@ -116,6 +141,11 @@ impl PaintAnim {
                 half_period,
                 started_at,
             } => next_blink_boundary(half_period, started_at, now),
+            // Continuous: the angle changes every frame, so the soonest
+            // it "next changes" is now. `extend_predamaged` compares
+            // `next_wake(prev) <= now` (always true, since `prev <= now`)
+            // and so re-damages the spun shape's rect every frame.
+            PaintAnim::Spin { .. } => now,
         }
     }
 }
@@ -324,8 +354,60 @@ mod tests {
     #[test]
     fn paint_mod_identity_is_pass_through() {
         assert!(PaintMod::IDENTITY.is_identity());
-        assert!(PaintMod { alpha: 1.0 }.is_identity());
-        assert!(!PaintMod { alpha: 0.5 }.is_identity());
-        assert!(!PaintMod { alpha: 0.0 }.is_identity());
+        assert!(
+            PaintMod {
+                alpha: 1.0,
+                rotation: 0.0
+            }
+            .is_identity()
+        );
+        assert!(
+            !PaintMod {
+                alpha: 0.5,
+                rotation: 0.0
+            }
+            .is_identity()
+        );
+        // A non-zero rotation is not a pass-through even at full alpha.
+        assert!(
+            !PaintMod {
+                alpha: 1.0,
+                rotation: 0.5
+            }
+            .is_identity()
+        );
+    }
+
+    #[test]
+    fn spin_angle_is_elapsed_times_speed_wrapped() {
+        let speed = 4.0; // rad/s
+        let a = PaintAnim::Spin {
+            speed,
+            started_at: START,
+        };
+        // Pre-start clamps to 0 (no negative elapsed).
+        assert_eq!(a.sample(START - Duration::from_secs(1)).rotation, 0.0);
+        // 0.25 s in → 1.0 rad, alpha untouched.
+        let m = a.sample(START + Duration::from_millis(250));
+        assert!((m.rotation - 1.0).abs() < 1e-5, "rotation {}", m.rotation);
+        assert_eq!(m.alpha, 1.0);
+        // 2 s in → 8.0 rad, wrapped into [0, TAU): 8 - TAU ≈ 1.7168.
+        let wrapped = a.sample(START + Duration::from_secs(2)).rotation;
+        let expect = 8.0_f32.rem_euclid(std::f32::consts::TAU);
+        assert!((wrapped - expect).abs() < 1e-4, "wrapped {wrapped}");
+        assert!((0.0..std::f32::consts::TAU).contains(&wrapped));
+    }
+
+    #[test]
+    fn spin_wakes_every_frame() {
+        // `next_wake(prev)` must be <= now for any prev <= now so
+        // `extend_predamaged` repaints the spun rect each frame.
+        let a = PaintAnim::Spin {
+            speed: 1.0,
+            started_at: START,
+        };
+        let prev = START + Duration::from_secs(3);
+        let now = prev + Duration::from_millis(16);
+        assert!(a.next_wake(prev) <= now);
     }
 }

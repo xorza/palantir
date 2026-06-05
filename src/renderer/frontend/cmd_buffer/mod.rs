@@ -252,6 +252,14 @@ pub(crate) struct DrawPolylinePayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
     pub(crate) width: f32,
+    /// Paint-time rotation (radians) about `bbox.center()` (owner-local),
+    /// applied to each point before the ancestor transform. `0.0` = none,
+    /// the common case. Set from a [`PaintAnim::Spin`] sample; the
+    /// encoder widens `bbox` to the rotation-invariant owner box so the
+    /// scissor cull stays correct and its centre is the spin pivot.
+    ///
+    /// [`PaintAnim::Spin`]: crate::forest::tree::paint_anims::PaintAnim::Spin
+    pub(crate) rotation: f32,
     pub(crate) points_start: u32,
     pub(crate) points_len: u32,
     pub(crate) colors_start: u32,
