@@ -2,7 +2,7 @@
 
 A Rust GUI crate. **Immediate-mode authoring API**, **WPF-contract two-pass layout with flex-shrink sizing**, **wgpu rendering**.
 
-Read `DESIGN.md` for the full design rationale before making non-trivial changes.
+Read the **Architecture** section below for the full design rationale before making non-trivial changes.
 
 ## Posture
 
@@ -13,7 +13,7 @@ State-of-the-art UI framework, craft-driven. **No external consumers, no publish
 - **API ergonomics matter.** Builder chains read like prose, defaults are right, surprise behavior gets a pinning test. When in doubt, prioritize call-site readability.
 - **Optimize aggressively when motivated.** Micro-wins (struct packing, const fns, scratch reuse, cache layout) are encouraged even without a workload demanding them.
 - **Ship in measurable slices.** One feature with tests + a showcase tab beats a half-finished cluster. If a change is structurally complex with no motivating workload, say "too early" and shelve with a note rather than ship speculation.
-- **Docs are starting positions, not commitments.** Treat `docs/*.md`, `DESIGN.md`, `references/*` as evolving and possibly wrong. When a doc contradicts user intent or current code, double-question rather than defer — flag the conflict, ask, and update the doc.
+- **Docs are starting positions, not commitments.** Treat `docs/*.md`, `references/*`, and this file as evolving and possibly wrong. When a doc contradicts user intent or current code, double-question rather than defer — flag the conflict, ask, and update the doc.
 
 ## Code style
 
@@ -46,6 +46,8 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 
 **Sizing (flex-shrink with min-content floor):** `Fixed(n)` = exactly `n` (hard contract; can exceed parent's available). `Hug` = `min(content, available)` floored at `intrinsic_min`. `Fill(weight)` = `available` floored at `intrinsic_min`; with Fill siblings, each gets `leftover * weight / total_weight`, but a sibling whose floor exceeds its share _freezes_ at floor and the rest re-divide (CSS Flexbox-style). The `intrinsic_min` floor is the largest non-shrinkable thing on this axis (Fixed descendant, explicit `min_size`, longest unbreakable word). Children clamp DOWN to fit parent — no WPF-style parent-grow. Overflow only happens when rigid descendants don't fit; downstream tolerates it. **A stack measures its children against its own committed main extent, not `∞`** — so a `Fixed`/`max_size` bound on any ancestor flows down and constrains descendants (CSS `max-height`/`max-width` semantics, not WPF's free-stacking-axis); an _unbounded_ stack still passes `∞` on its main axis, so children report their natural main size and the stack grows to fit. This is what lets a nested `WrapVStack`/`WrapHStack` wrap (or a `Scroll` bound) against a capped ancestor without a cap of its own. Canonical impl: `resolve_axis_size` in `src/layout/support.rs` + the Pass-1 `main_avail` measure + freeze loop in `src/layout/stack/mod.rs::measure`. Pinned by `src/layout/{stack,wrapstack,zstack,canvas,grid}/tests.rs` and `src/layout/cross_driver_tests/convergence.rs`.
 
+**Stack vs. Grid Fill — same contract, deliberately different solvers.** Both resolve `Fill` as "weighted leftover, each child clamped to `[intrinsic_min, max]`, violators freeze and the rest re-divide" — but with different freeze cadences: `stack::freeze_distribute` freezes *every* violator per pass, `grid::resolve_axis` Phase 3 uses constraint-by-exclusion. For *mixed* min/max violations on the same axis the two can converge to different sizes. This is an **accepted, hand-synced divergence** (see the doc comment on `stack::freeze_distribute`), not a bug to silently "DRY up": a shared solver would change one driver's edge-case output, so it needs a deliberate target-semantics decision first, not a refactor. The common cases (all-min or all-max violations, single Fill, no violations) agree.
+
 ## Project layout
 
 - `src/primitives/` — pure geometry + leaf types: Rect/Size/Color (incl. `ColorU8`/`ColorF16`)/Stroke/Corners/Spacing/Transform/Background/Brush/Shadow/Image/Mesh/WidgetId/bezier/num/approx/urect/span/half_simd/interned_str/lane_serde/paint (`LutRow` + paint wire types)
@@ -67,7 +69,7 @@ Widget _state_ (scroll offset, text cursor, animation) lives in a `WidgetId → 
 - `examples/` — `dump_theme` (theme TOML round-trip), `counter`, `frame_visual`
 - `tests/alloc/` — per-frame allocation audit suite (a `CountingAllocator` global allocator + shared fixtures/harness; see `tests/alloc/alloc-testing.md`); integration-level sibling to the `alloc_free` bench, run via `cargo test --test alloc`
 - `tests/visual/` — headless wgpu → PNG → golden-diff suite (`cargo test --test visual --features internals`); the canonical eyeball-replacement for rendering changes. Golden PNGs are gitignored and per-machine (auto-created on first run); after an intentional render change, regenerate with `UPDATE_GOLDEN=1 cargo test --test visual --features internals <filter>` and inspect the diff artifacts under `tests/visual/output/<name>/` first. Full reference: `tests/visual/visual-testing.md`
-- `benches/` — criterion (alloc_free, alloc_free_gpu, alloc_resize, caches, damage, frame, input_throughput, scrollzoom, text_atlas; only `alloc_free`, `alloc_resize`, `input_throughput` build without `--features internals`); `docs/` — in-flight notes + `roadmap/` (per-feature design notes); `DESIGN.md` — full rationale
+- `benches/` — criterion (alloc_free, alloc_free_gpu, alloc_resize, caches, damage, frame, input_throughput, scrollzoom, text_atlas; only `alloc_free`, `alloc_resize`, `input_throughput` build without `--features internals`); `docs/` — in-flight notes + `roadmap/` (per-feature design notes); the **Architecture** section above is the full rationale
 
 Key deps: `wgpu`+`winit`, `cosmic-text` (the wgpu text rendering backend lives in-tree at `src/renderer/backend/text/`), `glam`, `rustc-hash`, `rayon`, `bytemuck`, `soa-rs` (per-node SoA storage on `Tree`). Pinned `*` (lockfile is source of truth).
 

@@ -59,12 +59,14 @@ pub struct Mesh {
     /// invalidated. Set by `content_hash`; cleared by every public
     /// mutator. Internal arena pushes bypass the cache by going
     /// straight at `pub(crate)` fields — fine, since arena meshes
-    /// never call `content_hash`.
+    /// never call `content_hash`. A retained `Mesh` redrawn every frame
+    /// is lowered (and so hashed) once per frame; the cache turns that
+    /// per-frame O(n) re-hash into a hit after the first frame.
     cached_hash: Cell<Option<u64>>,
     /// Lazy cache of owner-local AABB. Same memoization contract as
-    /// `cached_hash`; populated by [`Self::bbox`], invalidated by
-    /// every public mutator. [`Self::with_known_bbox`] pre-seeds it
-    /// to skip the compute entirely.
+    /// `cached_hash` — a retained mesh re-lowered each frame would
+    /// otherwise recompute its AABB every frame. [`Self::with_known_bbox`]
+    /// pre-seeds it to skip the compute entirely.
     cached_bbox: Cell<Option<Rect>>,
 }
 

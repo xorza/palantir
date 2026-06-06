@@ -1575,3 +1575,75 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
         "exact-surface change re-runs the cascade"
     );
 }
+
+/// O5 stage-0 completeness for the *authoring* cascade inputs. The
+/// fingerprint trusts `subtree_hash` to capture everything the cascade
+/// reads (transforms, clip / disabled / focusable, visibility, chrome,
+/// shapes); if a future input stops being folded in, a frame toggling
+/// it would wrongly skip the cascade and paint stale. One arm per
+/// attribute class — each toggles a single attribute and asserts the
+/// skip is busted. The scroll offset/zoom class lives in `scroll_states`
+/// (not `subtree_hash`) and is folded into the fingerprint explicitly;
+/// it's pinned separately by
+/// `widgets::tests::scroll::cascade_skip_busts_on_scroll_offset_change`.
+#[test]
+fn cascade_fingerprint_covers_authoring_input_classes() {
+    use crate::forest::visibility::Visibility;
+    use crate::layout::types::clip_mode::ClipMode;
+
+    fn probe(ui: &mut Ui, cfg: impl FnOnce(Frame) -> Frame) {
+        cfg(Frame::new().id(WidgetId::from_hash("probe")).size(50.0)).show(ui);
+    }
+
+    // Settle `base` into the skip, then run `changed` and assert the
+    // one-attribute delta re-runs the cascade.
+    fn assert_reruns(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(SURFACE, |ui| base(ui));
+        assert!(ui.dbg_cascade_ran, "{label}: first frame runs the cascade");
+        ui.run_at_acked(SURFACE, |ui| base(ui));
+        assert!(
+            !ui.dbg_cascade_ran,
+            "{label}: unchanged frame skips the cascade"
+        );
+        ui.run_at_acked(SURFACE, |ui| changed(ui));
+        assert!(
+            ui.dbg_cascade_ran,
+            "{label}: toggling it must re-run the cascade — the input is \
+             missing from subtree_hash / the cascade fingerprint",
+        );
+    }
+
+    fn bg(r: f32, g: f32, b: f32) -> Background {
+        Background {
+            fill: Color::rgb(r, g, b).into(),
+            ..Default::default()
+        }
+    }
+
+    assert_reruns(
+        "disabled",
+        |ui| probe(ui, |f| f.disabled(false)),
+        |ui| probe(ui, |f| f.disabled(true)),
+    );
+    assert_reruns(
+        "focusable",
+        |ui| probe(ui, |f| f.focusable(false)),
+        |ui| probe(ui, |f| f.focusable(true)),
+    );
+    assert_reruns(
+        "visibility",
+        |ui| probe(ui, |f| f.visibility(Visibility::Visible)),
+        |ui| probe(ui, |f| f.visibility(Visibility::Hidden)),
+    );
+    assert_reruns(
+        "clip",
+        |ui| probe(ui, |f| f.clip(ClipMode::None)),
+        |ui| probe(ui, |f| f.clip(ClipMode::Rect)),
+    );
+    assert_reruns(
+        "chrome",
+        |ui| probe(ui, |f| f.background(bg(0.2, 0.4, 0.8))),
+        |ui| probe(ui, |f| f.background(bg(0.8, 0.2, 0.2))),
+    );
+}
