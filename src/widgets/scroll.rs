@@ -553,7 +553,7 @@ impl Scroll {
         // were recorded, the cascade doesn't see them yet → all
         // fields default. Same one-frame settle as other scroll
         // bookkeeping.
-        let theme = ui.theme.scrollbar.clone();
+        let theme = ui.theme.scrollbar;
         let thumb_id_v = scroll_id.with("__vthumb");
         let thumb_id_h = scroll_id.with("__hthumb");
         let track_id_v = scroll_id.with("__vtrack");

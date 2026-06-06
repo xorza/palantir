@@ -4,7 +4,7 @@ use crate::widgets::theme::palette;
 /// Visuals for [`crate::ProgressBar`]: a rounded `track` rail with an
 /// accent `fill` spanning the value. `height` is the bar thickness; the
 /// pill corner radius is `height / 2`.
-#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ProgressBarTheme {
     /// Rail color behind the fill.
     pub track: Color,
