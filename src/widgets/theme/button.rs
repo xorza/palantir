@@ -1,6 +1,7 @@
 use crate::animation::AnimSpec;
 use crate::input::ResponseState;
 use crate::primitives::background::Background;
+use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
@@ -109,7 +110,7 @@ impl ButtonTheme {
     /// Distinct from a popup-row `MenuItem`, which lives inside a
     /// `ContextMenu` and is themed via `theme.context_menu.item`.
     pub fn menu_button() -> Self {
-        let flat = |fill: crate::primitives::brush::Brush| WidgetLook {
+        let flat = |fill: Brush| WidgetLook {
             background: Some(Background {
                 fill,
                 stroke: Stroke::ZERO,
@@ -119,10 +120,10 @@ impl ButtonTheme {
             text: None,
         };
         Self {
-            normal: flat(crate::primitives::brush::Brush::TRANSPARENT),
+            normal: flat(Brush::TRANSPARENT),
             hovered: flat(palette::ELEM_HOVER.into()),
             pressed: flat(palette::ELEM_ACTIVE.into()),
-            disabled: flat(crate::primitives::brush::Brush::TRANSPARENT),
+            disabled: flat(Brush::TRANSPARENT),
             padding: Spacing::xy(8.0, 4.0),
             margin: Spacing::ZERO,
             anim: None,

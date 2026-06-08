@@ -542,6 +542,8 @@ mod bars {
     use crate::forest::tree::NodeId;
     use crate::layout::types::sizing::Sizing;
     use crate::primitives::background::Background;
+    use crate::primitives::color::Color;
+    use crate::primitives::rect::Rect;
     use crate::primitives::widget_id::WidgetId;
     use crate::widgets::frame::Frame;
     use crate::widgets::panel::Panel;
@@ -698,7 +700,7 @@ mod bars {
     /// Thumb rects (in *outer-local* coords) for `scroll_key`. Thumbs
     /// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
     /// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
-    fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<crate::primitives::rect::Rect> {
+    fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
         let tree = ui.forest.tree(Layer::Main);
         let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);
@@ -714,7 +716,7 @@ mod bars {
             let id = scroll_id.with(tag);
             if let Some(idx) = widget_ids.iter().position(|w| *w == id) {
                 let r = layout.rect[idx];
-                out.push(crate::primitives::rect::Rect {
+                out.push(Rect {
                     min: r.min - outer_origin,
                     size: r.size,
                 });
@@ -816,7 +818,7 @@ mod bars {
                             .padding(8.0)
                             .size((Sizing::FILL, Sizing::FILL))
                             .background(Background {
-                                fill: crate::primitives::color::Color::rgb(0.16, 0.20, 0.28).into(),
+                                fill: Color::rgb(0.16, 0.20, 0.28).into(),
                                 ..Default::default()
                             })
                             .clip_rect()

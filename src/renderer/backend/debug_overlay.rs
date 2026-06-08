@@ -11,16 +11,19 @@
 //! never enable debug overlays still allocate these buffers (a few
 //! hundred bytes total) but never upload to them.
 
-use crate::primitives::{
-    color::{Color, ColorF16},
-    corners::Corners,
-    rect::Rect,
-    size::Size,
-};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::quad::Quad;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
+use crate::{
+    primitives::{
+        color::{Color, ColorF16},
+        corners::Corners,
+        rect::Rect,
+        size::Size,
+    },
+    renderer::backend::{QuadPipeline, ViewportPush},
+};
 use glam::Vec2;
 use tinyvec::ArrayVec;
 
@@ -103,9 +106,9 @@ impl DebugOverlay {
     pub(crate) fn draw_dim<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a crate::renderer::backend::QuadPipeline,
+        quad: &'a QuadPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &crate::renderer::backend::ViewportPush,
+        viewport: &ViewportPush,
     ) {
         quad.bind_debug(pass, gradient_bg);
         // Pipeline is now bound — safe to push the shared viewport
@@ -153,9 +156,9 @@ impl DebugOverlay {
     pub(crate) fn draw_overlays<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a crate::renderer::backend::QuadPipeline,
+        quad: &'a QuadPipeline,
         gradient_bg: &'a wgpu::BindGroup,
-        viewport: &crate::renderer::backend::ViewportPush,
+        viewport: &ViewportPush,
         count: u32,
     ) {
         quad.bind_debug(pass, gradient_bg);

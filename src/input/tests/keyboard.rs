@@ -1,8 +1,8 @@
-use crate::Ui;
 use crate::input::keyboard::{Key, Modifiers, TextChunk, key_from_winit};
 use crate::input::{InputEvent, InputState};
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
+use crate::{FocusPolicy, Ui};
 use winit::event::WindowEvent;
 use winit::keyboard::{Key as WK, NamedKey};
 
@@ -252,7 +252,7 @@ fn clicking_non_focusable_widget_preserves_focus_under_preserve_policy() {
     use crate::widgets::{button::Button, panel::Panel};
 
     let mut ui = Ui::for_test();
-    ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
+    ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let surface = glam::UVec2::new(400, 80);
     let build = |ui: &mut Ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
@@ -313,7 +313,7 @@ fn focus_is_evicted_when_widget_disappears() {
 #[test]
 fn request_focus_bypasses_policy() {
     let mut ui = Ui::for_test();
-    let id = crate::primitives::widget_id::WidgetId::from_hash("manual");
+    let id = WidgetId::from_hash("manual");
     ui.request_focus(Some(id));
     assert_eq!(ui.focused_id(), Some(id));
     ui.request_focus(None);

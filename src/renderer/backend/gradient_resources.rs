@@ -7,6 +7,7 @@
 //! means neither pipeline owns the other's input: each takes `&bgl` at
 //! build time and `&bg` at bind time.
 
+use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::texture_sampler_bgl;
 use crate::renderer::gradient_atlas::GradientAtlas;
@@ -23,7 +24,7 @@ const _: () = assert!(
 /// from the CPU-side `ColorF16` row store (`gradient_atlas::LutRowTexels`)
 /// so the GPU upload row-pitch can't silently drift from the texel type
 /// the bake writes.
-const GRADIENT_ATLAS_TEXEL_BYTES: u32 = size_of::<crate::primitives::color::ColorF16>() as u32;
+const GRADIENT_ATLAS_TEXEL_BYTES: u32 = size_of::<ColorF16>() as u32;
 // `write_texture`'s `bytes_per_row` must be a multiple of
 // `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guard the row pitch independently
 // of the shader assert above so relaxing one can't silently break the

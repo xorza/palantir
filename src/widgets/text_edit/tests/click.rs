@@ -1,4 +1,4 @@
-use crate::widgets::text_edit::tests::*;
+use crate::{FocusPolicy, widgets::text_edit::tests::*};
 
 #[test]
 fn typing_inserts_text_when_focused() {
@@ -146,7 +146,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
 #[test]
 fn pressed_button_under_preserve_policy_keeps_focus() {
     let mut ui = Ui::for_test_at_text(WIDE);
-    ui.set_focus_policy(crate::FocusPolicy::PreserveOnMiss);
+    ui.set_focus_policy(FocusPolicy::PreserveOnMiss);
     let mut buf = String::new();
 
     ui.run_at_acked(WIDE, editor_and_button(&mut buf));

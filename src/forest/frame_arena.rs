@@ -9,8 +9,9 @@
 //! render buffer all carry spans into this arena directly.
 
 use crate::common::hash::Hasher as FxHasher;
+use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::{
-    ChromeRow, LoweredGradient, ShapeBrush, ShapeRecord, ShapeStroke,
+    ChromeRow, LoweredGradient, LoweredShadow, ShapeBrush, ShapeRecord, ShapeStroke,
 };
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
@@ -186,7 +187,7 @@ impl FrameArena {
         } = a.lower_brush_inner(&bg.fill, atlas);
         let stroke = ShapeStroke::from(&bg.stroke);
         let corners = bg.corners;
-        let shadow: crate::forest::shapes::record::LoweredShadow = bg.shadow.into();
+        let shadow: LoweredShadow = bg.shadow.into();
         // Canonical authoring hash: fold all inputs into one
         // `Hasher::pod` call. Hashing field-by-field via 5 separate
         // `Hasher::write*` calls (the prior shape) paid `hash_bytes`
@@ -203,8 +204,8 @@ impl FrameArena {
         struct ChromeHashBytes {
             fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
             corners_u64: u64,
-            stroke: ShapeStroke,                                  // 10 B align 2
-            shadow: crate::forest::shapes::record::LoweredShadow, // 18 B align 2
+            stroke: ShapeStroke,   // 10 B align 2
+            shadow: LoweredShadow, // 18 B align 2
             fill_tag: u8,
             _pad: [u8; 3],
         }
@@ -226,7 +227,7 @@ impl FrameArena {
         };
         let mut h = FxHasher::new();
         h.pod(&packed);
-        let hash = crate::forest::rollups::NodeHash(h.finish());
+        let hash = NodeHash(h.finish());
         ChromeRow {
             fill,
             stroke,
@@ -341,7 +342,7 @@ fn lower_curve_inner(
     let pad = half + cap_extent + HALF_FRINGE;
     let bbox = Rect {
         min: Vec2::new(lo.x - pad, lo.y - pad),
-        size: crate::primitives::size::Size {
+        size: Size {
             w: (hi.x - lo.x) + 2.0 * pad,
             h: (hi.y - lo.y) + 2.0 * pad,
         },

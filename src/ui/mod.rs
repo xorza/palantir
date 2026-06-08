@@ -4,6 +4,7 @@ pub mod frame_report;
 pub(crate) mod frame_state;
 pub(crate) mod state;
 
+use crate::InternedStr;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::hash::Hasher;
@@ -15,7 +16,7 @@ use crate::forest::Layer;
 use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::forest::frame_arena::FrameArena;
 use crate::forest::tree::paint_anims::PaintAnim;
-use crate::input::keyboard::KeyboardEvent;
+use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
 use crate::input::shortcut::Shortcut;
@@ -23,11 +24,13 @@ use crate::input::subscriptions::{KeyboardSense, PointerSense};
 use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::support::TextCtx;
 use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
+use crate::primitives::size::Size;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::image_registry::ImageHandle;
@@ -37,7 +40,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
 use crate::ui::cascade::CascadesEngine;
-use crate::ui::damage::{Damage, DamageEngine};
+use crate::ui::damage::{Damage, DamageEngine, DamageInput};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
@@ -439,7 +442,7 @@ impl Ui {
         // instead of stale state from the previous frame.
         let surface = self.display.logical_rect();
         let prev_time = self.prev_stamp.map(|s| s.time);
-        let input = crate::ui::damage::DamageInput {
+        let input = DamageInput {
             forest: &self.forest,
             cascades: &self.layout.cascades,
             surface,
@@ -680,7 +683,7 @@ impl Ui {
         profiling::scope!("Ui::post_record");
         self.forest.post_record();
         let arena = self.frame_arena.inner();
-        let tc = crate::layout::support::TextCtx {
+        let tc = TextCtx {
             bytes: &arena.fmt_scratch,
             shaper: &self.text,
         };
@@ -945,7 +948,7 @@ impl Ui {
     /// won't catch a misuse — `#[must_use]` is a hint that the result
     /// is meant to be consumed in the same frame.
     #[must_use]
-    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> crate::InternedStr {
+    pub fn fmt(&mut self, args: std::fmt::Arguments<'_>) -> InternedStr {
         self.frame_arena.intern_fmt(args)
     }
 
@@ -956,7 +959,7 @@ impl Ui {
     /// memcpy into the retained `fmt_scratch` buffer. Same
     /// frame-scoped invalidation rules as [`Self::fmt`].
     #[must_use]
-    pub fn intern(&mut self, s: &str) -> crate::InternedStr {
+    pub fn intern(&mut self, s: &str) -> InternedStr {
         self.frame_arena.intern_str(s)
     }
 
@@ -984,7 +987,7 @@ impl Ui {
         &mut self,
         layer: Layer,
         anchor: glam::Vec2,
-        size: Option<crate::primitives::size::Size>,
+        size: Option<Size>,
         body: impl FnOnce(&mut Ui),
     ) {
         self.forest.push_layer(layer, anchor, size);
@@ -1172,7 +1175,7 @@ impl Ui {
     /// Currently-held modifier keys. State persists across frames —
     /// only `ModifiersChanged` events mutate it. Read at the start of
     /// a drag/click to gate behavior (Cmd+LMB shortcuts, etc.).
-    pub fn modifiers(&self) -> crate::input::keyboard::Modifiers {
+    pub fn modifiers(&self) -> Modifiers {
         self.input.modifiers
     }
 

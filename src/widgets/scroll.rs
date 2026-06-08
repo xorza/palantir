@@ -15,8 +15,8 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::Response;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
+use crate::widgets::{InnerResponse, Response};
 use glam::Vec2;
 use std::ops::RangeInclusive;
 
@@ -461,11 +461,7 @@ impl Scroll {
         self
     }
 
-    pub fn show<R>(
-        self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> crate::widgets::InnerResponse<'_, R> {
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let id = ui.make_persistent_id(self.element.salt);
         let mode = self.element.mode;
         let pan_payload = self.element.mode_payload;
@@ -774,7 +770,7 @@ impl Scroll {
         });
 
         let resp_state = ui.response_for(id);
-        crate::widgets::InnerResponse {
+        InnerResponse {
             // Eager: Scroll already paid for `response_for` here
             // and the caller almost always reads at least one field
             // (drag delta, scroll delta, hovered). Hand the cached

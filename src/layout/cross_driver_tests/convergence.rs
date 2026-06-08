@@ -42,7 +42,7 @@ use glam::UVec2;
 #[test]
 fn fill_siblings_with_unequal_min_content_do_not_overflow_parent() {
     for outer_w in (260u32..=600).step_by(10) {
-        let mut ui = crate::Ui::for_test();
+        let mut ui = Ui::for_test();
         let mut left_node = None;
         let mut right_node = None;
         let mut row_node = NodeId(0);

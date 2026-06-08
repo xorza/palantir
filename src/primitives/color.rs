@@ -1,4 +1,4 @@
-use crate::primitives::half_simd::F16x4;
+use crate::primitives::{approx::noop_f32, half_simd::F16x4};
 
 #[repr(C)]
 #[derive(
@@ -101,7 +101,7 @@ impl Color {
     /// across primitives.
     #[inline]
     pub const fn is_noop(self) -> bool {
-        crate::primitives::approx::noop_f32(self.a)
+        noop_f32(self.a)
     }
 
     /// `(r, g, b)` in 0..1 sRGB space (the default — matches CSS, Figma, Photoshop).

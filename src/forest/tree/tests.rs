@@ -12,7 +12,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
-use crate::shape::Shape;
+use crate::shape::{LineCap, LineJoin, Shape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
@@ -1172,16 +1172,16 @@ fn shape_hashes_column_sized_to_shape_records() {
                     b: glam::Vec2::new(10.0, 10.0),
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: glam::Vec2::new(10.0, 10.0),
                     b: glam::Vec2::new(20.0, 20.0),
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     });
@@ -1228,8 +1228,8 @@ fn shape_hash_stable_across_frames() {
                     b: glam::Vec2::new(10.0, 10.0),
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     };
@@ -1263,16 +1263,16 @@ fn one_shape_change_only_flips_its_own_hash() {
                     b: glam::Vec2::new(10.0, 10.0),
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: glam::Vec2::new(5.0, 5.0),
                     b: b_endpoint,
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     };

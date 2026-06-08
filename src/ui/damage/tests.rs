@@ -10,6 +10,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::shape::{LineCap, LineJoin, Shape};
+use crate::text::TEXT_SCALE_STEP;
 use crate::ui::FrameStamp;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::damage::{Damage, DamageEngine};
@@ -1795,16 +1796,16 @@ fn node_snapshot_decomposition_matches_cascade() {
                     b: Vec2::new(10.0, 10.0),
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: Vec2::new(20.0, 20.0),
                     b: Vec2::new(30.0, 30.0),
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
-                    cap: crate::shape::LineCap::Butt,
-                    join: crate::shape::LineJoin::Miter,
+                    cap: LineCap::Butt,
+                    join: LineJoin::Miter,
                 });
             });
     });
@@ -2278,7 +2279,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     // axis (`STEP/2` per side) to cover composer ladder snaps — see
     // `text_paint_bbox_local`. Expected shaped size scales by the
     // same factor.
-    let inflate = 1.0 + crate::text::TEXT_SCALE_STEP;
+    let inflate = 1.0 + TEXT_SCALE_STEP;
     let prev_snap = ui.damage_engine.prev[&leaf_id];
     let prev_text_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][0].screen;
     let prev_size_short: Size = Size::new(FONT * 0.5 * 3.0 * inflate, FONT * inflate);

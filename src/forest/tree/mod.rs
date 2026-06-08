@@ -33,6 +33,7 @@ use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
 use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::visibility::Visibility;
 use crate::layout::grid::GridDef;
+use crate::primitives::approx::noop_f32;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
@@ -491,7 +492,7 @@ impl Tree {
             // already carry the effective padding — zero hot-path cost
             // and the LayoutCore hash invalidates `MeasureCache`
             // automatically when the inflated value shifts.
-            if !crate::primitives::approx::noop_f32(bg.stroke.width) {
+            if !noop_f32(bg.stroke.width) {
                 let s = bg.stroke.width;
                 let [l, t, r, b] = cols.layout.padding.as_array();
                 cols.layout.padding =

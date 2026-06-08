@@ -1,4 +1,5 @@
 use crate::primitives::half_simd::F16x4;
+use crate::primitives::lane_serde::LaneCodec;
 use crate::primitives::num::Num;
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
@@ -41,7 +42,7 @@ impl std::fmt::Debug for Spacing {
 // - otherwise              → 4-element array `[left, top, right, bottom]`
 // Deserialize also accepts the `{ left, top, right, bottom }` table for
 // hand-written configs.
-impl crate::primitives::lane_serde::LaneCodec for Spacing {
+impl LaneCodec for Spacing {
     const FIELDS: &'static [&'static str] = &["left", "top", "right", "bottom"];
 
     #[inline]

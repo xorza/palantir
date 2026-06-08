@@ -1,17 +1,20 @@
 use crate::TextStyle;
 use crate::Ui;
+use crate::WidgetId;
 use crate::forest::Layer;
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::forest::shapes::record::ShapeRecord;
+use crate::forest::tree::NodeId;
 use crate::layout::cross_driver_tests::support;
 use crate::layout::cross_driver_tests::support::{chat_message, two_hug_cols_with_wrap};
+use crate::layout::support::TextCtx;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
-use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
+use crate::text::FontFamily;
 use crate::widgets::{button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -155,7 +158,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MaxContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
@@ -165,7 +168,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::X,
         LenReq::MinContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
@@ -175,7 +178,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         node,
         Axis::Y,
         LenReq::MaxContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
@@ -281,7 +284,7 @@ fn hstack_fill_grows_to_content_when_slot_smaller_than_content() {
 /// label's natural width — non-wrapping text cannot be broken.
 #[test]
 fn two_hug_cols_nonwrapping_label_floors_at_full_width() {
-    fn build(ui: &mut crate::Ui) -> (crate::forest::tree::NodeId, crate::forest::tree::NodeId) {
+    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut grid_node = None;
         let mut section_node = None;
         Panel::vstack().auto_id()
@@ -418,7 +421,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MaxContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
@@ -428,7 +431,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         label_node,
         Axis::X,
         LenReq::MinContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &ui.frame_arena.inner().fmt_scratch,
             shaper: &ui.text,
         },
@@ -448,7 +451,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
 /// width.
 #[test]
 fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
-    fn build(ui: &mut crate::Ui) -> (crate::forest::tree::NodeId, crate::forest::tree::NodeId) {
+    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut paragraph_node = None;
         let mut label_node = None;
         Grid::new()
@@ -491,7 +494,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         probe_label,
         Axis::X,
         LenReq::MaxContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &probe.frame_arena.inner().fmt_scratch,
             shaper: &probe.text,
         },
@@ -527,7 +530,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
 /// the slack split clipped "right column" → "right col").
 #[test]
 fn two_hug_cols_default_label_hugs_full_width() {
-    fn build(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
+    fn build(ui: &mut Ui) -> NodeId {
         let mut label_node = None;
         Grid::new()
             .id(WidgetId::from_hash("grid"))
@@ -565,7 +568,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         probe_label.unwrap(),
         Axis::X,
         LenReq::MaxContent,
-        &crate::layout::support::TextCtx {
+        &TextCtx {
             bytes: &probe.frame_arena.inner().fmt_scratch,
             shaper: &probe.text,
         },
@@ -595,8 +598,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
 ///   slot 1: "second-with-different-text" at `Some((0, 22)+100x20)`.
 /// Returns the leaf NodeId so callers can read `text_spans` /
 /// emitted commands. Used by the multi-text-per-leaf pinning tests.
-fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
-    let leaf_id = crate::WidgetId::from_hash("multi-text-leaf");
+fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
+    let leaf_id = WidgetId::from_hash("multi-text-leaf");
     Panel::vstack().auto_id().show(ui, |ui| {
         let mut element = Element::new(LayoutMode::Leaf);
         element.salt = Salt::Verbatim(leaf_id);
@@ -609,7 +612,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: crate::text::FontFamily::Sans,
+                family: FontFamily::Sans,
             });
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),
@@ -619,7 +622,7 @@ fn build_multi_text_leaf(ui: &mut crate::Ui) -> crate::forest::tree::NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: crate::text::FontFamily::Sans,
+                family: FontFamily::Sans,
             });
         });
     });
@@ -767,7 +770,7 @@ fn multi_shape_text_per_leaf_round_trips_through_measure_cache() {
 fn fill_panel_grows_to_contain_wrapped_content_on_y() {
     use crate::forest::tree::NodeId;
     use crate::widgets::panel::Panel;
-    fn build(ui: &mut crate::Ui) -> (NodeId, NodeId) {
+    fn build(ui: &mut Ui) -> (NodeId, NodeId) {
         let mut inner = NodeId(0);
         Panel::zstack()
             .auto_id()
@@ -799,7 +802,7 @@ fn fill_panel_grows_to_contain_wrapped_content_on_y() {
     // be at least that + chrome padding (16*2 = 32) on Y, at every
     // surface height — including ones smaller than the natural content.
     for h in [800u32, 400, 300, 200, 150, 100, 50] {
-        let mut ui = crate::Ui::for_test_at_text(UVec2::new(800, h));
+        let mut ui = Ui::for_test_at_text(UVec2::new(800, h));
         let mut nodes = (NodeId(0), NodeId(0));
         ui.run_at_acked(UVec2::new(800, h), |ui| {
             nodes = build(ui);

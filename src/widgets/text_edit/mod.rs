@@ -1,3 +1,4 @@
+use crate::common::clipboard::{get, set};
 use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::tree::paint_anims::PaintAnim;
@@ -7,6 +8,7 @@ use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx::noop_f32;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
@@ -172,7 +174,7 @@ fn apply_redo(text: &mut String, state: &mut TextEditState) {
 /// menu / shortcut UI affordances.
 fn cut_selection(text: &mut String, state: &mut TextEditState) {
     let Some(r) = state.sel_range() else { return };
-    crate::common::clipboard::set(&text[r.clone()]);
+    set(&text[r.clone()]);
     record_edit(text, state, EditKind::Other);
     text.replace_range(r.clone(), "");
     state.caret = r.start;
@@ -547,7 +549,7 @@ impl<'a> TextEdit<'a> {
         // the top row of glyphs sits above the clip and gets scissored
         // away. The element's own padding stays at the pre-inflate
         // value so Tree's fold reproduces the same effective padding.
-        let stroke_w = if crate::primitives::approx::noop_f32(look.background.stroke.width) {
+        let stroke_w = if noop_f32(look.background.stroke.width) {
             0.0
         } else {
             look.background.stroke.width
@@ -957,9 +959,9 @@ impl<'a> TextEdit<'a> {
                 .clicked()
                 && let Some(r) = sel.clone()
             {
-                crate::common::clipboard::set(&text[r]);
+                set(&text[r]);
             }
-            let cb_has = !crate::common::clipboard::get().is_empty();
+            let cb_has = !get().is_empty();
             if MenuItem::new("Paste")
                 .shortcut(Shortcut::ctrl('V'))
                 .enabled(cb_has)
@@ -969,7 +971,7 @@ impl<'a> TextEdit<'a> {
                 paste_at_caret(
                     text,
                     ui.state_mut::<TextEditState>(id),
-                    &crate::common::clipboard::get(),
+                    &get(),
                     ctx.multiline,
                     self.max_chars,
                 );
@@ -1269,7 +1271,7 @@ fn dispatch_shortcut(
     }
     if COPY.matches(kp) {
         if let Some(r) = state.sel_range() {
-            crate::common::clipboard::set(&text[r]);
+            set(&text[r]);
         }
         return true;
     }
@@ -1278,13 +1280,7 @@ fn dispatch_shortcut(
         return true;
     }
     if PASTE.matches(kp) {
-        paste_at_caret(
-            text,
-            state,
-            &crate::common::clipboard::get(),
-            multiline,
-            max_chars,
-        );
+        paste_at_caret(text, state, &get(), multiline, max_chars);
         return true;
     }
     false

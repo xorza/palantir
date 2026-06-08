@@ -6,7 +6,7 @@ use crate::primitives::{
     transform::TranslateScale, urect::URect,
 };
 use crate::renderer::frontend::cmd_buffer::{
-    DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
+    BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
 };
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::image_registry::ImageId;
@@ -23,7 +23,7 @@ fn draw(buf: &mut RenderCmdBuffer, r: Rect) {
     buf.draw_rect(
         r,
         Corners::default(),
-        crate::renderer::frontend::cmd_buffer::BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+        BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
         Stroke::ZERO.into(),
     );
 }
@@ -386,9 +386,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
             b.draw_rect(
                 rect(0.0, 0.0, 50.0, 50.0),
                 Corners::all(8.0),
-                crate::renderer::frontend::cmd_buffer::BrushSource::Solid(
-                    Color::rgb(1.0, 1.0, 1.0).into(),
-                ),
+                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
                 Stroke::solid(Color::rgb(0.0, 0.0, 0.0), 1.5).into(),
             );
             b.pop_transform();

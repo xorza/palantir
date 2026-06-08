@@ -1,4 +1,5 @@
 use crate::InternedStr;
+use crate::forest::rollups::NodeHash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
@@ -115,7 +116,7 @@ pub(crate) struct ChromeRow {
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
     /// Canonical authoring hash. See struct docs.
-    pub(crate) hash: crate::forest::rollups::NodeHash,
+    pub(crate) hash: NodeHash,
 }
 
 /// Lowered shadow. The user-facing `Shadow` is 36 B (linear `Color` +
@@ -568,6 +569,7 @@ pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
 mod tests {
     use crate::forest::shapes::hash::compute_record_hash;
     use crate::forest::shapes::record::*;
+    use crate::primitives::rect::Rect;
 
     #[test]
     fn shape_mesh_hash_excludes_span_offsets() {
@@ -582,7 +584,7 @@ mod tests {
             tint,
             vertices: Span::new(0, 3),
             indices: Span::new(0, 3),
-            bbox: crate::primitives::rect::Rect::ZERO,
+            bbox: Rect::ZERO,
             content_hash: 0xdead_beef,
         };
         let b = ShapeRecord::Mesh {
@@ -590,7 +592,7 @@ mod tests {
             tint,
             vertices: Span::new(1234, 3),
             indices: Span::new(5678, 3),
-            bbox: crate::primitives::rect::Rect::ZERO,
+            bbox: Rect::ZERO,
             content_hash: 0xdead_beef,
         };
         assert_eq!(compute_record_hash(&a), compute_record_hash(&b));

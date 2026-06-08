@@ -12,6 +12,7 @@ use crate::Align;
 use crate::forest::Layer;
 use crate::forest::shapes::record::ShapeRecord;
 use crate::forest::tree::NodeId;
+use crate::input::keyboard::KeyboardEvent;
 use crate::primitives::transform::TranslateScale;
 use crate::widgets::text_edit::tests::*;
 
@@ -112,9 +113,7 @@ fn shift_arrow_right(ui: &mut Ui) {
         key: Key::ArrowRight,
         repeat: false,
     });
-    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
-        ui.input.frame_keyboard_events.last_mut()
-    {
+    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
         kp.mods = Modifiers {
             shift: true,
             ..Modifiers::NONE

@@ -82,7 +82,7 @@ impl Frontend {
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
-    use crate::renderer::frontend::*;
+    use crate::{renderer::frontend::*, ui::Ui};
 
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
@@ -94,7 +94,7 @@ pub mod test_support {
         /// shape/text/mesh payloads written during record; the encoder + composer
         /// read it on the same frame. Required for benches that want a
         /// full CPU-side frame including encode + compose.
-        pub fn for_test_sharing(ui: &crate::ui::Ui) -> Self {
+        pub fn for_test_sharing(ui: &Ui) -> Self {
             Self::new(ui.frame_arena.clone())
         }
 
@@ -104,11 +104,7 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(
-            &mut self,
-            ui: &crate::ui::Ui,
-            plan: crate::renderer::frontend::RenderPlan,
-        ) {
+        pub fn build_for_test(&mut self, ui: &Ui, plan: crate::renderer::frontend::RenderPlan) {
             let _ = self.build(ui, plan);
         }
     }

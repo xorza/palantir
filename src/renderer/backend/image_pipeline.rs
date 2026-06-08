@@ -13,6 +13,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
 };
+use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::image_registry::{ImageId, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -91,7 +92,7 @@ impl ImagePipeline {
             (
                 "palantir.image.pipeline.stencil_test",
                 "palantir.image.pl.stencil",
-                Some(crate::renderer::backend::stencil::stencil_test_state()),
+                Some(stencil_test_state()),
             )
         } else {
             ("palantir.image.pipeline", "palantir.image.pl", None)

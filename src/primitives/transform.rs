@@ -1,4 +1,4 @@
-use crate::primitives::{rect::Rect, size::Size};
+use crate::primitives::{approx::approx_zero, rect::Rect, size::Size};
 use glam::Vec2;
 
 /// A 2D transform with uniform scale and translation — same shape as
@@ -37,9 +37,9 @@ impl TranslateScale {
         if s == id {
             return true;
         }
-        crate::primitives::approx::approx_zero(self.translation.x)
-            && crate::primitives::approx::approx_zero(self.translation.y)
-            && crate::primitives::approx::approx_zero(self.scale - 1.0)
+        approx_zero(self.translation.x)
+            && approx_zero(self.translation.y)
+            && approx_zero(self.scale - 1.0)
     }
 
     pub const fn new(translation: Vec2, scale: f32) -> Self {

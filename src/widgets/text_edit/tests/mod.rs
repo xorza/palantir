@@ -1,6 +1,6 @@
 use crate::widgets::text_edit::{
-    TextEditState, next_grapheme_boundary, next_word_boundary, prev_grapheme_boundary,
-    prev_word_boundary, word_range_at,
+    TextEditState, dispatch_shortcut, next_grapheme_boundary, next_word_boundary,
+    prev_grapheme_boundary, prev_word_boundary, word_range_at,
 };
 
 /// Test wrapper: routes one keypress through `dispatch_shortcut`
@@ -9,7 +9,7 @@ use crate::widgets::text_edit::{
 /// motion sink is always `None`. Menu-intercept gating is exercised
 /// end-to-end via the integration tests instead.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
-    if crate::widgets::text_edit::dispatch_shortcut(text, state, kp, false, false, None) {
+    if dispatch_shortcut(text, state, kp, false, false, None) {
         return false;
     }
     let mut vert = None;

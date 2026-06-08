@@ -28,7 +28,7 @@ use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, CacheKey, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
 
-use crate::renderer::backend::text::atlas::GlyphAtlas;
+use crate::renderer::backend::text::atlas::{GlyphAtlas, GlyphSlot};
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// One text run resolved to a cosmic buffer + placement.
@@ -360,7 +360,7 @@ fn rasterize_and_insert(
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
     key: cosmic_text::CacheKey,
-) -> Option<crate::renderer::backend::text::atlas::GlyphSlot> {
+) -> Option<GlyphSlot> {
     let image = swash_cache.get_image_uncached(font_system, key)?;
     let content = match image.content {
         SwashContent::Color => ContentType::Color,
