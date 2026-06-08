@@ -218,11 +218,13 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
 
 #[cfg(test)]
 mod tests {
+    use crate::forest::tree::NodeId;
     use crate::layout::intrinsic::*;
 
     use crate::Ui;
     use crate::forest::Layer;
     use crate::forest::element::Configure;
+    use crate::layout::support::TextCtx;
     use crate::layout::types::sizing::Sizing;
     use crate::widgets::{panel::Panel, text::Text};
     use glam::UVec2;
@@ -237,7 +239,7 @@ mod tests {
     #[test]
     fn intrinsic_cache_populated_after_run() {
         let mut ui = Ui::for_test();
-        let mut root = crate::forest::tree::NodeId(0);
+        let mut root = NodeId(0);
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
@@ -273,7 +275,7 @@ mod tests {
     #[test]
     fn intrinsic_query_short_circuits_on_cache_hit() {
         let mut ui = Ui::for_test();
-        let mut root = crate::forest::tree::NodeId(0);
+        let mut root = NodeId(0);
         ui.run_at(UVec2::new(400, 300), |ui| {
             root = Panel::hstack()
                 .auto_id()
@@ -306,7 +308,7 @@ mod tests {
             child,
             Axis::X,
             LenReq::MinContent,
-            &crate::layout::support::TextCtx {
+            &TextCtx {
                 bytes: &arena.fmt_scratch,
                 shaper: &ui.text,
             },
@@ -326,7 +328,7 @@ mod tests {
     #[test]
     fn parent_intrinsic_query_populates_descendant_cache() {
         let mut ui = Ui::for_test();
-        let mut root = crate::forest::tree::NodeId(0);
+        let mut root = NodeId(0);
         // `run_at` populates `tree.rollups` (leaf intrinsic reads it).
         // Then clear *just the queried slot* on every node so we can
         // observe which nodes the parent query repopulates.
@@ -356,7 +358,7 @@ mod tests {
             root,
             Axis::X,
             LenReq::MaxContent,
-            &crate::layout::support::TextCtx {
+            &TextCtx {
                 bytes: &arena.fmt_scratch,
                 shaper: &ui.text,
             },

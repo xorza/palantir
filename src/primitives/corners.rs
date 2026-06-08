@@ -1,4 +1,5 @@
 use crate::primitives::half_simd::F16x4;
+use crate::primitives::lane_serde::LaneCodec;
 use crate::primitives::num::Num;
 use crate::primitives::size::Size;
 use glam::Vec2;
@@ -36,7 +37,7 @@ impl std::fmt::Debug for Corners {
 // - otherwise      → 4-element array `[tl, tr, br, bl]`
 // Deserialize also accepts the `{ tl, tr, br, bl }` table for
 // hand-written configs.
-impl crate::primitives::lane_serde::LaneCodec for Corners {
+impl LaneCodec for Corners {
     const FIELDS: &'static [&'static str] = &["tl", "tr", "br", "bl"];
 
     #[inline]

@@ -2,6 +2,8 @@
 //! the four pipeline modules so they can't drift on descriptor flags.
 //! The dynamic-buffer abstraction lives in `crate::renderer::backend::dynamic_buffer`.
 
+use crate::renderer::backend::IMMEDIATES_BYTES;
+
 /// Render-pipeline recipe. Threads the call-site fields each pipeline
 /// genuinely varies (label, shader, layout, vertex buffers, topology,
 /// color format, fragment entry, color writes, blend, optional
@@ -149,6 +151,6 @@ pub(crate) fn build_pipeline_layout(
     device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
         label: Some(label),
         bind_group_layouts,
-        immediate_size: crate::renderer::backend::IMMEDIATES_BYTES,
+        immediate_size: IMMEDIATES_BYTES,
     })
 }

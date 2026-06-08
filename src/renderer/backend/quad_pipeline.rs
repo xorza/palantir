@@ -10,6 +10,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
+use crate::renderer::backend::stencil::{STENCIL_FORMAT, stencil_test_state};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
@@ -128,7 +129,7 @@ impl QuadPipeline {
             (
                 "palantir.quad.pipeline.stencil_test",
                 "palantir.quad.pl.stencil",
-                Some(crate::renderer::backend::stencil::stencil_test_state()),
+                Some(stencil_test_state()),
             )
         } else {
             ("palantir.quad.pipeline", "palantir.quad.pl", None)
@@ -225,7 +226,7 @@ impl QuadPipeline {
                 color_writes: wgpu::ColorWrites::empty(),
                 blend: None,
                 depth_stencil: Some(wgpu::DepthStencilState {
-                    format: crate::renderer::backend::stencil::STENCIL_FORMAT,
+                    format: STENCIL_FORMAT,
                     depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::Always),
                     stencil: wgpu::StencilState {

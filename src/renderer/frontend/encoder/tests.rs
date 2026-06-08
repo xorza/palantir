@@ -8,6 +8,7 @@ use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
+use crate::primitives::color::ColorF16;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -15,6 +16,7 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
+use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
@@ -456,7 +458,7 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
 
 /// Walk an encoder command stream and return the effective screen-space rect
 /// for each `DrawRect`, keyed by its fill colour.
-fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(crate::primitives::color::ColorF16, Rect)> {
+fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
     let mut t = TranslateScale::IDENTITY;
     let mut t_stack: Vec<TranslateScale> = Vec::new();
     let mut clip: Option<Rect> = None;
@@ -710,7 +712,7 @@ fn encoder_text_alignment_respects_leaf_padding() {
     let mut ui = Ui::new(
         TextShaper::with_bundled_fonts(),
         FrameArena::default(),
-        crate::renderer::caches::RenderCaches::default(),
+        RenderCaches::default(),
         GpuPassStats::default(),
     );
     ui.run_at_acked(UVec2::new(400, 400), |ui| {

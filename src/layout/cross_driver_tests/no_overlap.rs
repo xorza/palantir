@@ -2,11 +2,11 @@
 //! back-to-back grids inside a vstack) ended up painting on top of
 //! each other. Pinned via arranged-rect order plus a render-pass
 //! check on emitted `DrawText` x positions.
+use crate::Ui;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 
 use crate::TextStyle;
-use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::layout::types::{sizing::Sizing, track::Track};
@@ -211,7 +211,7 @@ fn text_layouts_two_sections_back_to_back_no_overlap() {
 /// the emitted `DrawText` commands directly.
 #[test]
 fn property_grid_emits_distinct_drawtext_x_positions() {
-    let mut ui = crate::Ui::for_test_text();
+    let mut ui = Ui::for_test_text();
     ui.run_at(UVec2::new(1500, 900), |ui| {
         Panel::vstack()
             .auto_id()

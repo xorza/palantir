@@ -7,6 +7,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
+use crate::widgets::resolve_container_chrome;
 use glam::Vec2;
 use std::cell::Cell;
 
@@ -151,7 +152,7 @@ impl Popup {
                 .show(ui);
         });
         let mut element = self.element;
-        let chrome = crate::widgets::resolve_container_chrome(
+        let chrome = resolve_container_chrome(
             &mut element,
             self.chrome,
             ui.theme.panel_background.as_ref(),

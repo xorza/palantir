@@ -16,6 +16,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
+use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
@@ -71,7 +72,7 @@ impl MeshPipeline {
             (
                 "palantir.mesh.pipeline.stencil_test",
                 "palantir.mesh.pl.stencil",
-                Some(crate::renderer::backend::stencil::stencil_test_state()),
+                Some(stencil_test_state()),
             )
         } else {
             ("palantir.mesh.pipeline", "palantir.mesh.pl", None)

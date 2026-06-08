@@ -1,4 +1,4 @@
-use crate::widgets::text_edit::tests::*;
+use crate::{forest::tree::NodeId, widgets::text_edit::tests::*};
 
 #[test]
 fn each_text_widget_reads_its_own_theme_path_for_font_size() {
@@ -35,7 +35,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
             );
         });
     });
-    let read_fs = |node: crate::forest::tree::NodeId| -> f32 {
+    let read_fs = |node: NodeId| -> f32 {
         ui.forest
             .tree(Layer::Main)
             .shapes_of(node)
@@ -158,7 +158,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
             );
         });
     });
-    let read_lh = |node: crate::forest::tree::NodeId| -> f32 {
+    let read_lh = |node: NodeId| -> f32 {
         ui.forest
             .tree(Layer::Main)
             .shapes_of(node)
@@ -279,7 +279,7 @@ fn no_selection_paints_no_highlight_rect() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+    let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
@@ -312,7 +312,7 @@ fn shift_end_paints_selection_highlight() {
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
     let mut leaf = None;
-    let body = |ui: &mut Ui, leaf: &mut Option<crate::forest::tree::NodeId>, buf: &mut String| {
+    let body = |ui: &mut Ui, leaf: &mut Option<NodeId>, buf: &mut String| {
         Panel::hstack().auto_id().show(ui, |ui| {
             *leaf = Some(
                 TextEdit::new(buf)
@@ -443,7 +443,7 @@ fn line_height_override_changes_caret_rect_height() {
         let mut buf = String::new();
         let mut leaf = None;
         let body = |ui: &mut Ui,
-                    leaf: &mut Option<crate::forest::tree::NodeId>,
+                    leaf: &mut Option<NodeId>,
                     buf: &mut String,
                     style: &Option<TextEditTheme>| {
             Panel::hstack().auto_id().show(ui, |ui| {

@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
+use crate::forest::tree::NodeId;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
@@ -20,7 +21,7 @@ fn surface_apply_to_sets_clip_bit_and_chrome() {
     use crate::ClipMode;
 
     let mut ui = Ui::for_test();
-    let mut cases: Vec<(&str, crate::forest::tree::NodeId, ClipMode, bool)> = Vec::new();
+    let mut cases: Vec<(&str, NodeId, ClipMode, bool)> = Vec::new();
     ui.run_at(UVec2::new(200, 200), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             let n = Panel::zstack()

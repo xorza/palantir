@@ -2,7 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;
 use crate::ui::Ui;
-use crate::widgets::Response;
+use crate::widgets::{InnerResponse, Response, resolve_container_chrome};
 
 /// The container widget. Lays children out as `HStack` / `VStack` / `ZStack`
 /// (selected via constructor) and optionally paints chrome (via
@@ -67,16 +67,12 @@ impl Panel {
         self
     }
 
-    pub fn show<R>(
-        self,
-        ui: &mut Ui,
-        body: impl FnOnce(&mut Ui) -> R,
-    ) -> crate::widgets::InnerResponse<'_, R> {
+    pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         // Theme fallback: if the caller left chrome / clip unset,
         // inherit from `theme.panel_*`. Caller intent (any non-None
         // value) wins.
         let mut element = self.element;
-        let chrome = crate::widgets::resolve_container_chrome(
+        let chrome = resolve_container_chrome(
             &mut element,
             self.chrome,
             ui.theme.panel_background.as_ref(),
@@ -84,7 +80,7 @@ impl Panel {
         );
         let id = ui.make_persistent_id(element.salt);
         let inner = ui.node(id, element, chrome.as_ref(), body);
-        crate::widgets::InnerResponse {
+        InnerResponse {
             // Decorative: skip eager `response_for`.
             response: Response::lazy(id, ui),
             inner,

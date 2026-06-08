@@ -1,6 +1,5 @@
 //! End-to-end tests for `ContextMenu` + `MenuItem`.
 
-use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::input::keyboard::{Key, Modifiers};
@@ -10,6 +9,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::widgets::button::Button;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::panel::Panel;
+use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 400);
@@ -22,7 +22,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
     Panel::vstack()
         .id(WidgetId::from_hash("root"))
         .size((Sizing::FILL, Sizing::FILL))
-        .sense(crate::Sense::CLICK)
+        .sense(Sense::CLICK)
         .show(ui, |ui| {
             let trigger = Button::new()
                 .id(WidgetId::from_hash("trigger"))

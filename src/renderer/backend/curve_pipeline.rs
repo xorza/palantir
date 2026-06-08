@@ -17,6 +17,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
+use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::CurveInstance;
 use crate::shape::LineCap;
@@ -91,7 +92,7 @@ impl CurvePipeline {
             (
                 "palantir.curve.pipeline.stencil_test",
                 "palantir.curve.pl.stencil",
-                Some(crate::renderer::backend::stencil::stencil_test_state()),
+                Some(stencil_test_state()),
             )
         } else {
             ("palantir.curve.pipeline", "palantir.curve.pl", None)

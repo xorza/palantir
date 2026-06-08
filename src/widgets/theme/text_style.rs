@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::text::FontFamily;
+use crate::text::{FontFamily, LINE_HEIGHT_MULT};
 use crate::widgets::theme::palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
@@ -50,7 +50,7 @@ impl Default for TextStyle {
         Self {
             font_size_px: 16.0,
             color: palette::TEXT,
-            line_height_mult: crate::text::LINE_HEIGHT_MULT,
+            line_height_mult: LINE_HEIGHT_MULT,
             family: FontFamily::Sans,
         }
     }

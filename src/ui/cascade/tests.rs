@@ -1,4 +1,3 @@
-use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::layout::types::clip_mode::ClipMode;
@@ -12,6 +11,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::ui::frame_report::RenderPlan;
 use crate::widgets::panel::Panel;
+use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
 
 /// A direct shape recorded on a panel with `.transform(...)` must
@@ -247,7 +247,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // == logical px and the rect compares directly. The transparent
     // viewport / hstack / canvas chrome emit no quads — the child
     // RoundedRect is the only one.
-    let mut frontend = crate::renderer::frontend::Frontend::for_test();
+    let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {

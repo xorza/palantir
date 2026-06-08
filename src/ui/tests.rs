@@ -8,10 +8,12 @@ use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};
+use crate::renderer::frontend::Frontend;
 use crate::shape::TextWrap;
 use crate::ui::FrameStamp;
 use crate::ui::damage::Damage;
 use crate::ui::frame_report::RenderPlan;
+use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
@@ -65,7 +67,7 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
-    let mut frontend = crate::renderer::frontend::Frontend::for_test();
+    let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -136,7 +138,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // Share Ui's frame arena so any mesh/polyline bytes pushed at
     // record time are visible at compose / upload — the Host wiring
     // for real apps.
-    let mut frontend = crate::renderer::frontend::Frontend::for_test();
+    let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -221,7 +223,7 @@ fn cascade_visible_to_relayout_pass() {
 
     let mut ui = Ui::for_test();
     ui.run_at(SURFACE, |ui| {
-        let probe_resp: std::cell::RefCell<Option<crate::widgets::ResponseSnapshot>> =
+        let probe_resp: std::cell::RefCell<Option<ResponseSnapshot>> =
             std::cell::RefCell::new(None);
         Panel::vstack().auto_id().show(ui, |ui| {
             *probe_resp.borrow_mut() = Some(
@@ -270,7 +272,7 @@ fn empty_ui_drives_a_frame_safely() {
     // Empty UI on the first frame: damage is `None` (skip). Force `Full`
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes recorded → a private frontend arena works.
-    let mut frontend = crate::renderer::frontend::Frontend::for_test();
+    let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
         RenderPlan::Full {
@@ -1093,7 +1095,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // tight rect — not Full (defeats the point) and not None (the
     // blink phase actually flipped). Pin both invariants.
     match r1.plan {
-        Some(crate::ui::frame_report::RenderPlan::Partial { region, .. }) => {
+        Some(RenderPlan::Partial { region, .. }) => {
             let rects: Vec<_> = region.iter_rects().collect();
             assert_eq!(rects.len(), 1, "expected single damage rect, got {rects:?}");
             let r = rects[0];

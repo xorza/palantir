@@ -9,14 +9,15 @@
 //! - `Dismiss` surfaces the outside-click via `PopupResponse.dismissed`
 //!   while `Block` swallows it silently.
 
-use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::panel::Panel;
 use crate::widgets::popup::{ClickOutside, Popup};
+use crate::{Sense, Ui};
 use glam::{UVec2, Vec2};
 
 const SURFACE: UVec2 = UVec2::new(400, 400);
@@ -31,7 +32,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
     Panel::vstack()
         .id(WidgetId::from_hash("main-bg"))
         .size((Sizing::FILL, Sizing::FILL))
-        .sense(crate::Sense::CLICK)
+        .sense(Sense::CLICK)
         .show(ui, |ui| {
             let r = Popup::anchored_to(ANCHOR)
                 .id(WidgetId::from_hash("test-popup"))
@@ -48,7 +49,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
 }
 
 fn main_panel_clicked(ui: &Ui) -> bool {
-    let main_id = crate::primitives::widget_id::WidgetId::from_hash("main-bg");
+    let main_id = WidgetId::from_hash("main-bg");
     ui.response_for(main_id).clicked
 }
 
@@ -304,9 +305,7 @@ fn popup_with_scroll_settles_in_one_frame() {
     let first = body_rect(&ui);
     // Subsequent input frames must hit the same rect — no drift.
     for _ in 0..3 {
-        ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(
-            50.0, 50.0,
-        )));
+        ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
         ui.run_at_acked(SURF, scene);
         assert_eq!(
             body_rect(&ui),
@@ -353,9 +352,7 @@ fn popup_placement_is_stable_across_frames() {
     ui.run_at_acked(SURF, scene);
     let first = body_rect_of(&ui);
     // Pretend an input arrived (cursor move over the popup).
-    ui.on_input(crate::input::InputEvent::PointerMoved(Vec2::new(
-        50.0, 100.0,
-    )));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.0)));
     ui.run_at_acked(SURF, scene);
     let second = body_rect_of(&ui);
     assert_eq!(
@@ -378,7 +375,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         Panel::vstack()
             .id(bg_id)
             .size((Sizing::FILL, Sizing::FILL))
-            .sense(crate::Sense::DRAG | crate::Sense::SCROLL | crate::Sense::PINCH)
+            .sense(Sense::DRAG | Sense::SCROLL | Sense::PINCH)
             .show(ui, |ui| {
                 Popup::anchored_to(ANCHOR)
                     .id(WidgetId::from_hash("test-popup"))
@@ -401,13 +398,9 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 25.0)));
     ui.on_input(InputEvent::ScrollLines(Vec2::new(0.0, 3.0)));
     ui.on_input(InputEvent::Zoom(1.4));
-    ui.on_input(InputEvent::PointerPressed(
-        crate::input::pointer::PointerButton::Middle,
-    ));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(outside + Vec2::new(40.0, 0.0)));
-    ui.on_input(InputEvent::PointerReleased(
-        crate::input::pointer::PointerButton::Middle,
-    ));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Middle));
 
     ui.run_at(SURFACE, scene);
     let bg = ui.response_for(bg_id);

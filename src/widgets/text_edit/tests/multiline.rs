@@ -1,4 +1,8 @@
-use crate::widgets::text_edit::tests::*;
+use crate::{
+    common::clipboard::{set, test_support::test_serialize_guard},
+    input::keyboard::KeyboardEvent,
+    widgets::text_edit::tests::*,
+};
 
 #[test]
 fn multiline_enter_inserts_newline() {
@@ -46,8 +50,8 @@ fn single_line_enter_does_not_insert_newline() {
 /// sanitize-on-paste behaviour is gated to single-line only).
 #[test]
 fn multiline_paste_keeps_newlines() {
-    let _cb_guard = crate::common::clipboard::test_support::test_serialize_guard();
-    crate::common::clipboard::set("line1\nline2\nline3");
+    let _cb_guard = test_serialize_guard();
+    set("line1\nline2\nline3");
 
     let mut ui = Ui::for_test_at_text(UVec2::new(300, 200));
     let mut buf = String::new();
@@ -62,9 +66,7 @@ fn multiline_paste_keeps_newlines() {
     // InputState reads modifiers from a separate `ModifiersChanged`
     // queue, but for this test we drive the synthesizer directly.
     // `Modifiers::ctrl` is the platform-normalized command bit.
-    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
-        ui.input.frame_keyboard_events.last_mut()
-    {
+    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
         kp.mods = Modifiers {
             ctrl: true,
             ..Modifiers::NONE
@@ -95,9 +97,7 @@ fn multiline_selection_crosses_newline() {
         key: Key::ArrowDown,
         repeat: false,
     });
-    if let Some(crate::input::keyboard::KeyboardEvent::Down(kp)) =
-        ui.input.frame_keyboard_events.last_mut()
-    {
+    if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
         kp.mods = Modifiers {
             shift: true,
             ..Modifiers::NONE

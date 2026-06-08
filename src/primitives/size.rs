@@ -1,4 +1,4 @@
-use crate::primitives::num::Num;
+use crate::primitives::{approx::noop_f32, num::Num};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -84,7 +84,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        crate::primitives::approx::noop_f32(self.w) || crate::primitives::approx::noop_f32(self.h)
+        noop_f32(self.w) || noop_f32(self.h)
     }
 
     pub const fn min(self, other: Self) -> Self {

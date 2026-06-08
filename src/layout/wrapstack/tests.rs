@@ -452,7 +452,7 @@ fn wrap_hstack_buttons_never_overflow_parent_at_narrow_widths() {
     }
 
     for surface_w in [800u32, 600, 500, 400, 350, 300, 250, 200, 150, 120] {
-        let mut ui = crate::Ui::for_test();
+        let mut ui = Ui::for_test();
         let mut wrap_kids = None;
         ui.run_at(UVec2::new(surface_w, 600), |ui| {
             wrap_kids = Some(build(ui));
