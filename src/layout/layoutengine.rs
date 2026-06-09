@@ -89,6 +89,12 @@ pub(crate) struct LayoutScratch {
     /// builds carry no counter in the hot `intrinsic` path.
     #[cfg(test)]
     pub(crate) intrinsic_computes: u32,
+    /// Subtree roots restored from the measure cache this `run` —
+    /// test observability so cache-hit tests can assert the warm
+    /// frame actually hit (and where) instead of passing vacuously
+    /// when hash stability regresses and every lookup misses.
+    #[cfg(test)]
+    pub(crate) cache_hits: Vec<WidgetId>,
 }
 
 impl LayoutScratch {
@@ -369,6 +375,7 @@ impl LayoutEngine {
         #[cfg(test)]
         {
             self.scratch.intrinsic_computes = 0;
+            self.scratch.cache_hits.clear();
         }
         let surface_end = surface.min + glam::Vec2::new(surface.size.w, surface.size.h);
         for layer in Layer::PAINT_ORDER {
@@ -471,6 +478,8 @@ impl LayoutEngine {
         let cache_hash = tree.rollups.subtree[node.idx()];
         let cache_avail = quantize_available(available);
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
+            #[cfg(test)]
+            self.scratch.cache_hits.push(cache_wid);
             let curr_start = node.idx();
             let curr_end = curr_start + hit.arenas.desired.len();
             // Subtree hash includes child count + per-child rollups,
