@@ -62,7 +62,7 @@ impl ImagePipeline {
         let pipeline = Self::build_variant(device, &shader, &image_bgl, format, false);
 
         let instance_buffer =
-            DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16, 16);
+            DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16);
 
         Self {
             stencil: StencilVariant::new(pipeline),

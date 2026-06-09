@@ -41,10 +41,10 @@ impl MeshPipeline {
         let pipeline = Self::build_variant(device, &shader, format, false);
 
         let vertex_buffer =
-            DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256, 64);
-        let index_buffer = DynamicBuffer::index::<u16>(device, "palantir.mesh.indices", 1024, 256);
+            DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256);
+        let index_buffer = DynamicBuffer::index::<u16>(device, "palantir.mesh.indices", 1024);
         let instance_buffer =
-            DynamicBuffer::vertex::<MeshInstance>(device, "palantir.mesh.instances", 64, 16);
+            DynamicBuffer::vertex::<MeshInstance>(device, "palantir.mesh.instances", 64);
 
         Self {
             stencil: StencilVariant::new(pipeline),

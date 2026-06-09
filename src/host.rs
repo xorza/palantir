@@ -333,55 +333,35 @@ pub enum FramePresent {
     Idle,
 }
 
-/// Test/bench surface — exposes the `pub(crate)` CPU/GPU split as
-/// public methods so external benches and the visual harness can
-/// drive each half independently without going through the
-/// swapchain.
-#[cfg(any(test, feature = "internals"))]
-impl Host {
-    /// CPU half of [`Self::frame`] — runs `Ui::frame` without acquiring a swapchain.
-    pub fn cpu_frame_for_test(
-        &mut self,
-        display: Display,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
-        self.cpu_frame(display, record)
-    }
-
-    /// GPU half of [`Self::frame`] against a caller-supplied texture.
-    pub fn render_to_texture_for_test(&mut self, target: &wgpu::Texture, report: &FrameReport) {
-        self.render_to_texture(target, report);
-    }
-
-    /// Offscreen one-shot: run CPU + GPU against a caller-supplied
-    /// texture (no swapchain acquire). `Display`'s physical size is
-    /// derived from `target.size()`. For the visual harness and
-    /// offscreen benches.
-    pub fn frame_offscreen(
-        &mut self,
-        target: &wgpu::Texture,
-        scale_factor: f32,
-        record: impl FnMut(&mut Ui),
-    ) {
-        let size = target.size();
-        let display =
-            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
-        let report = self.cpu_frame(display, record);
-        self.render_to_texture(target, &report);
-    }
-}
-
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
-    //! Test/bench reach-in surface for `Host`. Production code uses
-    //! the `frame_stats` debug overlay on `Ui` to surface GPU timings;
-    //! this module exposes the underlying `GpuPassStats` handle so
-    //! benches can sample it directly without going through the
+    //! Test/bench reach-in surface for `Host` — the single gated
+    //! entry point for offscreen frames and GPU instrumentation.
+    //! Production code uses the `frame_stats` debug overlay on `Ui`
+    //! to surface GPU timings; benches sample the underlying
+    //! `GpuPassStats` handle directly without going through the
     //! overlay layout pass.
 
     use crate::host::*;
 
     impl Host {
+        /// Offscreen one-shot: run CPU + GPU against a caller-supplied
+        /// texture (no swapchain acquire). `Display`'s physical size is
+        /// derived from `target.size()`. For the visual harness and
+        /// offscreen benches.
+        pub fn frame_offscreen(
+            &mut self,
+            target: &wgpu::Texture,
+            scale_factor: f32,
+            record: impl FnMut(&mut Ui),
+        ) {
+            let size = target.size();
+            let display =
+                Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+            let report = self.cpu_frame(display, record);
+            self.render_to_texture(target, &report);
+        }
+
         /// Cloneable handle to the most-recent GPU instrumentation
         /// sample — same handle the `Ui` debug overlay reads from.
         /// Returns a live handle even when instrumentation is off:

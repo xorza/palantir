@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Capture a Metal System Trace of an example via xctrace, plus enable
-# the Metal HUD overlay for live frame/GPU-time numbers.
+# Capture a Metal System Trace of the showcase binary (or an example)
+# via xctrace, plus enable the Metal HUD overlay for live frame/GPU-time
+# numbers.
 #
 # Outputs:
-#   tmp/metal-<example>.trace   - Instruments trace bundle (open in Xcode/Instruments)
+#   tmp/metal-<target>.trace   - Instruments trace bundle (open in Xcode/Instruments)
 #
 # Usage:
-#   scripts/profile-metal.sh                     # example: showcase, 10s
-#   scripts/profile-metal.sh helloworld          # different example
+#   scripts/profile-metal.sh                     # showcase binary, 10s
+#   scripts/profile-metal.sh counter             # an example instead
 #   DURATION=5 scripts/profile-metal.sh          # shorter capture
 #   HUD=0 scripts/profile-metal.sh               # skip the live HUD overlay
 #
@@ -18,15 +19,15 @@
 #
 # Requires: xcrun (Xcode Command Line Tools).
 # View the trace with:
-#   open tmp/metal-<example>.trace          (Instruments.app)
+#   open tmp/metal-<target>.trace          (Instruments.app)
 # or
-#   xcrun xctrace export --input tmp/metal-<example>.trace --xpath '/trace-toc/run/data/table[@schema="metal-pass"]'  for headless dump
+#   xcrun xctrace export --input tmp/metal-<target>.trace --xpath '/trace-toc/run/data/table[@schema="metal-pass"]'  for headless dump
 
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-EXAMPLE="${1:-showcase}"
+TARGET="${1:-showcase}"
 DURATION="${DURATION:-10}"
 HUD="${HUD:-1}"
 FEATURES_ARG="${FEATURES:-}"
@@ -37,17 +38,25 @@ if ! command -v xcrun >/dev/null 2>&1; then
 fi
 
 mkdir -p tmp
-TRACE="tmp/metal-${EXAMPLE}.trace"
+TRACE="tmp/metal-${TARGET}.trace"
 rm -rf "$TRACE"
 
-echo "==> Building example '$EXAMPLE' (release)"
-BUILD_ARGS=(build --release --example "$EXAMPLE")
+# The showcase lives in src/main.rs (the package binary); everything
+# else resolves as a cargo example.
+if [ "$TARGET" = "showcase" ]; then
+    echo "==> Building showcase binary (release)"
+    BUILD_ARGS=(build --release --bin palantir)
+    BIN="target/release/palantir"
+else
+    echo "==> Building example '$TARGET' (release)"
+    BUILD_ARGS=(build --release --example "$TARGET")
+    BIN="target/release/examples/${TARGET}"
+fi
 [ -n "$FEATURES_ARG" ] && BUILD_ARGS+=(--features "$FEATURES_ARG")
 cargo "${BUILD_ARGS[@]}" 2>&1 | tail -3
 
-BIN="target/release/examples/${EXAMPLE}"
 if [ ! -x "$BIN" ]; then
-    echo "error: example binary not found at $BIN" >&2
+    echo "error: target binary not found at $BIN" >&2
     exit 1
 fi
 echo "    binary: $BIN"
@@ -67,10 +76,10 @@ done
 ENV_ARGS=()
 [ "$HUD" = "1" ] && ENV_ARGS+=(--env "MTL_HUD_ENABLED=1")
 
-echo "==> xctrace record -> $TRACE  (Ctrl+C the example after ${DURATION}s if it doesn't self-exit)"
-# `--time-limit` stops xctrace; the example keeps running until it
+echo "==> xctrace record -> $TRACE  (Ctrl+C the target after ${DURATION}s if it doesn't self-exit)"
+# `--time-limit` stops xctrace; the target keeps running until it
 # also self-terminates or you Ctrl+C the window. For a window-based
-# example (showcase, helloworld) close the window to exit cleanly.
+# target (showcase, counter) close the window to exit cleanly.
 xcrun xctrace record \
     --template 'Metal System Trace' \
     --output "$TRACE" \

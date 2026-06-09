@@ -86,8 +86,7 @@ impl QuadPipeline {
 
         let pipeline = Self::build_variant(device, &shader, gradient_bgl, format, false);
 
-        let instance_buffer =
-            DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256, 8);
+        let instance_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256);
 
         let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir.quad.clear"),
@@ -385,7 +384,7 @@ impl QuadPipeline {
         // reuse across frames (capacity grows monotonically through
         // `DynamicBuffer::upload`).
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::vertex::<Quad>(ctx.device, "palantir.quad.masks", 8, 8)
+            DynamicBuffer::vertex::<Quad>(ctx.device, "palantir.quad.masks", 8)
         });
         buf.upload(ctx, bytemuck::cast_slice(&self.masks), self.masks.len());
     }

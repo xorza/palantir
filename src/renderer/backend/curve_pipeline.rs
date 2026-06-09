@@ -65,7 +65,7 @@ impl CurvePipeline {
         let pipeline = Self::build_variant(device, &shader, gradient_bgl, format, false);
 
         let instance_buffer =
-            DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64, 64);
+            DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64);
 
         Self {
             stencil: StencilVariant::new(pipeline),

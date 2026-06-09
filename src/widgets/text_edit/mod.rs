@@ -141,6 +141,7 @@ fn record_edit(text: &str, state: &mut TextEditState, kind: EditKind) {
 
 fn apply_history(text: &mut String, state: &mut TextEditState, snap: EditSnapshot) {
     assert!(snap.caret <= snap.text.len());
+    assert!(snap.selection.is_none_or(|s| s <= snap.text.len()));
     *text = snap.text;
     state.caret = snap.caret;
     state.selection = snap.selection.filter(|&a| a != state.caret);

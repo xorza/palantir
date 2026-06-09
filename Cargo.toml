@@ -29,7 +29,6 @@ padding-struct = "0.2"
 soa-rs = "1.0"
 strum = { version = "0.28", features = ["derive"] }
 serde = { version = "1.0", features = ["derive"] }
-toml = "1.1"
 tinyvec = { version = "1.11", features = ["serde"] }
 smol_str = "0.3"
 unicode-segmentation = "1.13"
@@ -46,6 +45,7 @@ criterion = "0.8"
 dhat = "0.3"
 gethostname = "1.1"
 image = { version = "0.25", default-features = false, features = ["png"] }
+toml = "1.1"
 
 [[test]]
 name = "visual"

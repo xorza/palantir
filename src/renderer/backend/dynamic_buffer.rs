@@ -17,9 +17,6 @@ pub(crate) struct DynamicBuffer {
     item_size: usize,
     usage: wgpu::BufferUsages,
     label: &'static str,
-    /// Floor for the power-of-two regrow — keeps tiny first-frame
-    /// uploads from creating a 1-slot buffer that immediately doubles.
-    min_capacity: usize,
 }
 
 impl DynamicBuffer {
@@ -31,14 +28,12 @@ impl DynamicBuffer {
         device: &wgpu::Device,
         label: &'static str,
         initial_capacity: usize,
-        min_capacity: usize,
     ) -> Self {
         Self::new::<T>(
             device,
             label,
             wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             initial_capacity,
-            min_capacity,
         )
     }
 
@@ -48,14 +43,12 @@ impl DynamicBuffer {
         device: &wgpu::Device,
         label: &'static str,
         initial_capacity: usize,
-        min_capacity: usize,
     ) -> Self {
         Self::new::<T>(
             device,
             label,
             wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST,
             initial_capacity,
-            min_capacity,
         )
     }
 
@@ -64,23 +57,20 @@ impl DynamicBuffer {
         label: &'static str,
         usage: wgpu::BufferUsages,
         initial_capacity: usize,
-        min_capacity: usize,
     ) -> Self {
         let item_size = std::mem::size_of::<T>();
-        let capacity = initial_capacity.max(min_capacity);
         let buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(label),
-            size: (capacity * item_size) as u64,
+            size: (initial_capacity * item_size) as u64,
             usage,
             mapped_at_creation: false,
         });
         Self {
             buffer,
-            capacity,
+            capacity: initial_capacity,
             item_size,
             usage,
             label,
-            min_capacity,
         }
     }
 
@@ -127,7 +117,7 @@ impl DynamicBuffer {
     }
 
     fn realloc(&mut self, device: &wgpu::Device, needed_len: usize, mapped_at_creation: bool) {
-        self.capacity = needed_len.next_power_of_two().max(self.min_capacity);
+        self.capacity = needed_len.next_power_of_two();
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(self.label),
             size: (self.capacity * self.item_size) as u64,

@@ -76,7 +76,7 @@ use half::slice::HalfFloatSliceExt;
 
 /// Decode four packed f16 bit-patterns to f32 lanes.
 #[inline]
-pub fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
+pub(crate) fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
         // SAFETY: the `target_feature = "f16c"` cfg above is the
@@ -97,7 +97,7 @@ pub fn f16x4_to_f32x4(bits: [u16; 4]) -> [f32; 4] {
 
 /// Encode four f32 lanes to packed f16 bit-patterns (round-to-nearest-even).
 #[inline]
-pub fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
+pub(crate) fn f16x4_from_f32x4(src: [f32; 4]) -> [u16; 4] {
     #[cfg(all(target_arch = "x86_64", target_feature = "f16c"))]
     {
         // SAFETY: see `f16x4_to_f32x4`.
@@ -143,14 +143,6 @@ unsafe fn f16x4_from_f32x4_f16c(src: [f32; 4]) -> [u16; 4] {
         _mm_storel_epi64(out.as_mut_ptr() as *mut _, h);
         out
     }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    //! Bench reach-in: exposes the same pack/unpack entry points under
-    //! the canonical `test_support` gate so external benches can call
-    //! them without making the module `pub`.
-    pub use crate::primitives::half_simd::{f16x4_from_f32x4, f16x4_to_f32x4};
 }
 
 #[cfg(test)]
