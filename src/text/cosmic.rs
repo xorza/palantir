@@ -27,12 +27,12 @@ use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// Bundled fonts shipped with the crate. Inter for proportional / UI body,
-/// JetBrains Mono for monospace. Both OFL 1.1.
+/// Bundled fonts shipped with the crate. Segoe UI is the default UI /
+/// proportional body font, Inter an alternate proportional, JetBrains
+/// Mono the monospace. Inter and JetBrains Mono are OFL 1.1.
+const SEGOE_UI: &[u8] = include_bytes!("../../assets/fonts/Segoe UI.ttf");
 const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
-const INTER_BOLD: &[u8] = include_bytes!("../../assets/fonts/Inter-Bold.ttf");
 const JBMONO_REGULAR: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
-const JBMONO_BOLD: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Bold.ttf");
 
 const MAX_W_NONE: u32 = u32::MAX;
 
@@ -107,6 +107,7 @@ fn attrs_for(family: FontFamily) -> Attrs<'static> {
     match family {
         FontFamily::Sans => base.family(Family::Name("Inter")),
         FontFamily::Mono => base.family(Family::Name("JetBrains Mono")),
+        FontFamily::SegoeUi => base.family(Family::Name("Segoe UI")),
     }
 }
 
@@ -174,12 +175,15 @@ pub struct CosmicMeasure {
 }
 
 impl CosmicMeasure {
-    /// Use only the bundled fonts (Inter + JetBrains Mono, regular + bold).
-    /// No system font scan: fast, deterministic, and gives the same metrics
-    /// on every machine. Per-call font family selection comes from
+    /// Register the three bundled families — Segoe UI (the default),
+    /// Inter, and JetBrains Mono — so they're always resolvable by name.
+    /// cosmic-text's `new_with_fonts` *also* loads the platform's system
+    /// fonts, which act as glyph fallback for scripts the bundled faces
+    /// don't cover — so text metrics are *not* guaranteed identical
+    /// across machines. Per-call family selection comes from
     /// [`FontFamily`] on each [`Self::measure`] invocation.
     pub fn with_bundled_fonts() -> Self {
-        let sources = [INTER_REGULAR, INTER_BOLD, JBMONO_REGULAR, JBMONO_BOLD]
+        let sources = [SEGOE_UI, INTER_REGULAR, JBMONO_REGULAR]
             .into_iter()
             .map(|b| fontdb::Source::Binary(Arc::new(b)));
         let font_system = FontSystem::new_with_fonts(sources);
@@ -573,7 +577,7 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
 
 #[cfg(test)]
 mod test_support {
-    use crate::text::cosmic::CosmicMeasure;
+    use super::*;
 
     impl CosmicMeasure {
         /// Number of shaped buffers currently cached. Reach-in for the
@@ -586,6 +590,23 @@ mod test_support {
         /// ellipsis-cache-bound test.
         pub(crate) fn ellipsis_cache_len(&self) -> usize {
             self.ellipsis_cache.len()
+        }
+
+        /// Family name of the font cosmic-text actually shaped `text`
+        /// with for `family`. Proves [`attrs_for`] maps each
+        /// [`FontFamily`] to the intended physical face — a measured-
+        /// width comparison can't, since two different faces can share
+        /// an advance (Inter and Segoe UI both shape "MMMM" to the same
+        /// rounded width).
+        pub(crate) fn resolved_family(&mut self, text: &str, family: FontFamily) -> Option<String> {
+            let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
+            buf.set_text(text, &attrs_for(family), Shaping::Advanced, None);
+            buf.shape_until_scroll(&mut self.font_system, false);
+            let id = buf.layout_runs().next()?.glyphs.first()?.font_id;
+            self.font_system
+                .db()
+                .face(id)
+                .map(|f| f.families[0].0.clone())
         }
     }
 }
