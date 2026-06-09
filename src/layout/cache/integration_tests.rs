@@ -44,6 +44,13 @@ fn assert_warm_rects_match_cold(
         .map(|n| ui.layout[Layer::Main].rect[n.idx()])
         .collect();
 
+    // Guard against the test going inert: if hash stability ever
+    // regresses and the warm frame misses everywhere, cold == warm
+    // would pass vacuously while pinning nothing.
+    assert!(
+        !ui.layout_engine.scratch.cache_hits.is_empty(),
+        "warm frame produced no measure-cache hits — {msg} pins nothing",
+    );
     assert_eq!(cold, warm, "{msg}");
 }
 
@@ -202,6 +209,20 @@ fn cache_hit_preserves_grid_cell_rects() {
             UVec2::new(800, 600),
             &format!("case: {label}"),
             *record,
+        );
+        // The hit must land at the synthetic viewport root (an
+        // ancestor of every grid) — only then is the grid's measure
+        // skipped entirely and the hug-restore path actually
+        // exercised. A descendant-level hit would re-run grid measure
+        // and pin nothing.
+        assert!(
+            ui.layout_engine
+                .scratch
+                .cache_hits
+                .contains(&WidgetId::VIEWPORT),
+            "case {label}: warm cache hit didn't land at the viewport root — grid hug \
+             restore not exercised. hits={:?}",
+            ui.layout_engine.scratch.cache_hits,
         );
     }
 }

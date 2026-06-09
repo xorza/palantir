@@ -776,6 +776,10 @@ impl DamageEngine {
             input.prev_time,
             input.now,
         );
+        // Provably a no-op today (nothing on this path orphans arena
+        // entries) — runs anyway so the fast path stays self-healing
+        // if predamage ever starts mutating snapshots.
+        self.arena.maybe_compact(input.forest, &mut self.prev);
         self.finish_region(input.surface)
     }
 }
