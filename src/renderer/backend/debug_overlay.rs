@@ -68,8 +68,8 @@ impl DebugOverlay {
             mapped_at_creation: false,
         });
         // `upload_overlays` grows it on demand when the damage region
-        // carries more rects (8-quad floor avoids tiny early regrows).
-        let overlay_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.overlay", 8, 8);
+        // carries more rects (8-quad start avoids tiny early regrows).
+        let overlay_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.overlay", 8);
         Self {
             dim_buffer,
             overlay_buffer,
