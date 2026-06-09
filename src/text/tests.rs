@@ -139,19 +139,62 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
 
 #[test]
 fn cosmic_text_family_distinguishes_key_and_metrics() {
-    // Pin: Sans (Inter) and Mono (JetBrains Mono) at the same text
-    // and size produce (a) different cache keys and (b) different
-    // measured widths. Without this, a regression in `attrs_for`
-    // could silently fall both families through to Inter and every
-    // other test would still pass.
+    // Pin two independent properties of the three bundled families
+    // (SegoeUi — the default — / Sans / Mono):
+    //
+    // 1. Each `FontFamily` resolves, at shape time, to its intended
+    //    physical face. Asserted on the resolved family name, not the
+    //    measured width: Inter and Segoe UI happen to shape "MMMM" to
+    //    the same rounded advance, so a width comparison would falsely
+    //    flag Segoe UI as falling back to Inter even though `font_id`
+    //    proves it didn't.
+    // 2. Family enters the cache key (distinct `family_q`), so two runs
+    //    differing only by family never collide on one shaped buffer.
     use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
+
+    assert_eq!(
+        c.resolved_family("M", FontFamily::SegoeUi).as_deref(),
+        Some("Segoe UI"),
+        "SegoeUi must shape with the bundled Segoe UI face",
+    );
+    assert_eq!(
+        c.resolved_family("M", FontFamily::Sans).as_deref(),
+        Some("Inter"),
+        "Sans must shape with the bundled Inter face",
+    );
+    assert_eq!(
+        c.resolved_family("M", FontFamily::Mono).as_deref(),
+        Some("JetBrains Mono"),
+        "Mono must shape with the bundled JetBrains Mono face",
+    );
+
+    let segoe = c.measure(
+        "MMMM",
+        16.0,
+        lh(16.0),
+        None,
+        FontFamily::SegoeUi,
+        HAlign::Auto,
+    );
     let sans = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
     let mono = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Mono, HAlign::Auto);
+
+    // Discriminants 2 / 0 / 1 — all distinct, so the shaped-buffer
+    // cache slots for the three families never collide.
+    assert_eq!(segoe.key.family_q, FontFamily::SegoeUi as u8);
+    assert_eq!(sans.key.family_q, FontFamily::Sans as u8);
+    assert_eq!(mono.key.family_q, FontFamily::Mono as u8);
+    assert_ne!(segoe.key, sans.key, "family must enter the cache key");
+    assert_ne!(segoe.key, mono.key, "family must enter the cache key");
     assert_ne!(sans.key, mono.key, "family must enter the cache key");
+
+    // Cross-check the proportional families against the monospace one:
+    // their advances genuinely differ (Segoe/Inter ≈ 58, JBMono ≈ 39).
+    assert!(segoe.size.w > 0.0 && segoe.size.w.is_finite());
     assert_ne!(
-        sans.key.family_q, mono.key.family_q,
-        "family_q is the discriminating field",
+        segoe.size.w, mono.size.w,
+        "Segoe UI (proportional) and JBMono (monospace) differ for 'MMMM'",
     );
     assert_ne!(
         sans.size.w, mono.size.w,

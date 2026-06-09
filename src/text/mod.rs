@@ -59,11 +59,11 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 
 /// Font family picker on [`crate::TextStyle`] and
-/// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the
-/// default); `Mono` resolves to bundled JetBrains Mono. Both fonts
-/// ship inside [`CosmicMeasure::with_bundled_fonts`]; the mono-
-/// fallback shaper (when no `CosmicMeasure` is installed) ignores
-/// family entirely.
+/// [`crate::Shape::Text`]. `SegoeUi` resolves to bundled Segoe UI (the
+/// default); `Sans` resolves to bundled Inter; `Mono` resolves to
+/// bundled JetBrains Mono. All three ship inside
+/// [`CosmicMeasure::with_bundled_fonts`]; the mono-fallback shaper
+/// (when no `CosmicMeasure` is installed) ignores family entirely.
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
 /// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
@@ -75,9 +75,10 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum FontFamily {
-    #[default]
     Sans = 0,
     Mono = 1,
+    #[default]
+    SegoeUi = 2,
 }
 
 // `TextCacheKey::is_invalid` and `TextCacheKey::INVALID` both fold
