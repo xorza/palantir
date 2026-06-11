@@ -20,6 +20,7 @@ use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
+use crate::window::WindowToken;
 use crate::{Display, FrameArena, FrameReport, FrameStamp};
 
 /// Host-level construction knobs. Grouped so [`Host::with_options`]
@@ -173,15 +174,14 @@ impl Host {
     /// variants call `surface.configure(_, config)` before returning.
     /// Skip frames bypass surface acquisition entirely.
     ///
-    /// `display` carries the frame's surface size, DPR scale, and the
-    /// monitor's refresh rate (the last sets the repaint-wake coalesce
-    /// floor so timed wakes never out-pace the panel); its `physical`
-    /// size must equal `config.width`/`config.height`.
+    /// All per-frame swapchain inputs ride in on [`FrameTarget`]: the
+    /// surface + its config (which alone defines the physical size), the
+    /// display knobs, and the live sibling-window set. `Display` is built
+    /// from the config here, so its size can never disagree with the
+    /// surface's.
     pub fn frame(
         &mut self,
-        surface: &wgpu::Surface<'_>,
-        config: &wgpu::SurfaceConfiguration,
-        display: Display,
+        target: FrameTarget<'_>,
         record: impl FnMut(&mut Ui),
         pre_present: impl FnOnce(),
     ) -> FramePresent {
@@ -197,20 +197,37 @@ impl Host {
             return FramePresent::Idle;
         }
 
+        let FrameTarget {
+            surface,
+            config,
+            scale_factor,
+            refresh_millihertz,
+            live_windows,
+        } = target;
+
+        // The surface config is the single source of truth for the
+        // physical size; `Display` is derived from it so the two can't
+        // drift apart.
+        let display = Display {
+            physical: glam::UVec2::new(config.width, config.height),
+            scale_factor,
+            pixel_snap: true,
+            refresh_millihertz,
+        };
+
+        // Refresh the snapshot `Ui::window_open` answers from. Retained
+        // Vec, capacity reused — alloc-free once the window set is steady.
+        self.ui.live_windows.clear();
+        self.ui.live_windows.extend_from_slice(live_windows);
+
         // Reconfigure-on-demand: callers update `config.width/height`
         // freely (resize events) without paying for a `surface.configure`
         // per event. We notice the mismatch here, reallocate once, and
         // record the new size. First-paint takes the same path because
-        // `configured` starts `None`. `display.physical` mirrors that
-        // size — the caller builds it from the same config.
-        let size = glam::UVec2::new(config.width, config.height);
-        debug_assert_eq!(
-            display.physical, size,
-            "Display.physical must match the surface config size",
-        );
-        if self.configured != Some(size) {
+        // `configured` starts `None`.
+        if self.configured != Some(display.physical) {
             self.backend.configure_surface(surface, config);
-            self.configured = Some(size);
+            self.configured = Some(display.physical);
         }
 
         let report = self.cpu_frame(display, record);
@@ -314,6 +331,29 @@ impl Host {
             FramePresent::Idle
         }
     }
+}
+
+/// Every per-frame swapchain input [`Host::frame`] needs from the
+/// windowing host, bundled into one borrowed argument. The surface
+/// `config` is the single source of truth for the physical pixel size —
+/// `Host::frame` derives `Display.physical` from it, so the size is never
+/// passed (or asserted) twice.
+#[derive(Debug)]
+pub struct FrameTarget<'a> {
+    /// Swapchain surface to acquire + present this frame.
+    pub surface: &'a wgpu::Surface<'static>,
+    /// Its configuration; `width`/`height` define the physical size.
+    pub config: &'a wgpu::SurfaceConfiguration,
+    /// Logical→physical DPR scale for this window's current monitor.
+    pub scale_factor: f32,
+    /// Monitor refresh in millihertz (sets the repaint-wake coalesce
+    /// floor so timed wakes never out-pace the panel), or `None` when the
+    /// host can't determine it.
+    pub refresh_millihertz: Option<u32>,
+    /// Tokens of the windows live as of this frame's start — copied into
+    /// the `Ui` so [`Ui::window_open`](crate::ui::Ui::window_open) answers
+    /// without the `Ui` mirroring host state.
+    pub live_windows: &'a [WindowToken],
 }
 
 /// Host scheduling hint returned by [`Host::frame`]. Three

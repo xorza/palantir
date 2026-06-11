@@ -23,9 +23,6 @@ const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 struct State {
     active: usize,
     app: AppState,
-    /// Whether the secondary inspector window is currently open. Toggled
-    /// by F8 from the main window; cleared when that window is closed.
-    inspector_open: bool,
 }
 
 /// Each non-stateful showcase: a label for the toolbar button, and a
@@ -104,7 +101,6 @@ impl State {
         State {
             active: 0,
             app: AppState { counter: 0 },
-            inspector_open: false,
         }
     }
 }
@@ -134,16 +130,16 @@ fn build_inspector(ui: &mut Ui, state: &mut State) {
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
-    // F8 toggles a second OS window mirroring the counter page. If the
-    // user closed it via its titlebar X, `inspector_open` is stale —
-    // close_window then no-ops and the next F8 reopens.
+    // F8 toggles a second OS window mirroring the counter page. The live
+    // window set is the source of truth (`Ui::window_open`), so closing
+    // the inspector via its titlebar X stays in sync — the next F8
+    // reopens it with no stale bool to track.
     if ui.key_pressed(Shortcut::key(Key::F8)) {
-        if state.inspector_open {
+        if ui.window_open(INSPECTOR_WINDOW) {
             ui.close_window(INSPECTOR_WINDOW);
         } else {
             ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
         }
-        state.inspector_open = !state.inspector_open;
     }
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()

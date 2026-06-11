@@ -1693,4 +1693,11 @@ fn window_requests_queue_and_survive_the_frame() {
     ui.run_at(SURFACE, |_| {});
     assert!(ui.pending_windows.is_empty());
     assert!(ui.pending_closes.is_empty());
+
+    // `window_open` polls the host-refreshed live set (here set directly,
+    // as the host would before each frame) — not the pending queues.
+    assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
+    ui.live_windows = vec![open];
+    assert!(ui.window_open(open));
+    assert!(!ui.window_open(close), "only `open` is live");
 }

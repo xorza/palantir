@@ -9,7 +9,7 @@ a second document window, a detached tool palette as a real OS window) —
 Status: **Slices 1–3 landed** (shared `Gpu`, window map + per-`WindowId`
 routing + token-aware `App::frame`, in-frame `Ui::open_window` /
 `close_window`). The showcase opens a second "inspector" window on F8.
-Slice 4 (shared atlases) deferred. Everything below `Host` —
+Slice 4 (shared GPU resources) deferred. Everything below `Host` —
 `Forest`/`Tree`, layout, `CascadesEngine`, `DamageEngine`, every widget —
 is window-agnostic and was untouched.
 
@@ -188,14 +188,57 @@ Pin: `window_requests_queue_and_survive_the_frame` (in `ui/tests.rs`)
 checks the requests survive the frame that filed them + a quiet frame, so
 the host can drain them after the fact.
 
-### Slice 4 — shared atlases (optional, measure first)
+### Slice 4 — shared GPU resources (optional, measure first)
 
-Each `WgpuBackend` owns its own glyph + gradient atlas, so N windows
-re-upload the same fonts/gradients N times. If that shows up
-(memory, first-paint latency on window open), lift `TextBackend` /
-`GradientResources` to live next to the shared `Gpu` and hand clones to
-each backend. Defer until a profile justifies it — the duplicate-upload
-cost is invisible for 2–3 windows.
+Today the only thing windows share is the device/queue. Every window
+gets its own `Host`, hence its own `RenderCaches` (`host.rs:88` builds
+`RenderCaches::default()` per host) **and** its own `WgpuBackend`
+(`renderer/backend/mod.rs:114`) holding a full private copy of every
+GPU-resident resource. So N windows re-upload the same fonts, gradients,
+and images N times and compile N identical pipeline sets.
+
+What's shareable — all immutable-after-build or content-addressed, so one
+instance hung off the shared `Gpu` serves every window:
+
+- **CPU-side caches (`RenderCaches`).** `images: ImageRegistry` +
+  `gradients: GradientAtlas` (`renderer/caches.rs:14`) are *already*
+  clone-shared across `Ui`/frontend/backend within one host — they're
+  just rebuilt per host. Build one on `Gpu` and hand it to every
+  `make_host` instead of `RenderCaches::default()`, the same way the
+  device is passed in. Cheapest lever; unifies image-handle and gradient
+  id-spaces across windows for free.
+- **GPU-resident atlases.** Glyph atlas (`text: TextBackend`) + gradient
+  LUT atlas (`gradient: GradientResources`, `renderer/backend/mod.rs:135-140`).
+  Content-keyed uploads — the same `(font, glyph)` / gradient stops hash
+  to one texel regardless of window. Plus the GPU image-texture cache
+  (`backend.gpu_image_cache_len()` is per-window today): one upload, all
+  windows sample it.
+- **Render pipelines + shaders / bind-group layouts / samplers** —
+  `quad`/`mesh`/`image`/`curve` + text, keyed by swapchain `color_format`.
+  Build one set per *format* (not per window) next to `Gpu`; windows
+  sharing a format share the set. `recreate_for_format` (the HDR /
+  wide-gamut renegotiation path) then rebuilds a format's set once for
+  every window on it, not once per window.
+
+What stays per-window — genuinely surface-bound, do **not** hoist:
+
+- The persistent damage **backbuffer** (`backbuffer: Option<Backbuffer>`)
+  — last frame's pixels for `LoadOp::Load`, one per surface.
+- `viewport_size`, the surface config, and per-window GPU instrumentation
+  (`gpu_timings` / `pass_stats`).
+- The **staging belt** unless a profile says otherwise — its
+  recall/reuse cycle is frame-scoped and per-submit; sharing it across
+  windows buys cross-window submit coordination for no clear win.
+
+Shape: a `SharedGpuResources` (one `RenderCaches` + the GPU atlases +
+image cache + a `HashMap<TextureFormat, Pipelines>`) on `Gpu`, with
+`WgpuBackend` holding clones/handles instead of owning. Mostly relocating
+ownership, not rewriting upload paths.
+
+Defer until a profile justifies it — duplicate uploads + redundant
+pipeline compiles are invisible for 2–3 windows. This pays off at "many
+small tool windows" (memory) or when first-paint latency on window open
+shows the pipeline-build cost.
 
 ## Trade-offs
 
@@ -210,7 +253,8 @@ cost is invisible for 2–3 windows.
 
 **Con.**
 
-- Per-window atlases duplicate font/gradient uploads until Slice 4.
+- Per-window backends duplicate font/gradient/image uploads and pipeline
+  compiles until Slice 4 (shared GPU resources).
 - `about_to_wait` reduces N scheduling states into one `ControlFlow` — a
   subtle spot. A window stuck in `Immediate` busy-loops the whole loop;
   the `At(t) <= now → Immediate` fold has to apply per-window before the
