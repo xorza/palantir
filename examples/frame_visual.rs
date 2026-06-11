@@ -5,8 +5,7 @@
 //
 // Run with `cargo run --example frame_visual --release`.
 
-use palantir::{App, HostHandle, Ui, WinitHost, WinitHostConfig};
-use winit::dpi::LogicalSize;
+use palantir::{App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig};
 
 #[path = "../benches/support/frame_fixture.rs"]
 mod fixture;
@@ -24,17 +23,19 @@ impl FrameVisual {
 }
 
 impl App for FrameVisual {
-    fn frame(&mut self, ui: &mut Ui) {
+    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
         fixture::build_ui(&mut self.state, fixture::VISUAL_SCALE, ui);
     }
 }
 
 fn main() {
     let config = WinitHostConfig {
-        title: String::from("palantir — frame bench (visual)"),
-        inner_size: Some(LogicalSize::new(1280, 800)),
-        min_inner_size: Some(LogicalSize::new(640, 480)),
+        window: WindowConfig {
+            title: String::from("palantir — frame bench (visual)"),
+            inner_size: Some(UVec2::new(1280, 800)),
+            min_inner_size: Some(UVec2::new(640, 480)),
+        },
         ..WinitHostConfig::default()
     };
-    WinitHost::new(config, FrameVisual::new).run();
+    WinitHost::new(WindowToken(0), config, FrameVisual::new).run();
 }

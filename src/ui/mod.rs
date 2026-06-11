@@ -45,6 +45,7 @@ use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
+use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use std::time::Duration;
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
@@ -243,6 +244,17 @@ pub struct Ui {
     /// `Ui::default()` holds a fresh handle that no backend writes to
     /// (every reader sees `None`).
     pub(crate) gpu_pass_stats: GpuPassStats,
+    /// Window-open requests filed by [`Self::open_window`] during a
+    /// frame. `WinitHost` drains this in `about_to_wait` (where it holds
+    /// `&ActiveEventLoop`) and creates the windows synchronously. Not
+    /// cleared by `frame` — it persists across the frame boundary until
+    /// the host drains it. Retained Vec, capacity reused, so steady
+    /// state (no window churn) is alloc-free. Inert in headless contexts
+    /// with no `WinitHost` to drain it.
+    pub(crate) pending_windows: Vec<PendingWindow>,
+    /// Window-close requests filed by [`Self::close_window`]; drained
+    /// alongside [`Self::pending_windows`]. Same retained-Vec contract.
+    pub(crate) pending_closes: Vec<WindowToken>,
 }
 
 impl Default for Ui {
@@ -277,6 +289,8 @@ impl Default for Ui {
             frame_arena: Default::default(),
             caches: Default::default(),
             gpu_pass_stats: Default::default(),
+            pending_windows: Vec::new(),
+            pending_closes: Vec::new(),
         }
     }
 }
@@ -913,6 +927,35 @@ impl Ui {
         );
         let deadline = self.time.saturating_add(after);
         self.schedule_wake(deadline, WakeReasons::REAL);
+    }
+
+    /// Open a new top-level OS window addressed by `token`. The window
+    /// gets its own independent UI tree; [`App::frame`](crate::App::frame)
+    /// is called for it with `token`, and you can later poke it via
+    /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint)
+    /// or close it with [`Self::close_window`].
+    ///
+    /// Creation is deferred, not inline: the request is queued and the
+    /// host (`WinitHost`) creates the real window on the event-loop
+    /// thread right after this frame, so it's safe to call mid-record.
+    /// Idempotent within a frame is *not* guaranteed — call once per
+    /// window you want; a `token` already in use is ignored with a
+    /// warning. No-op in headless contexts (no host to drain the queue).
+    ///
+    /// `token` is yours to define — an enum discriminant, an index, a
+    /// document-id hash. It must be unique across live windows. `config`
+    /// is the backend-agnostic [`WindowConfig`] (title + size); the
+    /// window inherits the app-global GPU settings from startup.
+    pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
+        self.pending_windows.push(PendingWindow { token, config });
+    }
+
+    /// Request that the window addressed by `token` close. Deferred like
+    /// [`Self::open_window`] — the host removes it after this frame. The
+    /// last window closing exits the event loop. No-op if `token` names
+    /// no live window, or in headless contexts.
+    pub fn close_window(&mut self, token: WindowToken) {
+        self.pending_closes.push(token);
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────

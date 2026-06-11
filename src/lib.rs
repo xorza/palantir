@@ -31,6 +31,7 @@ pub(crate) mod shape;
 pub mod text;
 pub mod ui;
 pub mod widgets;
+pub mod window;
 pub mod winit_host;
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
@@ -93,6 +94,11 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
+// Re-exported (not a palantir type) because it's the canonical integer
+// pixel-extent across the public surface — `Display.physical`,
+// `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
+// (`.x` = width, `.y` = height). Saves consumers a direct `glam` dep.
+pub use glam::UVec2;
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
@@ -136,7 +142,10 @@ pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot};
-pub use winit_host::{App, HostHandle, UserEvent, WinitHost, WinitHostConfig};
+pub use window::{WindowConfig, WindowToken};
+pub use winit_host::config::WinitHostConfig;
+pub use winit_host::handle::{HostHandle, UserEvent};
+pub use winit_host::{App, WinitHost};
 
 #[cfg(test)]
 mod hot_struct_sizes {
