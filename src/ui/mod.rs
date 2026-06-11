@@ -82,7 +82,7 @@ impl WakeReasons {
     }
 }
 
-/// Host-supplied per-frame inputs — monotonic time + active
+/// WindowRenderer-supplied per-frame inputs — monotonic time + active
 /// [`Display`]. Single struct so callers pass one argument and
 /// `Ui` carries one `Option<FrameStamp>` for prior-frame state
 /// instead of two parallel fields. `time` is the host's monotonic
@@ -176,7 +176,7 @@ pub struct Ui {
     /// Bumped once per [`Self::run_frame`], before either pass —
     /// pinned by `run_frame_pass_count_matches_action_trigger`.
     pub(crate) frame_id: u64,
-    /// Host-supplied monotonic timestamp for this frame.
+    /// WindowRenderer-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
     /// Time + display from the previous successful frame, or `None`
     /// before the first frame and after
@@ -224,12 +224,12 @@ pub struct Ui {
     /// `run_frame`.
     relayout_requested: bool,
     /// Per-frame bulk geometry arena (mesh verts/indices, polyline
-    /// points/colors), shared with the renderer via [`Host`]: `Host`
+    /// points/colors), shared with the renderer via [`WindowRenderer`]: `WindowRenderer`
     /// constructs the canonical handle and clones it into `Ui`,
     /// `Frontend`, and `WgpuBackend` so every phase sees the same
     /// bytes. Standalone `Ui::for_test()` builds its own private handle.
     ///
-    /// [`Host`]: crate::Host
+    /// [`WindowRenderer`]: crate::WindowRenderer
     pub(crate) frame_arena: FrameArena,
     /// Cross-frame GPU resource caches (image registry + gradient
     /// atlas) shared with the wgpu backend. Reached only from inside
@@ -238,7 +238,7 @@ pub struct Ui {
     /// lowering).
     pub(crate) caches: RenderCaches,
     /// Cloneable handle to the most recent GPU instrumentation sample
-    /// published by `WgpuBackend`. `Host` clones the same handle into
+    /// published by `WgpuBackend`. `WindowRenderer` clones the same handle into
     /// both `Ui` and the backend so the debug overlay reads exactly
     /// what the backend just wrote, with no global static. Standalone
     /// `Ui::default()` holds a fresh handle that no backend writes to
@@ -303,7 +303,7 @@ impl Default for Ui {
 
 /// Construction + host-driven frame lifecycle: `frame` and the private
 /// record / clock / classify / cascade / finalize passes it runs. User
-/// code never calls these directly — `Host` drives them. The widget
+/// code never calls these directly — `WindowRenderer` drives them. The widget
 /// authoring API lives in the second `impl Ui` block below.
 impl Ui {
     /// Per-frame `dt` clamp (seconds). Stalled frames freeze
@@ -316,7 +316,7 @@ impl Ui {
     /// backend so layout-time measurement and render-time shaping
     /// hit one buffer cache; the same `FrameArena` must reach
     /// `Frontend` and `WgpuBackend` so every phase sees the same
-    /// per-frame mesh / polyline bytes. [`crate::Host::new`] wires
+    /// per-frame mesh / polyline bytes. [`crate::WindowRenderer::new`] wires
     /// both at construction time.
     ///
     /// Tests / standalone callers usually want [`Self::default`],
@@ -373,7 +373,7 @@ impl Ui {
         }
         self.display = stamp.display;
 
-        // Pending until the renderer (`Host::render`) confirms a
+        // Pending until the renderer (`WindowRenderer::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
         // ack via `ui.frame_state.mark_submitted()` or the next
         // frame's `classify_frame` will force a `Full`.
@@ -1371,7 +1371,7 @@ pub mod test_support {
         /// does after a successful submit, so the next [`Self::frame`]
         /// doesn't auto-escalate to `Full`. For benches that drive
         /// `frame` + a standalone [`crate::renderer::frontend::Frontend::build_for_test`]
-        /// instead of going through `Host` (the `frame/*_cpu` arms).
+        /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
         pub fn mark_submitted_for_test(&self) {
             self.frame_state.mark_submitted();
         }

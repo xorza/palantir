@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, DebugOverlayConfig, Host, TextShaper, Ui};
+use palantir::{Color, DebugOverlayConfig, TextShaper, Ui, WindowRenderer};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -63,19 +63,19 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pub host: Host,
+    pub host: WindowRenderer,
 }
 
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = Host::with_options(
+        let host = WindowRenderer::with_options(
             g.device.clone(),
             g.queue.clone(),
             FORMAT,
             shaper,
-            palantir::HostConfig::default(),
+            palantir::WindowRendererConfig::default(),
         );
 
         Self {
@@ -99,7 +99,7 @@ impl Harness {
     /// given `format`, returning pixels in RGBA byte order regardless
     /// of the target's channel order (BGRA targets are swizzled on
     /// readback). The caller must first put `host` into the matching
-    /// format via [`palantir::Host::set_surface_format`] — otherwise the
+    /// format via [`palantir::WindowRenderer::set_surface_format`] — otherwise the
     /// backend's format assert trips. Used by the format-change fixture.
     pub fn render_to_format(
         &mut self,

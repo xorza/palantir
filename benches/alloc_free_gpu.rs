@@ -3,7 +3,7 @@
 //! Sister to `alloc_free.rs`. Where that bench asserts a *strict zero*
 //! on palantir's CPU pipeline (record → measure → arrange → cascade →
 //! encode), this bench measures the additional allocations introduced
-//! by `Host::frame_offscreen` against an offscreen target texture, with
+//! by `WindowRenderer::frame_offscreen` against an offscreen target texture, with
 //! a GPU poll between frames so submitted work drains before the next
 //! iteration.
 //!
@@ -12,7 +12,7 @@
 //! Arc, the queue's in-flight `Vec` push, plus per-pass scratch from
 //! `wgpu_hal::metal`. Current measured floor on this fixture is
 //! ~27 blocks/frame, all attributed to wgpu_core/wgpu_hal driver code
-//! beneath `Host::frame_offscreen` (verified via `DHAT_DUMP=1` +
+//! beneath `WindowRenderer::frame_offscreen` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
 //! indicating either a palantir regression or a wgpu/cosmic-text
@@ -31,7 +31,7 @@ use std::sync::OnceLock;
 
 use fixture::{FormState, build_ui};
 use glam::UVec2;
-use palantir::{Color, Host};
+use palantir::{Color, WindowRenderer};
 use pollster::FutureExt;
 
 #[global_allocator]
@@ -97,12 +97,12 @@ fn main() {
     };
 
     let g = gpu();
-    let mut host = Host::with_options(
+    let mut host = WindowRenderer::with_options(
         g.device.clone(),
         g.queue.clone(),
         FORMAT,
         palantir::TextShaper::with_bundled_fonts(),
-        palantir::HostConfig::default(),
+        palantir::WindowRendererConfig::default(),
     );
     let mut state = FormState::default();
 
@@ -122,7 +122,7 @@ fn main() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let run = |host: &mut Host, state: &mut FormState| {
+    let run = |host: &mut WindowRenderer, state: &mut FormState| {
         host.ui.theme.window_clear = Color::TRANSPARENT;
         host.frame_offscreen(&target, SCALE, |ui| build_ui(state, NODE_SCALE, ui));
         g.device

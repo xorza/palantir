@@ -200,7 +200,7 @@ impl Default for DamageEngine {
 pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) cascades: &'a Cascades,
-    /// Host-arranged surface rect for this frame. A degenerate
+    /// WindowRenderer-arranged surface rect for this frame. A degenerate
     /// zero-area surface shouldn't happen in practice (host filters
     /// resize-to-zero, and a surface *change* takes the `force_full`
     /// path before the diff runs); if one slips through, every region

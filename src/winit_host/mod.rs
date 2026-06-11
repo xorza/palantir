@@ -1,9 +1,9 @@
-//! `WinitHost` — wraps one-or-more [`Host`]s with winit windows, their
-//! surfaces, and the [`ApplicationHandler`] event-loop glue. Owns
-//! everything below the user's app: a shared GPU context ([`Gpu`]),
-//! per-window swapchain config, resize / scale / occlusion handling,
-//! and the `FramePresent` scheduling state machine — folded across all
-//! windows into one `ControlFlow`.
+//! `WinitHost` — wraps one-or-more [`WindowRenderer`]s with winit
+//! windows, their surfaces, and the [`ApplicationHandler`] event-loop
+//! glue. Owns everything below the user's app: a shared GPU context
+//! ([`Gpu`]), per-window swapchain config, resize / scale / occlusion
+//! handling, and the `FramePresent` scheduling state machine — folded
+//! across all windows into one `ControlFlow`.
 //!
 //! The caller-supplied app implements the [`App`] trait
 //! (`frame(&mut self, win: WindowToken, ui: &mut Ui)`, run once per
@@ -55,10 +55,10 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
-use crate::host::{FramePresent, FrameTarget, Host};
 use crate::input::InputEvent;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
+use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
 use crate::winit_host::config::WinitHostConfig;
 use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
 use crate::winit_host::handle::{HostHandle, UserEvent};
@@ -81,17 +81,17 @@ pub trait App {
 }
 
 /// Everything one window owns: its winit handle, swapchain surface +
-/// config, the per-window [`Host`] (recorder + renderer), DPR scale, and
-/// the host-side scheduling state. The GPU device/queue live on the
-/// shared [`Gpu`], not here.
+/// config, the per-window [`WindowRenderer`] (its `Ui` recorder + GPU backend),
+/// DPR scale, and the host-side scheduling state. The GPU device/queue
+/// live on the shared [`Gpu`], not here.
 struct WindowState {
     token: WindowToken,
     window: Arc<Window>,
     surface: wgpu::Surface<'static>,
     config: wgpu::SurfaceConfiguration,
-    host: Host,
+    renderer: WindowRenderer,
     scale_factor: f32,
-    /// Host-side scheduling state. Reset at the top of `draw` from the
+    /// Per-window scheduling state. Reset at the top of `draw` from the
     /// `FramePresent` the frame returned; re-armed to `Immediate` by
     /// input, resize, surface loss, occlusion, and animation tickers.
     next: FramePresent,
@@ -118,8 +118,8 @@ pub struct WinitHost<T: 'static> {
     windows: HashMap<WindowId, WindowState>,
     /// Retained scratch: the live tokens are snapshotted here each `draw`
     /// (can't borrow the whole map while holding one window mutably), then
-    /// handed to `Host::frame` via [`FrameTarget`], which copies them into
-    /// that window's `Ui` for `Ui::window_open`.
+    /// handed to `WindowRenderer::frame` via [`FrameTarget`], which copies
+    /// them into that window's `Ui` for `Ui::window_open`.
     live_tokens: Vec<WindowToken>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
     proxy: EventLoopProxy<UserEvent<T>>,
@@ -184,8 +184,8 @@ where
 
     /// Paint one window. Bundles its surface, config, scale, monitor
     /// refresh, and the live-window snapshot into a [`FrameTarget`], runs
-    /// the per-window `Host::frame`, and stores the returned schedule back
-    /// on the window.
+    /// the per-window `WindowRenderer::frame`, and stores the returned
+    /// schedule back on the window.
     fn draw(&mut self, id: WindowId) {
         // Snapshot live tokens into retained scratch before borrowing one
         // window mutably, so the frame can answer `Ui::window_open`.
@@ -210,7 +210,7 @@ where
             .window
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz());
-        rt.next = rt.host.frame(
+        rt.next = rt.renderer.frame(
             FrameTarget {
                 surface: &rt.surface,
                 config: &rt.config,
@@ -223,9 +223,9 @@ where
         );
     }
 
-    /// Build a winit window + surface + `Host` for `token` and insert it
-    /// into the map. No-ops (with a warning) on a duplicate token, which
-    /// the token couldn't then unambiguously address.
+    /// Build a winit window + surface + `WindowRenderer` for `token` and
+    /// insert it into the map. No-ops (with a warning) on a duplicate
+    /// token, which the token couldn't then unambiguously address.
     fn spawn_window(
         &mut self,
         event_loop: &ActiveEventLoop,
@@ -241,8 +241,8 @@ where
             return;
         };
         let ws = gpu.make_surface(&window);
-        let host = gpu.make_host(ws.config.format);
-        self.insert_window(token, window, ws, host);
+        let renderer = gpu.make_renderer(ws.config.format);
+        self.insert_window(token, window, ws, renderer);
     }
 
     /// Register a freshly built window in the routing map, scheduled to
@@ -254,7 +254,7 @@ where
         token: WindowToken,
         window: Arc<Window>,
         ws: WindowSurface,
-        host: Host,
+        renderer: WindowRenderer,
     ) {
         let scale_factor = window.scale_factor() as f32;
         let id = window.id();
@@ -265,7 +265,7 @@ where
                 window,
                 surface: ws.surface,
                 config: ws.config,
-                host,
+                renderer,
                 scale_factor,
                 next: FramePresent::Immediate,
             },
@@ -282,8 +282,8 @@ where
         let mut opens: Vec<PendingWindow> = Vec::new();
         let mut closes: Vec<WindowToken> = Vec::new();
         for rt in self.windows.values_mut() {
-            opens.append(&mut rt.host.ui.pending_windows);
-            closes.append(&mut rt.host.ui.pending_closes);
+            opens.append(&mut rt.renderer.ui.pending_windows);
+            closes.append(&mut rt.renderer.ui.pending_closes);
         }
         for pw in opens {
             self.spawn_window(event_loop, pw.token, pw.config);
@@ -354,7 +354,7 @@ where
             gpu,
             first_surface: ws,
         } = Gpu::create(&window, &cfg);
-        let mut host = gpu.make_host(ws.config.format);
+        let mut renderer = gpu.make_renderer(ws.config.format);
 
         // Build the app now that the first `Ui` exists. The
         // `gpu.is_some()` early-return above means this runs exactly once
@@ -365,9 +365,9 @@ where
             proxy: self.proxy.clone(),
         };
         let build = self.app_builder.take().expect("app builder consumed");
-        self.app = Some(build(&mut host.ui, handle));
+        self.app = Some(build(&mut renderer.ui, handle));
 
-        self.insert_window(self.first_token, window, ws, host);
+        self.insert_window(self.first_token, window, ws, renderer);
         self.gpu = Some(gpu);
     }
 
@@ -415,7 +415,7 @@ where
             };
             let mut wants_repaint = false;
             InputEvent::from_winit(&event, rt.scale_factor, |ev| {
-                wants_repaint |= rt.host.ui.on_input(ev).requests_repaint;
+                wants_repaint |= rt.renderer.ui.on_input(ev).requests_repaint;
             });
             if wants_repaint {
                 rt.next = FramePresent::Immediate;
@@ -451,8 +451,9 @@ where
                 if let Some(rt) = self.windows.get_mut(&id) {
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
-                    // Stash the new size only — `Host::frame` notices the
-                    // mismatch against its `configured` baseline and runs
+                    // Stash the new size only — `WindowRenderer::frame`
+                    // notices the mismatch against its `configured`
+                    // baseline and runs
                     // `surface.configure` once before acquiring the next
                     // swapchain texture, so identical repeats (Wayland
                     // resends configures on focus / output changes) cost
@@ -478,7 +479,7 @@ where
             }
             WindowEvent::Occluded(occluded) => {
                 if let Some(rt) = self.windows.get_mut(&id) {
-                    rt.host.set_occluded(occluded);
+                    rt.renderer.set_occluded(occluded);
                     if !occluded {
                         rt.next = FramePresent::Immediate;
                     }

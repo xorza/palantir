@@ -85,7 +85,7 @@ Eviction rides on the same `removed` sweep that drives `MeasureCache` /
 its row dropped in `post_record`.
 
 The buffer itself isn't in state — `TextEdit<'a>` borrows
-`&'a mut String` from the host (egui-style). Host-side mutations
+`&'a mut String` from the host (egui-style). WindowRenderer-side mutations
 between frames are visible immediately; the widget clamps
 `caret <= text.len()` at the top of every `show()`.
 

@@ -1,7 +1,7 @@
 //! Text-backend microbench: prepare + flush + render directly against
-//! `TextBackend`, bypassing the full `Host` pipeline.
+//! `TextBackend`, bypassing the full `WindowRenderer` pipeline.
 //!
-//! The previous version drove `Host::frame_offscreen`, which mixed
+//! The previous version drove `WindowRenderer::frame_offscreen`, which mixed
 //! record/measure/cascade/encode noise into every sample —
 //! `CascadesEngine::run` was the top hotspot at ~7%, and the actual
 //! text path (`encode_batch` + atlas uploads) totalled <10%. This
@@ -183,7 +183,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
 }
 
 /// One iteration: prepare → flush → render pass → submit → poll →
-/// post. Mirrors `Host::frame_offscreen`'s text-relevant slice.
+/// post. Mirrors `WindowRenderer::frame_offscreen`'s text-relevant slice.
 fn run_frame(
     g: &Gpu,
     backend: &mut TextBackend,

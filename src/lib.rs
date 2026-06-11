@@ -22,7 +22,6 @@ pub mod animation;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 pub mod forest;
-pub mod host;
 pub mod input;
 pub mod layout;
 pub mod primitives;
@@ -32,13 +31,14 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 pub mod window;
+pub mod window_renderer;
 pub mod winit_host;
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
 /// Consumers (debug overlay, benches) hold a `Clone` of the same
 /// `GpuPassStats` the backend writes into — no global state;
-/// `Host::gpu_pass_stats` is the canonical handle. Published here because
+/// `WindowRenderer::gpu_pass_stats` is the canonical handle. Published here because
 /// the backing `renderer::backend::gpu_pass_stats` module is `pub(crate)`.
 pub mod gpu_pass_stats {
     pub use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
@@ -62,9 +62,6 @@ pub use debug_overlay::DebugOverlayConfig;
 pub use forest::Layer;
 pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::visibility::Visibility;
-pub use host::FramePresent;
-pub use host::Host;
-pub use host::HostConfig;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::InputPolicy;
@@ -94,6 +91,9 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
+pub use window_renderer::FramePresent;
+pub use window_renderer::WindowRenderer;
+pub use window_renderer::WindowRendererConfig;
 // Re-exported (not a palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`

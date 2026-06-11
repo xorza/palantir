@@ -52,7 +52,7 @@ const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
 /// byte cursors and `&buffer[..caret]` is the natural prefix-measure
 /// path). All widget-driven mutations step grapheme-cluster boundaries
 /// (which are themselves codepoint-aligned), so the caret should never
-/// land mid-codepoint. Host code that mutates the buffer between
+/// land mid-codepoint. WindowRenderer code that mutates the buffer between
 /// frames may shrink it past `caret`; `show()` clamps at the top each
 /// frame.
 #[derive(Clone, Default, Debug)]
@@ -1036,7 +1036,7 @@ fn handle_input(
     let state = ui
         .state
         .get_or_insert_with::<TextEditState, _>(id, Default::default);
-    // Clamp caret + anchor. Host code may have shrunk `*text` between
+    // Clamp caret + anchor. WindowRenderer code may have shrunk `*text` between
     // frames; an OOB anchor would corrupt the selection range derivation.
     if state.caret > text.len() {
         state.caret = text.len();

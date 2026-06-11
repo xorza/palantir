@@ -1,5 +1,5 @@
 //! Submission status of the most recently produced frame. Written by
-//! `Ui::frame` (→ `Pending` at frame top) and `Host::render` (→
+//! `Ui::frame` (→ `Pending` at frame top) and `WindowRenderer::render` (→
 //! `Submitted` after a successful submit / backbuffer copy). Read by
 //! `Ui::classify_frame` to decide whether to rewind the
 //! damage snapshot. Single-threaded; `Cell` suffices.

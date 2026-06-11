@@ -1,4 +1,4 @@
-//! Per-frame bulk geometry arena. Owned by `Host`, cloned (cheap, Rc)
+//! Per-frame bulk geometry arena. Owned by `WindowRenderer`, cloned (cheap, Rc)
 //! into every subsystem that touches per-frame mesh / polyline / fmt
 //! bytes (`Ui`, `Frontend`, `WgpuBackend`). Cleared at frame start.
 //!
@@ -32,7 +32,7 @@ use std::fmt::Write as _;
 use std::hash::Hasher;
 use std::rc::Rc;
 
-/// Shared per-frame arena. `Host` constructs one and clones it into
+/// Shared per-frame arena. `WindowRenderer` constructs one and clones it into
 /// every subsystem (`Ui`, `Frontend`, `WgpuBackend`). Phases run
 /// sequentially (record → encode → compose → upload) so the underlying
 /// borrow is never contested; a double-borrow indicates a wiring bug

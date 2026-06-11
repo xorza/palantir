@@ -1,7 +1,7 @@
 # Multi-window
 
 Let one `WinitHost` drive **N top-level OS windows**, each its own
-independent UI tree (`Ui` + `Host`), all sharing one GPU device. The
+independent UI tree (`Ui` + `WindowRenderer`), all sharing one GPU device. The
 target use is a multi-document / tear-off-panel editor (darkroom opening
 a second document window, a detached tool palette as a real OS window) —
 *not* one logical UI whose sub-regions escape into separate windows.
@@ -9,7 +9,7 @@ a second document window, a detached tool palette as a real OS window) —
 Status: **Slices 1–3 landed** (shared `Gpu`, window map + per-`WindowId`
 routing + token-aware `App::frame`, in-frame `Ui::open_window` /
 `close_window`). The showcase opens a second "inspector" window on F8.
-Slice 4 (shared GPU resources) deferred. Everything below `Host` —
+Slice 4 (shared GPU resources) deferred. Everything below `WindowRenderer` —
 `Forest`/`Tree`, layout, `CascadesEngine`, `DamageEngine`, every widget —
 is window-agnostic and was untouched.
 
@@ -18,11 +18,11 @@ is window-agnostic and was untouched.
 Two different things get called "multi-window"; this committed to the
 first and explicitly shelves the second.
 
-- **Model A (built) — N windows, each its own `Host`.** Every window is a
+- **Model A (built) — N windows, each its own `WindowRenderer`.** Every window is a
   separate document: its own `Ui` (input / focus / layout / `Display`),
   its own `WgpuBackend`, all built from one shared `wgpu::Instance` /
   `adapter` / `Device` / `Queue`. Maps almost verbatim onto the existing
-  `Host` boundary (one `Host` already == one logical UI).
+  `WindowRenderer` boundary (one `WindowRenderer` already == one logical UI).
 
 - **Model B (shelved) — one `Ui` spanning multiple OS windows**
   (egui-style "viewports"): a `ComboBox` dropdown or a detached toolbar
@@ -40,7 +40,7 @@ Model A. Model B stays a separately-justified future project.
 ## Why it's cheap (the two non-problems)
 
 1. **The GPU device is already shared by clone.** wgpu's `Device` /
-   `Queue` are `Arc`-backed handles — `host.rs:97-109` already `.clone()`s
+   `Queue` are `Arc`-backed handles — `window_renderer.rs:97-109` already `.clone()`s
    them into `Ui`, `Frontend`, and `WgpuBackend`. Surfaces created from
    the *same* `Instance` / `adapter` share one device for free; no `Arc`
    wrapper, no second device. The only catch the refactor fixed: `resumed`
@@ -50,20 +50,20 @@ Model A. Model B stays a separately-justified future project.
 2. **The UI engine doesn't know windows exist.** `Forest`/`Tree`,
    measure/arrange, `CascadesEngine`, `DamageEngine` all run against a
    single `Display` rect with zero window awareness (already per-`Layer`,
-   not per-window). Model A reuses them unchanged; N `Host`s == N
+   not per-window). Model A reuses them unchanged; N `WindowRenderer`s == N
    independent engines, no shared mutable state between windows.
 
 ## Where single-window lived (now removed)
 
 - `RuntimeState` **was** the per-window state — one `window` / `surface` /
-  `device` / `config` / `host` / `scale_factor` / `next` — with no map of
-  them. Now `windows: HashMap<WindowId, WindowState>`.
+  `device` / `config` / `renderer` / `scale_factor` / `next` — with no map
+  of them. Now `windows: HashMap<WindowId, WindowState>`.
 - `window_event(&mut self, _id: WindowId, …)` ignored the `WindowId`; it
   now routes on it.
 - `Instance` + `adapter` were local to `resumed` and dropped; now on `Gpu`.
 - `App::frame(&mut self, ui)` had no window notion; now
   `frame(&mut self, win: WindowToken, ui)`.
-- `Host::frame(surface, config, display, …)` was already parameterized by
+- `WindowRenderer::frame(surface, config, display, …)` was already parameterized by
   surface/config/display — it paints whatever it's handed, so it needed
   **no change**; it's just called once per dirty window.
 
@@ -161,7 +161,7 @@ steady-state stays alloc-free). `WinitHost` **drains** the queues in
 `about_to_wait` (the one callback that always holds `&ActiveEventLoop`
 after event processing): for each open, `event_loop.create_window`
 synchronously → `WindowId` materializes on the same thread, same tick →
-build surface + `Host` against the shared `Gpu` → insert into the map →
+build surface + `WindowRenderer` against the shared `Gpu` → insert into the map →
 request first redraw. Draining there (not only in `draw`) also catches an
 `open_window` issued from inside a `run_on_main` closure, which is
 serviced in `user_event`. The borrow trap: collect requests out of the
@@ -191,7 +191,7 @@ the host can drain them after the fact.
 ### Slice 4 — shared GPU resources (optional, measure first)
 
 Today the only thing windows share is the device/queue. Every window
-gets its own `Host`, hence its own `RenderCaches` (`host.rs:88` builds
+gets its own `WindowRenderer`, hence its own `RenderCaches` (`window_renderer.rs:88` builds
 `RenderCaches::default()` per host) **and** its own `WgpuBackend`
 (`renderer/backend/mod.rs:114`) holding a full private copy of every
 GPU-resident resource. So N windows re-upload the same fonts, gradients,
@@ -204,7 +204,7 @@ instance hung off the shared `Gpu` serves every window:
   `gradients: GradientAtlas` (`renderer/caches.rs:14`) are *already*
   clone-shared across `Ui`/frontend/backend within one host — they're
   just rebuilt per host. Build one on `Gpu` and hand it to every
-  `make_host` instead of `RenderCaches::default()`, the same way the
+  `make_renderer` instead of `RenderCaches::default()`, the same way the
   device is passed in. Cheapest lever; unifies image-handle and gradient
   id-spaces across windows for free.
 - **GPU-resident atlases.** Glyph atlas (`text: TextBackend`) + gradient
@@ -244,7 +244,7 @@ shows the pipeline-build cost.
 
 **Pro.**
 
-- Reuses the `Host` boundary verbatim; the hard parts (layout, cascade,
+- Reuses the `WindowRenderer` boundary verbatim; the hard parts (layout, cascade,
   damage, input) need zero changes.
 - GPU device shared for free via wgpu's clone semantics — no device-loss
   coordination, no cross-window sync.
@@ -267,7 +267,7 @@ shows the pipeline-build cost.
 
 - **Per-window scale factor & monitor refresh.** `draw` requeries
   `current_monitor().refresh_rate_millihertz()` per frame; with N windows
-  on different monitors this Just Works per-window since each `Host`
+  on different monitors this Just Works per-window since each `WindowRenderer`
   carries its own `Display`. Confirm the per-window `next` scheduling
   paces each window to its own monitor, not a global min.
 - **Token ergonomics.** `WindowToken(u64)` is decided; revisit a typed

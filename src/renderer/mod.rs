@@ -14,7 +14,7 @@
 //! `RenderCmdBuffer` itself, since pixel snap and scissor rects don't
 //! apply.
 //!
-//! Both halves are owned and driven from [`Host`](crate::host::Host),
+//! Both halves are owned and driven from [`WindowRenderer`](crate::window_renderer::WindowRenderer),
 //! the public top-level handle.
 pub mod backend;
 pub(crate) mod caches;
@@ -24,7 +24,7 @@ pub(crate) mod image_registry;
 pub(crate) mod quad;
 pub(crate) mod render_buffer;
 /// Polyline → fringe-AA mesh tessellator consumed by `Composer`.
-/// Renderer-side rather than primitive: it lowers user authoring
+/// WindowRenderer-side rather than primitive: it lowers user authoring
 /// (`Shape::Polyline`, stroked rounded rects) into the GPU mesh
 /// vertex layout. Exposed `pub` for the `stroke_tessellate` bench's
 /// `test_support` reach-in path.

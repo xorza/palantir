@@ -97,7 +97,7 @@ const _: () = assert!(FontFamily::Sans as u8 == 0);
 /// Single-threaded by design (`Rc` inside); access is sequential —
 /// measurement during layout, prepare/render during the wgpu frame —
 /// so the `RefCell` is just runtime insurance against accidental
-/// re-entry. Cloning is cheap (refcount bump). [`crate::Host::new`]
+/// re-entry. Cloning is cheap (refcount bump). [`crate::WindowRenderer::new`]
 /// holds the canonical handle and passes a clone to both `Ui` (via
 /// `Ui::with_text`) and the backend (constructor arg) so both sides
 /// see one buffer cache.
@@ -105,7 +105,7 @@ const _: () = assert!(FontFamily::Sans as u8 == 0);
 /// Two paths, picked at construction:
 ///
 /// - [`Self::mono`] / [`Self::default`] — primitive shaping (every
-///   glyph is `font_size_px * 0.5` wide). Renderer drops these runs
+///   glyph is `font_size_px * 0.5` wide). WindowRenderer drops these runs
 ///   (their [`TextCacheKey`] is [`TextCacheKey::INVALID`]). Useful
 ///   for tests, headless drivers, and the `Ui::for_test()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real

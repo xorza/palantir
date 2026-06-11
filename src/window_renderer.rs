@@ -1,16 +1,17 @@
-//! `Host` — the top-level palantir handle owning the recorder
+//! `WindowRenderer` — the top-level palantir handle owning the recorder
 //! ([`Ui`]), the CPU paint stage ([`Frontend`]), and the GPU backend
 //! ([`WgpuBackend`]).
 //!
-//! Single public entry: [`Host::frame`]. Runs CPU passes, acquires the
-//! next swapchain texture, submits, presents — folding
+//! Single public entry: [`WindowRenderer::frame`]. Runs CPU passes,
+//! acquires the next swapchain texture, submits, presents — folding
 //! Suboptimal / Outdated / Lost / Timeout / Validation / Occluded into a
 //! single "needs repaint" bool. App-owned state lives in the caller's
 //! frame-builder closure (capture it) — palantir doesn't carry it.
 //!
-//! Internal split — [`Host::cpu_frame`] + [`Host::render_to_texture`] —
-//! is `pub(crate)`; benches and the visual test harness reach it via
-//! [`test_support`] (gated `cfg(any(test, feature = "internals"))`).
+//! Internal split — [`WindowRenderer::cpu_frame`] +
+//! [`WindowRenderer::render_to_texture`] — is `pub(crate)`; benches and
+//! the visual test harness reach it via [`test_support`] (gated
+//! `cfg(any(test, feature = "internals"))`).
 
 use std::time::Instant;
 
@@ -23,12 +24,12 @@ use crate::ui::Ui;
 use crate::window::WindowToken;
 use crate::{Display, FrameArena, FrameReport, FrameStamp};
 
-/// Host-level construction knobs. Grouped so [`Host::with_options`]
-/// has a fixed signature as new GPU-side settings get exposed.
-/// `Default`: GPU instrumentation off.
+/// Construction knobs for a [`WindowRenderer`]. Grouped so
+/// [`WindowRenderer::with_options`] has a fixed signature as new GPU-side
+/// settings get exposed. `Default`: GPU instrumentation off.
 /// `WinitHostConfig` forwards its corresponding fields here.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct HostConfig {
+pub struct WindowRendererConfig {
     /// Opt into GPU instrumentation (timestamp + pipeline-statistics
     /// queries). Off by default because the per-frame readback
     /// round-trip is non-trivial. See
@@ -41,8 +42,8 @@ pub struct HostConfig {
 /// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
 /// GPU [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The
 /// renderer halves are private; reach the recorder via the public
-/// [`Host::ui`] field.
-pub struct Host {
+/// [`WindowRenderer::ui`] field.
+pub struct WindowRenderer {
     pub ui: Ui,
     pub(crate) frontend: Frontend,
     pub(crate) backend: WgpuBackend,
@@ -70,18 +71,19 @@ pub struct Host {
     configured: Option<glam::UVec2>,
 }
 
-impl Host {
-    /// Canonical ctor: caller supplies the shaper and a [`HostConfig`]
-    /// holding every other knob (GPU instrumentation opt-in). `WinitHost`
-    /// delegates here from `WinitHostConfig`.
+impl WindowRenderer {
+    /// Canonical ctor: caller supplies the shaper and a
+    /// [`WindowRendererConfig`] holding every other knob (GPU
+    /// instrumentation opt-in). `WinitHost` delegates here from
+    /// `WinitHostConfig`.
     pub fn with_options(
         device: wgpu::Device,
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
-        config: HostConfig,
+        config: WindowRendererConfig,
     ) -> Self {
-        let HostConfig { collect_gpu_stats } = config;
+        let WindowRendererConfig { collect_gpu_stats } = config;
         // One canonical frame arena, cloned into every subsystem that
         // touches per-frame mesh / polyline bytes. Each Rc-clone is
         // cheap; runtime borrow-checking via RefCell catches any
@@ -191,7 +193,7 @@ impl Host {
         // between user input as one giant "lagging" frame).
         #[cfg(feature = "profile-with-tracy")]
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
-        profiling::scope!("Host::frame");
+        profiling::scope!("WindowRenderer::frame");
 
         if self.occluded {
             return FramePresent::Idle;
@@ -255,7 +257,7 @@ impl Host {
     /// pixels. Internal split for benches and the visual harness;
     /// production callers use [`Self::frame`].
     pub(crate) fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
-        profiling::scope!("Host::render_to_texture");
+        profiling::scope!("WindowRenderer::render_to_texture");
         let size = target.size();
         let display_phys = self.ui.display.physical;
         assert!(
@@ -333,11 +335,11 @@ impl Host {
     }
 }
 
-/// Every per-frame swapchain input [`Host::frame`] needs from the
-/// windowing host, bundled into one borrowed argument. The surface
+/// Every per-frame swapchain input [`WindowRenderer::frame`] needs from
+/// the windowing host, bundled into one borrowed argument. The surface
 /// `config` is the single source of truth for the physical pixel size —
-/// `Host::frame` derives `Display.physical` from it, so the size is never
-/// passed (or asserted) twice.
+/// `WindowRenderer::frame` derives `Display.physical` from it, so the
+/// size is never passed (or asserted) twice.
 #[derive(Debug)]
 pub struct FrameTarget<'a> {
     /// Swapchain surface to acquire + present this frame.
@@ -356,7 +358,7 @@ pub struct FrameTarget<'a> {
     pub live_windows: &'a [WindowToken],
 }
 
-/// Host scheduling hint returned by [`Host::frame`]. Three
+/// WindowRenderer scheduling hint returned by [`WindowRenderer::frame`]. Three
 /// mutually-exclusive states the event loop must service:
 ///
 /// - [`Self::Immediate`] — call `request_redraw` right away
@@ -375,16 +377,16 @@ pub enum FramePresent {
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
-    //! Test/bench reach-in surface for `Host` — the single gated
+    //! Test/bench reach-in surface for `WindowRenderer` — the single gated
     //! entry point for offscreen frames and GPU instrumentation.
     //! Production code uses the `frame_stats` debug overlay on `Ui`
     //! to surface GPU timings; benches sample the underlying
     //! `GpuPassStats` handle directly without going through the
     //! overlay layout pass.
 
-    use crate::host::*;
+    use crate::window_renderer::*;
 
-    impl Host {
+    impl WindowRenderer {
         /// Offscreen one-shot: run CPU + GPU against a caller-supplied
         /// texture (no swapchain acquire). `Display`'s physical size is
         /// derived from `target.size()`. For the visual harness and
@@ -412,7 +414,7 @@ pub mod test_support {
 
         /// Swapchain color format the GPU pipelines are currently built
         /// for. Lets format-change tests confirm
-        /// [`Host::set_surface_format`] reached the backend.
+        /// [`WindowRenderer::set_surface_format`] reached the backend.
         pub fn surface_format(&self) -> wgpu::TextureFormat {
             self.backend.color_format()
         }

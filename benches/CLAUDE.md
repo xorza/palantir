@@ -41,15 +41,15 @@ CPU bench is uncontaminated by driver activity.
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
   (`Ui::mark_submitted_for_test`) so `classify_frame` matches a real
-  host. **Driving the CPU arms through `Host::frame_offscreen` + a poll
+  host. **Driving the CPU arms through `WindowRenderer::frame_offscreen` + a poll
   was the old shape and was wrong**: a non-blocking `device.poll`
   charges each iter a driver ioctl, and on `RenderPlan::Skip` the host
   does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on
   `cached_cpu` and ~50 % on `resizing_cpu` (multi-MB backbuffer
   realloc per size, `ensure_backbuffer → create_texture`), swamping the
   palantir cost. Time is advanced from a real `Instant` like
-  `Host::cpu_frame` so wake cadence matches production.
-- **`frame/*_gpu`** — the full public path: `Host::frame_offscreen`
+  `WindowRenderer::cpu_frame` so wake cadence matches production.
+- **`frame/*_gpu`** — the full public path: `WindowRenderer::frame_offscreen`
   against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
   covers the whole CPU + GPU pipeline. The per-frame `write_stats` dump
   (upload counts, GPU pass timings) lives here since it's inherently GPU.
@@ -87,7 +87,7 @@ below). Two pin a floor and fail; one only measures.
   block delta over 256 steady-state frames fails. This pins the
   load-bearing CLAUDE.md invariant.
 - **`alloc_free_gpu`** — same fixture, plus the wgpu submission path
-  via `Host::frame_offscreen` against an offscreen target with a GPU
+  via `WindowRenderer::frame_offscreen` against an offscreen target with a GPU
   poll between frames. Baselined: every wgpu submission fundamentally
   allocates (`CommandEncoder` Arc, `CommandBuffer` Arc, queue Vec push,
   hal scratch). Current floor ~27 blocks/frame, all attributed to

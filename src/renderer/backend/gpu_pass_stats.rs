@@ -14,7 +14,7 @@
 //!
 //! Single-producer (the backend's `GpuTimings::after_submit`),
 //! many-reader (debug overlay, benches), all on the same thread
-//! (Host owns both sides). `RefCell` is sufficient and panics on the
+//! (WindowRenderer owns both sides). `RefCell` is sufficient and panics on the
 //! caller-bug case of a concurrent borrow.
 
 use std::cell::RefCell;

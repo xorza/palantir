@@ -3,7 +3,7 @@
 //! of two. Both inner fields are `Rc`-shared, so cloning [`RenderCaches`]
 //! is cheap and every clone observes the same state.
 //!
-//! Lifetime: same as the renderer (constructed by `Host`, dropped when
+//! Lifetime: same as the renderer (constructed by `WindowRenderer`, dropped when
 //! the surface goes away). Distinct from [`crate::forest::frame_arena::FrameArena`]
 //! which is per-frame scratch.
 

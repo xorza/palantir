@@ -1,7 +1,7 @@
 //! Surface format change mid-session. Simulates the host noticing the
 //! swapchain's color format changed (e.g. the window moved to an HDR /
 //! wide-gamut output and the compositor renegotiated) and recreating
-//! the GPU backend via [`palantir::Host::set_surface_format`].
+//! the GPU backend via [`palantir::WindowRenderer::set_surface_format`].
 //!
 //! The backend builds every format-dependent pipeline (quad / mesh /
 //! image / curve / text atlas) against one format; submitting against a
@@ -75,7 +75,7 @@ fn recreate_backend_on_format_change_renders_identically() {
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
-    // Host notices the surface format changed and recreates the backend.
+    // WindowRenderer notices the surface format changed and recreates the backend.
     h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
 
     // Render the same scene against the new format. `render_to_format`
@@ -258,7 +258,7 @@ fn images_survive_format_change_without_reupload() {
 fn format_change_without_recreate_panics() {
     let size = UVec2::new(64, 64);
     let mut h = Harness::new();
-    // Host built for Rgba8UnormSrgb; render straight into a BGRA target
+    // WindowRenderer built for Rgba8UnormSrgb; render straight into a BGRA target
     // without recreating. The backend's `ensure_backbuffer` assert fires
     // before any GPU work, so the shared device stays clean for other
     // tests.
