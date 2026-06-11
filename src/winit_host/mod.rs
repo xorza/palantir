@@ -69,7 +69,7 @@ use crate::winit_host::handle::{HostHandle, UserEvent};
 /// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
 /// exist — handed to [`WinitHost::new`] and invoked on the first
 /// `resumed`.
-type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle) -> T>;
+type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
 /// The caller-supplied app. `WinitHost` builds it via the closure passed
 /// to [`WinitHost::new`] once the first window's `Ui` and [`HostHandle`]
@@ -103,7 +103,7 @@ struct WindowState {
 /// Top-level winit-driven palantir runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls
 /// `T::frame` once per redraw, per window.
-pub struct WinitHost<T> {
+pub struct WinitHost<T: 'static> {
     /// Config for the first window, consumed by the first `resumed`.
     config: WinitHostConfig,
     /// Token assigned to the first (bootstrap) window.
@@ -119,8 +119,8 @@ pub struct WinitHost<T> {
     gpu: Option<Gpu>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
-    event_loop: Option<EventLoop<UserEvent>>,
-    proxy: EventLoopProxy<UserEvent>,
+    event_loop: Option<EventLoop<UserEvent<T>>>,
+    proxy: EventLoopProxy<UserEvent<T>>,
 }
 
 impl<T> WinitHost<T>
@@ -136,12 +136,12 @@ where
     pub fn new(
         first_token: WindowToken,
         config: WinitHostConfig,
-        build: impl FnOnce(&mut Ui, HostHandle) -> T + 'static,
+        build: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
     ) -> Self {
         // EventLoop is built up front so `handle()` can hand out a proxy
         // before `run()` is called — that's the whole point of letting
         // threads spawn knowing where to send their pokes.
-        let event_loop = EventLoop::<UserEvent>::with_user_event()
+        let event_loop = EventLoop::<UserEvent<T>>::with_user_event()
             .build()
             .expect("event loop");
         let proxy = event_loop.create_proxy();
@@ -161,7 +161,7 @@ where
     /// requests and run-on-main scheduling. Stable for the lifetime of
     /// the host — call before `run()` and ship the handle to worker
     /// threads.
-    pub fn handle(&self) -> HostHandle {
+    pub fn handle(&self) -> HostHandle<T> {
         HostHandle {
             proxy: self.proxy.clone(),
         }
@@ -290,11 +290,11 @@ fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window
     Arc::new(event_loop.create_window(attrs).expect("create window"))
 }
 
-impl<T> ApplicationHandler<UserEvent> for WinitHost<T>
+impl<T> ApplicationHandler<UserEvent<T>> for WinitHost<T>
 where
     T: App + 'static,
 {
-    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent) {
+    fn user_event(&mut self, event_loop: &ActiveEventLoop, event: UserEvent<T>) {
         match event {
             UserEvent::Quit => event_loop.exit(),
             UserEvent::Repaint(token) => {
@@ -302,12 +302,16 @@ where
                     rt.next = FramePresent::Immediate;
                 }
             }
-            UserEvent::RunOnMain(token, task) => {
-                if let Some(rt) = self.window_by_token(token) {
-                    // The task may call `ui.open_window(..)`; the request
-                    // lands on this window's queue and drains in the
-                    // `about_to_wait` that follows event processing.
-                    if task(&mut rt.host.ui) {
+            UserEvent::RunOnMain(task) => {
+                // The task folds background-thread results into app state
+                // (`&mut T`). A `true` return repaints every window, since
+                // any of them may read the changed state next frame.
+                let repaint = match self.app.as_mut() {
+                    Some(app) => task(app),
+                    None => false,
+                };
+                if repaint {
+                    for rt in self.windows.values_mut() {
                         rt.next = FramePresent::Immediate;
                     }
                 }

@@ -97,7 +97,7 @@ fn main() {
 }
 
 impl State {
-    fn new(ui: &mut Ui, _handle: HostHandle) -> Self {
+    fn new(ui: &mut Ui, _handle: HostHandle<Self>) -> Self {
         // Library default is no button animation (`anim = None`).
         // Showcase exists to demo the animation primitive — opt in.
         ui.theme.button.anim = Some(AnimSpec::SPRING);
