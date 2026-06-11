@@ -15,7 +15,7 @@ struct FrameVisual {
 }
 
 impl FrameVisual {
-    fn new(_ui: &mut Ui, _handle: HostHandle) -> Self {
+    fn new(_ui: &mut Ui, _handle: HostHandle<Self>) -> Self {
         FrameVisual {
             state: fixture::FormState::default(),
         }
