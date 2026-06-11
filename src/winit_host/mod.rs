@@ -55,10 +55,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
-use glam::UVec2;
-
-use crate::Display;
-use crate::host::{FramePresent, Host};
+use crate::host::{FramePresent, FrameTarget, Host};
 use crate::input::InputEvent;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
@@ -119,6 +116,11 @@ pub struct WinitHost<T: 'static> {
     gpu: Option<Gpu>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
+    /// Retained scratch: the live tokens are snapshotted here each `draw`
+    /// (can't borrow the whole map while holding one window mutably), then
+    /// handed to `Host::frame` via [`FrameTarget`], which copies them into
+    /// that window's `Ui` for `Ui::window_open`.
+    live_tokens: Vec<WindowToken>,
     event_loop: Option<EventLoop<UserEvent<T>>>,
     proxy: EventLoopProxy<UserEvent<T>>,
 }
@@ -152,6 +154,7 @@ where
             app_builder: Some(Box::new(build)),
             gpu: None,
             windows: HashMap::new(),
+            live_tokens: Vec::new(),
             event_loop: Some(event_loop),
             proxy,
         }
@@ -179,11 +182,22 @@ where
         self.windows.values_mut().find(|w| w.token == token)
     }
 
-    /// Paint one window. Reads its surface size + monitor refresh into a
-    /// fresh `Display`, runs the per-window `Host::frame`, and stores the
-    /// returned schedule back on the window.
+    /// Paint one window. Bundles its surface, config, scale, monitor
+    /// refresh, and the live-window snapshot into a [`FrameTarget`], runs
+    /// the per-window `Host::frame`, and stores the returned schedule back
+    /// on the window.
     fn draw(&mut self, id: WindowId) {
-        let Self { app, windows, .. } = self;
+        // Snapshot live tokens into retained scratch before borrowing one
+        // window mutably, so the frame can answer `Ui::window_open`.
+        self.live_tokens.clear();
+        self.live_tokens
+            .extend(self.windows.values().map(|w| w.token));
+        let Self {
+            app,
+            windows,
+            live_tokens,
+            ..
+        } = self;
         let (Some(app), Some(rt)) = (app.as_mut(), windows.get_mut(&id)) else {
             return;
         };
@@ -192,20 +206,18 @@ where
         // `refresh_millihertz` is queried each frame so a window dragged
         // onto a different-refresh monitor re-paces immediately — winit
         // fires no reliable "refresh changed" event to cache against.
-        let display = Display {
-            refresh_millihertz: rt
-                .window
-                .current_monitor()
-                .and_then(|m| m.refresh_rate_millihertz()),
-            ..Display::from_physical(
-                UVec2::new(rt.config.width, rt.config.height),
-                rt.scale_factor,
-            )
-        };
+        let refresh_millihertz = rt
+            .window
+            .current_monitor()
+            .and_then(|m| m.refresh_rate_millihertz());
         rt.next = rt.host.frame(
-            &rt.surface,
-            &rt.config,
-            display,
+            FrameTarget {
+                surface: &rt.surface,
+                config: &rt.config,
+                scale_factor: rt.scale_factor,
+                refresh_millihertz,
+                live_windows: live_tokens.as_slice(),
+            },
             |ui| app.frame(token, ui),
             || window.pre_present_notify(),
         );

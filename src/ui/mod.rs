@@ -255,6 +255,11 @@ pub struct Ui {
     /// Window-close requests filed by [`Self::close_window`]; drained
     /// alongside [`Self::pending_windows`]. Same retained-Vec contract.
     pub(crate) pending_closes: Vec<WindowToken>,
+    /// Tokens of the windows live as of this frame's start, refreshed by
+    /// `WinitHost` before each `frame` so the app can poll
+    /// [`Self::window_open`] without mirroring window state itself. A
+    /// retained snapshot (capacity reused); empty in headless contexts.
+    pub(crate) live_windows: Vec<WindowToken>,
 }
 
 impl Default for Ui {
@@ -291,6 +296,7 @@ impl Default for Ui {
             gpu_pass_stats: Default::default(),
             pending_windows: Vec::new(),
             pending_closes: Vec::new(),
+            live_windows: Vec::new(),
         }
     }
 }
@@ -956,6 +962,17 @@ impl Ui {
     /// no live window, or in headless contexts.
     pub fn close_window(&mut self, token: WindowToken) {
         self.pending_closes.push(token);
+    }
+
+    /// Whether a window addressed by `token` is currently live. Reflects
+    /// the set as of this frame's *start*, so a window opened or closed
+    /// earlier *this* frame isn't reflected until the next one (the host
+    /// drains [`Self::open_window`] / [`Self::close_window`] between
+    /// frames). Use it as the source of truth for "is this window up?"
+    /// instead of mirroring the state in app code — a window the user
+    /// closed via its titlebar drops out of this set automatically.
+    pub fn window_open(&self, token: WindowToken) -> bool {
+        self.live_windows.contains(&token)
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
