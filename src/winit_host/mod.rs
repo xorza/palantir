@@ -63,7 +63,7 @@ use crate::input::InputEvent;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use crate::winit_host::config::WinitHostConfig;
-use crate::winit_host::gpu::{Gpu, GpuInit};
+use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
 use crate::winit_host::handle::{HostHandle, UserEvent};
 
 /// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
@@ -229,7 +229,21 @@ where
             return;
         };
         let ws = gpu.make_surface(&window);
-        let host = gpu.make_host(ws.format);
+        let host = gpu.make_host(ws.config.format);
+        self.insert_window(token, window, ws, host);
+    }
+
+    /// Register a freshly built window in the routing map, scheduled to
+    /// paint its first frame (`next: Immediate` makes the next
+    /// `about_to_wait` request the redraw). Shared tail of `resumed` and
+    /// `spawn_window`.
+    fn insert_window(
+        &mut self,
+        token: WindowToken,
+        window: Arc<Window>,
+        ws: WindowSurface,
+        host: Host,
+    ) {
         let scale_factor = window.scale_factor() as f32;
         let id = window.id();
         self.windows.insert(
@@ -241,8 +255,6 @@ where
                 config: ws.config,
                 host,
                 scale_factor,
-                // `next: Immediate` makes `about_to_wait` request the
-                // first redraw.
                 next: FramePresent::Immediate,
             },
         );
@@ -330,37 +342,20 @@ where
             gpu,
             first_surface: ws,
         } = Gpu::create(&window, &cfg);
-        let mut host = gpu.make_host(ws.format);
+        let mut host = gpu.make_host(ws.config.format);
 
-        // Build the app now that the first `Ui` exists. `resumed` can
-        // fire again after a suspend; only construct on the first pass so
-        // a resume doesn't wipe accumulated app state. (Guarded by
-        // `gpu.is_some()` above, but keep the `app.is_none()` check for
-        // clarity.)
-        if self.app.is_none() {
-            let handle = HostHandle {
-                proxy: self.proxy.clone(),
-            };
-            let build = self.app_builder.take().expect("app builder consumed");
-            self.app = Some(build(&mut host.ui, handle));
-        }
-        let scale_factor = window.scale_factor() as f32;
-        let id = window.id();
+        // Build the app now that the first `Ui` exists. The
+        // `gpu.is_some()` early-return above means this runs exactly once
+        // (a post-suspend `resumed` returns there), so no `app.is_none()`
+        // guard is needed; `app_builder.take().expect(..)` is the
+        // double-build backstop.
+        let handle = HostHandle {
+            proxy: self.proxy.clone(),
+        };
+        let build = self.app_builder.take().expect("app builder consumed");
+        self.app = Some(build(&mut host.ui, handle));
 
-        // `next: Immediate` makes `about_to_wait` request the first
-        // redraw — no need to call `request_redraw()` here.
-        self.windows.insert(
-            id,
-            WindowState {
-                token: self.first_token,
-                window,
-                surface: ws.surface,
-                config: ws.config,
-                host,
-                scale_factor,
-                next: FramePresent::Immediate,
-            },
-        );
+        self.insert_window(self.first_token, window, ws, host);
         self.gpu = Some(gpu);
     }
 
