@@ -1,5 +1,6 @@
 use palantir::{
-    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig,
+    App, Button, Configure, HostHandle, Panel, Sizing, Text, Ui, WindowToken, WinitHost,
+    WinitHostConfig,
 };
 
 struct Counter {
@@ -13,7 +14,7 @@ impl Counter {
 }
 
 impl App for Counter {
-    fn frame(&mut self, ui: &mut Ui) {
+    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
@@ -30,5 +31,10 @@ impl App for Counter {
 }
 
 fn main() {
-    WinitHost::new(WinitHostConfig::new("counter"), Counter::new).run();
+    WinitHost::new(
+        WindowToken(0),
+        WinitHostConfig::new("counter"),
+        Counter::new,
+    )
+    .run();
 }

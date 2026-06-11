@@ -1,6 +1,6 @@
 use palantir::{
     AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shadow, Shortcut,
-    Sizing, Ui, WinitHost, WinitHostConfig,
+    Sizing, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
 };
 
 mod showcase;
@@ -12,11 +12,20 @@ use showcase::{
     text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
 };
 
+/// Token for the bootstrap window (the showcase itself).
+const MAIN_WINDOW: WindowToken = WindowToken(0);
+/// Token for the optional secondary window (F8) that mirrors the
+/// `app_state` counter page in its own OS window.
+const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
+
 /// State the showcase binary carries across frames: which tab is
 /// active, plus the counter the `app_state` page reads/writes.
 struct State {
     active: usize,
     app: AppState,
+    /// Whether the secondary inspector window is currently open. Toggled
+    /// by F8 from the main window; cleared when that window is closed.
+    inspector_open: bool,
 }
 
 /// Each non-stateful showcase: a label for the toolbar button, and a
@@ -79,7 +88,12 @@ fn main() {
         )
         .init();
 
-    WinitHost::new(WinitHostConfig::new("palantir showcase"), State::new).run();
+    WinitHost::new(
+        MAIN_WINDOW,
+        WinitHostConfig::new("palantir showcase"),
+        State::new,
+    )
+    .run();
 }
 
 impl State {
@@ -90,18 +104,47 @@ impl State {
         State {
             active: 0,
             app: AppState { counter: 0 },
+            inspector_open: false,
         }
     }
 }
 
 impl App for State {
-    fn frame(&mut self, ui: &mut Ui) {
-        build_ui(ui, self);
+    fn frame(&mut self, win: WindowToken, ui: &mut Ui) {
+        match win {
+            INSPECTOR_WINDOW => build_inspector(ui, self),
+            _ => build_ui(ui, self),
+        }
     }
+}
+
+/// The secondary window's content: the same counter the `app_state` page
+/// drives, in its own OS window. Demonstrates an independent UI tree
+/// sharing app state across windows via `&mut State`.
+fn build_inspector(ui: &mut Ui, state: &mut State) {
+    Panel::vstack()
+        .auto_id()
+        .padding(16.0)
+        .gap(12.0)
+        .size((Sizing::FILL, Sizing::FILL))
+        .show(ui, |ui| {
+            app_state::build(ui, &mut state.app);
+        });
 }
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
+    // F8 toggles a second OS window mirroring the counter page. If the
+    // user closed it via its titlebar X, `inspector_open` is stale —
+    // close_window then no-ops and the next F8 reopens.
+    if ui.key_pressed(Shortcut::key(Key::F8)) {
+        if state.inspector_open {
+            ui.close_window(INSPECTOR_WINDOW);
+        } else {
+            ui.open_window(INSPECTOR_WINDOW, WindowConfig::new("inspector"));
+        }
+        state.inspector_open = !state.inspector_open;
+    }
     let active_style = active_toolbar_button(&ui.theme.button);
     Panel::vstack()
         .auto_id()

@@ -1649,3 +1649,48 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
         |ui| probe(ui, |f| f.background(bg(0.8, 0.2, 0.2))),
     );
 }
+
+/// `open_window` / `close_window` enqueue onto the retained scratch the
+/// host drains *after* the frame — so the requests must survive the
+/// `frame` call that filed them (and a subsequent quiet frame), since
+/// the host hasn't had a chance to run yet. Without that, a window
+/// opened during record would be silently dropped before the event loop
+/// regained `&ActiveEventLoop` to act on it.
+#[test]
+fn window_requests_queue_and_survive_the_frame() {
+    use crate::{WindowConfig, WindowToken};
+
+    let mut ui = Ui::for_test();
+    let open = WindowToken(7);
+    let close = WindowToken(3);
+
+    ui.run_at(SURFACE, |ui| {
+        ui.open_window(open, WindowConfig::new("inspector"));
+        ui.close_window(close);
+    });
+
+    // Filed during record, still pending after the frame returned —
+    // nothing in the frame pipeline clears them.
+    assert_eq!(ui.pending_windows.len(), 1);
+    assert_eq!(ui.pending_windows[0].token, open);
+    assert_eq!(ui.pending_windows[0].config.title, "inspector");
+    assert_eq!(ui.pending_closes, vec![close]);
+
+    // A quiet frame (no new requests) must not drop the still-undrained
+    // queue — the host might not have ticked between these two frames.
+    ui.run_at(SURFACE, |_| {});
+    assert_eq!(
+        ui.pending_windows.len(),
+        1,
+        "queue must outlive a quiet frame"
+    );
+    assert_eq!(ui.pending_closes, vec![close]);
+
+    // The host drains by `append`/`drain`-ing the vecs; emulate that and
+    // confirm a third frame leaves them empty (no re-queue).
+    ui.pending_windows.clear();
+    ui.pending_closes.clear();
+    ui.run_at(SURFACE, |_| {});
+    assert!(ui.pending_windows.is_empty());
+    assert!(ui.pending_closes.is_empty());
+}
