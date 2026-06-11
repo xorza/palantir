@@ -32,11 +32,11 @@ pub(crate) struct Gpu {
     collect_gpu_stats: bool,
 }
 
-/// A window's swapchain pieces, produced by [`Gpu::make_surface`].
+/// A window's swapchain pieces, produced by [`Gpu::make_surface`]. The
+/// swapchain color format lives on `config.format`.
 pub(crate) struct WindowSurface {
     pub(crate) surface: wgpu::Surface<'static>,
     pub(crate) config: wgpu::SurfaceConfiguration,
-    pub(crate) format: wgpu::TextureFormat,
 }
 
 /// The shared [`Gpu`] plus the first window's surface, returned together
@@ -156,11 +156,7 @@ impl Gpu {
             // (two images), lowest input-to-photon latency.
             desired_maximum_frame_latency: 1,
         };
-        WindowSurface {
-            surface,
-            config,
-            format,
-        }
+        WindowSurface { surface, config }
     }
 
     /// Build a fresh per-window [`Host`] sharing this device/queue.
