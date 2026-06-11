@@ -9,7 +9,7 @@ use glam::UVec2;
 /// snap-to-physical-pixel-edge flag, and the monitor's refresh rate.
 ///
 /// The driving host rebuilds this each frame from the window's surface
-/// config, scale factor, and monitor, then hands it to `Host::frame`.
+/// config, scale factor, and monitor, then hands it to `WindowRenderer::frame`.
 /// Surface-size changes are detected via `logical_rect`, so `pixel_snap`
 /// and `refresh_millihertz` ride along without ever forcing a relayout.
 ///

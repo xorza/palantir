@@ -5,7 +5,7 @@
 //! 2. [`Composer`] — `&RenderCmdBuffer` → `RenderBuffer` (physical-px
 //!    quads + scissor groups). Owns the output + scratch; no GPU handles.
 //! 3. [`Frontend`] (this struct) — orchestrates (1) + (2) and owns every
-//!    persistent per-frame allocation. [`Host`] calls [`Frontend::build`]
+//!    persistent per-frame allocation. [`WindowRenderer`] calls [`Frontend::build`]
 //!    once per frame and hands the composed buffer to the backend; the
 //!    backend reads its own clone of `RenderCaches` (image registry +
 //!    gradient atlas) for upload.
@@ -13,7 +13,7 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 //!
-//! [`Host`]: crate::host::Host
+//! [`WindowRenderer`]: crate::window_renderer::WindowRenderer
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
@@ -33,14 +33,14 @@ use crate::ui::frame_report::RenderPlan;
 /// No GPU handles; gradient atlas state lives on `RenderCaches`,
 /// shared with the backend.
 ///
-/// Owned by [`Host`](crate::host::Host) alongside the backend; the
+/// Owned by [`WindowRenderer`](crate::window_renderer::WindowRenderer) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned
 /// `&RenderBuffer` straight to the backend.
 pub struct Frontend {
     pub(crate) cmds: RenderCmdBuffer,
     pub(crate) composer: Composer,
     pub(crate) buffer: RenderBuffer,
-    /// Shared frame arena (clone of `Host`'s canonical handle). Compose
+    /// Shared frame arena (clone of `WindowRenderer`'s canonical handle). Compose
     /// borrows it mutably to append polyline tessellation output and
     /// to read user-supplied mesh / polyline bytes.
     pub(crate) frame_arena: FrameArena,

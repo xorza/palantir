@@ -59,7 +59,7 @@ use crate::ui::frame_report::RenderPlan;
 pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 
 /// Construction-time knobs for [`WgpuBackend::new`]. Grouped so the
-/// `Host` / `WinitHost` call sites don't grow a long positional
+/// `WindowRenderer` / `WinitHost` call sites don't grow a long positional
 /// signature each time a new GPU-side setting is exposed.
 pub(crate) struct WgpuBackendConfig {
     /// `Some(stats)` opts the backend into GPU instrumentation: the
@@ -145,7 +145,7 @@ pub(crate) struct WgpuBackend {
     /// together. [`Self::ensure_backbuffer`] hard-asserts the swapchain
     /// texture handed to `submit` matches this — a mismatch means the
     /// host changed format without going through
-    /// [`Host::set_surface_format`](crate::Host::set_surface_format),
+    /// [`WindowRenderer::set_surface_format`](crate::WindowRenderer::set_surface_format),
     /// which would leave the pipelines stale and silently mis-render.
     color_format: wgpu::TextureFormat,
     /// Persistent off-screen render target; lazily created on first
@@ -153,7 +153,7 @@ pub(crate) struct WgpuBackend {
     /// Stage 3 / Step 6 of the damage-rendering plan: we render here
     /// so future frames can `LoadOp::Load` last frame's pixels.
     backbuffer: Option<Backbuffer>,
-    /// Shared frame arena (clone of `Host`'s canonical handle). The
+    /// Shared frame arena (clone of `WindowRenderer`'s canonical handle). The
     /// backend reads mesh vertices/indices from it during upload.
     frame_arena: FrameArena,
     /// Shared cross-frame GPU resource caches (image registry +
@@ -164,7 +164,7 @@ pub(crate) struct WgpuBackend {
     /// instrumentation (see `WinitHostConfig::collect_gpu_stats`) AND
     /// the adapter advertises `TIMESTAMP_QUERY`. Resolved values
     /// publish through the `GpuPassStats` handle the backend got at
-    /// construction; `Host` keeps the canonical clone.
+    /// construction; `WindowRenderer` keeps the canonical clone.
     gpu_timings: Option<GpuTimings>,
 }
 
@@ -278,7 +278,7 @@ impl WgpuBackend {
     /// new format (the old texture carries the old format). Counterpart
     /// to the hard-assert in [`Self::ensure_backbuffer`] — the host
     /// calls this via
-    /// [`Host::set_surface_format`](crate::Host::set_surface_format)
+    /// [`WindowRenderer::set_surface_format`](crate::WindowRenderer::set_surface_format)
     /// when it observes a surface format change.
     pub(crate) fn recreate_for_format(&mut self, format: wgpu::TextureFormat) {
         if self.color_format == format {
@@ -315,7 +315,7 @@ impl WgpuBackend {
             "WgpuBackend was built for surface format {:?}; got {:?} this submit. \
              Every format-dependent pipeline (quad / mesh / image / curve / text \
              atlas) was built against the original format. Call \
-             `Host::set_surface_format` when the surface format changes \
+             `WindowRenderer::set_surface_format` when the surface format changes \
              mid-session — it rebuilds them all. Reaching here means the \
              swapchain format changed without that call.",
             self.color_format, format,
@@ -406,7 +406,7 @@ impl WgpuBackend {
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
     ///
-    /// Skip frames are handled in `Host::render`'s early-return branch
+    /// Skip frames are handled in `WindowRenderer::render`'s early-return branch
     /// (`pending_damage` is `None`); this method is only entered with
     /// `Some(Full | Partial)`.
     ///

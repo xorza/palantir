@@ -116,7 +116,7 @@ fixtures loosen it for glyph AA).
   exposes the dirty region as a pixel pattern: Skip-path static scene,
   single-change repaint, dirty-region stroke, and multi-rect
   centre-stays-unpainted invariants. All assert-only.
-- **`format_change`** — the `Host::set_surface_format` recreate path. Flips
+- **`format_change`** — the `WindowRenderer::set_surface_format` recreate path. Flips
   the swapchain color format mid-session, rebuilds every format-dependent
   pipeline (quad / mesh / image / curve / text atlas), and asserts the rebuilt
   renderer produces matching pixels (and that skipping the rebuild fails

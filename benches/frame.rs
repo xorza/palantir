@@ -8,12 +8,12 @@
 //!   compose and acks the present; nothing touches the GPU. This is the
 //!   clean signal: no queue submit, no `device.poll` ioctl, no
 //!   per-size framebuffer reconfiguration. Going through
-//!   `Host::frame_offscreen` + a poll (the old shape) charged every iter
+//!   `WindowRenderer::frame_offscreen` + a poll (the old shape) charged every iter
 //!   driver work that profiled as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
 //!   reallocations per size) — swamping the palantir cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
-//!   `Host::frame_offscreen` against an offscreen `wgpu::Texture` +
+//!   `WindowRenderer::frame_offscreen` against an offscreen `wgpu::Texture` +
 //!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
 //!   dominated by GPU exec on large views. The per-frame `write_stats`
 //!   dump (upload counts, GPU pass timings) lives here since it's
@@ -54,7 +54,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
 use palantir::renderer::frontend::Frontend;
 use palantir::ui::frame_report::RenderPlan;
-use palantir::{Color, Display, Host, Ui};
+use palantir::{Color, Display, Ui, WindowRenderer};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
 use std::hint::black_box;
@@ -144,17 +144,17 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-/// Build a `Host` from the shared bench device with GPU
+/// Build a `WindowRenderer` from the shared bench device with GPU
 /// instrumentation on. Every bench arm wants the same shape — bundled
 /// fonts, default image budget, `collect_gpu_stats: true` — so the
-/// helper keeps `Host::with_options` call sites from drifting.
-fn bench_host(g: &Gpu) -> Host {
-    Host::with_options(
+/// helper keeps `WindowRenderer::with_options` call sites from drifting.
+fn bench_host(g: &Gpu) -> WindowRenderer {
+    WindowRenderer::with_options(
         g.device.clone(),
         g.queue.clone(),
         FORMAT,
         palantir::TextShaper::with_bundled_fonts(),
-        palantir::HostConfig {
+        palantir::WindowRendererConfig {
             collect_gpu_stats: true,
         },
     )
@@ -188,7 +188,7 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 /// before any GPU submit**. No `wgpu::Device` is ever created, so the
 /// `frame/*_cpu` arms profile as pure palantir CPU work.
 ///
-/// Time is advanced from a real `Instant` exactly like `Host::cpu_frame`
+/// Time is advanced from a real `Instant` exactly like `WindowRenderer::cpu_frame`
 /// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
 /// same cadence as production — otherwise a frozen clock could classify
 /// frames as `PaintOnly` and skip the record closure the arms depend on.
@@ -319,12 +319,12 @@ fn assert_partial_invariant() {
 
 // ── GPU bench (full pipeline) ─────────────────────────────────────────
 
-/// Shared GPU-arm scaffolding: build a fresh `Host`, run 4 warmup frames
+/// Shared GPU-arm scaffolding: build a fresh `WindowRenderer`, run 4 warmup frames
 /// with `PollType::Wait`, then hand criterion the same closure. Each
 /// arm's `iter` closure owns target selection and per-iter state mutation.
 fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
 where
-    F: FnMut(&mut Host, &mut FormState, &wgpu::Device),
+    F: FnMut(&mut WindowRenderer, &mut FormState, &wgpu::Device),
 {
     let g = gpu();
     let mut host = bench_host(g);

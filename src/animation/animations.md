@@ -17,7 +17,7 @@ split.
 - **Two specs, one entry point.** Duration + easing for designed
   motion; critically-damped spring for retargetable motion. Caller
   picks; primitive dispatches.
-- **Frame-driven, not wallclock.** Host hands `now: Duration` to
+- **Frame-driven, not wallclock.** WindowRenderer hands `now: Duration` to
   `Ui::run_frame`; `Ui::dt` is derived. No `Instant::now()` in widget
   code — keeps animation deterministic and host-portable.
 - **No new authoring model.** A widget still does
@@ -53,5 +53,5 @@ wake have different consumers.
   200ms` syntax — no styling layer to attach it to, and Vizia's
   experience says it creates a dual source-of-truth with imperative
   setters.
-- **GPU-side interpolation.** All math is CPU during record. Renderer
+- **GPU-side interpolation.** All math is CPU during record. WindowRenderer
   sees only finalized values.

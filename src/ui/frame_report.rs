@@ -13,7 +13,7 @@ use crate::ui::damage::Damage;
 use crate::ui::damage::region::DamageRegion;
 use std::time::Duration;
 
-/// Host-facing render plan, present only when there's actual render
+/// WindowRenderer-facing render plan, present only when there's actual render
 /// work this frame — `FrameReport.plan = None` is the skip signal,
 /// so neither the encoder nor the backend ever sees a no-op plan.
 /// Pairs the engine's damage outcome with the surface clear colour
@@ -87,7 +87,7 @@ impl FrameReport {
     }
 
     /// Absolute Ui-time deadline for a deferred repaint. Compose with
-    /// the host's clock anchor (e.g. `Host::start_instant() +
+    /// the host's clock anchor (e.g. `WindowRenderer::start_instant() +
     /// deadline`) to get a wallclock `Instant`.
     pub fn repaint_after(&self) -> Option<Duration> {
         self.repaint_after

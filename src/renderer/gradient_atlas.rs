@@ -342,7 +342,7 @@ impl GradientCpuAtlas {
 }
 
 /// Cross-frame shared handle for the gradient LUT atlas. Cheap to
-/// clone (Rc-shared); `Host` owns the canonical instance and hands
+/// clone (Rc-shared); `WindowRenderer` owns the canonical instance and hands
 /// clones to subsystems that register or flush gradients. Sibling of
 /// [`crate::ImageRegistry`] — same lifetime, same access pattern.
 #[derive(Clone, Default)]

@@ -1,21 +1,21 @@
 //! [`Gpu`] — the shared wgpu context (instance / adapter / device / queue)
 //! built once at startup and reused by every window. No winit-event or
 //! app-contract concern lives here; it only creates surfaces and
-//! per-window [`Host`]s.
+//! per-window [`WindowRenderer`]s.
 
 use std::sync::Arc;
 
 use glam::UVec2;
 use winit::window::Window;
 
-use crate::host::{Host, HostConfig};
 use crate::text::TextShaper;
+use crate::window_renderer::{WindowRenderer, WindowRendererConfig};
 use crate::winit_host::config::WinitHostConfig;
 
 /// Shared GPU context — built once on the first `resumed` and retained
 /// for the host's lifetime so additional windows reuse one device/queue.
 /// wgpu's `Device`/`Queue` are `Arc`-backed; cloning them into each
-/// window's [`Host`] shares one GPU context for free.
+/// window's [`WindowRenderer`] shares one GPU context for free.
 pub(crate) struct Gpu {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
@@ -27,7 +27,7 @@ pub(crate) struct Gpu {
     /// at startup from `WinitHostConfig`, app-global.
     present_mode: wgpu::PresentMode,
     /// Whether the device was created with the timing-query features.
-    /// Threaded into every window's `Host` so the backend opts into
+    /// Threaded into every window's `WindowRenderer` so the backend opts into
     /// instrumentation only when the device actually supports it.
     collect_gpu_stats: bool,
 }
@@ -126,7 +126,7 @@ impl Gpu {
     }
 
     /// Pick an sRGB swapchain format and build the `SurfaceConfiguration`.
-    /// `Host::frame` configures the surface lazily on first paint (it
+    /// `WindowRenderer::frame` configures the surface lazily on first paint (it
     /// notices `configured == None`), so no eager `surface.configure`
     /// here.
     fn configure_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
@@ -159,14 +159,14 @@ impl Gpu {
         WindowSurface { surface, config }
     }
 
-    /// Build a fresh per-window [`Host`] sharing this device/queue.
-    pub(crate) fn make_host(&self, format: wgpu::TextureFormat) -> Host {
-        Host::with_options(
+    /// Build a fresh per-window [`WindowRenderer`] sharing this device/queue.
+    pub(crate) fn make_renderer(&self, format: wgpu::TextureFormat) -> WindowRenderer {
+        WindowRenderer::with_options(
             self.device.clone(),
             self.queue.clone(),
             format,
             TextShaper::with_bundled_fonts(),
-            HostConfig {
+            WindowRendererConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         )

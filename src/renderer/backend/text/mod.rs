@@ -552,7 +552,7 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 pub mod test_support {
     //! Bench/test reach-in surface. Exposes `TextBackend` end-to-end so
     //! `benches/text_atlas.rs` can drive prepare → flush → render
-    //! without going through `Host`'s full record/measure/cascade/encode
+    //! without going through `WindowRenderer`'s full record/measure/cascade/encode
     //! pipeline.
 
     use crate::layout::types::align::HAlign;

@@ -26,7 +26,7 @@
 //! Readback is one-frame-lagged (the `map_async` callback fires after
 //! the GPU completes the submission). Rigorous benchmarking should use
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
-//! handle (e.g. via `Host::gpu_pass_stats`).
+//! handle (e.g. via `WindowRenderer::gpu_pass_stats`).
 
 use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats};
 use std::cell::{Cell, RefCell};
