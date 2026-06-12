@@ -3,6 +3,7 @@
 //! The dynamic-buffer abstraction lives in `crate::renderer::backend::dynamic_buffer`.
 
 use crate::renderer::backend::IMMEDIATES_BYTES;
+use crate::renderer::backend::stencil::stencil_test_state;
 
 /// Render-pipeline recipe. Threads the call-site fields each pipeline
 /// genuinely varies (label, shader, layout, vertex buffers, topology,
@@ -29,8 +30,8 @@ pub(crate) struct PipelineRecipe<'a> {
 
 /// Build a render pipeline from a [`PipelineRecipe`]. Sole source of
 /// truth for the descriptor fields each pipeline doesn't vary —
-/// vertex entry, sample count, multiview mask. The mesh / quad /
-/// image pipelines + their lazy stencil variants all go through here.
+/// vertex entry, sample count, multiview mask. Every quad / mesh /
+/// image / curve / text pipeline goes through here.
 pub(crate) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wgpu::RenderPipeline {
     device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
         label: Some(r.label),
@@ -76,9 +77,54 @@ pub(crate) struct StencilVariant {
     test: wgpu::RenderPipeline,
 }
 
+/// What one color-pipeline family varies: labels, shader, bind-group
+/// layouts, vertex buffers, topology. Everything else (fragment entry
+/// `"fs"`, `ColorWrites::ALL`, premultiplied blend) is fixed across the
+/// quad / mesh / image / curve families and filled in by
+/// [`StencilVariant::build`].
+pub(crate) struct ColorVariantSpec<'a> {
+    pub label: &'static str,
+    pub stencil_label: &'static str,
+    pub layout_label: &'static str,
+    pub shader: &'a wgpu::ShaderModule,
+    pub bind_group_layouts: &'a [Option<&'a wgpu::BindGroupLayout>],
+    pub vertex_buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    pub topology: wgpu::PrimitiveTopology,
+}
+
 impl StencilVariant {
-    pub(crate) fn new(base: wgpu::RenderPipeline, test: wgpu::RenderPipeline) -> Self {
-        Self { base, test }
+    /// Build the base + stencil-test twin for one swapchain format from
+    /// one spec. Shared by the four color families' `build_variants` so
+    /// they can't drift on blend / writes / fragment entry — and the
+    /// twins share one `PipelineLayout` (depth-stencil state isn't part
+    /// of the layout, so building two identical ones was pure waste).
+    pub(crate) fn build(
+        device: &wgpu::Device,
+        spec: ColorVariantSpec<'_>,
+        color_format: wgpu::TextureFormat,
+    ) -> Self {
+        let layout = build_pipeline_layout(device, spec.layout_label, spec.bind_group_layouts);
+        let variant = |label: &'static str, depth_stencil: Option<wgpu::DepthStencilState>| {
+            build_pipeline(
+                device,
+                PipelineRecipe {
+                    label,
+                    shader: spec.shader,
+                    layout: &layout,
+                    vertex_buffers: spec.vertex_buffers,
+                    topology: spec.topology,
+                    color_format,
+                    fragment_entry: "fs",
+                    color_writes: wgpu::ColorWrites::ALL,
+                    blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    depth_stencil,
+                },
+            )
+        };
+        Self {
+            base: variant(spec.label, None),
+            test: variant(spec.stencil_label, Some(stencil_test_state())),
+        }
     }
 
     /// The pipeline to bind: the stencil-test twin in a rounded-clip

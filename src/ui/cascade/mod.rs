@@ -9,7 +9,7 @@
 
 use crate::common::hash::Hasher;
 use crate::forest::Forest;
-use crate::forest::Layer;
+
 use crate::forest::per_layer::PerLayer;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
