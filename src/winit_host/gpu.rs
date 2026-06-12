@@ -8,8 +8,8 @@ use std::sync::Arc;
 use glam::UVec2;
 use winit::window::Window;
 
+use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
-use crate::window_renderer::{WindowRenderer, WindowRendererConfig};
 use crate::winit_host::config::WinitHostConfig;
 
 /// Shared GPU context — built once on the first `resumed` and retained
@@ -159,14 +159,18 @@ impl Gpu {
         WindowSurface { surface, config }
     }
 
-    /// Build a fresh per-window [`WindowRenderer`] sharing this device/queue.
-    pub(crate) fn make_renderer(&self, format: wgpu::TextureFormat) -> WindowRenderer {
-        WindowRenderer::with_options(
+    /// Build the one shared [`WgpuBackend`] every window renders through.
+    /// Created on the first `resumed` once the first surface's format is
+    /// known; each window attaches via `WindowRenderer::new(&backend)`.
+    /// `format` seeds the per-format pipeline map; further formats build
+    /// lazily.
+    pub(crate) fn make_backend(&self, format: wgpu::TextureFormat) -> WgpuBackend {
+        WgpuBackend::new(
             self.device.clone(),
             self.queue.clone(),
             format,
             TextShaper::with_bundled_fonts(),
-            WindowRendererConfig {
+            WgpuBackendConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
             },
         )

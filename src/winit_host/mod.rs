@@ -56,6 +56,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Window, WindowId};
 
 use crate::input::InputEvent;
+use crate::renderer::backend::WgpuBackend;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
@@ -112,8 +113,14 @@ pub struct WinitHost<T: 'static> {
     /// The caller's app builder, set by [`WinitHost::new`] and consumed
     /// by the first `resumed`. `None` after the build.
     app_builder: Option<AppBuilder<T>>,
-    /// Shared GPU context, built lazily on the first `resumed`.
+    /// Shared GPU context (instance / adapter / device / queue; surface
+    /// factory), built lazily on the first `resumed`.
     gpu: Option<Gpu>,
+    /// The one shared GPU renderer every window draws through (pipelines,
+    /// atlases, frame arena, shaper, caches). Built on the first `resumed`
+    /// once the bootstrap surface's format is known; passed into each
+    /// window's `WindowRenderer::frame`.
+    backend: Option<WgpuBackend>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
     /// Retained scratch: the live tokens are snapshotted here each `draw`
@@ -153,6 +160,7 @@ where
             app: None,
             app_builder: Some(Box::new(build)),
             gpu: None,
+            backend: None,
             windows: HashMap::new(),
             live_tokens: Vec::new(),
             event_loop: Some(event_loop),
@@ -194,11 +202,14 @@ where
             .extend(self.windows.values().map(|w| w.token));
         let Self {
             app,
+            backend,
             windows,
             live_tokens,
             ..
         } = self;
-        let (Some(app), Some(rt)) = (app.as_mut(), windows.get_mut(&id)) else {
+        let (Some(app), Some(backend), Some(rt)) =
+            (app.as_mut(), backend.as_mut(), windows.get_mut(&id))
+        else {
             return;
         };
         let window = rt.window.clone();
@@ -211,6 +222,7 @@ where
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz());
         rt.next = rt.renderer.frame(
+            backend,
             FrameTarget {
                 surface: &rt.surface,
                 config: &rt.config,
@@ -237,11 +249,11 @@ where
             return;
         }
         let window = create_window(event_loop, &cfg);
-        let Some(gpu) = self.gpu.as_ref() else {
+        let (Some(gpu), Some(backend)) = (self.gpu.as_ref(), self.backend.as_ref()) else {
             return;
         };
         let ws = gpu.make_surface(&window);
-        let renderer = gpu.make_renderer(ws.config.format);
+        let renderer = WindowRenderer::new(backend);
         self.insert_window(token, window, ws, renderer);
     }
 
@@ -354,7 +366,10 @@ where
             gpu,
             first_surface: ws,
         } = Gpu::create(&window, &cfg);
-        let mut renderer = gpu.make_renderer(ws.config.format);
+        // The one shared GPU renderer, built once the bootstrap surface's
+        // format is known. Every window attaches to it.
+        let backend = gpu.make_backend(ws.config.format);
+        let mut renderer = WindowRenderer::new(&backend);
 
         // Build the app now that the first `Ui` exists. The
         // `gpu.is_some()` early-return above means this runs exactly once
@@ -369,6 +384,7 @@ where
 
         self.insert_window(self.first_token, window, ws, renderer);
         self.gpu = Some(gpu);
+        self.backend = Some(backend);
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {

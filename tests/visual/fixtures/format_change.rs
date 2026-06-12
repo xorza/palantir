@@ -1,13 +1,15 @@
-//! Surface format change mid-session. Simulates the host noticing the
-//! swapchain's color format changed (e.g. the window moved to an HDR /
-//! wide-gamut output and the compositor renegotiated) and recreating
-//! the GPU backend via [`palantir::WindowRenderer::set_surface_format`].
+//! Surface format change mid-session — the window moved to an HDR /
+//! wide-gamut output and the compositor renegotiated the swapchain's
+//! color format. The renderer auto-detects the target's format change and
+//! forces a full repaint at the new format.
 //!
-//! The backend builds every format-dependent pipeline (quad / mesh /
-//! image / curve / text atlas) against one format; submitting against a
-//! differently-formatted texture trips a hard-assert. These fixtures
-//! pin both halves of that contract: the recreate path produces a
-//! working renderer at the new format, and skipping it still fails loud.
+//! The shared backend keys its render pipelines by swapchain format and
+//! builds a new format's set lazily on first submit
+//! (`WgpuBackend::ensure_format`); the per-window backbuffer self-heals
+//! (recreates) on a format change. These fixtures pin that a new format
+//! produces a working renderer rendering identical perceptual pixels,
+//! and that format-independent resources (the uploaded image texture)
+//! survive the switch with no re-upload.
 
 use glam::UVec2;
 use palantir::{
@@ -75,10 +77,9 @@ fn recreate_backend_on_format_change_renders_identically() {
         "scene drew nothing distinct from the background — comparison would be vacuous",
     );
 
-    // WindowRenderer notices the surface format changed and recreates the backend.
-    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
-
-    // Render the same scene against the new format. `render_to_format`
+    // Render the same scene against the new format. The renderer notices
+    // the target's format changed and forces a full repaint at the new
+    // format (building its pipeline set lazily); `render_to_format`
     // swizzles the BGRA readback back into RGBA space for comparison.
     let after = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
 
@@ -101,9 +102,9 @@ fn recreate_backend_on_format_change_renders_identically() {
     );
 }
 
-/// `set_surface_format` is idempotent / cheap when the format is
-/// unchanged, and repeated changes keep working. Flip away and back,
-/// then render at the original format again — still correct.
+/// Repeated format changes keep working: the lazy per-format pipeline map
+/// caches each format's set, so flipping away and back reuses the cached
+/// sets. Render at the original format again — still correct.
 #[test]
 fn repeated_format_changes_keep_rendering() {
     let size = UVec2::new(160, 100);
@@ -111,14 +112,10 @@ fn repeated_format_changes_keep_rendering() {
 
     let baseline = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
 
-    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
+    // Flip to a second format (auto-detected, repaints fully), then back
+    // to the original — its pipeline set is still cached from the baseline
+    // render above.
     let _ = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
-
-    // No-op: same format requested again.
-    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
-
-    // Flip back to the original format and re-render.
-    h.host.set_surface_format(TextureFormat::Rgba8UnormSrgb);
     let restored = h.render_to_format(TextureFormat::Rgba8UnormSrgb, size, 1.0, DARK_BG, scene);
 
     let tol = Tolerance {
@@ -210,19 +207,10 @@ fn images_survive_format_change_without_reupload() {
         "image should be resident in the GPU cache after the first render",
     );
 
-    // Flip format. The surgical rebuild must keep the uploaded texture.
-    h.host.set_surface_format(TextureFormat::Bgra8UnormSrgb);
-    assert_eq!(h.host.surface_format(), TextureFormat::Bgra8UnormSrgb);
-    assert_eq!(
-        h.host.gpu_image_cache_len(),
-        1,
-        "the uploaded image texture must survive the surgical pipeline rebuild — \
-         a format change rebuilds pipelines only, not sampled textures, so the \
-         cache must stay populated (no drop, no re-upload)",
-    );
-
-    // Render the same image at the new format; still drawn from the
-    // surviving cache (count unchanged), and pixel-identical.
+    // Render the same image at a new format. The format change is
+    // auto-detected and builds the new format's pipeline set lazily; the
+    // uploaded image texture (format-independent) must survive untouched —
+    // drawn from the surviving cache (count unchanged), pixel-identical.
     let after = h.render_to_format(
         TextureFormat::Bgra8UnormSrgb,
         size,
@@ -233,7 +221,13 @@ fn images_survive_format_change_without_reupload() {
     assert_eq!(
         h.host.gpu_image_cache_len(),
         1,
-        "rendering after the format change must reuse the cached texture, not re-upload",
+        "the uploaded image texture must survive a new format's pipeline build — \
+         a new format adds its own pipelines only, not sampled textures, so the \
+         cache must stay populated (no drop, no re-upload)",
+    );
+    assert!(
+        h.host.has_format_pipelines(TextureFormat::Bgra8UnormSrgb),
+        "the new format must have built its own pipeline set",
     );
 
     let tol = Tolerance {
@@ -247,20 +241,4 @@ fn images_survive_format_change_without_reupload() {
         report.differing_pixels,
         report.differing_ratio,
     );
-}
-
-/// Contract pin: submitting against a texture whose format differs from
-/// the backend's *without* calling `set_surface_format` first trips the
-/// hard-assert. This is what makes `set_surface_format` mandatory on a
-/// format change — guards against a silent stale-pipeline mis-render.
-#[test]
-#[should_panic(expected = "set_surface_format")]
-fn format_change_without_recreate_panics() {
-    let size = UVec2::new(64, 64);
-    let mut h = Harness::new();
-    // WindowRenderer built for Rgba8UnormSrgb; render straight into a BGRA target
-    // without recreating. The backend's `ensure_backbuffer` assert fires
-    // before any GPU work, so the shared device stays clean for other
-    // tests.
-    let _ = h.render_to_format(TextureFormat::Bgra8UnormSrgb, size, 1.0, DARK_BG, scene);
 }

@@ -116,11 +116,11 @@ fixtures loosen it for glyph AA).
   exposes the dirty region as a pixel pattern: Skip-path static scene,
   single-change repaint, dirty-region stroke, and multi-rect
   centre-stays-unpainted invariants. All assert-only.
-- **`format_change`** — the `WindowRenderer::set_surface_format` recreate path. Flips
-  the swapchain color format mid-session, rebuilds every format-dependent
-  pipeline (quad / mesh / image / curve / text atlas), and asserts the rebuilt
-  renderer produces matching pixels (and that skipping the rebuild fails
-  loud).
+- **`format_change`** — the per-format pipeline path. Flips the swapchain
+  color format mid-session; the renderer auto-detects it, builds the new
+  format's pipeline set lazily, self-heals the backbuffer, and asserts the
+  output matches (and that the format-independent image texture survives
+  the switch with no re-upload).
 - **`hidpi`** — a complex multi-region dashboard at scale 2.0 (header /
   sidebar / 2×2 cards / footer).
 - **`main`** — a clear-color readback sanity check (sRGB round-trip).

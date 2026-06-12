@@ -5,7 +5,8 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::{Color, DebugOverlayConfig, TextShaper, Ui, WindowRenderer};
+use palantir::window_renderer::test_support::OffscreenRenderer;
+use palantir::{Color, DebugOverlayConfig, TextShaper, Ui};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -63,20 +64,14 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pub host: WindowRenderer,
+    pub host: OffscreenRenderer,
 }
 
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = WindowRenderer::with_options(
-            g.device.clone(),
-            g.queue.clone(),
-            FORMAT,
-            shaper,
-            palantir::WindowRendererConfig::default(),
-        );
+        let host = OffscreenRenderer::new(g.device.clone(), g.queue.clone(), FORMAT, shaper, false);
 
         Self {
             device: g.device.clone(),
@@ -98,9 +93,9 @@ impl Harness {
     /// Like [`Self::render`] but renders into a target texture of the
     /// given `format`, returning pixels in RGBA byte order regardless
     /// of the target's channel order (BGRA targets are swizzled on
-    /// readback). The caller must first put `host` into the matching
-    /// format via [`palantir::WindowRenderer::set_surface_format`] — otherwise the
-    /// backend's format assert trips. Used by the format-change fixture.
+    /// readback). A change in `format` from the previous call is
+    /// auto-detected by the renderer (forces a full repaint at the new
+    /// format). Used by the format-change fixture.
     pub fn render_to_format(
         &mut self,
         format: wgpu::TextureFormat,
@@ -126,7 +121,7 @@ impl Harness {
             view_formats: &[],
         });
 
-        self.host.ui.theme.window_clear = clear;
+        self.host.ui().theme.window_clear = clear;
         self.host.frame_offscreen(&target, scale, scene);
 
         let mut img = readback(&self.device, &self.queue, &target, physical);
@@ -172,9 +167,9 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        self.host.ui.debug_overlay = overlay;
+        self.host.ui().debug_overlay = overlay;
         let img = self.render(physical, scale, clear, scene);
-        self.host.ui.debug_overlay = DebugOverlayConfig::default();
+        self.host.ui().debug_overlay = DebugOverlayConfig::default();
         img
     }
 }

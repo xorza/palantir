@@ -47,7 +47,7 @@ use glam::{UVec2, Vec2};
 use palantir::ColorU8;
 use palantir::TextShaper;
 use palantir::renderer::backend::text::test_support::{
-    GpuCtx, Queue, TextBackend, TextRun, make_run,
+    BenchText, GpuCtx, Queue, TextRun, make_run,
 };
 use pollster::FutureExt;
 
@@ -186,7 +186,7 @@ fn build_runs(shaper: &TextShaper) -> Vec<TextRun> {
 /// post. Mirrors `WindowRenderer::frame_offscreen`'s text-relevant slice.
 fn run_frame(
     g: &Gpu,
-    backend: &mut TextBackend,
+    backend: &mut BenchText,
     belt: &mut wgpu::util::StagingBelt,
     target_view: &wgpu::TextureView,
     runs: &[TextRun],
@@ -228,10 +228,10 @@ fn run_frame(
     backend.end_frame();
 }
 
-fn fresh_backend(g: &Gpu) -> (TextBackend, Vec<TextRun>) {
+fn fresh_backend(g: &Gpu) -> (BenchText, Vec<TextRun>) {
     let shaper = TextShaper::with_bundled_fonts();
     let runs = build_runs(&shaper);
-    let backend = TextBackend::new_for_bench(&g.device, FORMAT, shaper);
+    let backend = BenchText::new(&g.device, FORMAT, shaper);
     // Viewport is no longer the text backend's concern — it reads
     // from the shared `@group(0)` uniform the production host binds.
     // The bench's atlas-only fixture doesn't actually issue draws

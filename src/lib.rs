@@ -93,7 +93,6 @@ pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
 pub use window_renderer::FramePresent;
 pub use window_renderer::WindowRenderer;
-pub use window_renderer::WindowRendererConfig;
 // Re-exported (not a palantir type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`

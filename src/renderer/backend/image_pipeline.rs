@@ -19,16 +19,14 @@ use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
 
 pub(crate) struct ImagePipeline {
-    /// Base color pipeline + its lazy stencil-test twin (built on the
-    /// first rounded-clip frame that draws an image).
-    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    /// Cached creation inputs needed to lazy-build the stencil twin.
-    shader: wgpu::ShaderModule,
-    color_format: wgpu::TextureFormat,
+    /// Image shader module — format-independent; `FormatPipelines` reads
+    /// it to build this format's pipelines.
+    pub(crate) shader: wgpu::ShaderModule,
     /// Group 0 layout (per-image texture + sampler). Built once;
-    /// every cached bind group references it.
-    image_bgl: wgpu::BindGroupLayout,
+    /// every cached bind group references it. Format-independent;
+    /// `FormatPipelines` reads it to compose the pipeline layout.
+    pub(crate) image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// `id → bind group` for every live registration's GPU texture. An
     /// entry is inserted when the registry drains a pending upload, and
@@ -40,7 +38,11 @@ pub(crate) struct ImagePipeline {
 }
 
 impl ImagePipeline {
-    pub(crate) fn new(device: &wgpu::Device, format: wgpu::TextureFormat) -> Self {
+    /// Format-independent image resources (shader, layout, sampler, GPU
+    /// texture cache). The pipelines are built by
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variant`].
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.image.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
@@ -59,16 +61,12 @@ impl ImagePipeline {
             ..Default::default()
         });
 
-        let pipeline = Self::build_variant(device, &shader, &image_bgl, format, false);
-
         let instance_buffer =
             DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16);
 
         Self {
-            stencil: StencilVariant::new(pipeline),
             instance_buffer,
             shader,
-            color_format: format,
             image_bgl,
             sampler,
             cache: FxHashMap::default(),
@@ -79,9 +77,9 @@ impl ImagePipeline {
     /// format-dependent object in the whole pipeline — the per-image
     /// textures, bind groups, sampler, and layout are all
     /// format-independent. `stencil` selects the rounded-clip variant
-    /// (adds the shared `stencil_test_state`). Shared by [`Self::new`],
-    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`].
-    fn build_variant(
+    /// (adds the shared `stencil_test_state`). Called by `FormatPipelines`
+    /// per format.
+    pub(crate) fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         image_bgl: &wgpu::BindGroupLayout,
@@ -115,37 +113,6 @@ impl ImagePipeline {
                 depth_stencil,
             },
         )
-    }
-
-    /// Rebuild only the format-dependent render pipelines against
-    /// `format`. The uploaded image textures + their bind groups
-    /// (`Rgba8UnormSrgb`, independent of the swapchain format) survive
-    /// in `cache` — they reference the preserved `image_bgl`, so the
-    /// fresh pipelines stay compatible with them and **no re-upload is
-    /// needed**. The lazy stencil variant is dropped so it rebuilds
-    /// against the new format on the next rounded-clip frame.
-    pub(crate) fn rebuild_for_format(
-        &mut self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-    ) {
-        self.stencil.set_base(Self::build_variant(
-            device,
-            &self.shader,
-            &self.image_bgl,
-            format,
-            false,
-        ));
-        self.color_format = format;
-    }
-
-    /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Idempotent.
-    #[profiling::function]
-    pub(crate) fn ensure_stencil(&mut self, device: &wgpu::Device) {
-        let (shader, color_format, image_bgl) = (&self.shader, self.color_format, &self.image_bgl);
-        self.stencil
-            .ensure(|| Self::build_variant(device, shader, image_bgl, color_format, true));
     }
 
     /// Reconcile the GPU texture cache with the registry, once per frame
@@ -250,8 +217,13 @@ impl ImagePipeline {
 
     /// Bind once per pass. Viewport rides immediates; per-image
     /// group 0 is set in [`Self::draw`] from the cached bind group.
-    pub(crate) fn bind<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>, use_stencil: bool) {
-        pass.set_pipeline(self.stencil.select(use_stencil));
+    pub(crate) fn bind<'a>(
+        &'a self,
+        pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a StencilVariant,
+        use_stencil: bool,
+    ) {
+        pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }
 
