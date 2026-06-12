@@ -205,7 +205,7 @@ pub(crate) struct PaintAnimEntry {
     /// Index into `Tree::shapes.records` of the shape this anim drives.
     /// Read by the damage's `extend_predamaged` path, which derives
     /// the paint-arena index from `node_idx` + the shape's ordinal
-    /// within the node's `shape_span`.
+    /// among the owner's *direct* shapes (counted via `TreeItems`).
     pub(crate) shape_idx: u32,
     /// Index into `Tree::records` of the node that owns this shape —
     /// the open node at `add_shape_animated` time. Lets the damage
