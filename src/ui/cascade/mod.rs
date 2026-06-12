@@ -227,16 +227,6 @@ pub(crate) struct Cascades {
 }
 
 impl Cascades {
-    /// Push a hit-test row to the global SoA. Within a layer the
-    /// pushes happen in `NodeId` order (one per [`run_tree`]
-    /// iteration), so `LayerCascades::entries_base + node.0` is
-    /// always the global entry index of the row — no parallel
-    /// `WidgetId → u32` map needed.
-    #[inline]
-    fn push_entry(&mut self, row: EntryRow) {
-        self.entries.push(row);
-    }
-
     /// Global entry index of the widget last recorded under `id`,
     /// or `None` if `id` isn't in the most recent cascade run.
     #[inline]
@@ -357,7 +347,13 @@ impl CascadesEngine {
             let entries_base = r.entries.len() as u32;
             r.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
-            run_tree(tree, layer_layout, r, layer, &mut self.stack);
+            run_tree(
+                tree,
+                layer_layout,
+                &mut r.layers[layer],
+                &mut r.entries,
+                &mut self.stack,
+            );
             // Invariant guarding `Cascades::entry_idx_of`'s
             // `entries_base + node.0` arithmetic: every node in
             // `tree.records` must push exactly one `EntryRow`. An
@@ -400,8 +396,8 @@ fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped:
 fn run_tree(
     tree: &Tree,
     layout: &LayerLayout,
-    cascades: &mut Cascades,
-    layer: Layer,
+    lc: &mut LayerCascades,
+    entries: &mut Soa<EntryRow>,
     stack: &mut Vec<Frame>,
 ) {
     let n = tree.records.len() as u32;
@@ -419,11 +415,7 @@ fn run_tree(
                 break;
             }
             let popped = stack.pop().unwrap();
-            finalize_frame(
-                stack,
-                &mut cascades.layers[layer].subtree_paint_rects,
-                popped,
-            );
+            finalize_frame(stack, &mut lc.subtree_paint_rects, popped);
         }
         let (parent_transform, parent_clip, parent_dis, parent_inv, parent_prefix) =
             match stack.last() {
@@ -499,7 +491,7 @@ fn run_tree(
                 shape_transform: desc_transform,
                 clips,
             },
-            &mut cascades.layers[layer].paint_arena,
+            &mut lc.paint_arena,
         );
         // Invisible nodes never paint, so seeding their subtree
         // rollup with `Rect::ZERO` keeps a long-lived hidden subtree
@@ -508,12 +500,9 @@ fn run_tree(
         // ancestor). Visibility is in `cascade_input` regardless, so
         // damage tracking is unaffected.
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        cascades.layers[layer]
-            .cascade_inputs
+        lc.cascade_inputs
             .push(finish_cascade_input(parent_prefix, layout_rect, invisible));
-        cascades.layers[layer]
-            .subtree_paint_rects
-            .push(subtree_seed);
+        lc.subtree_paint_rects.push(subtree_seed);
 
         // Descendants inherit the deflated-mask clip — same value the
         // direct shapes were clipped to above and the encoder pushes
@@ -526,7 +515,7 @@ fn run_tree(
             attrs.sense()
         };
         let focusable = !cascaded_off && attrs.is_focusable();
-        cascades.push_entry(EntryRow {
+        entries.push(EntryRow {
             widget_id: wid,
             rect: visible_rect,
             sense,
@@ -535,35 +524,38 @@ fn run_tree(
             layout_rect,
         });
 
-        // Leaves can't be a parent_prefix for anyone — skip the 32 B
-        // prefix-hash work, push a fresh-state Hasher as a placeholder.
-        // `Hasher::new()` is just `FxHasher { hash: 0 }`, ~free.
-        let is_leaf = subtree_end == i + 1;
-        let cascade_prefix = if is_leaf {
-            Hasher::new()
+        if subtree_end == i + 1 {
+            // Leaf: no descendants, so no frame — its
+            // `subtree_paint_rects` slot already holds the seed pushed
+            // above; fold the seed straight into the parent
+            // accumulator. Skips a per-leaf Frame push/pop and the 32 B
+            // prefix-hash work leaves could never hand to a child.
+            if let Some(parent) = stack.last_mut() {
+                parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
+            }
         } else {
-            build_cascade_prefix(desc_transform, desc_clip, disabled, invisible)
-        };
-        stack.push(Frame {
-            transform: desc_transform,
-            clip: desc_clip,
-            disabled,
-            invisible,
-            subtree_end,
-            node_idx: iu,
-            subtree_paint_rect: subtree_seed,
-            cascade_prefix,
-        });
+            stack.push(Frame {
+                transform: desc_transform,
+                clip: desc_clip,
+                disabled,
+                invisible,
+                subtree_end,
+                node_idx: iu,
+                subtree_paint_rect: subtree_seed,
+                cascade_prefix: build_cascade_prefix(
+                    desc_transform,
+                    desc_clip,
+                    disabled,
+                    invisible,
+                ),
+            });
+        }
         i += 1;
     }
     // Drain frames whose subtree extends to the end of the tree —
     // they never hit the `< top.subtree_end` exit at the loop head.
     while let Some(popped) = stack.pop() {
-        finalize_frame(
-            stack,
-            &mut cascades.layers[layer].subtree_paint_rects,
-            popped,
-        );
+        finalize_frame(stack, &mut lc.subtree_paint_rects, popped);
     }
 }
 
@@ -572,14 +564,14 @@ fn run_tree(
 /// out from the per-node suffix (`layout_rect`) so a tree-shaped UI
 /// avoids re-hashing the parent context on every node.
 #[repr(C)]
-#[derive(Clone, Copy, bytemuck::NoUninit)]
+#[padding_struct::padding_struct]
+#[derive(Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
 struct CascadePrefixBytes {
     parent_transform: TranslateScale, // 12B
     clip_rect: Rect,                  // 16B (zeroed when absent)
     clip_present: u8,
     parent_dis: u8,
     parent_inv: u8,
-    _pad: u8,
 }
 
 #[inline]
@@ -599,7 +591,7 @@ fn build_cascade_prefix(
         clip_present,
         parent_dis: parent_dis as u8,
         parent_inv: parent_inv as u8,
-        _pad: 0,
+        ..bytemuck::Zeroable::zeroed()
     };
     let mut h = Hasher::new();
     h.pod(&packed);

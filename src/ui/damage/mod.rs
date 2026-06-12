@@ -29,7 +29,7 @@
 use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
-use crate::forest::tree::NodeId;
+use crate::forest::tree::{NodeId, TreeItem};
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
@@ -52,7 +52,7 @@ pub mod region;
 /// they live in [`DamageEngine::arena`], a single contiguous
 /// arena shared by every painting widget, and this struct just holds
 /// a `Span` into it. Each row is either chrome (row 0 when present)
-/// or one direct shape, mirroring `Cascades::paint_arenas`.
+/// or one direct shape, mirroring `LayerCascades::paint_arena`.
 ///
 /// **No cached `rect`.** The node's own paint extent (the union of its
 /// `paint_arena` rows — what the cascade used to store as
@@ -822,31 +822,41 @@ fn extend_predamaged(
         let arena = &cascades.layers[layer].paint_arena;
         let paints = &arena.rows;
         let node_spans = &arena.node_spans;
-        let shape_spans = tree.records.shape_span();
         for e in &tree.paint_anims.entries {
             if e.anim.next_wake(prev) > now {
                 continue;
             }
-            // shape ordinal within the owner's `shape_span`, then map
-            // to a paint slot inside the owner's `node_span`. Chrome
-            // (when present) sits at row 0 of the node span, shape
-            // paints follow in record order, so the chrome offset is
-            // `1` when this node has chrome — same layout
-            // `compute_paint_rect` emits.
-            let node_idx = e.node_idx as usize;
-            let owner_shapes = shape_spans[node_idx];
-            let ordinal = e.shape_idx - owner_shapes.start;
-            let chrome_offset = u32::from(tree.chrome(NodeId(e.node_idx)).is_some());
-            let node_span = node_spans[node_idx];
+            // Map the shape to its paint slot inside the owner's
+            // `node_span`. Chrome (when present) sits at row 0, shape
+            // paints follow — one per *direct* shape, in `TreeItems`
+            // order (the same stream `compute_paint_rect` emitted
+            // from). `shape_idx - shape_span.start` would be wrong
+            // here: the span covers the whole subtree, so a
+            // shape-bearing child recorded before the animated shape
+            // (Scroll's bars-after-child pattern) would shift the
+            // arithmetic onto a different row. Count direct rows
+            // instead.
+            let node = NodeId(e.node_idx);
+            let ordinal = tree
+                .tree_items(node)
+                .filter_map(|item| match item {
+                    TreeItem::ShapeRecord(idx, _) => Some(idx),
+                    TreeItem::Child(_) => None,
+                })
+                .position(|idx| idx == e.shape_idx)
+                .expect("paint-anim shape_idx is a direct shape of its owner")
+                as u32;
+            let chrome_offset = u32::from(tree.chrome(node).is_some());
+            let node_span = node_spans[e.node_idx as usize];
             let want = chrome_offset + ordinal;
-            // Cascade may not have emitted a paint for this shape —
-            // `compute_paint_rect` skips the per-shape Paint row when
-            // the subtree's cascade walk did so (e.g. invisible-subtree
-            // owners with `len == 0`). Treat that as "no anim damage".
-            if want < node_span.len {
-                let paint_idx = node_span.start + want;
-                out.push(paints[paint_idx as usize].screen);
-            }
+            // `compute_paint_rect` emits one row per direct shape for
+            // every node (invisible included), so the slot must exist.
+            assert!(
+                want < node_span.len,
+                "paint-anim row {want} out of the owner's {} paint rows",
+                node_span.len,
+            );
+            out.push(paints[(node_span.start + want) as usize].screen);
         }
     }
 }
