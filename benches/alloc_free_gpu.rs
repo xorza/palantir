@@ -32,7 +32,7 @@ use std::sync::OnceLock;
 use fixture::{FormState, build_ui};
 use glam::UVec2;
 use palantir::Color;
-use palantir::window_renderer::test_support::OffscreenRenderer;
+use palantir::offscreen_host::OffscreenHost;
 use pollster::FutureExt;
 
 #[global_allocator]
@@ -98,7 +98,7 @@ fn main() {
     };
 
     let g = gpu();
-    let mut host = OffscreenRenderer::new(
+    let mut host = OffscreenHost::new(
         g.device.clone(),
         g.queue.clone(),
         palantir::TextShaper::with_bundled_fonts(),
@@ -122,7 +122,7 @@ fn main() {
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     });
-    let run = |host: &mut OffscreenRenderer, state: &mut FormState| {
+    let run = |host: &mut OffscreenHost, state: &mut FormState| {
         host.ui().theme.window_clear = Color::TRANSPARENT;
         host.frame_offscreen(&target, SCALE, |ui| build_ui(state, NODE_SCALE, ui));
         g.device

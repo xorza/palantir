@@ -5,7 +5,7 @@ use std::sync::OnceLock;
 
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::window_renderer::test_support::OffscreenRenderer;
+use palantir::offscreen_host::OffscreenHost;
 use palantir::{Color, DebugOverlayConfig, TextShaper, Ui};
 use pollster::FutureExt;
 
@@ -64,14 +64,14 @@ thread_local! {
 pub struct Harness {
     device: wgpu::Device,
     queue: wgpu::Queue,
-    pub host: OffscreenRenderer,
+    pub host: OffscreenHost,
 }
 
 impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = OffscreenRenderer::new(g.device.clone(), g.queue.clone(), shaper, false);
+        let host = OffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, false);
 
         Self {
             device: g.device.clone(),

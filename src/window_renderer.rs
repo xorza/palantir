@@ -348,24 +348,19 @@ pub enum FramePresent {
 }
 
 #[cfg(any(test, feature = "internals"))]
-pub mod test_support {
-    //! Offscreen reach-in for the visual harness + GPU benches.
-    //! [`OffscreenRenderer`] bundles the one shared [`WgpuBackend`] with a
-    //! single [`WindowRenderer`] and renders to a caller-supplied texture
-    //! (no swapchain). Production drives one `WgpuBackend` across many
-    //! windows; offscreen has exactly one.
+pub(crate) mod test_support {
+    //! The per-window offscreen render entry. The bundling host that owns
+    //! a backend + this window lives in
+    //! [`OffscreenHost`](crate::offscreen_host::OffscreenHost).
 
-    use crate::renderer::backend::WgpuBackendConfig;
-    use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-    use crate::renderer::context::RenderContext;
-    use crate::text::TextShaper;
     use crate::window_renderer::*;
 
     impl WindowRenderer {
         /// Offscreen one-shot: run CPU + GPU against a caller-supplied
         /// texture (no swapchain acquire), through the shared `gpu`.
         /// `Display`'s physical size is derived from `target.size()`.
-        pub fn frame_offscreen(
+        /// Driven by [`OffscreenHost`](crate::offscreen_host::OffscreenHost).
+        pub(crate) fn frame_offscreen(
             &mut self,
             gpu: &mut WgpuBackend,
             target: &wgpu::Texture,
@@ -380,69 +375,6 @@ pub mod test_support {
             self.note_format(target.format());
             let report = self.cpu_frame(display, record);
             self.render_to_texture(gpu, target, &report);
-        }
-    }
-
-    /// One shared [`WgpuBackend`] + one [`WindowRenderer`], for offscreen
-    /// rendering in the visual harness and GPU benches.
-    pub struct OffscreenRenderer {
-        gpu: WgpuBackend,
-        window: WindowRenderer,
-    }
-
-    impl OffscreenRenderer {
-        pub fn new(
-            device: wgpu::Device,
-            queue: wgpu::Queue,
-            shaper: TextShaper,
-            collect_gpu_stats: bool,
-        ) -> Self {
-            // The shared context outlives this call only as the clones in
-            // the backend + window's `Ui`/`Frontend` (Rc-backed handles);
-            // the offscreen path never opens a second window. The render
-            // target's format (per `frame_offscreen` call) drives the
-            // lazy per-format pipeline build.
-            let ctx = RenderContext::new(shaper);
-            let gpu =
-                WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
-            let window = WindowRenderer::new(&ctx);
-            Self { gpu, window }
-        }
-
-        /// Mutable access to the window's `Ui` for building scenes.
-        pub fn ui(&mut self) -> &mut Ui {
-            &mut self.window.ui
-        }
-
-        /// Run one offscreen frame against `target`.
-        pub fn frame_offscreen(
-            &mut self,
-            target: &wgpu::Texture,
-            scale_factor: f32,
-            record: impl FnMut(&mut Ui),
-        ) {
-            self.window
-                .frame_offscreen(&mut self.gpu, target, scale_factor, record);
-        }
-
-        /// Whether the shared backend has built a pipeline set for
-        /// `format`. Lets format-change tests confirm a new format
-        /// materializes its own pipelines.
-        pub fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
-            self.gpu.has_format_pipelines(format)
-        }
-
-        /// Cloneable handle to the most-recent GPU instrumentation
-        /// sample — same handle the `Ui` debug overlay reads from.
-        pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-            &self.window.ui.gpu_pass_stats
-        }
-
-        /// Images resident in the GPU texture cache. Used by the
-        /// format-change test to assert the cache survives a new format's
-        /// pipeline build (no re-upload).
-        pub fn gpu_image_cache_len(&self) -> usize {
-            self.gpu.gpu_image_cache_len()
         }
     }
 }
