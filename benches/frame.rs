@@ -228,7 +228,7 @@ impl CpuHarness {
             clear: WINDOW_CLEAR,
         });
         self.frontend.build_for_test(&self.ui, plan);
-        self.ui.mark_submitted_for_test();
+        self.ui.mark_frame_submitted();
     }
 }
 
