@@ -11,8 +11,6 @@
 //! variant (~80 B with padding), so a sequence of
 //! `PopClip`/`PopTransform` would pay full-variant storage. Here Pops
 //! are 1 + 4 = 5 bytes (kind byte + start offset, no payload).
-//! `DrawRect` splits into stroked / unstroked kinds so the no-stroke
-//! variant skips the 5×u32 stroke payload entirely.
 //!
 //! Soundness: payload structs are `#[repr(C)]` aggregates of
 //! `f32`/`u32` (and one `u64` in `TextCacheKey`) tagged
@@ -34,11 +32,12 @@
 //! optimizations that skip expensive lowering (text shaping, polyline
 //! tessellation) or sparse-column writes, not correctness gates.
 //!
-//! Exception: `draw_polyline` doesn't gate. Its colors live in spans
-//! (`PerSegment` can mix one solid stop with N transparent), and an
-//! O(n) read on every emit would dominate the per-cmd cost. Polyline
-//! noops are caught by `Shape::Polyline::is_noop` at the authoring
-//! boundary, which is the only practical gate.
+//! Exception: `draw_polyline` doesn't gate on colour. Its colors live
+//! in spans (`PerSegment` can mix one solid stop with N transparent),
+//! and an O(n) read on every emit would dominate the per-cmd cost.
+//! Colour noops are caught by `Shape::Polyline::is_noop` at the
+//! authoring boundary instead; the payload's own `is_noop` still
+//! gates degenerate geometry (point count / width).
 
 use crate::forest::shapes::record::{LoweredGradient, ShapeStroke};
 use crate::primitives::approx::noop_f32;
@@ -112,9 +111,9 @@ pub(crate) struct GpuFillFields {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum CmdKind {
     /// Scissor clip with optional rounded-corner stencil mask. Carries
-    /// [`PushClipPayload`] (rect + radius). When `radius` is all-zero
+    /// [`PushClipPayload`] (rect + corners). When `corners` is all-zero
     /// the composer treats it as a plain scissor; otherwise the
-    /// backend's stencil path writes the SDF mask using the radius.
+    /// backend's stencil path writes the SDF mask using the radii.
     PushClip,
     PopClip,
     PushTransform,
@@ -152,7 +151,7 @@ pub(crate) enum CmdKind {
     DrawCurve,
 }
 
-/// Scissor clip payload. `radius` is all-zero for plain rect clips
+/// Scissor clip payload. `corners` is all-zero for plain rect clips
 /// and non-zero for rounded-mask clips — the composer decides which
 /// path to take by inspecting it.
 #[repr(C)]
@@ -189,7 +188,7 @@ pub(crate) struct DrawRectPayload {
 
 /// Box-shadow paint payload. `rect` is the inflated paint bbox (source
 /// inflated by `|offset| + 3σ + spread` per axis at encode time).
-/// `radius` is the *source* shape's corner radii. `color` is the
+/// `corners` carries the *source* shape's corner radii. `color` is the
 /// shadow tint. `fill_kind` is `FillKind::SHADOW_DROP` or
 /// `SHADOW_INSET`. `fill_axis` carries `(offset.x, offset.y, σ, w)`
 /// in logical-px — the composer scales these to physical-px so the

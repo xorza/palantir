@@ -431,6 +431,17 @@ impl From<ColorF16> for Color {
     }
 }
 
+/// Direct linear-f16 → linear-u8 quantize. Delegates through `Color`
+/// so it can't drift from the two-hop form; exists because the
+/// composer converts per text run / mesh / image / curve every frame
+/// and the double conversion read as two distinct steps at call sites.
+impl From<ColorF16> for ColorU8 {
+    #[inline]
+    fn from(c: ColorF16) -> Self {
+        ColorU8::from(Color::from(c))
+    }
+}
+
 /// sRGB→linear via cubic polynomial. Const-friendly (`f32::powf` is not
 /// const-stable; see rust-lang/rust#57241). Industry-standard cubic fit
 /// (Hejl-Burgess-Dawson and similar) over `[0, 1]`; max abs error ~1.5e-3
@@ -633,5 +644,21 @@ mod tests {
         assert!(parse_hex("#abcde").is_err(), "5-digit not supported");
         assert!(parse_hex("#abcdefab12").is_err(), "10-digit too long");
         assert!(parse_hex("#zzzzzz").is_err(), "non-hex digits");
+    }
+
+    /// The direct `ColorF16 → ColorU8` quantize must stay byte-identical
+    /// to the two-hop form (`ColorU8::from(Color::from(x))`) it replaced
+    /// at the composer's per-run/tint call sites.
+    #[test]
+    fn f16_to_u8_matches_two_hop_quantize() {
+        for c in [
+            Color::linear_rgba(0.0, 0.0, 0.0, 0.0),
+            Color::linear_rgba(1.0, 0.25, 0.5, 1.0),
+            Color::linear_rgba(0.1, 0.9, 0.33, 0.5),
+            Color::linear_rgba(1.0, 1.0, 1.0, 1.0),
+        ] {
+            let f16 = ColorF16::from(c);
+            assert_eq!(ColorU8::from(f16), ColorU8::from(Color::from(f16)));
+        }
     }
 }

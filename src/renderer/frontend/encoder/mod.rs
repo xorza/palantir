@@ -59,8 +59,8 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
 
 /// Walk every tree in `ui.forest` in paint order, emitting logical-px
 /// paint commands into `out`. No GPU work, no scale/snap math — that
-/// lives in the composer + backend. Per-tree layout and cascade rows
-/// are looked up by layer off `ui.layout`.
+/// lives in the composer + backend. Per-tree layout rows come off
+/// `ui.layout`, cascade rows off `ui.cascades`, keyed by layer.
 ///
 /// `plan` is the paint plan for this frame:
 /// - `RenderPlan::Full` paints everything (first frame, surface change,

@@ -1,3 +1,4 @@
+use crate::layout::types::display::Display;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
@@ -86,6 +87,30 @@ impl Default for RenderBuffer {
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
         }
+    }
+}
+
+impl RenderBuffer {
+    /// Reset every per-frame column (capacity retained) and stamp the
+    /// frame's viewport + scale from `display`. Called by
+    /// `Composer::compose` at frame start — the reset lives here,
+    /// beside the fields, so adding a column forces choosing its reset
+    /// in the same edit instead of in the composer's preamble.
+    pub(crate) fn start_frame(&mut self, display: Display) {
+        self.quads.clear();
+        self.texts.clear();
+        self.meshes.rows.clear();
+        self.images.rows.clear();
+        self.groups.clear();
+        self.text_batches.clear();
+        self.mesh_batches.clear();
+        self.image_batches.clear();
+        self.curves.clear();
+        self.curve_batches.clear();
+        self.has_rounded_clip = false;
+        self.viewport_phys = display.physical;
+        self.viewport_phys_f = display.physical.as_vec2();
+        self.scale = display.scale_factor;
     }
 }
 
