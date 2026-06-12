@@ -193,21 +193,18 @@ impl FrameArena {
         // `Hasher::write*` calls (the prior shape) paid `hash_bytes`
         // setup + final `add_to_hash` 5 times — ~40 cycles of overhead
         // dominated `lower_background`'s self-time (~0.5% of frame
-        // total). The Pod struct below is layout-engineered to have
-        // zero internal padding bytes (u64s first → 2-align Pod
-        // structs → tag → explicit tail pad), so `bytemuck::NoUninit`
-        // / `bytes_of` is sound. Hash value differs from the prior
-        // byte-for-byte form — no consumer pins literal hash values
-        // and damage auto-resyncs on first-frame mismatch.
+        // total). Field order is layout-engineered to avoid internal
+        // padding (u64s first → 2-align Pod structs → tag);
+        // `padding_struct` fills the tail so `NoUninit` is sound.
         #[repr(C)]
-        #[derive(Clone, Copy, bytemuck::NoUninit)]
+        #[padding_struct::padding_struct]
+        #[derive(Clone, Copy, bytemuck::NoUninit, bytemuck::Zeroable)]
         struct ChromeHashBytes {
             fill_payload: u64, // ColorF16-as-u64 (Solid) or fill_grad_hash (Gradient)
             corners_u64: u64,
             stroke: ShapeStroke,   // 10 B align 2
             shadow: LoweredShadow, // 18 B align 2
             fill_tag: u8,
-            _pad: [u8; 3],
         }
         let fill_payload: u64 = match fill {
             ShapeBrush::Solid(c) => c.as_u64(),
@@ -223,7 +220,7 @@ impl FrameArena {
             stroke,
             shadow,
             fill_tag,
-            _pad: [0; 3],
+            ..bytemuck::Zeroable::zeroed()
         };
         let mut h = FxHasher::new();
         h.pod(&packed);
@@ -325,7 +322,6 @@ fn lower_curve_inner(
     cap: LineCap,
     degree_tag: u8,
 ) -> ShapeRecord {
-    use crate::renderer::stroke_tessellate::HALF_FRINGE;
     let [p0, p1, p2, p3] = ctrl;
 
     let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
@@ -453,7 +449,7 @@ impl FrameArenaInner {
         // and a 2-point `Shape::Polyline { Single(color) }` lower
         // byte-identically by design — sharing a hash is correct. Bezier
         // records tag themselves with `0xCB` + degree (see
-        // `lower_bezier_inner`) so curve-derived polylines can never
+        // `lower_curve_inner`) so curve-derived polylines can never
         // collide with hand-authored ones that happen to share the same
         // flattened bytes.
         let mut h = FxHasher::new();

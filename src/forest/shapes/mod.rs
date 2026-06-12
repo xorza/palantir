@@ -20,8 +20,8 @@ use crate::shape::{PolylineColors, Shape};
 /// points/colors, gradients) live on the `FrameArena` passed into
 /// [`Self::add`]; `ShapeRecord` variants reference them via spans /
 /// ids. `ShapeRecord::Text.text` is the asymmetric case — it holds
-/// an [`InternedStr`](crate::InternedStr) inline: `Borrowed` /
-/// `Owned` carry bytes on the record itself, while `Interned`
+/// an [`InternedStr`](crate::InternedStr) inline: `Owned` carries
+/// its bytes on the record itself (`SmolStr`), while `Interned`
 /// references `FrameArena::fmt_scratch` via a `Span`. Cleared per
 /// frame, capacity retained.
 #[derive(Default)]
@@ -141,9 +141,9 @@ impl Shapes {
                 use crate::primitives::interned_str::InternedStr;
                 // Each carrier costs only its hash compute:
                 // - `Interned` reuses the hash captured at `Ui::fmt` time.
-                // - `Borrowed` / `Owned` hash the bytes once at lowering;
-                //   the bytes stay where they are (no memcpy into the
-                //   text arena, no per-shape allocation).
+                // - `Owned` hashes the bytes once at lowering; the bytes
+                //   stay where they are (no memcpy into the text arena,
+                //   no per-shape allocation).
                 let text_hash = match &text {
                     InternedStr::Interned { hash, .. } => *hash,
                     InternedStr::Owned(s) => FrameArena::hash_text(s),

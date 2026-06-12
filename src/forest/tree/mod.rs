@@ -32,7 +32,7 @@ use crate::forest::shapes::Shapes;
 use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
 use crate::forest::tree::paint_anims::PaintAnims;
 use crate::forest::visibility::Visibility;
-use crate::layout::grid::GridDef;
+use crate::layout::types::track::GridDef;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -213,7 +213,7 @@ pub(crate) struct ExtrasIdx {
 /// pass touches only the bytes it needs:
 ///
 /// - `layout`      — read by measure / arrange / alignment math
-/// - `attrs`       — 1-byte packed paint/input flags; cascade / encoder
+/// - `attrs`       — packed paint/input flags (2 B); cascade / encoder
 /// - `widget_id`   — hit-test, state map, damage diff
 /// - `subtree_end` — pre-order skip + grid flag (every walk)
 /// - `shape_span`  — span into the flat shape buffer covering this node's
@@ -405,12 +405,9 @@ impl Tree {
     /// `SeenIds::record` can stash it for collision lookup before
     /// `element` is moved into the tree.
     pub(crate) fn peek_next_id(&self) -> NodeId {
-        let id = self.records.len() as u32;
-        // Sparse-column `Slot` caps at `u16::MAX` trip far sooner in
-        // practice (~65 535 nodes) than this `u32` ceiling — this
-        // assert is a final guardrail against silent wraparound.
-        assert!(id < u32::MAX, "Tree record cap reached: {id} nodes");
-        NodeId(id)
+        // Overflow guard lives in `SubtreeEnd::new_open` (the 31-bit
+        // arena ceiling), which `open_node` asserts for this same id.
+        NodeId(self.records.len() as u32)
     }
 
     /// Push a node as a child of the currently-open node (or as a new

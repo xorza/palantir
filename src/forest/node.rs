@@ -29,7 +29,7 @@ pub(crate) struct NodeRecord {
     /// Layout-pass column: geometry + visibility. Bundled because the
     /// hot measure/arrange path reads all six fields together.
     pub layout: LayoutCore,
-    /// 1-byte packed paint/input flags (sense / disabled / clip /
+    /// Packed paint/input flags (2 B: sense / disabled / clip /
     /// focusable). Read by cascade / encoder / hit-test.
     pub attrs: NodeFlags,
 }

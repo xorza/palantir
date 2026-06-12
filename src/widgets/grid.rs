@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::layout::grid::GridDef;
+use crate::layout::types::track::GridDef;
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::transform::TranslateScale;

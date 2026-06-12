@@ -12,13 +12,13 @@
 //! - `PanelExtras` — sparse side table for gap / line_gap / justify /
 //!   child_align. Allocated only when one differs from `DEFAULT`.
 //!
-//! Paint chrome (`Background`, ~232 B) lives **outside** `Element`:
+//! Paint chrome (`Background`, 168 B) lives **outside** `Element`:
 //! widgets that paint a background carry their own
 //! `chrome: Option<Background>` field and pass it as a side-channel
 //! argument through `Ui::node` → `Forest::open_node` →
 //! `Tree::open_node`, where it lands in the per-tree `chrome_table`
-//! (with `is_noop` filtered out at push). Keeps the hot per-widget
-//! `Element` copy at ~128 B instead of 360 B.
+//! (with `is_noop` filtered out at push). Keeps the 168 B out of the
+//! hot ~128 B per-widget `Element` copy.
 //!
 //! Fan-out from `Element` to the dense columns happens once in
 //! `Element::into_columns`. Adding a field is two local edits: append
@@ -489,7 +489,6 @@ pub struct Element {
     /// sibling spacing; `gaps.line_gap()` (WrapHStack/WrapVStack only)
     /// is the row/column spacing. Both ignored by Leaf/ZStack/Canvas/
     /// Grid (Grid uses its own row_gap/col_gap).
-    /// Within-line + between-line gaps packed as two f16 lanes.
     pub(crate) gaps: Gaps,
 
     /// Main-axis distribution of leftover space (HStack/VStack only).
@@ -665,7 +664,9 @@ pub trait Configure: Sized {
     }
     fn max_size(mut self, s: impl Into<Size>) -> Self {
         let s = s.into();
-        assert!(
+        // Debug-only, matching `size` / `min_size` — builder setters run
+        // per widget per frame (see `Sizing::debug_assert_non_negative`).
+        debug_assert!(
             s.w >= 0.0 && s.h >= 0.0,
             "max_size must be non-negative on both axes, got {s:?}",
         );
@@ -790,8 +791,7 @@ pub trait Configure: Sized {
     }
 }
 
-/// Packed paint/input flags. Two bytes (was one before
-/// `Sense::PINCH` claimed bit 4).
+/// Packed paint/input flags, two bytes.
 ///
 /// `bits`: 0-4=sense bitflags (HOVER|CLICK|DRAG|SCROLL|PINCH),
 /// 5=disabled, 6-7=clip mode, 8=focusable. `Element` uses the same

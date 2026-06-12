@@ -96,7 +96,7 @@ impl From<ShapeStroke> for Stroke {
 }
 
 /// Lowered chrome row stored in `Tree.chrome_table`. The user-facing
-/// `Background` is ~232 B (inline `Brush` + `Stroke` with inline
+/// `Background` is 168 B (inline `Brush` + `Stroke` with inline
 /// `Brush`); this row keeps the same fields in their lowered forms.
 /// Same lifecycle as shape records — written at `open_node` (when the
 /// node carries chrome), cleared per frame. Gradient handle indexes
@@ -289,12 +289,12 @@ pub(crate) enum ShapeRecord {
     Text {
         local_origin: Option<Vec2>,
         /// User-facing [`InternedStr`](crate::InternedStr), moved
-        /// in at lowering. No carrier is normalised away — `Borrowed`
-        /// keeps the `&'static str` pointer (zero copy), `Owned`
-        /// moves the `String` (no realloc, dropped at next frame's
-        /// `Shapes::clear`), `Interned` carries the span+hash from
-        /// [`Ui::fmt`](crate::Ui::fmt) unchanged. `text_hash` is the
-        /// pre-computed FxHash for context-free `Hash for ShapeRecord`.
+        /// in at lowering. No carrier is normalised away — `Owned`
+        /// moves its `SmolStr` (inline up to 23 B, no realloc, dropped
+        /// at next frame's `Shapes::clear`), `Interned` carries the
+        /// span+hash from [`Ui::fmt`](crate::Ui::fmt) unchanged.
+        /// `text_hash` is the pre-computed FxHash for context-free
+        /// `Hash for ShapeRecord`.
         text: InternedStr,
         text_hash: u64,
         color: ColorF16,
