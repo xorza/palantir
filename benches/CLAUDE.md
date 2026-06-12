@@ -40,7 +40,7 @@ CPU bench is uncontaminated by driver activity.
   same deviceless path as `alloc_free`). Each iter runs record →
   measure → arrange → cascade → damage and then, when the frame
   produces a render plan, encode + compose — then acks the present
-  (`Ui::mark_submitted_for_test`) so `classify_frame` matches a real
+  (`Ui::mark_frame_submitted`) so `classify_frame` matches a real
   host. **Driving the CPU arms through `WindowRenderer::frame_offscreen` + a poll
   was the old shape and was wrong**: a non-blocking `device.poll`
   charges each iter a driver ioctl, and on `RenderPlan::Skip` the host

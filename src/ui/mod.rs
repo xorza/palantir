@@ -140,7 +140,8 @@ pub struct Ui {
     /// the backend at submit time; `frame_stats` is read by
     /// `Ui::frame` itself to auto-inject the FPS readout.
     pub debug_overlay: DebugOverlayConfig,
-    /// Cross-frame `WidgetId → Any` widget state.
+    /// Cross-frame widget state: per-type dense stores keyed by
+    /// `WidgetId` (see [`StateMap`]).
     pub(crate) state: StateMap,
     /// Shared font/glyph shaper. Set at construction via
     /// [`Self::with_text`] (or left at the mono-fallback default by
@@ -1375,10 +1376,11 @@ pub mod test_support {
 
         /// Ack the just-run frame as presented — mirrors what the host
         /// does after a successful submit, so the next [`Self::frame`]
-        /// doesn't auto-escalate to `Full`. For benches that drive
-        /// `frame` + a standalone [`crate::renderer::frontend::Frontend::build_for_test`]
+        /// doesn't auto-escalate to `Full`. For tests and for benches
+        /// that drive `frame` + a standalone
+        /// [`crate::renderer::frontend::Frontend::build_for_test`]
         /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
-        pub fn mark_submitted_for_test(&self) {
+        pub fn mark_frame_submitted(&mut self) {
             self.frame_state.mark_submitted();
         }
 
@@ -1499,13 +1501,6 @@ pub mod test_support {
                 Damage::Full => "full",
                 Damage::Partial(_) => "partial",
             }
-        }
-
-        // ── frame state ─────────────────────────────────────────
-
-        /// Simulate a successful submit so the next frame doesn't auto-rewind to `Full`.
-        pub fn mark_frame_submitted(&self) {
-            self.frame_state.mark_submitted();
         }
 
         // ── animation ───────────────────────────────────────────

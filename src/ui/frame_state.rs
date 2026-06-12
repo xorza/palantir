@@ -2,9 +2,7 @@
 //! `Ui::frame` (→ `Pending` at frame top) and `WindowRenderer::render` (→
 //! `Submitted` after a successful submit / backbuffer copy). Read by
 //! `Ui::classify_frame` to decide whether to rewind the
-//! damage snapshot. Single-threaded; `Cell` suffices.
-
-use std::cell::Cell;
+//! damage snapshot.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 enum State {
@@ -17,16 +15,16 @@ enum State {
 }
 
 #[derive(Debug, Default)]
-pub(crate) struct FrameState(Cell<State>);
+pub(crate) struct FrameState(State);
 
 impl FrameState {
-    pub(crate) fn mark_pending(&self) {
-        self.0.set(State::Pending);
+    pub(crate) fn mark_pending(&mut self) {
+        self.0 = State::Pending;
     }
-    pub(crate) fn mark_submitted(&self) {
-        self.0.set(State::Submitted);
+    pub(crate) fn mark_submitted(&mut self) {
+        self.0 = State::Submitted;
     }
     pub(crate) fn was_last_submitted(&self) -> bool {
-        self.0.get() == State::Submitted
+        self.0 == State::Submitted
     }
 }
