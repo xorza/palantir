@@ -90,7 +90,7 @@ pub(crate) fn encode(
     let now = ui.time;
     let gradients = arena.gradients.as_slice();
     for (layer, tree) in ui.forest.iter_paint_order() {
-        let layer_cascades = &ui.layout.cascades.layers[layer];
+        let layer_cascades = &ui.cascades.layers[layer];
         let ctx = LayerCtx {
             tree,
             layout: &ui.layout[layer],

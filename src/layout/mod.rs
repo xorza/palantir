@@ -20,7 +20,6 @@ use crate::forest::tree::Tree;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size};
 use crate::text::TextCacheKey;
-use crate::ui::cascade::Cascades;
 use std::ops::{Index, IndexMut};
 
 /// Per-layer layout output — the SoA columns the encoder + hit-index
@@ -44,14 +43,11 @@ pub(crate) struct LayerLayout {
 /// Per-frame layout output across all layers. Callers index by
 /// `Layer` directly (`result[Layer::Main]`) — see [`PerLayer`].
 /// Returned by `LayoutEngine::run`; the encoder, cascade, hit-index,
-/// and tests all read it.
+/// and tests all read it. (The cascade pass's own output lives on
+/// `Ui::cascades` — this struct is purely the layout pass's product.)
 #[derive(Default)]
 pub(crate) struct Layout {
     pub(crate) layers: PerLayer<LayerLayout>,
-    /// Cascaded clip/disabled/invisible/transform per node + global
-    /// hit index. Written by `CascadesEngine::run` in the paint phase
-    /// and read by the encoder, input dispatch, and damage compute.
-    pub(crate) cascades: Cascades,
 }
 
 impl Index<Layer> for Layout {

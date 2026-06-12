@@ -674,7 +674,7 @@ fn disabled_ancestor_propagates_disabled_flag_to_descendants() {
             );
         });
     });
-    let cascades = &ui.layout.cascades;
+    let cascades = &ui.cascades;
     let child = child_node.unwrap();
     assert_eq!(cascades.entries.sense()[child.idx()], Sense::NONE);
 }

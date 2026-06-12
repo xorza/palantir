@@ -1096,10 +1096,9 @@ pub(crate) fn intrinsic(
         if cell_span.len != 1 {
             continue;
         }
+        // In-bounds by the record-time cell range check
+        // (`Tree::check_grid_cell`) — same stance as `sum_spanned_known`.
         let track_idx = cell_span.start as usize;
-        if track_idx >= n_tracks {
-            continue;
-        }
         let t = &tracks[track_idx];
         if !matches!(t.size, Sizing::Hug) {
             continue;

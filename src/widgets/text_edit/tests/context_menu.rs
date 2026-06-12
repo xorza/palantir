@@ -36,10 +36,9 @@ fn context_menu_cut_copy_paste_clear() {
     fn click_menu_row(ui: &mut Ui, buf: &mut String, row_idx: usize) {
         let body_id = editor_id().with("ctx_menu_body");
         let body_rect = ui
-            .layout
             .cascades
             .entry_idx_of(body_id)
-            .map(|i| ui.layout.cascades.entries.rect()[i as usize])
+            .map(|i| ui.cascades.entries.rect()[i as usize])
             .expect("context menu body recorded");
         // Theme padding ~4 px + row height ~31 px including row
         // padding. Click well inside the chosen row.

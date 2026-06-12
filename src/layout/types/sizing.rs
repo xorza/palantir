@@ -118,7 +118,8 @@ const fn decode_sizing(packed: u32) -> Sizing {
         SIZING_TAG_FIXED => Sizing::Fixed(val),
         SIZING_TAG_HUG => Sizing::Hug,
         SIZING_TAG_FILL => Sizing::Fill(val),
-        _ => Sizing::Hug,
+        // Tag 3 is unconstructible by `encode_sizing`.
+        _ => unreachable!(),
     }
 }
 

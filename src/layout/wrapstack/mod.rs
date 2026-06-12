@@ -84,40 +84,21 @@ fn pack_child(
 }
 
 /// Flat per-frame scratch for wrap arrange. One contiguous
-/// `Vec<NodeId>` pool serves all nesting depths: each `enter()`
-/// pushes the current pool length onto `starts`, so the depth's
-/// line buffer is `pool[starts.last()..pool.len()]`. `exit()`
-/// truncates back to its start. Capacity retained across frames;
-/// steady state is alloc-free.
+/// `Vec<NodeId>` pool serves all nesting depths: each `arrange`
+/// captures the pool length on entry as its depth's start, and
+/// `place_line` truncates back to that start after every flushed line
+/// — so the pool is empty-at-this-depth again before any recursion or
+/// the next line's pushes. Capacity retained across frames; steady
+/// state is alloc-free.
 ///
 /// Why flat (not `Vec<Vec<NodeId>>`): a single allocation for the
-/// pool plus a tiny stack of u32 markers, vs. one inner Vec per
-/// nesting depth. `place_line` accesses children by index — `NodeId`
-/// is `Copy`, so we read each child out before calling
-/// `layout.arrange`, sidestepping the borrow conflict that a slice
-/// would create against `&mut LayoutEngine`.
+/// pool vs. one inner Vec per nesting depth. `place_line` accesses
+/// children by index — `NodeId` is `Copy`, so we read each child out
+/// before calling `layout.arrange`, sidestepping the borrow conflict
+/// that a slice would create against `&mut LayoutEngine`.
 #[derive(Default)]
 pub(crate) struct WrapScratch {
     pool: Vec<NodeId>,
-    /// Stack of per-depth start offsets into `pool`. `enter()` pushes
-    /// the current pool length; `exit()` pops and truncates pool
-    /// back to that length, releasing this depth's buffer space for
-    /// reuse by sibling/parent depths.
-    starts: Vec<u32>,
-}
-
-impl WrapScratch {
-    fn enter(&mut self) {
-        self.starts.push(self.pool.len() as u32);
-    }
-
-    fn exit(&mut self) {
-        let start = self
-            .starts
-            .pop()
-            .expect("WrapScratch::exit called outside enter()");
-        self.pool.truncate(start as usize);
-    }
 }
 
 /// Pack children into lines; return content size (max-line-main, sum
@@ -211,7 +192,6 @@ pub(crate) fn arrange(
     // IDs.
     let layouts = tree.records.layout();
     let line_start = layout.scratch.wrap.pool.len() as u32;
-    layout.scratch.wrap.enter();
     let mut line_main = 0.0f32;
     let mut line_cross = 0.0f32;
     let mut cross_cursor = axis.cross_v(inner.min);
@@ -315,7 +295,6 @@ pub(crate) fn arrange(
         &mut cross_cursor,
         &mut first_line,
     );
-    layout.scratch.wrap.exit();
 }
 
 /// Intrinsic size on `query_axis` under `req`. Approximate for the wrap
