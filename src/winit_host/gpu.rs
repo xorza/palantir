@@ -9,7 +9,7 @@ use glam::UVec2;
 use winit::window::Window;
 
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
-use crate::text::TextShaper;
+use crate::renderer::context::RenderContext;
 use crate::winit_host::config::WinitHostConfig;
 
 /// Shared GPU context — built once on the first `resumed` and retained
@@ -159,17 +159,15 @@ impl Gpu {
         WindowSurface { surface, config }
     }
 
-    /// Build the one shared [`WgpuBackend`] every window renders through.
-    /// Created on the first `resumed` once the first surface's format is
-    /// known; each window attaches via `WindowRenderer::new(&backend)`.
-    /// `format` seeds the per-format pipeline map; further formats build
-    /// lazily.
-    pub(crate) fn make_backend(&self, format: wgpu::TextureFormat) -> WgpuBackend {
+    /// Build the one shared [`WgpuBackend`] every window renders through,
+    /// cloning the shared resources it needs from `ctx`. Format-agnostic —
+    /// each window attaches via `WindowRenderer::new(ctx)` and its
+    /// format's pipelines build lazily on first submit.
+    pub(crate) fn make_backend(&self, ctx: &RenderContext) -> WgpuBackend {
         WgpuBackend::new(
             self.device.clone(),
             self.queue.clone(),
-            format,
-            TextShaper::with_bundled_fonts(),
+            ctx,
             WgpuBackendConfig {
                 collect_gpu_stats: self.collect_gpu_stats,
             },

@@ -71,7 +71,7 @@ impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = OffscreenRenderer::new(g.device.clone(), g.queue.clone(), FORMAT, shaper, false);
+        let host = OffscreenRenderer::new(g.device.clone(), g.queue.clone(), shaper, false);
 
         Self {
             device: g.device.clone(),

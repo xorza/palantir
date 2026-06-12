@@ -152,7 +152,6 @@ fn bench_host(g: &Gpu) -> OffscreenRenderer {
     OffscreenRenderer::new(
         g.device.clone(),
         g.queue.clone(),
-        FORMAT,
         palantir::TextShaper::with_bundled_fonts(),
         true,
     )

@@ -57,6 +57,8 @@ use winit::window::{Window, WindowId};
 
 use crate::input::InputEvent;
 use crate::renderer::backend::WgpuBackend;
+use crate::renderer::context::RenderContext;
+use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
@@ -116,10 +118,13 @@ pub struct WinitHost<T: 'static> {
     /// Shared GPU context (instance / adapter / device / queue; surface
     /// factory), built lazily on the first `resumed`.
     gpu: Option<Gpu>,
+    /// Shared, GPU-agnostic resources (shaper, frame arena, render caches,
+    /// GPU-stats handle) every window's `Ui` clones. Built on the first
+    /// `resumed`; each `WindowRenderer` and the backend derive from it.
+    context: Option<RenderContext>,
     /// The one shared GPU renderer every window draws through (pipelines,
-    /// atlases, frame arena, shaper, caches). Built on the first `resumed`
-    /// once the bootstrap surface's format is known; passed into each
-    /// window's `WindowRenderer::frame`.
+    /// atlases). Built on the first `resumed` once the bootstrap surface's
+    /// format is known; passed into each window's `WindowRenderer::frame`.
     backend: Option<WgpuBackend>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
@@ -160,6 +165,7 @@ where
             app: None,
             app_builder: Some(Box::new(build)),
             gpu: None,
+            context: None,
             backend: None,
             windows: HashMap::new(),
             live_tokens: Vec::new(),
@@ -249,11 +255,11 @@ where
             return;
         }
         let window = create_window(event_loop, &cfg);
-        let (Some(gpu), Some(backend)) = (self.gpu.as_ref(), self.backend.as_ref()) else {
+        let (Some(gpu), Some(ctx)) = (self.gpu.as_ref(), self.context.as_ref()) else {
             return;
         };
         let ws = gpu.make_surface(&window);
-        let renderer = WindowRenderer::new(backend);
+        let renderer = WindowRenderer::new(ctx);
         self.insert_window(token, window, ws, renderer);
     }
 
@@ -366,10 +372,11 @@ where
             gpu,
             first_surface: ws,
         } = Gpu::create(&window, &cfg);
-        // The one shared GPU renderer, built once the bootstrap surface's
-        // format is known. Every window attaches to it.
-        let backend = gpu.make_backend(ws.config.format);
-        let mut renderer = WindowRenderer::new(&backend);
+        // Shared resources first, then the one shared GPU renderer built
+        // from them; every window's `Ui` + the backend derive from `ctx`.
+        let ctx = RenderContext::new(TextShaper::with_bundled_fonts());
+        let backend = gpu.make_backend(&ctx);
+        let mut renderer = WindowRenderer::new(&ctx);
 
         // Build the app now that the first `Ui` exists. The
         // `gpu.is_some()` early-return above means this runs exactly once
@@ -384,6 +391,7 @@ where
 
         self.insert_window(self.first_token, window, ws, renderer);
         self.gpu = Some(gpu);
+        self.context = Some(ctx);
         self.backend = Some(backend);
     }
 

@@ -4,12 +4,14 @@
 //! persistent [`Backbuffer`] (this surface's last-frame pixels), and the
 //! per-window frame-scheduling clock + occlusion state.
 //!
-//! The GPU resources every window shares — render pipelines, glyph +
-//! gradient atlases, the image texture cache, the device/queue, the
-//! frame arena, render caches, and the font shaper — live on the **one**
-//! shared `WgpuBackend`, which the host passes into every method. So N
-//! windows render through one GPU renderer; each `WindowRenderer` carries
-//! only this window's data.
+//! What every window shares splits two ways: the GPU resources — render
+//! pipelines, glyph + gradient atlases, the image texture cache, the
+//! device/queue — live on the **one** shared `WgpuBackend` the host
+//! passes into every method; the GPU-agnostic resources — frame arena,
+//! render caches, shaper, GPU-stats handle — live on the [`RenderContext`]
+//! this window's `Ui`/`Frontend` were cloned from. So N windows render
+//! through one GPU renderer; each `WindowRenderer` carries only this
+//! window's data.
 //!
 //! Single public entry: [`WindowRenderer::frame`] — runs the CPU passes,
 //! acquires the swapchain texture, submits through the shared backend,
@@ -18,14 +20,15 @@
 use std::time::Instant;
 
 use crate::renderer::backend::{Backbuffer, WgpuBackend};
+use crate::renderer::context::RenderContext;
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::window::WindowToken;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`Self::new`] from a shared backend; owns no GPU resources except its
-/// own [`Backbuffer`].
+/// [`Self::new`] from the shared [`RenderContext`]; owns no GPU resources
+/// except its own [`Backbuffer`].
 pub struct WindowRenderer {
     pub ui: Ui,
     /// Per-window CPU encode/compose scratch. Shares the backend's frame
@@ -71,14 +74,15 @@ pub struct WindowRenderer {
 }
 
 impl WindowRenderer {
-    /// Build a per-window renderer sharing `gpu`'s shaper, frame arena,
-    /// render caches, and GPU-stats handle (its `Ui` + `Frontend` clone
-    /// those). Owns nothing on the GPU but its backbuffer, created lazily
-    /// on the first submit.
-    pub(crate) fn new(gpu: &WgpuBackend) -> Self {
+    /// Build a per-window renderer from the shared [`RenderContext`] (its
+    /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches
+    /// / GPU-stats handle). Independent of the GPU backend — that's only
+    /// needed later, per frame. Owns nothing on the GPU but its backbuffer,
+    /// created lazily on the first submit.
+    pub(crate) fn new(ctx: &RenderContext) -> Self {
         Self {
-            ui: gpu.make_window_ui(),
-            frontend: gpu.make_frontend(),
+            ui: ctx.make_ui(),
+            frontend: ctx.make_frontend(),
             backbuffer: None,
             start: Instant::now(),
             occluded: false,
@@ -353,6 +357,7 @@ pub mod test_support {
 
     use crate::renderer::backend::WgpuBackendConfig;
     use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
+    use crate::renderer::context::RenderContext;
     use crate::text::TextShaper;
     use crate::window_renderer::*;
 
@@ -389,18 +394,18 @@ pub mod test_support {
         pub fn new(
             device: wgpu::Device,
             queue: wgpu::Queue,
-            format: wgpu::TextureFormat,
             shaper: TextShaper,
             collect_gpu_stats: bool,
         ) -> Self {
-            let gpu = WgpuBackend::new(
-                device,
-                queue,
-                format,
-                shaper,
-                WgpuBackendConfig { collect_gpu_stats },
-            );
-            let window = WindowRenderer::new(&gpu);
+            // The shared context outlives this call only as the clones in
+            // the backend + window's `Ui`/`Frontend` (Rc-backed handles);
+            // the offscreen path never opens a second window. The render
+            // target's format (per `frame_offscreen` call) drives the
+            // lazy per-format pipeline build.
+            let ctx = RenderContext::new(shaper);
+            let gpu =
+                WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
+            let window = WindowRenderer::new(&ctx);
             Self { gpu, window }
         }
 

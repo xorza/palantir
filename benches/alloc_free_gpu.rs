@@ -101,7 +101,6 @@ fn main() {
     let mut host = OffscreenRenderer::new(
         g.device.clone(),
         g.queue.clone(),
-        FORMAT,
         palantir::TextShaper::with_bundled_fonts(),
         false,
     );
