@@ -11,9 +11,8 @@ use crate::renderer::backend::Queue;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
-    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout, texture_sampler_bgl,
+    ColorVariantSpec, StencilVariant, texture_sampler_bgl,
 };
-use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::image_registry::{ImageId, ImageRegistry};
 use crate::renderer::render_buffer::ImageInstance;
 use rustc_hash::FxHashMap;
@@ -73,45 +72,30 @@ impl ImagePipeline {
         }
     }
 
-    /// Build the color pipeline against `format`. The only
-    /// format-dependent object in the whole pipeline — the per-image
-    /// textures, bind groups, sampler, and layout are all
-    /// format-independent. `stencil` selects the rounded-clip variant
-    /// (adds the shared `stencil_test_state`). Called by `FormatPipelines`
-    /// per format.
-    pub(crate) fn build_variant(
+    /// Build the base + stencil-test color pipelines against `format` —
+    /// the only format-dependent image objects; the per-image textures,
+    /// bind groups, sampler, and layout are all format-independent.
+    /// Called by `FormatPipelines` per format.
+    pub(crate) fn build_variants(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         image_bgl: &wgpu::BindGroupLayout,
-        color_format: wgpu::TextureFormat,
-        stencil: bool,
-    ) -> wgpu::RenderPipeline {
-        let (label, layout_label, depth_stencil) = if stencil {
-            (
-                "palantir.image.pipeline.stencil_test",
-                "palantir.image.pl.stencil",
-                Some(stencil_test_state()),
-            )
-        } else {
-            ("palantir.image.pipeline", "palantir.image.pl", None)
-        };
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
         // Per-image tex+sampler at group 0 — viewport rides the
         // shared immediate region.
-        let layout = build_pipeline_layout(device, layout_label, &[Some(image_bgl)]);
-        build_pipeline(
+        StencilVariant::build(
             device,
-            PipelineRecipe {
-                label,
+            ColorVariantSpec {
+                label: "palantir.image.pipeline",
+                stencil_label: "palantir.image.pipeline.stencil_test",
+                layout_label: "palantir.image.pl",
                 shader,
-                layout: &layout,
+                bind_group_layouts: &[Some(image_bgl)],
                 vertex_buffers: &[instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil,
             },
+            format,
         )
     }
 

@@ -51,34 +51,16 @@ impl FormatPipelines {
         text: &TextBackend,
     ) -> Self {
         Self {
-            quad: StencilVariant::new(
-                QuadPipeline::build_variant(device, &quad.shader, gradient_bgl, format, false),
-                QuadPipeline::build_variant(device, &quad.shader, gradient_bgl, format, true),
-            ),
+            quad: QuadPipeline::build_variants(device, &quad.shader, gradient_bgl, format),
             quad_mask_write: QuadPipeline::build_mask_write(
                 device,
                 &quad.shader,
                 gradient_bgl,
                 format,
             ),
-            mesh: StencilVariant::new(
-                MeshPipeline::build_variant(device, &mesh.shader, format, false),
-                MeshPipeline::build_variant(device, &mesh.shader, format, true),
-            ),
-            image: StencilVariant::new(
-                ImagePipeline::build_variant(
-                    device,
-                    &image.shader,
-                    &image.image_bgl,
-                    format,
-                    false,
-                ),
-                ImagePipeline::build_variant(device, &image.shader, &image.image_bgl, format, true),
-            ),
-            curve: StencilVariant::new(
-                CurvePipeline::build_variant(device, &curve.shader, gradient_bgl, format, false),
-                CurvePipeline::build_variant(device, &curve.shader, gradient_bgl, format, true),
-            ),
+            mesh: MeshPipeline::build_variants(device, &mesh.shader, format),
+            image: ImagePipeline::build_variants(device, &image.shader, &image.image_bgl, format),
+            curve: CurvePipeline::build_variants(device, &curve.shader, gradient_bgl, format),
             // Index order matches `StencilMode::pipeline_idx`:
             // 0 = Plain, 1 = Stencil.
             text: TextBackend::build_pipelines(

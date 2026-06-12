@@ -13,10 +13,7 @@
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{
-    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
-};
-use crate::renderer::backend::stencil::stencil_test_state;
+use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::render_buffer::MeshInstance;
 
 pub(crate) struct MeshPipeline {
@@ -56,43 +53,29 @@ impl MeshPipeline {
         }
     }
 
-    /// Build the color pipeline against `format` — the only
-    /// format-dependent object; the vertex / index / instance buffers
-    /// are reused. `stencil` selects the rounded-clip variant (adds the
-    /// shared `stencil_test_state`). Called by `FormatPipelines` per
+    /// Build the base + stencil-test color pipelines against `format` —
+    /// the only format-dependent mesh objects; the vertex / index /
+    /// instance buffers are reused. Called by `FormatPipelines` per
     /// format.
-    pub(crate) fn build_variant(
+    pub(crate) fn build_variants(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
-        color_format: wgpu::TextureFormat,
-        stencil: bool,
-    ) -> wgpu::RenderPipeline {
-        let (label, layout_label, depth_stencil) = if stencil {
-            (
-                "palantir.mesh.pipeline.stencil_test",
-                "palantir.mesh.pl.stencil",
-                Some(stencil_test_state()),
-            )
-        } else {
-            ("palantir.mesh.pipeline", "palantir.mesh.pl", None)
-        };
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
         // Mesh shader uses no bind groups — only the shared immediate
         // region for viewport. Empty bind-group-layout list.
-        let layout = build_pipeline_layout(device, layout_label, &[]);
-        build_pipeline(
+        StencilVariant::build(
             device,
-            PipelineRecipe {
-                label,
+            ColorVariantSpec {
+                label: "palantir.mesh.pipeline",
+                stencil_label: "palantir.mesh.pipeline.stencil_test",
+                layout_label: "palantir.mesh.pl",
                 shader,
-                layout: &layout,
+                bind_group_layouts: &[],
                 vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil,
             },
+            format,
         )
     }
 

@@ -14,13 +14,16 @@
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
+use crate::ui::frame_report::RenderPlan;
 use crate::{
     primitives::{
         color::{Color, ColorF16},
         corners::Corners,
         rect::Rect,
         size::Size,
+        spacing::Spacing,
     },
     renderer::backend::ViewportPush,
 };
@@ -30,17 +33,23 @@ use tinyvec::ArrayVec;
 /// Stroke color for the damage-rect overlay outline. Bright opaque
 /// red — picked for contrast against any UI palette, not
 /// theme-driven.
-pub(crate) const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
+const DAMAGE_OVERLAY_COLOR: Color = Color::rgb(1.0, 0.0, 0.0);
 
 /// Stroke width for the damage-rect overlay outline, in logical
 /// pixels. Multiplied by `scale_factor` at submit time.
-pub(crate) const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
+const DAMAGE_OVERLAY_STROKE_WIDTH: f32 = 2.0;
 
 /// Gap between the overlay outline and the damage edge, in logical
 /// pixels. `Partial` rects outset by this (so thin damage like a 1px
 /// text caret still gets a visible box instead of collapsing to zero
 /// width); the full-viewport outline insets by it to stay on-screen.
-pub(crate) const DAMAGE_OVERLAY_GAP: f32 = 1.0;
+const DAMAGE_OVERLAY_GAP: f32 = 1.0;
+
+/// Linear-space alpha of the `dim_undamaged` fill. Premultiplied-alpha
+/// blending means the rgb channel doubles as the "remaining brightness"
+/// multiplier: 40% alpha → 60% of the underlying pixel survives each
+/// Partial frame.
+const DIM_ALPHA: f32 = 0.4;
 
 pub(crate) struct DebugOverlay {
     /// Single-instance buffer holding a translucent-black full-viewport
@@ -76,12 +85,9 @@ impl DebugOverlay {
         }
     }
 
-    /// Upload one full-viewport translucent-black quad to `dim_buffer`.
-    /// `alpha` is the linear-space alpha of the dim fill — `0.4` is
-    /// the showcase default. Premultiplied-alpha blending means the
-    /// rgb channel doubles as the "remaining brightness" multiplier:
-    /// 40% alpha → 60% of the underlying pixel survives.
-    pub(crate) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2, alpha: f32) {
+    /// Upload one full-viewport translucent-black quad ([`DIM_ALPHA`])
+    /// to `dim_buffer`.
+    pub(crate) fn upload_dim(&self, ctx: &mut GpuCtx<'_>, viewport: Vec2) {
         let q = Quad {
             rect: Rect {
                 min: Vec2::ZERO,
@@ -90,7 +96,7 @@ impl DebugOverlay {
                     h: viewport.y,
                 },
             },
-            fill: Color::linear_rgba(0.0, 0.0, 0.0, alpha).into(),
+            fill: Color::linear_rgba(0.0, 0.0, 0.0, DIM_ALPHA).into(),
             corners: Corners::default(),
             stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
@@ -121,11 +127,54 @@ impl DebugOverlay {
         pass.draw(0..4, 0..1);
     }
 
+    /// Build + upload this frame's damage-rect outline quads: `Partial`
+    /// contributes one per region rect, `Full` a single full-viewport
+    /// outline. Returns the instance count for [`Self::draw_overlays`];
+    /// `0` means nothing survived and the caller skips the overlay
+    /// pass. All quads ride one instanced draw inside one pass, so a
+    /// single belt write covers them.
+    pub(crate) fn upload_damage_rects(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        plan: RenderPlan,
+        buffer: &RenderBuffer,
+    ) -> u32 {
+        let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
+        let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
+        let mut rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
+        match plan {
+            RenderPlan::Partial { region, .. } => {
+                // Outset, not inset: damage rects can be thinner than
+                // `2 * gap_px` (a 1px text caret), and insetting would
+                // collapse them to zero area — no outline drawn. An
+                // outset box always survives and brackets the damage
+                // from just outside. The overlay pass is unscissored
+                // and the surface clips, so spilling a few px past the
+                // damage edge is fine.
+                for r in region.iter_rects() {
+                    rects.push(r.scaled_by(buffer.scale, true).inflated(gap_px));
+                }
+            }
+            // The full-viewport outline insets instead: outsetting it
+            // would push the whole box off-screen, leaving only a
+            // half-clipped edge line.
+            RenderPlan::Full { .. } => rects.push(
+                Rect {
+                    min: Vec2::ZERO,
+                    size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
+                }
+                .deflated_by(Spacing::all(gap_px)),
+            ),
+        }
+        self.upload_overlays(ctx, &rects, DAMAGE_OVERLAY_COLOR, stroke_width);
+        rects.len() as u32
+    }
+
     /// Upload one or more damage-rect outline quads (stroked rects in
     /// physical px, transparent fill). [`DynamicBuffer`] grows the
     /// buffer when needed; the staging uses stack-bounded scratch
     /// (≤ `DAMAGE_RECT_CAP`) so steady-state frames are alloc-free.
-    pub(crate) fn upload_overlays(
+    fn upload_overlays(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         rects: &[Rect],

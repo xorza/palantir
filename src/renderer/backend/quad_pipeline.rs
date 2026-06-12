@@ -8,9 +8,9 @@ use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
-    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
+    ColorVariantSpec, PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
 };
-use crate::renderer::backend::stencil::{STENCIL_FORMAT, stencil_test_state};
+use crate::renderer::backend::stencil::STENCIL_FORMAT;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
@@ -97,47 +97,33 @@ impl QuadPipeline {
         }
     }
 
-    /// Build the color pipeline against `format` — the only
-    /// format-dependent object; the gradient LUT atlas (texture + bind
-    /// group + sampler) and the instance / clear buffers are reused.
-    /// `stencil` selects the rounded-clip variant (adds the shared
-    /// `stencil_test_state`). The distinct `mask_write` variant
+    /// Build the base + stencil-test color pipelines against `format` —
+    /// the only format-dependent quad objects; the gradient LUT atlas
+    /// (texture + bind group + sampler) and the instance / clear buffers
+    /// are reused. The distinct `mask_write` variant
     /// ([`Self::build_mask_write`]) stays separate — different fragment
     /// entry, color writes off. Called by `FormatPipelines` for each
     /// swapchain format.
-    pub(crate) fn build_variant(
+    pub(crate) fn build_variants(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
-        color_format: wgpu::TextureFormat,
-        stencil: bool,
-    ) -> wgpu::RenderPipeline {
-        let (label, layout_label, depth_stencil) = if stencil {
-            (
-                "palantir.quad.pipeline.stencil_test",
-                "palantir.quad.pl.stencil",
-                Some(stencil_test_state()),
-            )
-        } else {
-            ("palantir.quad.pipeline", "palantir.quad.pl", None)
-        };
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
         // Gradient atlas at group 0 (viewport rides the shared immediate
         // region, no bind-group slot needed).
-        let layout = build_pipeline_layout(device, layout_label, &[Some(gradient_bgl)]);
-        build_pipeline(
+        StencilVariant::build(
             device,
-            PipelineRecipe {
-                label,
+            ColorVariantSpec {
+                label: "palantir.quad.pipeline",
+                stencil_label: "palantir.quad.pipeline.stencil_test",
+                layout_label: "palantir.quad.pl",
                 shader,
-                layout: &layout,
+                bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[quad_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
-                color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil,
             },
+            format,
         )
     }
 

@@ -14,10 +14,7 @@
 
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{
-    PipelineRecipe, StencilVariant, build_pipeline, build_pipeline_layout,
-};
-use crate::renderer::backend::stencil::stencil_test_state;
+use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
 use crate::renderer::render_buffer::CurveInstance;
 use crate::shape::LineCap;
@@ -70,44 +67,30 @@ impl CurvePipeline {
         }
     }
 
-    /// Build the color pipeline against `format`. Caller passes the
-    /// shared `gradient_bgl` (owned by `GradientResources`) so the layout
-    /// matches; the instance buffer is format-independent. `stencil`
-    /// selects the rounded-clip variant (adds the shared
-    /// `stencil_test_state`). Called by `FormatPipelines` per format.
-    pub(crate) fn build_variant(
+    /// Build the base + stencil-test color pipelines against `format`.
+    /// Caller passes the shared `gradient_bgl` (owned by
+    /// `GradientResources`) so the layout matches; the instance buffer
+    /// is format-independent. Called by `FormatPipelines` per format.
+    pub(crate) fn build_variants(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
-        color_format: wgpu::TextureFormat,
-        stencil: bool,
-    ) -> wgpu::RenderPipeline {
-        let (label, layout_label, depth_stencil) = if stencil {
-            (
-                "palantir.curve.pipeline.stencil_test",
-                "palantir.curve.pl.stencil",
-                Some(stencil_test_state()),
-            )
-        } else {
-            ("palantir.curve.pipeline", "palantir.curve.pl", None)
-        };
+        format: wgpu::TextureFormat,
+    ) -> StencilVariant {
         // Gradient at group 0 — viewport rides the shared immediate
         // region, no bind-group slot needed for it.
-        let layout = build_pipeline_layout(device, layout_label, &[Some(gradient_bgl)]);
-        build_pipeline(
+        StencilVariant::build(
             device,
-            PipelineRecipe {
-                label,
+            ColorVariantSpec {
+                label: "palantir.curve.pipeline",
+                stencil_label: "palantir.curve.pipeline.stencil_test",
+                layout_label: "palantir.curve.pl",
                 shader,
-                layout: &layout,
+                bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[curve_instance_layout()],
                 topology: wgpu::PrimitiveTopology::TriangleList,
-                color_format,
-                fragment_entry: "fs",
-                color_writes: wgpu::ColorWrites::ALL,
-                blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                depth_stencil,
             },
+            format,
         )
     }
 

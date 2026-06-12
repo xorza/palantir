@@ -19,9 +19,7 @@ pub(crate) mod viewport;
 pub(crate) mod write_stats;
 
 use self::curve_pipeline::CurvePipeline;
-use self::debug_overlay::{
-    DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_GAP, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
-};
+use self::debug_overlay::DebugOverlay;
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
 use self::gpu_pass_stats::BatchKind;
@@ -36,7 +34,7 @@ use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportPush, build_damage_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::frame_arena::FrameArena;
-use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
+use crate::primitives::urect::URect;
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::context::RenderContext;
@@ -286,7 +284,7 @@ impl WgpuBackend {
     /// caller treats that as a forced full repaint (the new texture's
     /// contents are undefined until the first pass writes to it). The
     /// `format` is the per-window surface format; the matching pipeline
-    /// set is fetched per submit via [`Self::format_pipelines`], so no
+    /// set is fetched per submit from the `pipelines` map, so no
     /// global-format assert is needed.
     #[profiling::function]
     fn ensure_backbuffer(
@@ -336,8 +334,7 @@ impl WgpuBackend {
     /// rebuilds the color texture, so a `Some` here is always
     /// size-matched to the current backbuffer.
     #[profiling::function]
-    fn ensure_stencil(&self, bb: &mut Option<Backbuffer>) {
-        let bb = bb.as_mut().expect("ensure_backbuffer must run first");
+    fn ensure_stencil(&self, bb: &mut Backbuffer) {
         if bb.stencil.is_some() {
             return;
         }
@@ -421,6 +418,7 @@ impl WgpuBackend {
         // requested Partial must escalate to a full clear+paint this
         // frame.
         let backbuffer_recreated = self.ensure_backbuffer(backbuffer, surface_tex.size(), format);
+        let bb = backbuffer.as_mut().expect("ensure_backbuffer just ran");
         // `effective_plan` is what we'll actually render; `plan` is
         // what the host asked for. The two diverge only on backbuffer
         // recreate, but the debug overlay's damage-rect outline shows
@@ -456,7 +454,7 @@ impl WgpuBackend {
         // the texture. The mask upload happens further down, after the
         // encoder is open, alongside every other dynamic buffer upload.
         if use_stencil {
-            self.ensure_stencil(backbuffer);
+            self.ensure_stencil(bb);
         }
 
         // Open the main encoder up front: every dynamic-buffer upload
@@ -498,7 +496,7 @@ impl WgpuBackend {
             self.image.drain_registry(&mut ctx, &self.caches.images);
 
             if dim_undamaged {
-                self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f, 0.4);
+                self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);
             }
             if use_stencil {
                 // After staging, `self.quad.mask_indices` parallels
@@ -578,9 +576,6 @@ impl WgpuBackend {
             b: clear.b as f64,
             a: 1.0,
         };
-        let bb = backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
         // Shared field borrow (the entry was built by `ensure_format`
         // above) — coexists with the `&self` pass methods.
         let fmt = &self.pipelines[&format];
@@ -1015,92 +1010,53 @@ impl WgpuBackend {
         plan: RenderPlan,
         config: DebugOverlayConfig,
     ) {
-        if config.damage_rect {
-            // One stroked outline per damage rect — `Partial`
-            // contributes the whole region; `Full` contributes a
-            // single full-viewport outline. All quads ride one
-            // instanced draw inside one pass so a single
-            // `queue.write_buffer` covers them (per-iteration writes
-            // to the same buffer would all collapse to the last
-            // value at submit time).
-            let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
-            let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
-            let mut overlay_rects: tinyvec::ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
-            match plan {
-                RenderPlan::Partial { region, .. } => {
-                    // Outset, not inset: damage rects can be thinner than
-                    // `2 * gap_px` (a 1px text caret), and insetting would
-                    // collapse them to zero area — no outline drawn. An
-                    // outset box always survives and brackets the damage
-                    // from just outside. The overlay pass is unscissored
-                    // and the surface clips, so spilling a few px past the
-                    // damage edge is fine.
-                    for r in region.iter_rects() {
-                        overlay_rects.push(r.scaled_by(buffer.scale, true).inflated(gap_px));
-                    }
-                }
-                // The full-viewport outline insets instead: outsetting it
-                // would push the whole box off-screen, leaving only a
-                // half-clipped edge line.
-                RenderPlan::Full { .. } => overlay_rects.push(
-                    Rect {
-                        min: glam::Vec2::ZERO,
-                        size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),
-                    }
-                    .deflated_by(Spacing::all(gap_px)),
-                ),
-            }
-            if overlay_rects.is_empty() {
-                return;
-            }
-            // Short-lived ctx just for the overlay upload — the main
-            // upload phase in `submit` has already closed its ctx but
-            // the belt is still open until `belt.finish()`. Scoped so
-            // the encoder borrow releases before `begin_render_pass`
-            // below.
-            {
-                let mut ctx =
-                    GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
-                self.debug.upload_overlays(
-                    &mut ctx,
-                    &overlay_rects,
-                    DAMAGE_OVERLAY_COLOR,
-                    stroke_width,
-                );
-            }
-            let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("palantir.renderer.overlay.damage_rect"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &surface_view,
-                    resolve_target: None,
-                    depth_slice: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: None,
-                timestamp_writes: None,
-                occlusion_query_set: None,
-                multiview_mask: None,
-            });
-            // Damage-overlay pass uses the quad pipeline against the
-            // swapchain — separate pass, no inherited state. `draw_overlays`
-            // binds the pipeline and pushes viewport in the right order.
-            // The format set exists — `submit` ran `ensure_format` before
-            // calling here.
-            let viewport = ViewportPush {
-                size: buffer.viewport_phys_f,
-            };
-            self.debug.draw_overlays(
-                &mut pass,
-                self.pipelines[&surface_tex.format()].quad.select(false),
-                &self.gradient.bg,
-                &viewport,
-                overlay_rects.len() as u32,
-            );
+        if !config.damage_rect {
+            return;
         }
+        // Short-lived ctx just for the overlay upload — the main
+        // upload phase in `submit` has already closed its ctx but
+        // the belt is still open until `belt.finish()`. Scoped so
+        // the encoder borrow releases before `begin_render_pass`
+        // below.
+        let count = {
+            let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
+            self.debug.upload_damage_rects(&mut ctx, plan, buffer)
+        };
+        if count == 0 {
+            return;
+        }
+        let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
+        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("palantir.renderer.overlay.damage_rect"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &surface_view,
+                resolve_target: None,
+                depth_slice: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            timestamp_writes: None,
+            occlusion_query_set: None,
+            multiview_mask: None,
+        });
+        // Damage-overlay pass uses the quad pipeline against the
+        // swapchain — separate pass, no inherited state. `draw_overlays`
+        // binds the pipeline and pushes viewport in the right order.
+        // The format set exists — `submit` ran `ensure_format` before
+        // calling here.
+        let viewport = ViewportPush {
+            size: buffer.viewport_phys_f,
+        };
+        self.debug.draw_overlays(
+            &mut pass,
+            self.pipelines[&surface_tex.format()].quad.select(false),
+            &self.gradient.bg,
+            &viewport,
+            count,
+        );
     }
 
     /// Skip path: the host's damage compute returned `None`, but the
