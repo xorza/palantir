@@ -52,9 +52,9 @@ mod fixture;
 
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
+use palantir::offscreen_host::OffscreenHost;
 use palantir::renderer::frontend::Frontend;
 use palantir::ui::frame_report::RenderPlan;
-use palantir::window_renderer::test_support::OffscreenRenderer;
 use palantir::{Color, Display, Ui};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
@@ -145,11 +145,11 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-/// Build an `OffscreenRenderer` (one shared backend + one window) from
+/// Build an `OffscreenHost` (one shared backend + one window) from
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts, `collect_gpu_stats: true`.
-fn bench_host(g: &Gpu) -> OffscreenRenderer {
-    OffscreenRenderer::new(
+fn bench_host(g: &Gpu) -> OffscreenHost {
+    OffscreenHost::new(
         g.device.clone(),
         g.queue.clone(),
         palantir::TextShaper::with_bundled_fonts(),
@@ -316,13 +316,13 @@ fn assert_partial_invariant() {
 
 // ── GPU bench (full pipeline) ─────────────────────────────────────────
 
-/// Shared GPU-arm scaffolding: build a fresh `OffscreenRenderer`, run 4
+/// Shared GPU-arm scaffolding: build a fresh `OffscreenHost`, run 4
 /// warmup frames with `PollType::Wait`, then hand criterion the same
 /// closure. Each arm's `iter` closure owns target selection and per-iter
 /// state mutation.
 fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
 where
-    F: FnMut(&mut OffscreenRenderer, &mut FormState, &wgpu::Device),
+    F: FnMut(&mut OffscreenHost, &mut FormState, &wgpu::Device),
 {
     let g = gpu();
     let mut host = bench_host(g);
