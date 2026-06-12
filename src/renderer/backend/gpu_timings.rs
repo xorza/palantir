@@ -28,7 +28,7 @@
 //! explicit `device.poll(Wait)` and then read the `GpuPassStats`
 //! handle (e.g. via `WindowRenderer::gpu_pass_stats`).
 
-use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats};
+use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
@@ -331,12 +331,11 @@ impl GpuTimings {
             bytes,
         );
         self.slots[slot].timestamps_count = count;
-        // Move per-frame segment-kind labels into the slot for the
+        // Copy per-frame segment-kind labels into the slot for the
         // async readback path. Cheap — typically <16 entries.
-        let mut slot_kinds = std::mem::take(&mut self.slots[slot].segment_kinds);
+        let slot_kinds = &mut self.slots[slot].segment_kinds;
         slot_kinds.clear();
         slot_kinds.extend(self.inner.segment_kinds.borrow().iter().copied());
-        self.slots[slot].segment_kinds = slot_kinds;
 
         if let (Some(stats_qs), Some(stats_resolve), Some(stats_staging)) = (
             &self.stats_query_set,
@@ -434,13 +433,21 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
 
     if let Some(stats_buf) = &slot.stats_buffer {
         let s_range = stats_buf.slice(..).get_mapped_range();
-        let mut values = [0u64; 5];
+        let mut values = [0u64; STATS_FIELD_COUNT];
         for (i, v) in values.iter_mut().enumerate() {
             let off = i * 8;
             *v = u64::from_le_bytes(s_range[off..off + 8].try_into().unwrap());
         }
         drop(s_range);
         stats_buf.unmap();
-        sink.record_pipeline_stats(values);
+        // Field order matches `pipeline_stats_flags` — the mapping lives
+        // here, next to the flag declaration that defines it.
+        sink.record_pipeline_stats(PipelineStats {
+            vertex_shader_invocations: values[0],
+            clipper_invocations: values[1],
+            clipper_primitives_out: values[2],
+            fragment_shader_invocations: values[3],
+            compute_shader_invocations: values[4],
+        });
     }
 }

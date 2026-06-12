@@ -128,14 +128,8 @@ impl GpuPassStats {
         self.inner.borrow_mut().kind_ns = [None; <BatchKind as strum::EnumCount>::COUNT];
     }
 
-    pub(crate) fn record_pipeline_stats(&self, raw: [u64; 5]) {
-        self.inner.borrow_mut().stats = Some(PipelineStats {
-            vertex_shader_invocations: raw[0],
-            clipper_invocations: raw[1],
-            clipper_primitives_out: raw[2],
-            fragment_shader_invocations: raw[3],
-            compute_shader_invocations: raw[4],
-        });
+    pub(crate) fn record_pipeline_stats(&self, stats: PipelineStats) {
+        self.inner.borrow_mut().stats = Some(stats);
     }
 }
 
@@ -213,7 +207,13 @@ mod tests {
     #[test]
     fn pipeline_stats_round_trip() {
         let s = GpuPassStats::default();
-        s.record_pipeline_stats([1, 2, 3, 4, 0]);
+        s.record_pipeline_stats(PipelineStats {
+            vertex_shader_invocations: 1,
+            clipper_invocations: 2,
+            clipper_primitives_out: 3,
+            fragment_shader_invocations: 4,
+            compute_shader_invocations: 0,
+        });
         let v = s.last_pipeline_stats().expect("recorded");
         assert_eq!(v.vertex_shader_invocations, 1);
         assert_eq!(v.clipper_invocations, 2);

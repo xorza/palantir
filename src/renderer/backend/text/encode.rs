@@ -61,8 +61,8 @@ pub(crate) struct EncodedKey {
     /// only ones that produce distinct cosmic cache keys.
     pub(crate) scale_q: u32,
     pub(crate) area_color: u32,
-    /// Low nibble: `y_bin`. Next nibble up: `x_bin`. Cosmic's
-    /// `SubpixelBin` has four variants (2 bits each).
+    /// Bits 0-1: `y_bin`; bits 2-3: `x_bin`. Cosmic's `SubpixelBin`
+    /// has four variants (2 bits each).
     pub(crate) bins: u8,
 }
 

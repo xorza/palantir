@@ -74,13 +74,27 @@ impl DynamicBuffer {
         }
     }
 
-    /// Common case: grow if needed, write `bytes` to offset 0. On a
-    /// grow frame the destination is brand-new — we ride
-    /// `mapped_at_creation: true` and `memcpy` straight into the
-    /// mapped range, dodging one belt copy per grow. Steady-state
-    /// (no grow) takes the normal belt path.
+    /// Common case: grow if needed, write `bytes` to offset 0.
     /// `bytes.len()` must equal `item_count * self.item_size`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
+        self.upload_tail(ctx, bytes, item_count, 0);
+    }
+
+    /// Tail write: items `start_item..item_count` are new; earlier
+    /// items' bytes are already on the GPU, so only the tail slice is
+    /// belt-written, at its byte offset. On a grow frame the new buffer
+    /// is empty (and `mapped_at_creation: true`), so the whole of
+    /// `bytes` is memcpy'd straight into the mapped range — dodging one
+    /// belt copy per grow. `bytes` is always the full item slice;
+    /// `bytes.len()` must equal `item_count * self.item_size`, and the
+    /// tail's byte offset must be 4-aligned (wgpu copy alignment).
+    pub(crate) fn upload_tail(
+        &mut self,
+        ctx: &mut GpuCtx<'_>,
+        bytes: &[u8],
+        item_count: usize,
+        start_item: usize,
+    ) {
         // Release `assert!`: a byte/count mismatch silently writes
         // partial data to the GPU buffer — a logic bug we want caught in
         // release, and the check is one multiply + compare.
@@ -89,6 +103,7 @@ impl DynamicBuffer {
             item_count * self.item_size,
             "DynamicBuffer::upload byte/item-count mismatch — would write partial data",
         );
+        assert!(start_item <= item_count);
         if self.grow_mapped(ctx.device, item_count) {
             // Buffer was just created mapped-at-creation; write
             // directly into the mapped range and unmap. No belt
@@ -100,7 +115,8 @@ impl DynamicBuffer {
             self.buffer.unmap();
             return;
         }
-        ctx.write(&self.buffer, 0, bytes);
+        let offset = start_item * self.item_size;
+        ctx.write(&self.buffer, offset as u64, &bytes[offset..]);
     }
 
     /// Grow to fit `needed_len` items with the new buffer
@@ -112,17 +128,13 @@ impl DynamicBuffer {
         if needed_len <= self.capacity {
             return false;
         }
-        self.realloc(device, needed_len, true);
-        true
-    }
-
-    fn realloc(&mut self, device: &wgpu::Device, needed_len: usize, mapped_at_creation: bool) {
         self.capacity = needed_len.next_power_of_two();
         self.buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some(self.label),
             size: (self.capacity * self.item_size) as u64,
             usage: self.usage,
-            mapped_at_creation,
+            mapped_at_creation: true,
         });
+        true
     }
 }

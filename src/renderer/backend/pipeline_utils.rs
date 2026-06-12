@@ -62,13 +62,14 @@ pub(crate) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
     })
 }
 
-/// A color render pipeline paired with its lazily-built stencil-test
-/// twin. The `base` runs on plain frames; `test` (a copy of the same
-/// recipe plus [`crate::renderer::backend::stencil::stencil_test_state`]) is built on the
-/// first rounded-clip frame via [`Self::ensure`] and runs in the
-/// stencil-attached pass. Shared by the mesh / image / curve pipelines
-/// so the "select base-vs-test", "build-once", and "drop the twin on
-/// format rebuild" logic can't drift across them.
+/// A color render pipeline paired with its stencil-test twin (the same
+/// recipe plus [`crate::renderer::backend::stencil::stencil_test_state`]).
+/// `base` runs on plain frames; `test` runs in the stencil-attached
+/// rounded-clip pass. Shared by the quad / mesh / image / curve
+/// pipelines so base-vs-test selection can't drift across them. Both
+/// are built up front so a
+/// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+/// set is complete the moment it exists.
 #[derive(Debug)]
 pub(crate) struct StencilVariant {
     base: wgpu::RenderPipeline,
@@ -76,14 +77,7 @@ pub(crate) struct StencilVariant {
 }
 
 impl StencilVariant {
-    /// Build both variants up front for one swapchain format. The
-    /// stencil-test twin used to be lazy (built on the first rounded-clip
-    /// frame); with per-format pipeline sets it's built eagerly so a
-    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// is complete the moment it exists — a couple extra pipeline compiles
-    /// per format, once, instead of a lazy state machine threaded through
-    /// every submit.
-    pub(crate) fn eager(base: wgpu::RenderPipeline, test: wgpu::RenderPipeline) -> Self {
+    pub(crate) fn new(base: wgpu::RenderPipeline, test: wgpu::RenderPipeline) -> Self {
         Self { base, test }
     }
 

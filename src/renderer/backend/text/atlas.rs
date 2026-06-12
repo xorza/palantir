@@ -345,8 +345,8 @@ impl GlyphAtlas {
         slot
     }
 
-    /// Frame teardown: bump LRU counter.
-    pub(crate) fn trim(&mut self) {
+    /// Frame teardown: advance the LRU frame counter.
+    pub(crate) fn end_frame(&mut self) {
         self.current_frame += 1;
     }
 

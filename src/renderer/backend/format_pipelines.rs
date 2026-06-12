@@ -16,6 +16,7 @@ use crate::renderer::backend::image_pipeline::ImagePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
+use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::backend::text::TextBackend;
 
 /// All render pipelines built against one swapchain color format. Keyed
@@ -37,14 +38,12 @@ pub(crate) struct FormatPipelines {
 impl FormatPipelines {
     /// Build every pipeline for `format`, reading shaders + layouts off
     /// the shared, format-independent resource structs. `gradient_bgl` is
-    /// the shared group-0 layout (quad/curve); `text_stencil_states` is
-    /// the per-mode stencil config the text pipelines build with.
+    /// the shared group-0 layout (quad/curve).
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new(
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
         gradient_bgl: &wgpu::BindGroupLayout,
-        text_stencil_states: &[Option<wgpu::DepthStencilState>],
         quad: &QuadPipeline,
         mesh: &MeshPipeline,
         image: &ImagePipeline,
@@ -52,7 +51,7 @@ impl FormatPipelines {
         text: &TextBackend,
     ) -> Self {
         Self {
-            quad: StencilVariant::eager(
+            quad: StencilVariant::new(
                 QuadPipeline::build_variant(device, &quad.shader, gradient_bgl, format, false),
                 QuadPipeline::build_variant(device, &quad.shader, gradient_bgl, format, true),
             ),
@@ -62,11 +61,11 @@ impl FormatPipelines {
                 gradient_bgl,
                 format,
             ),
-            mesh: StencilVariant::eager(
+            mesh: StencilVariant::new(
                 MeshPipeline::build_variant(device, &mesh.shader, format, false),
                 MeshPipeline::build_variant(device, &mesh.shader, format, true),
             ),
-            image: StencilVariant::eager(
+            image: StencilVariant::new(
                 ImagePipeline::build_variant(
                     device,
                     &image.shader,
@@ -76,15 +75,17 @@ impl FormatPipelines {
                 ),
                 ImagePipeline::build_variant(device, &image.shader, &image.image_bgl, format, true),
             ),
-            curve: StencilVariant::eager(
+            curve: StencilVariant::new(
                 CurvePipeline::build_variant(device, &curve.shader, gradient_bgl, format, false),
                 CurvePipeline::build_variant(device, &curve.shader, gradient_bgl, format, true),
             ),
+            // Index order matches `StencilMode::pipeline_idx`:
+            // 0 = Plain, 1 = Stencil.
             text: TextBackend::build_pipelines(
                 device,
                 &text.atlas_bgl,
                 format,
-                text_stencil_states,
+                &[None, Some(stencil_test_state())],
             ),
         }
     }
