@@ -472,8 +472,10 @@ impl WgpuBackend {
             });
 
         // Belt-routed upload phase. Scoped so the borrows release
-        // before the render-pass phase needs `&mut encoder` cleanly.
-        {
+        // before the render-pass phase needs `&mut encoder` cleanly;
+        // yields the damage-overlay instance count for the post-copy
+        // overlay pass.
+        let overlay_count = {
             // The shared frame arena — mesh vertices/indices are read
             // straight out of it during upload (serialized-render
             // invariant; see the field doc).
@@ -498,6 +500,16 @@ impl WgpuBackend {
             if dim_undamaged {
                 self.debug.upload_dim(&mut ctx, buffer.viewport_phys_f);
             }
+            // Damage-rect overlay quads (debug). Uploaded alongside
+            // everything else; the overlay pass itself runs last, after
+            // the backbuffer→surface copy — same upload-early /
+            // draw-late split as the dim quad above.
+            let overlay_count = if debug_overlay.damage_rect {
+                self.debug
+                    .upload_damage_rects(&mut ctx, effective_plan, buffer)
+            } else {
+                0
+            };
             if use_stencil {
                 // After staging, `self.quad.mask_indices` parallels
                 // `buffer.groups` and `render_groups` reads it directly.
@@ -546,11 +558,9 @@ impl WgpuBackend {
             // copies also routes through the belt — see
             // `atlas::flush_pending_uploads`.
             self.text.flush_atlas_uploads(&mut ctx);
-        }
-        // (Belt stays open across the scope boundary —
-        // `draw_debug_overlay` reconstructs a short-lived ctx for its
-        // damage-rect outline upload. `belt.finish()` lives right
-        // before `queue.submit` below.)
+
+            overlay_count
+        };
 
         // Two paths, branching on whether the frame is a Full or
         // Partial repaint. Both go through one `begin_render_pass`:
@@ -615,13 +625,12 @@ impl WgpuBackend {
 
         self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
 
-        self.draw_debug_overlay(
-            surface_tex,
-            &mut encoder,
-            buffer,
-            effective_plan,
-            debug_overlay,
-        );
+        if overlay_count > 0 {
+            let viewport = ViewportPush {
+                size: buffer.viewport_phys_f,
+            };
+            self.run_overlay_pass(fmt, surface_tex, &mut encoder, viewport, overlay_count);
+        }
 
         // Last step before encoder.finish(): resolve the main-pass
         // timestamps if timing is on. The main pass closed before
@@ -996,35 +1005,21 @@ impl WgpuBackend {
         );
     }
 
-    /// Draw the debug overlay onto the swapchain texture *after* the
-    /// backbuffer→surface copy. The overlay never lands on the
-    /// backbuffer, so next frame's `LoadOp::Load` reads clean pixels
-    /// and there's no ghost stroke. Each `bool` on `config` toggles a
-    /// distinct visualization; the function is a no-op when all flags
-    /// are off. Caller already filtered `Damage::Skip`.
-    fn draw_debug_overlay(
-        &mut self,
+    /// Draw the damage-rect debug overlay onto the swapchain texture
+    /// *after* the backbuffer→surface copy. The overlay never lands on
+    /// the backbuffer, so next frame's `LoadOp::Load` reads clean
+    /// pixels and there's no ghost stroke. The outline quads were
+    /// uploaded in `submit`'s belt phase
+    /// (`DebugOverlay::upload_damage_rects`); `count` of them draw
+    /// here. Same upload-early / draw-late split as the dim pass.
+    fn run_overlay_pass(
+        &self,
+        fmt: &FormatPipelines,
         surface_tex: &wgpu::Texture,
         encoder: &mut wgpu::CommandEncoder,
-        buffer: &RenderBuffer,
-        plan: RenderPlan,
-        config: DebugOverlayConfig,
+        viewport: ViewportPush,
+        count: u32,
     ) {
-        if !config.damage_rect {
-            return;
-        }
-        // Short-lived ctx just for the overlay upload — the main
-        // upload phase in `submit` has already closed its ctx but
-        // the belt is still open until `belt.finish()`. Scoped so
-        // the encoder borrow releases before `begin_render_pass`
-        // below.
-        let count = {
-            let mut ctx = GpuCtx::new(&self.device, &self.queue, &mut self.staging_belt, encoder);
-            self.debug.upload_damage_rects(&mut ctx, plan, buffer)
-        };
-        if count == 0 {
-            return;
-        }
         let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.overlay.damage_rect"),
@@ -1045,14 +1040,9 @@ impl WgpuBackend {
         // Damage-overlay pass uses the quad pipeline against the
         // swapchain — separate pass, no inherited state. `draw_overlays`
         // binds the pipeline and pushes viewport in the right order.
-        // The format set exists — `submit` ran `ensure_format` before
-        // calling here.
-        let viewport = ViewportPush {
-            size: buffer.viewport_phys_f,
-        };
         self.debug.draw_overlays(
             &mut pass,
-            self.pipelines[&surface_tex.format()].quad.select(false),
+            fmt.quad.select(false),
             &self.gradient.bg,
             &viewport,
             count,
