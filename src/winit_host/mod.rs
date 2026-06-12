@@ -13,10 +13,11 @@
 //! (theme tweaks, restoring persisted state, stashing the handle) happens
 //! there.
 //!
-//! **Multi-window model.** Every window is an independent UI tree: its
-//! own `Ui` (input / focus / layout / `Display`) and its own
-//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend), all built from
-//! one shared [`Gpu`] (`Instance` / `Adapter` / `Device` / `Queue`).
+//! **Multi-window model.** Every window is an independent UI tree — its
+//! own `Ui` (input / focus / layout / `Display`) and [`WindowRenderer`] —
+//! all rendering through the one shared
+//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend) built from one
+//! shared [`Gpu`] (`Instance` / `Adapter` / `Device` / `Queue`).
 //! Windows are addressed by a caller-chosen [`WindowToken`]; winit's
 //! opaque `WindowId` stays internal for event routing. The app opens /
 //! closes windows from inside `frame` via [`Ui::open_window`] /
@@ -64,7 +65,7 @@ use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
 use crate::winit_host::config::WinitHostConfig;
 use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
-use crate::winit_host::handle::{HostHandle, UserEvent};
+use crate::winit_host::handle::{HostHandle, MainTask, UserEvent};
 
 /// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
 /// exist — handed to [`WinitHost::new`] and invoked on the first
@@ -100,32 +101,51 @@ struct WindowState {
     next: FramePresent,
 }
 
+/// What [`WinitHost::new`] stashes for the first `resumed`: the bootstrap
+/// window's token + config and the caller's app builder. Consumed whole —
+/// winit hands out `&ActiveEventLoop` only inside callbacks, so window +
+/// GPU + app construction all wait here until then.
+struct Bootstrap<T: 'static> {
+    token: WindowToken,
+    config: WinitHostConfig,
+    build: AppBuilder<T>,
+}
+
+/// Everything the first `resumed` builds, bundled so "booted" is one
+/// `Option` and a half-built state (a backend without an app, …) is
+/// unrepresentable.
+struct Running<T> {
+    /// The caller's app, built by [`Bootstrap::build`] once the first
+    /// window's `Ui` existed.
+    app: T,
+    /// Shared GPU context (instance / adapter / device / queue; surface
+    /// factory).
+    gpu: Gpu,
+    /// Shared, GPU-agnostic resources (shaper, frame arena, render caches,
+    /// GPU-stats handle) every window's `Ui` clones; each `WindowRenderer`
+    /// and the backend derive from it.
+    context: RenderContext,
+    /// The one shared GPU renderer every window draws through (pipelines,
+    /// atlases); passed into each window's `WindowRenderer::frame`.
+    backend: WgpuBackend,
+}
+
 /// Top-level winit-driven palantir runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls
-/// `T::frame` once per redraw, per window.
+/// `T::frame` once per redraw, per window. Two-state lifecycle, one
+/// `Option` each: [`Bootstrap`] (pre-`resumed` inputs, consumed once)
+/// and [`Running`] (everything the first `resumed` builds).
 pub struct WinitHost<T: 'static> {
-    /// Config for the first window, consumed by the first `resumed`.
-    config: WinitHostConfig,
-    /// Token assigned to the first (bootstrap) window.
-    first_token: WindowToken,
-    /// `None` until `resumed` builds the first `Ui` and runs the app
-    /// builder; the app lands here. The app can't exist before a `Ui`
-    /// does, so construction is necessarily deferred.
-    app: Option<T>,
-    /// The caller's app builder, set by [`WinitHost::new`] and consumed
-    /// by the first `resumed`. `None` after the build.
-    app_builder: Option<AppBuilder<T>>,
-    /// Shared GPU context (instance / adapter / device / queue; surface
-    /// factory), built lazily on the first `resumed`.
-    gpu: Option<Gpu>,
-    /// Shared, GPU-agnostic resources (shaper, frame arena, render caches,
-    /// GPU-stats handle) every window's `Ui` clones. Built on the first
-    /// `resumed`; each `WindowRenderer` and the backend derive from it.
-    context: Option<RenderContext>,
-    /// The one shared GPU renderer every window draws through (pipelines,
-    /// atlases). Built on the first `resumed` once the bootstrap surface's
-    /// format is known; passed into each window's `WindowRenderer::frame`.
-    backend: Option<WgpuBackend>,
+    /// Deferred-start inputs, consumed by the first `resumed`. `None`
+    /// thereafter. The app can't exist before a `Ui` does, so its
+    /// construction is necessarily deferred.
+    bootstrap: Option<Bootstrap<T>>,
+    /// Everything built on the first `resumed`; `None` only before that.
+    running: Option<Running<T>>,
+    /// `RunOnMain` tasks that arrived before [`Self::running`] existed —
+    /// handles are handed out before `run()`, so workers can race
+    /// startup. Drained into the app right after the builder runs.
+    pending_tasks: Vec<MainTask<T>>,
     /// Live windows, keyed by winit's `WindowId` for event routing.
     windows: HashMap<WindowId, WindowState>,
     /// Retained scratch: the live tokens are snapshotted here each `draw`
@@ -160,13 +180,13 @@ where
             .expect("event loop");
         let proxy = event_loop.create_proxy();
         Self {
-            config,
-            first_token,
-            app: None,
-            app_builder: Some(Box::new(build)),
-            gpu: None,
-            context: None,
-            backend: None,
+            bootstrap: Some(Bootstrap {
+                token: first_token,
+                config,
+                build: Box::new(build),
+            }),
+            running: None,
+            pending_tasks: Vec::new(),
             windows: HashMap::new(),
             live_tokens: Vec::new(),
             event_loop: Some(event_loop),
@@ -207,36 +227,33 @@ where
         self.live_tokens
             .extend(self.windows.values().map(|w| w.token));
         let Self {
-            app,
-            backend,
+            running,
             windows,
             live_tokens,
             ..
         } = self;
-        let (Some(app), Some(backend), Some(rt)) =
-            (app.as_mut(), backend.as_mut(), windows.get_mut(&id))
-        else {
+        let (Some(run), Some(win)) = (running.as_mut(), windows.get_mut(&id)) else {
             return;
         };
-        let window = rt.window.clone();
-        let token = rt.token;
+        let window = win.window.clone();
+        let token = win.token;
         // `refresh_millihertz` is queried each frame so a window dragged
         // onto a different-refresh monitor re-paces immediately — winit
         // fires no reliable "refresh changed" event to cache against.
-        let refresh_millihertz = rt
+        let refresh_millihertz = win
             .window
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz());
-        rt.next = rt.renderer.frame(
-            backend,
+        win.next = win.renderer.frame(
+            &mut run.backend,
             FrameTarget {
-                surface: &rt.surface,
-                config: &rt.config,
-                scale_factor: rt.scale_factor,
+                surface: &win.surface,
+                config: &win.config,
+                scale_factor: win.scale_factor,
                 refresh_millihertz,
                 live_windows: live_tokens.as_slice(),
             },
-            |ui| app.frame(token, ui),
+            |ui| run.app.frame(token, ui),
             || window.pre_present_notify(),
         );
     }
@@ -254,12 +271,12 @@ where
             tracing::warn!(?token, "open_window: token already in use, ignoring");
             return;
         }
+        // Open requests only come off live windows' `Ui` queues, which
+        // exist only after the first `resumed` booted everything.
+        let run = self.running.as_ref().expect("open_window before boot");
         let window = create_window(event_loop, &cfg);
-        let (Some(gpu), Some(ctx)) = (self.gpu.as_ref(), self.context.as_ref()) else {
-            return;
-        };
-        let ws = gpu.make_surface(&window);
-        let renderer = WindowRenderer::new(ctx);
+        let ws = run.gpu.make_surface(&window);
+        let renderer = WindowRenderer::new(&run.context);
         self.insert_window(token, window, ws, renderer);
     }
 
@@ -299,17 +316,20 @@ where
     fn drain_window_requests(&mut self, event_loop: &ActiveEventLoop) {
         let mut opens: Vec<PendingWindow> = Vec::new();
         let mut closes: Vec<WindowToken> = Vec::new();
-        for rt in self.windows.values_mut() {
-            opens.append(&mut rt.renderer.ui.pending_windows);
-            closes.append(&mut rt.renderer.ui.pending_closes);
+        for win in self.windows.values_mut() {
+            opens.append(&mut win.renderer.ui.pending_windows);
+            closes.append(&mut win.renderer.ui.pending_closes);
+        }
+        // Closes first, so a same-frame close + open of one token
+        // recreates the window instead of tripping `spawn_window`'s
+        // duplicate-token guard and losing it.
+        for token in closes {
+            self.windows.retain(|_, win| win.token != token);
         }
         for pw in opens {
             self.spawn_window(event_loop, pw.token, pw.config);
         }
-        for token in closes {
-            self.windows.retain(|_, rt| rt.token != token);
-        }
-        if self.windows.is_empty() && self.gpu.is_some() {
+        if self.windows.is_empty() && self.running.is_some() {
             // Every window closed (titlebar X or `close_window`) — nothing
             // left to drive.
             event_loop.exit();
@@ -340,21 +360,23 @@ where
         match event {
             UserEvent::Quit => event_loop.exit(),
             UserEvent::Repaint(token) => {
-                if let Some(rt) = self.window_by_token(token) {
-                    rt.next = FramePresent::Immediate;
+                if let Some(win) = self.window_by_token(token) {
+                    win.next = FramePresent::Immediate;
                 }
             }
             UserEvent::RunOnMain(task) => {
                 // The task folds background-thread results into app state
                 // (`&mut T`). A `true` return repaints every window, since
                 // any of them may read the changed state next frame.
-                let repaint = match self.app.as_mut() {
-                    Some(app) => task(app),
-                    None => false,
+                let Some(run) = self.running.as_mut() else {
+                    // Raced startup (handles exist before `run()`); held
+                    // until `resumed` builds the app, never dropped.
+                    self.pending_tasks.push(task);
+                    return;
                 };
-                if repaint {
-                    for rt in self.windows.values_mut() {
-                        rt.next = FramePresent::Immediate;
+                if task(&mut run.app) {
+                    for win in self.windows.values_mut() {
+                        win.next = FramePresent::Immediate;
                     }
                 }
             }
@@ -362,37 +384,38 @@ where
     }
 
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.gpu.is_some() {
+        // Only the first `resumed` acts; the bootstrap is gone on a
+        // post-suspend resume and desktop targets keep their surfaces.
+        let Some(boot) = self.bootstrap.take() else {
             return;
-        }
+        };
 
-        let cfg = self.config.clone();
-        let window = create_window(event_loop, &cfg.window);
+        let window = create_window(event_loop, &boot.config.window);
         let GpuInit {
             gpu,
             first_surface: ws,
-        } = Gpu::create(&window, &cfg);
+        } = Gpu::create(&window, &boot.config);
         // Shared resources first, then the one shared GPU renderer built
         // from them; every window's `Ui` + the backend derive from `ctx`.
         let ctx = RenderContext::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
         let mut renderer = WindowRenderer::new(&ctx);
 
-        // Build the app now that the first `Ui` exists. The
-        // `gpu.is_some()` early-return above means this runs exactly once
-        // (a post-suspend `resumed` returns there), so no `app.is_none()`
-        // guard is needed; `app_builder.take().expect(..)` is the
-        // double-build backstop.
-        let handle = HostHandle {
-            proxy: self.proxy.clone(),
-        };
-        let build = self.app_builder.take().expect("app builder consumed");
-        self.app = Some(build(&mut renderer.ui, handle));
+        // Build the app now that the first `Ui` exists.
+        let mut app = (boot.build)(&mut renderer.ui, self.handle());
+        // `RunOnMain` tasks that raced startup. Their repaint returns are
+        // moot — every window paints its first frame `Immediate` anyway.
+        for task in self.pending_tasks.drain(..) {
+            task(&mut app);
+        }
 
-        self.insert_window(self.first_token, window, ws, renderer);
-        self.gpu = Some(gpu);
-        self.context = Some(ctx);
-        self.backend = Some(backend);
+        self.insert_window(boot.token, window, ws, renderer);
+        self.running = Some(Running {
+            app,
+            gpu,
+            context: ctx,
+            backend,
+        });
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
@@ -406,16 +429,16 @@ where
         // nearest wins so no window out-sleeps its own schedule.
         let now = Instant::now();
         let mut earliest: Option<Instant> = None;
-        for rt in self.windows.values() {
+        for win in self.windows.values() {
             // `At(t)` with `t <= now` collapses to `Immediate` —
             // `WaitUntil` would fire instantly and loop, so just request
             // the redraw.
-            let next = match rt.next {
+            let next = match win.next {
                 FramePresent::At(t) if t <= now => FramePresent::Immediate,
                 other => other,
             };
             match next {
-                FramePresent::Immediate => rt.window.request_redraw(),
+                FramePresent::Immediate => win.window.request_redraw(),
                 FramePresent::At(t) => {
                     earliest = Some(earliest.map_or(t, |e| e.min(t)));
                 }
@@ -428,21 +451,21 @@ where
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, _event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
         // Drain input into the target window's `Ui` first, in its own
         // scope so the `&mut WindowState` borrow ends before the match
         // arms re-borrow (`RedrawRequested` needs `&mut self` for
         // `draw`).
         {
-            let Some(rt) = self.windows.get_mut(&id) else {
+            let Some(win) = self.windows.get_mut(&id) else {
                 return;
             };
             let mut wants_repaint = false;
-            InputEvent::from_winit(&event, rt.scale_factor, |ev| {
-                wants_repaint |= rt.renderer.ui.on_input(ev).requests_repaint;
+            InputEvent::from_winit(&event, win.scale_factor, |ev| {
+                wants_repaint |= win.renderer.ui.on_input(ev).requests_repaint;
             });
             if wants_repaint {
-                rt.next = FramePresent::Immediate;
+                win.next = FramePresent::Immediate;
             }
         }
 
@@ -450,29 +473,28 @@ where
             WindowEvent::RedrawRequested => self.draw(id),
 
             WindowEvent::CloseRequested => {
+                // Removal only — the all-windows-closed exit decision
+                // lives in `drain_window_requests`, which `about_to_wait`
+                // runs right after this event batch.
                 self.windows.remove(&id);
-                if self.windows.is_empty() {
-                    event_loop.exit();
-                }
             }
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-                if let Some(rt) = self.windows.get_mut(&id) {
-                    rt.scale_factor = scale_factor as f32;
-                    rt.next = FramePresent::Immediate;
+                if let Some(win) = self.windows.get_mut(&id) {
+                    win.scale_factor = scale_factor as f32;
+                    win.next = FramePresent::Immediate;
                 }
             }
             WindowEvent::Resized(new) => {
-                // A window event only fires after `resumed` built the GPU,
-                // so the shared context is always present here.
+                // A window event only fires after `resumed` booted, so
+                // `running` is always present here.
                 let max = self
-                    .gpu
+                    .running
                     .as_ref()
-                    .expect("gpu built before any window event")
-                    .device
-                    .limits()
-                    .max_texture_dimension_2d;
-                if let Some(rt) = self.windows.get_mut(&id) {
+                    .expect("booted before any window event")
+                    .gpu
+                    .max_texture_dim;
+                if let Some(win) = self.windows.get_mut(&id) {
                     let w = new.width.clamp(1, max);
                     let h = new.height.clamp(1, max);
                     // Stash the new size only — `WindowRenderer::frame`
@@ -485,9 +507,9 @@ where
                     // reallocates the swapchain — wgpu #7447 measures
                     // 100ms+ stalls when called per repeated event, which
                     // is what fed the resize backlog.
-                    if w != rt.config.width || h != rt.config.height {
-                        rt.config.width = w;
-                        rt.config.height = h;
+                    if w != win.config.width || h != win.config.height {
+                        win.config.width = w;
+                        win.config.height = h;
                         // Defer the paint: inline `self.draw()` in this
                         // handler lags noticeably on this Wayland setup
                         // even with `pre_present_notify` wired up — the
@@ -497,15 +519,15 @@ where
                         // `about_to_wait` coalesce into one
                         // `RedrawRequested` per loop tick gives the
                         // smoother feel in practice.
-                        rt.next = FramePresent::Immediate;
+                        win.next = FramePresent::Immediate;
                     }
                 }
             }
             WindowEvent::Occluded(occluded) => {
-                if let Some(rt) = self.windows.get_mut(&id) {
-                    rt.renderer.set_occluded(occluded);
+                if let Some(win) = self.windows.get_mut(&id) {
+                    win.renderer.set_occluded(occluded);
                     if !occluded {
-                        rt.next = FramePresent::Immediate;
+                        win.next = FramePresent::Immediate;
                     }
                 }
             }

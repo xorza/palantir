@@ -19,10 +19,12 @@ use crate::winit_host::config::WinitHostConfig;
 pub(crate) struct Gpu {
     instance: wgpu::Instance,
     adapter: wgpu::Adapter,
-    /// Read by the host's resize handler for the max-texture clamp; the
-    /// rest of the wgpu handles stay private to this module.
-    pub(crate) device: wgpu::Device,
+    device: wgpu::Device,
     queue: wgpu::Queue,
+    /// `max_texture_dimension_2d` granted at device creation — fixed for
+    /// the device's lifetime, cached so the host's per-event resize clamp
+    /// doesn't re-query `device.limits()`.
+    pub(crate) max_texture_dim: u32,
     /// Swapchain present mode applied to every window's surface — fixed
     /// at startup from `WinitHostConfig`, app-global.
     present_mode: wgpu::PresentMode,
@@ -104,6 +106,7 @@ impl Gpu {
         let gpu = Self {
             instance,
             adapter,
+            max_texture_dim: device.limits().max_texture_dimension_2d,
             device,
             queue,
             present_mode: cfg.present_mode,
