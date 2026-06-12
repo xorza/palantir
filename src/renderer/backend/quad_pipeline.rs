@@ -101,11 +101,10 @@ impl QuadPipeline {
     /// format-dependent object; the gradient LUT atlas (texture + bind
     /// group + sampler) and the instance / clear buffers are reused.
     /// `stencil` selects the rounded-clip variant (adds the shared
-    /// `stencil_test_state`). Shared by [`Self::new`],
-    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`]. The
-    /// distinct `mask_write` variant ([`Self::build_mask_write`]) stays
-    /// separate — different fragment entry, color writes off. Called by
-    /// `FormatPipelines` for each swapchain format.
+    /// `stencil_test_state`). The distinct `mask_write` variant
+    /// ([`Self::build_mask_write`]) stays separate — different fragment
+    /// entry, color writes off. Called by `FormatPipelines` for each
+    /// swapchain format.
     pub(crate) fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,

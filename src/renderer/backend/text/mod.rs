@@ -17,12 +17,13 @@
 //!   internally.
 //! - **20-byte instances** (vs glyphon's 24). content_type packed
 //!   into uv high bit.
-//! - **No `Viewport` object.** Params buffer lives here and is
-//!   rewritten when resolution or atlas sizes change.
+//! - **No `Viewport` object.** Atlas sizes ride the shared immediate
+//!   region ([`Params`]), pushed per batch — no uniform buffer.
 
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
+use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     PipelineRecipe, build_pipeline, build_pipeline_layout,
@@ -135,8 +136,7 @@ pub struct TextBackend {
     params: Params,
 
     instances: Vec<GlyphInstance>,
-    vbuf: wgpu::Buffer,
-    vbuf_capacity: u64,
+    vbuf: DynamicBuffer,
 
     ranges: Vec<Option<Range<u32>>>,
     pub(crate) prepared_anything: bool,
@@ -197,13 +197,7 @@ impl TextBackend {
             &sampler,
         );
 
-        let vbuf_capacity = (std::mem::size_of::<GlyphInstance>() as u64) * 4096;
-        let vbuf = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir text vbuf"),
-            size: vbuf_capacity,
-            usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-            mapped_at_creation: false,
-        });
+        let vbuf = DynamicBuffer::vertex::<GlyphInstance>(device, "palantir text vbuf", 4096);
 
         Self {
             shaper,
@@ -215,7 +209,6 @@ impl TextBackend {
             params,
             instances: Vec::new(),
             vbuf,
-            vbuf_capacity,
             ranges: Vec::new(),
             prepared_anything: false,
             encoded_cache: EncodedCache::default(),
@@ -273,7 +266,7 @@ impl TextBackend {
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
     /// emits instances, optionally rebinds the atlas bind group if
-    /// it grew. Returns true if any instance was emitted.
+    /// it grew.
     #[profiling::function]
     pub(crate) fn prepare_batch(
         &mut self,
@@ -281,7 +274,7 @@ impl TextBackend {
         scale: f32,
         batch_idx: usize,
         runs: &[TextRun],
-    ) -> bool {
+    ) {
         let start = self.instances.len() as u32;
 
         // Pass 1: walk every run, emit encoded-cache hits straight to
@@ -350,7 +343,6 @@ impl TextBackend {
         }
 
         let end = self.instances.len() as u32;
-        let did_work = end > start;
 
         // Rebuild bind group if atlas grew during encode.
         if self.atlas.bind_group_dirty {
@@ -375,11 +367,18 @@ impl TextBackend {
         }
         self.ranges[batch_idx] = Some(start..end);
 
-        if did_work {
+        if end > start {
             self.prepared_anything = true;
-            self.upload_vbuf(ctx, start);
+            // Tail upload: this batch's just-appended slice. Earlier
+            // batches' bytes are already on the GPU (a grow re-uploads
+            // everything through the mapped range).
+            self.vbuf.upload_tail(
+                ctx,
+                bytemuck::cast_slice(&self.instances),
+                self.instances.len(),
+                start as usize,
+            );
         }
-        did_work
     }
 
     /// Drain glyph-atlas uploads accumulated by `prepare_batch` into
@@ -414,47 +413,17 @@ impl TextBackend {
         // Cheap: register-mapped, no buffer round-trip.
         viewport.push_into(pass);
         self.params.push_into(pass);
-        pass.set_vertex_buffer(0, self.vbuf.slice(..));
+        pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
         pass.draw(0..4, range);
     }
 
     pub(crate) fn post_record(&mut self) {
-        self.atlas.trim();
+        self.atlas.end_frame();
         self.encoded_cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
         self.ranges.fill(None);
         self.prepared_anything = false;
-    }
-
-    /// Upload glyph instances appended by this batch to `self.vbuf`.
-    /// `start` is the `self.instances.len()` captured before this
-    /// batch began emitting — so `[start..len]` is the batch's
-    /// just-appended slice. On the common no-grow path we belt-write
-    /// only that slice to its corresponding byte offset, leaving
-    /// prior batches' bytes (already on the GPU) untouched. On the
-    /// rare grow path the buffer is replaced with undefined contents,
-    /// so we re-upload the full `self.instances`.
-    fn upload_vbuf(&mut self, ctx: &mut GpuCtx<'_>, start: u32) {
-        let stride = std::mem::size_of::<GlyphInstance>();
-        let needed = (self.instances.len() * stride) as u64;
-        let grew = needed > self.vbuf_capacity;
-        if grew {
-            let new_cap = needed.next_power_of_two().max(self.vbuf_capacity * 2);
-            self.vbuf = ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir text vbuf"),
-                size: new_cap,
-                usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
-                mapped_at_creation: false,
-            });
-            self.vbuf_capacity = new_cap;
-            let bytes: &[u8] = bytemuck::cast_slice(&self.instances);
-            ctx.write(&self.vbuf, 0, bytes);
-        } else {
-            let new_bytes: &[u8] = bytemuck::cast_slice(&self.instances[start as usize..]);
-            let offset = u64::from(start) * stride as u64;
-            ctx.write(&self.vbuf, offset, new_bytes);
-        }
     }
 }
 
@@ -576,8 +545,8 @@ pub mod test_support {
         }
 
         /// Append-mode prepare into batch 0.
-        pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) -> bool {
-            self.backend.prepare_batch(ctx, scale, 0, runs)
+        pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) {
+            self.backend.prepare_batch(ctx, scale, 0, runs);
         }
 
         pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {

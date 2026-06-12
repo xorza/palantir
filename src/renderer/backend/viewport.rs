@@ -24,7 +24,7 @@ const DAMAGE_AA_PADDING: u32 = 2;
 /// by [`DAMAGE_AA_PADDING`] on every side and clamped to the viewport.
 /// Returns `None` if the result clamps to zero area — callers degrade
 /// that case to "loaded but not drawn" inside the pass.
-pub(crate) fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
+fn logical_rect_to_phys_scissor(r: Rect, buffer: &RenderBuffer) -> Option<URect> {
     let phys = r.scaled_by(buffer.scale, true);
     let pad = DAMAGE_AA_PADDING as f32;
     let mins_x = (phys.min.x - pad).max(0.0) as u32;

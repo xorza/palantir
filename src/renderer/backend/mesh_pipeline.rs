@@ -6,9 +6,9 @@
 //!
 //! **No `mesh_mask.wgsl`.** Rounded-clip masks are quad-shaped and
 //! always stamped by [`QuadPipeline`]'s `mask_write` variant
-//! (`quad.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant
-//! (see [`Self::ensure_stencil`]) — it reads the mask but never
-//! writes one. Same shape for [`crate::renderer::backend::image_pipeline::ImagePipeline`].
+//! (`quad.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant —
+//! it reads the mask but never writes one. Same shape for
+//! [`crate::renderer::backend::image_pipeline::ImagePipeline`].
 
 use crate::primitives::mesh::MeshVertex;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;

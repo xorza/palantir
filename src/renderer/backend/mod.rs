@@ -102,14 +102,9 @@ pub(crate) struct Backbuffer {
     /// Lazy stencil attachment, allocated on first frame with rounded
     /// clipping (`FrameOutput::has_rounded_clip == true`). Apps that
     /// never use rounded clip never allocate this. Recreated alongside
-    /// the color texture on resize / format change.
-    stencil: Option<StencilAttachment>,
-}
-
-struct StencilAttachment {
-    #[allow(dead_code)] // owns the GPU resource that `view` points into
-    tex: wgpu::Texture,
-    view: wgpu::TextureView,
+    /// the color texture on resize / format change. The view keeps its
+    /// texture alive (wgpu's internal Arcs), so no owning struct needed.
+    stencil: Option<wgpu::TextureView>,
 }
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
@@ -130,13 +125,6 @@ pub(crate) struct WgpuBackend {
     /// resizing-frame's worth of buffer uploads (~512 KB observed in
     /// the frame bench).
     staging_belt: wgpu::util::StagingBelt,
-    /// Latest viewport size (physical px) consumed by every pipeline
-    /// via the shared immediate region. Refreshed at the top of
-    /// `submit` from the current `RenderBuffer`; pushed by each pass
-    /// open via `pass.set_immediates(0, ..)`. There's no GPU buffer
-    /// or bind group anymore — the value rides command-buffer record
-    /// state directly.
-    viewport_size: glam::Vec2,
     /// Shared gradient LUT atlas resources (texture + sampler + group-0
     /// bind group), lent to the quad and curve pipelines — both render
     /// gradient brushes off this one allocation.
@@ -250,7 +238,6 @@ impl WgpuBackend {
             device,
             queue: Queue::new(queue),
             staging_belt,
-            viewport_size: glam::Vec2::ZERO,
             gradient,
             quad,
             mesh,
@@ -263,15 +250,6 @@ impl WgpuBackend {
             caches,
             gpu_timings,
         }
-    }
-
-    /// Per-pipeline stencil configs the production text pipelines are
-    /// built with. Index 0 = Plain, index 1 = Stencil — matches
-    /// `text::StencilMode::pipeline_idx`. Single source of truth shared
-    /// by [`Self::new`] and [`Self::format_pipelines`] so rebuilt text
-    /// pipelines can't drift from the originals.
-    fn text_stencil_states() -> [Option<wgpu::DepthStencilState>; 2] {
-        [None, Some(stencil::stencil_test_state())]
     }
 
     /// Ensure the pipeline set for `format` exists, building + caching it
@@ -293,7 +271,6 @@ impl WgpuBackend {
                 &self.device,
                 format,
                 &self.gradient.bgl,
-                &Self::text_stencil_states(),
                 &self.quad,
                 &self.mesh,
                 &self.image,
@@ -374,8 +351,7 @@ impl WgpuBackend {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        bb.stencil = Some(StencilAttachment { tex, view });
+        bb.stencil = Some(tex.create_view(&wgpu::TextureViewDescriptor::default()));
     }
 
     /// Render one frame to the persistent backbuffer, then copy the
@@ -423,9 +399,6 @@ impl WgpuBackend {
         let clear = match plan {
             RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
         };
-        let arena = self.frame_arena.clone();
-        let arena = arena.inner();
-
         let use_stencil = buffer.has_rounded_clip;
         tracing::trace!(
             quads = buffer.quads.len(),
@@ -446,13 +419,8 @@ impl WgpuBackend {
         // Match backbuffer to the swapchain texture. A freshly
         // (re)created backbuffer has undefined contents, so any
         // requested Partial must escalate to a full clear+paint this
-        // frame. `effective_damage` is what we'll actually render;
-        // `damage` is what the host asked for. The two diverge only on
-        // backbuffer recreate, but the debug overlay's damage-rect
-        // outline shows what we *rendered*, not what was requested, so
-        // threading the renamed value through is the right semantic.
-        let backbuffer_recreated =
-            self.ensure_backbuffer(backbuffer, surface_tex.size(), surface_tex.format());
+        // frame.
+        let backbuffer_recreated = self.ensure_backbuffer(backbuffer, surface_tex.size(), format);
         // `effective_plan` is what we'll actually render; `plan` is
         // what the host asked for. The two diverge only on backbuffer
         // recreate, but the debug overlay's damage-rect outline shows
@@ -505,11 +473,13 @@ impl WgpuBackend {
                 label: Some("palantir.renderer.main"),
             });
 
-        // Image-registry texture uploads: rare, hit `queue.write_texture`
-        // directly (StagingBelt's buffer-only path doesn't help here).
         // Belt-routed upload phase. Scoped so the borrows release
         // before the render-pass phase needs `&mut encoder` cleanly.
         {
+            // The shared frame arena — mesh vertices/indices are read
+            // straight out of it during upload (serialized-render
+            // invariant; see the field doc).
+            let arena = self.frame_arena.inner();
             let mut ctx = GpuCtx::new(
                 &self.device,
                 &self.queue,
@@ -536,9 +506,6 @@ impl WgpuBackend {
                 self.quad.stage_masks(&mut ctx, &buffer.groups);
             }
 
-            // Cache the size for `set_immediates` at each pass open
-            // — no buffer write, no bind group, no dirty tracking.
-            self.viewport_size = buffer.viewport_phys_f;
             self.quad.upload(&mut ctx, &buffer.quads);
             self.mesh.upload(
                 &mut ctx,
@@ -631,7 +598,10 @@ impl WgpuBackend {
         } else {
             if dim_undamaged {
                 tracing::trace!("wgpu_backend.submit.pass.dim");
-                self.run_dim_pass(fmt, bb, &mut encoder);
+                let viewport = ViewportPush {
+                    size: buffer.viewport_phys_f,
+                };
+                self.run_dim_pass(fmt, bb, &mut encoder, viewport);
             }
             tracing::trace!(
                 rects = damage_scissors.len(),
@@ -702,6 +672,7 @@ impl WgpuBackend {
         fmt: &FormatPipelines,
         backbuffer: &Backbuffer,
         encoder: &mut wgpu::CommandEncoder,
+        viewport: ViewportPush,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.dim.pass"),
@@ -722,9 +693,6 @@ impl WgpuBackend {
         // Dim pass uses the quad pipeline outside the main pass.
         // `draw_dim` binds the pipeline first; immediately after, push
         // the shared viewport immediate.
-        let viewport = ViewportPush {
-            size: self.viewport_size,
-        };
         self.debug.draw_dim(
             &mut pass,
             fmt.quad.select(false),
@@ -764,21 +732,12 @@ impl WgpuBackend {
         clear: wgpu::Color,
         use_stencil: bool,
     ) {
-        // `text_mode` is fully determined by `use_stencil` — the text
-        // pipelines need the stencil-test variant exactly when the frame
-        // round-clips.
-        let text_mode = if use_stencil {
-            TextStencilMode::Stencil
-        } else {
-            TextStencilMode::Plain
-        };
         let stencil_view = if use_stencil {
             Some(
-                &backbuffer
+                backbuffer
                     .stencil
                     .as_ref()
-                    .expect("ensure_stencil populated this")
-                    .view,
+                    .expect("ensure_stencil populated this"),
             )
         } else {
             None
@@ -831,7 +790,7 @@ impl WgpuBackend {
             t.begin_pipeline_stats(&mut pass);
         }
         match partial_scissors {
-            None => self.render_groups(fmt, &mut pass, buffer, None, use_stencil, text_mode),
+            None => self.render_groups(fmt, &mut pass, buffer, None, use_stencil),
             Some(rects) => {
                 for (i, &r) in rects.iter().enumerate() {
                     tracing::trace!(
@@ -840,7 +799,7 @@ impl WgpuBackend {
                         scissor = ?r,
                         "wgpu_backend.submit.pass.partial_rect"
                     );
-                    self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil, text_mode);
+                    self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil);
                 }
             }
         }
@@ -866,8 +825,14 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
         use_stencil: bool,
-        text_mode: TextStencilMode,
     ) {
+        // The text pipelines need the stencil-test variant exactly when
+        // the frame round-clips.
+        let text_mode = if use_stencil {
+            TextStencilMode::Stencil
+        } else {
+            TextStencilMode::Plain
+        };
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
@@ -886,7 +851,7 @@ impl WgpuBackend {
         }
         let mut bound = Bound::None;
         let viewport = ViewportPush {
-            size: self.viewport_size,
+            size: buffer.viewport_phys_f,
         };
 
         // Helper: thread a `BatchKind` marker through to `GpuTimings`
@@ -1126,7 +1091,7 @@ impl WgpuBackend {
             // The format set exists — `submit` ran `ensure_format` before
             // calling here.
             let viewport = ViewportPush {
-                size: self.viewport_size,
+                size: buffer.viewport_phys_f,
             };
             self.debug.draw_overlays(
                 &mut pass,

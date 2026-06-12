@@ -5,7 +5,7 @@
 //! chords (96 vertices per instance, no index buffer) and offsets the
 //! strip perpendicular to the tangent for stroking + AA.
 //!
-//! Same lazy-stencil-variant pattern as [`MeshPipeline`] /
+//! Same stencil-variant pattern as [`MeshPipeline`] /
 //! [`ImagePipeline`]: rounded-clip frames use a stencil-test pipeline,
 //! plain frames use the unconditional one.
 //!
