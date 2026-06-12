@@ -37,9 +37,7 @@ impl Stroke {
     pub fn is_noop(&self) -> bool {
         noop_f32(self.width) || self.brush.is_noop()
     }
-}
 
-impl Stroke {
     /// Solid-stroke shorthand for the common `Color`-only case. Slice 1
     /// callers pass `color` directly; future gradient/image strokes go
     /// through the struct literal with an explicit `Brush::Linear(...)`.
