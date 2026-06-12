@@ -13,9 +13,12 @@
 //! through one GPU renderer; each `WindowRenderer` carries only this
 //! window's data.
 //!
-//! Single public entry: [`WindowRenderer::frame`] — runs the CPU passes,
-//! acquires the swapchain texture, submits through the shared backend,
-//! presents, and folds the acquire dance into a [`FramePresent`] schedule.
+//! Two public entries, sharing one CPU + GPU path:
+//! [`WindowRenderer::frame`] (to a swapchain surface — acquires, submits,
+//! presents, returns a [`FramePresent`] schedule) and
+//! [`WindowRenderer::frame_offscreen`] (to a caller-supplied
+//! `wgpu::Texture` — no acquire/present, for screenshots / the offscreen
+//! host).
 
 use std::time::Instant;
 
@@ -197,10 +200,35 @@ impl WindowRenderer {
         self.present(gpu, surface, config, report, pre_present)
     }
 
+    /// Render one frame to a caller-supplied `wgpu::Texture` instead of a
+    /// swapchain surface — the texture sibling of [`Self::frame`]. No
+    /// acquire/present dance and no [`FramePresent`] schedule; `Display`'s
+    /// physical size is derived from `target.size()`. Runs the same CPU +
+    /// GPU path (`cpu_frame` → `render_to_texture`) as `frame`. Used by
+    /// the offscreen host (visual harness / GPU benches) and available to
+    /// any host wanting render-to-texture (screenshots, thumbnails,
+    /// offscreen compositing).
+    pub fn frame_offscreen(
+        &mut self,
+        gpu: &mut WgpuBackend,
+        target: &wgpu::Texture,
+        scale_factor: f32,
+        record: impl FnMut(&mut Ui),
+    ) {
+        let size = target.size();
+        let display =
+            Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+        // Force a full repaint when the target's format changes (offscreen
+        // has no surface to reconfigure).
+        self.note_format(target.format());
+        let report = self.cpu_frame(display, record);
+        self.render_to_texture(gpu, target, &report);
+    }
+
     /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
     /// damage. Returns the host-facing [`FrameReport`]; thread it back
-    /// into [`Self::render_to_texture`]. Internal split for benches and
-    /// the visual harness; production callers use [`Self::frame`].
+    /// into [`Self::render_to_texture`]. Shared by [`Self::frame`]
+    /// (surface) and [`Self::frame_offscreen`] (texture).
     pub(crate) fn cpu_frame(
         &mut self,
         display: Display,
@@ -215,8 +243,8 @@ impl WindowRenderer {
     /// GPU submit against a caller-supplied texture, through the shared
     /// `gpu`. On `RenderPlan::Skip`, copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
-    /// Internal split for benches and the visual harness; production
-    /// callers use [`Self::frame`].
+    /// Shared by [`Self::frame`]'s present path (the acquired swapchain
+    /// texture) and [`Self::frame_offscreen`] (an offscreen texture).
     pub(crate) fn render_to_texture(
         &mut self,
         gpu: &mut WgpuBackend,
@@ -345,36 +373,4 @@ pub enum FramePresent {
     Immediate,
     At(Instant),
     Idle,
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod test_support {
-    //! The per-window offscreen render entry. The bundling host that owns
-    //! a backend + this window lives in
-    //! [`OffscreenHost`](crate::offscreen_host::OffscreenHost).
-
-    use crate::window_renderer::*;
-
-    impl WindowRenderer {
-        /// Offscreen one-shot: run CPU + GPU against a caller-supplied
-        /// texture (no swapchain acquire), through the shared `gpu`.
-        /// `Display`'s physical size is derived from `target.size()`.
-        /// Driven by [`OffscreenHost`](crate::offscreen_host::OffscreenHost).
-        pub(crate) fn frame_offscreen(
-            &mut self,
-            gpu: &mut WgpuBackend,
-            target: &wgpu::Texture,
-            scale_factor: f32,
-            record: impl FnMut(&mut Ui),
-        ) {
-            let size = target.size();
-            let display =
-                Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
-            // Force a full repaint when the target's format changes
-            // (offscreen has no surface to reconfigure).
-            self.note_format(target.format());
-            let report = self.cpu_frame(display, record);
-            self.render_to_texture(gpu, target, &report);
-        }
-    }
 }
