@@ -28,7 +28,7 @@
 //! | Per-bezier content hash               | `forest::frame_arena::lower_curve_inner`        | `ShapeRecord::Curve.content_hash`       |
 //! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
 //! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
-//! | Per-cascade input hash                | `ui::cascade::hash_cascade_input`               | damage subtree-skip predicate           |
+//! | Per-cascade input hash                | `ui::cascade::finish_cascade_input`             | damage subtree-skip predicate           |
 //!
 //! Adding an authoring field that should invalidate caches: pick the
 //! producer above whose output the field belongs to, and extend its
