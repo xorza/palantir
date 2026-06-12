@@ -24,7 +24,7 @@ use self::debug_overlay::{
 };
 use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
-use self::gpu_pass_stats::{BatchKind, GpuPassStats};
+use self::gpu_pass_stats::BatchKind;
 use self::gpu_timings::GpuTimings;
 use self::gradient_resources::GradientResources;
 use self::image_pipeline::ImagePipeline;
@@ -39,10 +39,8 @@ use crate::forest::frame_arena::FrameArena;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
-use crate::renderer::frontend::Frontend;
+use crate::renderer::context::RenderContext;
 use crate::renderer::render_buffer::RenderBuffer;
-use crate::text::TextShaper;
-use crate::ui::Ui;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
 use rustc_hash::FxHashMap;
@@ -67,8 +65,9 @@ pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 /// `WindowRenderer` / `WinitHost` call sites don't grow a long positional
 /// signature each time a new GPU-side setting is exposed.
 pub(crate) struct WgpuBackendConfig {
-    /// Opt into GPU instrumentation: the backend creates a
-    /// [`GpuPassStats`] handle, writes resolved samples through it, and
+    /// Opt into GPU instrumentation: the backend wires up timestamp
+    /// queries, writes resolved samples through the context's stats
+    /// handle, and
     /// pays the per-frame `resolve_query_set` + `map_async` +
     /// `device.poll(Poll)` + readback cost. `false` skips the whole
     /// path — `GpuTimings` is never constructed. Adapter features
@@ -156,29 +155,21 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Shared frame arena. Cloned into every window's [`Ui`] + `Frontend`
-    /// at [`Self::make_window_ui`] / [`Self::make_frontend`]; the backend
-    /// reads mesh vertices/indices from it during upload. Safe to share
-    /// because rendering is serialized — one window completes record →
-    /// submit before the next clears the arena (see `WinitHost::draw`).
+    /// Clone of the shared [`RenderContext`] frame arena (the same one in
+    /// every window's `Ui`/`Frontend`); the backend reads mesh
+    /// vertices/indices from it during upload. Safe to share because
+    /// rendering is serialized — one window completes record → submit
+    /// before the next clears the arena (see `WinitHost::draw`).
     frame_arena: FrameArena,
     /// Shared cross-frame GPU resource caches (image registry +
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
     caches: RenderCaches,
-    /// Shared text shaper, cloned into each window's [`Ui`] (and the
-    /// text backend) so all windows measure + rasterize against one
-    /// font/glyph cache.
-    shaper: TextShaper,
-    /// Shared GPU-instrumentation handle, cloned into every window's
-    /// [`Ui`] (the debug overlay reads it) and into [`Self::gpu_timings`]
-    /// when instrumentation is on. With one shared backend the published
-    /// sample reflects the most recently submitted window.
-    pass_stats: GpuPassStats,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation (see `WinitHostConfig::collect_gpu_stats`) AND
-    /// the adapter advertises `TIMESTAMP_QUERY`. Resolved values
-    /// publish through [`Self::pass_stats`].
+    /// the adapter advertises `TIMESTAMP_QUERY`. Holds its own clone of
+    /// the context's `GpuPassStats` handle; with one shared backend the
+    /// published sample reflects the most recently submitted window.
     gpu_timings: Option<GpuTimings>,
 }
 
@@ -195,35 +186,34 @@ impl WgpuBackend {
         surface.configure(&self.device, config);
     }
 
-    /// Build the one shared GPU renderer. Owns the device/queue, every
+    /// Build the one shared GPU renderer from the shared [`RenderContext`]
+    /// (cloning the frame arena, render caches, shaper, and GPU-stats
+    /// handle it needs). Owns the device/queue and every
     /// format-independent GPU resource (pipelines' shaders + buffers, the
-    /// glyph + gradient atlases, the image texture cache), and the shared
-    /// [`FrameArena`] / [`RenderCaches`] / [`TextShaper`] / [`GpuPassStats`]
-    /// that every window's [`Ui`] clones. `format` seeds the first entry
-    /// of the per-format pipeline map; further formats build lazily.
+    /// glyph + gradient atlases, the image texture cache). Format-agnostic
+    /// at construction: each swapchain format's pipeline set builds lazily
+    /// on the first submit that targets it (see [`Self::ensure_format`]).
     pub(crate) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
-        format: wgpu::TextureFormat,
-        shaper: TextShaper,
+        ctx: &RenderContext,
         config: WgpuBackendConfig,
     ) -> Self {
         let WgpuBackendConfig { collect_gpu_stats } = config;
-        // One canonical frame arena + render caches, shared by every
-        // window (cloned into each `Ui`/`Frontend`) and read here during
-        // upload. Safe under the serialized-render invariant.
-        let frame_arena = FrameArena::default();
-        let caches = RenderCaches::default();
-        // Single `GpuPassStats` handle: cloned into every `Ui` (debug
-        // overlay reads it) and into `GpuTimings` when instrumentation is
-        // on. When off, nothing writes and readers see `None`.
-        let pass_stats = GpuPassStats::default();
+        // Frame arena + render caches are shared with every window's
+        // `Ui`/`Frontend` (the backend just holds clones; the canonical
+        // owner is the `RenderContext`). Read here during upload — safe
+        // under the serialized-render invariant.
+        let frame_arena = ctx.frame_arena.clone();
+        let caches = ctx.caches.clone();
         // GPU pass timing collection is opt-in. When on, adapter features
         // degrade what gets collected: `TIMESTAMP_QUERY` is required at
         // all; `+TIMESTAMP_QUERY_INSIDE_PASSES` enables per-batch
         // attribution; `+PIPELINE_STATISTICS_QUERY` adds VS/FS invocation
         // counts. The non-zero `period` check guards against headless /
         // software queues that advertise the feature but can't time.
+        // Samples publish through a clone of the context's stats handle —
+        // the same one every `Ui`'s debug overlay reads.
         let features = device.features();
         let gpu_timings = (collect_gpu_stats
             && features.contains(wgpu::Features::TIMESTAMP_QUERY)
@@ -234,7 +224,7 @@ impl WgpuBackend {
                     queue.get_timestamp_period(),
                     features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
                     features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                    pass_stats.clone(),
+                    ctx.pass_stats.clone(),
                 )
             });
         // Gradient LUT atlas resources, shared by the quad and curve
@@ -246,24 +236,11 @@ impl WgpuBackend {
         let mesh = MeshPipeline::new(&device);
         let image = ImagePipeline::new(&device);
         let curve = CurvePipeline::new(&device);
-        let text = TextBackend::new(&device, shaper.clone());
+        let text = TextBackend::new(&device, ctx.shaper.clone());
         let debug = DebugOverlay::new(&device);
-        // Seed the per-format pipeline map with the first window's format.
-        let mut pipelines = FxHashMap::default();
-        pipelines.insert(
-            format,
-            FormatPipelines::new(
-                &device,
-                format,
-                &gradient.bgl,
-                &Self::text_stencil_states(),
-                &quad,
-                &mesh,
-                &image,
-                &curve,
-                &text,
-            ),
-        );
+        // Per-format pipeline sets build lazily on the first submit that
+        // targets each format (`ensure_format`); none at construction.
+        let pipelines = FxHashMap::default();
         // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
         // per-frame upload peak, so we land in 1-2 chunks during
         // steady state. wgpu allocates a new chunk only when the
@@ -284,8 +261,6 @@ impl WgpuBackend {
             pipelines,
             frame_arena,
             caches,
-            shaper,
-            pass_stats,
             gpu_timings,
         }
     }
@@ -297,24 +272,6 @@ impl WgpuBackend {
     /// pipelines can't drift from the originals.
     fn text_stencil_states() -> [Option<wgpu::DepthStencilState>; 2] {
         [None, Some(stencil::stencil_test_state())]
-    }
-
-    /// A fresh per-window [`Ui`] sharing this backend's shaper, frame
-    /// arena, render caches, and GPU-stats handle. Every window measures,
-    /// rasterizes, and uploads against one set of shared resources.
-    pub(crate) fn make_window_ui(&self) -> Ui {
-        Ui::new(
-            self.shaper.clone(),
-            self.frame_arena.clone(),
-            self.caches.clone(),
-            self.pass_stats.clone(),
-        )
-    }
-
-    /// A fresh per-window [`Frontend`] (CPU encode/compose scratch)
-    /// sharing this backend's frame arena.
-    pub(crate) fn make_frontend(&self) -> Frontend {
-        Frontend::new(self.frame_arena.clone())
     }
 
     /// Ensure the pipeline set for `format` exists, building + caching it
