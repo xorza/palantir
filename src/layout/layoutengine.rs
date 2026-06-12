@@ -52,7 +52,7 @@ use rustc_hash::FxHashSet;
 ///
 /// Fields split into two lifecycle categories:
 ///
-/// 1. **Drained on measure exit** — `wrap.pool` / `wrap.starts`,
+/// 1. **Drained on measure exit** — `wrap.pool`,
 ///    `stack_fill.pool`, `grid.depth_stack`, `grid.track_aggregator`,
 ///    `intrinsics`, `tmp_hugs`. Each driver pushes on enter and
 ///    truncates on exit; arrange never reads them. A
@@ -377,7 +377,7 @@ impl LayoutEngine {
             self.scratch.intrinsic_computes = 0;
             self.scratch.cache_hits.clear();
         }
-        let surface_end = surface.min + glam::Vec2::new(surface.size.w, surface.size.h);
+        let surface_end = surface.max();
         for layer in Layer::PAINT_ORDER {
             let tree = forest.tree(layer);
             self.active_layer = layer;
@@ -609,12 +609,12 @@ impl LayoutEngine {
         desired
     }
 
-    /// One measure pass for `node`: derives `inner_avail` from
-    /// `available` and `style`, dispatches to the driver, returns the
-    /// driver's raw content size. Called twice from `measure` when a
-    /// Fill axis grows past `available` so the children see their
-    /// actual post-grow inner. The caller folds content into a
-    /// margin-inclusive `desired` via `resolve_desired`.
+    /// Dispatch one driver measure for `node` against the
+    /// already-derived `inner_avail`; returns the driver's raw content
+    /// size. Called exactly once per `measure` (single dispatch — see
+    /// `resolve_sizing` for why no re-measure is needed when a Fill
+    /// axis grows past `available`); the caller folds content into a
+    /// margin-inclusive `desired` via `resolve_axis_size`.
     ///
     /// ## Driver contract
     ///

@@ -39,7 +39,7 @@ use crate::debug_overlay::record_frame_stats;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::text::TextShaper;
-use crate::ui::cascade::CascadesEngine;
+use crate::ui::cascade::{Cascades, CascadesEngine};
 use crate::ui::damage::{Damage, DamageEngine, DamageInput};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
@@ -150,6 +150,10 @@ pub struct Ui {
     pub(crate) text: TextShaper,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
+    /// Cascaded clip/disabled/invisible/transform per node + global
+    /// hit index. Written by `CascadesEngine::run` in the paint phase
+    /// and read by the encoder, input dispatch, and damage compute.
+    pub(crate) cascades: Cascades,
     pub(crate) input: InputState,
     /// Selects which "did input arrive?" signal `classify_frame`
     /// consults to gate the full record path. Default
@@ -190,7 +194,7 @@ pub struct Ui {
     /// `subtree_hash` + exact surface + scroll offsets/zoom). When this
     /// frame's fingerprint matches, the cascade output is provably
     /// identical, so `post_record` skips `CascadesEngine::run` and reuses
-    /// last frame's `layout.cascades` (O5 stage 0 — full-frame skip).
+    /// last frame's `Ui::cascades` (O5 stage 0 — full-frame skip).
     /// `None` before the first cascade run.
     pub(crate) prev_cascade_fp: Option<u64>,
     /// Test-only: did the most recent `post_record` actually run the
@@ -272,6 +276,7 @@ impl Default for Ui {
             text: Default::default(),
             layout_engine: Default::default(),
             layout: Default::default(),
+            cascades: Default::default(),
             input: Default::default(),
             input_policy: Default::default(),
             cascades_engine: Default::default(),
@@ -415,7 +420,7 @@ impl Ui {
                     let saved_input = std::mem::take(&mut self.input);
                     let _ = self.record_pass(&mut record);
                     self.input = saved_input;
-                    self.input.refresh_pointer_targets(&self.layout.cascades);
+                    self.input.refresh_pointer_targets(&self.cascades);
                     // Discard any relayout/repaint requests issued
                     // during the blackout pass — the warmup is
                     // "pretend it didn't happen" from the gate's
@@ -464,7 +469,7 @@ impl Ui {
         let prev_time = self.prev_stamp.map(|s| s.time);
         let input = DamageInput {
             forest: &self.forest,
-            cascades: &self.layout.cascades,
+            cascades: &self.cascades,
             surface,
             prev_time,
             now: self.time,
@@ -719,7 +724,7 @@ impl Ui {
         // rects, and the arranged rects are determined by (subtree_hash,
         // exact surface, scroll offset/zoom) — so a matching fingerprint
         // means identical cascade output, and last frame's
-        // `layout.cascades` can be reused verbatim (the tree is rebuilt
+        // `Ui::cascades` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
         let fp = self.cascade_fingerprint();
@@ -735,7 +740,8 @@ impl Ui {
             self.dbg_cascade_ran = true;
         }
         self.prev_cascade_fp = Some(fp);
-        self.cascades_engine.run(&self.forest, &mut self.layout);
+        self.cascades_engine
+            .run(&self.forest, &self.layout, &mut self.cascades);
     }
 
     /// Fingerprint of everything the cascade reads, cheaply. Equal
@@ -787,7 +793,7 @@ impl Ui {
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
 
-        self.input.post_record(&self.layout.cascades);
+        self.input.post_record(&self.cascades);
     }
 }
 
@@ -803,7 +809,7 @@ impl Ui {
     /// host can skip the frame entirely. Animation/tooltip-delay wakes
     /// still drive paints independently via `FrameReport::repaint_after`.
     pub fn on_input(&mut self, event: InputEvent) -> InputDelta {
-        self.input.on_input(event, &self.layout.cascades)
+        self.input.on_input(event, &self.cascades)
     }
 
     // ── Subscriptions ─────────────────────────────────────────────
@@ -1142,7 +1148,7 @@ impl Ui {
         // (populated by `record_pass`). Per-widget call here avoids
         // redoing the multiply and stays consistent if the theme is
         // swapped mid-frame.
-        let mut state = self.input.response_for(id, &self.layout.cascades);
+        let mut state = self.input.response_for(id, &self.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.current_scratch().ancestor_disabled();
@@ -1440,7 +1446,8 @@ pub mod test_support {
 
         /// Run only the cascade pass against the just-finished frame.
         pub fn run_cascades(&mut self) {
-            self.cascades_engine.run(&self.forest, &mut self.layout);
+            self.cascades_engine
+                .run(&self.forest, &self.layout, &mut self.cascades);
         }
 
         // ── damage ──────────────────────────────────────────────

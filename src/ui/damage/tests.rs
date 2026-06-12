@@ -75,7 +75,7 @@ fn first_frame_marks_every_painting_node_dirty() {
     frame(&mut ui, |ui| {
         one_frame(ui, BLUE);
     });
-    let painting = ui.layout.cascades.layers[Layer::Main]
+    let painting = ui.cascades.layers[Layer::Main]
         .paint_arena
         .node_spans
         .iter()
@@ -1812,11 +1812,9 @@ fn node_snapshot_decomposition_matches_cascade() {
 
     let snap = ui.damage_engine.prev[&WidgetId::from_hash("multi")];
     let layer = Layer::Main;
-    let node_idx = ui.layout.cascades.by_id[&WidgetId::from_hash("multi")]
-        .node
-        .idx();
-    let node_span = ui.layout.cascades.layers[layer].paint_arena.node_spans[node_idx];
-    let layer_paints = &ui.layout.cascades.layers[layer].paint_arena.rows;
+    let node_idx = ui.cascades.by_id[&WidgetId::from_hash("multi")].node.idx();
+    let node_span = ui.cascades.layers[layer].paint_arena.node_spans[node_idx];
+    let layer_paints = &ui.cascades.layers[layer].paint_arena.rows;
 
     // Chrome lands at row 0 of the node's paint span when present.
     let chrome_paint = layer_paints[node_span.start as usize];
@@ -2384,7 +2382,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     // Locate the host node by widget id and read its first shape's
     // cascaded screen rect. Pre-fix the rect spans the full 400 px;
     // post-fix it's clamped to (host_width − padding-fold).
-    let cascades = &ui.layout.cascades;
+    let cascades = &ui.cascades;
     let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
     let host_rect = cascades.entries.rect()[host_entry_idx];

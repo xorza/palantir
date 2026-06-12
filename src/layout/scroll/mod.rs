@@ -370,6 +370,10 @@ pub(crate) fn arrange(
     }
 
     let wid = tree.records.widget_id()[node.idx()];
+    let entry = layout.scroll_states.entry(wid).or_default();
+    let viewport = inner.size;
+    let zoom = entry.zoom;
+    entry.viewport = viewport;
     // `outer` = the scroll widget's outer ZStack rect (the wrapper
     // `Scroll::show` builds around the inner viewport). The inner
     // carries the constant bar-gutter reservation in its margin, so
@@ -378,12 +382,7 @@ pub(crate) fn arrange(
     // the parent's outer size directly; for a root-mounted scroll
     // (no wrapper), the engine forwards the root's own slot size,
     // which is a sensible fallback.
-    let outer = parent_outer;
-    let entry = layout.scroll_states.entry(wid).or_default();
-    let viewport = inner.size;
-    let zoom = entry.zoom;
-    entry.viewport = viewport;
-    entry.outer = outer;
+    entry.outer = parent_outer;
     entry.overflow = (
         entry.content.w * zoom > viewport.w,
         entry.content.h * zoom > viewport.h,

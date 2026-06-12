@@ -327,31 +327,27 @@ pub(crate) struct CascadesEngine {
 impl CascadesEngine {
     /// Walk every tree in paint order; produce one `Cascade` row per
     /// node in each tree's slot, and append a global hit entry per
-    /// node. Writes into `layout.cascades`. Anchor offset for each
-    /// layer is read from the layer's own `RootSlot.anchor` — no
-    /// parent transform plumbing is needed because trees never share
-    /// NodeId space.
+    /// node. Reads the layout pass's output, writes into `cascades`.
+    /// Anchor offset for each layer is read from the layer's own
+    /// `RootSlot.anchor` — no parent transform plumbing is needed
+    /// because trees never share NodeId space.
     #[profiling::function]
-    pub(crate) fn run(&mut self, forest: &Forest, layout: &mut Layout) {
+    pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout, cascades: &mut Cascades) {
         let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
-        {
-            let r = &mut layout.cascades;
-            r.entries.clear();
-            r.entries.reserve(total);
-        }
+        cascades.entries.clear();
+        cascades.entries.reserve(total);
 
         for (layer, tree) in forest.iter_paint_order() {
             let layer_layout = &layout.layers[layer];
-            let r = &mut layout.cascades;
             let n = tree.records.len();
-            let entries_base = r.entries.len() as u32;
-            r.layers[layer].reset_for(n, entries_base);
+            let entries_base = cascades.entries.len() as u32;
+            cascades.layers[layer].reset_for(n, entries_base);
             self.stack.clear();
             run_tree(
                 tree,
                 layer_layout,
-                &mut r.layers[layer],
-                &mut r.entries,
+                &mut cascades.layers[layer],
+                &mut cascades.entries,
                 &mut self.stack,
             );
             // Invariant guarding `Cascades::entry_idx_of`'s
@@ -363,10 +359,10 @@ impl CascadesEngine {
             // `n + entries_base` is already loaded, the equality is a
             // single compare.
             assert_eq!(
-                r.entries.len() as u32 - entries_base,
+                cascades.entries.len() as u32 - entries_base,
                 n as u32,
                 "run_tree pushed {} entries for layer with {n} nodes — every record must push exactly one row to keep entries_base + node.0 valid",
-                r.entries.len() as u32 - entries_base,
+                cascades.entries.len() as u32 - entries_base,
             );
         }
 
@@ -376,7 +372,7 @@ impl CascadesEngine {
         // `response_for(id)`, so the data has to live on `Cascades`
         // instead. `clone_from` reuses storage — one O(N) memcpy
         // replaces N per-widget hashmap inserts.
-        layout.cascades.by_id.clone_from(&forest.ids.curr);
+        cascades.by_id.clone_from(&forest.ids.curr);
     }
 }
 

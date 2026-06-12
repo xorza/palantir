@@ -45,7 +45,7 @@ fn shape_rect_composes_self_transform() {
     });
 
     let layer = Layer::Main;
-    let cascades = &ui.layout.cascades;
+    let cascades = &ui.cascades;
     let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
     let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
     let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
@@ -103,7 +103,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
     });
 
     let layer = Layer::Main;
-    let cascades = &ui.layout.cascades;
+    let cascades = &ui.cascades;
     let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
     let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
     let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
@@ -155,7 +155,7 @@ fn node_spans_populated_for_chrome_panels_only() {
     });
 
     let layer = Layer::Main;
-    let cascades = &ui.layout.cascades;
+    let cascades = &ui.cascades;
     let chrome_idx = cascades.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascades.by_id[&WidgetId::from_hash("bare")].node.idx();
     let chrome_span = cascades.layers[layer].paint_arena.node_spans[chrome_idx];
@@ -188,10 +188,7 @@ fn node_spans_sized_to_node_count() {
     let layer = Layer::Main;
     let nodes = ui.forest.tree(Layer::Main).records.len();
     assert_eq!(
-        ui.layout.cascades.layers[layer]
-            .paint_arena
-            .node_spans
-            .len(),
+        ui.cascades.layers[layer].paint_arena.node_spans.len(),
         nodes,
         "node_spans column must be sized to the layer's node count",
     );
@@ -237,7 +234,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // Cascade's screen rect for the child shape (what hit-test sees).
     let layer = Layer::Main;
     let cascade_rect = {
-        let cascades = &ui.layout.cascades;
+        let cascades = &ui.cascades;
         let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
         let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
         cascades.layers[layer].paint_arena.rows[span.start as usize].screen
