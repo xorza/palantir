@@ -58,10 +58,6 @@ impl Frontend {
 
     /// Encode the tree into commands, compose them into the owned
     /// buffer, and return a borrow of the composed result.
-    /// Disabled-dim and other paint-time theme constants are
-    /// pre-resolved into `cascades` (`Cascade::rgb_mul`), so this
-    /// stage reads everything it needs from the inputs without
-    /// per-call theme threading.
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
         // Two scoped borrows, not one held across both passes: encode
         // only reads the arena (shared borrow), compose appends polyline

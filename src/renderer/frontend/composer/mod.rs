@@ -1,7 +1,7 @@
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
-use crate::primitives::color::{Color, ColorF16, ColorU8};
+use crate::primitives::color::{ColorF16, ColorU8};
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
@@ -82,9 +82,9 @@ pub(crate) struct Composer {
     /// flush to preserve record order. Cleared per flush — independent
     /// of batch state since every higher-kind draw also closes the batch.
     higher_kind_rects: Vec<URect>,
-    /// In-flight group state. `*_start` cursors mark where the open
-    /// group's `quads`/`texts`/`meshes` slice begins in `out`;
-    /// [`Self::flush`] closes the slice and advances them.
+    /// In-flight group clip state: the active scissor + rounded-clip
+    /// pair stamped onto the group at [`Self::flush`]. Changed only
+    /// through [`Self::set_clip`], which flushes when either differs.
     current_scissor: Option<URect>,
     current_rounded: Option<RoundedClip>,
     /// `*_start` cursors marking where the open group's per-kind slices
@@ -380,22 +380,8 @@ impl Composer {
         let scale = display.scale_factor;
         let snap = display.pixel_snap;
         let viewport_phys = display.physical;
-        let viewport_phys_f = viewport_phys.as_vec2();
 
-        out.quads.clear();
-        out.texts.clear();
-        out.meshes.rows.clear();
-        out.images.rows.clear();
-        out.groups.clear();
-        out.text_batches.clear();
-        out.mesh_batches.clear();
-        out.image_batches.clear();
-        out.curves.clear();
-        out.curve_batches.clear();
-        out.has_rounded_clip = false;
-        out.viewport_phys = viewport_phys;
-        out.viewport_phys_f = viewport_phys_f;
-        out.scale = scale;
+        out.start_frame(display);
 
         self.clip_stack.clear();
         self.transform_stack.clear();
@@ -598,7 +584,6 @@ impl Composer {
                     let phys_translate = (current_transform.scale * p.origin
                         + current_transform.translation)
                         * scale;
-                    let tint_color: Color = p.tint.into();
                     out.meshes.rows.push(MeshDrawRow {
                         draw: MeshDraw {
                             vertices: (p.v_start..p.v_start + p.v_len).into(),
@@ -607,7 +592,7 @@ impl Composer {
                         instance: MeshInstance {
                             translate: phys_translate,
                             scale: phys_scale,
-                            tint: tint_color.into(),
+                            tint: p.tint.into(),
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
@@ -625,7 +610,6 @@ impl Composer {
                     if !self.enter_higher_kind(image_urect, out) {
                         continue;
                     }
-                    let tint_color: Color = p.tint.into();
                     out.images.rows.push(ImageDrawRow {
                         // Just the registration id — the backend looks it
                         // up in its texture cache; the encoder already
@@ -635,7 +619,7 @@ impl Composer {
                             rect: phys_rect,
                             uv_min: p.uv_min,
                             uv_size: p.uv_size,
-                            tint: tint_color.into(),
+                            tint: p.tint.into(),
                             tiled: p.tiled,
                             ..bytemuck::Zeroable::zeroed()
                         },
@@ -687,7 +671,7 @@ impl Composer {
                     let n = total_segments
                         .div_ceil(SEGMENTS_PER_INSTANCE)
                         .clamp(1, MAX_SUB_INSTANCES);
-                    let color = Color::from(p.color).into();
+                    let color: ColorU8 = p.color.into();
                     let fill_kind = p.fill_kind;
                     let fill_lut_row = p.fill_lut_row;
                     let inv_n = 1.0 / n as f32;
@@ -873,7 +857,7 @@ impl Composer {
                         // bytes and premultiplies at output — matching
                         // the rest of the renderer's pipelines. No sRGB
                         // roundtrip.
-                        color: ColorU8::from(Color::from(t.color)),
+                        color: t.color.into(),
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 2.5% steps. Continuous
