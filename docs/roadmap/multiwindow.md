@@ -6,10 +6,11 @@ target use is a multi-document / tear-off-panel editor (darkroom opening
 a second document window, a detached tool palette as a real OS window) —
 *not* one logical UI whose sub-regions escape into separate windows.
 
-Status: **Slices 1–3 landed** (shared `Gpu`, window map + per-`WindowId`
+Status: **Slices 1–4 landed** (shared `Gpu`, window map + per-`WindowId`
 routing + token-aware `App::frame`, in-frame `Ui::open_window` /
-`close_window`). The showcase opens a second "inspector" window on F8.
-Slice 4 (shared GPU resources) deferred. Everything below `WindowRenderer` —
+`close_window`, and the **one shared `WgpuBackend`** — per-format pipeline
+map + shared atlases/caches/arena/shaper). The showcase opens a second
+"inspector" window on F8. Everything below `WindowRenderer` —
 `Forest`/`Tree`, layout, `CascadesEngine`, `DamageEngine`, every widget —
 is window-agnostic and was untouched.
 
@@ -188,57 +189,54 @@ Pin: `window_requests_queue_and_survive_the_frame` (in `ui/tests.rs`)
 checks the requests survive the frame that filed them + a quiet frame, so
 the host can drain them after the fact.
 
-### Slice 4 — shared GPU resources (optional, measure first)
+### Slice 4 — shared GPU resources (**landed**)
 
-Today the only thing windows share is the device/queue. Every window
-gets its own `WindowRenderer`, hence its own `RenderCaches` (`window_renderer.rs:88` builds
-`RenderCaches::default()` per host) **and** its own `WgpuBackend`
-(`renderer/backend/mod.rs:114`) holding a full private copy of every
-GPU-resident resource. So N windows re-upload the same fonts, gradients,
-and images N times and compile N identical pipeline sets.
+`WgpuBackend` became the **one** shared GPU renderer for all windows,
+owned by `WinitHost` and passed `&mut` into every `WindowRenderer::frame`.
+`WindowRenderer` slimmed to per-window state only: its `Ui`, a per-window
+`Frontend` (CPU encode/compose scratch — this window's draw list), the
+persistent `Backbuffer`, and the frame-scheduling/occlusion clock. So N
+windows render through one device, one set of atlases, one shaper.
 
-What's shareable — all immutable-after-build or content-addressed, so one
-instance hung off the shared `Gpu` serves every window:
+What's shared (one instance on the backend, cloned into each window's
+`Ui`/`Frontend`):
 
-- **CPU-side caches (`RenderCaches`).** `images: ImageRegistry` +
-  `gradients: GradientAtlas` (`renderer/caches.rs:14`) are *already*
-  clone-shared across `Ui`/frontend/backend within one host — they're
-  just rebuilt per host. Build one on `Gpu` and hand it to every
-  `make_renderer` instead of `RenderCaches::default()`, the same way the
-  device is passed in. Cheapest lever; unifies image-handle and gradient
-  id-spaces across windows for free.
-- **GPU-resident atlases.** Glyph atlas (`text: TextBackend`) + gradient
-  LUT atlas (`gradient: GradientResources`, `renderer/backend/mod.rs:135-140`).
-  Content-keyed uploads — the same `(font, glyph)` / gradient stops hash
-  to one texel regardless of window. Plus the GPU image-texture cache
-  (`backend.gpu_image_cache_len()` is per-window today): one upload, all
-  windows sample it.
-- **Render pipelines + shaders / bind-group layouts / samplers** —
-  `quad`/`mesh`/`image`/`curve` + text, keyed by swapchain `color_format`.
-  Build one set per *format* (not per window) next to `Gpu`; windows
-  sharing a format share the set. `recreate_for_format` (the HDR /
-  wide-gamut renegotiation path) then rebuilds a format's set once for
-  every window on it, not once per window.
+- **CPU-side caches + frame arena + shaper + GPU-stats handle.**
+  `RenderCaches` (image registry + gradient atlas), `FrameArena`,
+  `TextShaper`, and `GpuPassStats` are built once in `WgpuBackend::new`
+  and cloned via `make_window_ui` / `make_frontend`. (Previously each
+  window built its own — even `TextShaper::with_bundled_fonts()` per
+  window.) Safe under the **serialized-render invariant**: winit delivers
+  one `RedrawRequested` at a time, so one window completes record → submit
+  before the next clears the shared arena.
+- **GPU-resident atlases + image cache.** Glyph atlas (`TextBackend`),
+  gradient LUT atlas (`GradientResources`), and the image texture cache
+  (`ImagePipeline.cache`) live on the backend's format-independent
+  resource structs — content-keyed, one upload serves every window.
+- **Render pipelines** — extracted into `FormatPipelines` (the only
+  format-dependent state: the `wgpu::RenderPipeline` objects) and held in
+  a `HashMap<TextureFormat, FormatPipelines>`, **built lazily per format**
+  on first submit (`WgpuBackend::ensure_format`). Windows on
+  different-format outputs (one sRGB, one HDR) each get their own set
+  while sharing every atlas/buffer — no thrash, no per-window duplication.
+  The stencil-test pipeline twins are now built eagerly per format
+  (dropping the lazy `ensure_stencil` state machine).
 
-What stays per-window — genuinely surface-bound, do **not** hoist:
+What stays per-window — genuinely surface-bound:
 
-- The persistent damage **backbuffer** (`backbuffer: Option<Backbuffer>`)
-  — last frame's pixels for `LoadOp::Load`, one per surface.
-- `viewport_size`, the surface config, and per-window GPU instrumentation
-  (`gpu_timings` / `pass_stats`).
-- The **staging belt** unless a profile says otherwise — its
-  recall/reuse cycle is frame-scoped and per-submit; sharing it across
-  windows buys cross-window submit coordination for no clear win.
+- The persistent damage **backbuffer** (one surface's pixels for
+  `LoadOp::Load`); recreates on size *or* format change (self-heal).
+- The per-window `Frontend` scratch (this window's `RenderBuffer`).
+- The surface config + scheduling clock.
 
-Shape: a `SharedGpuResources` (one `RenderCaches` + the GPU atlases +
-image cache + a `HashMap<TextureFormat, Pipelines>`) on `Gpu`, with
-`WgpuBackend` holding clones/handles instead of owning. Mostly relocating
-ownership, not rewriting upload paths.
+The `staging_belt`, `viewport_size`, and `gpu_timings` live on the shared
+backend (transient/per-submit; serialized, so one suffices).
 
-Defer until a profile justifies it — duplicate uploads + redundant
-pipeline compiles are invisible for 2–3 windows. This pays off at "many
-small tool windows" (memory) or when first-paint latency on window open
-shows the pipeline-build cost.
+**Possible follow-ups:** the per-window `Frontend` could be shared too
+(it's serialized scratch); `WgpuBackend` could be renamed `WgpuRenderer`
+now that it's the renderer rather than a per-window backend; GPU
+instrumentation reflects the last-submitted window (key per-window if it
+matters).
 
 ## Trade-offs
 

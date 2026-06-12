@@ -72,38 +72,25 @@ pub(crate) fn build_pipeline(device: &wgpu::Device, r: PipelineRecipe<'_>) -> wg
 #[derive(Debug)]
 pub(crate) struct StencilVariant {
     base: wgpu::RenderPipeline,
-    test: Option<wgpu::RenderPipeline>,
+    test: wgpu::RenderPipeline,
 }
 
 impl StencilVariant {
-    pub(crate) fn new(base: wgpu::RenderPipeline) -> Self {
-        Self { base, test: None }
+    /// Build both variants up front for one swapchain format. The
+    /// stencil-test twin used to be lazy (built on the first rounded-clip
+    /// frame); with per-format pipeline sets it's built eagerly so a
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// is complete the moment it exists — a couple extra pipeline compiles
+    /// per format, once, instead of a lazy state machine threaded through
+    /// every submit.
+    pub(crate) fn eager(base: wgpu::RenderPipeline, test: wgpu::RenderPipeline) -> Self {
+        Self { base, test }
     }
 
     /// The pipeline to bind: the stencil-test twin in a rounded-clip
-    /// pass, otherwise the base. Panics if `use_stencil` is set but
-    /// [`Self::ensure`] hasn't run this format generation.
+    /// pass, otherwise the base.
     pub(crate) fn select(&self, use_stencil: bool) -> &wgpu::RenderPipeline {
-        if use_stencil {
-            self.test.as_ref().expect("ensure_stencil first")
-        } else {
-            &self.base
-        }
-    }
-
-    /// Build the stencil-test twin if absent. `build` runs at most once
-    /// per format generation; idempotent thereafter.
-    pub(crate) fn ensure(&mut self, build: impl FnOnce() -> wgpu::RenderPipeline) {
-        if self.test.is_none() {
-            self.test = Some(build());
-        }
-    }
-
-    /// Swap in a freshly-format-built base and drop the stale twin so it
-    /// rebuilds against the new format on the next rounded-clip frame.
-    pub(crate) fn set_base(&mut self, base: wgpu::RenderPipeline) {
-        self.base = base;
-        self.test = None;
+        if use_stencil { &self.test } else { &self.base }
     }
 }
 

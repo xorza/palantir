@@ -54,7 +54,8 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
 use palantir::renderer::frontend::Frontend;
 use palantir::ui::frame_report::RenderPlan;
-use palantir::{Color, Display, Ui, WindowRenderer};
+use palantir::window_renderer::test_support::OffscreenRenderer;
+use palantir::{Color, Display, Ui};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
 use std::hint::black_box;
@@ -144,19 +145,16 @@ fn gpu() -> &'static Gpu {
     })
 }
 
-/// Build a `WindowRenderer` from the shared bench device with GPU
-/// instrumentation on. Every bench arm wants the same shape — bundled
-/// fonts, default image budget, `collect_gpu_stats: true` — so the
-/// helper keeps `WindowRenderer::with_options` call sites from drifting.
-fn bench_host(g: &Gpu) -> WindowRenderer {
-    WindowRenderer::with_options(
+/// Build an `OffscreenRenderer` (one shared backend + one window) from
+/// the shared bench device with GPU instrumentation on. Every bench arm
+/// wants the same shape — bundled fonts, `collect_gpu_stats: true`.
+fn bench_host(g: &Gpu) -> OffscreenRenderer {
+    OffscreenRenderer::new(
         g.device.clone(),
         g.queue.clone(),
         FORMAT,
         palantir::TextShaper::with_bundled_fonts(),
-        palantir::WindowRendererConfig {
-            collect_gpu_stats: true,
-        },
+        true,
     )
 }
 
@@ -319,16 +317,17 @@ fn assert_partial_invariant() {
 
 // ── GPU bench (full pipeline) ─────────────────────────────────────────
 
-/// Shared GPU-arm scaffolding: build a fresh `WindowRenderer`, run 4 warmup frames
-/// with `PollType::Wait`, then hand criterion the same closure. Each
-/// arm's `iter` closure owns target selection and per-iter state mutation.
+/// Shared GPU-arm scaffolding: build a fresh `OffscreenRenderer`, run 4
+/// warmup frames with `PollType::Wait`, then hand criterion the same
+/// closure. Each arm's `iter` closure owns target selection and per-iter
+/// state mutation.
 fn run_gpu_arm<F>(c: &mut Criterion, name: &str, mut iter: F)
 where
-    F: FnMut(&mut WindowRenderer, &mut FormState, &wgpu::Device),
+    F: FnMut(&mut OffscreenRenderer, &mut FormState, &wgpu::Device),
 {
     let g = gpu();
     let mut host = bench_host(g);
-    host.ui.theme.window_clear = WINDOW_CLEAR;
+    host.ui().theme.window_clear = WINDOW_CLEAR;
     let mut state = FormState::default();
     for _ in 0..4 {
         iter(&mut host, &mut state, &g.device);
@@ -405,7 +404,7 @@ fn report_write_stats() {
     fn run(label: &str, targets: &[wgpu::Texture], mut mutate: impl FnMut(&mut FormState, usize)) {
         let g = gpu();
         let mut host = bench_host(g);
-        host.ui.theme.window_clear = WINDOW_CLEAR;
+        host.ui().theme.window_clear = WINDOW_CLEAR;
         let mut state = FormState::default();
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {

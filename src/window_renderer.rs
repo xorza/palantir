@@ -1,52 +1,43 @@
-//! `WindowRenderer` — the top-level palantir handle owning the recorder
-//! ([`Ui`]), the CPU paint stage ([`Frontend`]), and the GPU backend
-//! ([`WgpuBackend`]).
+//! `WindowRenderer` — everything one window owns *above* the shared
+//! [`WgpuBackend`](crate::renderer::backend::WgpuBackend): its [`Ui`]
+//! recorder, a per-window [`Frontend`] (CPU encode/compose scratch), the
+//! persistent [`Backbuffer`] (this surface's last-frame pixels), and the
+//! per-window frame-scheduling clock + occlusion state.
 //!
-//! Single public entry: [`WindowRenderer::frame`]. Runs CPU passes,
-//! acquires the next swapchain texture, submits, presents — folding
-//! Suboptimal / Outdated / Lost / Timeout / Validation / Occluded into a
-//! single "needs repaint" bool. App-owned state lives in the caller's
-//! frame-builder closure (capture it) — palantir doesn't carry it.
+//! The GPU resources every window shares — render pipelines, glyph +
+//! gradient atlases, the image texture cache, the device/queue, the
+//! frame arena, render caches, and the font shaper — live on the **one**
+//! shared `WgpuBackend`, which the host passes into every method. So N
+//! windows render through one GPU renderer; each `WindowRenderer` carries
+//! only this window's data.
 //!
-//! Internal split — [`WindowRenderer::cpu_frame`] +
-//! [`WindowRenderer::render_to_texture`] — is `pub(crate)`; benches and
-//! the visual test harness reach it via [`test_support`] (gated
-//! `cfg(any(test, feature = "internals"))`).
+//! Single public entry: [`WindowRenderer::frame`] — runs the CPU passes,
+//! acquires the swapchain texture, submits through the shared backend,
+//! presents, and folds the acquire dance into a [`FramePresent`] schedule.
 
 use std::time::Instant;
 
-use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
-use crate::renderer::caches::RenderCaches;
+use crate::renderer::backend::{Backbuffer, WgpuBackend};
 use crate::renderer::frontend::Frontend;
-use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::WindowToken;
-use crate::{Display, FrameArena, FrameReport, FrameStamp};
+use crate::{Display, FrameReport, FrameStamp};
 
-/// Construction knobs for a [`WindowRenderer`]. Grouped so
-/// [`WindowRenderer::with_options`] has a fixed signature as new GPU-side
-/// settings get exposed. `Default`: GPU instrumentation off.
-/// `WinitHostConfig` forwards its corresponding fields here.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct WindowRendererConfig {
-    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
-    /// queries). Off by default because the per-frame readback
-    /// round-trip is non-trivial. See
-    /// [`WinitHostConfig::collect_gpu_stats`](crate::WinitHostConfig::collect_gpu_stats)
-    /// — `WinitHost` forwards its flag through to this one.
-    pub collect_gpu_stats: bool,
-}
-
-/// Owns the full palantir pipeline: [`Ui`] (record/layout/cascade/damage)
-/// plus the CPU [`Frontend`](crate::renderer::frontend::Frontend) and
-/// GPU [`WgpuBackend`](crate::renderer::backend::WgpuBackend). The
-/// renderer halves are private; reach the recorder via the public
-/// [`WindowRenderer::ui`] field.
+/// Per-window state driving the shared [`WgpuBackend`]. Built by
+/// [`Self::new`] from a shared backend; owns no GPU resources except its
+/// own [`Backbuffer`].
 pub struct WindowRenderer {
     pub ui: Ui,
+    /// Per-window CPU encode/compose scratch. Shares the backend's frame
+    /// arena (cloned at construction) but keeps its own retained
+    /// `RenderBuffer` — this window's draw list.
     pub(crate) frontend: Frontend,
-    pub(crate) backend: WgpuBackend,
+    /// This window's persistent off-screen render target — its last
+    /// frame's pixels, kept for `LoadOp::Load` damage. The only
+    /// per-surface GPU resource; lent to [`WgpuBackend::submit`] each
+    /// frame. Lazily created on first submit, recreated on resize / format
+    /// change.
+    pub(crate) backbuffer: Option<Backbuffer>,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
@@ -69,56 +60,31 @@ pub struct WindowRenderer {
     /// wgpu #7447 for the 100ms+ stalls `surface.configure` triggers.
     /// `None` until the first paint forces a baseline.
     configured: Option<glam::UVec2>,
+    /// Color format of the last target this window rendered to. A format
+    /// flip (window moved to an HDR output) changes nothing the `Ui`
+    /// tracks — same size, same scene — so without noticing it here an
+    /// unchanged scene would damage-`Skip` and copy the stale-format
+    /// backbuffer. `frame` / `frame_offscreen` compare against it and
+    /// force a full repaint on change (see [`Self::note_format`]).
+    /// `None` until the first paint.
+    last_format: Option<wgpu::TextureFormat>,
 }
 
 impl WindowRenderer {
-    /// Canonical ctor: caller supplies the shaper and a
-    /// [`WindowRendererConfig`] holding every other knob (GPU
-    /// instrumentation opt-in). `WinitHost` delegates here from
-    /// `WinitHostConfig`.
-    pub fn with_options(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        format: wgpu::TextureFormat,
-        shaper: TextShaper,
-        config: WindowRendererConfig,
-    ) -> Self {
-        let WindowRendererConfig { collect_gpu_stats } = config;
-        // One canonical frame arena, cloned into every subsystem that
-        // touches per-frame mesh / polyline bytes. Each Rc-clone is
-        // cheap; runtime borrow-checking via RefCell catches any
-        // wiring mistake that would double-borrow.
-        let caches = RenderCaches::default();
-        let frame_arena = FrameArena::default();
-        // Single canonical `GpuPassStats` handle — `Ui` owns it (the
-        // debug overlay reads through it), and the backend gets a
-        // clone only when `collect_gpu_stats` is on. When off, no
-        // backend ever writes; readers always see `None`.
-        let pass_stats = GpuPassStats::default();
-        let backend_sink = collect_gpu_stats.then(|| pass_stats.clone());
+    /// Build a per-window renderer sharing `gpu`'s shaper, frame arena,
+    /// render caches, and GPU-stats handle (its `Ui` + `Frontend` clone
+    /// those). Owns nothing on the GPU but its backbuffer, created lazily
+    /// on the first submit.
+    pub(crate) fn new(gpu: &WgpuBackend) -> Self {
         Self {
-            ui: Ui::new(
-                shaper.clone(),
-                frame_arena.clone(),
-                caches.clone(),
-                pass_stats,
-            ),
-            frontend: Frontend::new(frame_arena.clone()),
-            backend: WgpuBackend::new(
-                device,
-                queue,
-                format,
-                shaper,
-                frame_arena,
-                caches,
-                WgpuBackendConfig {
-                    pass_stats: backend_sink,
-                },
-            ),
+            ui: gpu.make_window_ui(),
+            frontend: gpu.make_frontend(),
+            backbuffer: None,
             start: Instant::now(),
             occluded: false,
             occluded_at: None,
             configured: None,
+            last_format: None,
         }
     }
 
@@ -139,42 +105,28 @@ impl WindowRenderer {
         self.occluded = occluded;
     }
 
-    /// Rebuild the GPU backend for a new swapchain color `format`.
-    /// Call when the host observes the surface's format change
-    /// mid-session — e.g. the window moves to an HDR / wide-gamut
-    /// output and the compositor renegotiates the swapchain, so
-    /// `surface.get_capabilities(..)` now reports a different preferred
-    /// format. Rebuilds every format-dependent pipeline (the backend
-    /// was built against the old format and would otherwise trip the
-    /// hard-assert in `WgpuBackend::ensure_backbuffer`). Cheap no-op
-    /// when `format` already matches. Forces the next [`Self::frame`] to
-    /// reconfigure the surface and repaint in full.
-    ///
-    /// Caller still owns the surface: update the
-    /// `wgpu::SurfaceConfiguration::format` and reconfigure (or let the
-    /// next `frame()` reconfigure) so the swapchain texture handed to
-    /// the backend actually carries `format`.
-    pub fn set_surface_format(&mut self, format: wgpu::TextureFormat) {
-        self.backend.recreate_for_format(format);
-        // Drop the cached size so `frame()` reconfigures the surface
-        // against the new format on the next call.
-        self.configured = None;
-        // The backbuffer was dropped in the rebuild and the previously
-        // presented pixels live in an old-format texture — neither is
-        // valid to `LoadOp::Load` or copy from. Mark the last frame
-        // un-submitted so `classify_frame` forces a full record + clear
-        // next frame (same path a skipped/lost present takes); otherwise
-        // an unchanged scene would damage-skip to a `copy_backbuffer`
-        // with no backbuffer to copy.
-        self.ui.frame_state.mark_pending();
+    /// Detect a color-format change against the last frame's target and,
+    /// on change, force this frame to repaint fully. A format flip changes
+    /// nothing the `Ui` tracks (same size, same scene), so an unchanged
+    /// scene would otherwise damage-`Skip` and copy the stale-format
+    /// backbuffer. `mark_pending` forces a full record + clear (so submit,
+    /// not the copy path, runs); the shared backend builds the new
+    /// format's pipelines lazily and the backbuffer self-heals. Resetting
+    /// `configured` forces a windowed surface reconfigure at the new
+    /// format. Runs every frame — a no-op once the format is steady.
+    fn note_format(&mut self, format: wgpu::TextureFormat) {
+        if self.last_format != Some(format) {
+            self.last_format = Some(format);
+            self.ui.frame_state.mark_pending();
+            self.configured = None;
+        }
     }
 
-    /// Swapchain one-shot: run CPU + GPU + present. Folds the acquire
-    /// dance (Suboptimal / Outdated / Lost / Timeout / Validation /
-    /// Occluded) into the returned `repaint_requested` bool — `true`
-    /// if the host should request another redraw. Reconfigure-required
-    /// variants call `surface.configure(_, config)` before returning.
-    /// Skip frames bypass surface acquisition entirely.
+    /// Swapchain one-shot: run CPU + GPU + present through the shared
+    /// `gpu`. Folds the acquire dance (Suboptimal / Outdated / Lost /
+    /// Timeout / Validation / Occluded) into the returned schedule.
+    /// Reconfigure-required variants call `surface.configure` before
+    /// returning. Skip frames bypass surface acquisition entirely.
     ///
     /// All per-frame swapchain inputs ride in on [`FrameTarget`]: the
     /// surface + its config (which alone defines the physical size), the
@@ -183,6 +135,7 @@ impl WindowRenderer {
     /// surface's.
     pub fn frame(
         &mut self,
+        gpu: &mut WgpuBackend,
         target: FrameTarget<'_>,
         record: impl FnMut(&mut Ui),
         pre_present: impl FnOnce(),
@@ -222,18 +175,22 @@ impl WindowRenderer {
         self.ui.live_windows.clear();
         self.ui.live_windows.extend_from_slice(live_windows);
 
+        // Force a full repaint + surface reconfigure if the swapchain
+        // format changed (must run before the reconfigure block + cpu_frame).
+        self.note_format(config.format);
+
         // Reconfigure-on-demand: callers update `config.width/height`
         // freely (resize events) without paying for a `surface.configure`
         // per event. We notice the mismatch here, reallocate once, and
         // record the new size. First-paint takes the same path because
         // `configured` starts `None`.
         if self.configured != Some(display.physical) {
-            self.backend.configure_surface(surface, config);
+            gpu.configure_surface(surface, config);
             self.configured = Some(display.physical);
         }
 
         let report = self.cpu_frame(display, record);
-        self.present(surface, config, report, pre_present)
+        self.present(gpu, surface, config, report, pre_present)
     }
 
     /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
@@ -245,18 +202,23 @@ impl WindowRenderer {
         display: Display,
         record: impl FnMut(&mut Ui),
     ) -> FrameReport {
-        // Ui::frame clears its own Rc-shared arena at the top of the
-        // record cycle — the same Rc the frontend + backend hold.
+        // Ui::frame clears the shared Rc arena at the top of the record
+        // cycle — the same Rc the frontend + shared backend hold.
         self.ui
             .frame(FrameStamp::new(display, self.start.elapsed()), record)
     }
 
-    /// GPU submit against a caller-supplied texture. On
-    /// `RenderPlan::Skip`, copies the persistent backbuffer onto
-    /// `target` so callers that always present still see valid
-    /// pixels. Internal split for benches and the visual harness;
-    /// production callers use [`Self::frame`].
-    pub(crate) fn render_to_texture(&mut self, target: &wgpu::Texture, report: &FrameReport) {
+    /// GPU submit against a caller-supplied texture, through the shared
+    /// `gpu`. On `RenderPlan::Skip`, copies the persistent backbuffer onto
+    /// `target` so callers that always present still see valid pixels.
+    /// Internal split for benches and the visual harness; production
+    /// callers use [`Self::frame`].
+    pub(crate) fn render_to_texture(
+        &mut self,
+        gpu: &mut WgpuBackend,
+        target: &wgpu::Texture,
+        report: &FrameReport,
+    ) {
         profiling::scope!("WindowRenderer::render_to_texture");
         let size = target.size();
         let display_phys = self.ui.display.physical;
@@ -272,18 +234,24 @@ impl WindowRenderer {
             display_phys.y,
         );
         let Some(plan) = report.plan else {
-            self.backend.copy_backbuffer_to_surface(target);
+            gpu.copy_backbuffer_to_surface(&mut self.backbuffer, target);
             self.ui.frame_state.mark_submitted();
             return;
         };
         let buffer = self.frontend.build(&self.ui, plan);
-        self.backend
-            .submit(target, buffer, plan, self.ui.debug_overlay);
+        gpu.submit(
+            &mut self.backbuffer,
+            target,
+            buffer,
+            plan,
+            self.ui.debug_overlay,
+        );
         self.ui.frame_state.mark_submitted();
     }
 
     fn present(
         &mut self,
+        gpu: &mut WgpuBackend,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
         report: FrameReport,
@@ -295,7 +263,7 @@ impl WindowRenderer {
             use wgpu::CurrentSurfaceTexture::*;
             match surface.get_current_texture() {
                 Success(frame) => {
-                    self.render_to_texture(&frame.texture, &report);
+                    self.render_to_texture(gpu, &frame.texture, &report);
                     // Compositor hook (winit's `Window::pre_present_notify`)
                     // — required on Wayland to schedule the next frame
                     // callback. Without it, `RedrawRequested` throttling
@@ -308,7 +276,7 @@ impl WindowRenderer {
                 }
                 Suboptimal(_) | Outdated | Lost => {
                     tracing::warn!("surface acquire: suboptimal / outdated / lost");
-                    self.backend.configure_surface(surface, config);
+                    gpu.configure_surface(surface, config);
                     true
                 }
                 Timeout | Validation => {
@@ -377,22 +345,24 @@ pub enum FramePresent {
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
-    //! Test/bench reach-in surface for `WindowRenderer` — the single gated
-    //! entry point for offscreen frames and GPU instrumentation.
-    //! Production code uses the `frame_stats` debug overlay on `Ui`
-    //! to surface GPU timings; benches sample the underlying
-    //! `GpuPassStats` handle directly without going through the
-    //! overlay layout pass.
+    //! Offscreen reach-in for the visual harness + GPU benches.
+    //! [`OffscreenRenderer`] bundles the one shared [`WgpuBackend`] with a
+    //! single [`WindowRenderer`] and renders to a caller-supplied texture
+    //! (no swapchain). Production drives one `WgpuBackend` across many
+    //! windows; offscreen has exactly one.
 
+    use crate::renderer::backend::WgpuBackendConfig;
+    use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
+    use crate::text::TextShaper;
     use crate::window_renderer::*;
 
     impl WindowRenderer {
         /// Offscreen one-shot: run CPU + GPU against a caller-supplied
-        /// texture (no swapchain acquire). `Display`'s physical size is
-        /// derived from `target.size()`. For the visual harness and
-        /// offscreen benches.
+        /// texture (no swapchain acquire), through the shared `gpu`.
+        /// `Display`'s physical size is derived from `target.size()`.
         pub fn frame_offscreen(
             &mut self,
+            gpu: &mut WgpuBackend,
             target: &wgpu::Texture,
             scale_factor: f32,
             record: impl FnMut(&mut Ui),
@@ -400,30 +370,74 @@ pub mod test_support {
             let size = target.size();
             let display =
                 Display::from_physical(glam::UVec2::new(size.width, size.height), scale_factor);
+            // Force a full repaint when the target's format changes
+            // (offscreen has no surface to reconfigure).
+            self.note_format(target.format());
             let report = self.cpu_frame(display, record);
-            self.render_to_texture(target, &report);
+            self.render_to_texture(gpu, target, &report);
+        }
+    }
+
+    /// One shared [`WgpuBackend`] + one [`WindowRenderer`], for offscreen
+    /// rendering in the visual harness and GPU benches.
+    pub struct OffscreenRenderer {
+        gpu: WgpuBackend,
+        window: WindowRenderer,
+    }
+
+    impl OffscreenRenderer {
+        pub fn new(
+            device: wgpu::Device,
+            queue: wgpu::Queue,
+            format: wgpu::TextureFormat,
+            shaper: TextShaper,
+            collect_gpu_stats: bool,
+        ) -> Self {
+            let gpu = WgpuBackend::new(
+                device,
+                queue,
+                format,
+                shaper,
+                WgpuBackendConfig { collect_gpu_stats },
+            );
+            let window = WindowRenderer::new(&gpu);
+            Self { gpu, window }
+        }
+
+        /// Mutable access to the window's `Ui` for building scenes.
+        pub fn ui(&mut self) -> &mut Ui {
+            &mut self.window.ui
+        }
+
+        /// Run one offscreen frame against `target`.
+        pub fn frame_offscreen(
+            &mut self,
+            target: &wgpu::Texture,
+            scale_factor: f32,
+            record: impl FnMut(&mut Ui),
+        ) {
+            self.window
+                .frame_offscreen(&mut self.gpu, target, scale_factor, record);
+        }
+
+        /// Whether the shared backend has built a pipeline set for
+        /// `format`. Lets format-change tests confirm a new format
+        /// materializes its own pipelines.
+        pub fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
+            self.gpu.has_format_pipelines(format)
         }
 
         /// Cloneable handle to the most-recent GPU instrumentation
         /// sample — same handle the `Ui` debug overlay reads from.
-        /// Returns a live handle even when instrumentation is off:
-        /// readers just see `None`.
         pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-            &self.ui.gpu_pass_stats
+            &self.window.ui.gpu_pass_stats
         }
 
-        /// Swapchain color format the GPU pipelines are currently built
-        /// for. Lets format-change tests confirm
-        /// [`WindowRenderer::set_surface_format`] reached the backend.
-        pub fn surface_format(&self) -> wgpu::TextureFormat {
-            self.backend.color_format()
-        }
-
-        /// Number of images resident in the GPU texture cache. Used by
-        /// the format-change test to assert the cache survives the
-        /// surgical pipeline rebuild (no re-upload).
+        /// Images resident in the GPU texture cache. Used by the
+        /// format-change test to assert the cache survives a new format's
+        /// pipeline build (no re-upload).
         pub fn gpu_image_cache_len(&self) -> usize {
-            self.backend.gpu_image_cache_len()
+            self.gpu.gpu_image_cache_len()
         }
     }
 }

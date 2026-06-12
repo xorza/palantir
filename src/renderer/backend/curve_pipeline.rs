@@ -37,18 +37,17 @@ const _: () = {
 };
 
 pub(crate) struct CurvePipeline {
-    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    shader: wgpu::ShaderModule,
-    color_format: wgpu::TextureFormat,
+    /// Curve shader module — format-independent; `FormatPipelines` reads
+    /// it to build this format's pipelines.
+    pub(crate) shader: wgpu::ShaderModule,
 }
 
 impl CurvePipeline {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        gradient_bgl: &wgpu::BindGroupLayout,
-    ) -> Self {
+    /// Format-independent curve resources; the pipelines are built by
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variant`].
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
         // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
         // source so the shader can't drift out of lockstep with the
         // composer's sub-instance math. Cheap one-time string op at
@@ -62,16 +61,12 @@ impl CurvePipeline {
             source: wgpu::ShaderSource::Wgsl(wgsl.into()),
         });
 
-        let pipeline = Self::build_variant(device, &shader, gradient_bgl, format, false);
-
         let instance_buffer =
             DynamicBuffer::vertex::<CurveInstance>(device, "palantir.curve.instances", 64);
 
         Self {
-            stencil: StencilVariant::new(pipeline),
             instance_buffer,
             shader,
-            color_format: format,
         }
     }
 
@@ -79,9 +74,8 @@ impl CurvePipeline {
     /// shared `gradient_bgl` (owned by `GradientResources`) so the layout
     /// matches; the instance buffer is format-independent. `stencil`
     /// selects the rounded-clip variant (adds the shared
-    /// `stencil_test_state`). Shared by [`Self::new`],
-    /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`].
-    fn build_variant(
+    /// `stencil_test_state`). Called by `FormatPipelines` per format.
+    pub(crate) fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -117,41 +111,6 @@ impl CurvePipeline {
         )
     }
 
-    /// Rebuild the format-dependent render pipeline against `format`,
-    /// reusing the shared `gradient_bgl`. The instance buffer is kept;
-    /// the lazy stencil variant is dropped so it rebuilds against the
-    /// new format on the next rounded-clip frame.
-    pub(crate) fn rebuild_for_format(
-        &mut self,
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
-    ) {
-        self.stencil.set_base(Self::build_variant(
-            device,
-            &self.shader,
-            gradient_bgl,
-            format,
-            false,
-        ));
-        self.color_format = format;
-    }
-
-    /// Lazy-build the stencil-test variant for rounded-clip frames.
-    /// Caller passes the shared `gradient_bgl` (owned by
-    /// `GradientResources`) so the variant matches the base pipeline's
-    /// layout.
-    #[profiling::function]
-    pub(crate) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-    ) {
-        let (shader, color_format) = (&self.shader, self.color_format);
-        self.stencil
-            .ensure(|| Self::build_variant(device, shader, gradient_bgl, color_format, true));
-    }
-
     #[profiling::function]
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
         if instances.is_empty() {
@@ -168,10 +127,11 @@ impl CurvePipeline {
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a StencilVariant,
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        pass.set_pipeline(self.stencil.select(use_stencil));
+        pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
     }

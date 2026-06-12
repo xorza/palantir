@@ -16,24 +16,17 @@ use crate::renderer::render_buffer::DrawGroup;
 use glam::Vec2;
 
 pub(crate) struct QuadPipeline {
-    /// Base (no-stencil) pipeline + its lazily-built stencil-test twin,
-    /// via the shared [`StencilVariant`] abstraction (same as
-    /// mesh/image/curve). Reached only via methods — `bind`,
-    /// `bind_clear`, and `bind_debug` own the `set_pipeline` /
-    /// `set_bind_group` pair so the public surface is "what to do", not
-    /// "what to bind." Group 0 (gradient atlas + sampler) is owned by
+    /// Format-independent quad resources. The format-dependent render
+    /// pipelines (base + stencil-test twin via [`StencilVariant`], plus
+    /// the mask-write variant) live in
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines),
+    /// keyed by swapchain format and passed into every `bind*` call —
+    /// `bind` / `bind_clear` / `bind_mask_write` still own the
+    /// `set_pipeline` / `set_bind_group` pair. Group 0 (gradient atlas +
+    /// sampler) is owned by
     /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources)
     /// and passed to every `bind*` call.
-    stencil: StencilVariant,
     instance_buffer: DynamicBuffer,
-    /// Lazy mask-write pipeline — paints the rounded SDF shape into the
-    /// stencil buffer only (color writes off), stamping the clip mask.
-    /// Quad-specific: mesh/image/curve read the mask but never write one,
-    /// so this lives beside `StencilVariant` rather than inside it. Built
-    /// alongside the stencil-test twin on the first rounded-clip frame
-    /// (`FrameOutput::has_rounded_clip == true`); dropped on format
-    /// rebuild so it re-builds against the new format.
-    mask_write: Option<wgpu::RenderPipeline>,
     /// Lazy buffer holding one `Quad` per rounded clip in the current
     /// frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
     /// across frames; capacity grows monotonically. `None` until the
@@ -64,9 +57,9 @@ pub(crate) struct QuadPipeline {
     /// the upload guard in `submit` from the per-pass `PreClear` emit
     /// in the schedule.
     last_clear: Option<(Vec2, Color)>,
-    /// Cached creation inputs needed to lazy-build `stencil` later.
-    shader: wgpu::ShaderModule,
-    color_format: wgpu::TextureFormat,
+    /// Quad shader module — format-independent; `FormatPipelines` reads it
+    /// to build this format's pipelines.
+    pub(crate) shader: wgpu::ShaderModule,
 }
 
 impl QuadPipeline {
@@ -74,17 +67,15 @@ impl QuadPipeline {
     /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources);
     /// the pipeline composes its layout against it and the matching bind
     /// group arrives at each `bind*` call.
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
-    ) -> Self {
+    /// Build the format-independent quad resources. The format-dependent
+    /// pipelines are built separately by
+    /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variant`] / [`Self::build_mask_write`].
+    pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("palantir.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
-
-        let pipeline = Self::build_variant(device, &shader, gradient_bgl, format, false);
 
         let instance_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256);
 
@@ -96,16 +87,13 @@ impl QuadPipeline {
         });
 
         Self {
-            stencil: StencilVariant::new(pipeline),
             instance_buffer,
-            mask_write: None,
             mask_buffer: None,
             mask_indices: Vec::new(),
             masks: Vec::new(),
             clear_buffer,
             last_clear: None,
             shader,
-            color_format: format,
         }
     }
 
@@ -116,8 +104,9 @@ impl QuadPipeline {
     /// `stencil_test_state`). Shared by [`Self::new`],
     /// [`Self::rebuild_for_format`], and [`Self::ensure_stencil`]. The
     /// distinct `mask_write` variant ([`Self::build_mask_write`]) stays
-    /// separate — different fragment entry, color writes off.
-    fn build_variant(
+    /// separate — different fragment entry, color writes off. Called by
+    /// `FormatPipelines` for each swapchain format.
+    pub(crate) fn build_variant(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -153,52 +142,11 @@ impl QuadPipeline {
         )
     }
 
-    /// Rebuild only the format-dependent render pipelines against
-    /// `format`. The gradient LUT atlas (its uploaded contents
-    /// included), bind group, sampler, and instance/clear buffers all
-    /// survive — none depend on the swapchain format. The lazy stencil
-    /// variants are dropped so they rebuild against the new format on
-    /// the next rounded-clip frame.
-    pub(crate) fn rebuild_for_format(
-        &mut self,
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-        format: wgpu::TextureFormat,
-    ) {
-        self.stencil.set_base(Self::build_variant(
-            device,
-            &self.shader,
-            gradient_bgl,
-            format,
-            false,
-        ));
-        self.mask_write = None;
-        self.color_format = format;
-    }
-
-    /// Lazy-build the stencil-aware variants (stencil-test twin +
-    /// mask-write). Idempotent; called from the rounded-clip render path
-    /// before the first `set_pipeline`. `gradient_bgl` is the shared
-    /// group-0 layout (see [`Self::new`]).
-    #[profiling::function]
-    pub(crate) fn ensure_stencil(
-        &mut self,
-        device: &wgpu::Device,
-        gradient_bgl: &wgpu::BindGroupLayout,
-    ) {
-        let (shader, format) = (&self.shader, self.color_format);
-        self.stencil
-            .ensure(|| Self::build_variant(device, shader, gradient_bgl, format, true));
-        if self.mask_write.is_none() {
-            self.mask_write = Some(Self::build_mask_write(device, shader, gradient_bgl, format));
-        }
-    }
-
     /// Mask-write variant: stencil Replace at every pixel the SDF passes
     /// (`fs_mask` discards outside), color writes off, blend inert. Used
     /// once per rounded-clipped draw group to stamp the mask before its
-    /// color draws.
-    fn build_mask_write(
+    /// color draws. Built per format by `FormatPipelines`.
+    pub(crate) fn build_mask_write(
         device: &wgpu::Device,
         shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
@@ -258,26 +206,13 @@ impl QuadPipeline {
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a StencilVariant,
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        pass.set_pipeline(self.stencil.select(use_stencil));
+        pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.instance_buffer.buffer.slice(..));
-    }
-
-    /// Bind pipeline + group 0 (gradient atlas) **without** the instance
-    /// buffer. The caller (today: `DebugOverlay`) sets its own vertex
-    /// buffer next, and is responsible for binding the viewport
-    /// immediate itself — the dim / damage-overlay passes don't share
-    /// the main pass's pre-bound viewport.
-    pub(crate) fn bind_debug<'a>(
-        &'a self,
-        pass: &mut wgpu::RenderPass<'a>,
-        gradient_bg: &'a wgpu::BindGroup,
-    ) {
-        pass.set_pipeline(self.stencil.select(false));
-        pass.set_bind_group(0, gradient_bg, &[]);
     }
 
     /// Draw a contiguous slice of the uploaded instance buffer. Used to
@@ -337,6 +272,7 @@ impl QuadPipeline {
     pub(crate) fn bind_clear<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a StencilVariant,
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
@@ -345,11 +281,9 @@ impl QuadPipeline {
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
         );
+        pass.set_pipeline(pipelines.select(use_stencil));
         if use_stencil {
-            pass.set_pipeline(self.stencil.select(true));
             pass.set_stencil_reference(0);
-        } else {
-            pass.set_pipeline(self.stencil.select(false));
         }
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
@@ -362,10 +296,6 @@ impl QuadPipeline {
     /// at index `i` says "group `i`'s mask is mask quad `j`."
     #[profiling::function]
     pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, groups: &[DrawGroup]) {
-        debug_assert!(
-            self.mask_write.is_some(),
-            "stage_masks requires ensure_stencil to have run this frame"
-        );
         self.mask_indices.clear();
         self.mask_indices.resize(groups.len(), None);
         self.masks.clear();
@@ -396,9 +326,9 @@ impl QuadPipeline {
     pub(crate) fn bind_mask_write<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
+        mask_write: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        let mask_write = self.mask_write.as_ref().expect("ensure_stencil first");
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
         pass.set_pipeline(mask_write);
         pass.set_bind_group(0, gradient_bg, &[]);

@@ -22,7 +22,7 @@ use crate::{
         rect::Rect,
         size::Size,
     },
-    renderer::backend::{QuadPipeline, ViewportPush},
+    renderer::backend::ViewportPush,
 };
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -106,11 +106,13 @@ impl DebugOverlay {
     pub(crate) fn draw_dim<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a QuadPipeline,
+        quad_base: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
         viewport: &ViewportPush,
     ) {
-        quad.bind_debug(pass, gradient_bg);
+        // No-stencil quad base + gradient group 0, then push viewport.
+        pass.set_pipeline(quad_base);
+        pass.set_bind_group(0, gradient_bg, &[]);
         // Pipeline is now bound — safe to push the shared viewport
         // immediate. (Dim runs in its own `RenderPass`, separate from
         // the main pass, so it must self-push.)
@@ -156,12 +158,13 @@ impl DebugOverlay {
     pub(crate) fn draw_overlays<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        quad: &'a QuadPipeline,
+        quad_base: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
         viewport: &ViewportPush,
         count: u32,
     ) {
-        quad.bind_debug(pass, gradient_bg);
+        pass.set_pipeline(quad_base);
+        pass.set_bind_group(0, gradient_bg, &[]);
         // Pipeline is now bound — safe to push viewport. (Overlay
         // runs in its own swapchain-targeted `RenderPass`, no
         // inherited immediate state.)

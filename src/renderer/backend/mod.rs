@@ -1,6 +1,7 @@
 mod curve_pipeline;
 mod debug_overlay;
 mod dynamic_buffer;
+mod format_pipelines;
 pub(crate) mod gpu_ctx;
 pub(crate) mod gpu_pass_stats;
 mod gpu_timings;
@@ -21,6 +22,7 @@ use self::curve_pipeline::CurvePipeline;
 use self::debug_overlay::{
     DAMAGE_OVERLAY_COLOR, DAMAGE_OVERLAY_GAP, DAMAGE_OVERLAY_STROKE_WIDTH, DebugOverlay,
 };
+use self::format_pipelines::FormatPipelines;
 use self::gpu_ctx::GpuCtx;
 use self::gpu_pass_stats::{BatchKind, GpuPassStats};
 use self::gpu_timings::GpuTimings;
@@ -37,10 +39,13 @@ use crate::forest::frame_arena::FrameArena;
 use crate::primitives::{rect::Rect, size::Size, spacing::Spacing, urect::URect};
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
+use crate::renderer::frontend::Frontend;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::text::TextShaper;
+use crate::ui::Ui;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
+use rustc_hash::FxHashMap;
 
 /// Size of the per-pipeline immediate (push-constant) region every
 /// palantir shader's `var<immediate> imm: Immediates` reads. Locked
@@ -62,15 +67,15 @@ pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 /// `WindowRenderer` / `WinitHost` call sites don't grow a long positional
 /// signature each time a new GPU-side setting is exposed.
 pub(crate) struct WgpuBackendConfig {
-    /// `Some(stats)` opts the backend into GPU instrumentation: the
-    /// backend writes resolved samples through the shared handle and
+    /// Opt into GPU instrumentation: the backend creates a
+    /// [`GpuPassStats`] handle, writes resolved samples through it, and
     /// pays the per-frame `resolve_query_set` + `map_async` +
-    /// `device.poll(Poll)` + readback cost. `None` skips the whole
+    /// `device.poll(Poll)` + readback cost. `false` skips the whole
     /// path — `GpuTimings` is never constructed. Adapter features
     /// (`TIMESTAMP_QUERY`, `+TIMESTAMP_QUERY_INSIDE_PASSES`,
     /// `+PIPELINE_STATISTICS_QUERY`) still gate what actually gets
     /// collected; missing features degrade individually.
-    pub(crate) pass_stats: Option<GpuPassStats>,
+    pub(crate) collect_gpu_stats: bool,
 }
 
 /// Persistent off-screen target that the render pass paints into.
@@ -83,7 +88,11 @@ pub(crate) struct WgpuBackendConfig {
 ///
 /// Sized to match the surface texture; recreated on resize or
 /// format change.
-struct Backbuffer {
+///
+/// Owned per-window by [`WindowRenderer`](crate::WindowRenderer) (one
+/// surface's pixels) and lent to [`WgpuBackend::submit`] each frame; the
+/// backend is otherwise window-agnostic.
+pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
     /// Cached at creation: lets `ensure_backbuffer` skip the
@@ -139,32 +148,37 @@ pub(crate) struct WgpuBackend {
     curve: CurvePipeline,
     text: TextBackend,
     debug: DebugOverlay,
-    /// Color format every pipeline (quad / mesh / image / curve / text
-    /// atlas) was built for. Set at [`Self::new`] and updated by
-    /// [`Self::recreate_for_format`], which rebuilds all of them
-    /// together. [`Self::ensure_backbuffer`] hard-asserts the swapchain
-    /// texture handed to `submit` matches this — a mismatch means the
-    /// host changed format without going through
-    /// [`WindowRenderer::set_surface_format`](crate::WindowRenderer::set_surface_format),
-    /// which would leave the pipelines stale and silently mis-render.
-    color_format: wgpu::TextureFormat,
-    /// Persistent off-screen render target; lazily created on first
-    /// submit and recreated when the surface size or format changes.
-    /// Stage 3 / Step 6 of the damage-rendering plan: we render here
-    /// so future frames can `LoadOp::Load` last frame's pixels.
-    backbuffer: Option<Backbuffer>,
-    /// Shared frame arena (clone of `WindowRenderer`'s canonical handle). The
-    /// backend reads mesh vertices/indices from it during upload.
+    /// Format-dependent render pipelines, keyed by swapchain color format
+    /// and built lazily ([`Self::ensure_format`]) the first time a
+    /// surface of that format is submitted. Windows on different-format
+    /// outputs (e.g. one sRGB, one HDR) each bind their own set while
+    /// sharing every format-independent resource above. The only state
+    /// that carries the color target; there is no single "current format"
+    /// — the surface texture handed to `submit` selects the set.
+    pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
+    /// Shared frame arena. Cloned into every window's [`Ui`] + `Frontend`
+    /// at [`Self::make_window_ui`] / [`Self::make_frontend`]; the backend
+    /// reads mesh vertices/indices from it during upload. Safe to share
+    /// because rendering is serialized — one window completes record →
+    /// submit before the next clears the arena (see `WinitHost::draw`).
     frame_arena: FrameArena,
     /// Shared cross-frame GPU resource caches (image registry +
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
     caches: RenderCaches,
+    /// Shared text shaper, cloned into each window's [`Ui`] (and the
+    /// text backend) so all windows measure + rasterize against one
+    /// font/glyph cache.
+    shaper: TextShaper,
+    /// Shared GPU-instrumentation handle, cloned into every window's
+    /// [`Ui`] (the debug overlay reads it) and into [`Self::gpu_timings`]
+    /// when instrumentation is on. With one shared backend the published
+    /// sample reflects the most recently submitted window.
+    pass_stats: GpuPassStats,
     /// Main-pass timestamp queries. `Some` when the host opted into
     /// instrumentation (see `WinitHostConfig::collect_gpu_stats`) AND
     /// the adapter advertises `TIMESTAMP_QUERY`. Resolved values
-    /// publish through the `GpuPassStats` handle the backend got at
-    /// construction; `WindowRenderer` keeps the canonical clone.
+    /// publish through [`Self::pass_stats`].
     gpu_timings: Option<GpuTimings>,
 }
 
@@ -181,56 +195,75 @@ impl WgpuBackend {
         surface.configure(&self.device, config);
     }
 
+    /// Build the one shared GPU renderer. Owns the device/queue, every
+    /// format-independent GPU resource (pipelines' shaders + buffers, the
+    /// glyph + gradient atlases, the image texture cache), and the shared
+    /// [`FrameArena`] / [`RenderCaches`] / [`TextShaper`] / [`GpuPassStats`]
+    /// that every window's [`Ui`] clones. `format` seeds the first entry
+    /// of the per-format pipeline map; further formats build lazily.
     pub(crate) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
         format: wgpu::TextureFormat,
         shaper: TextShaper,
-        frame_arena: FrameArena,
-        caches: RenderCaches,
         config: WgpuBackendConfig,
     ) -> Self {
-        let WgpuBackendConfig { pass_stats } = config;
-        // GPU pass timing collection is opt-in via `pass_stats`:
-        // `Some(handle)` → wire up `GpuTimings` and write samples
-        // through the handle; `None` → skip the whole readback path.
-        // Adapter features then degrade what gets collected:
-        // `TIMESTAMP_QUERY` is required at all; `+
-        // TIMESTAMP_QUERY_INSIDE_PASSES` enables per-batch
-        // attribution; `+PIPELINE_STATISTICS_QUERY` adds VS/FS
-        // invocation counts. The non-zero `period` check guards
-        // against headless / software queues that advertise the
-        // feature but can't actually time submissions.
+        let WgpuBackendConfig { collect_gpu_stats } = config;
+        // One canonical frame arena + render caches, shared by every
+        // window (cloned into each `Ui`/`Frontend`) and read here during
+        // upload. Safe under the serialized-render invariant.
+        let frame_arena = FrameArena::default();
+        let caches = RenderCaches::default();
+        // Single `GpuPassStats` handle: cloned into every `Ui` (debug
+        // overlay reads it) and into `GpuTimings` when instrumentation is
+        // on. When off, nothing writes and readers see `None`.
+        let pass_stats = GpuPassStats::default();
+        // GPU pass timing collection is opt-in. When on, adapter features
+        // degrade what gets collected: `TIMESTAMP_QUERY` is required at
+        // all; `+TIMESTAMP_QUERY_INSIDE_PASSES` enables per-batch
+        // attribution; `+PIPELINE_STATISTICS_QUERY` adds VS/FS invocation
+        // counts. The non-zero `period` check guards against headless /
+        // software queues that advertise the feature but can't time.
         let features = device.features();
-        let gpu_timings = pass_stats.and_then(|sink| {
-            (features.contains(wgpu::Features::TIMESTAMP_QUERY)
-                && queue.get_timestamp_period() > 0.0)
-                .then(|| {
-                    GpuTimings::new(
-                        &device,
-                        queue.get_timestamp_period(),
-                        features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
-                        features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
-                        sink,
-                    )
-                })
-        });
-        // Viewport now rides immediates (push constants) — no bind
-        // group, no buffer. Pipelines all declare the same
-        // `IMMEDIATES_BYTES` region so the immediate state stays
-        // valid across pipeline switches; the backend pushes it once
-        // per pass open.
+        let gpu_timings = (collect_gpu_stats
+            && features.contains(wgpu::Features::TIMESTAMP_QUERY)
+            && queue.get_timestamp_period() > 0.0)
+            .then(|| {
+                GpuTimings::new(
+                    &device,
+                    queue.get_timestamp_period(),
+                    features.contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES),
+                    features.contains(wgpu::Features::PIPELINE_STATISTICS_QUERY),
+                    pass_stats.clone(),
+                )
+            });
         // Gradient LUT atlas resources, shared by the quad and curve
-        // pipelines (both sample gradient brushes). Owned here so
-        // neither pipeline owns the other's input — each composes its
-        // layout against `gradient.bgl` and binds `gradient.bg`.
+        // pipelines (both sample gradient brushes). Owned here so neither
+        // pipeline owns the other's input — each composes its layout
+        // against `gradient.bgl` and binds `gradient.bg`.
         let gradient = GradientResources::new(&device);
-        let quad = QuadPipeline::new(&device, &gradient.bgl, format);
-        let mesh = MeshPipeline::new(&device, format);
-        let image = ImagePipeline::new(&device, format);
-        let curve = CurvePipeline::new(&device, format, &gradient.bgl);
-        let text = TextBackend::new(&device, format, &Self::text_stencil_states(), shaper);
+        let quad = QuadPipeline::new(&device);
+        let mesh = MeshPipeline::new(&device);
+        let image = ImagePipeline::new(&device);
+        let curve = CurvePipeline::new(&device);
+        let text = TextBackend::new(&device, shaper.clone());
         let debug = DebugOverlay::new(&device);
+        // Seed the per-format pipeline map with the first window's format.
+        let mut pipelines = FxHashMap::default();
+        pipelines.insert(
+            format,
+            FormatPipelines::new(
+                &device,
+                format,
+                &gradient.bgl,
+                &Self::text_stencil_states(),
+                &quad,
+                &mesh,
+                &image,
+                &curve,
+                &text,
+            ),
+        );
         // 1 MiB chunks: comfortably above the resizing-arm's ~500 KB
         // per-frame upload peak, so we land in 1-2 chunks during
         // steady state. wgpu allocates a new chunk only when the
@@ -248,10 +281,11 @@ impl WgpuBackend {
             curve,
             text,
             debug,
-            color_format: format,
-            backbuffer: None,
+            pipelines,
             frame_arena,
             caches,
+            shaper,
+            pass_stats,
             gpu_timings,
         }
     }
@@ -259,70 +293,81 @@ impl WgpuBackend {
     /// Per-pipeline stencil configs the production text pipelines are
     /// built with. Index 0 = Plain, index 1 = Stencil — matches
     /// `text::StencilMode::pipeline_idx`. Single source of truth shared
-    /// by [`Self::new`] and [`Self::recreate_for_format`] so the rebuilt
-    /// text pipelines can't drift from the originals.
+    /// by [`Self::new`] and [`Self::format_pipelines`] so rebuilt text
+    /// pipelines can't drift from the originals.
     fn text_stencil_states() -> [Option<wgpu::DepthStencilState>; 2] {
         [None, Some(stencil::stencil_test_state())]
     }
 
-    /// Rebuild every format-dependent pipeline (quad / mesh / image /
-    /// curve / text) against `format`. No-op when `format` already
-    /// matches. Surgical: only the `wgpu::RenderPipeline` objects carry
-    /// the color-target format, so each pipeline swaps just those and
-    /// keeps its format-independent resources — uploaded image textures
-    /// with their bind groups, the gradient LUT atlas, the glyph atlas
-    /// (every rasterized glyph), samplers, and instance/index buffers
-    /// all survive. **No image re-upload or glyph re-rasterization.** Lazy
-    /// stencil variants are dropped and rebuild on the next rounded-clip
-    /// frame. Drops the backbuffer so the next submit full-clears at the
-    /// new format (the old texture carries the old format). Counterpart
-    /// to the hard-assert in [`Self::ensure_backbuffer`] — the host
-    /// calls this via
-    /// [`WindowRenderer::set_surface_format`](crate::WindowRenderer::set_surface_format)
-    /// when it observes a surface format change.
-    pub(crate) fn recreate_for_format(&mut self, format: wgpu::TextureFormat) {
-        if self.color_format == format {
-            return;
+    /// A fresh per-window [`Ui`] sharing this backend's shaper, frame
+    /// arena, render caches, and GPU-stats handle. Every window measures,
+    /// rasterizes, and uploads against one set of shared resources.
+    pub(crate) fn make_window_ui(&self) -> Ui {
+        Ui::new(
+            self.shaper.clone(),
+            self.frame_arena.clone(),
+            self.caches.clone(),
+            self.pass_stats.clone(),
+        )
+    }
+
+    /// A fresh per-window [`Frontend`] (CPU encode/compose scratch)
+    /// sharing this backend's frame arena.
+    pub(crate) fn make_frontend(&self) -> Frontend {
+        Frontend::new(self.frame_arena.clone())
+    }
+
+    /// Ensure the pipeline set for `format` exists, building + caching it
+    /// on first use. Callers then read it back with `&self.pipelines[&format]`
+    /// (a shared field borrow, so it doesn't conflict with the `&mut self`
+    /// upload phase). Only the `wgpu::RenderPipeline` objects carry the
+    /// color-target format; every format-independent resource (image
+    /// textures, glyph + gradient atlases, samplers, buffers) lives on the
+    /// shared resource structs, so a new format costs only a handful of
+    /// pipeline compiles — **no image re-upload or glyph re-rasterization**.
+    /// Windows on different-format outputs each get (and keep) their own set.
+    fn ensure_format(&mut self, format: wgpu::TextureFormat) {
+        // Split borrow: the resource structs the builder reads are
+        // disjoint from `self.pipelines`, but the borrow checker can't see
+        // that through `entry().or_insert_with(closure)`, so build first
+        // then insert.
+        if !self.pipelines.contains_key(&format) {
+            let built = FormatPipelines::new(
+                &self.device,
+                format,
+                &self.gradient.bgl,
+                &Self::text_stencil_states(),
+                &self.quad,
+                &self.mesh,
+                &self.image,
+                &self.curve,
+                &self.text,
+            );
+            self.pipelines.insert(format, built);
         }
-        let device = &self.device;
-        // Gradient resources are format-independent — only the pipelines
-        // carry the color target. Re-thread the shared `bgl` so quad and
-        // curve rebuild against the same group-0 layout.
-        self.quad
-            .rebuild_for_format(device, &self.gradient.bgl, format);
-        self.mesh.rebuild_for_format(device, format);
-        self.image.rebuild_for_format(device, format);
-        self.curve
-            .rebuild_for_format(device, &self.gradient.bgl, format);
-        self.text
-            .rebuild_for_format(device, format, &Self::text_stencil_states());
-        self.color_format = format;
-        // Old backbuffer carries the previous format; force a fresh
-        // allocation + full clear on the next submit.
-        self.backbuffer = None;
     }
 
     /// Lazily (re)create the backbuffer to match the surface texture's
     /// size. Returns `true` if the backbuffer was just (re)created —
     /// caller treats that as a forced full repaint (the new texture's
-    /// contents are undefined until the first pass writes to it).
-    /// Hard-asserts that the swapchain format hasn't changed since
-    /// construction; see [`Self::color_format`].
+    /// contents are undefined until the first pass writes to it). The
+    /// `format` is the per-window surface format; the matching pipeline
+    /// set is fetched per submit via [`Self::format_pipelines`], so no
+    /// global-format assert is needed.
     #[profiling::function]
-    fn ensure_backbuffer(&mut self, size: wgpu::Extent3d, format: wgpu::TextureFormat) -> bool {
-        assert_eq!(
-            self.color_format, format,
-            "WgpuBackend was built for surface format {:?}; got {:?} this submit. \
-             Every format-dependent pipeline (quad / mesh / image / curve / text \
-             atlas) was built against the original format. Call \
-             `WindowRenderer::set_surface_format` when the surface format changes \
-             mid-session — it rebuilds them all. Reaching here means the \
-             swapchain format changed without that call.",
-            self.color_format, format,
-        );
-        let needs_new = match &self.backbuffer {
+    fn ensure_backbuffer(
+        &self,
+        bb: &mut Option<Backbuffer>,
+        size: wgpu::Extent3d,
+        format: wgpu::TextureFormat,
+    ) -> bool {
+        let needs_new = match &*bb {
             None => true,
-            Some(b) => b.size != size,
+            // Recreate on a size *or* format change: the per-window
+            // backbuffer carries one surface's pixels, and a format flip
+            // (window moved to an HDR output) needs a fresh texture at the
+            // new format to match this submit's pipeline set.
+            Some(b) => b.size != size || b.tex.format() != format,
         };
         if !needs_new {
             return false;
@@ -338,7 +383,7 @@ impl WgpuBackend {
             view_formats: &[],
         });
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        self.backbuffer = Some(Backbuffer {
+        *bb = Some(Backbuffer {
             tex,
             view,
             size,
@@ -357,11 +402,8 @@ impl WgpuBackend {
     /// rebuilds the color texture, so a `Some` here is always
     /// size-matched to the current backbuffer.
     #[profiling::function]
-    fn ensure_stencil(&mut self) {
-        let bb = self
-            .backbuffer
-            .as_mut()
-            .expect("ensure_backbuffer must run first");
+    fn ensure_stencil(&self, bb: &mut Option<Backbuffer>) {
+        let bb = bb.as_mut().expect("ensure_backbuffer must run first");
         if bb.stencil.is_some() {
             return;
         }
@@ -415,6 +457,7 @@ impl WgpuBackend {
     #[profiling::function]
     pub(crate) fn submit(
         &mut self,
+        backbuffer: &mut Option<Backbuffer>,
         surface_tex: &wgpu::Texture,
         buffer: &RenderBuffer,
         plan: RenderPlan,
@@ -437,6 +480,12 @@ impl WgpuBackend {
             "wgpu_backend.submit"
         );
 
+        // Build (once) + select the pipeline set for this surface's
+        // format. Read back as `&self.pipelines[&format]` after the
+        // `&mut self` upload phase so the borrows don't collide.
+        let format = surface_tex.format();
+        self.ensure_format(format);
+
         // Match backbuffer to the swapchain texture. A freshly
         // (re)created backbuffer has undefined contents, so any
         // requested Partial must escalate to a full clear+paint this
@@ -445,7 +494,8 @@ impl WgpuBackend {
         // backbuffer recreate, but the debug overlay's damage-rect
         // outline shows what we *rendered*, not what was requested, so
         // threading the renamed value through is the right semantic.
-        let backbuffer_recreated = self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
+        let backbuffer_recreated =
+            self.ensure_backbuffer(backbuffer, surface_tex.size(), surface_tex.format());
         // `effective_plan` is what we'll actually render; `plan` is
         // what the host asked for. The two diverge only on backbuffer
         // recreate, but the debug overlay's damage-rect outline shows
@@ -475,22 +525,13 @@ impl WgpuBackend {
 
         // Stencil path activates whenever the encoded frame contains a
         // `PushClip` with a non-zero radius. Lazy-init the stencil
-        // texture + pipeline variants the first time we land here;
-        // thereafter both stay warm. Apps that never round-clip never
-        // enter this branch. The mask upload happens further down,
-        // after the encoder is open, alongside every other dynamic
-        // buffer upload.
-        let text_mode = if use_stencil {
-            TextStencilMode::Stencil
-        } else {
-            TextStencilMode::Plain
-        };
+        // *texture* the first time we land here; the stencil-test
+        // pipelines themselves are already built (eagerly, per format, in
+        // `FormatPipelines`). Apps that never round-clip never allocate
+        // the texture. The mask upload happens further down, after the
+        // encoder is open, alongside every other dynamic buffer upload.
         if use_stencil {
-            self.ensure_stencil();
-            self.quad.ensure_stencil(&self.device, &self.gradient.bgl);
-            self.mesh.ensure_stencil(&self.device);
-            self.image.ensure_stencil(&self.device);
-            self.curve.ensure_stencil(&self.device, &self.gradient.bgl);
+            self.ensure_stencil(backbuffer);
         }
 
         // Open the main encoder up front: every dynamic-buffer upload
@@ -613,36 +654,44 @@ impl WgpuBackend {
             b: clear.b as f64,
             a: 1.0,
         };
+        let bb = backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded");
+        // Shared field borrow (the entry was built by `ensure_format`
+        // above) — coexists with the `&self` pass methods.
+        let fmt = &self.pipelines[&format];
         if damage_scissors.is_empty() {
             tracing::trace!("wgpu_backend.submit.pass.full");
             self.run_main_pass(
+                fmt,
+                bb,
                 &mut encoder,
                 buffer,
                 None,
                 clear_color,
                 use_stencil,
-                text_mode,
             );
         } else {
             if dim_undamaged {
                 tracing::trace!("wgpu_backend.submit.pass.dim");
-                self.run_dim_pass(&mut encoder);
+                self.run_dim_pass(fmt, bb, &mut encoder);
             }
             tracing::trace!(
                 rects = damage_scissors.len(),
                 "wgpu_backend.submit.pass.partial"
             );
             self.run_main_pass(
+                fmt,
+                bb,
                 &mut encoder,
                 buffer,
                 Some(damage_scissors.as_slice()),
                 clear_color,
                 use_stencil,
-                text_mode,
             );
         }
 
-        self.copy_backbuffer_into(&mut encoder, surface_tex);
+        self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
 
         self.draw_debug_overlay(
             surface_tex,
@@ -691,11 +740,12 @@ impl WgpuBackend {
     /// `dim_undamaged` in [`Self::submit`]). No stencil attachment
     /// even when the frame uses rounded clipping — the dim quad
     /// paints uniformly and subsequent partial passes set their own.
-    fn run_dim_pass(&self, encoder: &mut wgpu::CommandEncoder) {
-        let backbuffer = self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
+    fn run_dim_pass(
+        &self,
+        fmt: &FormatPipelines,
+        backbuffer: &Backbuffer,
+        encoder: &mut wgpu::CommandEncoder,
+    ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.dim.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -718,8 +768,12 @@ impl WgpuBackend {
         let viewport = ViewportPush {
             size: self.viewport_size,
         };
-        self.debug
-            .draw_dim(&mut pass, &self.quad, &self.gradient.bg, &viewport);
+        self.debug.draw_dim(
+            &mut pass,
+            fmt.quad.select(false),
+            &self.gradient.bg,
+            &viewport,
+        );
     }
 
     /// Open the main render pass against the backbuffer and walk the
@@ -742,19 +796,25 @@ impl WgpuBackend {
     /// backbuffer. `Some(rects)` ⇒ Partial: `LoadOp::Load`, one walk
     /// per rect inside the same pass.
     #[profiling::function]
+    #[allow(clippy::too_many_arguments)]
     fn run_main_pass(
         &self,
+        fmt: &FormatPipelines,
+        backbuffer: &Backbuffer,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
         partial_scissors: Option<&[URect]>,
         clear: wgpu::Color,
         use_stencil: bool,
-        text_mode: TextStencilMode,
     ) {
-        let backbuffer = self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
+        // `text_mode` is fully determined by `use_stencil` — the text
+        // pipelines need the stencil-test variant exactly when the frame
+        // round-clips.
+        let text_mode = if use_stencil {
+            TextStencilMode::Stencil
+        } else {
+            TextStencilMode::Plain
+        };
         let stencil_view = if use_stencil {
             Some(
                 &backbuffer
@@ -814,7 +874,7 @@ impl WgpuBackend {
             t.begin_pipeline_stats(&mut pass);
         }
         match partial_scissors {
-            None => self.render_groups(&mut pass, buffer, None, use_stencil, text_mode),
+            None => self.render_groups(fmt, &mut pass, buffer, None, use_stencil, text_mode),
             Some(rects) => {
                 for (i, &r) in rects.iter().enumerate() {
                     tracing::trace!(
@@ -823,7 +883,7 @@ impl WgpuBackend {
                         scissor = ?r,
                         "wgpu_backend.submit.pass.partial_rect"
                     );
-                    self.render_groups(&mut pass, buffer, Some(r), use_stencil, text_mode);
+                    self.render_groups(fmt, &mut pass, buffer, Some(r), use_stencil, text_mode);
                 }
             }
         }
@@ -844,6 +904,7 @@ impl WgpuBackend {
     #[profiling::function]
     fn render_groups<'a>(
         &'a self,
+        fmt: &'a FormatPipelines,
         pass: &mut wgpu::RenderPass<'a>,
         buffer: &RenderBuffer,
         damage_scissor: Option<URect>,
@@ -918,7 +979,8 @@ impl WgpuBackend {
                     // zero on the first PreClear of a partial pass,
                     // which lands the quad at garbage NDC and skips
                     // the damage-region clear.
-                    self.quad.bind_clear(pass, use_stencil, &self.gradient.bg);
+                    self.quad
+                        .bind_clear(pass, &fmt.quad, use_stencil, &self.gradient.bg);
                     viewport.push_into(pass);
                     pass.draw(0..4, 0..1);
                     // Distinct vertex buffer (clear_buffer); next
@@ -937,7 +999,8 @@ impl WgpuBackend {
                     pass.push_debug_group("mask");
                     rebind!(
                         Bound::MaskWrite,
-                        self.quad.bind_mask_write(pass, &self.gradient.bg)
+                        self.quad
+                            .bind_mask_write(pass, &fmt.quad_mask_write, &self.gradient.bg,)
                     );
                     self.quad.draw_mask(pass, mi);
                     pass.pop_debug_group();
@@ -947,7 +1010,8 @@ impl WgpuBackend {
                     pass.push_debug_group("quads");
                     rebind!(
                         Bound::QuadInstance,
-                        self.quad.bind(pass, use_stencil, &self.gradient.bg)
+                        self.quad
+                            .bind(pass, &fmt.quad, use_stencil, &self.gradient.bg)
                     );
                     self.quad.draw_range(pass, range);
                     pass.pop_debug_group();
@@ -960,14 +1024,15 @@ impl WgpuBackend {
                     // at offset 8) itself. Subsequent non-text steps
                     // re-push viewport via `viewport.push_into(pass)`
                     // after their bind.
-                    self.text.render_batch(batch, pass, text_mode, &viewport);
+                    self.text
+                        .render_batch(batch, pass, &fmt.text, text_mode, &viewport);
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
                 RenderStep::MeshBatch { batch } => {
                     mark(pass, BatchKind::Mesh);
                     pass.push_debug_group("meshes");
-                    rebind!(Bound::Mesh, self.mesh.bind(pass, use_stencil));
+                    rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
                     let range = buffer.mesh_batches[batch].meshes;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
@@ -989,7 +1054,7 @@ impl WgpuBackend {
                 RenderStep::ImageBatch { batch } => {
                     mark(pass, BatchKind::Image);
                     pass.push_debug_group("images");
-                    rebind!(Bound::Image, self.image.bind(pass, use_stencil));
+                    rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
                     let range = buffer.image_batches[batch].images;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
@@ -1003,7 +1068,8 @@ impl WgpuBackend {
                     pass.push_debug_group("curves");
                     rebind!(
                         Bound::Curve,
-                        self.curve.bind(pass, use_stencil, &self.gradient.bg)
+                        self.curve
+                            .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                     );
                     let range = buffer.curve_batches[batch].instances;
                     self.curve.draw(pass, range.start..range.start + range.len);
@@ -1100,12 +1166,14 @@ impl WgpuBackend {
             // Damage-overlay pass uses the quad pipeline against the
             // swapchain — separate pass, no inherited state. `draw_overlays`
             // binds the pipeline and pushes viewport in the right order.
+            // The format set exists — `submit` ran `ensure_format` before
+            // calling here.
             let viewport = ViewportPush {
                 size: self.viewport_size,
             };
             self.debug.draw_overlays(
                 &mut pass,
-                &self.quad,
+                self.pipelines[&surface_tex.format()].quad.select(false),
                 &self.gradient.bg,
                 &viewport,
                 overlay_rects.len() as u32,
@@ -1121,28 +1189,32 @@ impl WgpuBackend {
     /// backbuffer has undefined contents — `ensure_backbuffer` forces
     /// the next painting frame to `Full` via the same signal, so the
     /// one-frame glitch self-heals.
-    pub(crate) fn copy_backbuffer_to_surface(&mut self, surface_tex: &wgpu::Texture) {
-        self.ensure_backbuffer(surface_tex.size(), surface_tex.format());
+    pub(crate) fn copy_backbuffer_to_surface(
+        &mut self,
+        backbuffer: &mut Option<Backbuffer>,
+        surface_tex: &wgpu::Texture,
+    ) {
+        self.ensure_backbuffer(backbuffer, surface_tex.size(), surface_tex.format());
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("palantir.renderer.skip"),
             });
-        self.copy_backbuffer_into(&mut encoder, surface_tex);
+        let bb = backbuffer
+            .as_ref()
+            .expect("ensure_backbuffer just succeeded");
+        self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 
     #[profiling::function]
     fn copy_backbuffer_into(
         &self,
+        backbuffer: &Backbuffer,
         encoder: &mut wgpu::CommandEncoder,
         surface_tex: &wgpu::Texture,
     ) {
-        let bb = &self
-            .backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded")
-            .tex;
+        let bb = &backbuffer.tex;
         encoder.copy_texture_to_texture(
             wgpu::TexelCopyTextureInfo {
                 texture: bb,
@@ -1163,17 +1235,17 @@ impl WgpuBackend {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod test_support {
-    //! Reach-in introspection for the surface-format-change tests:
-    //! the current color format and the GPU image-cache occupancy,
-    //! used to assert a format flip rebuilds pipelines without dropping
-    //! or re-uploading cached textures.
+    //! Reach-in introspection for the surface-format-change tests: the
+    //! count of cached per-format pipeline sets and the GPU image-cache
+    //! occupancy, used to assert a new format builds its own pipelines
+    //! without dropping or re-uploading cached textures.
 
     use crate::renderer::backend::*;
 
     impl WgpuBackend {
-        /// Current swapchain color format the pipelines were built for.
-        pub(crate) fn color_format(&self) -> wgpu::TextureFormat {
-            self.color_format
+        /// Whether a pipeline set has been built for `format`.
+        pub(crate) fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
+            self.pipelines.contains_key(&format)
         }
 
         /// Images resident in the GPU texture cache — see

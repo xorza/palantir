@@ -120,8 +120,11 @@ pub struct TextBackend {
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
 
-    pipelines: Vec<wgpu::RenderPipeline>,
-    atlas_bgl: wgpu::BindGroupLayout,
+    /// Group-0 layout (atlas textures + sampler). Format-independent;
+    /// `FormatPipelines` reads it to build this format's text pipelines.
+    /// The pipelines themselves live in `FormatPipelines`, keyed by
+    /// swapchain format, and are passed into [`Self::render_batch`].
+    pub(crate) atlas_bgl: wgpu::BindGroupLayout,
     atlas_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
@@ -153,17 +156,11 @@ struct MissEntry {
 }
 
 impl TextBackend {
-    pub(crate) fn new(
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        depth_stencil_states: &[Option<wgpu::DepthStencilState>],
-        shaper: TextShaper,
-    ) -> Self {
-        assert!(
-            !depth_stencil_states.is_empty(),
-            "TextBackend needs at least one pipeline config",
-        );
-
+    /// Build the format-independent text resources (glyph atlas, shaper,
+    /// caches, vertex buffer). The render pipelines are built per format
+    /// by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_pipelines`].
+    pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
         let atlas = GlyphAtlas::new(device);
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
@@ -200,8 +197,6 @@ impl TextBackend {
             &sampler,
         );
 
-        let pipelines = Self::build_pipelines(device, &atlas_bgl, format, depth_stencil_states);
-
         let vbuf_capacity = (std::mem::size_of::<GlyphInstance>() as u64) * 4096;
         let vbuf = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("palantir text vbuf"),
@@ -214,7 +209,6 @@ impl TextBackend {
             shaper,
             swash_cache: SwashCache::new(),
             atlas,
-            pipelines,
             atlas_bgl,
             atlas_bg,
             sampler,
@@ -233,8 +227,9 @@ impl TextBackend {
     /// The shader module + pipeline layout are cheap, format-independent
     /// boilerplate (recreated each call); the glyph atlas, its bind
     /// group, and the sampler are not built here and so survive a
-    /// rebuild. Shared by [`Self::new`] and [`Self::rebuild_for_format`].
-    fn build_pipelines(
+    /// format change. Called by `FormatPipelines` per format; the result
+    /// is indexed by `StencilMode::pipeline_idx`.
+    pub(crate) fn build_pipelines(
         device: &wgpu::Device,
         atlas_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
@@ -274,23 +269,6 @@ impl TextBackend {
                 )
             })
             .collect()
-    }
-
-    /// Rebuild only the format-dependent render pipelines against
-    /// `format`. The glyph atlas (every rasterized glyph in it), its
-    /// bind group, the sampler, and the encoded-run cache all survive —
-    /// the atlas texture's format (`R8Unorm` / `Rgba8UnormSrgb`) is
-    /// independent of the swapchain color format, so **no glyph
-    /// re-rasterization is needed**. Pass the same `depth_stencil_states`
-    /// the backend built the text pipelines with.
-    pub(crate) fn rebuild_for_format(
-        &mut self,
-        device: &wgpu::Device,
-        format: wgpu::TextureFormat,
-        depth_stencil_states: &[Option<wgpu::DepthStencilState>],
-    ) {
-        self.pipelines =
-            Self::build_pipelines(device, &self.atlas_bgl, format, depth_stencil_states);
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
@@ -413,10 +391,11 @@ impl TextBackend {
         self.atlas.flush_pending_uploads(ctx);
     }
 
-    pub(crate) fn render_batch(
-        &self,
+    pub(crate) fn render_batch<'a>(
+        &'a self,
         batch_idx: usize,
-        pass: &mut wgpu::RenderPass<'_>,
+        pass: &mut wgpu::RenderPass<'a>,
+        pipelines: &'a [wgpu::RenderPipeline],
         mode: StencilMode,
         viewport: &ViewportPush,
     ) {
@@ -426,7 +405,7 @@ impl TextBackend {
         if range.is_empty() {
             return;
         }
-        pass.set_pipeline(&self.pipelines[mode.pipeline_idx()]);
+        pass.set_pipeline(&pipelines[mode.pipeline_idx()]);
         pass.set_bind_group(0, &self.atlas_bg, &[]);
         // Both halves of the shared immediate region — write
         // viewport (offset 0) here as well as params (offset 8)
@@ -576,39 +555,48 @@ pub mod test_support {
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
 
-    impl TextBackend {
-        /// Construct a single-pipeline backend with no MSAA and no
-        /// depth/stencil — enough to render against an `Rgba8Unorm*`
-        /// color target.
-        pub fn new_for_bench(
-            device: &wgpu::Device,
-            format: wgpu::TextureFormat,
-            shaper: TextShaper,
-        ) -> Self {
-            Self::new(device, format, &[None], shaper)
+    /// Standalone bench harness for the text backend: a [`TextBackend`]
+    /// (its glyph atlas, shaper, caches) plus the single no-stencil
+    /// pipeline it would otherwise reach for in `FormatPipelines`. Lets
+    /// the atlas bench drive prepare → flush → draw without the full
+    /// `WgpuBackend` / `FormatPipelines` machinery.
+    pub struct BenchText {
+        backend: TextBackend,
+        pipelines: Vec<wgpu::RenderPipeline>,
+    }
+
+    impl BenchText {
+        /// Single-pipeline (no MSAA, no depth/stencil) — enough to render
+        /// against an `Rgba8Unorm*` color target.
+        pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
+            let backend = TextBackend::new(device, shaper);
+            let pipelines =
+                TextBackend::build_pipelines(device, &backend.atlas_bgl, format, &[None]);
+            Self { backend, pipelines }
         }
 
         /// Append-mode prepare into batch 0.
         pub fn prepare(&mut self, ctx: &mut GpuCtx<'_>, scale: f32, runs: &[TextRun]) -> bool {
-            self.prepare_batch(ctx, scale, 0, runs)
+            self.backend.prepare_batch(ctx, scale, 0, runs)
         }
 
         pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-            self.flush_atlas_uploads(ctx);
+            self.backend.flush_atlas_uploads(ctx);
         }
 
-        pub fn draw(&self, pass: &mut wgpu::RenderPass<'_>) {
+        pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
             // Standalone bench helper: zero-sized viewport is fine
             // because the atlas bench doesn't read the value (we
             // don't validate visual output here).
             let viewport = ViewportPush {
                 size: glam::Vec2::ZERO,
             };
-            self.render_batch(0, pass, StencilMode::Plain, &viewport);
+            self.backend
+                .render_batch(0, pass, &self.pipelines, StencilMode::Plain, &viewport);
         }
 
         pub fn end_frame(&mut self) {
-            self.post_record();
+            self.backend.post_record();
         }
     }
 
@@ -700,7 +688,6 @@ mod gpu_regression {
     use crate::renderer::backend::text::test_support::make_run;
     use crate::renderer::render_buffer::TextRun;
 
-    const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
     fn device_queue() -> (wgpu::Device, Queue) {
@@ -741,8 +728,8 @@ mod gpu_regression {
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
             let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
-            backend.prepare(&mut ctx, scale, runs);
-            backend.flush(&mut ctx);
+            backend.prepare_batch(&mut ctx, scale, 0, runs);
+            backend.flush_atlas_uploads(&mut ctx);
         }
         belt.finish();
         queue.submit([encoder.finish()]);
@@ -766,7 +753,7 @@ mod gpu_regression {
     fn cached_run_keeps_its_atlas_slots_live() {
         let (device, queue) = device_queue();
         let shaper = TextShaper::with_bundled_fonts();
-        let mut backend = TextBackend::new_for_bench(&device, FORMAT, shaper.clone());
+        let mut backend = TextBackend::new(&device, shaper.clone());
 
         let runs = [make_run(
             &shaper,
@@ -782,7 +769,7 @@ mod gpu_regression {
         // Frame 1: encoded-cache miss → rasterize + cache. Slots get
         // last_use == current_frame.
         run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
-        backend.end_frame();
+        backend.post_record();
         let evictions_after_warmup = backend.atlas.eviction_count;
         assert!(
             !backend.atlas.cache.is_empty(),
