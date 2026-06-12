@@ -14,7 +14,7 @@ pub(crate) const EPS: f32 = 1.0e-4;
 /// `approx_zero` is ever needed, add focused free fns here, not a trait
 /// (trait method `const` requires nightly).
 #[inline]
-pub const fn approx_zero(c: f32) -> bool {
+pub(crate) const fn approx_zero(c: f32) -> bool {
     c >= -EPS && c <= EPS
 }
 
@@ -27,7 +27,7 @@ pub const fn approx_zero(c: f32) -> bool {
 /// and per-variant `Shape::is_noop` checks — keeps the
 /// "non-paintable scalar" contract in one place.
 #[inline]
-pub const fn noop_f32(v: f32) -> bool {
+pub(crate) const fn noop_f32(v: f32) -> bool {
     v.is_nan() || v <= EPS
 }
 

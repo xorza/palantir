@@ -193,7 +193,7 @@ impl LinearGradient {
     pub fn new(angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
         Self {
             angle,
-            stops: collect_stops::<{ MAX_STOPS }>(stops, "LinearGradient"),
+            stops: collect_stops(stops, "LinearGradient"),
             spread: Spread::default(),
             interp: Interp::default(),
         }
@@ -267,7 +267,7 @@ impl std::hash::Hash for RadialGradient {
 
 impl RadialGradient {
     pub fn new(center: Vec2, radius: Vec2, stops: impl IntoIterator<Item = Stop>) -> Self {
-        let stops = collect_stops::<{ MAX_STOPS }>(stops, "RadialGradient");
+        let stops = collect_stops(stops, "RadialGradient");
         Self {
             center,
             radius,
@@ -335,7 +335,7 @@ impl std::hash::Hash for ConicGradient {
 
 impl ConicGradient {
     pub fn new(center: Vec2, start_angle: f32, stops: impl IntoIterator<Item = Stop>) -> Self {
-        let stops = collect_stops::<{ MAX_STOPS }>(stops, "ConicGradient");
+        let stops = collect_stops(stops, "ConicGradient");
         Self {
             center,
             start_angle,
@@ -364,7 +364,7 @@ impl ConicGradient {
 }
 
 /// Shared 2..=MAX_STOPS validation used by every gradient constructor.
-fn collect_stops<const N: usize>(
+fn collect_stops(
     stops: impl IntoIterator<Item = Stop>,
     ty: &'static str,
 ) -> ArrayVec<[Stop; MAX_STOPS]> {

@@ -33,7 +33,7 @@ impl WidgetId {
     /// (used as the "unset" sentinel by [`crate::forest::element::Element::new`]).
     /// FxHasher returns 0 for all-zero input (e.g. `(0u16, 0u16)`); a plain
     /// rotate-and-bias replaces it with `1` without skewing other outputs.
-    fn nonzero(h: u64) -> Self {
+    const fn nonzero(h: u64) -> Self {
         Self(if h == 0 { 1 } else { h })
     }
 
@@ -60,7 +60,7 @@ impl WidgetId {
         h = fnv1a_extend_str(h, l.file());
         h = fnv1a_extend_u32(h, l.line());
         h = fnv1a_extend_u32(h, l.column());
-        Self(h)
+        Self::nonzero(h)
     }
 }
 
