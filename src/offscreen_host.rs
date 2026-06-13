@@ -9,6 +9,8 @@
 //! named from an external crate, so they need this `pub` facade bundling
 //! the backend with its window.
 
+use crate::debug_overlay::DebugOverlayConfig;
+use crate::host_shared::HostShared;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::renderer::context::RenderContext;
@@ -21,6 +23,10 @@ use crate::window_renderer::WindowRenderer;
 pub struct OffscreenHost {
     gpu: WgpuBackend,
     window: WindowRenderer,
+    /// App-global host state (the headless peer of `WinitHost`'s). Owned
+    /// here and cloned into the window's `Ui`; `set_debug_overlay` writes
+    /// it directly.
+    host: HostShared,
 }
 
 impl OffscreenHost {
@@ -31,19 +37,28 @@ impl OffscreenHost {
         collect_gpu_stats: bool,
     ) -> Self {
         // The shared context outlives this call only as the clones in the
-        // backend + window's `Ui`/`Frontend` (Rc-backed handles); the
-        // offscreen path never opens a second window. The render target's
-        // format (per `frame_offscreen` call) drives the lazy per-format
-        // pipeline build.
+        // backend + window's `Ui`/`Frontend` (Rc-backed handles, including
+        // the shared host state); the offscreen path never opens a second
+        // window. The render target's format (per `frame_offscreen` call)
+        // drives the lazy per-format pipeline build.
         let ctx = RenderContext::new(shaper);
+        let host = HostShared::default();
         let gpu = WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
-        let window = WindowRenderer::new(&ctx);
-        Self { gpu, window }
+        let window = WindowRenderer::new(&ctx, host.clone());
+        Self { gpu, window, host }
     }
 
     /// Mutable access to the window's `Ui` for building scenes.
     pub fn ui(&mut self) -> &mut Ui {
         &mut self.window.ui
+    }
+
+    /// Set the app-global debug overlay for subsequent frames. The
+    /// headless analogue of a `WinitHost` window toggling it via
+    /// `Ui::debug_overlay_mut` — it writes the same shared host state the
+    /// window's `Ui` reads.
+    pub fn set_debug_overlay(&mut self, overlay: DebugOverlayConfig) {
+        *self.host.debug_overlay_mut() = overlay;
     }
 
     /// Run one offscreen frame against `target`.
@@ -67,7 +82,7 @@ impl OffscreenHost {
     /// Cloneable handle to the most-recent GPU instrumentation sample —
     /// same handle the `Ui` debug overlay reads from.
     pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.window.ui.gpu_pass_stats
+        &self.window.ui.ctx.pass_stats
     }
 
     /// Images resident in the GPU texture cache. Used by the format-change

@@ -22,6 +22,7 @@ pub mod animation;
 pub(crate) mod common;
 pub(crate) mod debug_overlay;
 pub mod forest;
+pub(crate) mod host_shared;
 pub mod input;
 pub mod layout;
 /// Headless render-to-texture host for the visual harness + GPU benches

@@ -159,8 +159,8 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
-            shaper: &ui.text,
+            bytes: &ui.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &ui.ctx.shaper,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -169,8 +169,8 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
-            shaper: &ui.text,
+            bytes: &ui.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &ui.ctx.shaper,
         },
     );
     let max_h = ui.layout_engine.intrinsic(
@@ -179,8 +179,8 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         Axis::Y,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
-            shaper: &ui.text,
+            bytes: &ui.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &ui.ctx.shaper,
         },
     );
 
@@ -422,8 +422,8 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
-            shaper: &ui.text,
+            bytes: &ui.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &ui.ctx.shaper,
         },
     );
     let min_w = ui.layout_engine.intrinsic(
@@ -432,8 +432,8 @@ fn nonwrapping_text_minconent_equals_full_width() {
         Axis::X,
         LenReq::MinContent,
         &TextCtx {
-            bytes: &ui.frame_arena.inner().fmt_scratch,
-            shaper: &ui.text,
+            bytes: &ui.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &ui.ctx.shaper,
         },
     );
     assert!(
@@ -495,8 +495,8 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.frame_arena.inner().fmt_scratch,
-            shaper: &probe.text,
+            bytes: &probe.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &probe.ctx.shaper,
         },
     );
     assert!(label_full > 0.0);
@@ -569,8 +569,8 @@ fn two_hug_cols_default_label_hugs_full_width() {
         Axis::X,
         LenReq::MaxContent,
         &TextCtx {
-            bytes: &probe.frame_arena.inner().fmt_scratch,
-            shaper: &probe.text,
+            bytes: &probe.ctx.frame_arena.inner().fmt_scratch,
+            shaper: &probe.ctx.shaper,
         },
     );
     assert!(label_full > 0.0);

@@ -637,7 +637,8 @@ impl<'a> TextEdit<'a> {
                 &self.placeholder
             };
             let m = ui
-                .text
+                .ctx
+                .shaper
                 .measure(
                     measure_str,
                     ctx.font_size,
@@ -688,7 +689,7 @@ impl<'a> TextEdit<'a> {
         // and (c) snapshotting `last_caret_change` for the visibility
         // calc below. `caret_pos` is computed via the shaper (disjoint
         // field) first so the state borrow is contiguous.
-        let caret_pos = ui.text.cursor_xy(
+        let caret_pos = ui.ctx.shaper.cursor_xy(
             self.text,
             caret_byte,
             ctx.font_size,
@@ -738,7 +739,7 @@ impl<'a> TextEdit<'a> {
         // Phase 3: open the node and push shapes. `cursor_xy` +
         // `selection_rects` handle both single- and multi-line via
         // cosmic's shaped-buffer APIs; the single-line case is just
-        // an unwrapped layout with one visual run. Touch `ui.text`
+        // an unwrapped layout with one visual run. Touch `ui.ctx.shaper`
         // (disjoint from `ui.forest`, so `add_shape` sequences fine).
         // Chrome paints via `Tree::chrome_for` — encoder emits it
         // before any clip. Every shape's local_rect is shifted by
@@ -776,7 +777,8 @@ impl<'a> TextEdit<'a> {
                     self.text.as_str()
                 };
                 let reserve_w = ui
-                    .text
+                    .ctx
+                    .shaper
                     .measure(
                         measure_str,
                         ctx.font_size,
@@ -804,11 +806,11 @@ impl<'a> TextEdit<'a> {
             // stored as `None`, so any `Some` here has positive width).
             if is_focused && let Some(range) = selection.clone() {
                 // Materialize selection rects via the shaper's out-arg
-                // form, then release the `ui.text` borrow before
+                // form, then release the `ui.ctx.shaper` borrow before
                 // painting through the public `ui.add_shape` API.
                 let sel_color = theme.selection;
                 let mut rects = crate::text::SelectionRects::new();
-                ui.text.selection_rects(
+                ui.ctx.shaper.selection_rects(
                     text_ptr,
                     range,
                     ctx.font_size,
@@ -1009,7 +1011,7 @@ struct InputResult {
 /// Process this frame's pointer + keyboard input for one TextEdit
 /// widget and return the caret + selection to render. Splitting this
 /// out of `show()` keeps the borrow choreography contained: we touch
-/// `ui.state`, `ui.input`, and `ui.text` here, but never the
+/// `ui.state`, `ui.input`, and `ui.ctx.shaper` here, but never the
 /// shape/tree storage.
 #[allow(clippy::too_many_arguments)]
 fn handle_input(
@@ -1030,7 +1032,7 @@ fn handle_input(
     let menu_open = ContextMenu::is_open(ui, id);
 
     // Hold the state row once for the whole function. `ui.state`,
-    // `ui.input`, and `ui.text` are disjoint fields of `Ui`,
+    // `ui.input`, and `ui.ctx.shaper` are disjoint fields of `Ui`,
     // so we can keep `&mut state` alive while also reading the input
     // queues and dispatching to the text measurer.
     let state = ui
@@ -1069,7 +1071,7 @@ fn handle_input(
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
-        let hit = ui.text.byte_at_xy(
+        let hit = ui.ctx.shaper.byte_at_xy(
             text,
             local_x,
             if ctx.multiline { local_y } else { 0.0 },
@@ -1148,7 +1150,7 @@ fn handle_input(
     // then `apply_key` (edit / nav). Vertical-nav probes happen inline
     // because they need the shaper + layout. Indexing keeps the borrow
     // on `frame_keyboard_events` short-lived so we can dispatch to
-    // `ui.text` inside the same loop without a scratch Vec.
+    // `ui.ctx.shaper` inside the same loop without a scratch Vec.
     let mut vert: Option<VerticalMotion> = None;
     let n = ui.input.frame_keyboard_events.len();
     for i in 0..n {
@@ -1175,7 +1177,7 @@ fn handle_input(
                     *blur_after = true;
                 }
                 if let Some(v) = vert.take() {
-                    let pos = ui.text.cursor_xy(
+                    let pos = ui.ctx.shaper.cursor_xy(
                         text,
                         state.caret,
                         ctx.font_size,
@@ -1191,7 +1193,7 @@ fn handle_input(
                     let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
                         0
                     } else {
-                        ui.text.byte_at_xy(
+                        ui.ctx.shaper.byte_at_xy(
                             text,
                             pos.x,
                             probe_y,

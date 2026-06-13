@@ -167,9 +167,9 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        self.host.ui().debug_overlay = overlay;
+        self.host.set_debug_overlay(overlay);
         let img = self.render(physical, scale, clear, scene);
-        self.host.ui().debug_overlay = DebugOverlayConfig::default();
+        self.host.set_debug_overlay(DebugOverlayConfig::default());
         img
     }
 }

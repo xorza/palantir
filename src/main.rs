@@ -206,25 +206,27 @@ fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonThe
 }
 
 /// F12 toggles damage-rect outlines; F10 toggles darken-undamaged;
-/// F9 toggles the frame/FPS readout. `key_pressed` auto-subscribes so
-/// off-focus presses still wake the loop.
+/// F9 toggles the frame/FPS readout. The overlay is app-global, so
+/// toggling from whichever window has focus updates every window. Only
+/// `build_ui` needs to call this — the inspector inherits the same
+/// config. `key_pressed` auto-subscribes so off-focus presses still wake
+/// the loop.
 fn handle_debug_keys(ui: &mut Ui) {
-    let toggle_damage = ui.key_pressed(Shortcut::key(Key::F12));
-    let toggle_dim = ui.key_pressed(Shortcut::key(Key::F10));
-    let toggle_stats = ui.key_pressed(Shortcut::key(Key::F9));
-    let o = &mut ui.debug_overlay;
-    if toggle_damage {
+    if ui.key_pressed(Shortcut::key(Key::F12)) {
+        let mut o = ui.debug_overlay_mut();
         o.damage_rect = !o.damage_rect;
         eprintln!(
             "[F12] damage rect overlay: {}",
             if o.damage_rect { "on" } else { "off" }
         );
     }
-    if toggle_dim {
+    if ui.key_pressed(Shortcut::key(Key::F10)) {
+        let mut o = ui.debug_overlay_mut();
         o.dim_undamaged = !o.dim_undamaged;
         eprintln!("[F10] darken undamaged: {}", o.dim_undamaged);
     }
-    if toggle_stats {
+    if ui.key_pressed(Shortcut::key(Key::F9)) {
+        let mut o = ui.debug_overlay_mut();
         o.frame_stats = !o.frame_stats;
         eprintln!("[F9] frame stats: {}", o.frame_stats);
     }

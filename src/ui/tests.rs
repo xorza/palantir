@@ -21,7 +21,7 @@ use std::time::Duration;
 const SURFACE: UVec2 = UVec2::new(200, 200);
 
 fn measure_calls(ui: &Ui) -> u64 {
-    ui.text.measure_calls()
+    ui.ctx.shaper.measure_calls()
 }
 
 fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
@@ -168,7 +168,7 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
 fn collisions_do_not_record_into_debug_layer() {
     let mut ui = Ui::for_test();
     assert!(
-        !ui.debug_overlay.frame_stats,
+        !ui.debug_overlay().frame_stats,
         "test relies on frame_stats off — Debug should otherwise stay empty",
     );
     ui.run_at(UVec2::new(100, 100), |ui| {
@@ -535,7 +535,7 @@ fn text_reuse_evicts_disappeared_widgets() {
     });
     let wid = WidgetId::from_hash("transient");
     assert!(
-        ui.text.has_reuse_entry(wid, 0),
+        ui.ctx.shaper.has_reuse_entry(wid, 0),
         "text widget should populate text_reuse on first render",
     );
 
@@ -543,7 +543,7 @@ fn text_reuse_evicts_disappeared_widgets() {
         Panel::vstack().auto_id().show(ui, |_| {});
     });
     assert!(
-        !ui.text.has_reuse_entry(wid, 0),
+        !ui.ctx.shaper.has_reuse_entry(wid, 0),
         "removed widget's reuse entry must be swept",
     );
 }
@@ -808,7 +808,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
 #[test]
 fn frame_stats_overlay_records_partial_damage() {
     let mut ui = Ui::for_test();
-    ui.debug_overlay.frame_stats = true;
+    ui.debug_overlay_mut().frame_stats = true;
     let display = Display::from_physical(SURFACE, 1.0);
 
     // Warm-up frame at t = 0. `fps_ema` stays zero (no prior `time` to
@@ -851,7 +851,7 @@ fn frame_stats_overlay_records_partial_damage() {
 
     // Disabling the flag mid-stream evicts the Debug-layer node next
     // frame.
-    ui.debug_overlay.frame_stats = false;
+    ui.debug_overlay_mut().frame_stats = false;
     ui.frame(FrameStamp::new(display, Duration::from_millis(32)), |ui| {
         Frame::new()
             .id(WidgetId::from_hash("body"))
@@ -1193,7 +1193,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
     // Direct pin: the gradient pushed during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
     assert_eq!(
-        ui.frame_arena.inner().gradients.len(),
+        ui.ctx.frame_arena.inner().gradients.len(),
         1,
         "PaintOnly must preserve arena.gradients so retained \
          ShapeBrush::Gradient indices remain valid",
@@ -1697,7 +1697,7 @@ fn window_requests_queue_and_survive_the_frame() {
     // `window_open` polls the host-refreshed live set (here set directly,
     // as the host would before each frame) — not the pending queues.
     assert!(!ui.window_open(open), "empty live set ⇒ nothing open");
-    ui.live_windows = vec![open];
+    ui.host.set_open_windows([open]);
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
 }

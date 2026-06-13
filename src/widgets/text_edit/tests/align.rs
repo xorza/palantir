@@ -369,11 +369,13 @@ mod per_line {
         let text = "hi";
 
         let left = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
             .x;
         let center = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy(
                 text,
                 2,
@@ -385,7 +387,8 @@ mod per_line {
             )
             .x;
         let right = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
             .x;
 
@@ -555,16 +558,16 @@ mod per_line {
         // is primed.
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        let a = ui.text.measure_calls();
+        let a = ui.ctx.shaper.measure_calls();
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
-        let b = ui.text.measure_calls();
+        let b = ui.ctx.shaper.measure_calls();
         let per_frame = b - a;
         // Drive several more frames with identical inputs and verify
         // each one costs exactly the same number of `measure_calls`.
         for i in 0..5 {
-            let before = ui.text.measure_calls();
+            let before = ui.ctx.shaper.measure_calls();
             ui.run_at_acked(UVec2::new(800, 200), &mut record);
-            let after = ui.text.measure_calls();
+            let after = ui.ctx.shaper.measure_calls();
             assert_eq!(
                 after - before,
                 per_frame,
@@ -608,7 +611,7 @@ mod per_line {
         ui.run_at_acked(UVec2::new(800, 200), &mut record);
         let node = node.unwrap();
         // (a) `Shape::Text.align` reflects the user's text_align.
-        let arena = ui.frame_arena.inner();
+        let arena = ui.ctx.frame_arena.inner();
         let bytes = arena.fmt_scratch.as_str();
         let tree = ui.forest.tree(Layer::Main);
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
@@ -651,15 +654,18 @@ mod per_line {
         let lh = fs * 1.2;
         let wrap = 290.0_f32;
         let right = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
             .x;
         let center = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Center)
             .x;
         let left = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
             .x;
         assert!(
@@ -741,7 +747,8 @@ mod per_line {
         let fs = 16.0_f32;
         let lh = fs * 1.2;
         let caret_short = ui
-            .text
+            .ctx
+            .shaper
             .cursor_xy(
                 &buf,
                 5,
