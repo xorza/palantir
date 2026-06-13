@@ -9,13 +9,13 @@ use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
 use crate::common::hash::Hasher;
 use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
+use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Chrome;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::element::{Element, LayoutMode, Salt};
 use crate::forest::tree::paint_anims::PaintAnim;
-use crate::host_shared::HostShared;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
@@ -31,7 +31,6 @@ use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
-use crate::renderer::context::RenderContext;
 use crate::renderer::image_registry::ImageHandle;
 
 use crate::debug_overlay::record_frame_stats;
@@ -134,25 +133,20 @@ enum FramePlan {
 pub struct Ui {
     pub(crate) forest: Forest,
     pub theme: Theme,
-    /// App-global host state shared by every window: the live-window set
-    /// (read by [`Self::window_open`]) and the debug overlay (read by the
-    /// backend at submit time and by `Ui::frame` for the FPS readout,
-    /// toggled by [`Self::debug_overlay_mut`]). A cheap clone of the
-    /// host's handle, wired in at construction; in headless contexts it's
-    /// a private cell with no host writing to it.
-    pub(crate) host: HostShared,
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     pub(crate) state: StateMap,
-    /// Shared, GPU-agnostic render resources cloned from the host's
-    /// [`RenderContext`] at construction: the font/glyph shaper
-    /// (`ctx.shaper`), the per-frame arena (`ctx.frame_arena`), the GPU
-    /// resource caches (`ctx.caches`), and the GPU-stats handle
-    /// (`ctx.pass_stats`). Held as one bag so a new shared handle doesn't
-    /// touch every `Ui` constructor; the wgpu backend clones the same
-    /// context, so both see one set. A standalone `Ui::default()` builds a
-    /// fresh private context that no backend writes to.
-    pub(crate) ctx: RenderContext,
+    /// App-global shared state cloned from the host at construction: the
+    /// render resources (`ctx.shaper` / `ctx.frame_arena` / `ctx.caches` /
+    /// `ctx.pass_stats`) and the host state behind it (the live-window set,
+    /// read by [`Self::window_open`], and the debug overlay, read at submit
+    /// time + by `Ui::frame` for the FPS readout, toggled via
+    /// [`Self::debug_overlay_mut`]). One handle so a new shared field
+    /// doesn't touch every `Ui` constructor; the wgpu backend clones the
+    /// same context (render handles only), so both see one set. A
+    /// standalone `Ui::default()` builds a fresh private context that no
+    /// backend or host writes to.
+    pub(crate) ctx: HostContext,
     pub(crate) layout_engine: LayoutEngine,
     pub(crate) layout: Layout,
     /// Cascaded clip/disabled/invisible/transform per node + global
@@ -250,7 +244,6 @@ impl Default for Ui {
         Self {
             forest: Default::default(),
             theme: Default::default(),
-            host: Default::default(),
             state: Default::default(),
             ctx: Default::default(),
             layout_engine: Default::default(),
@@ -291,24 +284,21 @@ impl Ui {
     /// still tracks the host's true clock.
     pub(crate) const MAX_DT: f32 = 0.1;
 
-    /// Construct a per-window `Ui` from the host's shared render resources
-    /// and its app-global [`HostShared`]. From `ctx` it clones the same
-    /// `TextShaper` the wgpu backend uses (so layout-time measurement and
-    /// render-time shaping hit one buffer cache), the same `FrameArena`
+    /// Construct a per-window `Ui` from the host's shared [`HostContext`]
+    /// — a clone of which the `Ui` keeps. Through it the `Ui` shares the
+    /// same `TextShaper` the wgpu backend uses (so layout-time measurement
+    /// and render-time shaping hit one buffer cache), the same `FrameArena`
     /// the `Frontend` + `WgpuBackend` see (so every phase reads one set of
-    /// per-frame mesh / polyline bytes), the render caches, and GPU-stats.
-    /// `host` is owned by the windowing host (`WinitHost` / `OffscreenHost`)
-    /// — *not* by `RenderContext` — and a clone is threaded in here so
-    /// every window's `Ui` shares one live-window set + debug overlay.
-    /// [`crate::WindowRenderer::new`] calls this.
+    /// per-frame mesh / polyline bytes), the render caches + GPU-stats, and
+    /// the app-global host state (live-window set + debug overlay) every
+    /// window shares. [`crate::WindowRenderer::new`] calls this.
     ///
     /// Tests / standalone callers usually want [`Self::default`], which
     /// builds an isolated `Ui` with mono fallback shaper + its own private
     /// arena.
-    pub(crate) fn new(ctx: &RenderContext, host: HostShared) -> Self {
+    pub(crate) fn new(ctx: &HostContext) -> Self {
         Self {
             ctx: ctx.clone(),
-            host,
             ..Self::default()
         }
     }
@@ -949,13 +939,13 @@ impl Ui {
     /// window that handled the key. Drop the guard before other `Ui`
     /// calls; the `&mut self` borrow enforces that.
     pub fn debug_overlay_mut(&mut self) -> RefMut<'_, DebugOverlayConfig> {
-        self.host.debug_overlay_mut()
+        self.ctx.debug_overlay_mut()
     }
 
     /// This app's current debug overlay. Read by the backend at submit
     /// time and by `Ui::frame` to drive the FPS readout.
     pub(crate) fn debug_overlay(&self) -> DebugOverlayConfig {
-        self.host.debug_overlay()
+        self.ctx.debug_overlay()
     }
 
     /// Whether a window addressed by `token` is currently live. Reflects
@@ -966,7 +956,7 @@ impl Ui {
     /// instead of mirroring the state in app code — a window the user
     /// closed via its titlebar drops out of this set automatically.
     pub fn window_open(&self, token: WindowToken) -> bool {
-        self.host.window_open(token)
+        self.ctx.window_open(token)
     }
 
     // ── Recording (widget-facing) ─────────────────────────────────────
@@ -1306,8 +1296,8 @@ pub mod test_support {
             thread_local! {
                 static SHARED: TextShaper = TextShaper::with_bundled_fonts();
             }
-            let ctx = RenderContext::new(SHARED.with(|c| c.clone()));
-            let mut ui = Self::new(&ctx, HostShared::default());
+            let ctx = HostContext::new(SHARED.with(|c| c.clone()));
+            let mut ui = Self::new(&ctx);
             ui.mark_warm_for_test();
             ui
         }

@@ -18,7 +18,6 @@
 //! the public top-level handle.
 pub mod backend;
 pub(crate) mod caches;
-pub(crate) mod context;
 pub mod frontend;
 pub(crate) mod gradient_atlas;
 pub(crate) mod image_registry;

@@ -32,12 +32,12 @@ use self::queue::Queue;
 use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportPush, build_damage_scissors};
+use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::frame_arena::FrameArena;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
-use crate::renderer::context::RenderContext;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
@@ -141,7 +141,7 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Clone of the shared [`RenderContext`] frame arena (the same one in
+    /// Clone of the shared [`HostContext`] frame arena (the same one in
     /// every window's `Ui`/`Frontend`); the backend reads mesh
     /// vertices/indices from it during upload. Safe to share because
     /// rendering is serialized — one window completes record → submit
@@ -172,7 +172,7 @@ impl WgpuBackend {
         surface.configure(&self.device, config);
     }
 
-    /// Build the one shared GPU renderer from the shared [`RenderContext`]
+    /// Build the one shared GPU renderer from the shared [`HostContext`]
     /// (cloning the frame arena, render caches, shaper, and GPU-stats
     /// handle it needs). Owns the device/queue and every
     /// format-independent GPU resource (pipelines' shaders + buffers, the
@@ -182,13 +182,13 @@ impl WgpuBackend {
     pub(crate) fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
-        ctx: &RenderContext,
+        ctx: &HostContext,
         config: WgpuBackendConfig,
     ) -> Self {
         let WgpuBackendConfig { collect_gpu_stats } = config;
         // Frame arena + render caches are shared with every window's
         // `Ui`/`Frontend` (the backend just holds clones; the canonical
-        // owner is the `RenderContext`). Read here during upload — safe
+        // owner is the `HostContext`). Read here during upload — safe
         // under the serialized-render invariant.
         let frame_arena = ctx.frame_arena.clone();
         let caches = ctx.caches.clone();

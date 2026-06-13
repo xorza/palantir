@@ -56,10 +56,9 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
-use crate::host_shared::HostShared;
+use crate::context::HostContext;
 use crate::input::InputEvent;
 use crate::renderer::backend::WgpuBackend;
-use crate::renderer::context::RenderContext;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
@@ -122,14 +121,10 @@ struct Running<T> {
     /// Shared GPU context (instance / adapter / device / queue; surface
     /// factory).
     gpu: Gpu,
-    /// Shared, GPU-agnostic resources (shaper, frame arena, render caches,
-    /// GPU-stats handle) every window's `Ui` clones; each `WindowRenderer`
-    /// and the backend derive from it.
-    context: RenderContext,
-    /// App-global host state (live-window set + debug overlay). Owned here,
-    /// not on `context`; a clone is threaded into every window's `Ui` at
-    /// construction so all windows share one set.
-    host: HostShared,
+    /// Shared, app-global state (render handles + live-window set + debug
+    /// overlay) every window's `Ui` clones; each `WindowRenderer` and the
+    /// backend (render handles only) derive from it.
+    context: HostContext,
     /// The one shared GPU renderer every window draws through (pipelines,
     /// atlases); passed into each window's `WindowRenderer::frame`.
     backend: WgpuBackend,
@@ -267,7 +262,7 @@ where
         let run = self.running.as_ref().expect("open_window before boot");
         let window = create_window(event_loop, &cfg);
         let ws = run.gpu.make_surface(&window);
-        let renderer = WindowRenderer::new(&run.context, run.host.clone());
+        let renderer = WindowRenderer::new(&run.context);
         self.insert_window(token, window, ws, renderer);
     }
 
@@ -333,15 +328,16 @@ where
     /// (`Ui::debug_overlay_mut`), force every window to repaint so the
     /// change shows on idle ones — they're otherwise damage-`Skip` and
     /// would never pick it up. Runs in `about_to_wait`.
-    fn sync_host_shared(&mut self) {
+    fn sync_host_state(&mut self) {
         let Self {
             running, windows, ..
         } = self;
         let Some(run) = running.as_mut() else {
             return;
         };
-        run.host.set_open_windows(windows.values().map(|w| w.token));
-        if run.host.take_overlay_dirty() {
+        run.context
+            .set_open_windows(windows.values().map(|w| w.token));
+        if run.context.take_overlay_dirty() {
             for win in windows.values_mut() {
                 win.next = FramePresent::Immediate;
             }
@@ -408,13 +404,11 @@ where
             first_surface: ws,
         } = Gpu::create(&window, &boot.config);
         // Shared resources first, then the one shared GPU renderer built
-        // from them; every window's `Ui` + the backend derive from `ctx`.
-        // `host` is the app-global window/overlay state, owned here and
-        // cloned into each window's `Ui`.
-        let ctx = RenderContext::new(TextShaper::with_bundled_fonts());
-        let host = HostShared::default();
+        // from them; every window's `Ui` + the backend derive from `ctx`
+        // (which also carries the app-global window/overlay state).
+        let ctx = HostContext::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
-        let mut renderer = WindowRenderer::new(&ctx, host.clone());
+        let mut renderer = WindowRenderer::new(&ctx);
 
         // Build the app now that the first `Ui` exists.
         let mut app = (boot.build)(&mut renderer.ui, self.handle());
@@ -429,7 +423,6 @@ where
             app,
             gpu,
             context: ctx,
-            host,
             backend,
         });
     }
@@ -439,7 +432,7 @@ where
         self.drain_window_requests(event_loop);
         // Republish the live-window set + broadcast any debug-overlay
         // toggle to the shared host state before scheduling redraws.
-        self.sync_host_shared();
+        self.sync_host_state();
 
         // Fold every window's `FramePresent` into one `ControlFlow`. A
         // window wanting `Immediate` (or `At(t)` already due) gets its
