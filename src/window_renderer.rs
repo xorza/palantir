@@ -8,7 +8,7 @@
 //! pipelines, glyph + gradient atlases, the image texture cache, the
 //! device/queue — live on the **one** shared `WgpuBackend` the host
 //! passes into every method; the GPU-agnostic resources — frame arena,
-//! render caches, shaper, GPU-stats handle — live on the [`RenderContext`]
+//! render caches, shaper, GPU-stats handle — live on the [`HostContext`]
 //! this window's `Ui`/`Frontend` were cloned from. So N windows render
 //! through one GPU renderer; each `WindowRenderer` carries only this
 //! window's data.
@@ -22,15 +22,14 @@
 
 use std::time::Instant;
 
-use crate::host_shared::HostShared;
+use crate::context::HostContext;
 use crate::renderer::backend::{Backbuffer, WgpuBackend};
-use crate::renderer::context::RenderContext;
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
-/// [`Self::new`] from the shared [`RenderContext`]; owns no GPU resources
+/// [`Self::new`] from the shared [`HostContext`]; owns no GPU resources
 /// except its own [`Backbuffer`].
 pub struct WindowRenderer {
     pub ui: Ui,
@@ -77,16 +76,16 @@ pub struct WindowRenderer {
 }
 
 impl WindowRenderer {
-    /// Build a per-window renderer from the shared [`RenderContext`] (its
-    /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches
-    /// / GPU-stats handle) and the host's app-global [`HostShared`] (a
-    /// clone of which the `Ui` keeps, so all windows share one live-window
-    /// set + debug overlay). Independent of the GPU backend — that's only
-    /// needed later, per frame. Owns nothing on the GPU but its backbuffer,
-    /// created lazily on the first submit.
-    pub(crate) fn new(ctx: &RenderContext, host: HostShared) -> Self {
+    /// Build a per-window renderer from the shared [`HostContext`]: its
+    /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches /
+    /// GPU-stats handle, and the `Ui` shares the context's app-global host
+    /// state (live-window set + debug overlay) so all windows agree.
+    /// Independent of the GPU backend — that's only needed later, per frame.
+    /// Owns nothing on the GPU but its backbuffer, created lazily on the
+    /// first submit.
+    pub(crate) fn new(ctx: &HostContext) -> Self {
         Self {
-            ui: Ui::new(ctx, host),
+            ui: Ui::new(ctx),
             frontend: Frontend::new(ctx.frame_arena.clone()),
             backbuffer: None,
             start: Instant::now(),
