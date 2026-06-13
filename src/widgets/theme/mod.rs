@@ -149,7 +149,7 @@ impl Default for Theme {
 
 #[cfg(test)]
 mod tests {
-    use crate::input::ResponseState;
+    use crate::input::response::ResponseState;
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;

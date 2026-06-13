@@ -1,5 +1,6 @@
 pub(crate) mod cascade;
 pub mod damage;
+pub(crate) mod frame;
 pub mod frame_report;
 pub(crate) mod frame_state;
 pub(crate) mod state;
@@ -19,9 +20,10 @@ use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
 use crate::input::policy::InputPolicy;
+use crate::input::response::{InputDelta, ResponseState};
 use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::{KeyboardSense, PointerSense};
-use crate::input::{FocusPolicy, InputDelta, InputEvent, InputState, ResponseState};
+use crate::input::{FocusPolicy, InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::support::TextCtx;
@@ -38,6 +40,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
 use crate::ui::cascade::{Cascades, CascadesEngine};
 use crate::ui::damage::{Damage, DamageEngine, DamageInput};
+use crate::ui::frame::{FramePlan, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
@@ -45,82 +48,6 @@ use crate::widgets::theme::Theme;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use std::cell::RefMut;
 use std::time::Duration;
-
-/// Bitset over wake causes. OR-merged when two requests coalesce
-/// onto the same deadline slot, so the frame-entry classifier can see
-/// every reason behind a fired wake — used to pick `Full` vs
-/// `AnimOnly` processing in [`Ui::frame`]. Bit set, not enum, because
-/// a single deadline can legitimately have both bits at once
-/// (paint-anim quantum aligning with a widget-scheduled wake).
-#[derive(Clone, Copy, Default, Debug, PartialEq, Eq)]
-pub(crate) struct WakeReasons(u8);
-
-impl WakeReasons {
-    /// Caller asked for a wake via [`Ui::request_repaint_after`] —
-    /// state-spring tick, host-driven schedule, widget that owes a
-    /// future paint. Requires a full record + measure + arrange +
-    /// cascade pass.
-    pub(crate) const REAL: Self = Self(1 << 0);
-    /// Paint-anim quantum boundary, filed in [`Ui::post_record`] from
-    /// `Forest::post_record`'s `min_wake`. On its own, only needs a
-    /// damage compute + paint — record/post-record output from the
-    /// prior frame is reused as-is.
-    pub(crate) const ANIM: Self = Self(1 << 1);
-
-    #[inline]
-    pub(crate) fn merge(self, r: Self) -> Self {
-        Self(self.0 | r.0)
-    }
-
-    /// `true` when the only reason set is `ANIM` — the predicate that
-    /// gates [`FrameProcessing::PaintOnly`].
-    #[inline]
-    pub(crate) fn is_anim_only(self) -> bool {
-        self == Self::ANIM
-    }
-}
-
-/// WindowRenderer-supplied per-frame inputs — monotonic time + active
-/// [`Display`]. Single struct so callers pass one argument and
-/// `Ui` carries one `Option<FrameStamp>` for prior-frame state
-/// instead of two parallel fields. `time` is the host's monotonic
-/// clock (driven by the same source between frames); `display`
-/// carries the surface size + scale factor.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct FrameStamp {
-    pub display: Display,
-    pub time: Duration,
-}
-
-impl FrameStamp {
-    pub fn new(display: Display, time: Duration) -> Self {
-        Self { display, time }
-    }
-}
-
-/// One entry on [`Ui::repaint_wakes`].
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct Wake {
-    pub(crate) deadline: Duration,
-    pub(crate) reasons: WakeReasons,
-}
-
-/// What [`Ui::frame`] should do this frame, decided at entry
-/// from fired wake reasons + input state + prior-frame validity.
-/// `PaintOnly` and `FullRecord` are mutually exclusive by construction
-/// — `paint_only ⇒ !force_full` is encoded in the variant shape
-/// instead of relying on two independent bools.
-#[derive(Clone, Copy, Debug)]
-enum FramePlan {
-    /// Skip pre_record / record / finalize / layout / cascade and
-    /// reuse the retained tree + cascades from the prior frame. Only
-    /// fired by the anim-only fast path.
-    PaintOnly,
-    /// Run record + (optional) double-layout + finalize. `force_full`
-    /// is true when the prior frame's damage snapshot must be
-    /// discarded (surface change, missed submit, first frame).
-    FullRecord { force_full: bool },
-}
 
 /// Recorder + input/response broker. All public coordinates are
 /// logical pixels (DIPs); `Display::scale_factor` converts to

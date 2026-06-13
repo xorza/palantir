@@ -1,4 +1,4 @@
-use crate::input::ResponseState;
+use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;

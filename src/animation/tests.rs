@@ -9,7 +9,7 @@ use crate::forest::element::Configure;
 use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::FrameStamp;
+use crate::ui::frame::FrameStamp;
 use crate::widgets::frame::Frame;
 use glam::{UVec2, Vec2};
 use std::time::Duration;

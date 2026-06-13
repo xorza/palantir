@@ -1,5 +1,5 @@
 use crate::animation::{AnimSlot, AnimSpec};
-use crate::input::ResponseState;
+use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;

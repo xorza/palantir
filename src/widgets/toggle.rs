@@ -1,6 +1,6 @@
 use crate::animation::AnimSpec;
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
-use crate::input::ResponseState;
+use crate::input::response::ResponseState;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::corners::Corners;
