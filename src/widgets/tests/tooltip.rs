@@ -14,7 +14,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::FrameStamp;
+use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{Tooltip, TooltipState, place_anchor};

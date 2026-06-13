@@ -22,8 +22,8 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
 use crate::forest::element::Element;
-use crate::input::ResponseState;
 use crate::input::pointer::PointerButton;
+use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::rect::Rect;

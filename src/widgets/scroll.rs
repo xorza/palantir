@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
-use crate::input::ResponseState;
+use crate::input::response::ResponseState;
 use crate::input::sense::Sense;
 use crate::layout::axis::Axis;
 use crate::layout::scroll::{ScrollLayoutState, TrackPage};

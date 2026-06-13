@@ -29,7 +29,8 @@
 use crate::forest::Forest;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
-use crate::forest::tree::{NodeId, TreeItem};
+use crate::forest::tree::NodeId;
+use crate::forest::tree::iter::TreeItem;
 use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;

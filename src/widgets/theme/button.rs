@@ -1,5 +1,5 @@
 use crate::animation::AnimSpec;
-use crate::input::ResponseState;
+use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;

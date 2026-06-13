@@ -25,20 +25,19 @@
 use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::forest::Chrome;
-use crate::forest::element::{BoundsExtras, Element, LayoutCore, LayoutMode, PanelExtras};
+use crate::forest::element::{BoundsExtras, Element, LayoutMode, PanelExtras};
 use crate::forest::node::{NodeRecord, SubtreeEnd};
 use crate::forest::rollups::{NodeHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
-use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
+use crate::forest::shapes::record::ChromeRow;
+use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::forest::tree::paint_anims::PaintAnims;
-use crate::forest::visibility::Visibility;
+use crate::forest::tree::record::{OpenFrame, RecordingScratch, RootSlot};
 use crate::layout::types::track::GridDef;
 use crate::primitives::approx::noop_f32;
-use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
-use glam::Vec2;
 use soa_rs::Soa;
 use std::hash::{Hash, Hasher as _};
 
@@ -50,97 +49,6 @@ impl NodeId {
     pub(crate) fn idx(self) -> usize {
         self.0 as usize
     }
-}
-
-/// One entry on `Tree::open_frames`. Carries the open node's
-/// `NodeId` and a precomputed `disabled` cascade bit
-/// (`parent.ancestor_or_self_disabled || new_node.disabled`) so
-/// `Tree::ancestor_disabled` is an O(1) read. The node's resolved
-/// `WidgetId` is read on demand via `records.widget_id()[node.idx()]`
-/// at the one site that needs it (`Ui::make_persistent_id`).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct OpenFrame {
-    pub(crate) node: NodeId,
-    pub(crate) ancestor_or_self_disabled: bool,
-}
-
-/// Per-layer recording-only state: the ancestor stack and the pending
-/// layer anchor. Lives off `Tree` so every downstream pass holding
-/// `&Tree` is type-prevented from reaching transient state — `Tree`
-/// itself is the finalized output. Cleared by `Forest::pre_record`;
-/// drained at every top-level `close_node`.
-#[derive(Default)]
-pub(crate) struct RecordingScratch {
-    /// Ancestor stack for the currently-open scope. Empty outside the
-    /// `pre_record` ↔ root `close_node` window. Capacity retained across
-    /// frames.
-    ///
-    /// Each frame carries a precomputed `ancestor_or_self_disabled` bit:
-    /// on push, OR the new node's `disabled` with the parent frame's
-    /// bit. That makes [`Self::ancestor_disabled`] a one-element load
-    /// (read from `last()`) instead of an O(depth) walk.
-    pub(crate) open_frames: Vec<OpenFrame>,
-
-    /// Anchor + optional size cap for the active `Forest::push_layer`
-    /// scope. `Some` between `push_layer` and `pop_layer`; root mints
-    /// inside the scope read it (don't consume — multiple roots share
-    /// the same anchor). `None` outside any scope and always on `Main`
-    /// (its implicit root paints the full surface); in that case root
-    /// mints fall through to `PendingAnchor::default()` =
-    /// `(Vec2::ZERO, None)`. `Forest::push_layer` asserts no nesting,
-    /// so a single slot suffices.
-    pub(crate) pending_anchor: Option<PendingAnchor>,
-}
-
-impl RecordingScratch {
-    pub(crate) fn clear(&mut self) {
-        self.open_frames.clear();
-        self.pending_anchor = None;
-    }
-
-    /// True when any currently-open ancestor in the active recording
-    /// scope has `disabled=true`. Lets widgets see inherited-disabled
-    /// at record time, in the *same* frame the ancestor was opened —
-    /// `cascade.disabled` is one frame stale, so without this an
-    /// inherited-disabled child paints alive on first appearance and
-    /// then animates to disabled. O(1): the bit is propagated on
-    /// `open_node` push, so `last()` already encodes the OR over the
-    /// whole open chain.
-    #[inline]
-    pub(crate) fn ancestor_disabled(&self) -> bool {
-        self.open_frames
-            .last()
-            .is_some_and(|f| f.ancestor_or_self_disabled)
-    }
-}
-
-/// One root within a single layer's [`Tree`]. Multiple roots in the
-/// same tree happen for popups (eater + body recorded as two
-/// top-level scopes) and any future `Ui::layer` scope that opens
-/// non-contiguous top-level subtrees in the same layer.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct RootSlot {
-    pub(crate) first_node: NodeId,
-    /// Top-left placement in screen space. `Vec2::ZERO` for `Main`;
-    /// set by `Forest::push_layer` for side layers.
-    pub(crate) anchor: Vec2,
-    /// Caller-supplied size cap (side layers only). `None` means
-    /// "fill from `anchor` to the surface bottom-right" — the dropdown /
-    /// tooltip default. `Some(s)` is anchor-independent: `available =
-    /// min(s, surface)`, so the body can measure against its full
-    /// natural size regardless of where it'll paint. The caller takes
-    /// responsibility for placement in that mode (typically via a
-    /// popup's flip-then-clamp). Always `None` for `Main`.
-    pub(crate) size: Option<Size>,
-}
-
-/// Pending anchor entry for `Tree::pending_anchor`. Populated by
-/// `Forest::push_layer`, consumed by root mints inside the scope, and
-/// cleared by `pop_layer`.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct PendingAnchor {
-    pub(crate) anchor: Vec2,
-    pub(crate) size: Option<Size>,
 }
 
 /// Niche-encoded dense-table slot. `u16::MAX` means "absent"; any
@@ -664,116 +572,6 @@ impl Tree {
     }
 }
 
-pub(crate) struct ChildIter<'a> {
-    layouts: &'a [LayoutCore],
-    ends: &'a [SubtreeEnd],
-    next: u32,
-    end: u32,
-}
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) enum TreeItem<'a> {
-    /// `u32` is the shape's index into `Tree::shapes.records` — used
-    /// by the encoder to look up paint-anim registrations via
-    /// `Tree::paint_anims.by_shape[idx]`. Cascade / testing call sites
-    /// that only care about the record itself can ignore it.
-    ShapeRecord(u32, &'a ShapeRecord),
-    Child(Child),
-}
-
-#[derive(Copy, Clone, Debug)]
-pub(crate) struct Child {
-    pub(crate) id: NodeId,
-    pub(crate) visibility: Visibility,
-}
-
-impl Child {
-    #[inline]
-    pub(crate) fn active(self) -> Option<NodeId> {
-        (!self.visibility.is_collapsed()).then_some(self.id)
-    }
-}
-
-impl<'a> Iterator for ChildIter<'a> {
-    type Item = Child;
-    fn next(&mut self) -> Option<Child> {
-        if self.next >= self.end {
-            return None;
-        }
-        let i = self.next as usize;
-        let visibility = self.layouts[i].visibility();
-        self.next = self.ends[i].end();
-        Some(Child {
-            id: NodeId(i as u32),
-            visibility,
-        })
-    }
-}
-
-pub(crate) struct TreeItems<'a> {
-    shapes_col: &'a [Span],
-    layouts: &'a [LayoutCore],
-    ends: &'a [SubtreeEnd],
-    shapes: &'a [ShapeRecord],
-    cursor: usize,
-    parent_end: usize,
-    next_child_id: u32,
-    subtree_end: u32,
-}
-
-impl<'a> TreeItems<'a> {
-    pub(crate) fn new(
-        records: &'a Soa<NodeRecord>,
-        shapes: &'a [ShapeRecord],
-        node: NodeId,
-    ) -> Self {
-        let shapes_col = records.shape_span();
-        let parent = shapes_col[node.idx()];
-        let ends = records.subtree_end();
-        Self {
-            shapes_col,
-            layouts: records.layout(),
-            ends,
-            shapes,
-            cursor: parent.start as usize,
-            parent_end: (parent.start + parent.len) as usize,
-            next_child_id: node.0 + 1,
-            subtree_end: ends[node.idx()].end(),
-        }
-    }
-}
-
-impl<'a> Iterator for TreeItems<'a> {
-    type Item = TreeItem<'a>;
-    fn next(&mut self) -> Option<TreeItem<'a>> {
-        if self.next_child_id < self.subtree_end {
-            let cs = self.shapes_col[self.next_child_id as usize];
-            let cs_start = cs.start as usize;
-            if self.cursor < cs_start {
-                let idx = self.cursor as u32;
-                let s = &self.shapes[self.cursor];
-                self.cursor += 1;
-                return Some(TreeItem::ShapeRecord(idx, s));
-            }
-            let visibility = self.layouts[self.next_child_id as usize].visibility();
-            let child = Child {
-                id: NodeId(self.next_child_id),
-                visibility,
-            };
-            self.cursor = cs_start + cs.len as usize;
-            self.next_child_id = self.ends[self.next_child_id as usize].end();
-            return Some(TreeItem::Child(child));
-        }
-        if self.cursor < self.parent_end {
-            let idx = self.cursor as u32;
-            let s = &self.shapes[self.cursor];
-            self.cursor += 1;
-            return Some(TreeItem::ShapeRecord(idx, s));
-        }
-        None
-    }
-}
-
 /// Frame-scoped grid storage: track defs (one per `Grid` panel),
 /// addressed by `LayoutMode::Grid(u16)`. Per-track hug arrays live on
 /// `Layout` since the tree is read-only after recording.
@@ -799,11 +597,14 @@ impl GridArena {
     }
 }
 
+pub(crate) mod iter;
 pub(crate) mod paint_anims;
+pub(crate) mod record;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
+    use crate::forest::shapes::record::ShapeRecord;
     use crate::forest::tree::*;
 
     impl Tree {

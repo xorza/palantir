@@ -4,7 +4,8 @@ use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
     text_in_rect,
 };
-use crate::forest::tree::{NodeId, Tree, TreeItem};
+use crate::forest::tree::iter::TreeItem;
+use crate::forest::tree::{NodeId, Tree};
 use crate::layout::LayerLayout;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;

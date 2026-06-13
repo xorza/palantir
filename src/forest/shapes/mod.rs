@@ -14,7 +14,7 @@ use crate::shape::{PolylineColors, Shape};
 /// Each node owns a contiguous sub-range of `records` via
 /// `NodeRecord.shape_span`. The gaps between a node's children's spans
 /// hold that node's direct shapes in record order, which is what
-/// [`crate::forest::tree::TreeItems`] interleaves.
+/// [`crate::forest::tree::iter::TreeItems`] interleaves.
 ///
 /// Bulk variable-length payloads (mesh verts/indices, polyline
 /// points/colors, gradients) live on the `FrameArena` passed into
