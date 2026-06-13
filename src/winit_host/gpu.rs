@@ -113,7 +113,7 @@ impl Gpu {
             collect_gpu_stats: cfg.collect_gpu_stats,
         };
         let size = window.inner_size();
-        let first_surface = gpu.configure_surface(surface, UVec2::new(size.width, size.height));
+        let first_surface = gpu.build_window_surface(surface, UVec2::new(size.width, size.height));
         GpuInit { gpu, first_surface }
     }
 
@@ -125,14 +125,16 @@ impl Gpu {
             .create_surface(window.clone())
             .expect("create surface");
         let size = window.inner_size();
-        self.configure_surface(surface, UVec2::new(size.width, size.height))
+        self.build_window_surface(surface, UVec2::new(size.width, size.height))
     }
 
-    /// Pick an sRGB swapchain format and build the `SurfaceConfiguration`.
-    /// `WindowRenderer::frame` configures the surface lazily on first paint (it
-    /// notices `configured == None`), so no eager `surface.configure`
-    /// here.
-    fn configure_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
+    /// Pick an sRGB swapchain format and bundle `surface` with a fresh
+    /// `SurfaceConfiguration` into a [`WindowSurface`] — *without* calling
+    /// `surface.configure` (distinct from `WgpuBackend::configure_surface`,
+    /// which applies it). `WindowRenderer::frame` applies it lazily on first
+    /// paint (it notices `configured == None`), so there's no eager GPU
+    /// reconfigure here.
+    fn build_window_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
         let caps = surface.get_capabilities(&self.adapter);
         // Color pipeline assumes an sRGB swapchain target — see the
         // colour section of CLAUDE.md. Non-sRGB would skip the GPU

@@ -137,10 +137,10 @@ impl WindowRenderer {
     /// returning. Skip frames bypass surface acquisition entirely.
     ///
     /// All per-frame swapchain inputs ride in on [`FrameTarget`]: the
-    /// surface + its config (which alone defines the physical size), the
-    /// display knobs, and the live sibling-window set. `Display` is built
-    /// from the config here, so its size can never disagree with the
-    /// surface's.
+    /// surface + its config (which alone defines the physical size) and the
+    /// display knobs. `Display` is built from the config here, so its size
+    /// can never disagree with the surface's. (The live-window set + debug
+    /// overlay reach the `Ui` through the shared [`HostContext`], not here.)
     pub fn frame(
         &mut self,
         gpu: &mut WgpuBackend,

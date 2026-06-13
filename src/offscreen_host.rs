@@ -1,8 +1,8 @@
 //! [`OffscreenHost`] — the headless peer of
 //! [`WinitHost`](crate::WinitHost). Like `WinitHost` it owns the one
-//! shared [`WgpuBackend`] + [`HostContext`] and drives a
-//! [`WindowRenderer`]; unlike it there's no winit, no swapchain, and
-//! exactly one window — it renders to a caller-supplied `wgpu::Texture`.
+//! shared [`WgpuBackend`] and drives a [`WindowRenderer`] (built from a
+//! [`HostContext`]); unlike it there's no winit, no swapchain, and exactly
+//! one window — it renders to a caller-supplied `wgpu::Texture`.
 //!
 //! Test/bench-only (gated behind `internals`): the visual harness and the
 //! GPU benches use it because `WgpuBackend` is `pub(crate)` and can't be
