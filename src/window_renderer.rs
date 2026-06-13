@@ -22,11 +22,11 @@
 
 use std::time::Instant;
 
+use crate::host_shared::HostShared;
 use crate::renderer::backend::{Backbuffer, WgpuBackend};
 use crate::renderer::context::RenderContext;
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
-use crate::window::WindowToken;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
@@ -79,13 +79,15 @@ pub struct WindowRenderer {
 impl WindowRenderer {
     /// Build a per-window renderer from the shared [`RenderContext`] (its
     /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches
-    /// / GPU-stats handle). Independent of the GPU backend — that's only
+    /// / GPU-stats handle) and the host's app-global [`HostShared`] (a
+    /// clone of which the `Ui` keeps, so all windows share one live-window
+    /// set + debug overlay). Independent of the GPU backend — that's only
     /// needed later, per frame. Owns nothing on the GPU but its backbuffer,
     /// created lazily on the first submit.
-    pub(crate) fn new(ctx: &RenderContext) -> Self {
+    pub(crate) fn new(ctx: &RenderContext, host: HostShared) -> Self {
         Self {
-            ui: ctx.make_ui(),
-            frontend: ctx.make_frontend(),
+            ui: Ui::new(ctx, host),
+            frontend: Frontend::new(ctx.frame_arena.clone()),
             backbuffer: None,
             start: Instant::now(),
             occluded: false,
@@ -164,7 +166,6 @@ impl WindowRenderer {
             config,
             scale_factor,
             refresh_millihertz,
-            live_windows,
         } = target;
 
         // The surface config is the single source of truth for the
@@ -176,11 +177,6 @@ impl WindowRenderer {
             pixel_snap: true,
             refresh_millihertz,
         };
-
-        // Refresh the snapshot `Ui::window_open` answers from. Retained
-        // Vec, capacity reused — alloc-free once the window set is steady.
-        self.ui.live_windows.clear();
-        self.ui.live_windows.extend_from_slice(live_windows);
 
         // Force a full repaint + surface reconfigure if the swapchain
         // format changed (must run before the reconfigure block + cpu_frame).
@@ -276,7 +272,7 @@ impl WindowRenderer {
             target,
             buffer,
             plan,
-            self.ui.debug_overlay,
+            self.ui.debug_overlay(),
         );
         self.ui.frame_state.mark_submitted();
     }
@@ -352,10 +348,6 @@ pub struct FrameTarget<'a> {
     /// floor so timed wakes never out-pace the panel), or `None` when the
     /// host can't determine it.
     pub refresh_millihertz: Option<u32>,
-    /// Tokens of the windows live as of this frame's start — copied into
-    /// the `Ui` so [`Ui::window_open`](crate::ui::Ui::window_open) answers
-    /// without the `Ui` mirroring host state.
-    pub live_windows: &'a [WindowToken],
 }
 
 /// WindowRenderer scheduling hint returned by [`WindowRenderer::frame`]. Three

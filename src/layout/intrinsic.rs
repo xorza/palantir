@@ -302,7 +302,7 @@ mod tests {
         const SENTINEL: f32 = 1234.5;
         ui.layout_engine.scratch.intrinsics[child.idx()][slot] = SENTINEL;
 
-        let arena = ui.frame_arena.inner();
+        let arena = ui.ctx.frame_arena.inner();
         let v = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             child,
@@ -310,7 +310,7 @@ mod tests {
             LenReq::MinContent,
             &TextCtx {
                 bytes: &arena.fmt_scratch,
-                shaper: &ui.text,
+                shaper: &ui.ctx.shaper,
             },
         );
         drop(arena);
@@ -352,7 +352,7 @@ mod tests {
             entry[slot] = f32::NAN;
         }
 
-        let arena = ui.frame_arena.inner();
+        let arena = ui.ctx.frame_arena.inner();
         let _ = ui.layout_engine.intrinsic(
             ui.forest.tree(Layer::Main),
             root,
@@ -360,7 +360,7 @@ mod tests {
             LenReq::MaxContent,
             &TextCtx {
                 bytes: &arena.fmt_scratch,
-                shaper: &ui.text,
+                shaper: &ui.ctx.shaper,
             },
         );
         drop(arena);

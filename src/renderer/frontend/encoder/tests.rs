@@ -1,7 +1,6 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::frame_arena::FrameArena;
 use crate::forest::shapes::record::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
@@ -15,8 +14,6 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
-use crate::renderer::caches::RenderCaches;
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
@@ -191,7 +188,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     // Points live on the Rc-shared `Ui.frame_arena`; the 2-point line
     // + noop-filtered duplicates leave exactly two entries.
     assert_eq!(
-        ui.frame_arena.inner().polyline_points.len(),
+        ui.ctx.frame_arena.inner().polyline_points.len(),
         2,
         "one 2-point line populates the points arena"
     );
@@ -706,15 +703,9 @@ fn text_in_rect_cases() {
 
 #[test]
 fn encoder_text_alignment_respects_leaf_padding() {
-    use crate::text::TextShaper;
     use crate::widgets::button::Button;
 
-    let mut ui = Ui::new(
-        TextShaper::with_bundled_fonts(),
-        FrameArena::default(),
-        RenderCaches::default(),
-        GpuPassStats::default(),
-    );
+    let mut ui = Ui::for_test_text();
     ui.run_at_acked(UVec2::new(400, 400), |ui| {
         Panel::hstack().auto_id().show(ui, |ui| {
             Button::new()

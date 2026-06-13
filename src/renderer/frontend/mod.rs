@@ -91,7 +91,7 @@ pub mod test_support {
         /// read it on the same frame. Required for benches that want a
         /// full CPU-side frame including encode + compose.
         pub fn for_test_sharing(ui: &Ui) -> Self {
-            Self::new(ui.frame_arena.clone())
+            Self::new(ui.ctx.frame_arena.clone())
         }
 
         /// Drive the full CPU-side frontend (encode + compose) against a

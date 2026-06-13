@@ -6,21 +6,21 @@
 //!
 //! These are owned here — *not* on the backend — so constructing a `Ui`
 //! depends only on the shared UI/render resources, never on the GPU
-//! renderer. The host builds one `RenderContext`, hands it to
-//! `WgpuBackend::new` (which clones what it needs), and makes every
-//! window's `Ui` + `Frontend` from it. All four handles are cheap
-//! Rc/Arc-backed clones, so the backend's and each `Ui`'s copies all point
-//! at one shared set.
+//! renderer. It's a passive resource bag, not a factory: the host builds
+//! one `RenderContext`, hands it to `WgpuBackend::new` (which clones what
+//! it needs) and to `Ui::new` / `Frontend::new` (which pull the handles
+//! they need). All the handles are cheap Rc/Arc-backed clones, so the
+//! backend's and each `Ui`'s copies all point at one shared set.
 
 use crate::forest::frame_arena::FrameArena;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
-use crate::renderer::frontend::Frontend;
 use crate::text::TextShaper;
-use crate::ui::Ui;
 
 /// Shared, GPU-agnostic resources cloned into every window's `Ui` +
-/// `Frontend` and into the one shared backend. One per app.
+/// `Frontend` and into the one shared backend. One per app. Cloning is
+/// cheap — every field is an Rc/Arc-backed handle pointing at one set.
+#[derive(Clone, Default)]
 pub(crate) struct RenderContext {
     pub(crate) shaper: TextShaper,
     pub(crate) frame_arena: FrameArena,
@@ -35,26 +35,7 @@ impl RenderContext {
     pub(crate) fn new(shaper: TextShaper) -> Self {
         Self {
             shaper,
-            frame_arena: FrameArena::default(),
-            caches: RenderCaches::default(),
-            pass_stats: GpuPassStats::default(),
+            ..Default::default()
         }
-    }
-
-    /// A fresh per-window [`Ui`] sharing this context's shaper, frame
-    /// arena, render caches, and GPU-stats handle. No GPU backend needed.
-    pub(crate) fn make_ui(&self) -> Ui {
-        Ui::new(
-            self.shaper.clone(),
-            self.frame_arena.clone(),
-            self.caches.clone(),
-            self.pass_stats.clone(),
-        )
-    }
-
-    /// A fresh per-window [`Frontend`] (CPU encode/compose scratch)
-    /// sharing this context's frame arena.
-    pub(crate) fn make_frontend(&self) -> Frontend {
-        Frontend::new(self.frame_arena.clone())
     }
 }
