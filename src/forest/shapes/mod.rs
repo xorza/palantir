@@ -7,6 +7,7 @@ use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::{PolylineColors, Shape};
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].
@@ -204,17 +205,25 @@ impl Shapes {
                     content_hash,
                 }
             }
-            // Extract the cheap id + redraw epoch; the owning handle the
-            // widget holds is what keeps the off-screen texture alive.
-            Shape::GpuView { handle } => ShapeRecord::GpuView {
-                id: handle.id(),
-                epoch: handle.epoch(),
-            },
         };
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);
         self.records.push(record);
         self.hashes.push(hash);
         Some(idx)
+    }
+
+    /// Append a [`ShapeRecord::GpuView`] directly — the `GpuView` widget's
+    /// `id` + redraw `epoch` come from the per-window
+    /// [`GpuViewRegistry`](crate::renderer::gpu_view::GpuViewRegistry)
+    /// (a `Ui`-level concern), not from a user-facing [`Shape`], so this
+    /// bypasses the [`Self::add`] lowering. Returns the pushed index.
+    pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) -> u32 {
+        let record = ShapeRecord::GpuView { id, epoch };
+        let idx = self.records.len() as u32;
+        let hash = compute_record_hash(&record);
+        self.records.push(record);
+        self.hashes.push(hash);
+        idx
     }
 }

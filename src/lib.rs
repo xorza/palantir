@@ -112,7 +112,7 @@ pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
-pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint, GpuViewHandle};
+pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::{ImageHandle, ImageRegistry};
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 pub use text::cosmic::CosmicMeasure;
