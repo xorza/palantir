@@ -11,7 +11,12 @@
 //! FxHasher won the per-frame hashing micro-shootout against foldhash
 //! (which sponges into a u128 — slower than FxHasher's
 //! rotate-mul-xor per `write_u8` / `write_u32` for our many-small-writes
-//! pattern). Re-evaluate if hash impls switch to bulk byte writes.
+//! pattern). Re-checked after migrating several hot paths to bulk
+//! `write(&[u8])` pod writes (Vec2/Size/Rect/GridCell): FxHasher still
+//! wins ~2.4-3.3x on the realistic node+shape mix and ~2x on `write_u64`
+//! subtree rollups, vs foldhash and ahash. foldhash only edges ahead
+//! (~10%) on contiguous buffers ≥16 B — and our pod writes are almost
+//! all ≤8 B, so the migration never tipped the balance.
 
 use rustc_hash::FxHasher;
 use std::hash::Hasher as _;
