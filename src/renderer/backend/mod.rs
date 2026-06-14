@@ -38,6 +38,7 @@ use crate::forest::frame_arena::FrameArena;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
+use crate::renderer::gpu_view::GpuViewRegistry;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
@@ -392,6 +393,7 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         plan: RenderPlan,
         debug_overlay: DebugOverlayConfig,
+        gpu_views: &mut GpuViewRegistry,
     ) {
         let clear = match plan {
             RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
@@ -529,7 +531,7 @@ impl WgpuBackend {
             // `upload_instances` patches into the composite.
             self.image.reconcile_render_targets(
                 &mut ctx,
-                &self.caches.gpu_views,
+                gpu_views,
                 &buffer.images,
                 buffer.scale,
                 buffer.time,
