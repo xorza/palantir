@@ -45,7 +45,7 @@ use crate::primitives::brush::FillAxis;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
-use crate::renderer::image_registry::ImageId;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 
@@ -332,11 +332,11 @@ pub(crate) struct DrawImagePayload {
     pub(crate) uv_min: glam::Vec2,
     pub(crate) uv_size: glam::Vec2,
     pub(crate) tint: ColorF16,
-    /// The image's registration id ([`ImageId`],
+    /// The image's registration id ([`TextureId`],
     /// a `repr(transparent)` `Pod` `u64`). The backend looks it up in its
-    /// texture cache; `ImageId(0)` (the `Zeroable` default) is "no
+    /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
-    pub(crate) handle: ImageId,
+    pub(crate) handle: TextureId,
     /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
     /// `0` (the common case) samples the UV directly.
     pub(crate) tiled: u32,

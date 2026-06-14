@@ -13,7 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::image_registry::ImageId;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
@@ -355,7 +355,7 @@ pub(crate) enum ShapeRecord {
     Image {
         local_rect: Option<Rect>,
         tint: ColorF16,
-        id: ImageId,
+        id: TextureId,
         /// Intrinsic dims, baked in at registration so the encoder reads
         /// them with no registry borrow.
         size: glam::U16Vec2,
@@ -404,7 +404,7 @@ pub(crate) enum ShapeRecord {
     /// so it reuses the image pipeline end to end. `epoch` bumps when the
     /// view requests a redraw; it's folded into the shape hash so the
     /// change repaints the view's rect.
-    GpuView { id: ImageId, epoch: u64 } = 7,
+    GpuView { id: TextureId, epoch: u64 } = 7,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
@@ -615,21 +615,21 @@ mod tests {
 
     #[test]
     fn shape_image_hash_distinguishes_handle_and_tint() {
-        let make = |id: ImageId, tint: Color| ShapeRecord::Image {
+        let make = |id: TextureId, tint: Color| ShapeRecord::Image {
             local_rect: None,
             tint: ColorF16::from(tint),
             id,
             size: glam::U16Vec2::new(64, 64),
             fit: ImageFit::Fill,
         };
-        let baseline = compute_record_hash(&make(ImageId(0xa), Color::WHITE));
+        let baseline = compute_record_hash(&make(TextureId(0xa), Color::WHITE));
         assert_ne!(
             baseline,
-            compute_record_hash(&make(ImageId(0xb), Color::WHITE))
+            compute_record_hash(&make(TextureId(0xb), Color::WHITE))
         );
         assert_ne!(
             baseline,
-            compute_record_hash(&make(ImageId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
+            compute_record_hash(&make(TextureId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
         );
     }
 }

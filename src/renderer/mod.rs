@@ -30,3 +30,4 @@ pub(crate) mod render_buffer;
 /// vertex layout. Exposed `pub` for the `stroke_tessellate` bench's
 /// `test_support` reach-in path.
 pub mod stroke_tessellate;
+pub(crate) mod texture_id;

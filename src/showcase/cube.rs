@@ -8,7 +8,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 use glam::{Mat4, UVec2, Vec3};
-use palantir::{Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sizing, Text, Ui};
+use palantir::{
+    Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sense, Sizing, Text, Ui,
+};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]
@@ -307,8 +309,11 @@ pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
                 .show(ui);
 
             let paint: Rc<RefCell<dyn GpuPaint>> = cube.clone();
+            // GpuView doesn't sense by default — opt into drag so the
+            // returned `Response` reports the orbit delta.
             let resp = GpuView::new()
                 .continuous()
+                .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, paint);
             if let Some(delta) = resp.drag_delta() {

@@ -3,8 +3,8 @@ use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
-use crate::renderer::image_registry::ImageId;
 use crate::renderer::quad::Quad;
+use crate::renderer::texture_id::TextureId;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};
@@ -233,7 +233,7 @@ pub(crate) struct ImageScene {
 #[derive(Soars, Clone, Copy, Debug, PartialEq)]
 #[soa_derive(Debug)]
 pub(crate) struct ImageDrawRow {
-    pub id: ImageId,
+    pub id: TextureId,
     pub instance: ImageInstance,
 }
 
