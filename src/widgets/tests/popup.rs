@@ -252,6 +252,63 @@ fn popup_near_bottom_flips_upward() {
     );
 }
 
+/// Regression: the flipped placement must reach the **cascade** (what
+/// the encoder paints and damage diffs against), not just `ui.layout`.
+/// The popup's anchor lives on `RootSlot`, outside every node hash, so
+/// pass B's flip changes only the anchor — identical body content. If
+/// `cascade_fingerprint` ignores the anchor, pass B's cascade is reused
+/// from pass A and the popup paints at the un-flipped raw anchor while
+/// `ui.layout` (always re-run) shows the correct flipped rect. The user
+/// sees the popup clipped/mispositioned until an unrelated content
+/// change (mouse hover over an item) forces a cascade recompute. Pin
+/// that the painted position equals the laid-out position.
+#[test]
+fn popup_flip_reaches_cascade_not_just_layout() {
+    use crate::forest::Layer;
+    const SURF: UVec2 = UVec2::new(400, 300);
+    let anchor = Vec2::new(20.0, 280.0); // near the bottom → must flip.
+    let content = Size::new(120.0, 200.0);
+    let body_id = WidgetId::from_hash("cascade-flip-popup");
+    let mut ui = Ui::for_test();
+    let scene = |ui: &mut Ui| {
+        Panel::vstack()
+            .id(WidgetId::from_hash("main-bg"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                Popup::anchored_to(anchor)
+                    .id(body_id)
+                    .padding(0.0)
+                    .size((Sizing::Hug, Sizing::Hug))
+                    .show(ui, |ui, _popup| {
+                        Panel::vstack()
+                            .id(WidgetId::from_hash("cascade-flip-content"))
+                            .size((Sizing::Fixed(content.w), Sizing::Fixed(content.h)))
+                            .show(ui, |_| {});
+                    });
+            });
+    };
+    ui.run_at_acked(SURF, scene);
+
+    let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
+    let body_root = ui.forest.tree(Layer::Popup).roots[1].first_node.idx();
+    let layout_min = ui.layout[Layer::Popup].rect[body_root].min;
+    assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
+
+    // The cascade-backed response rect is what the encoder paints. It
+    // must agree with the layout — a mismatch means the flip didn't
+    // propagate to paint (the reported clipping bug).
+    let painted_min = ui
+        .response_for(body_id)
+        .rect
+        .expect("popup body has a cascade rect after the opening frame")
+        .min;
+    assert_eq!(
+        painted_min, flipped_min,
+        "painted (cascade) popup position must match the flipped layout, \
+         not the stale pre-flip anchor",
+    );
+}
+
 /// Pin: a popup whose body contains a [`crate::Scroll`] placed near a
 /// surface edge settles on the very first frame. `Scroll`'s bar
 /// gutter reservation is constant (not state-driven), so the Hugged
