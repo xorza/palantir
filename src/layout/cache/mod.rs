@@ -201,13 +201,6 @@ impl NodeArenas {
     fn needs_compact(&self) -> bool {
         self.desired.len() > self.live.saturating_mul(COMPACT_RATIO) && self.live > COMPACT_FLOOR
     }
-
-    #[cfg(any(test, feature = "internals"))]
-    pub(crate) fn clear(&mut self) {
-        self.desired.clear();
-        self.text_spans.clear();
-        self.live = 0;
-    }
 }
 
 /// One live snapshot's arena spans, collected into
@@ -461,6 +454,17 @@ impl MeasureCache {
         self.text_shapes_arena.items.truncate(text_w as usize);
 
         self.compact_scratch = scratch;
+    }
+}
+
+/// Test/bench reach-in, gated so the shipping build sees no dead code
+/// (reachable only from the `internals`-gated cache `clear()` paths).
+#[cfg(any(test, feature = "internals"))]
+impl NodeArenas {
+    pub(crate) fn clear(&mut self) {
+        self.desired.clear();
+        self.text_spans.clear();
+        self.live = 0;
     }
 }
 
