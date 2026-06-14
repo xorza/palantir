@@ -265,13 +265,17 @@ impl WindowRenderer {
             self.ui.frame_state.mark_submitted();
             return;
         };
+        // Snapshot the overlay before the disjoint borrows below: `buffer`
+        // borrows `self.frontend`, and `gpu_views` borrows `self.ui` mutably.
+        let debug_overlay = self.ui.debug_overlay();
         let buffer = self.frontend.build(&self.ui, plan);
         gpu.submit(
             &mut self.backbuffer,
             target,
             buffer,
             plan,
-            self.ui.debug_overlay(),
+            debug_overlay,
+            &mut self.ui.gpu_views,
         );
         self.ui.frame_state.mark_submitted();
     }
