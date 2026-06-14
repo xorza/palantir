@@ -396,14 +396,15 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
-    /// App-rendered GPU surface. `id` is the registration id behind a
-    /// [`GpuViewHandle`](crate::renderer::gpu_view::GpuViewHandle) — the
-    /// owning handle the widget holds keeps the off-screen texture alive.
-    /// Composited exactly like [`ShapeRecord::Image`] (the encoder lowers
-    /// it to the same `DrawImage` cmd over the owner's full arranged rect),
-    /// so it reuses the image pipeline end to end. `epoch` bumps when the
-    /// view requests a redraw; it's folded into the shape hash so the
-    /// change repaints the view's rect.
+    /// App-rendered GPU surface. `id` is the view's render-target
+    /// [`TextureId`]; the [`GpuView`](crate::widgets::gpu_view::GpuView)
+    /// widget keeps the off-screen texture alive for as long as it's
+    /// recorded. Composited exactly like [`ShapeRecord::Image`] (the
+    /// encoder lowers it to the same `DrawImage` cmd over the owner's full
+    /// arranged rect), so it reuses the image pipeline end to end. `epoch`
+    /// is the `Ui` frame counter, bumped every painted frame and folded
+    /// into the shape hash, so the view's rect repaints each frame — its
+    /// texture is re-rendered every frame (see `Ui::gpu_view`).
     GpuView { id: TextureId, epoch: u64 } = 7,
 }
 

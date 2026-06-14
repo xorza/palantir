@@ -151,8 +151,10 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
                 }
             }
         }
-        // Registration id identifies the texture; `epoch` changes when the
-        // view asks to redraw, repainting its rect via the damage diff.
+        // `id` identifies the render target; `epoch` is the Ui frame
+        // counter (bumped every painted frame), so the hash differs each
+        // frame and the damage diff repaints the view's rect — its texture
+        // is re-rendered every frame.
         ShapeRecord::GpuView { id, epoch } => {
             h.write_u64(id.0);
             h.write_u64(*epoch);
