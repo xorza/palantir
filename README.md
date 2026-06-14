@@ -15,7 +15,9 @@ Steady-state cost per frame on `frame/cached_cpu` (ASUS ROG, i9-13980HX
 P-core, 5.4 GHz): **~1.75 M instructions retired**, **~586 K cycles**,
 **IPC ≈ 2.99** — measured via `perf stat -e cpu_core/instructions/`.
 
-A short screen recording of the showcase tabs:
+---
+
+A short screen recording of the [showcase](src/showcase) tabs:
 
 https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
 
