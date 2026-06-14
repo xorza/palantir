@@ -5,7 +5,7 @@ wgpu renderer.
 
 Status: pre-1.0, under active development. APIs break freely.
 
-![Showcase screenshot](docs/Screenshot%202026-05-23%20at%2014.48.49.png)
+![Showcase screenshot](docs/frame_bench.png)
 
 Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
@@ -19,6 +19,7 @@ A short screen recording of the showcase tabs:
 
 https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
 
+---
 
 [Darkroom app](https://github.com/xorza/Scenarium/tree/main/darkroom)
 ![Darkroom app screenshot](docs/Screenshot%202026-06-03%20at%2017.16.43.png)
