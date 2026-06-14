@@ -560,7 +560,7 @@ impl Scroll {
         let resp_track_h = ui.response_for(track_id_h);
         let pointer = ui.input.pointer_pos;
 
-        let scroll = {
+        let (scroll, bl) = {
             let row = ui.layout_engine.scroll_states.entry(scroll_id).or_default();
             // Forward the builder-set content margin to the layout
             // driver — measure inflates `content` by these totals so
@@ -643,7 +643,11 @@ impl Scroll {
                 });
                 row.apply_track_page(axis, page);
             }
-            *row
+            // `bl` is derived from content/zoom/outer/padding, none of
+            // which the thumb-drag / track-page steps above mutate (they
+            // only move `offset`), so it's still valid for the record-time
+            // bar geometry below — hand it out instead of recomputing.
+            (*row, bl)
         };
 
         if !scroll.seen {
@@ -660,13 +664,11 @@ impl Scroll {
         let outer_size = scroll.outer;
         let zoom = scroll.zoom;
         let offset = scroll.offset;
-        // Reservation + post-zoom content + bar-main length, all
-        // derived from `outer - reservation - user_padding` rather
-        // than the cached `viewport`. The cached viewport lags by
-        // one arrange pass during cold-mount; this derivation is
-        // stable at record time. Same helper feeds drag math inside
-        // the state-mutation block above.
-        let bl = bar_layout(&scroll, pan, self.element.padding, &theme, self.bar_mode);
+        // `bl` (reservation + post-zoom content + bar-main length) was
+        // computed in the state-mutation block above and is derived from
+        // `outer - reservation - user_padding` rather than the cached
+        // `viewport` (which lags by one arrange pass during cold-mount),
+        // so it's stable at record time and reused as-is here.
         let scaled_content = bl.scaled_content;
         let bar_viewport = bl.bar_viewport;
         let reserve_y = bl.reserve_y;

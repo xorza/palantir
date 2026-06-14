@@ -132,7 +132,7 @@ impl<'a> ComboBox<'a> {
                     }
                 }
             });
-            if resp.dismissed || resp.close_requested {
+            if resp.closed() {
                 ui.state_mut::<ComboState>(id).open = false;
             }
         }
