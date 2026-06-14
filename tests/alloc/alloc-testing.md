@@ -37,8 +37,10 @@ tests/alloc/
 └── alloc-testing.md     this file
 ```
 
-Single test binary (`cargo test --test alloc`); Cargo auto-discovers
-`tests/alloc/main.rs` per the standard project layout.
+Single test binary (`cargo test --test alloc --features internals`);
+Cargo auto-discovers `tests/alloc/main.rs` per the standard project
+layout. The `internals` feature exposes the `Ui::default` the harness
+builds from.
 
 ## How it works
 

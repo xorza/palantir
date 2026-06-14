@@ -33,6 +33,7 @@ use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
 use crate::primitives::image::Image;
 use crate::primitives::size::Size;
+use crate::renderer::gpu_view::{GpuPaint, GpuViewRegistry};
 use crate::renderer::image_registry::ImageHandle;
 
 use crate::debug_overlay::record_frame_stats;
@@ -46,7 +47,8 @@ use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
-use std::cell::RefMut;
+use std::cell::{RefCell, RefMut};
+use std::rc::Rc;
 use std::time::Duration;
 
 /// Recorder + input/response broker. All public coordinates are
@@ -63,6 +65,12 @@ pub struct Ui {
     /// Cross-frame widget state: per-type dense stores keyed by
     /// `WidgetId` (see [`StateMap`]).
     pub(crate) state: StateMap,
+    /// Per-window registry of live `GpuView`s, keyed by `WidgetId` and
+    /// swept by the same `removed` set as [`StateMap`]. Per-window (not on
+    /// the shared `ctx.caches`) so two windows' views at the same call site
+    /// stay on distinct textures; mints from the shared
+    /// `ctx.texture_ids`. Read by the backend at submit.
+    pub(crate) gpu_views: GpuViewRegistry,
     /// App-global shared state cloned from the host at construction: the
     /// render resources (`ctx.shaper` / `ctx.frame_arena` / `ctx.caches` /
     /// `ctx.pass_stats`) and the host state behind it (the live-window set,
@@ -166,13 +174,53 @@ pub struct Ui {
     pub(crate) pending_closes: Vec<WindowToken>,
 }
 
+/// Standalone `Ui` with a fresh private [`HostContext`] (mono-fallback
+/// shaper, its own arena, no backend or host writing to it). Delegates to
+/// [`Ui::new`] so the field list lives in one place.
+///
+/// **Test / bench only** — gated out of the shipping build so a stray
+/// `Ui::default()` (disconnected from any backend) can't slip into app
+/// code, which never constructs a `Ui` itself (the host hands one to
+/// `App::frame`). The alloc audit + the `alloc_free` / `input_throughput`
+/// benches reach it by opting into `internals`.
+#[cfg(any(test, feature = "internals"))]
 impl Default for Ui {
     fn default() -> Self {
+        Self::new(&HostContext::default())
+    }
+}
+
+/// Construction + host-driven frame lifecycle: `frame` and the private
+/// record / clock / classify / cascade / finalize passes it runs. User
+/// code never calls these directly — `WindowRenderer` drives them. The widget
+/// authoring API lives in the second `impl Ui` block below.
+impl Ui {
+    /// Per-frame `dt` clamp (seconds). Stalled frames freeze
+    /// animation tickers instead of teleporting; [`Self::time`]
+    /// still tracks the host's true clock.
+    pub(crate) const MAX_DT: f32 = 0.1;
+
+    /// Construct a per-window `Ui` from the host's shared [`HostContext`]
+    /// — a clone of which the `Ui` keeps. Through it the `Ui` shares the
+    /// same `TextShaper` the wgpu backend uses (so layout-time measurement
+    /// and render-time shaping hit one buffer cache), the same `FrameArena`
+    /// the `Frontend` + `WgpuBackend` see (so every phase reads one set of
+    /// per-frame mesh / polyline bytes), the render caches + GPU-stats, and
+    /// the app-global host state (live-window set + debug overlay) every
+    /// window shares. [`crate::WindowRenderer::new`] calls this.
+    ///
+    /// Tests / standalone callers usually want [`Self::default`] (gated to
+    /// test / `internals`), which builds an isolated `Ui` with mono fallback
+    /// shaper + its own private arena.
+    pub(crate) fn new(ctx: &HostContext) -> Self {
         Self {
+            // Per-window registry minting from the host's shared id source,
+            // so its `TextureId`s match the one backend texture cache.
+            gpu_views: GpuViewRegistry::new(ctx.texture_ids.clone()),
+            ctx: ctx.clone(),
             forest: Default::default(),
             theme: Default::default(),
             state: Default::default(),
-            ctx: Default::default(),
             layout_engine: Default::default(),
             layout: Default::default(),
             cascades: Default::default(),
@@ -197,36 +245,6 @@ impl Default for Ui {
             relayout_requested: false,
             pending_windows: Vec::new(),
             pending_closes: Vec::new(),
-        }
-    }
-}
-
-/// Construction + host-driven frame lifecycle: `frame` and the private
-/// record / clock / classify / cascade / finalize passes it runs. User
-/// code never calls these directly — `WindowRenderer` drives them. The widget
-/// authoring API lives in the second `impl Ui` block below.
-impl Ui {
-    /// Per-frame `dt` clamp (seconds). Stalled frames freeze
-    /// animation tickers instead of teleporting; [`Self::time`]
-    /// still tracks the host's true clock.
-    pub(crate) const MAX_DT: f32 = 0.1;
-
-    /// Construct a per-window `Ui` from the host's shared [`HostContext`]
-    /// — a clone of which the `Ui` keeps. Through it the `Ui` shares the
-    /// same `TextShaper` the wgpu backend uses (so layout-time measurement
-    /// and render-time shaping hit one buffer cache), the same `FrameArena`
-    /// the `Frontend` + `WgpuBackend` see (so every phase reads one set of
-    /// per-frame mesh / polyline bytes), the render caches + GPU-stats, and
-    /// the app-global host state (live-window set + debug overlay) every
-    /// window shares. [`crate::WindowRenderer::new`] calls this.
-    ///
-    /// Tests / standalone callers usually want [`Self::default`], which
-    /// builds an isolated `Ui` with mono fallback shaper + its own private
-    /// arena.
-    pub(crate) fn new(ctx: &HostContext) -> Self {
-        Self {
-            ctx: ctx.clone(),
-            ..Self::default()
         }
     }
 
@@ -692,6 +710,9 @@ impl Ui {
         self.layout_engine.sweep_removed(removed);
         self.state.sweep_removed(removed);
         self.anim.sweep_removed(removed);
+        // Evict GpuViews whose widget vanished → frees their textures next
+        // submit (same `removed` set as every other per-widget cache).
+        self.gpu_views.sweep_removed(removed);
 
         self.input.post_record(&self.cascades);
     }
@@ -912,6 +933,18 @@ impl Ui {
     /// The CPU bytes are dropped right after the upload.
     pub fn register_image(&self, image: Image) -> ImageHandle {
         self.ctx.caches.images.register(image)
+    }
+
+    /// Record a `GpuView` for widget `id`: upsert it into this window's
+    /// [`GpuViewRegistry`] (minting a stable `TextureId` on first sight,
+    /// refreshing the renderer) and append the resulting
+    /// [`ShapeRecord::GpuView`] to the active node. The shape's epoch is the
+    /// `Ui` frame counter, so the view re-renders on every painted frame;
+    /// the app drives continuous animation by calling [`Self::request_repaint`].
+    /// The registry is swept by `post_record` when the widget disappears.
+    pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: Rc<RefCell<dyn GpuPaint>>) {
+        let texture_id = self.gpu_views.upsert(id, paint);
+        self.forest.add_gpu_view(texture_id, self.frame_id);
     }
 
     /// Format `args` directly into the per-frame text arena and return
