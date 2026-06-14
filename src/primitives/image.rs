@@ -2,7 +2,7 @@
 //!
 //! [`Image`] is a decoded pixel buffer and [`ImageFit`] is the
 //! intrinsic-size-to-rect mapping. The stateful lifecycle (registration,
-//! GPU upload/release, the RAII `ImageHandle`, the `ImageId` identity)
+//! GPU upload/release, the RAII `ImageHandle`, the `TextureId` identity)
 //! lives in [`crate::renderer::image_registry`] — `primitives` stays a
 //! pure leaf.
 

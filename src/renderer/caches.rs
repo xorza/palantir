@@ -9,7 +9,8 @@
 
 use crate::renderer::gpu_view::GpuViewRegistry;
 use crate::renderer::gradient_atlas::GradientAtlas;
-use crate::renderer::image_registry::{ImageIdSource, ImageRegistry};
+use crate::renderer::image_registry::ImageRegistry;
+use crate::renderer::texture_id::TextureIdSource;
 
 #[derive(Clone)]
 pub(crate) struct RenderCaches {
@@ -19,7 +20,7 @@ pub(crate) struct RenderCaches {
     /// inside the crate (the `Ui` method + the backend upload path).
     pub(crate) images: ImageRegistry,
     /// App-driven GPU surfaces (the `GpuView` widget). Shares `images`'s
-    /// [`ImageIdSource`] so render-target ids never collide with image ids
+    /// [`TextureIdSource`] so render-target ids never collide with image ids
     /// in the backend's one texture cache. The backend reconciles + paints
     /// these each frame before the main pass.
     pub(crate) gpu_views: GpuViewRegistry,
@@ -33,7 +34,7 @@ impl Default for RenderCaches {
         // One id source, shared by both registries, so a `GpuView` target
         // and a registered image can never land on the same id in the
         // backend's single texture cache.
-        let ids = ImageIdSource::default();
+        let ids = TextureIdSource::default();
         Self {
             images: ImageRegistry::new(ids.clone()),
             gpu_views: GpuViewRegistry::new(ids),
