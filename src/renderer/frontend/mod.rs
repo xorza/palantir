@@ -71,6 +71,9 @@ impl Frontend {
         let mut arena = self.frame_arena.inner_mut();
         self.composer
             .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
+        // Stamp the frame clock for the backend's per-GpuView `dt` (not
+        // derivable from `Display`, so it doesn't ride `start_frame`).
+        self.buffer.time = ui.time;
         &self.buffer
     }
 }

@@ -396,6 +396,15 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
+    /// App-rendered GPU surface. `id` is the registration id behind a
+    /// [`GpuViewHandle`](crate::renderer::gpu_view::GpuViewHandle) — the
+    /// owning handle the widget holds keeps the off-screen texture alive.
+    /// Composited exactly like [`ShapeRecord::Image`] (the encoder lowers
+    /// it to the same `DrawImage` cmd over the owner's full arranged rect),
+    /// so it reuses the image pipeline end to end. `epoch` bumps when the
+    /// view requests a redraw; it's folded into the shape hash so the
+    /// change repaints the view's rect.
+    GpuView { id: ImageId, epoch: u64 } = 7,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
@@ -469,6 +478,11 @@ impl ShapeRecord {
                 min: Vec2::ZERO,
                 size: owner_size,
             }),
+            // Always paints the owner's full arranged rect.
+            ShapeRecord::GpuView { .. } => Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            },
             // Cascade dispatches Text to `text_paint_bbox_local`
             // before reaching this method — a direct call here would
             // silently lose the shaped extent.
@@ -491,6 +505,7 @@ impl ShapeRecord {
             ShapeRecord::Shadow { .. } => 4,
             ShapeRecord::Image { .. } => 5,
             ShapeRecord::Curve { .. } => 6,
+            ShapeRecord::GpuView { .. } => 7,
         }
     }
 }

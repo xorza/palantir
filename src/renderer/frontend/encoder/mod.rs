@@ -368,6 +368,22 @@ fn emit_one_shape(
                 ..bytemuck::Zeroable::zeroed()
             });
         }
+        ShapeRecord::GpuView { id, epoch: _ } => {
+            // Composite the app-rendered off-screen target over the owner's
+            // full arranged rect (full UV, untinted) — the same DrawImage
+            // path as `ShapeRecord::Image`. The backend renders the texture
+            // for `id` just before the main pass; `epoch` only affects the
+            // shape hash (damage), not the emitted draw.
+            out.draw_image(DrawImagePayload {
+                rect: owner_rect,
+                uv_min: glam::Vec2::ZERO,
+                uv_size: glam::Vec2::ONE,
+                tint: ColorF16::from(Color::WHITE),
+                handle: *id,
+                tiled: 0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
     }
 }
 
