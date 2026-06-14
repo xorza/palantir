@@ -55,6 +55,7 @@ required-features = ["internals"]
 [[test]]
 name = "alloc"
 path = "tests/alloc/main.rs"
+required-features = ["internals"]
 
 [[bench]]
 name = "frame"
@@ -64,6 +65,7 @@ required-features = ["internals"]
 [[bench]]
 name = "alloc_free"
 harness = false
+required-features = ["internals"]
 
 [[bench]]
 name = "alloc_resize"
@@ -92,6 +94,7 @@ required-features = ["internals"]
 [[bench]]
 name = "input_throughput"
 harness = false
+required-features = ["internals"]
 
 [[bench]]
 name = "caches"

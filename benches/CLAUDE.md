@@ -68,14 +68,13 @@ partial-encode path is its real workload. `cpu_partial` asserts the
 collapses damage to `Full` fails loudly instead of measuring the wrong
 thing.
 
-Feature gating (see `[[bench]]` entries in `Cargo.toml`):
-- **No features needed**: `alloc_free`, `input_throughput`.
-- **`internals`**: everything else (`frame`, `alloc_resize`,
-  `alloc_free_gpu`, `scrollzoom`, `text_atlas`, `caches`, `damage`).
-  `alloc_resize` needs it for `Ui::for_test_text()` — see below.
+Feature gating (see `[[bench]]` entries in `Cargo.toml`): **every bench
+requires `--features internals`** — they construct via `Ui::default()` /
+`Ui::for_test*()`, all gated behind `internals`. (`alloc_resize` also
+needs it for `Ui::for_test_text()`'s real cosmic-text — see below.)
 
-`cargo bench --no-run` without features only builds `alloc_free` and
-`input_throughput`; everything else requires `--features internals`.
+`cargo bench --no-run` without features builds nothing; pass
+`--features internals`.
 
 ## Allocation invariants (three benches)
 
@@ -111,12 +110,12 @@ below). Two pin a floor and fail; one only measures.
   reallocated ~1.3 MB/frame.
 
 ```sh
-cargo bench --bench alloc_free                              # strict CPU invariant
-cargo bench --bench alloc_free_gpu                          # GPU baseline gate
+cargo bench --bench alloc_free --features internals         # strict CPU invariant
+cargo bench --bench alloc_free_gpu --features internals     # GPU baseline gate
 cargo bench --bench alloc_resize --features internals       # resize-path measurement
-DHAT_DUMP=1 cargo bench --bench alloc_free                  # emits dhat-heap.json on drop
-DHAT_DUMP=1 cargo bench --bench alloc_free_gpu              # same, for the GPU path
-DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals  # same, for the resize path
+DHAT_DUMP=1 cargo bench --bench alloc_free --features internals      # emits dhat-heap.json on drop
+DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals  # same, for the GPU path
+DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals    # same, for the resize path
 ```
 
 If either fails, load `dhat-heap.json` at
