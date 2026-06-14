@@ -76,7 +76,7 @@ fn main() {
 }
 ```
 
-Run the bundled showcase for a tour of every widget:
+Run the bundled [showcase](src/showcase) for a tour of every widget:
 
 ```sh
 cargo run --release
