@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::approx::noop_f32;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::interned_str::InternedStr;
@@ -76,11 +77,20 @@ impl<'a> ToggleSwitch<'a> {
         let inset = theme.indicator_inset;
         let knob_color = theme.indicator;
         let row_gap = theme.row_gap;
-        let geom = switch_geom(track_h, inset);
 
         let fallback_text = ui.theme.text;
         let mut look = look_target.animate(ui, id, fallback_text, anim);
         look.background.corners = Corners::all(track_h * 0.5); // pill track
+
+        // The track's stroke auto-insets the Canvas content box by its
+        // width on every side (`Tree::open_node`), so the knob's declared
+        // position is content-box-relative. Feed the stroke into
+        // `switch_geom` so it subtracts it back out and the knob's margins
+        // stay measured from the pill's outer edge — otherwise the knob
+        // arranges a stroke-width low and to the right of centre.
+        let stroke = look.background.stroke.width;
+        let stroke_inset = if noop_f32(stroke) { 0.0 } else { stroke };
+        let geom = switch_geom(track_h, inset, stroke_inset);
 
         let knob_id = id.with("knob");
         let target_x = if on { geom.on_x } else { geom.off_x };
@@ -104,7 +114,7 @@ impl<'a> ToggleSwitch<'a> {
                 let mut knob = Element::new(LayoutMode::Leaf);
                 knob.salt = Salt::Verbatim(knob_id);
                 knob.size = (Sizing::Fixed(geom.knob), Sizing::Fixed(geom.knob)).into();
-                knob.position = Vec2::new(knob_x, inset);
+                knob.position = Vec2::new(knob_x, geom.knob_y);
                 ui.node(knob_id, knob, Some(&knob_bg), |_| {});
             });
 
@@ -132,50 +142,116 @@ struct SwitchGeom {
     knob: f32,
     off_x: f32,
     on_x: f32,
+    knob_y: f32,
 }
 
-/// Derive the track/knob geometry from the track height and inset. The
-/// knob is `track_h - 2*inset` (floored at 2 px so a degenerate height
-/// can't invert it) and travels from `off_x = inset` to
-/// `on_x = track_w - knob - inset`.
-fn switch_geom(track_h: f32, inset: f32) -> SwitchGeom {
+/// Derive the track/knob geometry from the track height, knob inset, and
+/// the track's `stroke` width. The knob is `track_h - 2*inset` (floored
+/// at 2 px so a degenerate height can't invert it) and, measured from the
+/// pill's outer edge, rests `inset` from the top and from whichever end
+/// it sits against.
+///
+/// Returned x/y are **content-box-relative**: the track's stroke
+/// auto-insets the Canvas content box by `stroke` on every side
+/// (`Tree::open_node`), so each coordinate has `stroke` subtracted to land
+/// the knob back at its intended rect-relative margin. Pass `stroke = 0`
+/// for a borderless track and the coordinates are the plain rect insets.
+fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
     let track_w = track_h * TRACK_ASPECT;
     let knob = (track_h - 2.0 * inset).max(2.0);
     SwitchGeom {
         track_w,
         knob,
-        off_x: inset,
-        on_x: track_w - knob - inset,
+        off_x: inset - stroke,
+        on_x: track_w - knob - inset - stroke,
+        knob_y: inset - stroke,
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::widgets::switch::switch_geom;
+    use crate::Ui;
+    use crate::forest::Layer;
+    use crate::widgets::switch::{ToggleSwitch, switch_geom};
+    use glam::UVec2;
 
-    /// Geometry math: knob diameter, both rest positions, and the
-    /// symmetry of the off/on insets. Hand-computed for the 20 px
-    /// default: track_w = 35, knob = 14, off = 3, on = 18.
+    /// Geometry math for the 20 px default with a 1 px track stroke:
+    /// `track_w = 35`, `knob = 14`. The stroke auto-insets the Canvas
+    /// content box by 1 px on every side (`Tree::open_node`), so the
+    /// returned content-box coords are `off_x = 2`, `on_x = 17`,
+    /// `knob_y = 2`. Re-adding the stroke inset puts the knob exactly
+    /// `inset` (3 px) from every rect edge in both rest states — i.e.
+    /// vertically centred and horizontally symmetric.
     #[test]
     fn switch_geom_default_dimensions() {
-        let g = switch_geom(20.0, 3.0);
+        let (track_h, inset, stroke) = (20.0_f32, 3.0_f32, 1.0_f32);
+        let g = switch_geom(track_h, inset, stroke);
         assert!((g.track_w - 35.0).abs() < 1e-6);
         assert!((g.knob - 14.0).abs() < 1e-6);
+        assert!((g.off_x - 2.0).abs() < 1e-6);
+        assert!((g.on_x - 17.0).abs() < 1e-6);
+        assert!((g.knob_y - 2.0).abs() < 1e-6);
+
+        // Rect-relative margins (re-add the stroke the content box ate):
+        // every one equals `inset`.
+        let margins = [
+            ("off left", stroke + g.off_x),
+            ("on right", g.track_w - (stroke + g.on_x + g.knob)),
+            ("top", stroke + g.knob_y),
+            ("bottom", track_h - (stroke + g.knob_y + g.knob)),
+        ];
+        for (name, m) in margins {
+            assert!(
+                (m - inset).abs() < 1e-6,
+                "{name} margin = {m}, want {inset}"
+            );
+        }
+    }
+
+    /// With no track stroke the content box equals the rect, so the
+    /// coordinates degenerate to the plain rect insets: `off_x = inset`,
+    /// `on_x = track_w - knob - inset`, `knob_y = inset`. Pinning this
+    /// against `switch_geom_default_dimensions` shows the `stroke`
+    /// argument actually moves the coordinates (off_x: 3 → 2).
+    #[test]
+    fn switch_geom_no_stroke_is_rect_relative() {
+        let g = switch_geom(20.0, 3.0, 0.0);
         assert!((g.off_x - 3.0).abs() < 1e-6);
         assert!((g.on_x - 18.0).abs() < 1e-6);
-        // The knob sits the same distance from each end at rest.
-        let right_gap = g.track_w - (g.on_x + g.knob);
-        assert!(
-            (g.off_x - right_gap).abs() < 1e-6,
-            "off/on insets asymmetric"
-        );
+        assert!((g.knob_y - 3.0).abs() < 1e-6);
     }
 
     /// A degenerate height can't drive the knob negative — it floors at
     /// 2 px.
     #[test]
     fn switch_geom_knob_floors_at_two() {
-        let g = switch_geom(4.0, 3.0); // 4 - 6 = -2 → floored
+        let g = switch_geom(4.0, 3.0, 0.0); // 4 - 6 = -2 → floored
         assert!((g.knob - 2.0).abs() < 1e-6);
+    }
+
+    /// Regression: the off-state knob is centred in the track despite the
+    /// track's 1 px stroke auto-insetting the Canvas content box. Before
+    /// the stroke compensation the knob arranged at (4, 4) — 1 px low and
+    /// 1 px right — leaving a 4/2 px top/bottom gap. It must rest `inset`
+    /// (3 px) from every edge: offset (3, 3), 18 px of travel to the right.
+    #[test]
+    fn off_knob_is_centred_in_track() {
+        let mut ui = Ui::for_test();
+        let mut on = false;
+        let root = ui.under_outer(UVec2::new(400, 400), |ui| {
+            ToggleSwitch::new(&mut on).label("Wi-Fi").show(ui).node()
+        });
+        let tree = ui.forest.tree(Layer::Main);
+        let track = tree.children(root).next().unwrap().id;
+        let knob = tree.children(track).next().unwrap().id;
+        let tr = ui.layout[Layer::Main].rect[track.idx()];
+        let kr = ui.layout[Layer::Main].rect[knob.idx()];
+        let left = kr.min.x - tr.min.x;
+        let top = kr.min.y - tr.min.y;
+        let right = (tr.min.x + tr.size.w) - (kr.min.x + kr.size.w);
+        let bottom = (tr.min.y + tr.size.h) - (kr.min.y + kr.size.h);
+        assert_eq!((left, top), (3.0, 3.0), "knob top-left margin");
+        assert_eq!(top, bottom, "knob vertically centred");
+        assert_eq!(right, 18.0, "off knob rests left with 18 px of travel");
     }
 }
