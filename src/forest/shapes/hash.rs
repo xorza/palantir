@@ -67,8 +67,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
                 None => h.write_u8(0),
                 Some(o) => {
                     h.write_u8(1);
-                    h.write_u32(o.x.to_bits());
-                    h.write_u32(o.y.to_bits());
+                    h.pod(o);
                 }
             }
             h.write_u64(*text_hash);
@@ -169,8 +168,6 @@ fn hash_fit(fit: &ImageFit, h: &mut Hasher) {
     };
     h.write_u8(tag);
     if let ImageFit::Tile { offset, scale } = fit {
-        for v in [offset.x, offset.y, scale.x, scale.y] {
-            h.write_u32(v.to_bits());
-        }
+        h.pod(&[offset.x, offset.y, scale.x, scale.y]);
     }
 }

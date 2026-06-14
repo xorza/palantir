@@ -659,13 +659,9 @@ impl Ui {
                 // pass A's pre-flip screen rects (else the popup paints
                 // at the raw anchor until an unrelated content change
                 // forces a recompute).
-                h.write_u32(slot.anchor.x.to_bits());
-                h.write_u32(slot.anchor.y.to_bits());
+                h.pod(&slot.anchor);
                 match slot.size {
-                    Some(s) => {
-                        h.write_u32(s.w.to_bits());
-                        h.write_u32(s.h.to_bits());
-                    }
+                    Some(s) => h.pod(&s),
                     None => h.write_u32(u32::MAX),
                 }
             }
@@ -675,8 +671,7 @@ impl Ui {
         for (wid, st) in self.layout_engine.scroll_states.iter() {
             let mut sh = Hasher::new();
             sh.write_u64(wid.0);
-            sh.write_u32(st.offset.x.to_bits());
-            sh.write_u32(st.offset.y.to_bits());
+            sh.pod(&st.offset);
             sh.write_u32(st.zoom.to_bits());
             scroll_fold ^= sh.finish();
         }

@@ -57,8 +57,7 @@ impl std::hash::Hash for Track {
     #[inline]
     fn hash<H: std::hash::Hasher>(&self, h: &mut H) {
         self.size.hash(h);
-        h.write_u32(self.min.to_bits());
-        h.write_u32(self.max.to_bits());
+        h.write(bytemuck::bytes_of(&[self.min, self.max]));
     }
 }
 
@@ -92,7 +91,6 @@ impl std::hash::Hash for GridDef {
         for t in self.cols.iter() {
             t.hash(h);
         }
-        h.write_u32(self.row_gap.to_bits());
-        h.write_u32(self.col_gap.to_bits());
+        h.write(bytemuck::bytes_of(&[self.row_gap, self.col_gap]));
     }
 }
