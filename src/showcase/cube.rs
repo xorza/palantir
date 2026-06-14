@@ -299,6 +299,9 @@ impl GpuPaint for Cube {
 /// isn't available at construction, so its GPU resources build lazily on
 /// first paint).
 pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
+    // A GpuView re-renders on every painted frame, so keep frames coming to
+    // animate the spin.
+    ui.request_repaint();
     Panel::vstack()
         .auto_id()
         .gap(10.0)
@@ -312,7 +315,6 @@ pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
             // GpuView doesn't sense by default — opt into drag so the
             // returned `Response` reports the orbit delta.
             let resp = GpuView::new()
-                .continuous()
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui, paint);
