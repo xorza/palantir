@@ -79,6 +79,16 @@ Run the bundled showcase for a tour of every widget:
 cargo run --release
 ```
 
+To author your own widget from the public API, see
+[`examples/custom_widget.rs`](examples/custom_widget.rs) — a `Stepper`
+built from `Element` + `Configure`, `Ui::widget_id` / `Ui::node` /
+`Ui::add_shape` / `Ui::response_for`, with nothing reaching into crate
+internals:
+
+```sh
+cargo run --example custom_widget
+```
+
 ## License
 
 Palantir is dual-licensed:
