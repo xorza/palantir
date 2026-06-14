@@ -54,7 +54,7 @@ impl ProgressBar {
             ..Background::fill(theme.fill)
         };
 
-        let id = ui.make_persistent_id(element.salt);
+        let id = ui.widget_id(&element);
         ui.node(id, element, Some(&track), |ui| {
             let fill_id = id.with("fill");
             let mut fill_el = Element::new(LayoutMode::Leaf);

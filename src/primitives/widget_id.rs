@@ -10,7 +10,7 @@ impl WidgetId {
     /// Hard-coded (rather than derived from `auto_stable()` at the
     /// viewport construction site) so refactors to `ui/mod.rs` don't
     /// shift it. Treated like any other parent by
-    /// `Ui::make_persistent_id` — top-level `id_salt("k")` resolves to
+    /// `Ui::widget_id` — top-level `id_salt("k")` resolves to
     /// `VIEWPORT.with(from_hash("k").0)`.
     pub(crate) const VIEWPORT: Self = Self(u64::MAX);
 
@@ -21,8 +21,9 @@ impl WidgetId {
     }
 
     /// Derive a child id by mixing `h` into this id. Useful for nested widgets
-    /// where the parent already has a stable id.
-    pub(crate) fn with(self, h: impl Hash) -> Self {
+    /// where the parent already has a stable id — widget authors use this to
+    /// key the child nodes they open inside their `show` body.
+    pub fn with(self, h: impl Hash) -> Self {
         let mut hasher = FxHasher::default();
         self.0.hash(&mut hasher);
         h.hash(&mut hasher);

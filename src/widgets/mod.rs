@@ -70,7 +70,7 @@ pub(crate) struct WidgetEntry {
 }
 
 pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
-    let id = ui.make_persistent_id(element.salt);
+    let id = ui.widget_id(element);
     let raw = ui.response_for(id);
     let mut merged = raw;
     merged.disabled |= element.flags.is_disabled();
@@ -254,7 +254,7 @@ impl<'a> Response<'a> {
     /// the response state during `.show()` (decorative widgets:
     /// Text, Frame, Panel, Grid).
     #[inline]
-    pub(crate) fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
+    pub fn lazy(id: WidgetId, ui: &'a Ui) -> Self {
         Self {
             id,
             ui,
@@ -267,7 +267,7 @@ impl<'a> Response<'a> {
     /// by widgets that called `ui.response_for(id)` themselves (e.g.
     /// for theme picking) so the caller doesn't re-probe.
     #[inline]
-    pub(crate) fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
+    pub fn eager(id: WidgetId, ui: &'a Ui, state: ResponseState) -> Self {
         Self {
             id,
             ui,

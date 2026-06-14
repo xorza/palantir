@@ -248,7 +248,7 @@ impl MenuItem {
             corners: Corners::ZERO,
             shadow: Shadow::NONE,
         };
-        let id = ui.make_persistent_id(element.salt);
+        let id = ui.widget_id(&element);
         ui.node(id, element, Some(&chrome), |_| {});
         // Decorative separator: response is almost always discarded.
         Response::lazy(id, ui)

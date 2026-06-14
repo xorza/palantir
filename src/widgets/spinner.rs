@@ -72,7 +72,7 @@ impl Spinner {
         let color = self.color.unwrap_or(palette::ACCENT);
         self.element.size = (Sizing::Fixed(size), Sizing::Fixed(size)).into();
 
-        let id = ui.make_persistent_id(self.element.salt);
+        let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
             // Static arc (phase 0) + a paint-time spin: the geometry is
             // identical every frame, so the spinner's subtree stays

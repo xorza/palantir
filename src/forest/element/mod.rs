@@ -394,7 +394,7 @@ const _: () = assert!(
 );
 
 /// Recipe for an [`Element`]'s `WidgetId`. Mirrors egui's
-/// `Option<Id>` "raw `id_salt`, resolve at `Ui::make_persistent_id`"
+/// `Option<Id>` "raw `id_salt`, resolve at `Ui::widget_id`"
 /// pattern: the builder stores the user's intent, resolution happens
 /// at record time when the parent context is known. Three sources:
 ///
@@ -463,11 +463,11 @@ impl Salt {
 pub struct Element {
     // ---- Identity + layout-algorithm selector --------------------------------
     /// Recipe for this node's `WidgetId`. Resolution happens inside
-    /// [`crate::Ui::node`] (and the parallel [`crate::Ui::make_persistent_id`]
+    /// [`crate::Ui::node`] (and the parallel [`crate::Ui::widget_id`]
     /// callable by widgets that need the recorded id pre-`node` for
     /// theme picking / focus / animation slots) — `Element` itself
     /// never carries a resolved id. Mirrors egui's "builder stores
-    /// raw `id_salt`, `Ui::make_persistent_id` mixes in the parent's
+    /// raw `id_salt`, `Ui::widget_id` mixes in the parent's
     /// id at `.show()`" pattern.
     pub(crate) salt: Salt,
     pub(crate) mode: LayoutMode,
@@ -542,8 +542,13 @@ impl Element {
     /// `#[track_caller]`, so `Foo::new()` at the user's source line yields a
     /// distinct id per call site. Override with [`Configure::id_salt`] /
     /// [`Configure::id`] when call order isn't stable across frames.
+    ///
+    /// Public so library users can author their own widgets: build an
+    /// `Element`, chain [`Configure`] setters on it (`Element` itself
+    /// implements `Configure`), resolve its id with [`crate::Ui::widget_id`],
+    /// and open it with [`crate::Ui::node`].
     #[track_caller]
-    pub(crate) fn new(mode: LayoutMode) -> Self {
+    pub fn new(mode: LayoutMode) -> Self {
         Self {
             salt: Salt::Auto(WidgetId::auto_stable()),
             mode,
@@ -788,6 +793,17 @@ pub trait Configure: Sized {
     /// [`Self::clip_rect`].
     fn clip_rounded(self) -> Self {
         self.clip(ClipMode::Rounded)
+    }
+}
+
+/// A bare `Element` is its own configurable builder, so widget authors
+/// can chain the [`Configure`] setters on the child nodes they construct
+/// inside their `show` body — e.g.
+/// `Element::new(LayoutMode::Leaf).id(my_id).size(...).sense(Sense::CLICK)`.
+impl Configure for Element {
+    #[inline]
+    fn element_mut(&mut self) -> &mut Element {
+        self
     }
 }
 

@@ -105,6 +105,9 @@ pub use window_renderer::WindowRenderer;
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
 // (`.x` = width, `.y` = height). Saves consumers a direct `glam` dep.
 pub use glam::UVec2;
+// `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
+// `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
+pub use glam::Vec2;
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;

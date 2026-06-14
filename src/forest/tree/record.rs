@@ -17,7 +17,7 @@ use crate::primitives::size::Size;
 /// [`RecordingScratch::ancestor_disabled`] is an O(1) read. The node's
 /// resolved `WidgetId` is read on demand via
 /// `records.widget_id()[node.idx()]` at the one site that needs it
-/// (`Ui::make_persistent_id`).
+/// (`Ui::widget_id`).
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,

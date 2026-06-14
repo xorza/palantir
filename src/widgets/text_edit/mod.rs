@@ -548,7 +548,7 @@ impl<'a> TextEdit<'a> {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let id = ui.make_persistent_id(self.element.salt);
+        let id = ui.widget_id(&self.element);
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
         // Apply theme padding/margin when the builder hasn't set
