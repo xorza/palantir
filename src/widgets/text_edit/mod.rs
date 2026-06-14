@@ -15,7 +15,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CursorPos, FontFamily};
+use crate::text::{CursorPos, FontFamily, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -245,6 +245,41 @@ impl TextEditState {
     fn sel_range(&self) -> Option<std::ops::Range<usize>> {
         let a = self.selection?;
         Some(a.min(self.caret)..a.max(self.caret))
+    }
+
+    /// Clamp caret + selection anchor into `0..=len` and collapse an
+    /// empty selection (`Some(caret)`) to `None`. Pure repair — safe to
+    /// call before our own mutations (the host-owned buffer may have
+    /// been shrunk externally between frames) as well as after.
+    fn clamp_in_bounds(&mut self, len: usize) {
+        self.caret = self.caret.min(len);
+        if let Some(a) = self.selection {
+            self.selection = Some(a.min(len));
+        }
+        if self.selection == Some(self.caret) {
+            self.selection = None;
+        }
+    }
+
+    /// Re-establish the caret/selection invariants at the end of an
+    /// input pass — the single choke point the scattered mutation sites
+    /// answer to. Clamps into range + collapses the empty selection,
+    /// then asserts both offsets sit on UTF-8 boundaries. The boundary
+    /// half is a `debug_assert` (not a release `assert`/repair): a
+    /// mid-codepoint offset from one of our own edits is a logic bug,
+    /// but the buffer is host-owned, so a release crash on an external
+    /// buffer swap would be asserting on user input.
+    fn normalize(&mut self, text: &str) {
+        self.clamp_in_bounds(text.len());
+        debug_assert!(
+            text.is_char_boundary(self.caret),
+            "TextEdit caret {} off a UTF-8 boundary",
+            self.caret,
+        );
+        debug_assert!(
+            self.selection.is_none_or(|a| text.is_char_boundary(a)),
+            "TextEdit selection anchor off a UTF-8 boundary",
+        );
     }
 }
 
@@ -1041,19 +1076,10 @@ fn handle_input(
     let state = ui
         .state
         .get_or_insert_with::<TextEditState, _>(id, Default::default);
-    // Clamp caret + anchor. WindowRenderer code may have shrunk `*text` between
-    // frames; an OOB anchor would corrupt the selection range derivation.
-    if state.caret > text.len() {
-        state.caret = text.len();
-    }
-    if let Some(a) = state.selection
-        && a > text.len()
-    {
-        state.selection = Some(text.len());
-    }
-    if state.selection == Some(state.caret) {
-        state.selection = None;
-    }
+    // Clamp caret + anchor. WindowRenderer code may have shrunk `*text`
+    // between frames; an OOB anchor would corrupt the selection range
+    // derivation.
+    state.clamp_in_bounds(text.len());
 
     // Click + drag-to-select. On the rising edge of `pressed`, latch the
     // hit caret as the drag anchor and clear any prior selection. On
@@ -1141,6 +1167,7 @@ fn handle_input(
     state.prev_pressed = resp_state.pressed;
 
     if !is_focused {
+        state.normalize(text);
         return InputResult {
             caret: state.caret,
             selection: state.sel_range(),
@@ -1180,39 +1207,13 @@ fn handle_input(
                     *blur_after = true;
                 }
                 if let Some(v) = vert.take() {
-                    let pos = ui.ctx.shaper.cursor_xy(
-                        text,
-                        state.caret,
-                        ctx.font_size,
-                        ctx.line_height_px,
-                        ctx.wrap_target,
-                        ctx.family,
-                        ctx.halign,
-                    );
-                    let probe_y = match v.direction {
-                        VerticalDir::Up => pos.y_top - 1.0,
-                        VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
-                    };
-                    let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
-                        0
-                    } else {
-                        ui.ctx.shaper.byte_at_xy(
-                            text,
-                            pos.x,
-                            probe_y,
-                            ctx.font_size,
-                            ctx.line_height_px,
-                            ctx.wrap_target,
-                            ctx.family,
-                            ctx.halign,
-                        )
-                    };
-                    move_caret(state, target, v.extend);
+                    resolve_vertical_motion(&ui.ctx.shaper, text, state, ctx, v);
                 }
             }
         }
     }
 
+    state.normalize(text);
     InputResult {
         caret: state.caret,
         selection: state.sel_range(),
@@ -1234,6 +1235,50 @@ struct VerticalMotion {
 enum VerticalDir {
     Up,
     Down,
+}
+
+/// Resolve an Up/Down [`VerticalMotion`] against the shaper's 2D
+/// layout: probe one line above/below the caret's current x and move
+/// the caret there (extending the selection if `v.extend`). Up from the
+/// first line snaps to byte 0. Pulled out of the `handle_input`
+/// keyboard loop so that function stays an input dispatcher rather than
+/// half a layout pass; takes the shaper as a disjoint field borrow so
+/// it composes with the loop's live `&mut TextEditState`.
+fn resolve_vertical_motion(
+    shaper: &TextShaper,
+    text: &str,
+    state: &mut TextEditState,
+    ctx: &ShapeCtx,
+    v: VerticalMotion,
+) {
+    let pos = shaper.cursor_xy(
+        text,
+        state.caret,
+        ctx.font_size,
+        ctx.line_height_px,
+        ctx.wrap_target,
+        ctx.family,
+        ctx.halign,
+    );
+    let probe_y = match v.direction {
+        VerticalDir::Up => pos.y_top - 1.0,
+        VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
+    };
+    let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
+        0
+    } else {
+        shaper.byte_at_xy(
+            text,
+            pos.x,
+            probe_y,
+            ctx.font_size,
+            ctx.line_height_px,
+            ctx.wrap_target,
+            ctx.family,
+            ctx.halign,
+        )
+    };
+    move_caret(state, target, v.extend);
 }
 
 /// Route platform shortcuts (undo / redo / select-all / cut / copy /
