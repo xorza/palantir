@@ -14,6 +14,7 @@ use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::time::Duration;
@@ -259,6 +260,19 @@ impl Forest {
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
         let _ = self.trees[layer].shapes.add(shape, arena, atlas);
+    }
+
+    /// Append a `GpuView` shape (a [`ShapeRecord::GpuView`]) to the active
+    /// node. Its `id` + redraw `epoch` come from the `Ui`-owned
+    /// [`GpuViewRegistry`](crate::renderer::gpu_view::GpuViewRegistry), not
+    /// a user-facing [`Shape`], so it skips the lowering path.
+    pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) {
+        let layer = self.current_layer();
+        assert!(
+            !self.scratch[layer].open_frames.is_empty(),
+            "add_gpu_view called with no open node",
+        );
+        let _ = self.trees[layer].shapes.add_gpu_view(id, epoch);
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the
