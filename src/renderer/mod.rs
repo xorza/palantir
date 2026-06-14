@@ -19,6 +19,7 @@
 pub mod backend;
 pub(crate) mod caches;
 pub mod frontend;
+pub(crate) mod gpu_view;
 pub(crate) mod gradient_atlas;
 pub(crate) mod image_registry;
 pub(crate) mod quad;

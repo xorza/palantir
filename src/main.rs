@@ -2,14 +2,16 @@ use palantir::{
     AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shadow, Shortcut,
     Sizing, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
 };
+use std::cell::RefCell;
+use std::rc::Rc;
 
 mod showcase;
 use showcase::app_state::{self, AppState};
 use showcase::{
-    alignment, animations, bezier, buttons, checkbox, clip, context_menu, dialogs, disabled, drag,
-    gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom, pan_zoom_auto,
-    panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider, spacing, switch,
-    text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
+    alignment, animations, bezier, buttons, checkbox, clip, context_menu, cube, dialogs, disabled,
+    drag, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
+    pan_zoom_auto, panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider,
+    spacing, switch, text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
 };
 
 /// Token for the bootstrap window (the showcase itself).
@@ -23,6 +25,9 @@ const INSPECTOR_WINDOW: WindowToken = WindowToken(1);
 struct State {
     active: usize,
     app: AppState,
+    /// Persistent renderer for the `cube` page — its GPU resources build
+    /// lazily on first paint (no device at construction).
+    cube: Rc<RefCell<cube::Cube>>,
 }
 
 /// Each non-stateful showcase: a label for the toolbar button, and a
@@ -32,6 +37,8 @@ struct State {
 type ShowcaseFn = fn(&mut Ui);
 
 const APP_STATE_LABEL: &str = "app state";
+/// Dispatched separately so it can receive the persistent `Cube` renderer.
+const CUBE_LABEL: &str = "cube";
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("text", text::build),
@@ -66,6 +73,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("context menu", context_menu::build),
     ("animations", animations::build),
     (APP_STATE_LABEL, |_ui| {}),
+    (CUBE_LABEL, |_ui| {}),
     ("mesh", mesh::build),
     ("image", image::build),
     ("lines", lines::build),
@@ -101,6 +109,7 @@ impl State {
         State {
             active: 0,
             app: AppState { counter: 0 },
+            cube: Rc::new(RefCell::new(cube::Cube::new())),
         }
     }
 }
@@ -187,6 +196,8 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                     let (label, build_fn) = SHOWCASES[state.active];
                     if label == APP_STATE_LABEL {
                         app_state::build(ui, &mut state.app);
+                    } else if label == CUBE_LABEL {
+                        cube::build(ui, &state.cube);
                     } else {
                         build_fn(ui);
                     }

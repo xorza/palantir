@@ -11,6 +11,7 @@ use crate::primitives::{
     shadow::Shadow,
     stroke::Stroke,
 };
+use crate::renderer::gpu_view::GpuViewHandle;
 use crate::renderer::image_registry::ImageHandle;
 use crate::text::FontFamily;
 use glam::Vec2;
@@ -157,6 +158,15 @@ pub enum Shape<'a> {
         corners: Corners,
         shadow: Shadow,
     },
+    /// App-rendered GPU surface. The `handle` (from
+    /// [`crate::Ui`]'s `GpuView` widget) owns an off-screen texture the
+    /// framework re-renders each painted frame by calling the user's
+    /// [`GpuPaint`](crate::renderer::gpu_view::GpuPaint); this shape
+    /// composites that texture into the owner's full arranged rect,
+    /// reusing the image pipeline (so it clips, rounds, and z-orders like
+    /// any other widget). Authored only by the `GpuView` widget — app
+    /// code drives it through that widget, not by pushing this directly.
+    GpuView { handle: GpuViewHandle },
 }
 
 /// Color source for [`Shape::Polyline`]. Length constraints
@@ -454,6 +464,8 @@ impl Shape<'_> {
             Shape::Shadow {
                 local_rect, shadow, ..
             } => local_rect_paint_empty(local_rect) || shadow.is_noop(),
+            // Always paints its owner's rect; layout handles a zero-size view.
+            Shape::GpuView { .. } => false,
         }
     }
 }

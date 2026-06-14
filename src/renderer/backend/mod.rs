@@ -523,6 +523,17 @@ impl WgpuBackend {
                 &arena.meshes.indices,
                 buffer.meshes.rows.instance(),
             );
+            // Render every live GpuView into its off-screen target on this
+            // same encoder, before the main pass samples it. Must precede
+            // `upload_instances`: it records the per-view UV crops that
+            // `upload_instances` patches into the composite.
+            self.image.reconcile_render_targets(
+                &mut ctx,
+                &self.caches.gpu_views,
+                &buffer.images,
+                buffer.scale,
+                buffer.time,
+            );
             self.image
                 .upload_instances(&mut ctx, buffer.images.rows.instance());
             self.curve.upload(&mut ctx, &buffer.curves);

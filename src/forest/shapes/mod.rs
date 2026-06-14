@@ -204,6 +204,12 @@ impl Shapes {
                     content_hash,
                 }
             }
+            // Extract the cheap id + redraw epoch; the owning handle the
+            // widget holds is what keeps the off-screen texture alive.
+            Shape::GpuView { handle } => ShapeRecord::GpuView {
+                id: handle.id(),
+                epoch: handle.epoch(),
+            },
         };
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);

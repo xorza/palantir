@@ -7,6 +7,7 @@ pub mod checkbox;
 pub mod clip;
 pub mod complex_pan_zoom;
 pub mod context_menu;
+pub mod cube;
 pub mod dialogs;
 pub mod disabled;
 pub mod drag;

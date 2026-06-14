@@ -8,6 +8,7 @@ use crate::renderer::quad::Quad;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};
+use std::time::Duration;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
 /// ready for any rasterizing backend (wgpu, software, headless test capture).
@@ -67,6 +68,11 @@ pub(crate) struct RenderBuffer {
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
     /// so glyphon scales by this when emitting glyph quads.
     pub(crate) scale: f32,
+    /// This frame's monotonic time (window-start `elapsed`), stamped by
+    /// `Frontend::build` from `Ui::time` (not derivable from `Display`).
+    /// The backend diffs it against each `GpuView`'s last paint to derive
+    /// `GpuFrameCtx::dt`.
+    pub(crate) time: Duration,
 }
 
 impl Default for RenderBuffer {
@@ -86,6 +92,7 @@ impl Default for RenderBuffer {
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
+            time: Duration::ZERO,
         }
     }
 }
@@ -111,6 +118,9 @@ impl RenderBuffer {
         self.viewport_phys = display.physical;
         self.viewport_phys_f = display.physical.as_vec2();
         self.scale = display.scale_factor;
+        // Not derivable from `display`; `Frontend::build` stamps the real
+        // value after compose.
+        self.time = Duration::ZERO;
     }
 }
 
