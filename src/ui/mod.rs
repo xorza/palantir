@@ -651,6 +651,23 @@ impl Ui {
         for (_layer, tree) in self.forest.iter_paint_order() {
             for slot in &tree.roots {
                 h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
+                // Layer placement (anchor + measure cap) rides on
+                // `RootSlot`, outside every node hash, yet it feeds
+                // arrange. Fold it so a popup's pass-B flip/clamp —
+                // which changes only the anchor while the body content
+                // is identical — re-runs the cascade instead of reusing
+                // pass A's pre-flip screen rects (else the popup paints
+                // at the raw anchor until an unrelated content change
+                // forces a recompute).
+                h.write_u32(slot.anchor.x.to_bits());
+                h.write_u32(slot.anchor.y.to_bits());
+                match slot.size {
+                    Some(s) => {
+                        h.write_u32(s.w.to_bits());
+                        h.write_u32(s.h.to_bits());
+                    }
+                    None => h.write_u32(u32::MAX),
+                }
             }
         }
         // XOR fold so map iteration order doesn't matter.
