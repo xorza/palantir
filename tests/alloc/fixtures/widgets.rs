@@ -1,7 +1,7 @@
 use crate::harness::audit_steady_state;
 use palantir::{
-    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, Track, Ui,
-    WidgetId,
+    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, TextEdit,
+    Track, Ui, WidgetId,
 };
 use std::rc::Rc;
 
@@ -87,6 +87,22 @@ fn damage_animated_rect_alloc_free() {
 fn static_text_label_alloc_free() {
     audit_steady_state("static_text_label", 0, |ui| {
         Text::new("hello world").auto_id().show(ui);
+    });
+}
+
+/// A `TextEdit` with a stable buffer must record alloc-free in steady
+/// state. Pins the fix that routes the display text through the retained
+/// frame arena (`Ui::intern`) instead of cloning the buffer into a fresh
+/// `String` every frame — the latter allocated proportional to buffer
+/// length on each record pass.
+#[test]
+fn text_edit_alloc_free() {
+    let mut buf = String::from("the quick brown fox jumps over the lazy dog");
+    audit_steady_state("text_edit", 0, move |ui| {
+        TextEdit::new(&mut buf)
+            .id_salt("edit")
+            .size((Sizing::FILL, Sizing::Fixed(28.0)))
+            .show(ui);
     });
 }
 

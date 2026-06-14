@@ -5,12 +5,8 @@ use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::ui::Ui;
-use crate::widgets::theme::palette;
 use glam::Vec2;
 
 /// Pointer senses absorbed by both the backdrop and the card, so no
@@ -32,7 +28,7 @@ const BLOCK: Sense = Sense::CLICK
 pub struct Modal {
     element: Element,
     chrome: Option<Background>,
-    backdrop: Color,
+    backdrop: Option<Color>,
 }
 
 /// Outcome of [`Modal::show`].
@@ -51,9 +47,7 @@ impl Modal {
         Self {
             element,
             chrome: None,
-            // Straight-alpha linear black at 50% — a dim scrim. Black is
-            // identical in sRGB and linear, so `linear_rgba` is exact.
-            backdrop: Color::linear_rgba(0.0, 0.0, 0.0, 0.5),
+            backdrop: None,
         }
     }
 
@@ -63,9 +57,10 @@ impl Modal {
         self
     }
 
-    /// Override the backdrop scrim color.
+    /// Override the backdrop scrim color. `None` (default) inherits
+    /// [`crate::Theme::modal`]'s backdrop.
     pub fn backdrop(mut self, c: Color) -> Self {
-        self.backdrop = c;
+        self.backdrop = Some(c);
         self
     }
 
@@ -74,16 +69,19 @@ impl Modal {
         let root_id = ui.make_persistent_id(self.element.salt);
         let card_id = root_id.with("card");
 
-        let dim = Background::fill(self.backdrop);
-        let card_bg = self.chrome.unwrap_or_else(default_card);
+        let mt = &ui.theme.modal;
+        let dim = Background::fill(self.backdrop.unwrap_or(mt.backdrop));
+        let card_bg = self.chrome.unwrap_or_else(|| mt.card.clone());
+        let theme_padding = mt.padding;
+        let theme_min_width = mt.min_width;
 
         let mut card = self.element;
         card.salt = Salt::Verbatim(card_id);
         if card.padding == Spacing::ZERO {
-            card.padding = Spacing::all(20.0);
+            card.padding = theme_padding;
         }
         if card.min_size.w <= 0.0 {
-            card.min_size.w = 280.0;
+            card.min_size.w = theme_min_width;
         }
 
         ui.layer(Layer::Modal, Vec2::ZERO, Some(surface.size), |ui| {
@@ -109,15 +107,5 @@ impl Modal {
 impl Configure for Modal {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-/// Default dialog card: a raised, rounded surface with a subtle border.
-fn default_card() -> Background {
-    Background {
-        fill: palette::ELEM_HOVER.into(),
-        stroke: Stroke::solid(palette::TEXT_MUTED.with_alpha(0.25), 1.0),
-        corners: Corners::all(12.0),
-        shadow: Shadow::NONE,
     }
 }

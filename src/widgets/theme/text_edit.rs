@@ -8,7 +8,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::{WidgetLook, pick_3};
 
 /// Three-state TextEdit theme. The leaf type ([`WidgetLook`]) lives
 /// next to it; widget reads `theme.{normal,focused,disabled}` based
@@ -61,13 +61,13 @@ impl TextEditTheme {
     /// — caller can merge `state.disabled |= element.disabled` for
     /// lag-free response to its own self-toggle (mirrors Button).
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        if state.disabled {
-            &self.disabled
-        } else if state.focused {
-            &self.focused
-        } else {
-            &self.normal
-        }
+        pick_3(
+            state,
+            state.focused,
+            &self.normal,
+            &self.focused,
+            &self.disabled,
+        )
     }
 }
 

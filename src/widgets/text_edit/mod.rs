@@ -850,9 +850,12 @@ impl<'a> TextEdit<'a> {
             // origin sits at `leaf.min` and the painted extent is the
             // shaped glyph bbox).
             let (display, color) = if text_ptr.is_empty() {
-                (placeholder.clone(), theme.placeholder)
+                (placeholder.clone().into(), theme.placeholder)
             } else {
-                (Cow::Owned(text_ptr.clone()), look.text.color)
+                // Intern the live buffer into the retained frame arena
+                // (a memcpy into `fmt_scratch`, not a per-frame `String`
+                // allocation that scales with buffer length).
+                (ui.intern(text_ptr), look.text.color)
             };
             if !display.is_empty() {
                 ui.add_shape(Shape::Text {
@@ -860,7 +863,7 @@ impl<'a> TextEdit<'a> {
                         pad_l + offset.x - scroll.x,
                         pad_t + offset.y - scroll.y,
                     )),
-                    text: display.into(),
+                    text: display,
                     brush: color.into(),
                     font_size_px: ctx.font_size,
                     line_height_px: ctx.line_height_px,

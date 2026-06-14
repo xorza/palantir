@@ -7,7 +7,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::WidgetLook;
+use crate::widgets::theme::widget_look::{WidgetLook, pick_3};
 
 /// Visuals for [`crate::widgets::popup::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -57,13 +57,13 @@ impl MenuItemTheme {
     }
 
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        if state.disabled {
-            &self.disabled
-        } else if state.hovered {
-            &self.hovered
-        } else {
-            &self.normal
-        }
+        pick_3(
+            state,
+            state.hovered,
+            &self.normal,
+            &self.hovered,
+            &self.disabled,
+        )
     }
 }
 

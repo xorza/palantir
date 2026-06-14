@@ -1,5 +1,6 @@
 pub(crate) mod button;
 pub(crate) mod context_menu;
+pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
@@ -15,6 +16,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::theme::slider::SliderTheme;
@@ -45,6 +47,7 @@ pub struct Theme {
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
     pub context_menu: ContextMenuTheme,
+    pub modal: ModalTheme,
     pub tooltip: TooltipTheme,
     pub progress_bar: ProgressBarTheme,
     pub slider: SliderTheme,
@@ -135,6 +138,7 @@ impl Default for Theme {
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
             context_menu: ContextMenuTheme::default(),
+            modal: ModalTheme::default(),
             tooltip: TooltipTheme::default(),
             progress_bar: ProgressBarTheme::default(),
             slider: SliderTheme::default(),

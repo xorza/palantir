@@ -65,6 +65,18 @@ pub struct PopupResponse {
     pub close_requested: bool,
 }
 
+impl PopupResponse {
+    /// `true` when the popup asked to close this frame — either an
+    /// outside click dismissed it ([`Self::dismissed`]) or a content
+    /// widget called [`PopupHandle::close`] ([`Self::close_requested`]).
+    /// The single close-signal predicate shared by overlay-trigger
+    /// widgets (`ComboBox`, `ContextMenu`) so the dismiss contract lives
+    /// in one place.
+    pub fn closed(&self) -> bool {
+        self.dismissed || self.close_requested
+    }
+}
+
 /// A side-layer container placed at a screen-space point. Records
 /// into [`Layer::Popup`] so it draws above all `Main` siblings,
 /// escapes ancestor clip, and hit-tests on top.

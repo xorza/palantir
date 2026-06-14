@@ -124,6 +124,28 @@ pub(crate) fn pick_4<'a>(
     }
 }
 
+/// Three-state pick precedence for widgets without a pressed slot
+/// ([`crate::widgets::theme::text_edit::TextEditTheme`] keys `mid` on
+/// `focused`, [`crate::widgets::theme::context_menu::MenuItemTheme`] on
+/// `hovered`): disabled > mid > normal. The middle flag is passed in so
+/// the two callers can read different `ResponseState` bits while sharing
+/// the precedence; only `state.disabled` is read here.
+pub(crate) fn pick_3<'a>(
+    state: ResponseState,
+    mid: bool,
+    normal: &'a WidgetLook,
+    mid_look: &'a WidgetLook,
+    disabled: &'a WidgetLook,
+) -> &'a WidgetLook {
+    if state.disabled {
+        disabled
+    } else if mid {
+        mid_look
+    } else {
+        normal
+    }
+}
+
 impl StatefulLook {
     /// Same precedence as `ButtonTheme::pick`: disabled > pressed >
     /// hovered > normal.

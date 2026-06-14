@@ -11,7 +11,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::popup::{ClickOutside, Popup, PopupHandle, PopupResponse};
+use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, WidgetEntry, enter_widget};
@@ -143,18 +143,14 @@ impl ContextMenu {
             .click_outside(ClickOutside::Dismiss)
             .background(panel);
         *popup.element_mut() = e;
-        let PopupResponse {
-            dismissed,
-            close_requested: item_clicked,
-        } = popup.show(ui, body);
-
-        if dismissed || item_clicked {
+        let resp = popup.show(ui, body);
+        if resp.closed() {
             ContextMenu::close(ui, self.for_id);
         }
 
         ContextMenuResponse {
-            dismissed,
-            item_clicked,
+            dismissed: resp.dismissed,
+            item_clicked: resp.close_requested,
         }
     }
 
