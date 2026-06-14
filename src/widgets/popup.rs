@@ -130,12 +130,12 @@ impl Popup {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui, &PopupHandle)) -> PopupResponse {
         // Popup body resolves at the root of `Layer::Popup` (no
-        // open frames in that layer), so `make_persistent_id`'s
+        // open frames in that layer), so `widget_id`'s
         // parent-scoping is a no-op — `body_id` equals the bare
         // salt hash. That keeps the eater id (and any persistent
         // popup-side state) stable regardless of where in `Main`
         // the trigger lives.
-        let body_id = ui.make_persistent_id(self.element.salt);
+        let body_id = ui.widget_id(&self.element);
         let eater_id = body_id.with("eater");
         // Smart placement: read last frame's body size and place the
         // popup so it fits inside the surface. First open has no prior

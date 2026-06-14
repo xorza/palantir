@@ -119,7 +119,7 @@ impl Grid {
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        let id = ui.make_persistent_id(element.salt);
+        let id = ui.widget_id(&element);
         let inner = ui.node(id, element, chrome.as_ref(), body);
         InnerResponse {
             // Decorative: skip eager `response_for`.

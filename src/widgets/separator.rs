@@ -65,7 +65,7 @@ impl Separator {
             self.element.align = Align::v(VAlign::Stretch);
         }
         let chrome = Background::fill(self.color);
-        let id = ui.make_persistent_id(self.element.salt);
+        let id = ui.widget_id(&self.element);
         ui.node(id, self.element, Some(&chrome), |_| {});
         // Decorative: skip the eager `response_for` probe.
         Response::lazy(id, ui)

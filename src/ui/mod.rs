@@ -15,7 +15,7 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::Chrome;
 use crate::forest::Forest;
 use crate::forest::Layer;
-use crate::forest::element::{Element, LayoutMode, Salt};
+use crate::forest::element::{Element, LayoutMode};
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -527,7 +527,7 @@ impl Ui {
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::new(LayoutMode::ZStack);
         viewport.size = Sizing::FILL.into();
-        // Hard-coded `WidgetId::VIEWPORT` — `make_persistent_id` skips
+        // Hard-coded `WidgetId::VIEWPORT` — `widget_id` skips
         // this id as a parent, so user `id_salt("k")` at the top level
         // resolves bare instead of `VIEWPORT.with(salt)`.
         self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
@@ -982,38 +982,35 @@ impl Ui {
         self.forest.pop_layer();
     }
 
-    /// Resolve a [`Salt`] into the `WidgetId` that will be recorded
-    /// into the tree by the matching `ui.node` call. The egui-equivalent
-    /// — same name, same role:
-    /// `ui.make_persistent_id(salt)` returns `parent.with(salt)` (or
-    /// just the salt for `Salt::Auto`/`Salt::Verbatim`) so persistent
-    /// state keys stay stable across frames.
+    /// Resolve `element`'s stable [`WidgetId`] for this frame — the id the
+    /// matching [`Self::node`] call records into the tree. This is the
+    /// public entry a widget author calls first: resolve once, read
+    /// [`Self::response_for`] / per-widget [`Self::state_mut`] against the
+    /// returned id (theme picking off the prior frame, animation slots,
+    /// sub-id derivation), then hand the *same* id to [`Self::node`]. Every
+    /// built-in widget follows this resolve-once-then-`node` shape.
     ///
-    /// **Eagerly disambiguates** via `SeenIds::resolve` — if the salt
-    /// collides with a sibling already recorded this frame, the id
-    /// gets bumped to a fresh occurrence slot. Same contract as
-    /// `Forest::open_node` used to apply: the returned id matches
-    /// what the tree, cascade, and `response_for` will see. Widgets
-    /// can use the returned id for **everything** — pre-node
-    /// `response_for` (theme picking off prior frame), sub-id
-    /// derivation, animation slots, `state_mut`, and post-node
-    /// `response_for`.
+    /// The egui `make_persistent_id` analogue: a [`crate::Configure::id_salt`]
+    /// salt resolves to `parent.with(salt)` (so per-site state stays stable
+    /// across frames); auto / explicit ids resolve as-is. Parent context is
+    /// the most-recently-opened node in the current layer — `Layer::Main`'s
+    /// synthetic viewport counts as a parent with a frame-stable id, so
+    /// widgets get stable ids with no layer carve-out.
     ///
-    /// **Contract**: must be followed by exactly one `ui.node` opening
-    /// a node with this id (carried via
-    /// `element.salt`). The `SeenIds` slot reserved here is paired
-    /// with the next opened node; calling `make_persistent_id` twice
-    /// without an intervening `ui.node` will drift the occurrence
-    /// counter from the actual node-record list.
+    /// **Eagerly disambiguates** via `SeenIds`: a salt colliding with a
+    /// sibling already recorded this frame is bumped to a fresh occurrence
+    /// slot, so the returned id matches what the tree, cascade, and
+    /// `response_for` will see.
     ///
-    /// Parent context is the most-recently-opened node in the current
-    /// layer. `Layer::Main`'s synthetic viewport (`Ui::record_pass`'s
-    /// implicit ZStack) shows up here like any other parent — its
-    /// `Salt::Auto` id is stable across frames (one
-    /// `#[track_caller]` site), so root salts resolve to a fixed
-    /// `viewport_id.with(salt)`. Widgets stay agnostic; they get
-    /// stable ids without a Main-vs-other-layer carve-out.
-    pub(crate) fn make_persistent_id(&mut self, salt: Salt) -> WidgetId {
+    /// **Contract**: follow with exactly one [`Self::node`] opening a node
+    /// with this id — the `SeenIds` slot reserved here pairs with the next
+    /// opened node, so resolving twice without an intervening `node` drifts
+    /// the occurrence counter. Child nodes built with an explicit
+    /// `.id(parent.with("x"))` carry a verbatim id and may pass it straight
+    /// to `node` without a second resolve.
+    #[inline]
+    pub fn widget_id(&mut self, element: &Element) -> WidgetId {
+        let salt = element.salt;
         let scratch = self.forest.current_scratch();
         let tree = self.forest.current_tree();
         let parent = scratch
@@ -1035,10 +1032,14 @@ impl Ui {
     /// `FrameArena::lower_background`, and the no-chrome path is just a
     /// perfectly-predicted `None` branch.
     ///
-    /// `id` must be the [`Self::make_persistent_id`] resolution of
-    /// `element.salt`. Disambiguation already happened there, so this is
-    /// the final id verbatim — no further `SeenIds` work here.
-    pub(crate) fn node<R>(
+    /// `id` must be the [`Self::widget_id`] resolution of `element.salt`
+    /// (or, for a child built with an explicit `.id(parent.with("x"))`,
+    /// that verbatim id). Disambiguation already happened there, so this
+    /// is the final id verbatim — no further `SeenIds` work here.
+    ///
+    /// Public so library users can author their own widgets — see
+    /// `examples/custom_widget.rs`.
+    pub fn node<R>(
         &mut self,
         id: WidgetId,
         element: Element,

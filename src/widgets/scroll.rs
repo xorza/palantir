@@ -462,7 +462,7 @@ impl Scroll {
     }
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
-        let id = ui.make_persistent_id(self.element.salt);
+        let id = ui.widget_id(&self.element);
         let mode = self.element.mode;
         let pan_payload = self.element.mode_payload;
         assert!(

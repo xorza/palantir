@@ -66,7 +66,7 @@ impl Modal {
 
     pub fn show(self, ui: &mut Ui, body: impl FnOnce(&mut Ui)) -> ModalResponse {
         let surface = ui.display().logical_rect();
-        let root_id = ui.make_persistent_id(self.element.salt);
+        let root_id = ui.widget_id(&self.element);
         let card_id = root_id.with("card");
 
         let mt = &ui.theme.modal;

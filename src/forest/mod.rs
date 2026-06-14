@@ -192,7 +192,7 @@ impl Forest {
     }
 
     /// Open a node whose id has already been resolved + disambiguated
-    /// upstream by [`crate::Ui::make_persistent_id`] (which calls
+    /// upstream by [`crate::Ui::widget_id`] (which calls
     /// `SeenIds::resolve` eagerly so the returned id matches what the
     /// tree, cascade, and `response_for` see). This function takes
     /// `widget_id` verbatim, records the endpoint via
@@ -346,7 +346,7 @@ impl Forest {
     }
 
     /// Recording-only scratch for the active layer. Read by
-    /// `Ui::make_persistent_id` (parent lookup) and the disabled
+    /// `Ui::widget_id` (parent lookup) and the disabled
     /// cascade at record time.
     #[inline]
     pub(crate) fn current_scratch(&self) -> &RecordingScratch {
