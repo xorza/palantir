@@ -5,9 +5,9 @@
 //! one texture cache and rides `DrawImagePayload` / `ImageDrawRow`, so it
 //! lives at the renderer level rather than inside any one consumer. Both
 //! [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry) (CPU
-//! images) and [`GpuViewRegistry`](crate::renderer::gpu_view::GpuViewRegistry)
-//! (render targets) mint from one shared [`TextureIdSource`], so their ids
-//! never collide in that cache.
+//! images) and each `GpuView` render target (minted via `Ui::gpu_view` into
+//! the widget's `GpuViewTexId` state slot) draw from one shared
+//! [`TextureIdSource`], so their ids never collide in that cache.
 
 use std::cell::Cell;
 use std::rc::Rc;
@@ -24,12 +24,12 @@ use std::rc::Rc;
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextureId(pub(crate) u64);
 
-/// Shared monotonic source of [`TextureId`]s. Both [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry)
-/// (CPU images) and [`GpuViewRegistry`](crate::renderer::gpu_view::GpuViewRegistry)
-/// (render targets) mint from **one** of these so their ids never collide
-/// in the backend's single texture cache. `WindowRenderer`/`RenderCaches`
-/// build one and clone it into both; cloning shares the counter. Never
-/// hands out `TextureId(0)` (the render path's "no texture" value).
+/// Shared monotonic source of [`TextureId`]s. The [`ImageRegistry`](crate::renderer::image_registry::ImageRegistry)
+/// (CPU images) and each `GpuView` render target (minted via `Ui::gpu_view`)
+/// draw from **one** of these so their ids never collide in the backend's
+/// single texture cache. `WindowRenderer`/`RenderCaches` build one and clone
+/// it into the registry + every window's `Ui`; cloning shares the counter.
+/// Never hands out `TextureId(0)` (the render path's "no texture" value).
 #[derive(Clone, Default)]
 pub(crate) struct TextureIdSource(Rc<Cell<u64>>);
 

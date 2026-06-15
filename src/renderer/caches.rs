@@ -26,9 +26,9 @@ pub(crate) struct RenderCaches {
 impl RenderCaches {
     /// Build the caches with `images` minting from `ids` — the shared
     /// [`TextureIdSource`] owned by [`HostContext`](crate::context::HostContext),
-    /// also handed to each window's `GpuViewRegistry`, so a registered image
-    /// and a `GpuView` target can never land on the same id in the one
-    /// backend texture cache.
+    /// also drawn from by each `GpuView` target (`Ui::gpu_view`), so a
+    /// registered image and a `GpuView` target can never land on the same id
+    /// in the one backend texture cache.
     pub(crate) fn new(ids: TextureIdSource) -> Self {
         Self {
             images: ImageRegistry::new(ids),
