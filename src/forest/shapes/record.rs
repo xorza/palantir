@@ -396,18 +396,18 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
-    /// App-rendered GPU surface. `index` points into
-    /// [`Shapes::gpu_views`](super::GpuViewRecord) for the view's stable
-    /// render-target [`TextureId`] + the app `paint` callback — kept off the
-    /// shape so the hot `records` buffer stays small and `Rc`-free. Composited
-    /// exactly like [`ShapeRecord::Image`] (the encoder lowers it to the same
-    /// `DrawImage` cmd over the owner's full arranged rect), so it reuses the
-    /// image pipeline end to end. `epoch` is the `Ui` frame counter, bumped
-    /// every painted frame and folded into the shape hash (which only sees the
-    /// `ShapeRecord`, so it rides here, not the side store), so the view's rect
-    /// repaints each frame — its texture is re-rendered every frame (see
-    /// `Ui::gpu_view`).
-    GpuView { index: u32, epoch: u64 } = 7,
+    /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
+    /// stable render-target [`TextureId`] + the app `paint` callback live in
+    /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
+    /// reads to look the view up (kept off the shape so the hot `records`
+    /// buffer stays small and `Rc`-free). Composited exactly like
+    /// [`ShapeRecord::Image`] (the encoder lowers it to the same `DrawImage`
+    /// cmd over the owner's full arranged rect), so it reuses the image pipeline
+    /// end to end. `epoch` is the `Ui` frame counter, bumped every painted
+    /// frame and folded into the shape hash (which only sees the `ShapeRecord`,
+    /// so it rides here), so the view's rect repaints each frame — its texture
+    /// is re-rendered every frame (see `Ui::gpu_view`).
+    GpuView { epoch: u64 } = 7,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow

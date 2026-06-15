@@ -151,14 +151,12 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
                 }
             }
         }
-        // `index` identifies the view's slot in `Shapes::gpu_views` (distinct
-        // views → distinct hashes); `epoch` is the Ui frame counter (bumped
-        // every painted frame), so the hash differs each frame and the damage
-        // diff repaints the view's rect — its texture is re-rendered every
-        // frame. The `id` + `paint` live in the side store, which the hash
-        // can't see; `epoch` rides the shape precisely so this stays correct.
-        ShapeRecord::GpuView { index, epoch } => {
-            h.write_u32(*index);
+        // `epoch` is the Ui frame counter (bumped every painted frame), so the
+        // hash differs each frame and the damage diff repaints the view's rect
+        // — its texture is re-rendered every frame. The view's id + paint live
+        // in `Ui::gpu_views`, which the hash can't see; `epoch` rides the shape
+        // precisely so this stays correct.
+        ShapeRecord::GpuView { epoch } => {
             h.write_u64(*epoch);
         }
     }

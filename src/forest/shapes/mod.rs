@@ -6,7 +6,6 @@ use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
-use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{PolylineColors, Shape};
@@ -39,30 +38,12 @@ pub(crate) struct Shapes {
     /// owner's whole paint-rect union. Cleared per frame, capacity
     /// retained.
     pub(crate) hashes: Vec<NodeHash>,
-    /// Side store for `GpuView` paint data, indexed by
-    /// [`ShapeRecord::GpuView::index`]. Keeps the heavy, non-`Pod`
-    /// [`GpuPaintRef`] (a fat `Rc`) out of the hot `records` buffer — a
-    /// `GpuView` shape stays a small `Copy`-shaped `{ index, epoch }`, so
-    /// `records` clears + clones without touching an `Rc`. Cleared per frame,
-    /// capacity retained.
-    pub(crate) gpu_views: Vec<GpuViewRecord>,
-}
-
-/// One `GpuView`'s record-time paint data, held in [`Shapes::gpu_views`] and
-/// reached by [`ShapeRecord::GpuView::index`]: the view's stable backend `id`
-/// plus the app `paint` callback. The redraw `epoch` rides the shape itself
-/// (the damage hash reads it, and the hash only sees the `ShapeRecord`).
-#[derive(Clone, Debug)]
-pub(crate) struct GpuViewRecord {
-    pub(crate) id: TextureId,
-    pub(crate) paint: GpuPaintRef,
 }
 
 impl Shapes {
     pub(crate) fn clear(&mut self) {
         self.records.clear();
         self.hashes.clear();
-        self.gpu_views.clear();
     }
 
     /// Lower a user-facing [`Shape`] and append it to `records`:
@@ -232,17 +213,13 @@ impl Shapes {
         Some(idx)
     }
 
-    /// Append a [`ShapeRecord::GpuView`] directly — the `GpuView` widget's
-    /// stable `id`, app `paint` callback, and redraw `epoch` are assembled by
-    /// `Ui::gpu_view`, not lowered from a user-facing [`Shape`], so this
-    /// bypasses the [`Self::add`] lowering. The `id` + `paint` land in the
-    /// [`Self::gpu_views`] side store; the shape carries only its `index` +
-    /// the `epoch` (which the per-frame damage hash reads). Returns the pushed
-    /// shape index.
-    pub(crate) fn add_gpu_view(&mut self, id: TextureId, paint: GpuPaintRef, epoch: u64) -> u32 {
-        let index = self.gpu_views.len() as u32;
-        self.gpu_views.push(GpuViewRecord { id, paint });
-        let record = ShapeRecord::GpuView { index, epoch };
+    /// Append a [`ShapeRecord::GpuView`] directly — assembled by `Ui::gpu_view`,
+    /// not lowered from a user-facing [`Shape`], so this bypasses the
+    /// [`Self::add`] lowering. The view's `id` + `paint` live in `Ui::gpu_views`
+    /// keyed by the owner's `WidgetId`; the shape carries only `epoch` (which
+    /// the per-frame damage hash reads). Returns the pushed shape index.
+    pub(crate) fn add_gpu_view(&mut self, epoch: u64) -> u32 {
+        let record = ShapeRecord::GpuView { epoch };
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);
         self.records.push(record);
