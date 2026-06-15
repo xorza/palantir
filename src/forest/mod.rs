@@ -272,7 +272,7 @@ impl Forest {
             !self.scratch[layer].open_frames.is_empty(),
             "add_gpu_view called with no open node",
         );
-        let _ = self.trees[layer].shapes.add_gpu_view(epoch);
+        self.trees[layer].shapes.add_gpu_view(epoch);
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the
