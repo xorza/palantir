@@ -14,15 +14,17 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
-use crate::primitives::{corners::Corners, rect::Rect, size::Size};
+use crate::primitives::{corners::Corners, rect::Rect, size::Size, widget_id::WidgetId};
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     GpuFillFields, RenderCmdBuffer,
 };
+use crate::renderer::gpu_view::GpuViewEntry;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::RenderPlan;
+use rustc_hash::FxHashMap;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -98,6 +100,7 @@ pub(crate) fn encode(
             cascade_inputs: layer_cascades.cascade_inputs.as_slice(),
             subtree_paint_rects: layer_cascades.subtree_paint_rects.as_slice(),
             gradients,
+            gpu_views: &ui.gpu_views,
             damage_filter,
             viewport,
             now,
@@ -120,6 +123,10 @@ struct LayerCtx<'a> {
     cascade_inputs: &'a [CascadeInputHash],
     subtree_paint_rects: &'a [Rect],
     gradients: &'a [LoweredGradient],
+    /// Live `GpuView`s by `WidgetId` (one map across layers). A
+    /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
+    /// stable `TextureId` + paint callback up here by the owner node's id.
+    gpu_views: &'a FxHashMap<WidgetId, GpuViewEntry>,
     damage_filter: Option<&'a DamageRegion>,
     viewport: Rect,
     now: Duration,
@@ -358,15 +365,33 @@ fn emit_one_shape(
                 uv_min,
                 uv_size,
             } = resolve_fit(base, size.as_uvec2(), *fit);
-            out.draw_image(DrawImagePayload {
+            out.draw_image(DrawImagePayload::image(
                 rect,
                 uv_min,
                 uv_size,
-                tint: *tint,
-                handle: *id,
-                tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
-                ..bytemuck::Zeroable::zeroed()
-            });
+                *tint,
+                *id,
+                u32::from(matches!(*fit, ImageFit::Tile { .. })),
+            ));
+        }
+        ShapeRecord::GpuView { epoch: _ } => {
+            // A `GpuView` composites exactly like any image — full arranged
+            // rect, untinted, full UV, sampling the view's stable `id` from
+            // the shared texture cache (all encapsulated in `gpu_view`). The
+            // view's `id` + app `paint` callback live in `Ui::gpu_views`, keyed
+            // by the owner node's `WidgetId`; the callback then rides the cmd
+            // buffer's own side channel, linked to this draw by index so the
+            // composer can list the off-screen target in `frame_targets`.
+            // `epoch` only affects the shape hash (damage), not the draw.
+            let wid = ctx.tree.records.widget_id()[id.idx()];
+            let view = &ctx.gpu_views[&wid];
+            let paint_index = out.gpu_view_paints.len() as u32;
+            out.gpu_view_paints.push(view.paint.clone());
+            out.draw_image(DrawImagePayload::gpu_view(
+                owner_rect,
+                view.texture_id,
+                paint_index,
+            ));
         }
     }
 }

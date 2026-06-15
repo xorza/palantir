@@ -9,8 +9,9 @@
 
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
+use crate::renderer::texture_id::TextureIdSource;
 
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct RenderCaches {
     /// Image cache. Authoring code stages bytes once via
     /// [`crate::Ui::register_image`] and references the returned handle
@@ -20,4 +21,18 @@ pub(crate) struct RenderCaches {
     /// Internal gradient LUT cache. Registration is driven from
     /// shape lowering — users never touch this directly.
     pub(crate) gradients: GradientAtlas,
+}
+
+impl RenderCaches {
+    /// Build the caches with `images` minting from `ids` — the shared
+    /// [`TextureIdSource`] owned by [`HostContext`](crate::context::HostContext),
+    /// also drawn from by each `GpuView` target (`Ui::gpu_view`), so a
+    /// registered image and a `GpuView` target can never land on the same id
+    /// in the one backend texture cache.
+    pub(crate) fn new(ids: TextureIdSource) -> Self {
+        Self {
+            images: ImageRegistry::new(ids),
+            gradients: GradientAtlas::default(),
+        }
+    }
 }

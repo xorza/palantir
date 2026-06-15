@@ -13,7 +13,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::image_registry::ImageId;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
 use glam::Vec2;
@@ -355,7 +355,7 @@ pub(crate) enum ShapeRecord {
     Image {
         local_rect: Option<Rect>,
         tint: ColorF16,
-        id: ImageId,
+        id: TextureId,
         /// Intrinsic dims, baked in at registration so the encoder reads
         /// them with no registry borrow.
         size: glam::U16Vec2,
@@ -396,6 +396,18 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
+    /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
+    /// stable render-target [`TextureId`] + the app `paint` callback live in
+    /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
+    /// reads to look the view up (kept off the shape so the hot `records`
+    /// buffer stays small and `Rc`-free). Composited exactly like
+    /// [`ShapeRecord::Image`] (the encoder lowers it to the same `DrawImage`
+    /// cmd over the owner's full arranged rect), so it reuses the image pipeline
+    /// end to end. `epoch` is the `Ui` frame counter, bumped every painted
+    /// frame and folded into the shape hash (which only sees the `ShapeRecord`,
+    /// so it rides here), so the view's rect repaints each frame — its texture
+    /// is re-rendered every frame (see `Ui::gpu_view`).
+    GpuView { epoch: u64 } = 7,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
@@ -469,6 +481,11 @@ impl ShapeRecord {
                 min: Vec2::ZERO,
                 size: owner_size,
             }),
+            // Always paints the owner's full arranged rect.
+            ShapeRecord::GpuView { .. } => Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            },
             // Cascade dispatches Text to `text_paint_bbox_local`
             // before reaching this method — a direct call here would
             // silently lose the shaped extent.
@@ -491,6 +508,7 @@ impl ShapeRecord {
             ShapeRecord::Shadow { .. } => 4,
             ShapeRecord::Image { .. } => 5,
             ShapeRecord::Curve { .. } => 6,
+            ShapeRecord::GpuView { .. } => 7,
         }
     }
 }
@@ -600,21 +618,21 @@ mod tests {
 
     #[test]
     fn shape_image_hash_distinguishes_handle_and_tint() {
-        let make = |id: ImageId, tint: Color| ShapeRecord::Image {
+        let make = |id: TextureId, tint: Color| ShapeRecord::Image {
             local_rect: None,
             tint: ColorF16::from(tint),
             id,
             size: glam::U16Vec2::new(64, 64),
             fit: ImageFit::Fill,
         };
-        let baseline = compute_record_hash(&make(ImageId(0xa), Color::WHITE));
+        let baseline = compute_record_hash(&make(TextureId(0xa), Color::WHITE));
         assert_ne!(
             baseline,
-            compute_record_hash(&make(ImageId(0xb), Color::WHITE))
+            compute_record_hash(&make(TextureId(0xb), Color::WHITE))
         );
         assert_ne!(
             baseline,
-            compute_record_hash(&make(ImageId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
+            compute_record_hash(&make(TextureId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
         );
     }
 }

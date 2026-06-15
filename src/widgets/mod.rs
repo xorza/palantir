@@ -4,6 +4,7 @@ pub(crate) mod combo_box;
 pub(crate) mod context_menu;
 pub(crate) mod drag_value;
 pub(crate) mod frame;
+pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;
 pub(crate) mod panel;

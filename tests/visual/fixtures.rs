@@ -5,6 +5,7 @@
 
 mod damage;
 mod format_change;
+mod gpu_view;
 mod hidpi;
 mod layout;
 mod scroll;

@@ -19,6 +19,7 @@
 pub mod backend;
 pub(crate) mod caches;
 pub mod frontend;
+pub(crate) mod gpu_view;
 pub(crate) mod gradient_atlas;
 pub(crate) mod image_registry;
 pub(crate) mod quad;
@@ -29,3 +30,4 @@ pub(crate) mod render_buffer;
 /// vertex layout. Exposed `pub` for the `stroke_tessellate` bench's
 /// `test_support` reach-in path.
 pub mod stroke_tessellate;
+pub(crate) mod texture_id;

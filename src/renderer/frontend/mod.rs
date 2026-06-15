@@ -47,17 +47,23 @@ pub struct Frontend {
 }
 
 impl Frontend {
-    pub(crate) fn new(frame_arena: FrameArena) -> Self {
+    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
+    /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
+    /// the [`Composer`] which ceils each composited view into `frame_targets`.
+    pub(crate) fn new(frame_arena: FrameArena, max_texture_dim: u32) -> Self {
         Self {
             cmds: RenderCmdBuffer::default(),
-            composer: Composer::default(),
+            composer: Composer::new(max_texture_dim),
             buffer: RenderBuffer::default(),
             frame_arena,
         }
     }
 
-    /// Encode the tree into commands, compose them into the owned
-    /// buffer, and return a borrow of the composed result.
+    /// Encode → compose into the owned buffer; returns a borrow of the result.
+    /// Reads `ui` **immutably** throughout — a `GpuView`'s paint callback rides
+    /// the shape, so compose lists each off-screen target in
+    /// `buffer.frame_targets` (with its callback) directly, no registry — so
+    /// the `Ui` stays frozen after record.
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
         // Two scoped borrows, not one held across both passes: encode
         // only reads the arena (shared borrow), compose appends polyline
@@ -71,6 +77,9 @@ impl Frontend {
         let mut arena = self.frame_arena.inner_mut();
         self.composer
             .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
+        // Stamp the frame clock for the backend's per-GpuView `dt` (not
+        // derivable from `Display`, so it doesn't ride `start_frame`).
+        self.buffer.time = ui.time;
         &self.buffer
     }
 }
@@ -80,10 +89,15 @@ pub mod test_support {
     #![allow(dead_code)]
     use crate::{renderer::frontend::*, ui::Ui};
 
+    /// Baseline `max_texture_dimension_2d` for deviceless test/bench
+    /// frontends — they have no `wgpu::Device` to query, and 8192 is the
+    /// downlevel-default cap real adapters meet or exceed.
+    const TEST_MAX_TEXTURE_DIM: u32 = 8192;
+
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
-            Self::new(FrameArena::default())
+            Self::new(FrameArena::default(), TEST_MAX_TEXTURE_DIM)
         }
 
         /// `Frontend` sharing `ui`'s frame arena. The arena holds per-frame
@@ -91,7 +105,7 @@ pub mod test_support {
         /// read it on the same frame. Required for benches that want a
         /// full CPU-side frame including encode + compose.
         pub fn for_test_sharing(ui: &Ui) -> Self {
-            Self::new(ui.ctx.frame_arena.clone())
+            Self::new(ui.ctx.frame_arena.clone(), TEST_MAX_TEXTURE_DIM)
         }
 
         /// Drive the full CPU-side frontend (encode + compose) against a

@@ -44,8 +44,14 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
-use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
-use crate::renderer::image_registry::ImageId;
+use crate::primitives::{
+    color::{Color, ColorF16},
+    corners::Corners,
+    rect::Rect,
+    transform::TranslateScale,
+};
+use crate::renderer::gpu_view::GpuPaintRef;
+use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
 
@@ -332,22 +338,83 @@ pub(crate) struct DrawImagePayload {
     pub(crate) uv_min: glam::Vec2,
     pub(crate) uv_size: glam::Vec2,
     pub(crate) tint: ColorF16,
-    /// The image's registration id ([`ImageId`],
+    /// The image's registration id ([`TextureId`],
     /// a `repr(transparent)` `Pod` `u64`). The backend looks it up in its
-    /// texture cache; `ImageId(0)` (the `Zeroable` default) is "no
+    /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
-    pub(crate) handle: ImageId,
+    pub(crate) handle: TextureId,
     /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
-    /// `0` (the common case) samples the UV directly.
+    /// `0` (the common case, including a `GpuView`) samples the UV directly.
     pub(crate) tiled: u32,
+    /// An `Option<u32>` `GpuView` link, packed into this `Pod` field (`Option`
+    /// itself isn't `Pod`) as the `+1` niche: `0` = ordinary image (so the
+    /// `Zeroable` default reads as `None`), `n > 0` = a `GpuView` whose
+    /// `GpuPaintRef` is `gpu_view_paints[n - 1]`. Private — set only through
+    /// [`Self::image`] / [`Self::gpu_view`], read only through
+    /// [`Self::gpu_view_paint`], so the niche never leaks. `handle` carries
+    /// the view's stable `TextureId` either way, so the draw + cache path
+    /// stays identical to an image.
+    target: u32,
 }
 
 impl DrawImagePayload {
-    /// Canonical noop predicate — zero-extent rect, fully transparent
-    /// tint, or null handle (paints no pixels, no texture to sample).
+    /// An ordinary image draw — no off-screen target (`target` is `None`).
+    #[inline]
+    pub(crate) fn image(
+        rect: Rect,
+        uv_min: glam::Vec2,
+        uv_size: glam::Vec2,
+        tint: ColorF16,
+        handle: TextureId,
+        tiled: u32,
+    ) -> Self {
+        Self {
+            rect,
+            uv_min,
+            uv_size,
+            tint,
+            handle,
+            tiled,
+            target: 0,
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+
+    /// A `GpuView` composite over its full arranged `rect`: full UV, untinted,
+    /// sampling the view's stable `handle`. `paint_index` (into the cmd
+    /// buffer's `gpu_view_paints`) packs into the `target` niche — the sole
+    /// `+1`, so the composer can list the off-screen target to paint.
+    #[inline]
+    pub(crate) fn gpu_view(rect: Rect, handle: TextureId, paint_index: u32) -> Self {
+        Self {
+            rect,
+            uv_min: glam::Vec2::ZERO,
+            uv_size: glam::Vec2::ONE,
+            tint: ColorF16::from(Color::WHITE),
+            handle,
+            tiled: 0,
+            target: paint_index + 1,
+            ..bytemuck::Zeroable::zeroed()
+        }
+    }
+
+    /// The `GpuView` paint index this draw composites, or `None` for an
+    /// ordinary image — unpacks the `target` niche.
+    #[inline]
+    pub(crate) fn gpu_view_paint(&self) -> Option<u32> {
+        self.target.checked_sub(1)
+    }
+
+    /// Canonical noop predicate — zero-extent rect, fully transparent tint,
+    /// or null handle (paints no pixels, no texture to sample). A `GpuView`
+    /// (`gpu_view_paint().is_some()`) is never null-skipped — its texture is
+    /// framework-painted this frame, not a registered image that could have
+    /// been dropped.
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
-        self.rect.is_paint_empty() || self.tint.is_noop() || self.handle.0 == 0
+        self.rect.is_paint_empty()
+            || self.tint.is_noop()
+            || (self.handle.0 == 0 && self.gpu_view_paint().is_none())
     }
 }
 
@@ -403,6 +470,11 @@ pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
     pub(crate) data: Vec<u32>,
+    /// Side channel the Pod `data` stream can't hold: one `GpuPaintRef` per
+    /// `GpuView` draw, in emission order. A `DrawImage` with `target = n`
+    /// references index `n - 1` here; the composer forwards the callback into
+    /// `RenderBuffer.frame_targets`. Cleared per frame with the rest.
+    pub(crate) gpu_view_paints: Vec<GpuPaintRef>,
 }
 
 impl RenderCmdBuffer {
@@ -410,6 +482,7 @@ impl RenderCmdBuffer {
         self.kinds.clear();
         self.starts.clear();
         self.data.clear();
+        self.gpu_view_paints.clear();
     }
 
     #[inline]

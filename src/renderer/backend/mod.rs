@@ -385,6 +385,13 @@ impl WgpuBackend {
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
     #[profiling::function]
+    /// Device limit `max_texture_dimension_2d`, read by the frontend `Composer`
+    /// to cap each `GpuView`'s off-screen-target size (ceiled from the composed
+    /// paint rect). The only backend-owned input the composer needs.
+    pub(crate) fn max_texture_dim(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
     pub(crate) fn submit(
         &mut self,
         backbuffer: &mut Option<Backbuffer>,
@@ -525,6 +532,14 @@ impl WgpuBackend {
             );
             self.image
                 .upload_instances(&mut ctx, buffer.images.rows.instance());
+            // Paint every GpuView composited this frame into its off-screen
+            // target on this same encoder, before the main pass samples it.
+            // The composer listed them in `buffer.frame_targets` (size + paint
+            // callback); this allocates each + runs its callback, then evicts
+            // targets absent from `frame_targets`. `submit` itself carries no
+            // render-target logic.
+            self.image
+                .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.scale, buffer.time);
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if !damage_scissors.is_empty() {

@@ -12,7 +12,8 @@ use crate::renderer::frontend::cmd_buffer::{
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
     CurveBatch, CurveInstance, DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch,
-    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RenderTargetDraw, RoundedClip, TextBatch,
+    TextRun,
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
@@ -101,6 +102,11 @@ pub(crate) struct Composer {
     /// pushed into the in-flight group and the sweep that drops earlier
     /// quads they fully cover. See [`OcclusionPruner`].
     occlusion: OcclusionPruner,
+    /// Device `max_texture_dimension_2d`, the cap on a `GpuView` off-screen
+    /// target's size — the composer ceils each composited `GpuView`'s
+    /// physical rect into `RenderBuffer.frame_targets`, clamped to this. Fixed
+    /// for the device's lifetime, so it rides the ctor, not every compose.
+    max_texture_dim: u32,
 }
 
 #[derive(Clone, Copy)]
@@ -152,6 +158,15 @@ struct OpenBatch {
 }
 
 impl Composer {
+    /// New composer capped at the device's `max_texture_dimension_2d` (the
+    /// `GpuView` target-size ceiling). All scratch starts empty.
+    pub(crate) fn new(max_texture_dim: u32) -> Self {
+        Self {
+            max_texture_dim,
+            ..Default::default()
+        }
+    }
+
     /// Close the in-flight group: if anything was emitted into it,
     /// push a `DrawGroup` covering the open slice; either way advance
     /// the per-kind cursors and clear the overlap scratches. Scissor
@@ -613,7 +628,10 @@ impl Composer {
                     out.images.rows.push(ImageDrawRow {
                         // Just the registration id — the backend looks it
                         // up in its texture cache; the encoder already
-                        // resolved fit into `rect` + UV.
+                        // resolved fit into `rect` + UV. A `GpuView` row is
+                        // identical (its `id` is the off-screen target's),
+                        // so the draw stays uniform; `target` below only
+                        // schedules the off-screen paint.
                         id: p.handle,
                         instance: ImageInstance {
                             rect: phys_rect,
@@ -624,6 +642,21 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
+                    // A `GpuView` also needs its off-screen target painted:
+                    // list it with the used physical size (ceiled ≥1, clamped
+                    // to the device max) + the app paint callback from the cmd
+                    // buffer's side channel. The draw above already composites
+                    // the result by `id`.
+                    if let Some(paint_index) = p.gpu_view_paint() {
+                        let cap = self.max_texture_dim as i64;
+                        let px = |v: f32| (v.ceil() as i64).clamp(1, cap) as u32;
+                        let s = phys_rect.size;
+                        out.frame_targets.push(RenderTargetDraw {
+                            id: p.handle,
+                            used: UVec2::new(px(s.w), px(s.h)),
+                            paint: cmds.gpu_view_paints[paint_index as usize].clone(),
+                        });
+                    }
                     // Track for paint-order overlap with mesh-tier draws.
                     self.higher_kind_rects.push(image_urect);
                 }
