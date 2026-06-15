@@ -103,7 +103,7 @@ impl std::fmt::Debug for ImageHandle {
 #[derive(Clone)]
 pub struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,
-    /// Shared id source — also handed to `GpuViewRegistry` so the two
+    /// Shared id source — also drawn from by each `GpuView` target so the two
     /// never mint colliding ids (see [`TextureIdSource`]).
     ids: TextureIdSource,
 }
@@ -122,8 +122,8 @@ struct Inner {
 }
 
 impl ImageRegistry {
-    /// Build a registry minting from `ids`. Share the same [`TextureIdSource`]
-    /// with the `GpuViewRegistry` so their ids can't collide.
+    /// Build a registry minting from `ids`. Shares the same [`TextureIdSource`]
+    /// with `GpuView` target minting (`Ui::gpu_view`) so their ids can't collide.
     pub(crate) fn new(ids: TextureIdSource) -> Self {
         Self {
             inner: Rc::new(RefCell::new(Inner::default())),

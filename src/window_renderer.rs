@@ -281,10 +281,9 @@ impl WindowRenderer {
             self.ui.frame_state.mark_submitted();
             return;
         };
-        // The CPU phase already composed + resolved `GpuView`s into
-        // `self.frontend.buffer` (see `cpu_frame`); this is GPU submit only.
-        // `buffer` borrows `self.frontend`, `gpu_views` borrows `self.ui` —
-        // disjoint fields.
+        // The CPU phase already composed `GpuView`s into
+        // `self.frontend.buffer.frame_targets` (callback + size — see
+        // `cpu_frame`); this is GPU submit only.
         let debug_overlay = self.ui.debug_overlay();
         gpu.submit(
             &mut self.backbuffer,
@@ -292,7 +291,6 @@ impl WindowRenderer {
             &self.frontend.buffer,
             plan,
             debug_overlay,
-            &mut self.ui.gpu_views,
         );
         self.ui.frame_state.mark_submitted();
     }

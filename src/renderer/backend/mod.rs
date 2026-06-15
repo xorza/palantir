@@ -38,7 +38,6 @@ use crate::forest::frame_arena::FrameArena;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
 use crate::renderer::caches::RenderCaches;
-use crate::renderer::gpu_view::GpuViewRegistry;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::RenderPlan;
@@ -400,7 +399,6 @@ impl WgpuBackend {
         buffer: &RenderBuffer,
         plan: RenderPlan,
         debug_overlay: DebugOverlayConfig,
-        gpu_views: &mut GpuViewRegistry,
     ) {
         let clear = match plan {
             RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
@@ -534,18 +532,13 @@ impl WgpuBackend {
             );
             self.image
                 .upload_instances(&mut ctx, buffer.images.rows.instance());
-            // Render every GpuView drawn this frame into its off-screen
+            // Paint every GpuView composited this frame into its off-screen
             // target on this same encoder, before the main pass samples it.
-            // Driven by the composer's render-target list — no scan, no
-            // instance-buffer patch (the UV crop is derived in-shader), so
-            // there's no ordering dependency on `upload_instances`.
-            self.image.reconcile_render_targets(
-                &mut ctx,
-                gpu_views,
-                &buffer.images.render_targets,
-                buffer.scale,
-                buffer.time,
-            );
+            // The composer listed them in `buffer.frame_targets` (size + paint
+            // callback); this allocates each + runs its callback. `submit`
+            // itself carries no render-target logic.
+            self.image
+                .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.scale, buffer.time);
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if !damage_scissors.is_empty() {
