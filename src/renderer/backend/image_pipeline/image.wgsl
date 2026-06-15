@@ -16,12 +16,6 @@ var<immediate> imm: Immediates;
 @group(0) @binding(0) var tex:     texture_2d<f32>;
 @group(0) @binding(1) var tex_smp: sampler;
 
-// Per-instance sampling mode — mirrors `ImageMode` in `render_buffer.rs`.
-// Only `Tile` changes sampling here; `Direct` and `RenderTarget` both
-// sample the encoder-/composer-resolved crop directly (a `GpuView`'s crop
-// is `used / capacity`, written by the composer's GpuView size pass).
-const MODE_TILE: u32 = 1u;
-
 struct VsIn {
     // Per-instance.
     @location(0) rect_min:  vec2<f32>,
@@ -29,14 +23,14 @@ struct VsIn {
     @location(2) uv_min:    vec2<f32>,
     @location(3) uv_size:   vec2<f32>,
     @location(4) tint:      vec4<f32>,
-    @location(5) mode:      u32,
+    @location(5) tiled:     u32,
 };
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0)        uv:   vec2<f32>,
     @location(1) @interpolate(flat) tint: vec4<f32>,
-    @location(2) @interpolate(flat) mode: u32,
+    @location(2) @interpolate(flat) tiled: u32,
 };
 
 @vertex
@@ -58,7 +52,7 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
-    out.mode = in.mode;
+    out.tiled = in.tiled;
     return out;
 }
 
@@ -67,10 +61,10 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // `ImageFit::Tile` ships UVs spanning [0, repeats]; wrap into the
     // [0,1) tile with `fract` (the ClampToEdge sampler would otherwise
     // clamp). Per-fragment, so each repeat samples the full tile. Other
-    // modes keep UVs in [0,1] and sample directly — `fract(1.0)=0.0`
+    // fits keep UVs in [0,1] and sample directly — `fract(1.0)=0.0`
     // would wrap a Cover crop's far edge, so it must stay gated.
     var uv = in.uv;
-    if (in.mode == MODE_TILE) {
+    if (in.tiled != 0u) {
         uv = fract(in.uv);
     }
     // sRGB-format texture decodes to linear on read; tint is linear

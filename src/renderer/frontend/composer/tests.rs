@@ -48,12 +48,9 @@ fn run(
     let mut buffer = RenderCmdBuffer::default();
     let mut arena = FrameArenaInner::default();
     build(&mut buffer, &mut arena);
-    let mut composer = Composer::new(8192);
+    let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    // 8192 = baseline device texture-dim cap for the GpuView size ladder;
-    // `sizes` is fresh per `run`, so render-target draws ladder from scratch.
-    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
-    composer.compose(&buffer, &mut arena, *display, &sizes, &mut out);
+    composer.compose(&buffer, &mut arena, *display, &mut out);
     out
 }
 
@@ -416,14 +413,12 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::new(8192);
+    let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        &sizes,
         &mut out,
     );
     let q = &out.quads[0];
@@ -473,14 +468,12 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         BrushSource::Gradient(lowered),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::new(8192);
+    let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        &sizes,
         &mut out,
     );
     let q = &out.quads[0];
@@ -516,14 +509,12 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
             Stroke::ZERO.into(),
         );
     }
-    let mut composer = Composer::new(8192);
+    let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        &sizes,
         &mut out,
     );
     let rows: Vec<_> = out.quads.iter().map(|q| q.fill_lut_row).collect();
@@ -986,14 +977,12 @@ fn compose_spins_polyline_about_bbox_center() {
             join: LineJoinBits::new(LineJoin::Miter),
             ..bytemuck::Zeroable::zeroed()
         });
-        let mut composer = Composer::new(8192);
+        let mut composer = Composer::default();
         let mut out = RenderBuffer::default();
-        let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
         composer.compose(
             &buffer,
             &mut arena,
             params(1.0, UVec2::new(200, 200)),
-            &sizes,
             &mut out,
         );
         let vs = &arena.meshes.vertices;
@@ -1137,82 +1126,43 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     );
 }
 
+/// The composer is render-target-agnostic: it forwards `tiled` verbatim and
+/// keeps each draw's UV as-is (a `GpuView`'s crop is written later, by the
+/// resolve pass — see `gpu_view` tests).
 #[test]
-fn compose_forwards_image_mode_and_repeat_uv() {
+fn compose_forwards_tiled_flag_and_repeat_uv() {
     use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
-    use crate::renderer::render_buffer::ImageMode;
     let buf = run(
         |b, _arena| {
-            // Direct draw: mode 0.
+            // Non-tiled draw: flag stays 0.
             b.draw_image(DrawImagePayload {
                 rect: rect(0.0, 0.0, 50.0, 50.0),
                 uv_min: glam::Vec2::ZERO,
                 uv_size: glam::Vec2::ONE,
                 tint: Color::WHITE.into(),
                 handle: TextureId(1),
-                mode: ImageMode::DIRECT,
+                tiled: 0,
                 ..bytemuck::Zeroable::zeroed()
             });
-            // Tiled draw: UV size > 1 (3×2 repeats) + mode 1.
+            // Tiled draw: UV size > 1 (3×2 repeats) + flag 1.
             b.draw_image(DrawImagePayload {
                 rect: rect(0.0, 0.0, 50.0, 50.0),
                 uv_min: glam::Vec2::ZERO,
                 uv_size: glam::Vec2::new(3.0, 2.0),
                 tint: Color::WHITE.into(),
                 handle: TextureId(2),
-                mode: ImageMode::TILE,
+                tiled: 1,
                 ..bytemuck::Zeroable::zeroed()
             });
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.rows.instance()[0].mode, ImageMode::DIRECT);
-    assert_eq!(buf.images.rows.instance()[1].mode, ImageMode::TILE);
+    assert_eq!(buf.images.rows.instance()[0].tiled, 0);
+    assert_eq!(buf.images.rows.instance()[1].tiled, 1);
     assert_eq!(
         buf.images.rows.instance()[1].uv_size,
         glam::Vec2::new(3.0, 2.0)
     );
-    // No render-target draws here → the side list stays empty.
-    assert!(buf.images.render_targets.is_empty());
-}
-
-/// A `RENDER_TARGET` draw sizes its off-screen target in the composer (the
-/// √2 ladder) and writes the resulting `used / capacity` crop straight into
-/// the instance — an ordinary UV, no shader special-case — while recording
-/// `{used, capacity}` for the backend allocator.
-#[test]
-fn compose_sizes_render_target_and_writes_crop_uv() {
-    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
-    use crate::renderer::render_buffer::ImageMode;
-    let buf = run(
-        |b, _arena| {
-            // 30.4 × 20.1 logical → ×1.5 scale = 45.6 × 30.15 phys → ceil
-            // used 46 × 31. Ladder rungs (16,23,33,47,…): cap 47 × 33.
-            b.draw_image(DrawImagePayload {
-                rect: rect(0.0, 0.0, 30.4, 20.1),
-                uv_min: glam::Vec2::ZERO,
-                uv_size: glam::Vec2::ONE,
-                tint: Color::WHITE.into(),
-                handle: TextureId(7),
-                mode: ImageMode::RENDER_TARGET,
-                ..bytemuck::Zeroable::zeroed()
-            });
-        },
-        &params(1.5, UVec2::new(400, 400)),
-    );
-    // The composite image row is still emitted, tagged RenderTarget.
-    assert_eq!(buf.images.rows.len(), 1);
-    let inst = buf.images.rows.instance()[0];
-    assert_eq!(inst.mode, ImageMode::RENDER_TARGET);
-    // The crop UV is the ordinary `used / capacity`, written by the composer.
-    assert_eq!(inst.uv_min, glam::Vec2::ZERO);
-    assert_eq!(inst.uv_size, glam::Vec2::new(46.0 / 47.0, 31.0 / 33.0));
-    // And exactly one render-target draw, carrying used + the laddered cap.
-    assert_eq!(buf.images.render_targets.len(), 1);
-    let rt = buf.images.render_targets[0];
-    assert_eq!(rt.id, TextureId(7));
-    assert_eq!(rt.used, UVec2::new(46, 31));
-    assert_eq!(rt.capacity, UVec2::new(47, 33));
 }
 
 #[test]
@@ -1750,21 +1700,14 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
     let mut buffer = RenderCmdBuffer::default();
-    let mut composer = Composer::new(8192);
+    let mut composer = Composer::default();
     let display = params(1.0, UVec2::new(200, 200));
     for _ in 0..5 {
         buffer.clear();
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = RenderBuffer::default();
-        let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
-        composer.compose(
-            &buffer,
-            &mut FrameArenaInner::default(),
-            display,
-            &sizes,
-            &mut out,
-        );
+        composer.compose(&buffer, &mut FrameArenaInner::default(), display, &mut out);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
 }

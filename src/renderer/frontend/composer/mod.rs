@@ -613,7 +613,9 @@ impl Composer {
                     out.images.rows.push(ImageDrawRow {
                         // Just the registration id — the backend looks it
                         // up in its texture cache; the encoder already
-                        // resolved fit into `rect` + UV.
+                        // resolved fit into `rect` + UV. A `GpuView` is an
+                        // ordinary image row here; the post-compose resolve
+                        // pass rewrites its crop UV by texture id.
                         id: p.handle,
                         instance: ImageInstance {
                             rect: phys_rect,
