@@ -80,10 +80,10 @@ impl WindowRenderer {
     /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches /
     /// GPU-stats handle, and the `Ui` shares the context's app-global host
     /// state (live-window set + debug overlay) so all windows agree.
-    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed
-    /// for its lifetime) — the only GPU fact the `Frontend` needs, so it's
-    /// captured here once rather than re-passed each frame. Owns nothing on
-    /// the GPU but its backbuffer, created lazily on the first submit.
+    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
+    /// its lifetime), handed to the `Frontend` to cap `GpuView` target sizes —
+    /// the only GPU fact the CPU pipeline needs. Owns nothing on the GPU but
+    /// its backbuffer, created lazily on the first submit.
     pub(crate) fn new(ctx: &HostContext, max_texture_dim: u32) -> Self {
         Self {
             ui: Ui::new(ctx),
@@ -193,7 +193,10 @@ impl WindowRenderer {
         }
 
         let report = self.cpu_frame(display, record);
-        self.present(gpu, surface, config, report, pre_present)
+        let present = self.present(gpu, surface, config, report, pre_present);
+        profiling::finish_frame!();
+
+        present
     }
 
     /// Render one frame to a caller-supplied `wgpu::Texture` instead of a
@@ -221,10 +224,14 @@ impl WindowRenderer {
         self.render_to_texture(gpu, target, &report);
     }
 
-    /// CPU half — `Ui::frame` → record → measure / arrange / cascade /
-    /// damage. Returns the host-facing [`FrameReport`]; thread it back
-    /// into [`Self::render_to_texture`]. Shared by [`Self::frame`]
-    /// (surface) and [`Self::frame_offscreen`] (texture).
+    /// The CPU half of a frame: `Ui::frame` (record → measure / arrange /
+    /// cascade / damage) followed, when the frame actually paints, by the
+    /// draw-list build (encode → compose → resolve `GpuView`s into the
+    /// frontend's buffer). Returns the host-facing [`FrameReport`]; thread it
+    /// into the GPU half ([`Self::present`] / [`Self::render_to_texture`]).
+    /// No GPU input — the `GpuView` size cap was captured on the `Frontend` at
+    /// construction. Shared by [`Self::frame`] (surface) and
+    /// [`Self::frame_offscreen`] (texture).
     pub(crate) fn cpu_frame(
         &mut self,
         display: Display,
@@ -232,8 +239,16 @@ impl WindowRenderer {
     ) -> FrameReport {
         // Ui::frame clears the shared Rc arena at the top of the record
         // cycle — the same Rc the frontend + shared backend hold.
-        self.ui
-            .frame(FrameStamp::new(display, self.start.elapsed()), record)
+        let report = self
+            .ui
+            .frame(FrameStamp::new(display, self.start.elapsed()), record);
+        // Build the draw list now (CPU) when the frame paints — encode,
+        // compose, and resolve `GpuView` targets, all reading the now-frozen
+        // `Ui` immutably. A Skip frame has no plan and builds nothing.
+        if let Some(plan) = report.plan {
+            self.frontend.build(&self.ui, plan);
+        }
+        report
     }
 
     /// GPU submit against a caller-supplied texture, through the shared
@@ -266,17 +281,15 @@ impl WindowRenderer {
             self.ui.frame_state.mark_submitted();
             return;
         };
-        // Snapshot the overlay before the disjoint borrows below: `buffer`
-        // borrows `self.frontend`, and `gpu_views` borrows `self.ui` mutably.
-        // (The `GpuView` size ladder's device cap was captured at
-        // construction — see `Frontend::max_texture_dim` — so `build` needs
-        // no GPU input here.)
+        // The CPU phase already composed + resolved `GpuView`s into
+        // `self.frontend.buffer` (see `cpu_frame`); this is GPU submit only.
+        // `buffer` borrows `self.frontend`, `gpu_views` borrows `self.ui` —
+        // disjoint fields.
         let debug_overlay = self.ui.debug_overlay();
-        let buffer = self.frontend.build(&mut self.ui, plan);
         gpu.submit(
             &mut self.backbuffer,
             target,
-            buffer,
+            &self.frontend.buffer,
             plan,
             debug_overlay,
             &mut self.ui.gpu_views,
@@ -325,8 +338,6 @@ impl WindowRenderer {
                 Occluded => false,
             }
         };
-
-        profiling::finish_frame!();
 
         if repaint {
             FramePresent::Immediate
