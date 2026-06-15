@@ -1072,14 +1072,14 @@ fn compose_emits_image_batch_for_drawimage() {
     use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
-            b.draw_image(DrawImagePayload {
-                rect: rect(10.0, 20.0, 30.0, 40.0),
-                uv_min: glam::Vec2::ZERO,
-                uv_size: glam::Vec2::ONE,
-                tint: Color::WHITE.into(),
-                handle: TextureId(0xc0ffee),
-                ..bytemuck::Zeroable::zeroed()
-            });
+            b.draw_image(DrawImagePayload::image(
+                rect(10.0, 20.0, 30.0, 40.0),
+                glam::Vec2::ZERO,
+                glam::Vec2::ONE,
+                Color::WHITE.into(),
+                TextureId(0xc0ffee),
+                0,
+            ));
         },
         &params(2.0, UVec2::new(400, 400)),
     );
@@ -1105,14 +1105,14 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
-            b.draw_image(DrawImagePayload {
-                rect: rect(0.0, 0.0, 100.0, 100.0),
-                uv_min: glam::Vec2::new(0.25, 0.0),
-                uv_size: glam::Vec2::new(0.5, 1.0),
-                tint: Color::WHITE.into(),
-                handle: TextureId(1),
-                ..bytemuck::Zeroable::zeroed()
-            });
+            b.draw_image(DrawImagePayload::image(
+                rect(0.0, 0.0, 100.0, 100.0),
+                glam::Vec2::new(0.25, 0.0),
+                glam::Vec2::new(0.5, 1.0),
+                Color::WHITE.into(),
+                TextureId(1),
+                0,
+            ));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
@@ -1126,34 +1126,31 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     );
 }
 
-/// The composer is render-target-agnostic: it forwards `tiled` verbatim and
-/// keeps each draw's UV as-is (a `GpuView`'s crop is written later, by the
-/// resolve pass — see `gpu_view` tests).
+/// The composer forwards `tiled` verbatim and keeps each draw's UV as-is
+/// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
 #[test]
 fn compose_forwards_tiled_flag_and_repeat_uv() {
     use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             // Non-tiled draw: flag stays 0.
-            b.draw_image(DrawImagePayload {
-                rect: rect(0.0, 0.0, 50.0, 50.0),
-                uv_min: glam::Vec2::ZERO,
-                uv_size: glam::Vec2::ONE,
-                tint: Color::WHITE.into(),
-                handle: TextureId(1),
-                tiled: 0,
-                ..bytemuck::Zeroable::zeroed()
-            });
+            b.draw_image(DrawImagePayload::image(
+                rect(0.0, 0.0, 50.0, 50.0),
+                glam::Vec2::ZERO,
+                glam::Vec2::ONE,
+                Color::WHITE.into(),
+                TextureId(1),
+                0,
+            ));
             // Tiled draw: UV size > 1 (3×2 repeats) + flag 1.
-            b.draw_image(DrawImagePayload {
-                rect: rect(0.0, 0.0, 50.0, 50.0),
-                uv_min: glam::Vec2::ZERO,
-                uv_size: glam::Vec2::new(3.0, 2.0),
-                tint: Color::WHITE.into(),
-                handle: TextureId(2),
-                tiled: 1,
-                ..bytemuck::Zeroable::zeroed()
-            });
+            b.draw_image(DrawImagePayload::image(
+                rect(0.0, 0.0, 50.0, 50.0),
+                glam::Vec2::ZERO,
+                glam::Vec2::new(3.0, 2.0),
+                Color::WHITE.into(),
+                TextureId(2),
+                1,
+            ));
         },
         &params(1.0, UVec2::new(400, 400)),
     );

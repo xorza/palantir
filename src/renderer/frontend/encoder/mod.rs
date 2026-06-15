@@ -358,33 +358,28 @@ fn emit_one_shape(
                 uv_min,
                 uv_size,
             } = resolve_fit(base, size.as_uvec2(), *fit);
-            out.draw_image(DrawImagePayload {
+            out.draw_image(DrawImagePayload::image(
                 rect,
                 uv_min,
                 uv_size,
-                tint: *tint,
-                handle: *id,
-                tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
-                ..bytemuck::Zeroable::zeroed()
-            });
+                *tint,
+                *id,
+                u32::from(matches!(*fit, ImageFit::Tile { .. })),
+            ));
         }
-        ShapeRecord::GpuView { id, epoch: _ } => {
-            // A `GpuView` composites exactly like any image: full arranged
-            // rect, untinted, full UV — the encoder/composer know nothing
-            // about render targets. After compose, the `GpuView` resolve
-            // pass recognizes this row by its texture id, sizes the
-            // off-screen target, and rewrites this instance's crop UV; the
-            // backend paints the texture before the main pass. `epoch` only
+        ShapeRecord::GpuView { index, epoch: _ } => {
+            // A `GpuView` composites exactly like any image — full arranged
+            // rect, untinted, full UV, sampling the view's stable `id` from
+            // the shared texture cache (all encapsulated in `gpu_view`). The
+            // view's `id` + app `paint` callback live in the side store
+            // (`Shapes::gpu_views`); the callback then rides the cmd buffer's
+            // own side channel, linked to this draw by index so the composer
+            // can list the off-screen target in `frame_targets`. `epoch` only
             // affects the shape hash (damage), not the emitted draw.
-            out.draw_image(DrawImagePayload {
-                rect: owner_rect,
-                uv_min: glam::Vec2::ZERO,
-                uv_size: glam::Vec2::ONE,
-                tint: ColorF16::from(Color::WHITE),
-                handle: *id,
-                tiled: 0,
-                ..bytemuck::Zeroable::zeroed()
-            });
+            let view = &ctx.tree.shapes.gpu_views[*index as usize];
+            let paint_index = out.gpu_view_paints.len() as u32;
+            out.gpu_view_paints.push(view.paint.clone());
+            out.draw_image(DrawImagePayload::gpu_view(owner_rect, view.id, paint_index));
         }
     }
 }

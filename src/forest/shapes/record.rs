@@ -13,7 +13,6 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
 use crate::text::FontFamily;
@@ -397,23 +396,18 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
-    /// App-rendered GPU surface. `id` is the view's stable render-target
-    /// [`TextureId`] (minted once into the widget's [`StateMap`] slot — see
-    /// `GpuViewTexId`); `paint` is the app's renderer, carried on the shape so
-    /// it flows straight through to the backend with no `Ui`-side registry.
-    /// Composited exactly like [`ShapeRecord::Image`] (the encoder lowers it
-    /// to the same `DrawImage` cmd over the owner's full arranged rect), so it
-    /// reuses the image pipeline end to end. `epoch` is the `Ui` frame counter,
-    /// bumped every painted frame and folded into the shape hash, so the view's
-    /// rect repaints each frame — its texture is re-rendered every frame (see
+    /// App-rendered GPU surface. `index` points into
+    /// [`Shapes::gpu_views`](super::GpuViewRecord) for the view's stable
+    /// render-target [`TextureId`] + the app `paint` callback — kept off the
+    /// shape so the hot `records` buffer stays small and `Rc`-free. Composited
+    /// exactly like [`ShapeRecord::Image`] (the encoder lowers it to the same
+    /// `DrawImage` cmd over the owner's full arranged rect), so it reuses the
+    /// image pipeline end to end. `epoch` is the `Ui` frame counter, bumped
+    /// every painted frame and folded into the shape hash (which only sees the
+    /// `ShapeRecord`, so it rides here, not the side store), so the view's rect
+    /// repaints each frame — its texture is re-rendered every frame (see
     /// `Ui::gpu_view`).
-    ///
-    /// [`StateMap`]: crate::ui::state
-    GpuView {
-        id: TextureId,
-        paint: GpuPaintRef,
-        epoch: u64,
-    } = 7,
+    GpuView { index: u32, epoch: u64 } = 7,
 }
 
 /// Owner-local paint bbox of a [`ShapeRecord::Shadow`] — drop shadow
