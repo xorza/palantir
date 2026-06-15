@@ -31,7 +31,7 @@ use crate::window::WindowToken;
 #[derive(Clone)]
 pub(crate) struct HostContext {
     /// Shared `TextureId` source. `caches.images` (CPU images) and each
-    /// window's `GpuViewRegistry` (render targets) both mint from this one
+    /// `GpuView` render target (`Ui::gpu_view`) both mint from this one
     /// counter, so their ids never collide in the one backend texture cache.
     pub(crate) texture_ids: TextureIdSource,
     pub(crate) shaper: TextShaper,
