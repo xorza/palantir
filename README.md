@@ -40,6 +40,13 @@ available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
   path routes through palantir's staging belt.
+- **`GpuView` — raw `wgpu` inside a widget.** Implement `GpuPaint` on your
+  own renderer (a 3D scene, a custom shader) and hand it to
+  `GpuView::new(paint)`; the framework owns an off-screen target sized to the
+  widget's rect, runs your callback into it, and composites the result through
+  the image pipeline — so it clips, rounds, and z-orders like any other widget.
+  Mark a static view `.repaint(false)` and it goes undamaged (its paint is
+  skipped) until something changes.
 
 ## Zero per-frame allocation
 
