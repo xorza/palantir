@@ -7,20 +7,20 @@
 //! through the existing image pipeline — so clipping, rounded corners,
 //! z-order, and partial-damage recompositing come for free.
 //!
-//! [`GpuViewRegistry`] is **per-window** (one per [`Ui`](crate::ui::Ui)),
-//! keyed by [`WidgetId`] — the same per-widget-state model as
-//! [`StateMap`](crate::ui::state): `upsert` on record, `sweep_removed`
-//! evicts widgets that vanished this frame. It mints globally-unique
-//! [`TextureId`]s from a shared [`TextureIdSource`] (the one the
-//! `ImageRegistry` uses), so the **one** backend texture cache — shared
-//! across all windows — never collides. Per-window keying is what keeps two
-//! windows' views at the same call site (same `WidgetId`) on distinct
-//! textures.
+//! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
+//! values are [`GpuViewEntry`]): the app hands its renderer to the widget every
+//! frame, so [`Ui::gpu_view`] upserts the entry — minting the stable backend
+//! [`TextureId`] once (from the shared `texture_ids`, so the one backend
+//! texture cache can't collide, including across windows since the map is
+//! per-`Ui`) and refreshing the [`GpuPaintRef`]. The shape records only the
+//! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
+//! forwards the callback down the command buffer, and the composer lists it in
+//! `RenderBuffer::frame_targets` for the backend. The map is swept by the same
+//! `removed` set as every other per-widget cache; the backend then frees the
+//! orphaned texture heuristically (see `GpuViewTargets::paint`).
 
-use crate::primitives::widget_id::WidgetId;
-use crate::renderer::texture_id::{TextureId, TextureIdSource};
+use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
-use rustc_hash::{FxHashMap, FxHashSet};
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
@@ -73,22 +73,14 @@ pub struct GpuFrameCtx<'a> {
     /// wgpu inserts the `RENDER_ATTACHMENT → TEXTURE_BINDING` transition
     /// between your pass and the main pass that samples `target`.
     pub encoder: &'a mut wgpu::CommandEncoder,
-    /// The off-screen color target. **May be larger than `size_px`** — the
-    /// framework grows it on a √2 ladder and never shrinks it, so a smooth
-    /// resize doesn't reallocate every frame. Render into the **top-left
-    /// `size_px` sub-rect** (set your viewport/scissor to `size_px`); the
-    /// composite samples only that sub-rect. Its full allocated size is
-    /// [`Self::target_size`].
+    /// The off-screen color target, sized exactly to [`Self::size_px`]. Set
+    /// your viewport/scissor to `size_px` and render into the whole target.
     pub target: &'a wgpu::TextureView,
-    /// The region to render into, in physical pixels (the widget rect ×
-    /// DPI scale). Set your viewport to this and derive your projection
-    /// from it.
+    /// The target's size, in physical pixels (the widget rect × DPI scale).
+    /// Set your viewport to this, derive your projection from it, and size
+    /// your own attachments (depth, MSAA) to it — the target is reallocated
+    /// whenever this changes (every frame while the view is being resized).
     pub size_px: UVec2,
-    /// Full allocated size of `target` (≥ `size_px`). Size your own
-    /// attachments (depth, MSAA) to this so they don't churn on every
-    /// resize — they only need recreating when `target_size` changes,
-    /// which the ladder makes rare.
-    pub target_size: UVec2,
     /// Logical→physical scale factor for this frame.
     pub scale: f32,
     /// Wall-clock time since this view last painted (`Duration::ZERO` on
@@ -100,156 +92,36 @@ impl std::fmt::Debug for GpuFrameCtx<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GpuFrameCtx")
             .field("size_px", &self.size_px)
-            .field("target_size", &self.target_size)
             .field("scale", &self.scale)
             .field("dt", &self.dt)
             .finish_non_exhaustive()
     }
 }
 
-/// One widget's live `GpuView`: a stable texture id + the app renderer. The
-/// backend iterates [`GpuViewRegistry::entries`] over these to paint.
-pub(crate) struct View {
-    /// Stable across frames (minted once); keys the backend texture cache.
-    pub(crate) id: TextureId,
-    pub(crate) paint: Rc<RefCell<dyn GpuPaint>>,
-}
+/// The app's `GpuPaint` callback, flowing record → shape → command buffer →
+/// `RenderBuffer.frame_targets` → backend. A thin wrapper so the structs that
+/// carry it ([`ShapeRecord::GpuView`](crate::forest::shapes::record::ShapeRecord),
+/// `RenderTargetDraw`) keep their `derive(Debug)` despite `dyn GpuPaint` not
+/// being `Debug`. Clone is an `Rc` refcount bump.
+#[derive(Clone)]
+pub(crate) struct GpuPaintRef(pub(crate) Rc<RefCell<dyn GpuPaint>>);
 
-/// Per-window registry of live `GpuView`s, keyed by [`WidgetId`]. See the
-/// module docs: one per `Ui`, swept by the removed-set, minting from a
-/// shared [`TextureIdSource`].
-pub(crate) struct GpuViewRegistry {
-    ids: TextureIdSource,
-    /// Live views by widget; the backend iterates `.values()` each frame to
-    /// paint them (`pub(crate)` so it can, without a copy).
-    pub(crate) entries: FxHashMap<WidgetId, View>,
-    /// `TextureId`s whose widget was swept this frame; the backend frees the
-    /// matching texture + bind group on its next reconcile.
-    dropped: Vec<TextureId>,
-}
-
-impl GpuViewRegistry {
-    /// Build a registry minting from `ids` (shared with the `ImageRegistry`
-    /// so their ids can't collide in the one backend cache).
-    pub(crate) fn new(ids: TextureIdSource) -> Self {
-        Self {
-            ids,
-            entries: FxHashMap::default(),
-            dropped: Vec::new(),
-        }
-    }
-
-    /// Record `widget`'s view this frame, returning its stable [`TextureId`].
-    /// Mints the id on first sight and refreshes the renderer each frame.
-    /// Re-rendering isn't tracked here — the widget stamps the `Ui` frame
-    /// counter as the shape's epoch, so a painted frame always redraws the
-    /// view; the app drives frames with [`Ui::request_repaint`].
-    pub(crate) fn upsert(
-        &mut self,
-        widget: WidgetId,
-        paint: Rc<RefCell<dyn GpuPaint>>,
-    ) -> TextureId {
-        let view = self.entries.entry(widget).or_insert_with(|| View {
-            // Only runs on first sight — mint the stable id then. (The
-            // `paint` here is replaced just below; the update path skips
-            // this closure, so it costs nothing per steady-state frame.)
-            id: self.ids.reserve(),
-            paint: Rc::clone(&paint),
-        });
-        view.paint = paint;
-        view.id
-    }
-
-    /// Evict views whose widget wasn't recorded this frame, queueing their
-    /// textures for release. Driven from `Ui::post_record` by the same
-    /// `removed` set that sweeps `StateMap`.
-    pub(crate) fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
-        for w in removed {
-            if let Some(view) = self.entries.remove(w) {
-                self.dropped.push(view.id);
-            }
-        }
-    }
-
-    /// Drain the ids of swept views, calling `free` for each (the backend
-    /// drops the matching texture + bind group). Drains in place.
-    pub(crate) fn drain_dropped(&mut self, mut free: impl FnMut(TextureId)) {
-        for id in self.dropped.drain(..) {
-            free(id);
-        }
+impl std::fmt::Debug for GpuPaintRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("GpuPaint")
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[derive(Default)]
-    struct NoopPaint;
-    impl GpuPaint for NoopPaint {
-        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
-    }
-
-    fn rc() -> Rc<RefCell<dyn GpuPaint>> {
-        Rc::new(RefCell::new(NoopPaint))
-    }
-
-    fn wid(n: u64) -> WidgetId {
-        WidgetId::from_hash(n)
-    }
-
-    fn live_ids(reg: &GpuViewRegistry) -> Vec<TextureId> {
-        reg.entries.values().map(|v| v.id).collect()
-    }
-
-    #[test]
-    fn upsert_mints_unique_ids_and_reuses_per_widget() {
-        let ids = TextureIdSource::default();
-        let mut reg = GpuViewRegistry::new(ids.clone());
-        let a = reg.upsert(wid(1), rc());
-        let b = reg.upsert(wid(2), rc());
-        // Distinct widgets get distinct, nonzero ids.
-        assert_ne!(a, b);
-        assert_ne!(a.0, 0);
-        // The same widget reuses its id across frames (stable texture).
-        let a2 = reg.upsert(wid(1), rc());
-        assert_eq!(a, a2);
-        // An id minted straight from the shared source collides with neither.
-        let other = ids.reserve();
-        assert_ne!(other, a);
-        assert_ne!(other, b);
-    }
-
-    #[test]
-    fn entries_list_live_views() {
-        let mut reg = GpuViewRegistry::new(TextureIdSource::default());
-        let a = reg.upsert(wid(1), rc());
-        let b = reg.upsert(wid(2), rc());
-        let ids = live_ids(&reg);
-        assert_eq!(ids.len(), 2);
-        assert!(ids.contains(&a));
-        assert!(ids.contains(&b));
-    }
-
-    #[test]
-    fn sweep_removed_evicts_and_queues_release() {
-        let mut reg = GpuViewRegistry::new(TextureIdSource::default());
-        let id = reg.upsert(wid(1), rc());
-        // Sweeping an unrelated widget leaves it live, nothing freed.
-        reg.sweep_removed(&FxHashSet::from_iter([wid(2)]));
-        assert_eq!(live_ids(&reg).len(), 1);
-        let mut freed = Vec::new();
-        reg.drain_dropped(|id| freed.push(id));
-        assert!(freed.is_empty());
-        // Sweeping its own widget evicts it + queues the texture once.
-        reg.sweep_removed(&FxHashSet::from_iter([wid(1)]));
-        assert!(
-            live_ids(&reg).is_empty(),
-            "no live view after its widget is swept"
-        );
-        reg.drain_dropped(|id| freed.push(id));
-        assert_eq!(freed, vec![id]);
-        reg.drain_dropped(|id| freed.push(id));
-        assert_eq!(freed, vec![id], "drain consumes dropped");
-    }
+/// One live `GpuView` in [`Ui::gpu_views`](crate::ui::Ui), keyed by `WidgetId`:
+/// the view's stable backend `texture_id` (minted once from the shared
+/// `texture_ids`, so it can't collide in the one backend texture cache — across
+/// windows too, since the map is per-`Ui`) and the app `paint` callback
+/// (refreshed every frame). This is the only place a `GpuView`'s identity
+/// persists across frames; the swept-by-`removed` map is the whole of the
+/// `Ui`'s `GpuView` bookkeeping — no `by_texture` index, no drop queue (the
+/// backend frees heuristically), no resolve (the composer lists targets).
+#[derive(Debug)]
+pub(crate) struct GpuViewEntry {
+    pub(crate) texture_id: TextureId,
+    pub(crate) paint: GpuPaintRef,
 }
