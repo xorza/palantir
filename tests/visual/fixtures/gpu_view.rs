@@ -146,13 +146,13 @@ impl GpuPaint for DepthTriangle {
     }
 
     fn paint(&mut self, ctx: &mut GpuFrameCtx<'_>) {
-        // Depth sized to the capacity (`target_size`), like the cube.
-        if self.depth.is_none() || self.depth_size != ctx.target_size {
+        // Depth matches the target size (`size_px`), like the cube.
+        if self.depth.is_none() || self.depth_size != ctx.size_px {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("visual.gpu_view.tri.depth"),
                 size: wgpu::Extent3d {
-                    width: ctx.target_size.x.max(1),
-                    height: ctx.target_size.y.max(1),
+                    width: ctx.size_px.x.max(1),
+                    height: ctx.size_px.y.max(1),
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -163,7 +163,7 @@ impl GpuPaint for DepthTriangle {
                 view_formats: &[],
             });
             self.depth = Some(tex.create_view(&wgpu::TextureViewDescriptor::default()));
-            self.depth_size = ctx.target_size;
+            self.depth_size = ctx.size_px;
         }
         let mut pass = ctx.encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("visual.gpu_view.tri.pass"),
