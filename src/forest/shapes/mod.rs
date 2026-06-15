@@ -6,6 +6,7 @@ use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
+use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{PolylineColors, Shape};
@@ -214,12 +215,11 @@ impl Shapes {
     }
 
     /// Append a [`ShapeRecord::GpuView`] directly — the `GpuView` widget's
-    /// `id` + redraw `epoch` come from the per-window
-    /// [`GpuViewRegistry`](crate::renderer::gpu_view::GpuViewRegistry)
-    /// (a `Ui`-level concern), not from a user-facing [`Shape`], so this
+    /// stable `id`, app `paint` callback, and redraw `epoch` are assembled by
+    /// `Ui::gpu_view`, not lowered from a user-facing [`Shape`], so this
     /// bypasses the [`Self::add`] lowering. Returns the pushed index.
-    pub(crate) fn add_gpu_view(&mut self, id: TextureId, epoch: u64) -> u32 {
-        let record = ShapeRecord::GpuView { id, epoch };
+    pub(crate) fn add_gpu_view(&mut self, id: TextureId, paint: GpuPaintRef, epoch: u64) -> u32 {
+        let record = ShapeRecord::GpuView { id, paint, epoch };
         let idx = self.records.len() as u32;
         let hash = compute_record_hash(&record);
         self.records.push(record);

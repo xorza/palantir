@@ -154,8 +154,13 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
         // `id` identifies the render target; `epoch` is the Ui frame
         // counter (bumped every painted frame), so the hash differs each
         // frame and the damage diff repaints the view's rect — its texture
-        // is re-rendered every frame.
-        ShapeRecord::GpuView { id, epoch } => {
+        // is re-rendered every frame. `paint` (the app callback) is identity,
+        // not content — skip it; the `epoch` bump already forces the repaint.
+        ShapeRecord::GpuView {
+            id,
+            paint: _,
+            epoch,
+        } => {
             h.write_u64(id.0);
             h.write_u64(*epoch);
         }
