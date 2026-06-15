@@ -535,8 +535,9 @@ impl WgpuBackend {
             // Paint every GpuView composited this frame into its off-screen
             // target on this same encoder, before the main pass samples it.
             // The composer listed them in `buffer.frame_targets` (size + paint
-            // callback); this allocates each + runs its callback. `submit`
-            // itself carries no render-target logic.
+            // callback); this allocates each + runs its callback, then evicts
+            // targets whose widget left `gpu_view_live`. `submit` itself carries
+            // no render-target logic.
             self.image
                 .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.scale, buffer.time);
             self.curve.upload(&mut ctx, &buffer.curves);
