@@ -16,7 +16,6 @@ use crate::renderer::backend::image_pipeline::ImagePipeline;
 use crate::renderer::backend::mesh_pipeline::MeshPipeline;
 use crate::renderer::backend::pipeline_utils::StencilVariant;
 use crate::renderer::backend::quad_pipeline::QuadPipeline;
-use crate::renderer::backend::stencil::stencil_test_state;
 use crate::renderer::backend::text::TextBackend;
 
 /// All render pipelines built against one swapchain color format. Keyed
@@ -30,9 +29,9 @@ pub(crate) struct FormatPipelines {
     pub(crate) mesh: StencilVariant,
     pub(crate) image: StencilVariant,
     pub(crate) curve: StencilVariant,
-    /// Text pipelines indexed by `StencilMode::pipeline_idx` (plain,
-    /// stencil-test); built from `TextBackend::build_pipelines`.
-    pub(crate) text: Vec<wgpu::RenderPipeline>,
+    /// Text base + stencil-test pipelines; selected by `use_stencil` like
+    /// the other four. Built from `TextBackend::build_variants`.
+    pub(crate) text: StencilVariant,
 }
 
 impl FormatPipelines {
@@ -61,14 +60,7 @@ impl FormatPipelines {
             mesh: MeshPipeline::build_variants(device, &mesh.shader, format),
             image: ImagePipeline::build_variants(device, &image.shader, &image.image_bgl, format),
             curve: CurvePipeline::build_variants(device, &curve.shader, gradient_bgl, format),
-            // Index order matches `StencilMode::pipeline_idx`:
-            // 0 = Plain, 1 = Stencil.
-            text: TextBackend::build_pipelines(
-                device,
-                &text.atlas_bgl,
-                format,
-                &[None, Some(stencil_test_state())],
-            ),
+            text: TextBackend::build_variants(device, &text.shader, &text.atlas_bgl, format),
         }
     }
 }

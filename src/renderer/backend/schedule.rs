@@ -12,8 +12,8 @@ use crate::renderer::render_buffer::{CurveBatch, ImageBatch, MeshBatch, RenderBu
 
 /// One conceptual step of the per-frame render schedule. Variants
 /// describe *what* to do, not *how*; the consumer holds context
-/// (`use_stencil`, `text_mode`, the actual `RenderPass`) to translate
-/// each into wgpu calls.
+/// (`use_stencil`, the actual `RenderPass`) to translate each into
+/// wgpu calls.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum RenderStep {
     /// Pre-clear quad inside the damage scissor: paints the clear
