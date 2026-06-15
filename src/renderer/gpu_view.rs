@@ -17,7 +17,7 @@
 //! forwards the callback down the command buffer, and the composer lists it in
 //! `RenderBuffer::frame_targets` for the backend. The map is swept by the same
 //! `removed` set as every other per-widget cache; the backend then frees the
-//! orphaned texture heuristically (see `GpuViewTargets::paint`).
+//! orphaned texture (see `ImagePipeline::paint_gpu_views`).
 
 use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
@@ -40,10 +40,15 @@ pub(crate) const GPU_VIEW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgb
 /// time, after `App::frame` has returned, so it can't borrow frame-local
 /// state.
 pub trait GpuPaint: 'static {
-    /// Build GPU resources (pipelines, persistent buffers). Called once,
-    /// the first time the device is available for this view. Not re-run on
-    /// resize — the resolved color target is framework-owned; recreate any
-    /// of your own depth / MSAA attachments inside [`Self::paint`] when
+    /// Build GPU resources (pipelines, persistent buffers). Called the first
+    /// time the device is available for this view, and **again** if the view's
+    /// off-screen texture is later reclaimed and rebuilt — which happens when a
+    /// frame is forced by other widgets while this view is marked
+    /// [`repaint(false)`](crate::widgets::gpu_view::GpuView::repaint) (it's
+    /// culled, so its target is freed). Guard expensive one-time setup against
+    /// re-entry (e.g. `if self.pipeline.is_none()`). Not re-run merely on
+    /// resize — the resolved color target is framework-owned; recreate any of
+    /// your own depth / MSAA attachments inside [`Self::paint`] when
     /// [`GpuFrameCtx::size_px`] changes.
     fn init(&mut self, ctx: &GpuInitCtx<'_>) {
         let _ = ctx;
