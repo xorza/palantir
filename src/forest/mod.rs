@@ -13,9 +13,7 @@ use crate::forest::tree::record::{PendingAnchor, RecordingScratch};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::gradient_atlas::GradientAtlas;
-use crate::renderer::texture_id::TextureId;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::time::Duration;
@@ -264,16 +262,17 @@ impl Forest {
     }
 
     /// Append a `GpuView` shape (a [`ShapeRecord::GpuView`]) to the active
-    /// node. Its stable `id`, app `paint` callback, and redraw `epoch` are
+    /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
+    /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is
     /// assembled by `Ui::gpu_view`, not lowered from a user-facing [`Shape`],
     /// so it skips the lowering path.
-    pub(crate) fn add_gpu_view(&mut self, id: TextureId, paint: GpuPaintRef, epoch: u64) {
+    pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         let layer = self.current_layer();
         assert!(
             !self.scratch[layer].open_frames.is_empty(),
             "add_gpu_view called with no open node",
         );
-        let _ = self.trees[layer].shapes.add_gpu_view(id, paint, epoch);
+        let _ = self.trees[layer].shapes.add_gpu_view(epoch);
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the
