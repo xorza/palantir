@@ -45,6 +45,7 @@ use crate::primitives::brush::FillAxis;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
+use crate::renderer::render_buffer::ImageMode;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::TextCacheKey;
@@ -337,9 +338,11 @@ pub(crate) struct DrawImagePayload {
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
-    /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
-    /// `0` (the common case) samples the UV directly.
-    pub(crate) tiled: u32,
+    /// Sampling mode — `Direct` (the common case), `Tile`
+    /// (`ImageFit::Tile`, shader fract-wraps the UV), or `RenderTarget`
+    /// (a `GpuView`; the shader derives the crop from the texture's own
+    /// dimensions). See [`ImageMode`].
+    pub(crate) mode: ImageMode,
 }
 
 impl DrawImagePayload {

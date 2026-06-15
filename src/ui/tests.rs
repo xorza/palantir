@@ -68,12 +68,8 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    let buffer = frontend.build(
-        &ui,
-        RenderPlan::Full {
-            clear: ui.theme.window_clear,
-        },
-    );
+    let clear = ui.theme.window_clear;
+    let buffer = frontend.build(&mut ui, RenderPlan::Full { clear });
     let overlay_quads: Vec<_> = buffer
         .quads
         .iter()
@@ -139,12 +135,8 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     // record time are visible at compose / upload — the WindowRenderer wiring
     // for real apps.
     let mut frontend = Frontend::for_test();
-    let buffer = frontend.build(
-        &ui,
-        RenderPlan::Full {
-            clear: ui.theme.window_clear,
-        },
-    );
+    let clear = ui.theme.window_clear;
+    let buffer = frontend.build(&mut ui, RenderPlan::Full { clear });
     let overlay_quads: Vec<_> = buffer
         .quads
         .iter()
@@ -273,12 +265,8 @@ fn empty_ui_drives_a_frame_safely() {
     // to exercise encode/compose and assert the buffers come out empty.
     // No mesh/polyline bytes recorded → a private frontend arena works.
     let mut frontend = Frontend::for_test();
-    let buffer = frontend.build(
-        &ui,
-        RenderPlan::Full {
-            clear: ui.theme.window_clear,
-        },
-    );
+    let clear = ui.theme.window_clear;
+    let buffer = frontend.build(&mut ui, RenderPlan::Full { clear });
     assert!(buffer.quads.is_empty());
     assert!(buffer.texts.is_empty());
     assert!(buffer.groups.is_empty());
