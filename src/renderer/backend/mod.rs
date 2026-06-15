@@ -386,6 +386,13 @@ impl WgpuBackend {
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
     #[profiling::function]
+    /// Device limit `max_texture_dimension_2d`, read by the frontend's
+    /// `GpuView` size pass to cap the off-screen-target √2 ladder. The only
+    /// backend-owned input that pass needs.
+    pub(crate) fn max_texture_dim(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
     pub(crate) fn submit(
         &mut self,
         backbuffer: &mut Option<Backbuffer>,
@@ -525,19 +532,20 @@ impl WgpuBackend {
                 &arena.meshes.indices,
                 buffer.meshes.rows.instance(),
             );
-            // Render every live GpuView into its off-screen target on this
-            // same encoder, before the main pass samples it. Must precede
-            // `upload_instances`: it records the per-view UV crops that
-            // `upload_instances` patches into the composite.
+            self.image
+                .upload_instances(&mut ctx, buffer.images.rows.instance());
+            // Render every GpuView drawn this frame into its off-screen
+            // target on this same encoder, before the main pass samples it.
+            // Driven by the composer's render-target list — no scan, no
+            // instance-buffer patch (the UV crop is derived in-shader), so
+            // there's no ordering dependency on `upload_instances`.
             self.image.reconcile_render_targets(
                 &mut ctx,
                 gpu_views,
-                &buffer.images,
+                &buffer.images.render_targets,
                 buffer.scale,
                 buffer.time,
             );
-            self.image
-                .upload_instances(&mut ctx, buffer.images.rows.instance());
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if !damage_scissors.is_empty() {

@@ -227,7 +227,9 @@ impl CpuHarness {
         let plan = report.plan().unwrap_or(RenderPlan::Full {
             clear: WINDOW_CLEAR,
         });
-        self.frontend.build_for_test(&self.ui, plan);
+        // The deviceless CPU harness's `Frontend` carries the baseline
+        // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
+        self.frontend.build_for_test(&mut self.ui, plan);
         self.ui.mark_frame_submitted();
     }
 }

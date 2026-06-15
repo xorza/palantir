@@ -80,13 +80,14 @@ impl WindowRenderer {
     /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches /
     /// GPU-stats handle, and the `Ui` shares the context's app-global host
     /// state (live-window set + debug overlay) so all windows agree.
-    /// Independent of the GPU backend — that's only needed later, per frame.
-    /// Owns nothing on the GPU but its backbuffer, created lazily on the
-    /// first submit.
-    pub(crate) fn new(ctx: &HostContext) -> Self {
+    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed
+    /// for its lifetime) — the only GPU fact the `Frontend` needs, so it's
+    /// captured here once rather than re-passed each frame. Owns nothing on
+    /// the GPU but its backbuffer, created lazily on the first submit.
+    pub(crate) fn new(ctx: &HostContext, max_texture_dim: u32) -> Self {
         Self {
             ui: Ui::new(ctx),
-            frontend: Frontend::new(ctx.frame_arena.clone()),
+            frontend: Frontend::new(ctx.frame_arena.clone(), max_texture_dim),
             backbuffer: None,
             start: Instant::now(),
             occluded: false,
@@ -267,8 +268,11 @@ impl WindowRenderer {
         };
         // Snapshot the overlay before the disjoint borrows below: `buffer`
         // borrows `self.frontend`, and `gpu_views` borrows `self.ui` mutably.
+        // (The `GpuView` size ladder's device cap was captured at
+        // construction — see `Frontend::max_texture_dim` — so `build` needs
+        // no GPU input here.)
         let debug_overlay = self.ui.debug_overlay();
-        let buffer = self.frontend.build(&self.ui, plan);
+        let buffer = self.frontend.build(&mut self.ui, plan);
         gpu.submit(
             &mut self.backbuffer,
             target,
