@@ -225,16 +225,16 @@ impl GpuPaint for Cube {
         };
 
         let gpu = self.gpu.as_mut().expect("init ran before paint");
-        // Size the depth attachment to the *capacity* (`target_size`), not
-        // the used size, so it only recreates on a √2 ladder step — the
-        // same churn-avoidance the framework applies to the color target.
-        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.target_size);
+        // Depth matches the color target's size; recreate it when the target
+        // is reallocated (i.e. when `size_px` changes — every frame the view
+        // is resized).
+        let need_depth = gpu.depth.as_ref().map(|(_, s)| *s) != Some(ctx.size_px);
         if need_depth {
             let tex = ctx.device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("showcase.cube.depth"),
                 size: wgpu::Extent3d {
-                    width: ctx.target_size.x.max(1),
-                    height: ctx.target_size.y.max(1),
+                    width: ctx.size_px.x.max(1),
+                    height: ctx.size_px.y.max(1),
                     depth_or_array_layers: 1,
                 },
                 mip_level_count: 1,
@@ -245,7 +245,7 @@ impl GpuPaint for Cube {
                 view_formats: &[],
             });
             let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-            gpu.depth = Some((view, ctx.target_size));
+            gpu.depth = Some((view, ctx.size_px));
         }
         let depth_view = &gpu.depth.as_ref().expect("depth just ensured").0;
 
@@ -280,10 +280,8 @@ impl GpuPaint for Cube {
             occlusion_query_set: None,
             multiview_mask: None,
         });
-        // The target may be larger than the view (capacity ladder); render
-        // into the top-left `size_px` sub-rect only. Viewport sets the
-        // NDC→pixel transform; scissor guarantees nothing leaks into the
-        // slack the composite won't sample.
+        // The target is sized exactly to the view; render into all of it.
+        // Viewport sets the NDC→pixel transform; scissor is belt-and-braces.
         let (w, h) = (ctx.size_px.x.max(1), ctx.size_px.y.max(1));
         pass.set_viewport(0.0, 0.0, w as f32, h as f32, 0.0, 1.0);
         pass.set_scissor_rect(0, 0, w, h);
