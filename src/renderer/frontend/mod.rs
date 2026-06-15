@@ -56,8 +56,12 @@ impl Frontend {
         }
     }
 
-    /// Encode the tree into commands, compose them into the owned
-    /// buffer, and return a borrow of the composed result.
+    /// Encode the tree into commands and compose them into the owned buffer,
+    /// returning a borrow of the composed result. Render-target-agnostic:
+    /// a `GpuView` is composed as an ordinary image; sizing it + writing its
+    /// crop UV is the separate
+    /// [`resolve_targets`](crate::renderer::gpu_view::GpuViewRegistry::resolve_targets)
+    /// pass the caller runs after this (see `WindowRenderer::cpu_build`).
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
         // Two scoped borrows, not one held across both passes: encode
         // only reads the arena (shared borrow), compose appends polyline
@@ -83,6 +87,11 @@ pub mod test_support {
     #![allow(dead_code)]
     use crate::{renderer::frontend::*, ui::Ui};
 
+    /// Baseline `max_texture_dimension_2d` for deviceless test/bench
+    /// frontends — they have no `wgpu::Device` to query, and 8192 is the
+    /// downlevel-default cap real adapters meet or exceed.
+    const TEST_MAX_TEXTURE_DIM: u32 = 8192;
+
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
@@ -103,8 +112,12 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(&mut self, ui: &Ui, plan: crate::renderer::frontend::RenderPlan) {
+        pub fn build_for_test(&mut self, ui: &mut Ui, plan: crate::renderer::frontend::RenderPlan) {
             let _ = self.build(ui, plan);
+            // Mirror the host's `cpu_build`: the dedicated GpuView resolve pass
+            // (sizes targets + writes crop UVs). A no-op without `GpuView`s.
+            ui.gpu_views
+                .resolve_targets(&mut self.buffer.images, TEST_MAX_TEXTURE_DIM);
         }
     }
 }
