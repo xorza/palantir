@@ -49,6 +49,7 @@ use crate::widgets::theme::Theme;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
 use rustc_hash::FxHashMap;
 use std::cell::{RefCell, RefMut};
+use std::collections::hash_map::Entry;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -953,19 +954,26 @@ impl Ui {
         paint: Rc<RefCell<dyn GpuPaint>>,
         repaint: bool,
     ) {
-        // Clone the id source out first (cheap `Rc`) so the `or_insert_with`
-        // mint doesn't borrow `self.ctx` while `self.gpu_views` is borrowed.
-        let ids = self.ctx.texture_ids.clone();
         let frame_id = self.frame_id;
-        let entry = self.gpu_views.entry(id).or_insert_with(|| GpuViewEntry {
-            texture_id: ids.reserve(),
-            paint: GpuPaintRef(Rc::clone(&paint)),
-            epoch: frame_id, // first sight always paints
-        });
-        entry.paint = GpuPaintRef(paint);
-        if repaint {
-            entry.epoch = frame_id;
-        }
+        let entry = match self.gpu_views.entry(id) {
+            Entry::Occupied(e) => {
+                let entry = e.into_mut();
+                entry.paint = GpuPaintRef(paint);
+                // Bump only on a repaint request; held stable otherwise so a
+                // static view stays undamaged (culled, its paint skipped).
+                if repaint {
+                    entry.epoch = frame_id;
+                }
+                entry
+            }
+            // First sight always paints — the texture doesn't exist yet.
+            // `texture_ids` (on `self.ctx`) is disjoint from `self.gpu_views`.
+            Entry::Vacant(e) => e.insert(GpuViewEntry {
+                texture_id: self.ctx.texture_ids.reserve(),
+                paint: GpuPaintRef(paint),
+                epoch: frame_id,
+            }),
+        };
         self.forest.add_gpu_view(entry.epoch);
     }
 

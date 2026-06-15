@@ -243,10 +243,10 @@ pub(crate) struct ImageScene {
 /// One `GpuView` off-screen target to paint this frame (see
 /// [`RenderBuffer::frame_targets`]): the view's stable texture `id`, its used
 /// physical size (`used` — the composed paint-rect size, ceiled ≥1, clamped
-/// to the device max), and the app `paint` callback (carried on the shape, so
-/// the backend needs no `Ui`-side registry to reach it). The backend allocates
-/// the target to exactly `used` and runs `paint` into it before the main pass
-/// samples it.
+/// to the device max), and the app `paint` callback (threaded from
+/// `Ui::gpu_views` through the cmd-buffer side-list, so the backend reaches the
+/// renderer without a `Ui`-side registry). The backend allocates the target to
+/// exactly `used` and runs `paint` into it before the main pass samples it.
 #[derive(Clone, Debug)]
 pub(crate) struct RenderTargetDraw {
     pub(crate) id: TextureId,
