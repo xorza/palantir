@@ -48,12 +48,12 @@ fn run(
     let mut buffer = RenderCmdBuffer::default();
     let mut arena = FrameArenaInner::default();
     build(&mut buffer, &mut arena);
-    let mut composer = Composer::default();
+    let mut composer = Composer::new(8192);
     let mut out = RenderBuffer::default();
     // 8192 = baseline device texture-dim cap for the GpuView size ladder;
     // `sizes` is fresh per `run`, so render-target draws ladder from scratch.
-    let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
-    composer.compose(&buffer, &mut arena, *display, 8192, &mut sizes, &mut out);
+    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+    composer.compose(&buffer, &mut arena, *display, &sizes, &mut out);
     out
 }
 
@@ -416,15 +416,14 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::default();
+    let mut composer = Composer::new(8192);
     let mut out = RenderBuffer::default();
-    let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        8192,
-        &mut sizes,
+        &sizes,
         &mut out,
     );
     let q = &out.quads[0];
@@ -474,15 +473,14 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         BrushSource::Gradient(lowered),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::default();
+    let mut composer = Composer::new(8192);
     let mut out = RenderBuffer::default();
-    let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        8192,
-        &mut sizes,
+        &sizes,
         &mut out,
     );
     let q = &out.quads[0];
@@ -518,15 +516,14 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
             Stroke::ZERO.into(),
         );
     }
-    let mut composer = Composer::default();
+    let mut composer = Composer::new(8192);
     let mut out = RenderBuffer::default();
-    let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+    let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
-        8192,
-        &mut sizes,
+        &sizes,
         &mut out,
     );
     let rows: Vec<_> = out.quads.iter().map(|q| q.fill_lut_row).collect();
@@ -989,15 +986,14 @@ fn compose_spins_polyline_about_bbox_center() {
             join: LineJoinBits::new(LineJoin::Miter),
             ..bytemuck::Zeroable::zeroed()
         });
-        let mut composer = Composer::default();
+        let mut composer = Composer::new(8192);
         let mut out = RenderBuffer::default();
-        let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+        let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
         composer.compose(
             &buffer,
             &mut arena,
             params(1.0, UVec2::new(200, 200)),
-            8192,
-            &mut sizes,
+            &sizes,
             &mut out,
         );
         let vs = &arena.meshes.vertices;
@@ -1754,20 +1750,19 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
     let mut buffer = RenderCmdBuffer::default();
-    let mut composer = Composer::default();
+    let mut composer = Composer::new(8192);
     let display = params(1.0, UVec2::new(200, 200));
     for _ in 0..5 {
         buffer.clear();
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = RenderBuffer::default();
-        let mut sizes = crate::renderer::gpu_view::GpuViewSizes::default();
+        let sizes = crate::renderer::gpu_view::GpuViewSizes::default();
         composer.compose(
             &buffer,
             &mut FrameArenaInner::default(),
             display,
-            8192,
-            &mut sizes,
+            &sizes,
             &mut out,
         );
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
