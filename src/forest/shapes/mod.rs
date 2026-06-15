@@ -7,7 +7,6 @@ use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
 use crate::renderer::gradient_atlas::GradientAtlas;
-use crate::renderer::texture_id::TextureId;
 use crate::shape::{PolylineColors, Shape};
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].

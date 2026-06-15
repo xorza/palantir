@@ -3,6 +3,7 @@ use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
+use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::Quad;
 use crate::renderer::texture_id::TextureId;
 use crate::text::TextCacheKey;
@@ -39,6 +40,13 @@ pub(crate) struct RenderBuffer {
     /// Image draws + per-instance state. Structurally mirrors
     /// [`MeshScene`]; per-frame cleared in `compose`.
     pub(crate) images: ImageScene,
+    /// `GpuView` off-screen targets to paint this frame — one per composited
+    /// `GpuView` image row. The composer fills this directly from the
+    /// `DrawImage.target` link (resolving the physical size + the app `paint`
+    /// callback) as it walks image draws; the backend drains it to allocate +
+    /// paint. Carries the callback, so the backend reaches the renderer without
+    /// any `Ui`-side registry.
+    pub(crate) frame_targets: Vec<RenderTargetDraw>,
     /// One entry per *batch* of image draws (currently one
     /// `ImageBatch` per group that emitted images). Schedule walks
     /// these in lockstep with `groups` via a cursor — same pattern as
@@ -85,6 +93,7 @@ impl Default for RenderBuffer {
             text_batches: Vec::new(),
             mesh_batches: Vec::new(),
             images: ImageScene::default(),
+            frame_targets: Vec::new(),
             image_batches: Vec::new(),
             curves: Vec::new(),
             curve_batches: Vec::new(),
@@ -108,6 +117,7 @@ impl RenderBuffer {
         self.texts.clear();
         self.meshes.rows.clear();
         self.images.rows.clear();
+        self.frame_targets.clear();
         self.groups.clear();
         self.text_batches.clear();
         self.mesh_batches.clear();
@@ -221,13 +231,27 @@ pub(crate) struct MeshScene {
 /// four-corner from the shader's `vertex_index`).
 ///
 /// A `GpuView` is just another image row here — the scene carries no
-/// render-target concept. The `GpuView` resolve pass
-/// ([`GpuViewRegistry::resolve_targets`](crate::renderer::gpu_view::GpuViewRegistry::resolve_targets))
-/// recognizes which rows are render targets (by texture id) after compose
-/// and patches their crop UV; the scene stays render-target-agnostic.
+/// render-target concept. A `GpuView`'s off-screen target is listed
+/// separately in [`RenderBuffer::frame_targets`] (the composer reads the
+/// `DrawImage.target` link), but the row itself composites exactly like an
+/// image: same `id` in the shared texture cache, same draw.
 #[derive(Default)]
 pub(crate) struct ImageScene {
     pub(crate) rows: Soa<ImageDrawRow>,
+}
+
+/// One `GpuView` off-screen target to paint this frame (see
+/// [`RenderBuffer::frame_targets`]): the view's stable texture `id`, its used
+/// physical size (`used` — the composed paint-rect size, ceiled ≥1, clamped
+/// to the device max), and the app `paint` callback (carried on the shape, so
+/// the backend needs no `Ui`-side registry to reach it). The backend allocates
+/// the target to exactly `used` and runs `paint` into it before the main pass
+/// samples it.
+#[derive(Clone, Debug)]
+pub(crate) struct RenderTargetDraw {
+    pub(crate) id: TextureId,
+    pub(crate) used: UVec2,
+    pub(crate) paint: GpuPaintRef,
 }
 
 /// One image draw row. Composer pushes one of these per image; the
