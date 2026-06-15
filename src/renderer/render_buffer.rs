@@ -108,6 +108,7 @@ impl RenderBuffer {
         self.texts.clear();
         self.meshes.rows.clear();
         self.images.rows.clear();
+        self.images.render_targets.clear();
         self.groups.clear();
         self.text_batches.clear();
         self.mesh_batches.clear();
@@ -222,6 +223,32 @@ pub(crate) struct MeshScene {
 #[derive(Default)]
 pub(crate) struct ImageScene {
     pub(crate) rows: Soa<ImageDrawRow>,
+    /// `GpuView` composites this frame — one per [`ImageMode::RENDER_TARGET`]
+    /// row. Kept beside `rows` rather than folded in so the backend can
+    /// drive render-target reconcile (grow + paint) without scanning the
+    /// draw list. Cleared each frame by [`RenderBuffer::start_frame`].
+    pub(crate) render_targets: Vec<RenderTargetDraw>,
+}
+
+/// One `GpuView` composite this frame: the off-screen target the backend
+/// must paint before the main pass samples it. The composer pushes one per
+/// [`ImageMode::RENDER_TARGET`] row, having already decided the target's
+/// `capacity` (the √2 ladder lives in
+/// [`GpuViewSizes`](crate::renderer::gpu_view::GpuViewSizes)) and written
+/// the `used / capacity` crop into the instance. The backend is a pure
+/// allocator: it (re)creates the texture to `capacity` and paints the
+/// top-left `used` sub-rect — no sizing policy, no instance patch.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct RenderTargetDraw {
+    pub(crate) id: TextureId,
+    /// Physical-px used size — the view's paint-rect size ceiled to whole
+    /// px (≥1). The backend renders into this top-left sub-rect
+    /// (`GpuFrameCtx::size_px`).
+    pub(crate) used: UVec2,
+    /// Physical-px allocated size (a √2 ladder rung ≥ `used`, ≤ the device
+    /// max). The backend allocates the texture to exactly this and only
+    /// reallocates when it changes.
+    pub(crate) capacity: UVec2,
 }
 
 /// One image draw row. Composer pushes one of these per image; the
@@ -237,6 +264,25 @@ pub(crate) struct ImageDrawRow {
     pub instance: ImageInstance,
 }
 
+/// Per-instance sampling mode for the image pipeline, mirrored in
+/// `image.wgsl` as `MODE_*`. `repr(transparent)` over `u32` so it rides
+/// the `Uint32` vertex attr verbatim. `Direct` samples `uv_min + corner *
+/// uv_size`; `Tile` fract-wraps that (`ImageFit::Tile`); `RenderTarget`
+/// ignores the instance UV and derives the crop from the texture's own
+/// dimensions in-shader (`corner * rect.size / textureDimensions`), so a
+/// `GpuView` composites the painted top-left sub-rect of an over-sized
+/// (√2-laddered) target without the backend ever patching the instance
+/// buffer. `Default`/`Zeroable` is `Direct`.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct ImageMode(pub(crate) u32);
+
+impl ImageMode {
+    pub(crate) const DIRECT: Self = Self(0);
+    pub(crate) const TILE: Self = Self(1);
+    pub(crate) const RENDER_TARGET: Self = Self(2);
+}
+
 /// Per-image GPU state, uploaded to a `step_mode: Instance` vertex
 /// buffer. Shader interpolates `uv_min + corner * uv_size` per fragment
 /// (where `corner` is the four-corner `vertex_index`), samples the
@@ -250,16 +296,18 @@ pub(crate) struct ImageDrawRow {
 pub(crate) struct ImageInstance {
     /// Physical-px paint rect.
     pub(crate) rect: Rect,
-    /// UV crop top-left (0..1 texture coords).
+    /// UV crop top-left (0..1 texture coords). Ignored for
+    /// [`ImageMode::RENDER_TARGET`] (the shader derives its own).
     pub(crate) uv_min: glam::Vec2,
     /// UV crop extent (typically `(1, 1)`; smaller for `Cover` crop,
-    /// `> 1` for `Tile` repeats).
+    /// `> 1` for `Tile` repeats). Ignored for
+    /// [`ImageMode::RENDER_TARGET`].
     pub(crate) uv_size: glam::Vec2,
     /// Linear-RGBA tint, premultiplied in the shader.
     pub(crate) tint: ColorU8,
-    /// `1` → shader wraps UV with `fract` (`ImageFit::Tile`); `0` →
-    /// sample directly. `u32` for a clean `Uint32` vertex attr.
-    pub(crate) tiled: u32,
+    /// Sampling mode — `Direct` / `Tile` / `RenderTarget`. `Uint32`
+    /// vertex attr; the shader branches on it (see [`ImageMode`]).
+    pub(crate) mode: ImageMode,
 }
 
 /// One mesh draw within a group. Vertex/index slices live in the

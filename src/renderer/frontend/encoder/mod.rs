@@ -19,6 +19,7 @@ use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     GpuFillFields, RenderCmdBuffer,
 };
+use crate::renderer::render_buffer::ImageMode;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
@@ -364,23 +365,29 @@ fn emit_one_shape(
                 uv_size,
                 tint: *tint,
                 handle: *id,
-                tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
+                mode: if matches!(*fit, ImageFit::Tile { .. }) {
+                    ImageMode::TILE
+                } else {
+                    ImageMode::DIRECT
+                },
                 ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::GpuView { id, epoch: _ } => {
             // Composite the app-rendered off-screen target over the owner's
-            // full arranged rect (full UV, untinted) — the same DrawImage
-            // path as `ShapeRecord::Image`. The backend renders the texture
-            // for `id` just before the main pass; `epoch` only affects the
-            // shape hash (damage), not the emitted draw.
+            // full arranged rect (untinted). `RenderTarget` mode: the shader
+            // derives the UV crop from the target's own dimensions, so the
+            // instance UV here is unused (the backend never patches it). The
+            // backend renders the texture for `id` just before the main
+            // pass; `epoch` only affects the shape hash (damage), not the
+            // emitted draw.
             out.draw_image(DrawImagePayload {
                 rect: owner_rect,
                 uv_min: glam::Vec2::ZERO,
                 uv_size: glam::Vec2::ONE,
                 tint: ColorF16::from(Color::WHITE),
                 handle: *id,
-                tiled: 0,
+                mode: ImageMode::RENDER_TARGET,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
