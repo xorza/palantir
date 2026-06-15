@@ -47,21 +47,23 @@ pub struct Frontend {
 }
 
 impl Frontend {
-    pub(crate) fn new(frame_arena: FrameArena) -> Self {
+    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
+    /// the device's lifetime) — the cap on `GpuView` target sizes, handed to
+    /// the [`Composer`] which ceils each composited view into `frame_targets`.
+    pub(crate) fn new(frame_arena: FrameArena, max_texture_dim: u32) -> Self {
         Self {
             cmds: RenderCmdBuffer::default(),
-            composer: Composer::default(),
+            composer: Composer::new(max_texture_dim),
             buffer: RenderBuffer::default(),
             frame_arena,
         }
     }
 
-    /// Encode the tree into commands and compose them into the owned buffer,
-    /// returning a borrow of the composed result. Render-target-agnostic:
-    /// a `GpuView` is composed as an ordinary image; sizing it + writing its
-    /// crop UV is the separate
-    /// [`resolve_targets`](crate::renderer::gpu_view::GpuViewRegistry::resolve_targets)
-    /// pass the caller runs after this (see `WindowRenderer::cpu_build`).
+    /// Encode → compose into the owned buffer; returns a borrow of the result.
+    /// Reads `ui` **immutably** throughout — a `GpuView`'s paint callback rides
+    /// the shape, so compose lists each off-screen target in
+    /// `buffer.frame_targets` (with its callback) directly, no registry — so
+    /// the `Ui` stays frozen after record.
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
         // Two scoped borrows, not one held across both passes: encode
         // only reads the arena (shared borrow), compose appends polyline
@@ -95,7 +97,7 @@ pub mod test_support {
     impl Frontend {
         /// `Frontend` with a private (disjoint-from-Ui) frame arena.
         pub fn for_test() -> Self {
-            Self::new(FrameArena::default())
+            Self::new(FrameArena::default(), TEST_MAX_TEXTURE_DIM)
         }
 
         /// `Frontend` sharing `ui`'s frame arena. The arena holds per-frame
@@ -103,7 +105,7 @@ pub mod test_support {
         /// read it on the same frame. Required for benches that want a
         /// full CPU-side frame including encode + compose.
         pub fn for_test_sharing(ui: &Ui) -> Self {
-            Self::new(ui.ctx.frame_arena.clone())
+            Self::new(ui.ctx.frame_arena.clone(), TEST_MAX_TEXTURE_DIM)
         }
 
         /// Drive the full CPU-side frontend (encode + compose) against a
@@ -112,12 +114,8 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(&mut self, ui: &mut Ui, plan: crate::renderer::frontend::RenderPlan) {
+        pub fn build_for_test(&mut self, ui: &Ui, plan: crate::renderer::frontend::RenderPlan) {
             let _ = self.build(ui, plan);
-            // Mirror the host's `cpu_build`: the dedicated GpuView resolve pass
-            // (sizes targets + writes crop UVs). A no-op without `GpuView`s.
-            ui.gpu_views
-                .resolve_targets(&mut self.buffer.images, TEST_MAX_TEXTURE_DIM);
         }
     }
 }
