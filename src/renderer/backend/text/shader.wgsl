@@ -22,7 +22,7 @@ struct VertexOut {
     @location(2) @interpolate(flat) kind: u32, // 0=mask, 1=color
 }
 
-// Group(1) = text-specific atlas textures + sampler. Both viewport
+// Group(0) = text-specific atlas textures + sampler. Both viewport
 // and atlas-size params ride the shared immediate region:
 //   offset 0 (8 bytes): `Viewport` — set per pass by the backend.
 //   offset 8 (8 bytes): `Params` — set per text batch in

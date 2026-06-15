@@ -25,9 +25,7 @@ pub(crate) mod encode;
 
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::{
-    PipelineRecipe, build_pipeline, build_pipeline_layout,
-};
+use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
@@ -46,23 +44,6 @@ use encode::{
 /// long zoom gesture while comfortably outliving any short flicker
 /// (visibility toggle, hover paint) that drops a run for a frame.
 const ENCODED_CACHE_KEEP_FRAMES: u64 = 120;
-
-/// Selects which pipeline a `prepare_batch` / `render_batch` call
-/// targets. Same as the existing wrapper's `StencilMode`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(crate) enum StencilMode {
-    Plain,
-    Stencil,
-}
-
-impl StencilMode {
-    fn pipeline_idx(self) -> usize {
-        match self {
-            Self::Plain => 0,
-            Self::Stencil => 1,
-        }
-    }
-}
 
 /// One per-instance vertex record. 20 bytes, `Pod`.
 #[repr(C)]
@@ -121,6 +102,10 @@ pub struct TextBackend {
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
 
+    /// Text shader module — format-independent; `FormatPipelines` reads
+    /// it to build this format's pipelines.
+    pub(crate) shader: wgpu::ShaderModule,
+
     /// Group-0 layout (atlas textures + sampler). Format-independent;
     /// `FormatPipelines` reads it to build this format's text pipelines.
     /// The pipelines themselves live in `FormatPipelines`, keyed by
@@ -157,11 +142,16 @@ struct MissEntry {
 
 impl TextBackend {
     /// Build the format-independent text resources (glyph atlas, shaper,
-    /// caches, vertex buffer). The render pipelines are built per format
-    /// by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_pipelines`].
+    /// caches, shader, vertex buffer). The render pipelines are built per
+    /// format by [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
+    /// from [`Self::build_variants`].
     pub(crate) fn new(device: &wgpu::Device, shaper: TextShaper) -> Self {
         let atlas = GlyphAtlas::new(device);
+
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("palantir.text.shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
+        });
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("palantir text sampler"),
@@ -203,6 +193,7 @@ impl TextBackend {
             shaper,
             swash_cache: SwashCache::new(),
             atlas,
+            shader,
             atlas_bgl,
             atlas_bg,
             sampler,
@@ -216,52 +207,32 @@ impl TextBackend {
         }
     }
 
-    /// Build the per-stencil-config render pipelines against `format`.
-    /// The shader module + pipeline layout are cheap, format-independent
-    /// boilerplate (recreated each call); the glyph atlas, its bind
-    /// group, and the sampler are not built here and so survive a
-    /// format change. Called by `FormatPipelines` per format; the result
-    /// is indexed by `StencilMode::pipeline_idx`.
-    pub(crate) fn build_pipelines(
+    /// Build the base + stencil-test render pipelines against `format`,
+    /// reading the format-independent `shader`. The glyph atlas, its bind
+    /// group, and the sampler are not built here and so survive a format
+    /// change. Called by `FormatPipelines` per format; matches the
+    /// `build_variants` shape of the quad / mesh / image / curve pipelines.
+    pub(crate) fn build_variants(
         device: &wgpu::Device,
+        shader: &wgpu::ShaderModule,
         atlas_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
-        depth_stencil_states: &[Option<wgpu::DepthStencilState>],
-    ) -> Vec<wgpu::RenderPipeline> {
-        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.text.shader"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
-        });
-
+    ) -> StencilVariant {
         // Group 0 = atlas textures + sampler. Viewport + atlas-size
         // `Params` ride the shared immediate region.
-        let layout = build_pipeline_layout(device, "palantir.text.pl", &[Some(atlas_bgl)]);
-
-        depth_stencil_states
-            .iter()
-            .map(|ds| {
-                let label = if ds.is_some() {
-                    "palantir.text.pipeline.stencil_test"
-                } else {
-                    "palantir.text.pipeline"
-                };
-                build_pipeline(
-                    device,
-                    PipelineRecipe {
-                        label,
-                        shader: &shader,
-                        layout: &layout,
-                        vertex_buffers: &[glyph_instance_layout()],
-                        topology: wgpu::PrimitiveTopology::TriangleStrip,
-                        color_format: format,
-                        fragment_entry: "fs",
-                        color_writes: wgpu::ColorWrites::ALL,
-                        blend: Some(wgpu::BlendState::PREMULTIPLIED_ALPHA_BLENDING),
-                        depth_stencil: ds.clone(),
-                    },
-                )
-            })
-            .collect()
+        StencilVariant::build(
+            device,
+            ColorVariantSpec {
+                label: "palantir.text.pipeline",
+                stencil_label: "palantir.text.pipeline.stencil_test",
+                layout_label: "palantir.text.pl",
+                shader,
+                bind_group_layouts: &[Some(atlas_bgl)],
+                vertex_buffers: &[glyph_instance_layout()],
+                topology: wgpu::PrimitiveTopology::TriangleStrip,
+            },
+            format,
+        )
     }
 
     /// Append-mode prepare. Looks up cosmic buffers via the shaper,
@@ -394,8 +365,8 @@ impl TextBackend {
         &'a self,
         batch_idx: usize,
         pass: &mut wgpu::RenderPass<'a>,
-        pipelines: &'a [wgpu::RenderPipeline],
-        mode: StencilMode,
+        pipelines: &'a StencilVariant,
+        use_stencil: bool,
         viewport: &ViewportPush,
     ) {
         let Some(range) = self.ranges.get(batch_idx).cloned().flatten() else {
@@ -404,7 +375,7 @@ impl TextBackend {
         if range.is_empty() {
             return;
         }
-        pass.set_pipeline(&pipelines[mode.pipeline_idx()]);
+        pass.set_pipeline(pipelines.select(use_stencil));
         pass.set_bind_group(0, &self.atlas_bg, &[]);
         // Both halves of the shared immediate region — write
         // viewport (offset 0) here as well as params (offset 8)
@@ -506,7 +477,8 @@ pub mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
-    use crate::renderer::backend::text::{StencilMode, ViewportPush};
+    use crate::renderer::backend::pipeline_utils::StencilVariant;
+    use crate::renderer::backend::text::ViewportPush;
 
     use crate::text::{FontFamily, TextShaper};
     use glam::{UVec2, Vec2};
@@ -531,16 +503,17 @@ pub mod test_support {
     /// `WgpuBackend` / `FormatPipelines` machinery.
     pub struct BenchText {
         backend: TextBackend,
-        pipelines: Vec<wgpu::RenderPipeline>,
+        pipelines: StencilVariant,
     }
 
     impl BenchText {
-        /// Single-pipeline (no MSAA, no depth/stencil) — enough to render
-        /// against an `Rgba8Unorm*` color target.
+        /// Builds both base + stencil-test pipelines (the bench draws with
+        /// the base, `use_stencil = false`) against an `Rgba8Unorm*` color
+        /// target.
         pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
             let backend = TextBackend::new(device, shaper);
             let pipelines =
-                TextBackend::build_pipelines(device, &backend.atlas_bgl, format, &[None]);
+                TextBackend::build_variants(device, &backend.shader, &backend.atlas_bgl, format);
             Self { backend, pipelines }
         }
 
@@ -561,7 +534,7 @@ pub mod test_support {
                 size: glam::Vec2::ZERO,
             };
             self.backend
-                .render_batch(0, pass, &self.pipelines, StencilMode::Plain, &viewport);
+                .render_batch(0, pass, &self.pipelines, false, &viewport);
         }
 
         pub fn end_frame(&mut self) {

@@ -36,7 +36,7 @@ use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::frame_arena::FrameArena;
 use crate::primitives::urect::URect;
-use crate::renderer::backend::text::{StencilMode as TextStencilMode, TextBackend};
+use crate::renderer::backend::text::TextBackend;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
@@ -845,13 +845,6 @@ impl WgpuBackend {
         damage_scissor: Option<URect>,
         use_stencil: bool,
     ) {
-        // The text pipelines need the stencil-test variant exactly when
-        // the frame round-clips.
-        let text_mode = if use_stencil {
-            TextStencilMode::Stencil
-        } else {
-            TextStencilMode::Plain
-        };
         // Track what pipeline + vertex buffer is currently bound so we
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
@@ -966,7 +959,7 @@ impl WgpuBackend {
                     // re-push viewport via `viewport.push_into(pass)`
                     // after their bind.
                     self.text
-                        .render_batch(batch, pass, &fmt.text, text_mode, &viewport);
+                        .render_batch(batch, pass, &fmt.text, use_stencil, &viewport);
                     bound = Bound::None;
                     pass.pop_debug_group();
                 }
