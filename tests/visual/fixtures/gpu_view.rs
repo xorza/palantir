@@ -54,7 +54,7 @@ fn gpu_view_clear_red_reaches_screen() {
     let p = paint.clone();
     let img = h.render(size, 1.0, DARK_BG, |ui| {
         // Default sizing fills the surface; the whole frame is the view.
-        GpuView::new().show(ui, p.clone());
+        GpuView::new(p.clone()).show(ui);
     });
 
     let expected = Rgba([255u8, 0, 0, 255]);
@@ -217,7 +217,7 @@ fn gpu_view_pipeline_depth_and_capacity_crop() {
     }));
     let p = paint.clone();
     let img = h.render(size, 1.0, DARK_BG, |ui| {
-        GpuView::new().show(ui, p.clone());
+        GpuView::new(p.clone()).show(ui);
     });
     let green = Rgba([0u8, 255, 0, 255]);
     // (63,63) is the discriminating pixel: with the correct `used/capacity`

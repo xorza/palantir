@@ -8,7 +8,7 @@ use std::rc::Rc;
 
 /// A widget that renders raw `wgpu` content into its rect. App code
 /// implements [`GpuPaint`] on its own renderer, wraps it in
-/// `Rc<RefCell<…>>`, and hands a clone to [`GpuView::show`] each frame.
+/// `Rc<RefCell<…>>`, and hands a clone to [`GpuView::new`] each frame.
 /// The framework owns an off-screen texture sized to the widget's rect,
 /// runs the callback into it during submit, and composites the result
 /// through the image pipeline — so the view clips, rounds, and z-orders
@@ -17,14 +17,14 @@ use std::rc::Rc;
 /// The renderer persists across frames in the widget's per-`WidgetId`
 /// state (the off-screen texture frees automatically when the widget
 /// disappears). Per-frame parameters are natural: mutate your own `Rc`
-/// before calling `show`.
+/// before constructing the widget.
 ///
 /// ```ignore
 /// let scene = self.scene.clone();          // Rc<RefCell<MyScene>>
 /// scene.borrow_mut().camera = self.camera;
-/// GpuView::new()
+/// GpuView::new(scene)
 ///     .size((Sizing::Fill(1.0), Sizing::Fill(1.0)))  // Configure::size
-///     .show(ui, scene);
+///     .show(ui);
 /// ```
 ///
 /// Defaults to filling its parent on both axes (a viewport has no
@@ -33,24 +33,25 @@ use std::rc::Rc;
 /// (drag / click) from the returned [`Response`].
 pub struct GpuView {
     element: Element,
+    paint: Rc<RefCell<dyn GpuPaint>>,
 }
 
 impl GpuView {
-    #[allow(clippy::new_without_default)]
-    #[track_caller]
-    pub fn new() -> Self {
-        let mut element = Element::new(LayoutMode::Leaf);
-        element.size = (Sizing::Fill(1.0), Sizing::Fill(1.0)).into();
-        Self { element }
-    }
-
-    /// Record the view. `paint` is the app's renderer; the framework calls
+    /// New view backed by `paint` (the app's renderer). The framework calls
     /// [`GpuPaint::init`] once (when the device is first available) and
     /// [`GpuPaint::paint`] each painted frame, into an off-screen target
-    /// sized to this widget's physical rect. The view re-renders on every
-    /// painted frame, so call [`Ui::request_repaint`] each frame to animate.
-    pub fn show(self, ui: &mut Ui, paint: Rc<RefCell<dyn GpuPaint>>) -> Response<'_> {
-        let element = self.element;
+    /// sized to this widget's physical rect.
+    #[track_caller]
+    pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
+        let mut element = Element::new(LayoutMode::Leaf);
+        element.size = (Sizing::Fill(1.0), Sizing::Fill(1.0)).into();
+        Self { element, paint }
+    }
+
+    /// Record the view. It re-renders on every painted frame, so call
+    /// [`Ui::request_repaint`] each frame to animate.
+    pub fn show(self, ui: &mut Ui) -> Response<'_> {
+        let Self { element, paint } = self;
         let entry = enter_widget(ui, &element);
         let id = entry.id;
         ui.node(id, element, None, |ui| {
@@ -98,9 +99,9 @@ mod tests {
         ui.run_at(UVec2::new(200, 120), |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
                 node = Some(
-                    GpuView::new()
+                    GpuView::new(scene())
                         .size((Sizing::Fixed(150.0), Sizing::Fixed(90.0)))
-                        .show(ui, scene())
+                        .show(ui)
                         .node(),
                 );
             });
@@ -123,7 +124,7 @@ mod tests {
         let mut ui = Ui::for_test();
         let mut node = None;
         ui.run_at(UVec2::new(160, 100), |ui| {
-            node = Some(GpuView::new().show(ui, scene()).node());
+            node = Some(GpuView::new(scene()).show(ui).node());
         });
         let r = ui.layout[Layer::Main].rect[node.unwrap().idx()];
         assert_eq!((r.size.w, r.size.h), (160.0, 100.0));
@@ -138,22 +139,22 @@ mod tests {
         let mut ui = Ui::for_test();
         ui.run_at_acked(surface, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                GpuView::new()
+                GpuView::new(scene())
                     .id(id)
                     .sense(Sense::CLICK)
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
-                    .show(ui, scene());
+                    .show(ui);
             });
         });
         ui.click_at(Vec2::new(50.0, 25.0));
         let mut clicked = false;
         ui.run_at(surface, |ui| {
             Panel::hstack().auto_id().show(ui, |ui| {
-                clicked |= GpuView::new()
+                clicked |= GpuView::new(scene())
                     .id(id)
                     .sense(Sense::CLICK)
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
-                    .show(ui, scene())
+                    .show(ui)
                     .clicked();
             });
         });

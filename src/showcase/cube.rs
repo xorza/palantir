@@ -312,10 +312,10 @@ pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
             let paint: Rc<RefCell<dyn GpuPaint>> = cube.clone();
             // GpuView doesn't sense by default — opt into drag so the
             // returned `Response` reports the orbit delta.
-            let resp = GpuView::new()
+            let resp = GpuView::new(paint)
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, paint);
+                .show(ui);
             if let Some(delta) = resp.drag_delta() {
                 cube.borrow_mut().orbit(delta.x, delta.y);
             }
