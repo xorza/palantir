@@ -19,7 +19,6 @@ use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     GpuFillFields, RenderCmdBuffer,
 };
-use crate::renderer::render_buffer::ImageMode;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
@@ -365,29 +364,25 @@ fn emit_one_shape(
                 uv_size,
                 tint: *tint,
                 handle: *id,
-                mode: if matches!(*fit, ImageFit::Tile { .. }) {
-                    ImageMode::TILE
-                } else {
-                    ImageMode::DIRECT
-                },
+                tiled: u32::from(matches!(*fit, ImageFit::Tile { .. })),
                 ..bytemuck::Zeroable::zeroed()
             });
         }
         ShapeRecord::GpuView { id, epoch: _ } => {
-            // Composite the app-rendered off-screen target over the owner's
-            // full arranged rect (untinted). `RenderTarget` mode: the shader
-            // derives the UV crop from the target's own dimensions, so the
-            // instance UV here is unused (the backend never patches it). The
-            // backend renders the texture for `id` just before the main
-            // pass; `epoch` only affects the shape hash (damage), not the
-            // emitted draw.
+            // A `GpuView` composites exactly like any image: full arranged
+            // rect, untinted, full UV — the encoder/composer know nothing
+            // about render targets. After compose, the `GpuView` resolve
+            // pass recognizes this row by its texture id, sizes the
+            // off-screen target, and rewrites this instance's crop UV; the
+            // backend paints the texture before the main pass. `epoch` only
+            // affects the shape hash (damage), not the emitted draw.
             out.draw_image(DrawImagePayload {
                 rect: owner_rect,
                 uv_min: glam::Vec2::ZERO,
                 uv_size: glam::Vec2::ONE,
                 tint: ColorF16::from(Color::WHITE),
                 handle: *id,
-                mode: ImageMode::RENDER_TARGET,
+                tiled: 0,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
