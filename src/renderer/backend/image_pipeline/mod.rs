@@ -13,20 +13,14 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{
     ColorVariantSpec, StencilVariant, texture_sampler_bgl,
 };
+use crate::renderer::gpu_view::{GPU_VIEW_FORMAT, GpuFrameCtx, GpuInitCtx};
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::{ImageInstance, RenderTargetDraw};
 use crate::renderer::texture_id::TextureId;
+use glam::UVec2;
 use rustc_hash::FxHashMap;
+use std::collections::hash_map::Entry;
 use std::time::Duration;
-
-/// The `GpuView` GPU executor — [`GpuViewTargets`] (the off-screen-target
-/// map + the per-frame paint) and the [`RenderTarget`](render_target::RenderTarget)
-/// value type — lives in a sibling file. Each target's size is decided on the
-/// CPU (the composed paint rect) and arrives in `frame_targets`; the targets
-/// composite through this pipeline's shared bind-group cache, so
-/// [`ImagePipeline::paint_gpu_views`] lends it that cache.
-mod render_target;
-use render_target::{BindGroupSink, GpuViewTargets};
 
 pub(crate) struct ImagePipeline {
     instance_buffer: DynamicBuffer,
@@ -48,14 +42,13 @@ pub(crate) struct ImagePipeline {
     /// Holds bind groups for **both** registered images and `GpuView`
     /// render targets (the id authority is shared, so no collision) —
     /// `draw` is identical for both. Render-target entries are registered /
-    /// freed by [`GpuViewTargets::paint`] (via [`Self::paint_gpu_views`]),
-    /// which is lent this cache.
+    /// freed by [`Self::paint_gpu_views`].
     cache: FxHashMap<TextureId, wgpu::BindGroup>,
-    /// The `GpuView` GPU executor: framework-owned off-screen targets +
-    /// the per-frame paint of the app's `GpuPaint` callbacks into them.
-    /// Separate from the image upload / quad-draw above; lent `cache` +
-    /// `image_bgl` + `sampler` by [`Self::paint_gpu_views`].
-    gpu_views: GpuViewTargets,
+    /// Framework-owned off-screen `GpuView` targets, keyed by [`TextureId`].
+    /// [`Self::paint_gpu_views`] (re)allocates + paints them and frees the
+    /// ones culled this frame; the bind groups live in `cache` above so the
+    /// composite samples a target exactly like any image.
+    gpu_view_targets: FxHashMap<TextureId, RenderTarget>,
 }
 
 impl ImagePipeline {
@@ -91,7 +84,7 @@ impl ImagePipeline {
             image_bgl,
             sampler,
             cache: FxHashMap::default(),
-            gpu_views: GpuViewTargets::default(),
+            gpu_view_targets: FxHashMap::default(),
         }
     }
 
@@ -146,12 +139,19 @@ impl ImagePipeline {
     }
 
     /// Paint every [`GpuView`](crate::widgets::gpu_view::GpuView) drawn this
-    /// frame into its off-screen target, before the main pass. Called once
-    /// per frame from `WgpuBackend::submit`'s upload phase. A thin delegate
-    /// over [`GpuViewTargets::paint`] (the GPU executor): lends it the image
-    /// `bgl` + `sampler` to build the target bind groups and the **shared**
-    /// `cache` to register them, so the composite samples a `GpuView` target
-    /// exactly like any image.
+    /// frame into its off-screen target, before the main pass. Called once per
+    /// frame from `WgpuBackend::submit`'s upload phase. For each `frame_targets`
+    /// entry: [`Self::ensure_target`] (re)allocates the target (registering its
+    /// bind group in the **shared** `cache` so the composite samples it like any
+    /// image), runs [`GpuPaint::init`](crate::renderer::gpu_view::GpuPaint::init)
+    /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
+    /// so it only has to run before the main pass samples the targets.
+    ///
+    /// Eviction is **immediate**: any target absent from this frame's
+    /// `frame_targets` is freed. Correct because every composited view is
+    /// repainted, so a freed-then-recomposited target is never sampled blank —
+    /// but a `repaint(false)` view culled from a frame frees its texture, so
+    /// `GpuPaint::init` re-runs when it next composites (guard expensive setup).
     #[profiling::function]
     pub(crate) fn paint_gpu_views(
         &mut self,
@@ -160,17 +160,87 @@ impl ImagePipeline {
         scale: f32,
         now: Duration,
     ) {
-        self.gpu_views.paint(
-            ctx,
-            frame_targets,
-            BindGroupSink {
-                bgl: &self.image_bgl,
-                sampler: &self.sampler,
-                cache: &mut self.cache,
-            },
-            scale,
-            now,
-        );
+        for draw in frame_targets {
+            let rt = self.ensure_target(ctx.device, draw.id, draw.used);
+            let mut paint = draw.paint.0.borrow_mut();
+            // Run `init` once per target (not on a realloc: the recreated
+            // texture shares the build-time format).
+            if !rt.initialized {
+                paint.init(&GpuInitCtx {
+                    device: ctx.device,
+                    target_format: GPU_VIEW_FORMAT,
+                });
+                rt.initialized = true;
+            }
+            // Time since this view last painted (ZERO on its first paint).
+            let dt = rt
+                .last_paint
+                .map_or(Duration::ZERO, |last| now.saturating_sub(last));
+            paint.paint(&mut GpuFrameCtx {
+                device: ctx.device,
+                queue: ctx.queue,
+                encoder: ctx.encoder,
+                target: &rt.view,
+                size_px: draw.used,
+                scale,
+                dt,
+            });
+            rt.last_paint = Some(now);
+        }
+        // Evict immediately: a target absent from this frame's `frame_targets`
+        // (its widget vanished, or a `repaint(false)` view was culled) is freed
+        // — texture + shared-cache bind group together.
+        self.gpu_view_targets.retain(|id, _| {
+            let keep = frame_targets.iter().any(|draw| draw.id == *id);
+            if !keep {
+                self.cache.remove(id);
+            }
+            keep
+        });
+    }
+
+    /// The off-screen target for `id`, in a single `entry` lookup. Reuses the
+    /// existing texture unless the requested `size` changed; on a change (or
+    /// first sight) builds a fresh texture + bind group via [`make_target`] (a
+    /// realloc swaps only the texture, so `init` + last-paint state persist).
+    /// `gpu_view_targets` and `image_bgl`/`sampler`/`cache` are disjoint fields,
+    /// so the bind-group build borrows them alongside the held entry.
+    fn ensure_target(
+        &mut self,
+        device: &wgpu::Device,
+        id: TextureId,
+        size: UVec2,
+    ) -> &mut RenderTarget {
+        match self.gpu_view_targets.entry(id) {
+            Entry::Occupied(e) => {
+                let rt = e.into_mut();
+                if rt.size != size {
+                    rt.view = make_target(
+                        device,
+                        &self.image_bgl,
+                        &self.sampler,
+                        &mut self.cache,
+                        id,
+                        size,
+                    );
+                    rt.size = size;
+                }
+                rt
+            }
+            Entry::Vacant(e) => e.insert(RenderTarget {
+                view: make_target(
+                    device,
+                    &self.image_bgl,
+                    &self.sampler,
+                    &mut self.cache,
+                    id,
+                    size,
+                ),
+                size,
+                initialized: false,
+                last_paint: None,
+            }),
+        }
     }
 
     /// Upload a fresh RGBA8 texture for `id` and build its per-image
@@ -306,7 +376,7 @@ fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
 /// Build a per-texture bind group (texture view @0 + sampler @1) against the
 /// shared image layout `bgl`. One construction site for both the CPU-image
 /// [`ImagePipeline::upload`] and the `GpuView` target paint
-/// ([`GpuViewTargets::paint`]), so their bindings can't drift.
+/// ([`ImagePipeline::paint_gpu_views`]), so their bindings can't drift.
 fn texture_bind_group(
     device: &wgpu::Device,
     bgl: &wgpu::BindGroupLayout,
@@ -328,6 +398,57 @@ fn texture_bind_group(
             },
         ],
     })
+}
+
+/// All per-`GpuView` off-screen-target state, in one entry so a reallocation
+/// that rewrites `view` + `size` preserves the rest. The color target is
+/// `RENDER_ATTACHMENT` (the user's pass draws into it) + `TEXTURE_BINDING` (the
+/// main pass samples it). Only the `view` is kept — it holds the texture alive
+/// via wgpu's internal Arcs (same as `Backbuffer.stencil`).
+#[derive(Debug)]
+struct RenderTarget {
+    view: wgpu::TextureView,
+    /// Currently-allocated physical-px size; [`ImagePipeline::ensure_target`]
+    /// recreates the texture only when the requested size differs from this.
+    size: UVec2,
+    /// Whether `GpuPaint::init` has run. Set once and preserved across
+    /// reallocations (the recreated texture shares the build-time format).
+    initialized: bool,
+    /// Frame time of the last paint, for the `dt` handed to `GpuPaint::paint`.
+    /// Preserved across reallocations so a resize doesn't spike `dt`. `None`
+    /// until the first paint.
+    last_paint: Option<Duration>,
+}
+
+/// Create a `GPU_VIEW_FORMAT` off-screen texture view at `size` and register its
+/// sampleable bind group in the shared `cache` under `id`. Shared by
+/// [`ImagePipeline::ensure_target`]'s first-sight + realloc paths.
+fn make_target(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    cache: &mut FxHashMap<TextureId, wgpu::BindGroup>,
+    id: TextureId,
+    size: UVec2,
+) -> wgpu::TextureView {
+    let tex = device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("palantir.gpu_view.target"),
+        size: wgpu::Extent3d {
+            width: size.x,
+            height: size.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: GPU_VIEW_FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    });
+    let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
+    let bg = texture_bind_group(device, bgl, sampler, &view, "palantir.gpu_view.tex.bg");
+    cache.insert(id, bg);
+    view
 }
 
 #[cfg(any(test, feature = "internals"))]
