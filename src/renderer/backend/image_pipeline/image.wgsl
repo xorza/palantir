@@ -1,5 +1,5 @@
 // User-image pipeline. Per-instance rect + tint; texture+sampler in
-// group 1, switched per draw by the backend. Four-corner quad emitted
+// group 0, switched per draw by the backend. Four-corner quad emitted
 // implicitly via `vertex_index` (TriangleStrip).
 //
 // Colour pipeline: texture is `Rgba8UnormSrgb`, so the sampler decodes
