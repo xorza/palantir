@@ -38,7 +38,7 @@ impl OffscreenHost {
         // drives the lazy per-format pipeline build.
         let ctx = HostContext::new(shaper);
         let gpu = WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
-        let window = WindowRenderer::new(&ctx);
+        let window = WindowRenderer::new(&ctx, gpu.max_texture_dim());
         Self { gpu, window }
     }
 

@@ -21,14 +21,19 @@ use crate::debug_overlay::DebugOverlayConfig;
 use crate::forest::frame_arena::FrameArena;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::caches::RenderCaches;
+use crate::renderer::texture_id::TextureIdSource;
 use crate::text::TextShaper;
 use crate::window::WindowToken;
 
 /// Shared, app-global state cloned into every window's `Ui` + `Frontend`
 /// and (the render handles) into the one shared backend. Cloning is cheap —
 /// every field is an Rc/Arc-backed handle pointing at one set.
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub(crate) struct HostContext {
+    /// Shared `TextureId` source. `caches.images` (CPU images) and each
+    /// `GpuView` render target (`Ui::gpu_view`) both mint from this one
+    /// counter, so their ids never collide in the one backend texture cache.
+    pub(crate) texture_ids: TextureIdSource,
     pub(crate) shaper: TextShaper,
     pub(crate) frame_arena: FrameArena,
     pub(crate) caches: RenderCaches,
@@ -38,6 +43,23 @@ pub(crate) struct HostContext {
     /// seen by all. Private: the backend pulls only the render handles
     /// above, never this.
     host: Rc<RefCell<HostState>>,
+}
+
+impl Default for HostContext {
+    fn default() -> Self {
+        // `caches.images` must mint from the same source the per-window
+        // GpuViewRegistries use, so build the source first and wire it in
+        // (the derived `Default` would give each its own counter).
+        let texture_ids = TextureIdSource::default();
+        Self {
+            caches: RenderCaches::new(texture_ids.clone()),
+            texture_ids,
+            shaper: Default::default(),
+            frame_arena: Default::default(),
+            pass_stats: Default::default(),
+            host: Default::default(),
+        }
+    }
 }
 
 #[derive(Debug, Default)]

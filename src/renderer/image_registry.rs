@@ -12,28 +12,20 @@
 //! Reference the handle from [`Shape::Image`](crate::shape::Shape::Image)
 //! every frame. The CPU bytes travel to the GPU exactly once — on the
 //! first drain after registration — and are dropped immediately after
-//! upload; only the GPU texture persists. The pure data types
-//! ([`Image`], [`ImageId`], [`ImageFit`](crate::primitives::image::ImageFit))
-//! stay in `primitives`; this module owns only the stateful lifecycle.
+//! upload; only the GPU texture persists. The pure data types live
+//! elsewhere — [`Image`] / [`ImageFit`](crate::primitives::image::ImageFit)
+//! in `primitives`, [`TextureId`](crate::renderer::texture_id::TextureId) +
+//! its source in `renderer::texture_id` — so this module owns only the
+//! stateful lifecycle.
 //!
 //! Single-threaded `Rc<RefCell<…>>` (same pattern as
 //! [`FrameArena`](crate::forest::frame_arena::FrameArena)). Cheap to
 //! clone; the inner state is shared.
 
 use crate::primitives::image::Image;
+use crate::renderer::texture_id::{TextureId, TextureIdSource};
 use std::cell::RefCell;
 use std::rc::Rc;
-
-/// A registered image's identity: a process-unique id assigned at
-/// [`ImageRegistry::register`]. Keys the GPU texture cache and threads
-/// through the shape record + draw payload, so a bare `u64` can't be
-/// confused with any other. `ImageId(0)` is the render path's "no
-/// texture" value (the `Zeroable` default of a draw payload) and is never
-/// handed out — ids start at `1`. `Pod` so it can live inline on the
-/// `bytemuck`-cast draw payload.
-#[repr(transparent)]
-#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct ImageId(pub(crate) u64);
 
 /// RAII owner of a registered image's GPU texture, returned by
 /// [`ImageRegistry::register`]. The texture lives exactly as long as an
@@ -44,7 +36,7 @@ pub(crate) struct ImageId(pub(crate) u64);
 /// expressed as `Option<ImageHandle>` at the call site, not a sentinel.
 ///
 /// Not `Copy`: the lifetime is load-bearing, so sharing must be an
-/// explicit `clone`. The render path keys on the cheap [`ImageId`] behind
+/// explicit `clone`. The render path keys on the cheap [`TextureId`] behind
 /// it ([`Self::id`]), so per-frame draw data never carries the `Rc`.
 #[must_use = "hold the ImageHandle to keep its GPU texture alive — \
               discarding it (e.g. ignoring register_image's return) frees \
@@ -59,7 +51,7 @@ pub struct ImageHandle {
 /// id onto the shared drop queue so the backend frees the GPU texture on
 /// its next drain.
 struct ImageToken {
-    id: ImageId,
+    id: TextureId,
     size: glam::U16Vec2,
     shared: Rc<RefCell<Inner>>,
 }
@@ -71,11 +63,11 @@ impl Drop for ImageToken {
 }
 
 impl ImageHandle {
-    /// Stable per-registration id (never `ImageId(0)` — that's the render
+    /// Stable per-registration id (never `TextureId(0)` — that's the render
     /// path's "no texture" value). Keys the GPU texture cache and the
     /// per-shape damage hash.
     #[inline]
-    pub(crate) fn id(&self) -> ImageId {
+    pub(crate) fn id(&self) -> TextureId {
         self.inner.id
     }
 
@@ -108,41 +100,45 @@ impl std::fmt::Debug for ImageHandle {
 /// their GPU textures). Clone is cheap — the inner state is `Rc`-shared.
 /// `WindowRenderer` constructs one and hands clones to `Ui` (for registration) and
 /// the wgpu backend (for upload + release).
-#[derive(Clone, Default)]
+#[derive(Clone)]
 pub struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,
+    /// Shared id source — also drawn from by each `GpuView` target so the two
+    /// never mint colliding ids (see [`TextureIdSource`]).
+    ids: TextureIdSource,
 }
 
 #[derive(Default)]
 struct Inner {
-    /// Monotonic id source. `0` is never handed out — it's the render
-    /// path's "no texture" value.
-    next_id: u64,
     /// Newly registered images awaiting their one GPU upload. Owns the
     /// bytes until the backend drains them; the `Image` is dropped right
     /// after upload, freeing the CPU copy.
-    pending: Vec<(ImageId, Image)>,
+    pending: Vec<(TextureId, Image)>,
     /// Ids whose last [`ImageHandle`] clone dropped since the last
     /// drain. The backend frees the matching GPU texture. One entry per
     /// dropped owner (ids are unique per registration, so each appears
     /// at most once).
-    dropped: Vec<ImageId>,
+    dropped: Vec<TextureId>,
 }
 
 impl ImageRegistry {
+    /// Build a registry minting from `ids`. Shares the same [`TextureIdSource`]
+    /// with `GpuView` target minting (`Ui::gpu_view`) so their ids can't collide.
+    pub(crate) fn new(ids: TextureIdSource) -> Self {
+        Self {
+            inner: Rc::new(RefCell::new(Inner::default())),
+            ids,
+        }
+    }
+
     /// Upload `image` and return an owning [`ImageHandle`]. The texture
     /// lives until the returned handle (and every clone of it) is
     /// dropped. Each call uploads independently — share one image across
     /// call sites by cloning the handle, not by re-registering.
     pub fn register(&self, image: Image) -> ImageHandle {
         let size = u16_size(&image);
-        let id = {
-            let mut inner = self.inner.borrow_mut();
-            inner.next_id += 1;
-            let id = ImageId(inner.next_id);
-            inner.pending.push((id, image));
-            id
-        };
+        let id = self.ids.reserve();
+        self.inner.borrow_mut().pending.push((id, image));
         ImageHandle {
             inner: Rc::new(ImageToken {
                 id,
@@ -161,7 +157,7 @@ impl ImageRegistry {
     /// The registry borrow is held across `upload`, so the closure must
     /// not re-enter the registry (register / drop a handle). The upload
     /// path is GPU-only and doesn't, so this is safe.
-    pub(crate) fn drain_pending(&self, mut upload: impl FnMut(ImageId, Image)) {
+    pub(crate) fn drain_pending(&self, mut upload: impl FnMut(TextureId, Image)) {
         let mut inner = self.inner.borrow_mut();
         for (id, image) in inner.pending.drain(..) {
             upload(id, image);
@@ -171,7 +167,7 @@ impl ImageRegistry {
     /// Drain the ids whose owning handles all dropped, calling `free` for
     /// each (the backend drops the matching GPU texture). Drains in place
     /// (retains capacity); same no-re-entry rule as [`Self::drain_pending`].
-    pub(crate) fn drain_dropped(&self, mut free: impl FnMut(ImageId)) {
+    pub(crate) fn drain_dropped(&self, mut free: impl FnMut(TextureId)) {
         let mut inner = self.inner.borrow_mut();
         for id in inner.dropped.drain(..) {
             free(id);
@@ -191,6 +187,11 @@ fn u16_size(image: &Image) -> glam::U16Vec2 {
 #[cfg(test)]
 mod tests {
     use crate::renderer::image_registry::*;
+    use crate::renderer::texture_id::TextureIdSource;
+
+    fn reg() -> ImageRegistry {
+        ImageRegistry::new(TextureIdSource::default())
+    }
 
     fn img(w: u32, h: u32) -> Image {
         Image::from_rgba8(w, h, vec![0u8; (w * h * 4) as usize])
@@ -198,7 +199,7 @@ mod tests {
 
     #[test]
     fn register_queues_one_upload_and_unique_ids() {
-        let reg = ImageRegistry::default();
+        let reg = reg();
         let a = reg.register(img(2, 3));
         let b = reg.register(img(4, 5));
         // Distinct registrations get distinct ids, both nonzero.
@@ -215,7 +216,7 @@ mod tests {
 
     #[test]
     fn dropping_last_handle_queues_release() {
-        let reg = ImageRegistry::default();
+        let reg = reg();
         let h = reg.register(img(1, 1));
         let id = h.id();
         reg.drain_pending(|_, _| {});

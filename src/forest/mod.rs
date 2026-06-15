@@ -261,6 +261,20 @@ impl Forest {
         let _ = self.trees[layer].shapes.add(shape, arena, atlas);
     }
 
+    /// Append a `GpuView` shape (a [`ShapeRecord::GpuView`]) to the active
+    /// node. Only the redraw `epoch` rides the shape — the view's `id` + app
+    /// `paint` live in `Ui::gpu_views` keyed by the owner's `WidgetId`; this is
+    /// assembled by `Ui::gpu_view`, not lowered from a user-facing [`Shape`],
+    /// so it skips the lowering path.
+    pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
+        let layer = self.current_layer();
+        assert!(
+            !self.scratch[layer].open_frames.is_empty(),
+            "add_gpu_view called with no open node",
+        );
+        self.trees[layer].shapes.add_gpu_view(epoch);
+    }
+
     /// Same as `add_shape`, but registers a `PaintAnim` against the
     /// freshly-pushed shape so the encoder applies the sampled
     /// `PaintMod` at paint time and `post_record` folds the anim's

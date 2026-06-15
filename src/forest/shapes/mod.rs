@@ -211,4 +211,16 @@ impl Shapes {
         self.hashes.push(hash);
         Some(idx)
     }
+
+    /// Append a [`ShapeRecord::GpuView`] directly — assembled by `Ui::gpu_view`,
+    /// not lowered from a user-facing [`Shape`], so this bypasses the
+    /// [`Self::add`] lowering. The view's `id` + `paint` live in `Ui::gpu_views`
+    /// keyed by the owner's `WidgetId`; the shape carries only `epoch` (which
+    /// the per-frame damage hash reads).
+    pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
+        let record = ShapeRecord::GpuView { epoch };
+        let hash = compute_record_hash(&record);
+        self.records.push(record);
+        self.hashes.push(hash);
+    }
 }
