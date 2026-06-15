@@ -34,6 +34,7 @@ use std::rc::Rc;
 pub struct GpuView {
     element: Element,
     paint: Rc<RefCell<dyn GpuPaint>>,
+    repaint: bool,
 }
 
 impl GpuView {
@@ -45,17 +46,38 @@ impl GpuView {
     pub fn new(paint: Rc<RefCell<dyn GpuPaint>>) -> Self {
         let mut element = Element::new(LayoutMode::Leaf);
         element.size = (Sizing::Fill(1.0), Sizing::Fill(1.0)).into();
-        Self { element, paint }
+        Self {
+            element,
+            paint,
+            repaint: true,
+        }
     }
 
-    /// Record the view. It re-renders on every painted frame, so call
-    /// [`Ui::request_repaint`] each frame to animate.
+    /// Whether the view's content changed this frame (default `true` —
+    /// repaint every frame). Pass `false` when your scene is unchanged: the
+    /// widget is then treated as **undamaged**, so a frame forced by other
+    /// widgets culls this view and skips its `GpuPaint::paint`, reusing last
+    /// frame's pixels. The off-screen texture is kept alive for as long as the
+    /// widget is recorded, so a later repaint doesn't re-`init`. Drive the
+    /// dirty signal from your own change tracking (camera moved, sim ticked).
+    pub fn repaint(mut self, repaint: bool) -> Self {
+        self.repaint = repaint;
+        self
+    }
+
+    /// Record the view. With [`Self::repaint`] left at its `true` default it
+    /// re-renders on every painted frame, so call [`Ui::request_repaint`] each
+    /// frame to animate.
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let Self { element, paint } = self;
+        let Self {
+            element,
+            paint,
+            repaint,
+        } = self;
         let entry = enter_widget(ui, &element);
         let id = entry.id;
         ui.node(id, element, None, |ui| {
-            ui.gpu_view(id, paint);
+            ui.gpu_view(id, paint, repaint);
         });
         Response::eager(id, ui, entry.raw)
     }
