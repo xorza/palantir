@@ -115,13 +115,18 @@ impl std::fmt::Debug for GpuPaintRef {
 /// One live `GpuView` in [`Ui::gpu_views`](crate::ui::Ui), keyed by `WidgetId`:
 /// the view's stable backend `texture_id` (minted once from the shared
 /// `texture_ids`, so it can't collide in the one backend texture cache — across
-/// windows too, since the map is per-`Ui`) and the app `paint` callback
-/// (refreshed every frame). This is the only place a `GpuView`'s identity
-/// persists across frames; the swept-by-`removed` map is the whole of the
-/// `Ui`'s `GpuView` bookkeeping — no `by_texture` index, no drop queue (the
-/// backend frees heuristically), no resolve (the composer lists targets).
+/// windows too, since the map is per-`Ui`), the app `paint` callback (refreshed
+/// every frame), and the redraw `epoch`. This is the only place a `GpuView`'s
+/// identity persists across frames; the swept-by-`removed` map is the whole of
+/// the `Ui`'s `GpuView` bookkeeping — no `by_texture` index, no resolve (the
+/// composer lists targets to paint, the backend frees by liveness).
 #[derive(Debug)]
 pub(crate) struct GpuViewEntry {
     pub(crate) texture_id: TextureId,
     pub(crate) paint: GpuPaintRef,
+    /// The shape `epoch` stamped on each recorded frame. Bumped to the current
+    /// frame id only when the widget requests a repaint; held stable otherwise,
+    /// so a static view's shape hash doesn't change and the damage diff treats
+    /// it as unchanged (the encoder then culls it, skipping its GPU paint).
+    pub(crate) epoch: u64,
 }

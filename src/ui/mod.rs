@@ -937,21 +937,36 @@ impl Ui {
     /// Record a `GpuView` for widget `id`: upsert it into [`Self::gpu_views`]
     /// — minting the stable backend `TextureId` once (on first sight) and
     /// refreshing the app `paint` callback each frame — then append a
-    /// [`ShapeRecord::GpuView`] carrying only the frame epoch to the active
-    /// node (the encoder recovers id + paint from the map by `id`). The epoch
-    /// makes the view re-render every painted frame; the app drives continuous
-    /// animation via [`Self::request_repaint`]. The entry rides the map's
-    /// `removed` sweep when the widget disappears.
-    pub(crate) fn gpu_view(&mut self, id: WidgetId, paint: Rc<RefCell<dyn GpuPaint>>) {
+    /// [`ShapeRecord::GpuView`] carrying the view's `epoch` to the active node
+    /// (the encoder recovers id + paint from the map by `id`).
+    ///
+    /// `repaint` is the widget's per-frame dirty flag. When set, the epoch
+    /// bumps to the current frame id, so the shape hash changes and the view
+    /// repaints; when clear, the epoch is held stable, so the damage diff
+    /// treats the view as unchanged and the encoder culls it (skipping its GPU
+    /// paint and reusing last frame's pixels). First sight always paints (the
+    /// texture doesn't exist yet). The entry rides the map's `removed` sweep
+    /// when the widget disappears.
+    pub(crate) fn gpu_view(
+        &mut self,
+        id: WidgetId,
+        paint: Rc<RefCell<dyn GpuPaint>>,
+        repaint: bool,
+    ) {
         // Clone the id source out first (cheap `Rc`) so the `or_insert_with`
         // mint doesn't borrow `self.ctx` while `self.gpu_views` is borrowed.
         let ids = self.ctx.texture_ids.clone();
+        let frame_id = self.frame_id;
         let entry = self.gpu_views.entry(id).or_insert_with(|| GpuViewEntry {
             texture_id: ids.reserve(),
             paint: GpuPaintRef(Rc::clone(&paint)),
+            epoch: frame_id, // first sight always paints
         });
         entry.paint = GpuPaintRef(paint);
-        self.forest.add_gpu_view(self.frame_id);
+        if repaint {
+            entry.epoch = frame_id;
+        }
+        self.forest.add_gpu_view(entry.epoch);
     }
 
     /// Format `args` directly into the per-frame text arena and return
