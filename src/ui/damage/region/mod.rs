@@ -38,6 +38,7 @@
 //! derivation and `multi-rect-damage.md` for the wider design
 //! survey.
 
+use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use tinyvec::ArrayVec;
 
@@ -63,10 +64,31 @@ pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 /// [`crate::ui::damage::Damage`] threads through `FrameOutput` and the
 /// encoder by value without lifetimes. The `budget_px` field drives
 /// the merge predicate — see the module docs.
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct DamageRegion {
     rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
     pub(crate) budget_px: f32,
+    /// Damaged fraction of the surface (`total_area / surface_area`),
+    /// precomputed by [`Self::collapse_from`] against the surface its rects were
+    /// clipped to — so the coverage-ladder thresholds (`FULL_REPAINT_THRESHOLD`,
+    /// `DIRECT_PROMOTE_COVERAGE`) read a ready value instead of every caller
+    /// threading the surface area back in. `0.0` on a region built any other way
+    /// (`default` / `with_budget` / `From<Rect>`); those never reach a coverage
+    /// check. Excluded from [`PartialEq`] (a derived cache, not identity — two
+    /// regions covering the same rects are equal regardless of coverage).
+    ///
+    /// [`FULL_REPAINT_THRESHOLD`]: crate::ui::damage::FULL_REPAINT_THRESHOLD
+    /// [`DIRECT_PROMOTE_COVERAGE`]: crate::ui::damage::DIRECT_PROMOTE_COVERAGE
+    pub(crate) coverage: f32,
+}
+
+impl PartialEq for DamageRegion {
+    /// Geometric identity only: same rects, same merge budget. The cached
+    /// [`Self::coverage`] is a sealed-surface derivative, not part of what the
+    /// region *is*, so an unsealed expected value still matches a sealed actual.
+    fn eq(&self, other: &Self) -> bool {
+        self.rects == other.rects && self.budget_px == other.budget_px
+    }
 }
 
 impl Default for DamageRegion {
@@ -83,6 +105,7 @@ impl DamageRegion {
         Self {
             rects: ArrayVec::new(),
             budget_px,
+            coverage: 0.0,
         }
     }
 
@@ -99,6 +122,14 @@ impl DamageRegion {
     /// so the clip is mandatory at the chokepoint, not optional at
     /// individual callsites.
     pub(crate) fn collapse_from(rects: &[Rect], budget_px: f32, surface: Rect) -> Self {
+        // A degenerate surface is a logic error — the host filters resize-to-zero
+        // before damage runs. Asserting at the one site that divides by surface
+        // area lets `Damage::new` stay a pure classifier (no surface needed).
+        let surface_area = surface.area();
+        assert!(
+            surface_area > EPS,
+            "damage collapsed against a degenerate surface: {surface:?}"
+        );
         let mut region = Self::with_budget(budget_px);
         for r in rects {
             let clipped = r.intersect(surface);
@@ -106,6 +137,9 @@ impl DamageRegion {
                 region.add(clipped);
             }
         }
+        // Seal coverage against the surface its rects were clipped to — both in
+        // logical space, so the ratio is DPI-independent.
+        region.coverage = region.total_area() / surface_area;
         region
     }
 
@@ -130,11 +164,10 @@ impl DamageRegion {
     /// and the at-cap force-merge in `add` (which grows the min-growth
     /// slot and can leave it overlapping a neighbour). Both are
     /// conservative — they bias toward a `Full` repaint at the
-    /// boundary. Drives the full-repaint coverage check in
-    /// `Damage::new`. Region rects are surface-clipped at
-    /// `collapse_from`, so this is already "visible area" — no extra
-    /// intersect needed at the threshold site.
-    pub(crate) fn total_area(&self) -> f32 {
+    /// boundary. Backs [`Self::collapse_from`]'s coverage seal. Region rects are
+    /// surface-clipped at `collapse_from`, so this is already "visible
+    /// area" — no extra intersect needed at the threshold site.
+    fn total_area(&self) -> f32 {
         self.rects.iter().map(|r| r.area()).sum()
     }
 

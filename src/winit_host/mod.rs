@@ -265,7 +265,7 @@ where
         let renderer = WindowRenderer::new(
             &run.context,
             run.gpu.max_texture_dim,
-            PresentStrategy::DirectFullOnly,
+            PresentStrategy::DirectAdaptive,
         );
         self.insert_window(token, window, ws, renderer);
     }
@@ -413,7 +413,7 @@ where
         let ctx = HostContext::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
         let mut renderer =
-            WindowRenderer::new(&ctx, gpu.max_texture_dim, PresentStrategy::DirectFullOnly);
+            WindowRenderer::new(&ctx, gpu.max_texture_dim, PresentStrategy::DirectAdaptive);
 
         // Build the app now that the first `Ui` exists.
         let mut app = (boot.build)(&mut renderer.ui, self.handle());

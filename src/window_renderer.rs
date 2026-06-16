@@ -26,7 +26,8 @@ use crate::context::HostContext;
 use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::damage::DIRECT_PROMOTE_COVERAGE;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
@@ -38,12 +39,21 @@ pub struct WindowRenderer {
     /// arena (cloned at construction) but keeps its own retained
     /// `RenderBuffer` — this window's draw list.
     pub(crate) frontend: Frontend,
-    /// Persistent off-screen color target for the `BackbufferCopy` strategy
-    /// (fresh-target callers) — holds last frame's pixels for `LoadOp::Load`
-    /// damage and is copied onto the target each frame. Direct-present windows
-    /// never allocate it. Created lazily on the first backbuffer-copy frame,
-    /// recreated on resize / format change.
+    /// Persistent off-screen color target holding last frame's pixels for
+    /// `LoadOp::Load` partial damage. Used by `BackbufferCopy` every frame and
+    /// by `DirectAdaptive` for its small-partial path (paint the damage region,
+    /// then copy out). A `DirectAdaptive` window that only ever paints full
+    /// frames never allocates it. Created lazily on the first frame that needs
+    /// it, recreated on resize / format change.
     pub(crate) backbuffer: Option<Backbuffer>,
+    /// `true` when [`Self::backbuffer`] mirrors what's currently on the target
+    /// (the last presented frame went through it), so a `DirectAdaptive` small
+    /// partial can `LoadOp::Load` it and paint just the damage region. A direct
+    /// full frame bypasses the backbuffer, leaving it stale (`false`) — the next
+    /// partial then resyncs it with one full repaint before cheap partials
+    /// resume. Irrelevant to `BackbufferCopy` (every frame touches the
+    /// backbuffer, so it always stays fresh).
+    backbuffer_fresh: bool,
     /// This window's rounded-clip stencil attachment — allocated lazily,
     /// resized to the target. Separate from `backbuffer` so the direct-present
     /// path can have a stencil without a backbuffer color texture.
@@ -91,10 +101,15 @@ pub(crate) enum PresentStrategy {
     /// regardless of its prior contents; skip frames copy the backbuffer.
     BackbufferCopy,
     /// A direct-present target — the swapchain (the host owns skip frames), or a
-    /// reused offscreen texture. Every *painted* frame is a full repaint
-    /// straight into the target (no backbuffer, no partial damage, no copy);
-    /// skip frames are a no-op (the target already holds the last render).
-    DirectFullOnly,
+    /// reused offscreen texture. Full frames repaint straight into the target
+    /// (no copy); small partials paint just the damage region into the
+    /// backbuffer and copy it out (cheaper than repainting the whole surface);
+    /// a near-full partial is promoted to a direct full repaint (its
+    /// near-whole-surface re-shade plus a copy would beat a plain direct
+    /// repaint). A direct frame leaves the backbuffer stale, so the next partial
+    /// resyncs it with one full repaint before cheap partials resume. Skip
+    /// frames are a no-op (the target already holds the last render).
+    DirectAdaptive,
 }
 
 /// How a frame reaches the target, given its plan and the window's
@@ -107,7 +122,7 @@ enum PresentMode {
     /// target so it's filled regardless of its prior contents.
     SkipCopy,
     /// Skip frame on a direct-present window: the target already holds the last
-    /// full-direct render (or the host owns the skip), so there's nothing to do.
+    /// render (or the host owns the skip), so there's nothing to do.
     SkipNoop,
     /// Full repaint rendered directly into the target — no backbuffer copy.
     Direct(RenderPlan),
@@ -115,14 +130,37 @@ enum PresentMode {
     ViaBackbuffer(RenderPlan),
 }
 
-fn present_mode(plan: Option<RenderPlan>, strategy: PresentStrategy) -> PresentMode {
+fn present_mode(
+    plan: Option<RenderPlan>,
+    strategy: PresentStrategy,
+    backbuffer_fresh: bool,
+) -> PresentMode {
     match strategy {
-        // Direct present: every paint is a full repaint straight into the
-        // target (partial damage dropped). The swapchain host owns skip frames;
-        // a reused offscreen target keeps its last full-direct render on skip.
-        PresentStrategy::DirectFullOnly => match plan {
+        PresentStrategy::DirectAdaptive => match plan {
+            // Swapchain skips never reach here (the host owns them); a reused
+            // offscreen target keeps its last render. Either way, nothing to do.
             None => PresentMode::SkipNoop,
-            Some(p) => PresentMode::Direct(p.to_full()),
+            Some(p) => match p.kind {
+                // Already a whole-surface repaint — straight into the target.
+                RenderKind::Full => PresentMode::Direct(p),
+                RenderKind::Partial { region } => {
+                    // `region.coverage` was sealed when the damage engine built
+                    // this region (`collapse_from`) — see the ladder doc on
+                    // `FULL_REPAINT_THRESHOLD`.
+                    if region.coverage > DIRECT_PROMOTE_COVERAGE {
+                        // Large partial: skip the copy, repaint direct.
+                        PresentMode::Direct(p.to_full())
+                    } else if backbuffer_fresh {
+                        // Backbuffer mirrors the target: paint just the damage
+                        // region into it and copy out.
+                        PresentMode::ViaBackbuffer(p)
+                    } else {
+                        // Backbuffer went stale after a direct frame: resync it
+                        // with one full repaint before cheap partials resume.
+                        PresentMode::ViaBackbuffer(p.to_full())
+                    }
+                }
+            },
         },
         // Fresh target each call: render the plan into the backbuffer and copy
         // it out so the whole target is filled regardless of its prior contents.
@@ -147,6 +185,7 @@ impl WindowRenderer {
             ui: Ui::new(ctx),
             frontend: Frontend::new(ctx.frame_arena.clone(), max_texture_dim),
             backbuffer: None,
+            backbuffer_fresh: false,
             stencil: None,
             strategy,
             start: Instant::now(),
@@ -304,10 +343,13 @@ impl WindowRenderer {
             .frame(FrameStamp::new(display, self.start.elapsed()), record);
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets, all reading the now-frozen
-        // `Ui` immutably. Skip frames build nothing; a direct-present window
-        // builds a Full plan even for a Partial (same decision
-        // `render_to_texture` makes).
-        let build_plan = match present_mode(report.plan, self.strategy) {
+        // `Ui` immutably. Skip frames build nothing. The `present_mode` here is
+        // the same decision `render_to_texture` makes (same plan, strategy, and
+        // backbuffer freshness — none mutated between the two calls; the plan's
+        // sealed coverage rides along on the region), so the draw list always
+        // matches the plan that gets submitted (a promoted or resync'd Partial
+        // builds its escalated Full list).
+        let build_plan = match present_mode(report.plan, self.strategy, self.backbuffer_fresh) {
             PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => Some(plan),
             PresentMode::SkipCopy | PresentMode::SkipNoop => None,
         };
@@ -354,14 +396,15 @@ impl WindowRenderer {
         }
         let stencil_view =
             use_stencil.then(|| &self.stencil.as_ref().expect("ensure_stencil ran").view);
-        match present_mode(report.plan, self.strategy) {
-            // Nothing changed and the target already holds the last direct
-            // render — leave it untouched.
+        match present_mode(report.plan, self.strategy, self.backbuffer_fresh) {
+            // Nothing changed and the target already holds the last render —
+            // leave it untouched.
             PresentMode::SkipNoop => {}
             PresentMode::SkipCopy => {
                 gpu.copy_backbuffer_to_surface(&mut self.backbuffer, target);
             }
-            // Full repaint straight into the target — no backbuffer at all.
+            // Full repaint straight into the target — no backbuffer at all, so
+            // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
                 gpu.submit(
                     target,
@@ -371,9 +414,11 @@ impl WindowRenderer {
                     plan,
                     debug_overlay,
                 );
+                self.backbuffer_fresh = false;
             }
             // Render into the backbuffer and copy it out. A freshly (re)created
             // backbuffer has undefined contents, so escalate a Partial to Full.
+            // Either way the backbuffer now mirrors the target.
             PresentMode::ViaBackbuffer(plan) => {
                 let recreated =
                     gpu.ensure_backbuffer(&mut self.backbuffer, target.size(), target.format());
@@ -386,6 +431,7 @@ impl WindowRenderer {
                     plan,
                     debug_overlay,
                 );
+                self.backbuffer_fresh = true;
             }
         }
         self.ui.frame_state.mark_submitted();
@@ -482,11 +528,16 @@ pub enum FramePresent {
 #[cfg(test)]
 mod present_mode_tests {
     use super::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
-    use super::PresentStrategy::{BackbufferCopy, DirectFullOnly};
+    use super::PresentStrategy::{BackbufferCopy, DirectAdaptive};
     use super::{PresentMode, present_mode};
     use crate::primitives::color::Color;
-    use crate::ui::damage::region::DamageRegion;
+    use crate::primitives::rect::Rect;
+    use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     use crate::ui::frame_report::{RenderKind, RenderPlan};
+
+    /// 100×100 logical surface (10_000 px²) the partial fixtures collapse
+    /// against, so a `w×h` damage rect carries `coverage = w·h / 10_000`.
+    const SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 
     fn full() -> Option<RenderPlan> {
         Some(RenderPlan {
@@ -494,12 +545,18 @@ mod present_mode_tests {
             kind: RenderKind::Full,
         })
     }
-    fn partial() -> Option<RenderPlan> {
+    /// One `Rect` of `w·h` px², built through `collapse_from` against
+    /// [`SURFACE`] so its `region.coverage` is `w·h / 10_000` — exactly what the
+    /// damage engine seals in the real path.
+    fn partial(w: f32, h: f32) -> Option<RenderPlan> {
+        let region = DamageRegion::collapse_from(
+            &[Rect::new(0.0, 0.0, w, h)],
+            DEFAULT_PASS_BUDGET_PX,
+            SURFACE,
+        );
         Some(RenderPlan {
             clear: Color::BLACK,
-            kind: RenderKind::Partial {
-                region: DamageRegion::default(),
-            },
+            kind: RenderKind::Partial { region },
         })
     }
     const DIRECT_FULL: PresentMode = Direct(RenderPlan {
@@ -511,22 +568,71 @@ mod present_mode_tests {
     fn backbuffer_copy_fills_target_through_backbuffer() {
         // Fresh target each call: paint via the backbuffer (the requested plan,
         // Full or Partial), skip copies it out — the whole target is filled.
-        assert_eq!(
-            present_mode(full(), BackbufferCopy),
-            ViaBackbuffer(full().unwrap())
-        );
-        assert_eq!(
-            present_mode(partial(), BackbufferCopy),
-            ViaBackbuffer(partial().unwrap())
-        );
-        assert_eq!(present_mode(None, BackbufferCopy), SkipCopy);
+        // Backbuffer freshness is irrelevant here (every frame touches it).
+        for fresh in [false, true] {
+            assert_eq!(
+                present_mode(full(), BackbufferCopy, fresh),
+                ViaBackbuffer(full().unwrap())
+            );
+            assert_eq!(
+                present_mode(partial(10.0, 10.0), BackbufferCopy, fresh),
+                ViaBackbuffer(partial(10.0, 10.0).unwrap())
+            );
+            assert_eq!(present_mode(None, BackbufferCopy, fresh), SkipCopy);
+        }
     }
 
     #[test]
-    fn direct_full_only_escalates_every_paint_to_full() {
-        // Any paint — Full or Partial — is a full direct repaint; skip is a noop.
-        assert_eq!(present_mode(full(), DirectFullOnly), DIRECT_FULL);
-        assert_eq!(present_mode(partial(), DirectFullOnly), DIRECT_FULL);
-        assert_eq!(present_mode(None, DirectFullOnly), SkipNoop);
+    fn direct_adaptive_full_and_skip() {
+        // A whole-surface repaint goes straight in; a skip is a noop. Neither
+        // depends on backbuffer freshness.
+        for fresh in [false, true] {
+            assert_eq!(
+                present_mode(full(), DirectAdaptive, fresh),
+                Direct(full().unwrap())
+            );
+            assert_eq!(present_mode(None, DirectAdaptive, fresh), SkipNoop);
+        }
+    }
+
+    #[test]
+    fn direct_adaptive_small_partial_tracks_backbuffer_freshness() {
+        // 10×10 = 100 px² ⇒ coverage 0.01, well under the 0.4 promote line.
+        let small = partial(10.0, 10.0);
+        // Fresh: the backbuffer mirrors the target, so paint just the region.
+        assert_eq!(
+            present_mode(small, DirectAdaptive, true),
+            ViaBackbuffer(small.unwrap())
+        );
+        // Stale (after a direct frame): resync with one full repaint first.
+        assert_eq!(
+            present_mode(small, DirectAdaptive, false),
+            ViaBackbuffer(full().unwrap())
+        );
+    }
+
+    #[test]
+    fn direct_adaptive_large_partial_promotes_to_direct() {
+        // 80×80 = 6_400 px² ⇒ coverage 0.64 > 0.4: a large partial repaints
+        // direct (dropping the copy) regardless of backbuffer freshness.
+        let large = partial(80.0, 80.0);
+        for fresh in [false, true] {
+            assert_eq!(present_mode(large, DirectAdaptive, fresh), DIRECT_FULL);
+        }
+    }
+
+    #[test]
+    fn direct_adaptive_promote_threshold_is_strict() {
+        // Coverage at-or-below 0.4 stays on the backbuffer path (`>`, not `>=`);
+        // just over promotes. 63×63 = 3_969 (0.3969) vs 64×64 = 4_096 (0.4096) —
+        // straddling the 0.4 line.
+        assert!(matches!(
+            present_mode(partial(63.0, 63.0), DirectAdaptive, true),
+            ViaBackbuffer(_)
+        ));
+        assert_eq!(
+            present_mode(partial(64.0, 64.0), DirectAdaptive, true),
+            DIRECT_FULL
+        );
     }
 }

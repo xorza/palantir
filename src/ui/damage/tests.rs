@@ -110,10 +110,7 @@ fn unchanged_authoring_produces_no_damage() {
 
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_region().is_empty());
-    assert_eq!(
-        Damage::new(ui.display.logical_rect(), ui.damage_region()),
-        Damage::Skip,
-    );
+    assert_eq!(Damage::new(ui.damage_region()), Damage::Skip,);
 }
 
 /// Pin: removing a child of a fixed-size canvas that paints its own
@@ -340,11 +337,10 @@ fn popup_eater_does_not_force_full_repaint() {
             out.plan
         );
     };
-    let surface_area = DISPLAY.logical_rect().area();
     assert!(
-        region.total_area() / surface_area < 0.5,
+        region.coverage < 0.5,
         "damage region covers {:.1}% of surface — eater leaked into damage",
-        100.0 * region.total_area() / surface_area
+        100.0 * region.coverage
     );
 }
 
@@ -660,10 +656,7 @@ fn damage_filter_returns_partial_when_small() {
         .iter_rects()
         .next()
         .expect("single-leaf change → some damage");
-    assert_eq!(
-        Damage::new(ui.display.logical_rect(), ui.damage_region()),
-        Damage::Partial(r.into()),
-    );
+    assert_eq!(Damage::new(ui.damage_region()), Damage::Partial(r.into()),);
 }
 
 // --- transforms ---------------------------------------------------------
@@ -950,7 +943,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
     for dx in [3.0, 6.0, 9.0, 12.0] {
         build(dx, &mut ui);
         let region = ui.damage_region();
-        let damage = Damage::new(ui.display.logical_rect(), region);
+        let damage = Damage::new(region);
         assert!(
             matches!(damage, Damage::Partial(_)),
             "pan with clip-saturated direct-paint node must stay Partial \
@@ -1033,10 +1026,11 @@ fn no_damage_means_skip() {
     // `Full` ("everything changed"), which is what coverage above
     // [`FULL_REPAINT_THRESHOLD`] produces.
     assert_eq!(
-        Damage::new(
-            TEST_SURFACE,
-            DamageRegion::collapse_from(&d.raw_rects, d.budget_px, TEST_SURFACE)
-        ),
+        Damage::new(DamageRegion::collapse_from(
+            &d.raw_rects,
+            d.budget_px,
+            TEST_SURFACE
+        )),
         Damage::Skip,
     );
 }
@@ -1044,14 +1038,16 @@ fn no_damage_means_skip() {
 /// Heuristic: total coverage = `sum(rect.area()) / surface_area`;
 /// strictly above `FULL_REPAINT_THRESHOLD` (0.7) ⇒ Full, otherwise
 /// Partial. The check is `>`, not `>=`, so coverage exactly at the
-/// threshold stays Partial. A zero-area surface forces Full
-/// (divide-by-zero guard). `total_area` sums per-rect areas of the
+/// threshold stays Partial. `total_area` sums per-rect areas of the
 /// post-merge region, so adjacent rects that the proximity-merge
 /// rule collapses contribute their merged-bbox area (which here
-/// equals the input sum since they tile cleanly).
+/// equals the input sum since they tile cleanly). Inputs go through
+/// `collapse_from` (the only constructor that seals `coverage`); the
+/// `region()` helper builds the unsealed *expected* values, which
+/// still match because coverage is excluded from `PartialEq`.
 #[test]
 fn damage_filter_threshold_cases() {
-    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
     fn region(rects: &[Rect]) -> DamageRegion {
         let mut r = DamageRegion::default();
         for rect in rects {
@@ -1116,14 +1112,14 @@ fn damage_filter_threshold_cases() {
             TEST_SURFACE,
             Damage::Full,
         ),
-        // Zero-area-surface case dropped: `Damage::new` now asserts
-        // `surface_area > 0.0` (host filters resize-to-zero before
-        // we ever reach this layer), so the prior `Damage::Full`
-        // fallback became unreachable.
+        // Zero-area-surface case dropped: `collapse_from` now asserts
+        // `surface_area > EPS` (host filters resize-to-zero before we
+        // ever reach this layer), so the prior `Damage::Full` fallback
+        // became unreachable.
     ];
     for (label, rects, surface, want) in cases {
-        let region = region(rects);
-        assert_eq!(Damage::new(*surface, region), *want, "case: {label}");
+        let region = DamageRegion::collapse_from(rects, DEFAULT_PASS_BUDGET_PX, *surface);
+        assert_eq!(Damage::new(region), *want, "case: {label}");
     }
 }
 
@@ -1353,9 +1349,8 @@ fn stable_surface_does_not_short_circuit() {
         );
     };
     // DamageEngine rect = the 50×50 frame's rect. Well below 50% of 200×200.
-    let total_area = region.total_area();
     assert!(
-        total_area / DISPLAY.logical_rect().area() < 0.5,
+        region.coverage < 0.5,
         "damage region should be small (partial repaint range), got {region:?}",
     );
 }
@@ -1430,7 +1425,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(ui.display.logical_rect(), ui.damage_region()),
+        Damage::new(ui.damage_region()),
         Damage::Partial(hot_rect.into()),
         "small per-button damage must not trip the full-repaint heuristic",
     );
@@ -1491,7 +1486,7 @@ fn button_unhover_damage_covers_only_the_button() {
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
     assert_eq!(
-        Damage::new(ui.display.logical_rect(), ui.damage_region()),
+        Damage::new(ui.damage_region()),
         Damage::Partial(hot_rect.into()),
     );
 }
@@ -1745,7 +1740,7 @@ fn partial_when_oversized_rect_lies_mostly_off_surface() {
         vec![Rect::new(90.0, 90.0, 10.0, 10.0)],
         "collapse_from must store the surface-clipped rect, not the raw input",
     );
-    let damage = Damage::new(surface, region);
+    let damage = Damage::new(region);
     assert!(
         matches!(damage, Damage::Partial(_)),
         "off-surface inflation must not trip FULL_REPAINT_THRESHOLD; got {damage:?}",
@@ -1762,7 +1757,7 @@ fn full_when_visible_portion_covers_surface_even_if_rect_overflows() {
     let surface = Rect::new(0.0, 0.0, 100.0, 100.0);
     let covers_all_plus_overflow = Rect::new(-50.0, -50.0, 1000.0, 1000.0);
     let region = DamageRegion::collapse_from(&[covers_all_plus_overflow], f32::INFINITY, surface);
-    let damage = Damage::new(surface, region);
+    let damage = Damage::new(region);
     assert_eq!(
         damage,
         Damage::Full,

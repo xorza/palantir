@@ -31,7 +31,6 @@ use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::tree::NodeId;
 use crate::forest::tree::iter::TreeItem;
-use crate::primitives::approx::EPS;
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
@@ -212,18 +211,58 @@ pub(crate) struct DamageInput<'a> {
     pub(crate) now: Duration,
 }
 
-/// Coverage ratio above which the renderer should skip the per-node
-/// filter and clear-redraw the whole surface. Below this, the
-/// bookkeeping (per-pass scissor + `LoadOp::Load` + backbuffer copy)
-/// wins; above it, the savings are eaten by the overhead. The
-/// previous 0.5 was tuned for the single-rect-union accumulator
-/// where two unrelated tiny corners would blow the union to ~100 %
-/// and trip the threshold despite < 1 % of pixels actually
-/// changing. The multi-rect region keeps disjoint corners disjoint
-/// at the data structure level, so the threshold is now applied to
-/// the *sum* of per-rect areas — corner-pair pathologies stay well
+/// The damage **coverage ladder** — two ascending break-evens on the same
+/// [`DamageRegion::coverage`] quantity (damaged logical area / surface area),
+/// each marking the point where the next-cheaper render path stops paying off
+/// as more of the surface changes:
+///
+/// - `≤ DIRECT_PROMOTE_COVERAGE` (0.40) — a small partial: paint just the
+///   damage region into the backbuffer and copy it out.
+/// - `(DIRECT_PROMOTE_COVERAGE, FULL_REPAINT_THRESHOLD]` (0.40–0.70) — a large
+///   partial: still tracked as `Partial` here, but the renderer's
+///   `DirectAdaptive` strategy repaints it straight into the target (dropping
+///   the copy, which by now costs more than re-shading the rest).
+/// - `> FULL_REPAINT_THRESHOLD` (0.70) — so much changed that the per-node
+///   filter + per-pass scissor + `LoadOp::Load` + copy bookkeeping is no longer
+///   worth it; [`Damage::new`] collapses straight to [`Damage::Full`].
+///
+/// Both thresholds read the region's sealed `coverage` field, so the
+/// classification is identical wherever it's asked (here, or in `present_mode`).
+/// The promote point is enforced below the full point by a compile-time assert.
+///
+/// `FULL_REPAINT_THRESHOLD`'s previous 0.5 was tuned for the single-rect-union
+/// accumulator, where two unrelated tiny corners would blow the union to ~100 %
+/// and trip it despite < 1 % of pixels actually changing. The multi-rect region
+/// keeps disjoint corners disjoint at the data-structure level, so the threshold
+/// applies to the *sum* of per-rect areas — corner-pair pathologies stay well
 /// below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
+
+/// Promote point of the [coverage ladder](FULL_REPAINT_THRESHOLD): the damaged
+/// fraction above which `DirectAdaptive` repaints a `Partial` straight into the
+/// target instead of painting it into the backbuffer and copying out.
+///
+/// The backbuffer path pays a *fixed* whole-surface copy every frame regardless
+/// of damage size, on top of re-shading every leaf the region intersects. Once a
+/// partial touches enough geometry that its paint + copy approaches a plain full
+/// repaint, going direct (which drops the copy) wins. Empirically the crossover
+/// sits near 0.40 on the bandwidth-bound `frame` bench (Radeon 680M): the
+/// `scrolling` arm shifts a panel transform so ~half the surface damages, yet
+/// the band crosses dense scrolled content — 7.8 ms via backbuffer vs 6.8 ms
+/// direct. Sub-threshold partials (the `partial` arm's footer counter is ~0.04 %)
+/// stay on the backbuffer path, where a tiny re-shade + one copy (3.3 ms) beats a
+/// whole-surface direct repaint (6.8 ms). Area is a proxy for paint cost, not a
+/// measurement of it, so the line sits a little under the known-expensive scroll
+/// band rather than at a precise break-even — and well under
+/// [`FULL_REPAINT_THRESHOLD`], where the largest partials have already collapsed
+/// to `Full`.
+pub(crate) const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
+
+// The ladder must stay ordered: a partial the renderer would promote to a
+// direct repaint must still reach `present_mode` *as* a `Partial`, never having
+// been collapsed to `Full` first. Compile-time guard so retuning one constant
+// past the other fails the build instead of silently disabling promotion.
+const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
 
 /// Minimum [`PaintSnapArena::snaps`] length before [`PaintSnapArena::maybe_compact`]
 /// considers running. Below this the arena is small enough that the
@@ -267,21 +306,17 @@ impl Damage {
         matches!(self, Damage::Skip)
     }
 
-    pub(crate) fn new(surface: Rect, region: DamageRegion) -> Damage {
+    /// Classify a region (already sealed against its surface by
+    /// [`DamageRegion::collapse_from`]) into the frame's paint decision. Pure
+    /// dispatch on the precomputed `coverage` — no surface needed here; the
+    /// degenerate-surface check lives at the seal site.
+    ///
+    /// [`DamageRegion::collapse_from`]: crate::ui::damage::region::DamageRegion::collapse_from
+    pub(crate) fn new(region: DamageRegion) -> Damage {
         if region.is_empty() {
             return Damage::Skip;
         }
-        let surface_area = surface.area();
-        assert!(surface_area > EPS);
-
-        // Region rects are surface-clipped at `collapse_from` (see
-        // the doc on `DamageRegion::collapse_from`), so `total_area`
-        // is already the *visible* footprint — counting off-surface
-        // pixels here would be wrong by definition (a paint_rect on
-        // a root-level transformed canvas with no clip ancestor can
-        // extend far past the viewport at high zoom). Pinned by
-        // `partial_when_oversized_rect_lies_mostly_off_surface`.
-        if region.total_area() / surface_area > FULL_REPAINT_THRESHOLD {
+        if region.coverage > FULL_REPAINT_THRESHOLD {
             return Damage::Full;
         }
         Damage::Partial(region)
@@ -756,7 +791,7 @@ impl DamageEngine {
     /// paths.
     fn finish_region(&self, surface: Rect) -> Damage {
         let region = DamageRegion::collapse_from(&self.raw_rects, self.budget_px, surface);
-        Damage::new(surface, region)
+        Damage::new(region)
     }
 
     /// PaintOnly fast path. The tree wasn't rebuilt this frame, so
