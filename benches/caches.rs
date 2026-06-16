@@ -1,6 +1,8 @@
 //! Cache-effectiveness A/B benchmark. Measures the **measure cache**
-//! (the only cache left in the layout pipeline) under three workload
-//! shapes, each in two arms:
+//! (the only cache left in the layout pipeline) under two workload
+//! shapes — a light list (`measure/*`, mono text fallback) and a
+//! heavier stencil-clipped variant with real cosmic-text shaping
+//! (`heavy/*`) — each in two arms:
 //!
 //! - `cached`: warm-up frame primes the cache; subsequent iterations
 //!   hit at the highest stable subtree root every frame (in steady
@@ -19,14 +21,14 @@
 //! `Ui::clear_measure_cache`. Run with
 //! `cargo bench --features internals --bench caches`.
 //!
-//! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement runs
-//! through the mono fallback — same shaper-free path as `benches/frame.rs`.
+//! The `measure/*` arms use `Ui::for_test()` (cosmic shaper unset → mono
+//! text fallback, same path as `benches/frame.rs`); the `heavy/*` arms
+//! use `Ui::for_test_text()` so text-shaping cost is in the measurement.
 
 use criterion::{Criterion, criterion_group, criterion_main};
-use glam::Vec2;
 use palantir::{
-    Background, Color, Configure, Corners, Display, Frame, FrameStamp, InputEvent, Panel, Rect,
-    Scroll, Shadow, Shape, Sizing, Stroke, Text, TextStyle, Ui,
+    Background, Color, Configure, Corners, Display, Frame, FrameStamp, Panel, Shadow, Sizing,
+    Stroke, Text, TextStyle, Ui,
 };
 use std::hint::black_box;
 
@@ -35,13 +37,6 @@ const ROWS_PER_GROUP: usize = 10;
 
 const HEAVY_GROUPS: usize = 50;
 const HEAVY_ROWS_PER_GROUP: usize = 8;
-
-const DENSE_GROUPS: usize = 80;
-const DENSE_ROWS_PER_GROUP: usize = 12;
-/// Decorative shapes pushed onto each row's stack via `add_shape`.
-/// Inflates cmd count per node so encode cache hit/miss is dominated
-/// by cmd-stream copy size, not just per-node walk overhead.
-const DENSE_SHAPES_PER_ROW: usize = 6;
 
 fn build(ui: &mut Ui) {
     Panel::vstack()
@@ -90,13 +85,12 @@ fn build(ui: &mut Ui) {
         });
 }
 
-/// Heavier workload variant exercising the composer's slow paths:
-/// rounded-stencil clips on every group + every row (lights up the
-/// stencil pipeline), real cosmic-text shaping (no mono fallback), an
-/// extra zstack layer per row for deeper nesting, and a stroke on each
-/// group surface (DrawRectStroked instead of DrawRect). Used to verify
-/// the compose-cache contribution finding from the simpler `build`
-/// workload — if the cache earns < 1% here too, deletion is justified.
+/// Heavier measure-cache baseline: rounded-stencil clips on every group
+/// and row, real cosmic-text shaping (no mono fallback), an extra
+/// zstack layer per row for deeper nesting, and a stroke on each group
+/// surface. Text shaping + deeper trees make measure genuinely
+/// expensive here, so the `cached / forced_miss` ratio reflects a
+/// shaping-bound workload rather than the mono-fallback `build` one.
 fn build_heavy(ui: &mut Ui) {
     let group_bg = Background {
         fill: Color::hex(0x1a1a1a).into(),
@@ -171,72 +165,6 @@ fn build_heavy(ui: &mut Ui) {
         });
 }
 
-/// Encode-stressing workload: dense per-node shape decoration. Each
-/// row gets `DENSE_SHAPES_PER_ROW` decorative `RoundedRect` shapes
-/// pushed via `add_shape`, in addition to the row's avatar + two
-/// labels. Goal: inflate cmd count per leaf so the encode cache's
-/// memcpy-vs-walk asymmetry shows up if there is one. Keeps
-/// `Sizing::Fixed` everywhere so measure stays cheap and the encode
-/// signal isn't drowned by text shaping.
-fn build_dense(ui: &mut Ui) {
-    let avatar_bg = Background {
-        fill: Color::hex(0x3a4a5c).into(),
-        stroke: Stroke::ZERO,
-        corners: Corners::all(8.0),
-        shadow: Shadow::NONE,
-    };
-    Panel::vstack()
-        .id_salt("dense-root")
-        .gap(2.0)
-        .padding(4.0)
-        .size((Sizing::FILL, Sizing::Hug))
-        .show(ui, |ui| {
-            for g in 0..DENSE_GROUPS {
-                Panel::vstack()
-                    .id_salt(("d-group", g))
-                    .gap(1.0)
-                    .size((Sizing::FILL, Sizing::Hug))
-                    .show(ui, |ui| {
-                        for r in 0..DENSE_ROWS_PER_GROUP {
-                            Panel::hstack()
-                                .id_salt(("d-row", g, r))
-                                .gap(4.0)
-                                .padding(2.0)
-                                .size((Sizing::FILL, Sizing::Fixed(20.0)))
-                                .show(ui, |ui| {
-                                    // Decorative shapes attached directly
-                                    // to the panel — emitted as DrawRect
-                                    // by the encoder, no descendant
-                                    // structure to amortize over.
-                                    for s in 0..DENSE_SHAPES_PER_ROW {
-                                        let x = (s as f32) * 4.0;
-                                        ui.add_shape(Shape::RoundedRect {
-                                            local_rect: Some(Rect::new(x, 2.0, 3.0, 16.0)),
-                                            corners: Corners::all(1.5),
-                                            fill: Color::hex(0x556677).into(),
-                                            stroke: Stroke::ZERO,
-                                        });
-                                    }
-                                    Frame::new()
-                                        .id_salt(("d-avatar", g, r))
-                                        .size((Sizing::Fixed(16.0), Sizing::Fixed(16.0)))
-                                        .background(avatar_bg.clone())
-                                        .show(ui);
-                                    Text::new("name")
-                                        .id_salt(("d-name", g, r))
-                                        .style(TextStyle::default().with_font_size(11.0))
-                                        .show(ui);
-                                    Text::new("meta")
-                                        .id_salt(("d-meta", g, r))
-                                        .style(TextStyle::default().with_font_size(10.0))
-                                        .show(ui);
-                                });
-                        }
-                    });
-            }
-        });
-}
-
 fn bench(c: &mut Criterion) {
     let display = Display::from_physical(glam::UVec2::new(1280, 800), 2.0);
     let mut group = c.benchmark_group("caches");
@@ -255,64 +183,6 @@ fn bench(c: &mut Criterion) {
         b.iter(|| {
             ui.clear_measure_cache();
             black_box(ui.frame(FrameStamp::new(display, std::time::Duration::ZERO), build));
-        });
-    });
-
-    // Whole-pipeline cost under scroll. Wrapping the workload in a
-    // `Scroll` adds an ancestor `current_transform` that mutates per
-    // frame whenever the pan offset changes. Two arms:
-    //
-    // - `scroll/idle`: scroll widget wraps content, offset stays at 0,
-    //   no `PushTransform` emitted. Steady-state floor with a Scroll
-    //   in place.
-    // - `scroll/active`: alternating ±1 px wheel deltas per iteration.
-    //   Offset oscillates, transform fires, descendant screen rects
-    //   shift. Originally added to measure compose-cache cost when
-    //   `cascade_fp` busts; kept post-deletion as a sanity check that
-    //   scroll-driven transform changes don't tax the rest of the
-    //   pipeline.
-    group.bench_function("scroll/idle", |b| {
-        let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_scrolling,
-        );
-        b.iter(|| {
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_scrolling,
-            ));
-        });
-    });
-
-    group.bench_function("scroll/active", |b| {
-        let mut ui = Ui::for_test();
-        // Frame 1: register the scroll viewport's rect/content/cascade.
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_scrolling,
-        );
-        // Hover the pointer over the viewport so wheel events route to
-        // the scroll target. `recompute_scroll_target` reads cascades,
-        // so this needs the post-frame-1 cascade index.
-        ui.on_input(InputEvent::PointerMoved(Vec2::new(640.0, 400.0)));
-        // Frame 2: apply pointer-route + warm caches a second time.
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_scrolling,
-        );
-        let mut sign: f32 = 1.0;
-        b.iter(|| {
-            // Alternating ±1 px keeps the offset bounded near 0 across
-            // arbitrary iteration counts; both signs still produce a
-            // non-zero `current_transform` whenever the running offset
-            // is non-zero, so cascade_fp still busts.
-            ui.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, sign)));
-            sign = -sign;
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_scrolling,
-            ));
         });
     });
 
@@ -348,44 +218,7 @@ fn bench(c: &mut Criterion) {
         });
     });
 
-    // Dense-workload variant: many decorative shapes per row inflate
-    // cmd count, originally added to expose any encode-cache value in
-    // a high-cmd-density workload (none found; encode cache later
-    // deleted). Kept as another baseline for measure.
-    group.bench_function("dense/measure/cached", |b| {
-        let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_dense,
-        );
-        b.iter(|| {
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_dense,
-            ));
-        });
-    });
-
-    group.bench_function("dense/measure/forced_miss", |b| {
-        let mut ui = Ui::for_test();
-        let _ = ui.frame(
-            FrameStamp::new(display, std::time::Duration::ZERO),
-            build_dense,
-        );
-        b.iter(|| {
-            ui.clear_measure_cache();
-            black_box(ui.frame(
-                FrameStamp::new(display, std::time::Duration::ZERO),
-                build_dense,
-            ));
-        });
-    });
-
     group.finish();
-}
-
-fn build_scrolling(ui: &mut Ui) {
-    Scroll::vertical().id_salt("scroll-root").show(ui, build);
 }
 
 criterion_group!(benches, bench);
