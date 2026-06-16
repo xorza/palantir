@@ -70,15 +70,13 @@ pub(crate) struct DamageRegion {
     pub(crate) budget_px: f32,
     /// Damaged fraction of the surface (`total_area / surface_area`),
     /// precomputed by [`Self::collapse_from`] against the surface its rects were
-    /// clipped to — so the coverage-ladder thresholds (`FULL_REPAINT_THRESHOLD`,
-    /// `DIRECT_PROMOTE_COVERAGE`) read a ready value instead of every caller
-    /// threading the surface area back in. `0.0` on a region built any other way
-    /// (`default` / `with_budget` / `From<Rect>`); those never reach a coverage
-    /// check. Excluded from [`PartialEq`] (a derived cache, not identity — two
-    /// regions covering the same rects are equal regardless of coverage).
-    ///
-    /// [`FULL_REPAINT_THRESHOLD`]: crate::ui::damage::FULL_REPAINT_THRESHOLD
-    /// [`DIRECT_PROMOTE_COVERAGE`]: crate::ui::damage::DIRECT_PROMOTE_COVERAGE
+    /// clipped to — so the coverage thresholds that read it
+    /// (`FULL_REPAINT_THRESHOLD` in the damage engine, `DIRECT_PROMOTE_COVERAGE`
+    /// in the renderer) get a ready value instead of every caller threading the
+    /// surface area back in. `0.0` on a region built any other way (`default` /
+    /// `with_budget` / `From<Rect>`); those never reach a coverage check.
+    /// Excluded from [`PartialEq`] (a derived cache, not identity — two regions
+    /// covering the same rects are equal regardless of coverage).
     pub(crate) coverage: f32,
 }
 
