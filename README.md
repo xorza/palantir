@@ -48,6 +48,23 @@ available_q)`; subtree hits blit last frame's measure result and skip
   Mark a static view `.repaint(false)` and it goes undamaged (its paint is
   skipped) until something changes.
 
+## Not yet implemented
+
+Pre-1.0 — these are known gaps, not design rejections:
+
+- **Accessibility** — no AccessKit / screen-reader support yet.
+- **Bold / italic / weight rendering + app-facing font loading** — text
+  currently renders at a single weight from a fixed family set; arbitrary
+  font registration and style variants aren't wired through to shaping.
+- **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
+  `request_focus`), but `Tab` / `Shift+Tab` cycling does not.
+- **Virtualized list / table** — `Scroll` records all children; no
+  row-virtualized list or data table for large datasets.
+- **Rich text** — one family / size / colour per `Text`; no inline spans.
+- **SVG** — no SVG rendering (`Mesh` is the raw vector escape hatch).
+- **RTL / bidirectional text** — right-to-left and mixed-direction scripts
+  aren't supported yet.
+
 ## Zero per-frame allocation
 
 Steady-state frames are heap-alloc-free after warmup. Per-frame data lives
