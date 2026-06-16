@@ -76,10 +76,11 @@ harness = false
 # reports a false 0 — see the module docs.
 required-features = ["internals"]
 
+# No `required-features`: drives only the public `OffscreenHost` headless
+# render path + the public widget fixture — no `internals` reach-in.
 [[bench]]
 name = "alloc_free_gpu"
 harness = false
-required-features = ["internals"]
 
 [[bench]]
 name = "text_atlas"

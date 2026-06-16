@@ -25,10 +25,11 @@ pub(crate) mod debug_overlay;
 pub mod forest;
 pub mod input;
 pub mod layout;
-/// Headless render-to-texture host for the visual harness + GPU benches
-/// — the offscreen peer of [`WinitHost`]. Gated: `WgpuBackend` is
-/// `pub(crate)`, so external test/bench crates reach it via this facade.
-#[cfg(any(test, feature = "internals"))]
+/// Headless render-to-texture host — the offscreen peer of [`WinitHost`].
+/// Renders a `Ui` to a caller-supplied `wgpu::Texture` instead of a
+/// swapchain (screenshots, thumbnails, server-side compositing); also backs
+/// the visual harness + GPU benches. Two cache-introspection methods
+/// (`has_format_pipelines` / `gpu_image_cache_len`) stay `internals`-gated.
 pub mod offscreen_host;
 pub mod primitives;
 pub mod renderer;

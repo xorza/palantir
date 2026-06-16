@@ -69,12 +69,15 @@ collapses damage to `Full` fails loudly instead of measuring the wrong
 thing.
 
 Feature gating (see `[[bench]]` entries in `Cargo.toml`): **every bench
-requires `--features internals`** — they construct via `Ui::default()` /
-`Ui::for_test*()`, all gated behind `internals`. (`alloc_resize` also
-needs it for `Ui::for_test_text()`'s real cosmic-text — see below.)
+requires `--features internals` except `alloc_free_gpu`** — they construct
+via `Ui::default()` / `Ui::for_test*()`, all gated behind `internals`.
+(`alloc_resize` also needs it for `Ui::for_test_text()`'s real cosmic-text
+— see below.) `alloc_free_gpu` is the exception: it drives only the public
+`OffscreenHost` headless render path + the public widget fixture, so it
+builds and runs with no features.
 
-`cargo bench --no-run` without features builds nothing; pass
-`--features internals`.
+`cargo bench --no-run` without features builds only `alloc_free_gpu`; the
+rest need `--features internals`.
 
 ## Allocation invariants (three benches)
 
@@ -111,10 +114,10 @@ below). Two pin a floor and fail; one only measures.
 
 ```sh
 cargo bench --bench alloc_free --features internals         # strict CPU invariant
-cargo bench --bench alloc_free_gpu --features internals     # GPU baseline gate
+cargo bench --bench alloc_free_gpu                          # GPU baseline gate (no features)
 cargo bench --bench alloc_resize --features internals       # resize-path measurement
 DHAT_DUMP=1 cargo bench --bench alloc_free --features internals      # emits dhat-heap.json on drop
-DHAT_DUMP=1 cargo bench --bench alloc_free_gpu --features internals  # same, for the GPU path
+DHAT_DUMP=1 cargo bench --bench alloc_free_gpu                       # same, for the GPU path
 DHAT_DUMP=1 cargo bench --bench alloc_resize --features internals    # same, for the resize path
 ```
 
