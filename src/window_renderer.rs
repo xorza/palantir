@@ -26,7 +26,7 @@ use crate::context::HostContext;
 use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
-use crate::ui::damage::DIRECT_PROMOTE_COVERAGE;
+use crate::ui::damage::FULL_REPAINT_THRESHOLD;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::{Display, FrameReport, FrameStamp};
 
@@ -130,6 +130,33 @@ enum PresentMode {
     ViaBackbuffer(RenderPlan),
 }
 
+/// Coverage fraction above which [`PresentStrategy::DirectAdaptive`] promotes a
+/// `Partial` to a direct full repaint instead of painting just the damage region
+/// into the backbuffer and copying out. Read against the region's sealed
+/// `coverage` — the same axis as the damage engine's [`FULL_REPAINT_THRESHOLD`],
+/// and strictly below it (a promoted partial must still reach here *as* a
+/// `Partial`, not already collapsed to `Full`; enforced by the assert below).
+///
+/// The backbuffer path pays a *fixed* whole-surface copy every frame regardless
+/// of damage size, on top of re-shading every leaf the region intersects. Once a
+/// partial touches enough geometry that its paint + copy approaches a plain full
+/// repaint, going direct (which drops the copy) wins. Empirically the crossover
+/// sits near 0.40 on the bandwidth-bound `frame` bench (Radeon 680M): the
+/// `scrolling` arm shifts a panel transform so ~half the surface damages, yet the
+/// band crosses dense scrolled content — 7.8 ms via backbuffer vs 6.8 ms direct.
+/// Sub-threshold partials (the `partial` arm's footer counter is ~0.04 %) stay on
+/// the backbuffer path, where a tiny re-shade + one copy (3.3 ms) beats a
+/// whole-surface direct repaint (6.8 ms). Area is a proxy for paint cost, not a
+/// measurement of it, so the line sits a little under the known-expensive scroll
+/// band rather than at a precise break-even.
+const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
+
+// A promoted partial must still reach `present_mode` *as* a `Partial`, never
+// collapsed to `Full` by the damage engine first — so the promote point stays
+// strictly below `FULL_REPAINT_THRESHOLD`. Compile-time guard: retuning either
+// past the other fails the build instead of silently killing promotion.
+const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
+
 fn present_mode(
     plan: Option<RenderPlan>,
     strategy: PresentStrategy,
@@ -145,8 +172,7 @@ fn present_mode(
                 RenderKind::Full => PresentMode::Direct(p),
                 RenderKind::Partial { region } => {
                     // `region.coverage` was sealed when the damage engine built
-                    // this region (`collapse_from`) — see the ladder doc on
-                    // `FULL_REPAINT_THRESHOLD`.
+                    // this region (`collapse_from`); see `DIRECT_PROMOTE_COVERAGE`.
                     if region.coverage > DIRECT_PROMOTE_COVERAGE {
                         // Large partial: skip the copy, repaint direct.
                         PresentMode::Direct(p.to_full())

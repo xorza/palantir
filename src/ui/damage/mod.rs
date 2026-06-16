@@ -211,58 +211,22 @@ pub(crate) struct DamageInput<'a> {
     pub(crate) now: Duration,
 }
 
-/// The damage **coverage ladder** — two ascending break-evens on the same
-/// [`DamageRegion::coverage`] quantity (damaged logical area / surface area),
-/// each marking the point where the next-cheaper render path stops paying off
-/// as more of the surface changes:
+/// Coverage fraction above which [`Damage::new`] stops tracking partial damage
+/// and collapses straight to [`Damage::Full`]: once this much of the surface has
+/// changed, the per-node filter + per-pass scissor + `LoadOp::Load` + backbuffer
+/// copy bookkeeping costs more than just clearing and redrawing everything.
+/// Checked against the region's sealed [`DamageRegion::coverage`]. (The
+/// renderer's `DirectAdaptive` strategy applies its own, lower promote threshold
+/// to the *Partial* range below this line — `DIRECT_PROMOTE_COVERAGE` in
+/// `window_renderer` — but that's a present-path GPU-cost call kept out of this
+/// damage-tracking one.)
 ///
-/// - `≤ DIRECT_PROMOTE_COVERAGE` (0.40) — a small partial: paint just the
-///   damage region into the backbuffer and copy it out.
-/// - `(DIRECT_PROMOTE_COVERAGE, FULL_REPAINT_THRESHOLD]` (0.40–0.70) — a large
-///   partial: still tracked as `Partial` here, but the renderer's
-///   `DirectAdaptive` strategy repaints it straight into the target (dropping
-///   the copy, which by now costs more than re-shading the rest).
-/// - `> FULL_REPAINT_THRESHOLD` (0.70) — so much changed that the per-node
-///   filter + per-pass scissor + `LoadOp::Load` + copy bookkeeping is no longer
-///   worth it; [`Damage::new`] collapses straight to [`Damage::Full`].
-///
-/// Both thresholds read the region's sealed `coverage` field, so the
-/// classification is identical wherever it's asked (here, or in `present_mode`).
-/// The promote point is enforced below the full point by a compile-time assert.
-///
-/// `FULL_REPAINT_THRESHOLD`'s previous 0.5 was tuned for the single-rect-union
-/// accumulator, where two unrelated tiny corners would blow the union to ~100 %
-/// and trip it despite < 1 % of pixels actually changing. The multi-rect region
-/// keeps disjoint corners disjoint at the data-structure level, so the threshold
-/// applies to the *sum* of per-rect areas — corner-pair pathologies stay well
-/// below 0.7.
+/// The previous 0.5 was tuned for the single-rect-union accumulator, where two
+/// unrelated tiny corners would blow the union to ~100 % and trip it despite
+/// < 1 % of pixels actually changing. The multi-rect region keeps disjoint
+/// corners disjoint at the data-structure level, so the threshold applies to the
+/// *sum* of per-rect areas — corner-pair pathologies stay well below 0.7.
 pub(crate) const FULL_REPAINT_THRESHOLD: f32 = 0.7;
-
-/// Promote point of the [coverage ladder](FULL_REPAINT_THRESHOLD): the damaged
-/// fraction above which `DirectAdaptive` repaints a `Partial` straight into the
-/// target instead of painting it into the backbuffer and copying out.
-///
-/// The backbuffer path pays a *fixed* whole-surface copy every frame regardless
-/// of damage size, on top of re-shading every leaf the region intersects. Once a
-/// partial touches enough geometry that its paint + copy approaches a plain full
-/// repaint, going direct (which drops the copy) wins. Empirically the crossover
-/// sits near 0.40 on the bandwidth-bound `frame` bench (Radeon 680M): the
-/// `scrolling` arm shifts a panel transform so ~half the surface damages, yet
-/// the band crosses dense scrolled content — 7.8 ms via backbuffer vs 6.8 ms
-/// direct. Sub-threshold partials (the `partial` arm's footer counter is ~0.04 %)
-/// stay on the backbuffer path, where a tiny re-shade + one copy (3.3 ms) beats a
-/// whole-surface direct repaint (6.8 ms). Area is a proxy for paint cost, not a
-/// measurement of it, so the line sits a little under the known-expensive scroll
-/// band rather than at a precise break-even — and well under
-/// [`FULL_REPAINT_THRESHOLD`], where the largest partials have already collapsed
-/// to `Full`.
-pub(crate) const DIRECT_PROMOTE_COVERAGE: f32 = 0.4;
-
-// The ladder must stay ordered: a partial the renderer would promote to a
-// direct repaint must still reach `present_mode` *as* a `Partial`, never having
-// been collapsed to `Full` first. Compile-time guard so retuning one constant
-// past the other fails the build instead of silently disabling promotion.
-const _: () = assert!(DIRECT_PROMOTE_COVERAGE < FULL_REPAINT_THRESHOLD);
 
 /// Minimum [`PaintSnapArena::snaps`] length before [`PaintSnapArena::maybe_compact`]
 /// considers running. Below this the arena is small enough that the
