@@ -4,10 +4,13 @@
 //! [`HostContext`]); unlike it there's no winit, no swapchain, and exactly
 //! one window — it renders to a caller-supplied `wgpu::Texture`.
 //!
-//! Test/bench-only (gated behind `internals`): the visual harness and the
-//! GPU benches use it because `WgpuBackend` is `pub(crate)` and can't be
-//! named from an external crate, so they need this `pub` facade bundling
-//! the backend with its window.
+//! A supported headless rendering entry point — render-to-texture for
+//! screenshots, thumbnails, or server-side compositing — that also backs
+//! the visual harness and GPU benches. It's a `pub` facade because
+//! `WgpuBackend` is `pub(crate)` and can't be named from an external crate,
+//! so callers drive the backend through this bundle. The two
+//! cache-introspection methods stay `internals`-gated: they call gated
+//! `WgpuBackend` helpers and exist only for the format-change test.
 
 use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
@@ -66,17 +69,22 @@ impl OffscreenHost {
             .frame_offscreen(&mut self.gpu, target, scale_factor, record);
     }
 
+    /// Cloneable handle to the most-recent GPU instrumentation sample —
+    /// same handle the `Ui` debug overlay reads from.
+    pub fn gpu_pass_stats(&self) -> &GpuPassStats {
+        &self.window.ui.ctx.pass_stats
+    }
+}
+
+/// Cache-introspection peepholes for the visual format-change test. Gated
+/// because they call `internals`-gated `WgpuBackend` helpers.
+#[cfg(any(test, feature = "internals"))]
+impl OffscreenHost {
     /// Whether the shared backend has built a pipeline set for `format`.
     /// Lets format-change tests confirm a new format materializes its own
     /// pipelines.
     pub fn has_format_pipelines(&self, format: wgpu::TextureFormat) -> bool {
         self.gpu.has_format_pipelines(format)
-    }
-
-    /// Cloneable handle to the most-recent GPU instrumentation sample —
-    /// same handle the `Ui` debug overlay reads from.
-    pub fn gpu_pass_stats(&self) -> &GpuPassStats {
-        &self.window.ui.ctx.pass_stats
     }
 
     /// Images resident in the GPU texture cache. Used by the format-change
