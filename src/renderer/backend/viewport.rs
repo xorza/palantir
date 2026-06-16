@@ -9,7 +9,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use encase::{ShaderSize, ShaderType, UniformBuffer};
 use glam::Vec2;
 
@@ -52,7 +52,7 @@ pub(crate) fn build_damage_scissors(
     buffer: &RenderBuffer,
 ) {
     out.clear();
-    if let RenderPlan::Partial { region, .. } = plan {
+    if let RenderKind::Partial { region } = plan.kind {
         for r in region.iter_rects() {
             if let Some(s) = logical_rect_to_phys_scissor(r, buffer) {
                 out.push(s);

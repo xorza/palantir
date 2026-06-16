@@ -16,7 +16,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::{
     primitives::{
         color::{Color, ColorF16},
@@ -142,8 +142,8 @@ impl DebugOverlay {
         let gap_px = (DAMAGE_OVERLAY_GAP * buffer.scale).max(1.0);
         let stroke_width = DAMAGE_OVERLAY_STROKE_WIDTH * buffer.scale;
         let mut rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]> = Default::default();
-        match plan {
-            RenderPlan::Partial { region, .. } => {
+        match plan.kind {
+            RenderKind::Partial { region } => {
                 // Outset, not inset: damage rects can be thinner than
                 // `2 * gap_px` (a 1px text caret), and insetting would
                 // collapse them to zero area — no outline drawn. An
@@ -158,7 +158,7 @@ impl DebugOverlay {
             // The full-viewport outline insets instead: outsetting it
             // would push the whole box off-screen, leaving only a
             // half-clipped edge line.
-            RenderPlan::Full { .. } => rects.push(
+            RenderKind::Full => rects.push(
                 Rect {
                     min: Vec2::ZERO,
                     size: Size::new(buffer.viewport_phys_f.x, buffer.viewport_phys_f.y),

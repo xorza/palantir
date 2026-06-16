@@ -1262,7 +1262,7 @@ pub mod test_support {
     use crate::text::TextShaper;
     use crate::ui::damage::Damage;
     use crate::ui::damage::region::DamageRegion;
-    use crate::ui::frame_report::RenderPlan;
+    use crate::ui::frame_report::{RenderKind, RenderPlan};
     use crate::ui::*;
     use glam::{UVec2, Vec2};
     use std::time::Duration;
@@ -1516,10 +1516,11 @@ pub mod test_support {
 
         fn encode_cmds_with_region(&self, region: Option<DamageRegion>) -> RenderCmdBuffer {
             let clear = self.theme.window_clear;
-            let plan = match region {
-                Some(region) => RenderPlan::Partial { clear, region },
-                None => RenderPlan::Full { clear },
+            let kind = match region {
+                Some(region) => RenderKind::Partial { region },
+                None => RenderKind::Full,
             };
+            let plan = RenderPlan { clear, kind };
             let mut cmds = RenderCmdBuffer::default();
             let arena = self.ctx.frame_arena.inner();
             encode(self, &arena, plan, &mut cmds);

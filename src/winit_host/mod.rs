@@ -62,7 +62,7 @@ use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{PendingWindow, WindowConfig, WindowToken};
-use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
+use crate::window_renderer::{FramePresent, FrameTarget, PresentStrategy, WindowRenderer};
 use crate::winit_host::config::WinitHostConfig;
 use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
 use crate::winit_host::handle::{HostHandle, MainTask, UserEvent};
@@ -262,7 +262,11 @@ where
         let run = self.running.as_ref().expect("open_window before boot");
         let window = create_window(event_loop, &cfg);
         let ws = run.gpu.make_surface(&window);
-        let renderer = WindowRenderer::new(&run.context, run.gpu.max_texture_dim);
+        let renderer = WindowRenderer::new(
+            &run.context,
+            run.gpu.max_texture_dim,
+            PresentStrategy::DirectFullOnly,
+        );
         self.insert_window(token, window, ws, renderer);
     }
 
@@ -408,7 +412,8 @@ where
         // (which also carries the app-global window/overlay state).
         let ctx = HostContext::new(TextShaper::with_bundled_fonts());
         let backend = gpu.make_backend(&ctx);
-        let mut renderer = WindowRenderer::new(&ctx, gpu.max_texture_dim);
+        let mut renderer =
+            WindowRenderer::new(&ctx, gpu.max_texture_dim, PresentStrategy::DirectFullOnly);
 
         // Build the app now that the first `Ui` exists.
         let mut app = (boot.build)(&mut renderer.ui, self.handle());

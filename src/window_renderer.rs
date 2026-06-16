@@ -23,26 +23,33 @@
 use std::time::Instant;
 
 use crate::context::HostContext;
-use crate::renderer::backend::{Backbuffer, WgpuBackend};
+use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
+use crate::ui::frame_report::RenderPlan;
 use crate::{Display, FrameReport, FrameStamp};
 
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
 /// [`Self::new`] from the shared [`HostContext`]; owns no GPU resources
-/// except its own [`Backbuffer`].
+/// except its own [`Backbuffer`] + [`Stencil`].
 pub struct WindowRenderer {
     pub ui: Ui,
     /// Per-window CPU encode/compose scratch. Shares the backend's frame
     /// arena (cloned at construction) but keeps its own retained
     /// `RenderBuffer` — this window's draw list.
     pub(crate) frontend: Frontend,
-    /// This window's persistent off-screen render target — its last
-    /// frame's pixels, kept for `LoadOp::Load` damage. The only
-    /// per-surface GPU resource; lent to [`WgpuBackend::submit`] each
-    /// frame. Lazily created on first submit, recreated on resize / format
-    /// change.
+    /// Persistent off-screen color target for the `BackbufferCopy` strategy
+    /// (fresh-target callers) — holds last frame's pixels for `LoadOp::Load`
+    /// damage and is copied onto the target each frame. Direct-present windows
+    /// never allocate it. Created lazily on the first backbuffer-copy frame,
+    /// recreated on resize / format change.
     pub(crate) backbuffer: Option<Backbuffer>,
+    /// This window's rounded-clip stencil attachment — allocated lazily,
+    /// resized to the target. Separate from `backbuffer` so the direct-present
+    /// path can have a stencil without a backbuffer color texture.
+    stencil: Option<Stencil>,
+    /// How this window's frames reach the target — see [`PresentStrategy`].
+    strategy: PresentStrategy,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
     pub(crate) start: Instant,
@@ -75,6 +82,57 @@ pub struct WindowRenderer {
     last_format: Option<wgpu::TextureFormat>,
 }
 
+/// How a window's frames reach its target, chosen per host at construction.
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum PresentStrategy {
+    /// A target whose prior contents can't be relied on — a fresh texture each
+    /// call (screenshots, the visual harness). Every frame renders into the
+    /// persistent backbuffer and copies out, so the whole target is filled
+    /// regardless of its prior contents; skip frames copy the backbuffer.
+    BackbufferCopy,
+    /// A direct-present target — the swapchain (the host owns skip frames), or a
+    /// reused offscreen texture. Every *painted* frame is a full repaint
+    /// straight into the target (no backbuffer, no partial damage, no copy);
+    /// skip frames are a no-op (the target already holds the last render).
+    DirectFullOnly,
+}
+
+/// How a frame reaches the target, given its plan and the window's
+/// [`PresentStrategy`]. Computed identically in `cpu_frame` (to pick the
+/// draw-list build plan) and `render_to_texture` (to pick the GPU path), so the
+/// two phases can't disagree.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum PresentMode {
+    /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
+    /// target so it's filled regardless of its prior contents.
+    SkipCopy,
+    /// Skip frame on a direct-present window: the target already holds the last
+    /// full-direct render (or the host owns the skip), so there's nothing to do.
+    SkipNoop,
+    /// Full repaint rendered directly into the target — no backbuffer copy.
+    Direct(RenderPlan),
+    /// Render the plan into the backbuffer, then copy it onto the target.
+    ViaBackbuffer(RenderPlan),
+}
+
+fn present_mode(plan: Option<RenderPlan>, strategy: PresentStrategy) -> PresentMode {
+    match strategy {
+        // Direct present: every paint is a full repaint straight into the
+        // target (partial damage dropped). The swapchain host owns skip frames;
+        // a reused offscreen target keeps its last full-direct render on skip.
+        PresentStrategy::DirectFullOnly => match plan {
+            None => PresentMode::SkipNoop,
+            Some(p) => PresentMode::Direct(p.to_full()),
+        },
+        // Fresh target each call: render the plan into the backbuffer and copy
+        // it out so the whole target is filled regardless of its prior contents.
+        PresentStrategy::BackbufferCopy => match plan {
+            None => PresentMode::SkipCopy,
+            Some(p) => PresentMode::ViaBackbuffer(p),
+        },
+    }
+}
+
 impl WindowRenderer {
     /// Build a per-window renderer from the shared [`HostContext`]: its
     /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches /
@@ -84,11 +142,13 @@ impl WindowRenderer {
     /// its lifetime), handed to the `Frontend` to cap `GpuView` target sizes —
     /// the only GPU fact the CPU pipeline needs. Owns nothing on the GPU but
     /// its backbuffer, created lazily on the first submit.
-    pub(crate) fn new(ctx: &HostContext, max_texture_dim: u32) -> Self {
+    pub(crate) fn new(ctx: &HostContext, max_texture_dim: u32, strategy: PresentStrategy) -> Self {
         Self {
             ui: Ui::new(ctx),
             frontend: Frontend::new(ctx.frame_arena.clone(), max_texture_dim),
             backbuffer: None,
+            stencil: None,
+            strategy,
             start: Instant::now(),
             occluded: false,
             occluded_at: None,
@@ -244,8 +304,14 @@ impl WindowRenderer {
             .frame(FrameStamp::new(display, self.start.elapsed()), record);
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets, all reading the now-frozen
-        // `Ui` immutably. A Skip frame has no plan and builds nothing.
-        if let Some(plan) = report.plan {
+        // `Ui` immutably. Skip frames build nothing; a direct-present window
+        // builds a Full plan even for a Partial (same decision
+        // `render_to_texture` makes).
+        let build_plan = match present_mode(report.plan, self.strategy) {
+            PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => Some(plan),
+            PresentMode::SkipCopy | PresentMode::SkipNoop => None,
+        };
+        if let Some(plan) = build_plan {
             self.frontend.build(&self.ui, plan);
         }
         report
@@ -276,22 +342,52 @@ impl WindowRenderer {
             display_phys.x,
             display_phys.y,
         );
-        let Some(plan) = report.plan else {
-            gpu.copy_backbuffer_to_surface(&mut self.backbuffer, target);
-            self.ui.frame_state.mark_submitted();
-            return;
-        };
         // The CPU phase already composed `GpuView`s into
         // `self.frontend.buffer.frame_targets` (callback + size — see
         // `cpu_frame`); this is GPU submit only.
         let debug_overlay = self.ui.debug_overlay();
-        gpu.submit(
-            &mut self.backbuffer,
-            target,
-            &self.frontend.buffer,
-            plan,
-            debug_overlay,
-        );
+        // Ensure the rounded-clip stencil up front — both paint paths share it,
+        // sized to the target.
+        let use_stencil = self.frontend.buffer.has_rounded_clip;
+        if use_stencil {
+            gpu.ensure_stencil(&mut self.stencil, target.size());
+        }
+        let stencil_view =
+            use_stencil.then(|| &self.stencil.as_ref().expect("ensure_stencil ran").view);
+        match present_mode(report.plan, self.strategy) {
+            // Nothing changed and the target already holds the last direct
+            // render — leave it untouched.
+            PresentMode::SkipNoop => {}
+            PresentMode::SkipCopy => {
+                gpu.copy_backbuffer_to_surface(&mut self.backbuffer, target);
+            }
+            // Full repaint straight into the target — no backbuffer at all.
+            PresentMode::Direct(plan) => {
+                gpu.submit(
+                    target,
+                    None,
+                    stencil_view,
+                    &self.frontend.buffer,
+                    plan,
+                    debug_overlay,
+                );
+            }
+            // Render into the backbuffer and copy it out. A freshly (re)created
+            // backbuffer has undefined contents, so escalate a Partial to Full.
+            PresentMode::ViaBackbuffer(plan) => {
+                let recreated =
+                    gpu.ensure_backbuffer(&mut self.backbuffer, target.size(), target.format());
+                let plan = if recreated { plan.to_full() } else { plan };
+                gpu.submit(
+                    target,
+                    self.backbuffer.as_ref(),
+                    stencil_view,
+                    &self.frontend.buffer,
+                    plan,
+                    debug_overlay,
+                );
+            }
+        }
         self.ui.frame_state.mark_submitted();
     }
 
@@ -381,4 +477,56 @@ pub enum FramePresent {
     Immediate,
     At(Instant),
     Idle,
+}
+
+#[cfg(test)]
+mod present_mode_tests {
+    use super::PresentMode::{Direct, SkipCopy, SkipNoop, ViaBackbuffer};
+    use super::PresentStrategy::{BackbufferCopy, DirectFullOnly};
+    use super::{PresentMode, present_mode};
+    use crate::primitives::color::Color;
+    use crate::ui::damage::region::DamageRegion;
+    use crate::ui::frame_report::{RenderKind, RenderPlan};
+
+    fn full() -> Option<RenderPlan> {
+        Some(RenderPlan {
+            clear: Color::BLACK,
+            kind: RenderKind::Full,
+        })
+    }
+    fn partial() -> Option<RenderPlan> {
+        Some(RenderPlan {
+            clear: Color::BLACK,
+            kind: RenderKind::Partial {
+                region: DamageRegion::default(),
+            },
+        })
+    }
+    const DIRECT_FULL: PresentMode = Direct(RenderPlan {
+        clear: Color::BLACK,
+        kind: RenderKind::Full,
+    });
+
+    #[test]
+    fn backbuffer_copy_fills_target_through_backbuffer() {
+        // Fresh target each call: paint via the backbuffer (the requested plan,
+        // Full or Partial), skip copies it out — the whole target is filled.
+        assert_eq!(
+            present_mode(full(), BackbufferCopy),
+            ViaBackbuffer(full().unwrap())
+        );
+        assert_eq!(
+            present_mode(partial(), BackbufferCopy),
+            ViaBackbuffer(partial().unwrap())
+        );
+        assert_eq!(present_mode(None, BackbufferCopy), SkipCopy);
+    }
+
+    #[test]
+    fn direct_full_only_escalates_every_paint_to_full() {
+        // Any paint — Full or Partial — is a full direct repaint; skip is a noop.
+        assert_eq!(present_mode(full(), DirectFullOnly), DIRECT_FULL);
+        assert_eq!(present_mode(partial(), DirectFullOnly), DIRECT_FULL);
+        assert_eq!(present_mode(None, DirectFullOnly), SkipNoop);
+    }
 }

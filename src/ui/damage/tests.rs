@@ -14,7 +14,7 @@ use crate::text::TEXT_SCALE_STEP;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::damage::{Damage, DamageEngine};
 use crate::ui::frame::FrameStamp;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -39,8 +39,14 @@ fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
     ui.frame_state.mark_submitted();
     match report.plan {
         None => Damage::Skip,
-        Some(RenderPlan::Full { .. }) => Damage::Full,
-        Some(RenderPlan::Partial { region, .. }) => Damage::Partial(region),
+        Some(RenderPlan {
+            kind: RenderKind::Full,
+            ..
+        }) => Damage::Full,
+        Some(RenderPlan {
+            kind: RenderKind::Partial { region },
+            ..
+        }) => Damage::Partial(region),
     }
 }
 
@@ -323,7 +329,11 @@ fn popup_eater_does_not_force_full_repaint() {
             .size(10.0)
             .show(ui);
     });
-    let Some(RenderPlan::Partial { region, .. }) = out.plan else {
+    let Some(RenderPlan {
+        kind: RenderKind::Partial { region },
+        ..
+    }) = out.plan
+    else {
         panic!(
             "popup dismissal escalated to {:?}; eater contributed full-surface \
              rect despite painting nothing",
@@ -383,7 +393,13 @@ fn click_on_empty_bg_does_not_force_full() {
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), build)
         .plan;
     assert!(
-        !matches!(click_plan, Some(RenderPlan::Full { .. })),
+        !matches!(
+            click_plan,
+            Some(RenderPlan {
+                kind: RenderKind::Full,
+                ..
+            })
+        ),
         "click on empty bg escalated to Full repaint: {click_plan:?}",
     );
 }
@@ -400,7 +416,13 @@ fn skip_frame_does_not_force_next_to_full() {
             one_frame(ui, BLUE)
         })
         .plan;
-    assert!(matches!(first, Some(RenderPlan::Full { .. })));
+    assert!(matches!(
+        first,
+        Some(RenderPlan {
+            kind: RenderKind::Full,
+            ..
+        })
+    ));
     ui.frame_state.mark_submitted();
 
     // Identical content → Skip. WindowRenderer::render confirms submitted on
@@ -442,7 +464,13 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
             one_frame(ui, BLUE)
         })
         .plan;
-    assert!(matches!(first, Some(RenderPlan::Full { .. })));
+    assert!(matches!(
+        first,
+        Some(RenderPlan {
+            kind: RenderKind::Full,
+            ..
+        })
+    ));
     ui.frame_state.mark_submitted();
 
     // Identical content → Skip. WindowRenderer bypasses `render()` entirely and
@@ -462,7 +490,13 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
         })
         .plan;
     assert!(
-        matches!(next, Some(RenderPlan::Partial { .. })),
+        matches!(
+            next,
+            Some(RenderPlan {
+                kind: RenderKind::Partial { .. },
+                ..
+            })
+        ),
         "unacked skip poisoned next frame into Full: {next:?}",
     );
 }
@@ -1128,7 +1162,13 @@ fn display_change_forces_full_repaint() {
             .frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
             .plan;
         assert!(
-            matches!(f1, Some(RenderPlan::Full { .. })),
+            matches!(
+                f1,
+                Some(RenderPlan {
+                    kind: RenderKind::Full,
+                    ..
+                })
+            ),
             "case: {label} f1"
         );
         ui.frame_state.mark_submitted();
@@ -1144,7 +1184,13 @@ fn display_change_forces_full_repaint() {
             .frame(FrameStamp::new(*mutated, Duration::ZERO), &mut build)
             .plan;
         assert!(
-            matches!(mutated_plan, Some(RenderPlan::Full { .. })),
+            matches!(
+                mutated_plan,
+                Some(RenderPlan {
+                    kind: RenderKind::Full,
+                    ..
+                })
+            ),
             "case: {label} display change"
         );
         ui.frame_state.mark_submitted();
@@ -1247,7 +1293,13 @@ fn small_damage_with_surface_change_forces_full_repaint() {
         .plan;
 
     assert!(
-        matches!(resize_plan, Some(RenderPlan::Full { .. })),
+        matches!(
+            resize_plan,
+            Some(RenderPlan {
+                kind: RenderKind::Full,
+                ..
+            })
+        ),
         "small-damage + surface-change must force full repaint \
          (this is the showcase resize-flicker case — encoder would emit a \
          damage-filtered partial paint over a backend-cleared backbuffer)",
@@ -1290,7 +1342,11 @@ fn stable_surface_does_not_short_circuit() {
             build(ui, RED)
         })
         .plan;
-    let Some(RenderPlan::Partial { region, .. }) = changed else {
+    let Some(RenderPlan {
+        kind: RenderKind::Partial { region },
+        ..
+    }) = changed
+    else {
         panic!(
             "stable surface + one-leaf change should produce a partial \
              repaint, got {changed:?} — surface-change short-circuit fired incorrectly",

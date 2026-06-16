@@ -23,7 +23,7 @@ use crate::renderer::gpu_view::GpuViewEntry;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use rustc_hash::FxHashMap;
 use std::time::Duration;
 
@@ -66,9 +66,9 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
 /// `ui.layout`, cascade rows off `ui.cascades`, keyed by layer.
 ///
 /// `plan` is the paint plan for this frame:
-/// - `RenderPlan::Full` paints everything (first frame, surface change,
+/// - `RenderKind::Full` paints everything (first frame, surface change,
 ///   full-repaint fallback).
-/// - `RenderPlan::Partial { region, .. }` runs damage-aware subtree
+/// - `RenderKind::Partial { region }` runs damage-aware subtree
 ///   culling: a node whose `paint_rect` doesn't intersect any rect in
 ///   `region` short-circuits the whole subtree's recursion *and* its
 ///   Push/Pop emission. Caller's responsibility to skip the call
@@ -84,9 +84,9 @@ pub(crate) fn encode(
 ) {
     out.clear();
 
-    let damage_filter = match &plan {
-        RenderPlan::Partial { region, .. } => Some(region),
-        RenderPlan::Full { .. } => None,
+    let damage_filter = match &plan.kind {
+        RenderKind::Partial { region } => Some(region),
+        RenderKind::Full => None,
     };
 
     let viewport = ui.display.logical_rect();

@@ -55,7 +55,7 @@ use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
 use palantir::offscreen_host::OffscreenHost;
 use palantir::renderer::frontend::Frontend;
-use palantir::ui::frame_report::RenderPlan;
+use palantir::ui::frame_report::{RenderKind, RenderPlan};
 use palantir::{Color, Display, Ui};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
@@ -155,6 +155,8 @@ fn bench_host(g: &Gpu) -> OffscreenHost {
         g.queue.clone(),
         palantir::TextShaper::with_bundled_fonts(),
         true,
+        // Bench arms reuse their target(s) across iters → direct-present path.
+        true,
     )
 }
 
@@ -225,8 +227,9 @@ impl CpuHarness {
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
         let stamp = palantir::FrameStamp::new(display, self.start.elapsed());
         let report = self.ui.frame(stamp, record);
-        let plan = report.plan().unwrap_or(RenderPlan::Full {
+        let plan = report.plan().unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
+            kind: RenderKind::Full,
         });
         // The deviceless CPU harness's `Frontend` carries the baseline
         // texture-dim cap from `for_test*` (the GpuView size ladder needs it).
@@ -313,7 +316,13 @@ fn assert_partial_invariant() {
         |ui| build_ui(&mut state, BENCH_SCALE, ui),
     );
     assert!(
-        matches!(report.plan(), Some(RenderPlan::Partial { .. })),
+        matches!(
+            report.plan(),
+            Some(RenderPlan {
+                kind: RenderKind::Partial { .. },
+                ..
+            })
+        ),
         "frame/partial expected RenderPlan::Partial, got {:?} \
          (fixture's footer-status counter must produce a small damage rect)",
         report.plan(),
