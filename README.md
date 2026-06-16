@@ -11,9 +11,14 @@ Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
 ![Frame 146 profile](docs/frame-146-profile.png)
 
-Steady-state cost per frame on `frame/cached_cpu` (ASUS ROG, i9-13980HX
-P-core, 5.4 GHz): **~1.75 M instructions retired**, **~586 K cycles**,
-**IPC ≈ 2.99** — measured via `perf stat -e cpu_core/instructions/`.
+Steady-state cost per frame on `frame/cached_cpu` (AMD Ryzen 7 6800U,
+Zen3+, clock locked at 2.4 GHz, ~332 µs/frame): **~2.55 M instructions
+retired**, **~785 K cycles**, **IPC ≈ 3.25**. The frame is
+retiring-bound, not stalled: **branch mispredicts are 0.18%** of ~365 K
+branches (~0.26 per 1K instructions) and the **L1-d cache miss rate is
+2.9%** of ~913 K loads (~10 per 1K instructions), with only 3.3% of
+cycles lost to a frontend stall. Measured via `perf stat -d`, pinned to
+one core.
 
 ---
 
