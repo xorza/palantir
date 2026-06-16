@@ -1,7 +1,7 @@
-//! Same widget tree as `pan_zoom`, but the tab self-drives synthetic
-//! scroll + zoom input every frame — the exact oscillator
-//! `benches/scrollzoom.rs` uses. Lets you watch the bench's workload
-//! animate. Pointer is seeded over the viewport on the first frame
+//! Same widget tree as `complex_pan_zoom`, but the tab self-drives
+//! synthetic scroll + zoom input every frame with a bounded cosine
+//! oscillator. Lets you watch the pan/zoom workload animate. Pointer
+//! is seeded over the viewport on the first frame
 //! only so `scroll_target` latches without clobbering the real cursor
 //! on subsequent frames (otherwise tab-bar clicks miss). Frame counter
 //! lives in `Ui::state` (rebuilt-arena safe); continuous repaint comes

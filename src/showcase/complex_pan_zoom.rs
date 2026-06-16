@@ -2,12 +2,8 @@
 //! wrapper, but the inner viewport is a long vertical document built
 //! from a mix of drivers (vstack / hstack / grid / canvas), wrapping
 //! text, gradient swatches, polyline shapes, and two button grids —
-//! ~2000 nodes total vs `pan_zoom`'s ~580. The auto-demo tab and
-//! `benches/scrollzoom.rs` import this file so the bench's workload
-//! matches what you see in the showcase.
-//!
-//! Self-contained: only `palantir::` items, no `crate::` references,
-//! so `#[path]` includes from `benches/` / `examples/` work.
+//! ~2000 nodes total vs `pan_zoom`'s ~580. The auto-demo tab
+//! (`pan_zoom_auto`) drives synthetic input over this same tree.
 
 use glam::Vec2;
 use palantir::TextWrap;
@@ -114,8 +110,8 @@ fn property_grid(ui: &mut Ui) {
                 "MIT-or-Apache-2.0",
                 "2025-04-12",
                 "2026-05-12",
-                "pan, zoom, scroll, layout, benchmark, golden, snapshot",
-                "Heavier scroll content for the scrollzoom benchmark.",
+                "pan, zoom, scroll, layout, golden, snapshot",
+                "Heavier scroll content for the pan/zoom showcase tab.",
             ];
             for row in 0..ROWS {
                 let r = row as u16;
