@@ -262,10 +262,13 @@ fn cpu_cached(c: &mut Criterion) {
 fn cpu_partial(c: &mut Criterion) {
     assert_partial_invariant();
     run_cpu_arm(c, "frame/partial_cpu", |h, state| {
+        // Mutate before recording — same cadence as the scrolling /
+        // resizing arms — so every arm sets up this frame's input then
+        // records it, rather than relying on the prior iter's leftover.
+        state.tick = state.tick.wrapping_add(1);
         h.frame(Display::from_physical(CACHED_SIZE, SCALE), |ui| {
             build_ui(state, BENCH_SCALE, ui)
         });
-        state.tick = state.tick.wrapping_add(1);
     });
 }
 
@@ -354,8 +357,8 @@ fn gpu_cached(c: &mut Criterion) {
 fn gpu_partial(c: &mut Criterion) {
     let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
     run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
-        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         state.tick = state.tick.wrapping_add(1);
+        host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
         black_box(&target);
     });
@@ -462,8 +465,8 @@ fn report_write_stats() {
     run("cached", &cached, |_, _| {});
 
     let partial = [make_target(&g.device, CACHED_SIZE, "write_stats.partial")];
-    run("partial", &partial, |state, frame| {
-        state.tick = frame as u32;
+    run("partial", &partial, |state, _| {
+        state.tick = state.tick.wrapping_add(1);
     });
 
     let pool: Vec<wgpu::Texture> = RESIZE_POOL
@@ -472,6 +475,12 @@ fn report_write_stats() {
         .map(|(i, s)| make_target(&g.device, *s, &format!("write_stats.resize.{i}")))
         .collect();
     run("resizing", &pool, |_, _| {});
+
+    let scrolling = [make_target(&g.device, CACHED_SIZE, "write_stats.scrolling")];
+    run("scrolling", &scrolling, |state, _| {
+        state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
+        state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
+    });
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
