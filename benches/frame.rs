@@ -39,8 +39,9 @@
 //! - **`frame/scrolling_*`** — fixed viewport, shifts a `Panel::transform`
 //!   each iter so only the cascade walk sees change.
 //!
-//! After all selected arms run, each arm's criterion `mean` estimate is
-//! prepended to `benches/results/<machine>.txt` so per-machine history
+//! After all selected arms run, each arm's criterion `time:` estimate
+//! (the slope it reports to stdout) is prepended to
+//! `benches/results/<machine>.txt` so per-machine history
 //! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
 //! filename derived from `hostname -s`.
 //!
@@ -576,7 +577,7 @@ fn bench_gpu(c: &mut Criterion) {
 }
 
 /// Results finalizer — runs last in `criterion_main!`. Reads the
-/// criterion `mean` estimates the two benches just wrote and prepends a
+/// criterion `time:` estimates the two benches just wrote and prepends a
 /// per-machine results row. Separated from the benches so it observes
 /// every arm regardless of mode, and so neither bench has to know it's
 /// the last one.
@@ -584,10 +585,10 @@ fn write_results(_c: &mut Criterion) {
     prepend_machine_results(bench_mode());
 }
 
-/// Read criterion's `mean` estimate out of `target/criterion/<slug>/new/estimates.json`
-/// and write the `[lower mean upper]` triple — same source criterion's
-/// stdout prints — to a per-machine `.txt`. Newest run lives at the
-/// top of the file (`head` gives the latest). Best-effort: any I/O
+/// Read criterion's reported estimate out of `target/criterion/<slug>/new/estimates.json`
+/// and write the `[lower point upper]` triple — the same slope/mean
+/// criterion's stdout prints — to a per-machine `.txt`. Newest run lives
+/// at the top of the file (`head` gives the latest). Best-effort: any I/O
 /// failure prints to stderr and continues.
 fn prepend_machine_results(mode: BenchMode) {
     let machine = machine_label();
@@ -605,7 +606,7 @@ fn prepend_machine_results(mode: BenchMode) {
         bench_annotation()
     ));
     for &name in arm_names(mode).iter() {
-        let row = match read_criterion_mean(name) {
+        let row = match read_criterion_estimate(name) {
             Some(e) => format!("{name:<22} time: {}\n", fmt_estimate(e)),
             None => format!("{name:<22} time: (criterion estimates not found)\n"),
         };
@@ -656,48 +657,70 @@ struct Estimate {
     hi_ns: f64,
 }
 
-/// Locate criterion's output root. Criterion writes to the *workspace*
-/// `target/criterion`, but cargo runs this bench with its CWD set to
-/// the package dir — which, since palantir is a git submodule, is the
-/// submodule root, not the workspace. A plain `target/criterion`
-/// relative path therefore misses (no `palantir/target`). Resolve it
-/// robustly: honour `CARGO_TARGET_DIR`, else walk up from CWD for the
-/// first existing `target/criterion` (the shared workspace target sits
-/// above the submodule package dir).
+/// Locate criterion's output root — the `criterion/` dir under the
+/// `target/` cargo actually built into. The reliable signal is the bench
+/// binary's own path: criterion writes under the same `target/` tree the
+/// binary lives in (`<target>/<profile>/deps/<bin>`), and in this
+/// workspace that's the shared `Scenarium/target`, NOT the submodule-local
+/// `palantir/target`.
+///
+/// A CWD walk-up (the previous approach) is wrong: cargo runs the bench
+/// with CWD at the submodule package dir, and a stale
+/// `palantir/target/criterion` left by an earlier standalone build
+/// shadows the real workspace dir — so the finalizer read months-old
+/// estimates from it and every per-machine row was stale.
 fn criterion_root() -> PathBuf {
     if let Ok(t) = std::env::var("CARGO_TARGET_DIR") {
         return PathBuf::from(t).join("criterion");
     }
-    let mut dir = std::env::current_dir().unwrap_or_default();
-    loop {
-        let cand = dir.join("target").join("criterion");
-        if cand.is_dir() {
-            return cand;
-        }
-        if !dir.pop() {
-            return PathBuf::from("target").join("criterion");
-        }
+    // `current_exe()` = `<target>/<profile>/deps/<bin>`; the `target`
+    // ancestor is the first one named "target" (robust to the profile
+    // dir being release / debug / a custom name). `ancestors()` runs
+    // deepest-first, so this lands on the real cargo target, never a
+    // coincidental "target" higher in the path.
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(target) = exe
+            .ancestors()
+            .find(|a| a.file_name() == Some("target".as_ref()))
+    {
+        return target.join("criterion");
     }
+    // Last resort: CWD-relative, matching criterion's own fallback.
+    PathBuf::from("target").join("criterion")
 }
 
-/// Extract `mean.{lower_bound, point_estimate, upper_bound}` from
-/// criterion's `estimates.json`. The file is a single-line JSON blob
-/// with a stable layout: `"mean":{"confidence_interval":{...},
-/// "point_estimate":N,...}` — slice into the `"mean":` block and pick
-/// the three numbers in declaration order. Avoids pulling serde_json
-/// just for this.
-fn read_criterion_mean(name: &str) -> Option<Estimate> {
+/// Extract the estimate criterion's stdout `time:` line reports, from its
+/// `estimates.json`. Criterion prints the **slope** when it used
+/// linear-regression sampling (the default — slope cancels per-iter
+/// constant overhead and is the more accurate estimate for fast benches),
+/// and falls back to the **mean** for flat sampling (`"slope":null`).
+/// Mirror that order so the persisted row matches what criterion printed,
+/// not a mean that reads ~1% high.
+///
+/// The file is a single-line JSON blob with a stable layout
+/// (`"slope":{"confidence_interval":{...},"point_estimate":N,...}`): slice
+/// into the named block and pick the three numbers in declaration order.
+/// Avoids pulling serde_json just for this.
+fn read_criterion_estimate(name: &str) -> Option<Estimate> {
     let slug = name.replace('/', "_");
     let path = criterion_root().join(&slug).join("new/estimates.json");
     let s = std::fs::read_to_string(&path).ok()?;
-    let after_mean = &s[s.find("\"mean\":")? + "\"mean\":".len()..];
-    let lo = extract_json_number(after_mean, "\"lower_bound\":")?;
-    let hi = extract_json_number(after_mean, "\"upper_bound\":")?;
-    let mid = extract_json_number(after_mean, "\"point_estimate\":")?;
+    estimate_from_block(&s, "\"slope\":").or_else(|| estimate_from_block(&s, "\"mean\":"))
+}
+
+/// Read `{lower_bound, point_estimate, upper_bound}` out of the `key` block
+/// (`"slope":` / `"mean":`). `None` for an absent block or `"slope":null`
+/// (flat sampling) — without the null guard the number scan would walk
+/// past it into the next block and report the wrong statistic.
+fn estimate_from_block(s: &str, key: &str) -> Option<Estimate> {
+    let after = &s[s.find(key)? + key.len()..];
+    if after.trim_start().starts_with("null") {
+        return None;
+    }
     Some(Estimate {
-        lo_ns: lo,
-        mid_ns: mid,
-        hi_ns: hi,
+        lo_ns: extract_json_number(after, "\"lower_bound\":")?,
+        mid_ns: extract_json_number(after, "\"point_estimate\":")?,
+        hi_ns: extract_json_number(after, "\"upper_bound\":")?,
     })
 }
 
