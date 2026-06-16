@@ -47,11 +47,12 @@ impl OffscreenHost {
         // drives the lazy per-format pipeline build.
         let ctx = HostContext::new(shaper);
         let gpu = WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
-        // A reused target can take the direct-present fast path (skip frames
-        // keep its last render); a fresh target each call must be fully filled
-        // via backbuffer+copy.
+        // A reused target can take the direct-present path (full repaints go
+        // straight in, small partials ride the backbuffer, skip frames keep its
+        // last render); a fresh target each call must be fully filled via
+        // backbuffer+copy.
         let strategy = if target_persists {
-            PresentStrategy::DirectFullOnly
+            PresentStrategy::DirectAdaptive
         } else {
             PresentStrategy::BackbufferCopy
         };

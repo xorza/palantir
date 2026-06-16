@@ -1476,7 +1476,7 @@ pub mod test_support {
 
         /// `"skip"` / `"partial"` / `"full"` — the frame's final paint decision.
         pub fn damage_paint_kind(&self) -> &'static str {
-            match Damage::new(self.display.logical_rect(), self.damage_region()) {
+            match Damage::new(self.damage_region()) {
                 Damage::Skip => "skip",
                 Damage::Full => "full",
                 Damage::Partial(_) => "partial",
