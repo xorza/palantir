@@ -18,7 +18,7 @@ use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::window_renderer::WindowRenderer;
+use crate::window_renderer::{PresentStrategy, WindowRenderer};
 
 /// One shared [`WgpuBackend`] + one [`WindowRenderer`], rendering to a
 /// texture instead of a surface. The offscreen analogue of `WinitHost`.
@@ -28,11 +28,17 @@ pub struct OffscreenHost {
 }
 
 impl OffscreenHost {
+    /// `target_persists` declares whether the caller reuses one render target
+    /// across frames (enabling the direct-to-target / skip-noop fast paths) or
+    /// supplies a fresh texture each `frame_offscreen` call (screenshots, the
+    /// visual harness — every frame must fill the whole target via
+    /// backbuffer+copy).
     pub fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
         shaper: TextShaper,
         collect_gpu_stats: bool,
+        target_persists: bool,
     ) -> Self {
         // The shared context outlives this call only as the clones in the
         // backend + window's `Ui`/`Frontend` (Rc-backed handles, including
@@ -41,7 +47,15 @@ impl OffscreenHost {
         // drives the lazy per-format pipeline build.
         let ctx = HostContext::new(shaper);
         let gpu = WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
-        let window = WindowRenderer::new(&ctx, gpu.max_texture_dim());
+        // A reused target can take the direct-present fast path (skip frames
+        // keep its last render); a fresh target each call must be fully filled
+        // via backbuffer+copy.
+        let strategy = if target_persists {
+            PresentStrategy::DirectFullOnly
+        } else {
+            PresentStrategy::BackbufferCopy
+        };
+        let window = WindowRenderer::new(&ctx, gpu.max_texture_dim(), strategy);
         Self { gpu, window }
     }
 

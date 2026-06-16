@@ -12,7 +12,7 @@ use crate::renderer::frontend::Frontend;
 use crate::shape::TextWrap;
 use crate::ui::damage::Damage;
 use crate::ui::frame::FrameStamp;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::ResponseSnapshot;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
@@ -70,8 +70,9 @@ fn duplicate_explicit_widget_id_disambiguates_and_flags() {
     let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
-        RenderPlan::Full {
+        RenderPlan {
             clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
         },
     );
     let overlay_quads: Vec<_> = buffer
@@ -141,8 +142,9 @@ fn cross_layer_explicit_widget_id_collision_resolves_per_layer() {
     let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
-        RenderPlan::Full {
+        RenderPlan {
             clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
         },
     );
     let overlay_quads: Vec<_> = buffer
@@ -275,8 +277,9 @@ fn empty_ui_drives_a_frame_safely() {
     let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
-        RenderPlan::Full {
+        RenderPlan {
             clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
         },
     );
     assert!(buffer.quads.is_empty());
@@ -839,7 +842,13 @@ fn frame_stats_overlay_records_partial_damage() {
     });
     ui.frame_state.mark_submitted();
     assert!(
-        matches!(report.plan, Some(RenderPlan::Partial { .. })),
+        matches!(
+            report.plan,
+            Some(RenderPlan {
+                kind: RenderKind::Partial { .. },
+                ..
+            })
+        ),
         "frame_stats should produce Partial damage on a static scene; got {:?}",
         report.plan,
     );
@@ -1095,7 +1104,10 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // tight rect — not Full (defeats the point) and not None (the
     // blink phase actually flipped). Pin both invariants.
     match r1.plan {
-        Some(RenderPlan::Partial { region, .. }) => {
+        Some(RenderPlan {
+            kind: RenderKind::Partial { region },
+            ..
+        }) => {
             let rects: Vec<_> = region.iter_rects().collect();
             assert_eq!(rects.len(), 1, "expected single damage rect, got {rects:?}");
             let r = rects[0];
@@ -1499,7 +1511,13 @@ fn cold_start_first_frame_damage_is_full() {
             .show(ui);
     });
     assert!(
-        matches!(report.plan, Some(RenderPlan::Full { .. })),
+        matches!(
+            report.plan,
+            Some(RenderPlan {
+                kind: RenderKind::Full,
+                ..
+            })
+        ),
         "first frame: prev snapshot empty, every painting node is new ⇒ Full",
     );
 }

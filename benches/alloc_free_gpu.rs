@@ -103,6 +103,9 @@ fn main() {
         g.queue.clone(),
         palantir::TextShaper::with_bundled_fonts(),
         false,
+        // Stay on the backbuffer+copy path so the per-frame alloc floor this
+        // bench pins is unaffected by the direct-present fast path.
+        false,
     );
     let mut state = FormState::default();
 

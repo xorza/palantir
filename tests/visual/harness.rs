@@ -71,7 +71,9 @@ impl Harness {
     pub fn new() -> Self {
         let g = gpu();
         let shaper = COSMIC.with(|c| c.clone());
-        let host = OffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, false);
+        // Fresh target texture per render() → must fill the whole target each
+        // frame, so stay on the backbuffer+copy path (target_persists = false).
+        let host = OffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, false, false);
 
         Self {
             device: g.device.clone(),

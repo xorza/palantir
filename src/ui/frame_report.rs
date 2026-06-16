@@ -14,19 +14,26 @@ use crate::ui::damage::region::DamageRegion;
 use std::time::Duration;
 
 /// WindowRenderer-facing render plan, present only when there's actual render
-/// work this frame — `FrameReport.plan = None` is the skip signal,
-/// so neither the encoder nor the backend ever sees a no-op plan.
-/// Pairs the engine's damage outcome with the surface clear colour
-/// (needed by both variants: Full clears the colour attachment,
-/// Partial pre-fills each scissor with the same colour before
-/// painting).
+/// work this frame — `FrameReport.plan = None` is the skip signal, so neither
+/// the encoder nor the backend ever sees a no-op plan. Pairs the surface clear
+/// colour (needed for both kinds: `Full` clears the colour attachment,
+/// `Partial` pre-fills each scissor with it) with the [`RenderKind`].
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RenderPlan {
+pub struct RenderPlan {
+    /// Surface clear colour for this frame.
+    pub clear: Color,
+    /// Whole surface, or just a damage region.
+    pub kind: RenderKind,
+}
+
+/// What a [`RenderPlan`] repaints.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum RenderKind {
     /// Clear + repaint the whole surface.
-    Full { clear: Color },
+    Full,
     /// Load the backbuffer, then paint inside `region` after a
     /// `clear`-coloured pre-fill quad per scissor.
-    Partial { clear: Color, region: DamageRegion },
+    Partial { region: DamageRegion },
 }
 
 impl RenderPlan {
@@ -34,10 +41,21 @@ impl RenderPlan {
     /// surface clear colour. `Damage::Skip` ⇒ `None` (skip frame);
     /// `Full` / `Partial` ⇒ `Some(plan)`.
     pub(crate) fn from_damage(damage: Damage, clear: Color) -> Option<Self> {
-        match damage {
-            Damage::Skip => None,
-            Damage::Full => Some(RenderPlan::Full { clear }),
-            Damage::Partial(region) => Some(RenderPlan::Partial { clear, region }),
+        let kind = match damage {
+            Damage::Skip => return None,
+            Damage::Full => RenderKind::Full,
+            Damage::Partial(region) => RenderKind::Partial { region },
+        };
+        Some(RenderPlan { clear, kind })
+    }
+
+    /// This plan escalated to a full repaint, keeping its clear colour — used
+    /// when partial damage can't be honoured (direct present, or a freshly
+    /// (re)created backbuffer with undefined contents).
+    pub(crate) fn to_full(self) -> RenderPlan {
+        RenderPlan {
+            clear: self.clear,
+            kind: RenderKind::Full,
         }
     }
 }
@@ -126,14 +144,20 @@ pub mod test_support {
         /// built by adding each rect.
         pub fn force_damage_to_rects(&mut self, rects: &[Rect], clear: Color) {
             if rects.is_empty() {
-                self.plan = Some(RenderPlan::Full { clear });
+                self.plan = Some(RenderPlan {
+                    clear,
+                    kind: RenderKind::Full,
+                });
                 return;
             }
             let mut region = DamageRegion::default();
             for r in rects {
                 region.add(*r);
             }
-            self.plan = Some(RenderPlan::Partial { clear, region });
+            self.plan = Some(RenderPlan {
+                clear,
+                kind: RenderKind::Partial { region },
+            });
         }
     }
 }

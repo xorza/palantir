@@ -75,20 +75,16 @@ pub(crate) struct WgpuBackendConfig {
     pub(crate) collect_gpu_stats: bool,
 }
 
-/// Persistent off-screen target that the render pass paints into.
-/// We render to this texture (not to the swapchain view directly)
-/// so we can keep last frame's pixels around between frames —
-/// `LoadOp::Load` only works reliably on a texture *we* own; the
-/// swapchain's preserve-contents behaviour varies by platform/
-/// present-mode. After the pass, [`WgpuBackend::submit`] copies
-/// the backbuffer into the swapchain texture and presents.
+/// Persistent off-screen *color* target for the backbuffer-copy path: the
+/// frontend renders into it, then [`WgpuBackend::submit`] copies it onto the
+/// caller's surface. Keeping last frame's pixels in a texture *we* own is what
+/// lets `LoadOp::Load` work for incremental damage — a fresh or rotating
+/// surface texture can't be relied on. The direct-present path skips the
+/// backbuffer entirely and renders straight into the surface.
 ///
-/// Sized to match the surface texture; recreated on resize or
-/// format change.
-///
-/// Owned per-window by [`WindowRenderer`](crate::WindowRenderer) (one
-/// surface's pixels) and lent to [`WgpuBackend::submit`] each frame; the
-/// backend is otherwise window-agnostic.
+/// Sized to match the surface texture; recreated on resize or format change.
+/// Owned per-window by [`WindowRenderer`](crate::WindowRenderer); the backend
+/// is otherwise window-agnostic.
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
@@ -97,12 +93,18 @@ pub(crate) struct Backbuffer {
     /// traversal that call walks is ~15 µs/frame at this bench
     /// shape — small but visible in Tracy at 14% of trace time.
     size: wgpu::Extent3d,
-    /// Lazy stencil attachment, allocated on first frame with rounded
-    /// clipping (`FrameOutput::has_rounded_clip == true`). Apps that
-    /// never use rounded clip never allocate this. Recreated alongside
-    /// the color texture on resize / format change. The view keeps its
-    /// texture alive (wgpu's internal Arcs), so no owning struct needed.
-    stencil: Option<wgpu::TextureView>,
+}
+
+/// Per-window stencil attachment for rounded-clip masking, allocated lazily on
+/// the first rounded-clip frame and resized to match the render target. Kept
+/// separate from [`Backbuffer`] so the direct-present path can have a stencil
+/// without paying for a backbuffer color texture it never uses. Transient:
+/// cleared at pass open, never read across frames. Owned per-window by
+/// [`WindowRenderer`](crate::WindowRenderer).
+pub(crate) struct Stencil {
+    pub(crate) view: wgpu::TextureView,
+    /// Current size, so `ensure_stencil` can skip recreation when unchanged.
+    size: wgpu::Extent3d,
 }
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
@@ -287,7 +289,7 @@ impl WgpuBackend {
     /// set is fetched per submit from the `pipelines` map, so no
     /// global-format assert is needed.
     #[profiling::function]
-    fn ensure_backbuffer(
+    pub(crate) fn ensure_backbuffer(
         &self,
         bb: &mut Option<Backbuffer>,
         size: wgpu::Extent3d,
@@ -315,32 +317,22 @@ impl WgpuBackend {
             view_formats: &[],
         });
         let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-        *bb = Some(Backbuffer {
-            tex,
-            view,
-            size,
-            // Drop any stale stencil — it was sized to the old
-            // backbuffer; `ensure_stencil` lazily allocates a fresh
-            // one matching the new size on the next rounded-clip
-            // frame. Without this, wgpu validation rejects the pass
-            // (mismatched attachment sizes).
-            stencil: None,
-        });
+        *bb = Some(Backbuffer { tex, view, size });
         true
     }
 
-    /// Allocate the stencil attachment if it isn't already present.
-    /// `ensure_backbuffer` resets `stencil` to `None` whenever it
-    /// rebuilds the color texture, so a `Some` here is always
-    /// size-matched to the current backbuffer.
+    /// Allocate (or resize) the stencil attachment to match `size`. Lazily
+    /// created on the first rounded-clip frame; recreated when the render
+    /// target's size changes (a mismatched-size attachment fails wgpu
+    /// validation). The [`Stencil`] is owned per-window by the caller.
     #[profiling::function]
-    fn ensure_stencil(&self, bb: &mut Backbuffer) {
-        if bb.stencil.is_some() {
+    pub(crate) fn ensure_stencil(&self, stencil: &mut Option<Stencil>, size: wgpu::Extent3d) {
+        if stencil.as_ref().is_some_and(|s| s.size == size) {
             return;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("palantir.renderer.stencil"),
-            size: bb.size,
+            size,
             mip_level_count: 1,
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
@@ -348,7 +340,10 @@ impl WgpuBackend {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
             view_formats: &[],
         });
-        bb.stencil = Some(tex.create_view(&wgpu::TextureViewDescriptor::default()));
+        *stencil = Some(Stencil {
+            view: tex.create_view(&wgpu::TextureViewDescriptor::default()),
+            size,
+        });
     }
 
     /// Render one frame to the persistent backbuffer, then copy the
@@ -392,18 +387,23 @@ impl WgpuBackend {
         self.device.limits().max_texture_dimension_2d
     }
 
+    /// Render `buffer` for `plan` onto `surface_tex`. When `via_backbuffer` is
+    /// `Some`, the pass renders into that backbuffer and the result is copied
+    /// out (the backbuffer-copy path); when `None`, it renders straight into
+    /// `surface_tex` (direct present). `plan` is the *effective* plan — the
+    /// caller (`WindowRenderer`) has already escalated a Partial to Full if the
+    /// backbuffer was just (re)created, and ensured the stencil + backbuffer.
     pub(crate) fn submit(
         &mut self,
-        backbuffer: &mut Option<Backbuffer>,
         surface_tex: &wgpu::Texture,
+        via_backbuffer: Option<&Backbuffer>,
+        stencil_view: Option<&wgpu::TextureView>,
         buffer: &RenderBuffer,
         plan: RenderPlan,
         debug_overlay: DebugOverlayConfig,
     ) {
-        let clear = match plan {
-            RenderPlan::Full { clear } | RenderPlan::Partial { clear, .. } => clear,
-        };
-        let use_stencil = buffer.has_rounded_clip;
+        let clear = plan.clear;
+        let use_stencil = stencil_view.is_some();
         tracing::trace!(
             quads = buffer.quads.len(),
             texts = buffer.texts.len(),
@@ -420,28 +420,11 @@ impl WgpuBackend {
         let format = surface_tex.format();
         self.ensure_format(format);
 
-        // Match backbuffer to the swapchain texture. A freshly
-        // (re)created backbuffer has undefined contents, so any
-        // requested Partial must escalate to a full clear+paint this
-        // frame.
-        let backbuffer_recreated = self.ensure_backbuffer(backbuffer, surface_tex.size(), format);
-        let bb = backbuffer.as_mut().expect("ensure_backbuffer just ran");
-        // `effective_plan` is what we'll actually render; `plan` is
-        // what the host asked for. The two diverge only on backbuffer
-        // recreate, but the debug overlay's damage-rect outline shows
-        // what we *rendered*, not what was requested, so threading
-        // the renamed value through is the right semantic.
-        let effective_plan = if backbuffer_recreated {
-            RenderPlan::Full { clear }
-        } else {
-            plan
-        };
-
         // Build the per-frame scissor list. `Full` → empty list →
         // single Clear+full-viewport pass. `Partial` → one entry per
         // rect in the region (see `build_damage_scissors`).
         let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
-        build_damage_scissors(&mut damage_scissors, effective_plan, buffer);
+        build_damage_scissors(&mut damage_scissors, plan, buffer);
         // `dim_undamaged` debug mode: every Partial frame, before any
         // damage passes, draw one full-viewport 40%-translucent black
         // quad onto the backbuffer with `LoadOp::Load`. Each frame
@@ -453,16 +436,9 @@ impl WgpuBackend {
         // pins which regions are actually repainting.
         let dim_undamaged = debug_overlay.dim_undamaged && !damage_scissors.is_empty();
 
-        // Stencil path activates whenever the encoded frame contains a
-        // `PushClip` with a non-zero radius. Lazy-init the stencil
-        // *texture* the first time we land here; the stencil-test
-        // pipelines themselves are already built (eagerly, per format, in
-        // `FormatPipelines`). Apps that never round-clip never allocate
-        // the texture. The mask upload happens further down, after the
-        // encoder is open, alongside every other dynamic buffer upload.
-        if use_stencil {
-            self.ensure_stencil(bb);
-        }
+        // The stencil texture (rounded-clip masking) is ensured by the
+        // caller; `stencil_view` is `Some` exactly when `use_stencil`. The
+        // mask quads upload further down, after the encoder is open.
 
         // Open the main encoder up front: every dynamic-buffer upload
         // below routes through `staging_belt`, which schedules its
@@ -512,8 +488,7 @@ impl WgpuBackend {
             // the backbuffer→surface copy — same upload-early /
             // draw-late split as the dim quad above.
             let overlay_count = if debug_overlay.damage_rect {
-                self.debug
-                    .upload_damage_rects(&mut ctx, effective_plan, buffer)
+                self.debug.upload_damage_rects(&mut ctx, plan, buffer)
             } else {
                 0
             };
@@ -604,16 +579,26 @@ impl WgpuBackend {
         // Shared field borrow (the entry was built by `ensure_format`
         // above) — coexists with the `&self` pass methods.
         let fmt = &self.pipelines[&format];
+        // Render target: the backbuffer's own view (copied out below) or, on
+        // the direct-present path, a fresh view of the surface itself.
+        let surface_view;
+        let color_view: &wgpu::TextureView = match via_backbuffer {
+            Some(bb) => &bb.view,
+            None => {
+                surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
+                &surface_view
+            }
+        };
         if damage_scissors.is_empty() {
             tracing::trace!("wgpu_backend.submit.pass.full");
             self.run_main_pass(
                 fmt,
-                bb,
+                color_view,
+                stencil_view,
                 &mut encoder,
                 buffer,
                 None,
                 clear_color,
-                use_stencil,
             );
         } else {
             if dim_undamaged {
@@ -621,7 +606,7 @@ impl WgpuBackend {
                 let viewport = ViewportPush {
                     size: buffer.viewport_phys_f,
                 };
-                self.run_dim_pass(fmt, bb, &mut encoder, viewport);
+                self.run_dim_pass(fmt, color_view, &mut encoder, viewport);
             }
             tracing::trace!(
                 rects = damage_scissors.len(),
@@ -629,16 +614,18 @@ impl WgpuBackend {
             );
             self.run_main_pass(
                 fmt,
-                bb,
+                color_view,
+                stencil_view,
                 &mut encoder,
                 buffer,
                 Some(damage_scissors.as_slice()),
                 clear_color,
-                use_stencil,
             );
         }
 
-        self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
+        if let Some(bb) = via_backbuffer {
+            self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
+        }
 
         if overlay_count > 0 {
             let viewport = ViewportPush {
@@ -689,14 +676,14 @@ impl WgpuBackend {
     fn run_dim_pass(
         &self,
         fmt: &FormatPipelines,
-        backbuffer: &Backbuffer,
+        color_view: &wgpu::TextureView,
         encoder: &mut wgpu::CommandEncoder,
         viewport: ViewportPush,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.dim.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &backbuffer.view,
+                view: color_view,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {
@@ -744,23 +731,14 @@ impl WgpuBackend {
     fn run_main_pass(
         &self,
         fmt: &FormatPipelines,
-        backbuffer: &Backbuffer,
+        color_view: &wgpu::TextureView,
+        stencil_view: Option<&wgpu::TextureView>,
         encoder: &mut wgpu::CommandEncoder,
         buffer: &RenderBuffer,
         partial_scissors: Option<&[URect]>,
         clear: wgpu::Color,
-        use_stencil: bool,
     ) {
-        let stencil_view = if use_stencil {
-            Some(
-                backbuffer
-                    .stencil
-                    .as_ref()
-                    .expect("ensure_stencil populated this"),
-            )
-        } else {
-            None
-        };
+        let use_stencil = stencil_view.is_some();
         let depth_stencil_attachment =
             stencil_view.map(|view| wgpu::RenderPassDepthStencilAttachment {
                 view,
@@ -789,7 +767,7 @@ impl WgpuBackend {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("palantir.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &backbuffer.view,
+                view: color_view,
                 resolve_target: None,
                 depth_slice: None,
                 ops: wgpu::Operations {

@@ -9,7 +9,7 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::panel::Panel;
 use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
@@ -247,8 +247,9 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     let mut frontend = Frontend::for_test();
     let buffer = frontend.build(
         &ui,
-        RenderPlan::Full {
+        RenderPlan {
             clear: ui.theme.window_clear,
+            kind: RenderKind::Full,
         },
     );
     assert_eq!(
