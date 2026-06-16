@@ -169,16 +169,25 @@ impl ImagePipeline {
             // Run `init` once per target (not on a realloc: the recreated
             // texture shares the build-time format).
             if !rt.initialized {
+                profiling::scope!("GpuView::init");
+                // No encoder commands recorded in `init`, so this group is
+                // usually empty in a capture — kept for symmetry with paint.
+                ctx.encoder.push_debug_group("palantir.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: GPU_VIEW_FORMAT,
                 });
+                ctx.encoder.pop_debug_group();
                 rt.initialized = true;
             }
             // Time since this view last painted (ZERO on its first paint).
             let dt = rt
                 .last_paint
                 .map_or(Duration::ZERO, |last| now.saturating_sub(last));
+            profiling::scope!("GpuView::paint");
+            // Encoder-level group so the user's own passes nest under one
+            // navigable region per view in a RenderDoc / Metal capture.
+            ctx.encoder.push_debug_group("palantir.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,
                 queue: ctx.queue,
@@ -188,6 +197,7 @@ impl ImagePipeline {
                 scale,
                 dt,
             });
+            ctx.encoder.pop_debug_group();
             rt.last_paint = Some(now);
         }
         // Evict immediately: a target absent from this frame's `frame_targets`
