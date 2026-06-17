@@ -13,6 +13,12 @@ branch/cache miss per `docs/cpu-arm-profiling.md`), so the *only* lever is
 **executing fewer instructions**. Micro-architectural tuning is pointless;
 deleting redundant per-frame work is everything.
 
+> **Confirmed the hard way (2026-06-17):** the original "keystone" — shrinking
+> `Brush`/`Background` by boxing the gradient variants (#1) — was implemented and
+> **regressed the frame bench ~2 %**. *Shrinking a struct ≠ deleting work*; on a
+> retiring-bound workload, struct-size wins only pay off if they remove
+> instructions (copies, recursion, probes), not bytes. See #1's tombstone.
+
 Two reframings that change what's worth doing:
 
 1. **`docs/cpu-arm-profiling.md` is partly stale.** O1 (intrinsic cache) is
@@ -34,45 +40,62 @@ Findings below are ranked by impact × tractability.
 
 ## Tier 1 — High value, low risk (do these first)
 
-### 1. Box the gradient variants of `Brush` — the keystone struct win
-`src/primitives/brush.rs:456`, `background.rs`, `stroke.rs`
+### 1. ~~Box the gradient variants of `Brush`~~ — **TRIED & REJECTED (2026-06-17)**
+`src/primitives/brush.rs`, `background.rs`, `stroke.rs`
 
-`Brush` is **60 B** because it inlines `Radial(RadialGradient = 60 B)`, yet
-`Solid(Color)` (16 B) is the verified 99% path. Worse, `Background` (**168 B**)
-carries `Brush` *twice* (fill 60 + stroke's brush 60 = 120 of 168 B), and
-`AnimRow<AnimatedLook>` stores **four** copies per animating widget.
+Implemented with `Rc` (strictly better than the `Box` above — clones stay
+alloc-free, so even gradient brushes cost only a refcount bump, and the wire
+format is unchanged via serde's `rc` feature). The struct shrink landed exactly
+as predicted — **`Brush` 60→24 B, `Background` 168→104 B** — and all tests +
+visual goldens passed. But the clean back-to-back frame bench (palantir submodule
+stashed for a true baseline, both runs warm) showed a **consistent ~1.4–2.5 %
+CPU *regression*** across every arm:
 
-```rust
-enum Brush {
-    Solid(Color),                 // 16 B inline — the hot path
-    Linear(Box<LinearGradient>),  // 8 B
-    Radial(Box<RadialGradient>),  // 8 B
-    Conic(Box<ConicGradient>),    // 8 B
-}
-```
+| arm | baseline (inline) | after (`Rc`) | Δ |
+|---|---|---|---|
+| cached | 334.35 µs | 342.59 µs | +2.5 % |
+| partial | 289.59 µs | 296.55 µs | +2.4 % |
+| resizing | 456.32 µs | 462.89 µs | +1.4 % |
+| scrolling | 410.63 µs | 417.85 µs | +1.8 % |
 
-→ `Brush` 60→**20 B**, `Stroke` 64→24, `Background` 168→**~88 B**. `Brush` is
-*not* `Pod` (it's lowered to `ShapeBrush` for the GPU), so nothing blocks this;
-the only size pin test checks `LinearGradient` itself (`brush.rs:685`), not the
-enum. Solid clone stays alloc-free; only the rare gradient pays a heap alloc.
-This single change shrinks **every** copy across record/lower/animate/cache-blit
-and quarters the animation-row footprint — directly attacking the `__memmove`
-line (3.9–5.1% per arm).
+**Why the premise was wrong.** (1) The recording hot path already passes
+`&Background`/`&Brush` (both are `!Copy` precisely so they aren't copied by
+value), so the smaller struct had almost nothing to speed up. (2) The real cost
+*added*: today's inline `Brush` is **trivially droppable** (`needs_drop == false`
+— `ArrayVec<[Stop;8]>` of `Copy` data); giving any variant an `Rc` makes
+`Brush`/`Background`/`Stroke` carry **drop glue**, so every one of the many
+per-frame *Solid* backgrounds now pays a discriminant-check on drop where it was
+fully elided before, plus refcount inc/dec on the gradients. (3) The
+"avoid per-frame allocs" angle only beats `Box` — versus the *current* inline
+storage, clones were already alloc-free (`alloc_free` is strict-zero both ways),
+so `Rc` adds no allocation advantage over the status quo.
 
-**Impact: high. Risk: low. Effort: low-medium.**
+Reverted. **Do not re-box the gradient payload** (with `Box` *or* `Rc`) chasing
+a frame-time win — the footprint shrink is real but does not translate to CPU on
+this workload, and the added drop glue is a net loss. The lesson generalizes:
+*on an IPC-3.3 retiring-bound workload, deleting copies beats shrinking them*
+(which is why #2 below is the correct heir to this idea).
+
+The size shrink *itself* (memory footprint, `AnimRow` ×4) is the only thing this
+would have bought; if footprint ever becomes the constraint, revisit — but pin
+the frame bench first.
 
 ### 2. Kill the per-widget `WidgetLook` clone on the resting path
 `src/widgets/mod.rs:100`, `src/animation/mod.rs:235`
 
 `button_look` does `style.pick(state).clone()` **every frame for every
 Button/DragValue/ComboBox** purely to end the `ui.theme` borrow — then for a
-resting widget `animate`'s fast path hands it straight back. Two complementary
-fixes: (a) #1 makes the clone cheap; (b) in `tick`'s settled fast-path
-(`animation/mod.rs:235`), when `row.settled && row.target == target`, return
-the caller's already-owned `target` instead of `row.current.clone()` —
-eliminates the 168 B clone for resting widgets whenever *any* animation is live.
+resting widget `animate`'s fast path hands it straight back. With #1 rejected the
+clone stays a full 168 B `Background` copy and *cannot* be made cheap by
+shrinking — so the only lever is to **delete it**, which is the correct shape for
+this workload anyway. In `tick`'s settled fast-path (`animation/mod.rs:235`),
+when `row.settled && row.target == target`, return the caller's already-owned
+`target` instead of `row.current.clone()` — eliminates the clone for resting
+widgets whenever *any* animation is live, attacking the same `__memmove` line #1
+targeted but by removing the copy rather than resizing it.
 
-**Impact: high (this is the real O4). Risk: low.**
+**Impact: high (this is the real O4, and the direct heir to the rejected #1).
+Risk: low.**
 
 ### 3. `response_for` quiescence — compute once per frame, not per widget
 `src/input/mod.rs:849`
@@ -208,8 +231,13 @@ no-op rollover path eliminates the inserts on every steady-state frame.
 
 - **Box `ShapeRecord::Curve`** (`src/forest/shapes/record.rs:372`) — the 88 B
   `Curve` variant sets the enum to 96 B but appears in *zero* production widgets
-  (showcase only). Boxing it drops the hot per-frame shape buffer ~17%. **Best
-  impact/effort ratio in the record pass.**
+  (showcase only). Boxing it would drop the hot per-frame shape buffer ~17%.
+  **But heed #1's tombstone:** `ShapeRecord` is *higher* multiplicity than `Brush`
+  (~500/frame) and is also trivially droppable today; boxing one variant gives
+  every record drop glue + makes `paint_bbox_local`/hash/cascade pay a pointer
+  chase. The footprint win is real but the Brush experiment showed footprint ≠
+  frame-time here. **Prototype behind the bench before trusting the ~17 %; do not
+  ship on the size argument alone.**
 - **Composer emptiness-gate on `quad_forces_flush`**
   (`src/renderer/frontend/composer/mod.rs:334`) — for quad-only groups (common),
   skip the two `any_overlap` calls + slice scan via a cached "any text open"
@@ -244,17 +272,27 @@ content hash is computed by the lowering itself, so no cheaper key exists.
 ## Doc corrections (independent of any code change)
 
 - `docs/cpu-arm-profiling.md`: O1 already shipped (residual is per-node, #4); O3
-  mechanism (1 hash, not 8); O4 site is `src/widgets/mod.rs:100` + the keystone
-  is boxing `Brush`; O6 "O(1) union" is unsafe.
+  mechanism (1 hash, not 8); O4 site is `src/widgets/mod.rs:100` (fixed by deleting
+  the clone, #2 — *not* by boxing `Brush`, which was tried and regressed, see #1's
+  tombstone); O6 "O(1) union" is unsafe.
 - `src/ui/state.rs:1-5`: "no `Any` downcast on the hot path" is false.
 
 ---
 
 ## Suggested order of attack
 
-#1 (Brush boxing) → #2 (clone elision) → #4 (per-node intrinsics) →
-#3 (quiescence) → #5 (transform fusion) + the batched small wins → then the
-Tier-2 structural pair (#7/#8) with benches. Tier 1 + small wins are mostly
-mechanical and self-contained; Tier 2 needs the bench harness in the loop. All
-of these *delete work* rather than tune microarchitecture — the right shape for
-an IPC-3.3 retiring-bound workload.
+With #1 rejected, the **most optimistic remaining bet is #4 (per-node intrinsics
+on a MeasureCache hit)** — highest quantified upside (removes the residual 5–9 %
+intrinsic/shaping cost on *three* arms: partial, resize, scroll), low risk, and
+it reuses the exact `desired`-arena machinery already proven, deleting a cold
+recursion rather than shrinking a struct. Crucially it is a *work-deletion* win,
+the shape the Brush failure says to favor.
+
+Order: #2 (clone elision — cheap, self-contained, the direct heir to #1) →
+**#4 (per-node intrinsics — the headline)** → #3 (quiescence) → #5 (transform
+fusion) + the batched small wins → then the Tier-2 structural pair (#7/#8) with
+benches. Tier 1 + small wins are mostly mechanical and self-contained; Tier 2
+needs the bench harness in the loop. All of these *delete work* rather than tune
+microarchitecture — the right shape for an IPC-3.3 retiring-bound workload. And
+per #1's tombstone: **measure each behind the frame bench before trusting its
+label** — "high impact, low risk" is exactly what #1 claimed.
