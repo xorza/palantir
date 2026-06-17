@@ -1,28 +1,28 @@
 # Palantir performance investigation — findings
 
-*Investigation date: 2026-06-17. Companion to `docs/cpu-arm-profiling.md`
+_Investigation date: 2026-06-17. Companion to `docs/cpu-arm-profiling.md`
 (the perf-counter profile that motivated it). All `file:line` citations
-verified against the code at time of writing.*
+verified against the code at time of writing._
 
 ## Bottom line up front
 
 Palantir is **already aggressively optimized** — SoA columns, arena reuse,
 MeasureCache, a whole-frame cascade skip, FxHash passthrough, lowered chrome,
 tail-only GPU uploads. The workload is **retiring-bound** (IPC ~3.3, near-zero
-branch/cache miss per `docs/cpu-arm-profiling.md`), so the *only* lever is
+branch/cache miss per `docs/cpu-arm-profiling.md`), so the _only_ lever is
 **executing fewer instructions**. Micro-architectural tuning is pointless;
 deleting redundant per-frame work is everything.
 
 > **Confirmed the hard way (2026-06-17):** the original "keystone" — shrinking
 > `Brush`/`Background` by boxing the gradient variants (#1) — was implemented and
-> **regressed the frame bench ~2 %**. *Shrinking a struct ≠ deleting work*; on a
+> **regressed the frame bench ~2 %**. _Shrinking a struct ≠ deleting work_; on a
 > retiring-bound workload, struct-size wins only pay off if they remove
 > instructions (copies, recursion, probes), not bytes. See #1's tombstone.
 
 Two reframings that change what's worth doing:
 
 1. **`docs/cpu-arm-profiling.md` is partly stale.** O1 (intrinsic cache) is
-   *already shipped* (`src/layout/cache/mod.rs:67` `root_intrinsics`). O3's
+   _already shipped_ (`src/layout/cache/mod.rs:67` `root_intrinsics`). O3's
    stated mechanism is wrong (only 1 of ~8 queries is a hash probe). O4's
    clone is mislocated (`src/widgets/mod.rs:100`, not `widget_look.rs:69`).
    O6's "O(1) union" is unsafe as written. Corrections at the end.
@@ -30,8 +30,8 @@ Two reframings that change what's worth doing:
 2. **The cascade — the doc's "#1 hotspot in every arm" — already has a
    whole-frame skip.** `src/ui/mod.rs:636-643` ("O5 stage 0"): when
    `cascade_fingerprint()` matches the prior frame, the entire cascade is
-   reused verbatim. So cascade cost only appears when *something changed*; the
-   remaining win (O5) is a *per-subtree* cache for **partial-change** frames,
+   reused verbatim. So cascade cost only appears when _something changed_; the
+   remaining win (O5) is a _per-subtree_ cache for **partial-change** frames,
    not idle frames.
 
 Findings below are ranked by impact × tractability.
@@ -40,68 +40,41 @@ Findings below are ranked by impact × tractability.
 
 ## Tier 1 — High value, low risk (do these first)
 
-### 1. ~~Box the gradient variants of `Brush`~~ — **TRIED & REJECTED (2026-06-17)**
-`src/primitives/brush.rs`, `background.rs`, `stroke.rs`
+### 2. ~~Kill the per-widget `WidgetLook` clone on the resting path~~ — **TRIED & NEUTRAL (2026-06-17)**
 
-Implemented with `Rc` (strictly better than the `Box` above — clones stay
-alloc-free, so even gradient brushes cost only a refcount bump, and the wire
-format is unchanged via serde's `rc` feature). The struct shrink landed exactly
-as predicted — **`Brush` 60→24 B, `Background` 168→104 B** — and all tests +
-visual goldens passed. But the clean back-to-back frame bench (palantir submodule
-stashed for a true baseline, both runs warm) showed a **consistent ~1.4–2.5 %
-CPU *regression*** across every arm:
-
-| arm | baseline (inline) | after (`Rc`) | Δ |
-|---|---|---|---|
-| cached | 334.35 µs | 342.59 µs | +2.5 % |
-| partial | 289.59 µs | 296.55 µs | +2.4 % |
-| resizing | 456.32 µs | 462.89 µs | +1.4 % |
-| scrolling | 410.63 µs | 417.85 µs | +1.8 % |
-
-**Why the premise was wrong.** (1) The recording hot path already passes
-`&Background`/`&Brush` (both are `!Copy` precisely so they aren't copied by
-value), so the smaller struct had almost nothing to speed up. (2) The real cost
-*added*: today's inline `Brush` is **trivially droppable** (`needs_drop == false`
-— `ArrayVec<[Stop;8]>` of `Copy` data); giving any variant an `Rc` makes
-`Brush`/`Background`/`Stroke` carry **drop glue**, so every one of the many
-per-frame *Solid* backgrounds now pays a discriminant-check on drop where it was
-fully elided before, plus refcount inc/dec on the gradients. (3) The
-"avoid per-frame allocs" angle only beats `Box` — versus the *current* inline
-storage, clones were already alloc-free (`alloc_free` is strict-zero both ways),
-so `Rc` adds no allocation advantage over the status quo.
-
-Reverted. **Do not re-box the gradient payload** (with `Box` *or* `Rc`) chasing
-a frame-time win — the footprint shrink is real but does not translate to CPU on
-this workload, and the added drop glue is a net loss. The lesson generalizes:
-*on an IPC-3.3 retiring-bound workload, deleting copies beats shrinking them*
-(which is why #2 below is the correct heir to this idea).
-
-The size shrink *itself* (memory footprint, `AnimRow` ×4) is the only thing this
-would have bought; if footprint ever becomes the constraint, revisit — but pin
-the frame bench first.
-
-### 2. Kill the per-widget `WidgetLook` clone on the resting path
 `src/widgets/mod.rs:100`, `src/animation/mod.rs:235`
 
-`button_look` does `style.pick(state).clone()` **every frame for every
-Button/DragValue/ComboBox** purely to end the `ui.theme` borrow — then for a
-resting widget `animate`'s fast path hands it straight back. With #1 rejected the
-clone stays a full 168 B `Background` copy and *cannot* be made cheap by
-shrinking — so the only lever is to **delete it**, which is the correct shape for
-this workload anyway. In `tick`'s settled fast-path (`animation/mod.rs:235`),
-when `row.settled && row.target == target`, return the caller's already-owned
-`target` instead of `row.current.clone()` — eliminates the clone for resting
-widgets whenever *any* animation is live, attacking the same `__memmove` line #1
-targeted but by removing the copy rather than resizing it.
+Implemented the `tick` settled-fast-path part: return the caller's already-owned
+`target` instead of `row.current.clone()` (provably bit-identical — every settle
+path snaps `current = target`, and the arm already checked `target == row.target`;
+all tests + visual goldens passed unchanged). Clean back-to-back frame bench:
 
-**Impact: high (this is the real O4, and the direct heir to the rejected #1).
-Risk: low.**
+| arm       | baseline  | after     | Δ      |
+| --------- | --------- | --------- | ------ |
+| cached    | 334.02 µs | 337.18 µs | +0.9 % |
+| partial   | 287.90 µs | 289.30 µs | +0.5 % |
+| resizing  | 459.04 µs | 459.70 µs | +0.1 % |
+| scrolling | 411.03 µs | 416.22 µs | +1.3 % |
+
+**Within noise — no measurable change.** And it's neutral _by construction_: the
+caller (`button_look`) builds `target: AnimatedLook` and passes it **by value**
+regardless, so on the settled path both forms do exactly _one_ 168 B memcpy into
+the return slot — cloning `row.current` vs moving `target` are the same cost. The
+swap doesn't delete a copy, it picks which equal value to move. The genuinely
+redundant copy is the unconditional `style.pick(state).clone()` at
+`widgets/mod.rs:100` (built every frame to end the `ui.theme` borrow even on the
+settled path) — but deleting _that_ needs a borrow-restructure so `animate` can
+read the look in place, and at 168 B × ~160 widgets ≈ 27 KB/frame it is **far
+below the bench's ~1 % noise floor** anyway (the frame's cost is the O(n) passes
+over ~800 nodes, not these micro-copies). Reverted. **Do not re-attempt the
+tick-level swap** — it cannot help; the value is built by the caller.
 
 ### 3. `response_for` quiescence — compute once per frame, not per widget
+
 `src/input/mod.rs:849`
 
 O3 is real (2.4–2.5% every arm, ~70 widgets paying it with zero input) but the
-*mechanism* in the profiling doc is wrong: only `entry_idx_of` is a hash probe;
+_mechanism_ in the profiling doc is wrong: only `entry_idx_of` is a hash probe;
 the rest are plain `Option`/array compares plus two 3-iteration loops
 (`active_drag`, `double_click`). Best fix: cache an `is_quiescent` bool **once
 per frame** (like `frame_line_px` already is at `mod.rs:535`), and split
@@ -110,26 +83,13 @@ theme picking) is built while the interaction half defaults out.
 
 **Impact: ~2% every arm + real idle frames. Risk: low.**
 
-### 4. Restore **per-node** intrinsics on a MeasureCache hit (the real O1 residual)
-`src/layout/layoutengine.rs:343-355`, `src/layout/cache/mod.rs:67,287`
-
-O1-as-documented shipped, but it only caches the *root* node's intrinsic. When
-a deep node changes, a re-measuring ancestor's `children_max_intrinsic` still
-**cold-recurses** through unchanged *interior* containers (restored via blit,
-never independently snapshotted) re-probing the text cache per leaf. Fix: add an
-`intrinsics` arena parallel to `desired` in MeasureCache, written on the
-snapshot path and `copy_from_slice`-restored on a hit — the exact machinery
-`desired` already uses. `src/layout/measure-cache.md:74-76` flags this as open.
-
-**Impact: removes the residual 5–9% intrinsic/shaping from partial/resize/scroll.
-Risk: low.**
-
 ### 5. Fuse transform + DPR scale into one precomputed `TranslateScale` in `compose`
+
 `src/renderer/frontend/composer/mod.rs:476-492,525-547`
 
 Every shape arm does `current_transform.apply_rect(rect)` (4 mul + 4 add)
 **then** `.scaled_by(scale)` (4 more mul) — two affine passes where one
-suffices — and recomputes `current_transform.scale * scale` *per draw* though
+suffices — and recomputes `current_transform.scale * scale` _per draw_ though
 it only changes on Push/Pop. Maintain `current_phys: TranslateScale` (updated
 on Push/Pop/frame-start) and a fused `Rect::scaled_snap_by`. Roughly **halves
 per-quad coordinate math**; quads dominate, compose is ~25% of a full repaint.
@@ -138,6 +98,7 @@ per-quad coordinate math**; quads dominate, compose is ~25% of a full repaint.
 cover it).**
 
 ### 6. `StateMap`: use `downcast_unchecked` and fix the false doc
+
 `src/ui/state.rs:34-43,54-61`
 
 The module doc claims "no `Any` downcast on the hot path" — **false**: every
@@ -153,6 +114,7 @@ handful of `T`s, a linear `Vec<(TypeId, …)>` beats hashing.
 ## Tier 2 — Structural / algorithmic (bigger ceiling, more work)
 
 ### 7. Per-subtree cascade delta-cache (O5, partial-change frames)
+
 `src/ui/cascade/mod.rs`
 
 The whole-frame skip (stage 0) handles idle; this handles "one leaf changed →
@@ -164,6 +126,7 @@ Biggest single line item, most invasive — pairs with #8.
 **Risk: high.** Do after Tier 1.
 
 ### 8. Subtree-translate damage (O6, done safely)
+
 `src/ui/damage/mod.rs:586-708`
 
 A scroll changes every descendant's `cascade_input` (parent transform differs)
@@ -178,9 +141,10 @@ jump. Requires snapshotting prev `subtree_paint_rect`.
 **Risk: high — lean on `src/ui/damage/tests.rs`.**
 
 ### 9. Incrementalize / fold `compute_hashes`
+
 `src/forest/tree/mod.rs:228-308`
 
-The hashing pass that *produces* the MeasureCache key is itself an unconditional
+The hashing pass that _produces_ the MeasureCache key is itself an unconditional
 O(total-nodes) reverse sweep every frame — you pay full re-hashing of ~800
 nodes to discover they're all cache hits. Fold the node-hash into `close_node`
 (data still hot from `open_node`, eliminates the separate pass) or dirty-skip
@@ -190,10 +154,11 @@ unchanged subtrees.
 prototype behind the bench.
 
 ### 10. Reuse `SeenIds.curr` from `prev` on unchanged-structure frames
+
 `src/forest/seen_ids.rs`
 
 `curr` is rebuilt with ~800 inserts/frame, but on a no-structural-change frame
-it's *identical* to `prev` — which the cascade fingerprint already detects. A
+it's _identical_ to `prev` — which the cascade fingerprint already detects. A
 no-op rollover path eliminates the inserts on every steady-state frame.
 
 **Risk: medium.**
@@ -204,7 +169,7 @@ no-op rollover path eliminates the inserts on every steady-state frame.
 
 - **Decouple the cache quantum from the text-shaping quantum**
   (`src/layout/cache/mod.rs:142`, `layoutengine.rs:140`). `available_q`
-  quantizes to 1px because *text wrap* needs it — but non-wrap-text subtrees
+  quantizes to 1px because _text wrap_ needs it — but non-wrap-text subtrees
   produce bit-identical `desired` for a 3px-different available, yet still miss
   under animation/resize. Add a `subtree_has_wrap_text` packed bit (room next to
   `subtree_has_grid` in `SubtreeEnd`) and coarsen the quantum (4–8px) for
@@ -230,9 +195,9 @@ no-op rollover path eliminates the inserts on every steady-state frame.
 ## Smaller wins (batched, low effort)
 
 - **Box `ShapeRecord::Curve`** (`src/forest/shapes/record.rs:372`) — the 88 B
-  `Curve` variant sets the enum to 96 B but appears in *zero* production widgets
+  `Curve` variant sets the enum to 96 B but appears in _zero_ production widgets
   (showcase only). Boxing it would drop the hot per-frame shape buffer ~17%.
-  **But heed #1's tombstone:** `ShapeRecord` is *higher* multiplicity than `Brush`
+  **But heed #1's tombstone:** `ShapeRecord` is _higher_ multiplicity than `Brush`
   (~500/frame) and is also trivially droppable today; boxing one variant gives
   every record drop glue + makes `paint_bbox_local`/hash/cascade pay a pointer
   chase. The footprint win is real but the Brush experiment showed footprint ≠
@@ -258,7 +223,7 @@ no-op rollover path eliminates the inserts on every steady-state frame.
 
 ---
 
-## Verified already-optimal — do *not* chase these
+## Verified already-optimal — do _not_ chase these
 
 Confirmed tuned; leave them alone: the **FxHash `Hasher` + `.pod()`**
 (`src/common/hash.rs`); the **glyph atlas** (no re-rasterize/re-upload,
@@ -266,14 +231,14 @@ grow-blits rects via `copy_texture_to_texture`); **`lower_background`'s solid
 path** (early-returns, no atlas); **soa-rs `push`** (no redundant reserve);
 **lazy collision counters & paint-anim columns**; **`DynamicBuffer`
 tail-upload + grow-mapped path for text**; the **single measure dispatch** (no
-WPF grow loop). `lower_background` cross-frame memoization is *not* viable — the
+WPF grow loop). `lower_background` cross-frame memoization is _not_ viable — the
 content hash is computed by the lowering itself, so no cheaper key exists.
 
 ## Doc corrections (independent of any code change)
 
 - `docs/cpu-arm-profiling.md`: O1 already shipped (residual is per-node, #4); O3
   mechanism (1 hash, not 8); O4 site is `src/widgets/mod.rs:100` (fixed by deleting
-  the clone, #2 — *not* by boxing `Brush`, which was tried and regressed, see #1's
+  the clone, #2 — _not_ by boxing `Brush`, which was tried and regressed, see #1's
   tombstone); O6 "O(1) union" is unsafe.
 - `src/ui/state.rs:1-5`: "no `Any` downcast on the hot path" is false.
 
@@ -281,18 +246,32 @@ content hash is computed by the lowering itself, so no cheaper key exists.
 
 ## Suggested order of attack
 
-With #1 rejected, the **most optimistic remaining bet is #4 (per-node intrinsics
-on a MeasureCache hit)** — highest quantified upside (removes the residual 5–9 %
-intrinsic/shaping cost on *three* arms: partial, resize, scroll), low risk, and
-it reuses the exact `desired`-arena machinery already proven, deleting a cold
-recursion rather than shrinking a struct. Crucially it is a *work-deletion* win,
-the shape the Brush failure says to favor.
+**Status after 2026-06-17 (three Tier-1 items closed, all null):** #1 (Brush
+boxing) _regressed_ ~2 %; #2 (clone elision) is _neutral by construction_; #4
+(per-node intrinsics) is _effectively already shipped_. The pattern is decisive:
+on this ~800-node / ~500-text-shape synthetic workload, **per-node "delete a
+copy / shrink a struct" wins sit below the ~1 % bench noise floor.** The frame is
+dominated by the unavoidable O(n) passes (record, the measure walk even on cache
+hits, cascade, encode, compose), not by micro-copies. Tuning at that granularity
+is finished.
 
-Order: #2 (clone elision — cheap, self-contained, the direct heir to #1) →
-**#4 (per-node intrinsics — the headline)** → #3 (quiescence) → #5 (transform
-fusion) + the batched small wins → then the Tier-2 structural pair (#7/#8) with
-benches. Tier 1 + small wins are mostly mechanical and self-contained; Tier 2
-needs the bench harness in the loop. All of these *delete work* rather than tune
-microarchitecture — the right shape for an IPC-3.3 retiring-bound workload. And
-per #1's tombstone: **measure each behind the frame bench before trusting its
-label** — "high impact, low risk" is exactly what #1 claimed.
+What's left that could actually move the needle **eliminates a whole pass or skips
+large subtrees**, not bytes:
+
+- **#9 (incrementalize `compute_hashes`)** — the strongest untried lever. It is an
+  _unconditional_ O(~800-node) reverse hash sweep **every frame, even idle ones**
+  — you pay a full re-hash just to discover everything is a cache hit. Folding the
+  node-hash into `close_node` (data still hot from `open_node`) or dirty-skipping
+  unchanged subtrees deletes a real per-frame pass. Highest ceiling, highest risk
+  (every cross-frame cache key depends on it) — prototype behind the bench.
+- **#7 / #8 (per-subtree cascade + damage delta-cache)** — the only Tier-2 with a
+  real ceiling on _partial/scroll_ frames; invasive, needs the bench in the loop.
+
+Everything below #9/#7 in value is micro-tuning that this workload won't register.
+**Two caveats before spending more effort:** (1) measure every candidate behind
+the frame bench _before_ trusting its doc label — "high impact, low risk" is
+exactly what #1/#2/#4 each claimed; (2) consider whether the synthetic bench is
+even the right workload — per project posture, a structural change with no
+motivating real workload is "too early." If perf isn't currently blocking
+anything, the honest call is to **shelve here**: the cheap wins are gone and the
+remaining ones are high-risk rewrites that need a concrete reason to exist.
