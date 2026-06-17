@@ -38,14 +38,14 @@ pub struct WindowRenderer {
     /// Per-window CPU encode/compose scratch. Shares the backend's frame
     /// arena (cloned at construction) but keeps its own retained
     /// `RenderBuffer` — this window's draw list.
-    pub(crate) frontend: Frontend,
+    frontend: Frontend,
     /// Persistent off-screen color target holding last frame's pixels for
     /// `LoadOp::Load` partial damage. Used by `BackbufferCopy` every frame and
     /// by `DirectAdaptive` for its small-partial path (paint the damage region,
     /// then copy out). A `DirectAdaptive` window that only ever paints full
     /// frames never allocates it. Created lazily on the first frame that needs
     /// it, recreated on resize / format change.
-    pub(crate) backbuffer: Option<Backbuffer>,
+    backbuffer: Option<Backbuffer>,
     /// `true` when [`Self::backbuffer`] mirrors what's currently on the target
     /// (the last presented frame went through it), so a `DirectAdaptive` small
     /// partial can `LoadOp::Load` it and paint just the damage region. A direct
@@ -62,7 +62,7 @@ pub struct WindowRenderer {
     strategy: PresentStrategy,
     /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
     /// each call so the host doesn't have to thread a clock through.
-    pub(crate) start: Instant,
+    start: Instant,
     /// When true, `frame()` short-circuits to `Idle` without running
     /// `cpu_frame`. Every per-frame Ui flag (damage, repaint_requested,
     /// animation driver state) is naturally preserved because nothing
@@ -357,11 +357,7 @@ impl WindowRenderer {
     /// No GPU input — the `GpuView` size cap was captured on the `Frontend` at
     /// construction. Shared by [`Self::frame`] (surface) and
     /// [`Self::frame_offscreen`] (texture).
-    pub(crate) fn cpu_frame(
-        &mut self,
-        display: Display,
-        record: impl FnMut(&mut Ui),
-    ) -> FrameReport {
+    fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
         // Ui::frame clears the shared Rc arena at the top of the record
         // cycle — the same Rc the frontend + shared backend hold.
         let report = self
@@ -390,7 +386,7 @@ impl WindowRenderer {
     /// `target` so callers that always present still see valid pixels.
     /// Shared by [`Self::frame`]'s present path (the acquired swapchain
     /// texture) and [`Self::frame_offscreen`] (an offscreen texture).
-    pub(crate) fn render_to_texture(
+    fn render_to_texture(
         &mut self,
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
