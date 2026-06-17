@@ -289,6 +289,16 @@ pub(crate) struct InputState {
     /// (not on `Ui`) because the consumer (`scroll_delta_for`) already
     /// takes `&self.input`, so the snapshot lives in the same borrow.
     pub(crate) frame_line_px: f32,
+    /// Frame-snapshot of "no widget can hold any non-default interaction
+    /// state this frame" — no pointer on the surface, no routed
+    /// scroll/pinch target, no live button capture or click/double-click
+    /// edge. Filled once per record pass by [`crate::Ui::record_pass`]
+    /// (alongside `frame_line_px`) from [`Self::compute_frame_quiescent`];
+    /// read in [`Self::response_for`] to default the whole interaction
+    /// half out for every widget instead of re-deriving it per call.
+    /// `focused` is excluded on purpose (see `compute_frame_quiescent`),
+    /// so the fast path still reads it live.
+    pub(crate) frame_quiescent: bool,
     /// Unified keyboard event stream this frame:
     /// [`KeyboardEvent::Down`] from `KeyDown` events and
     /// [`KeyboardEvent::Text`] from `Text` events, in arrival order.
@@ -383,6 +393,10 @@ impl InputState {
             // theme's body line height) so the rare "response_for
             // before first frame" path doesn't divide by zero.
             frame_line_px: 16.0,
+            // Recomputed each record pass before any `response_for`
+            // call; `false` is the safe pre-frame default (forces the
+            // full path).
+            frame_quiescent: false,
             frame_keyboard_events: Vec::new(),
             modifiers: Modifiers::NONE,
             focused: None,
@@ -846,7 +860,29 @@ impl InputState {
         None
     }
 
+    /// `true` when no widget can hold any non-default interaction state
+    /// this frame: no pointer on the surface, no routed scroll/pinch
+    /// target, and no live button capture or per-frame click/double-click
+    /// edge. Snapshotted once per record pass into
+    /// [`Self::frame_quiescent`] so [`Self::response_for`] can default
+    /// the interaction half out for every widget at once.
+    ///
+    /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
+    /// can set it mid-record, after the snapshot is taken, so
+    /// `response_for` always reads it live — even on the fast path.
+    pub(crate) fn compute_frame_quiescent(&self) -> bool {
+        self.pointer_pos.is_none()
+            && self.hovered.is_none()
+            && self.scroll_target.is_none()
+            && self.pinch_target.is_none()
+            && self.captures.iter().all(|c| {
+                c.active.is_none() && c.frame_click.is_none() && c.frame_double_click.is_none()
+            })
+    }
+
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
+        // Geometry half — needed every frame for theme picking and
+        // layout-relative math. `entry_idx_of` is the lone hash probe.
         let entry_idx = cascades.entry_idx_of(id).map(|i| i as usize);
         let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
         let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
@@ -855,6 +891,23 @@ impl InputState {
         // Widgets that need lag-free self-toggle response merge their
         // own `element.disabled` on top after calling.
         let disabled = entry_idx.is_some_and(|i| cascades.entries.disabled()[i]);
+
+        // Interaction half — on a quiescent frame every field below is at
+        // its default, so skip the per-button capture scans, the two
+        // 3-iteration loops (`active_drag`, `double_click`), and the
+        // scroll/zoom lookups that every idle widget would otherwise pay.
+        // `focused` is the one interaction field still read live: it can
+        // be set by `request_focus` after `frame_quiescent` was snapshotted.
+        if self.frame_quiescent {
+            return ResponseState {
+                rect,
+                layout_rect,
+                disabled,
+                focused: self.focused == Some(id),
+                ..ResponseState::default()
+            };
+        }
+
         let left = self.capture(PointerButton::Left);
         let right = self.capture(PointerButton::Right);
 
