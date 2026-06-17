@@ -85,9 +85,10 @@ pub trait App {
 }
 
 /// Everything one window owns: its winit handle, swapchain surface +
-/// config, the per-window [`WindowRenderer`] (its `Ui` recorder + GPU backend),
-/// DPR scale, and the host-side scheduling state. The GPU device/queue
-/// live on the shared [`Gpu`], not here.
+/// config, the per-window [`WindowRenderer`] (its `Ui` recorder +
+/// per-window encode/compose scratch + backbuffer), DPR scale, and the
+/// host-side scheduling state. The shared GPU renderer (device/queue,
+/// pipelines, atlases) lives on [`Running`], not here.
 struct WindowState {
     token: WindowToken,
     window: Arc<Window>,
