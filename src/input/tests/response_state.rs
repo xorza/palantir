@@ -1,10 +1,13 @@
 use crate::Ui;
 use crate::forest::element::Configure;
+use crate::input::pointer::PointerButton;
+use crate::input::{InputEvent, InputState};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
+use crate::widgets::button::Button;
 use crate::widgets::frame::Frame;
 use crate::widgets::panel::Panel;
-use glam::UVec2;
+use glam::{UVec2, Vec2};
 
 fn focusable_id() -> WidgetId {
     WidgetId::from_hash("focusable")
@@ -76,4 +79,127 @@ fn disabled_false_when_chain_clean() {
     ui.run_at_acked(UVec2::new(200, 200), build);
     ui.run_at_acked(UVec2::new(200, 200), build);
     assert!(!ui.response_for(WidgetId::from_hash("child")).disabled);
+}
+
+/// The once-per-frame quiescence predicate that gates `response_for`'s
+/// fast path: every pointer/capture-derived signal flips it false, but
+/// `focused` deliberately does not (it can be set mid-record).
+#[test]
+fn compute_frame_quiescent_predicate() {
+    assert!(
+        InputState::new().compute_frame_quiescent(),
+        "a fresh input state (no pointer, no captures) is quiescent",
+    );
+
+    let id = WidgetId::from_hash("w");
+    // Each pointer / routing / capture signal independently breaks
+    // quiescence. `broken` starts from a fresh (quiescent) state, applies
+    // one mutation, and asserts the predicate flips false.
+    let broken = |label: &str, mutate: &dyn Fn(&mut InputState)| {
+        let mut s = InputState::new();
+        mutate(&mut s);
+        assert!(
+            !s.compute_frame_quiescent(),
+            "{label} must break quiescence",
+        );
+    };
+    broken("pointer_pos", &|s| s.pointer_pos = Some(Vec2::ZERO));
+    broken("hovered", &|s| s.hovered = Some(id));
+    broken("scroll_target", &|s| s.scroll_target = Some(id));
+    broken("pinch_target", &|s| s.pinch_target = Some(id));
+    broken("capture.active", &|s| {
+        s.captures[PointerButton::Left.idx()].active = Some(id)
+    });
+    broken("capture.frame_click", &|s| {
+        s.captures[PointerButton::Right.idx()].frame_click = Some(id)
+    });
+    broken("capture.frame_double_click", &|s| {
+        s.captures[PointerButton::Middle.idx()].frame_double_click = Some(id)
+    });
+
+    // `focused` is excluded: a focused widget on an otherwise idle frame
+    // stays quiescent so the fast path still applies.
+    let mut focused_only = InputState::new();
+    focused_only.focused = Some(id);
+    assert!(
+        focused_only.compute_frame_quiescent(),
+        "focus alone must NOT break quiescence (read live on the fast path)",
+    );
+}
+
+fn button_surface() -> UVec2 {
+    UVec2::new(200, 80)
+}
+
+fn build_button(id: WidgetId) -> impl FnMut(&mut Ui) {
+    move |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Button::new()
+                .id(id)
+                .label("hi")
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+}
+
+/// On a quiescent frame (no pointer ever fed) `response_for` takes the
+/// geometry-only fast path: the arranged rect survives but every
+/// interaction field reads its default.
+#[test]
+fn quiescent_frame_keeps_geometry_defaults_interaction() {
+    let mut ui = Ui::for_test();
+    let id = WidgetId::from_hash("btn");
+    // No pointer is ever fed → the frame is quiescent, so the snapshot
+    // taken at record-pass start stays valid for this post-frame read.
+    ui.run_at_acked(button_surface(), build_button(id));
+
+    let r = ui.response_for(id);
+    let rect = r
+        .rect
+        .expect("arranged rect present on the quiescent fast path");
+    assert_eq!(rect.size.w, 100.0);
+    assert_eq!(rect.size.h, 40.0);
+    assert!(r.layout_rect.is_some());
+
+    assert!(!r.hovered);
+    assert!(!r.pressed);
+    assert!(!r.clicked);
+    assert!(!r.secondary_clicked);
+    assert!(!r.focused);
+    assert_eq!(r.drag, None);
+    assert_eq!(r.double_click, None);
+    assert_eq!(r.scroll_pixels, Vec2::ZERO);
+    assert_eq!(r.scroll_lines, Vec2::ZERO);
+    assert_eq!(r.zoom_factor, 1.0);
+    assert_eq!(r.pointer_local, None);
+}
+
+/// With the pointer resting over a widget the frame is non-quiescent, so
+/// `response_for` runs the full interaction path: hover resolves and
+/// `pointer_local` is the cursor relative to the widget's `rect.min` —
+/// proving the fast-path early-return doesn't suppress real interaction.
+#[test]
+fn non_quiescent_frame_computes_interaction() {
+    let mut ui = Ui::for_test();
+    let id = WidgetId::from_hash("btn");
+    ui.run_at_acked(button_surface(), build_button(id));
+
+    let pointer = Vec2::new(50.0, 20.0);
+    ui.on_input(InputEvent::PointerMoved(pointer));
+    // Run a frame *after* the pointer event so the snapshot reflects it,
+    // then read — the pointer makes the frame non-quiescent (full path).
+    ui.run_at_acked(button_surface(), build_button(id));
+
+    let r = ui.response_for(id);
+    let rect = r.rect.expect("arranged rect present");
+    assert!(
+        r.hovered,
+        "pointer resting inside the button rect hovers it"
+    );
+    assert_eq!(
+        r.pointer_local,
+        Some(pointer - rect.min),
+        "pointer_local is the cursor offset from rect.min on the full path",
+    );
 }

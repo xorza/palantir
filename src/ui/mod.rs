@@ -536,6 +536,10 @@ impl Ui {
                 .theme
                 .text
                 .line_height_for(self.theme.text.font_size_px);
+            // Snapshot whether any widget interaction is possible this
+            // frame; `response_for` skips its per-button capture scans for
+            // every widget when none is (the common idle frame).
+            self.input.frame_quiescent = self.input.compute_frame_quiescent();
         }
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
@@ -1121,12 +1125,16 @@ impl Ui {
     }
 
     /// Snapshot of input/cascade state for a widget. `rect` and
-    /// `disabled` are from the previous frame's cascade; everything
-    /// else (`pressed`, `hovered`, `drag_started`, `drag_delta`) is
-    /// computed against the current frame's input state and so is
-    /// safe to read before this frame's record runs — useful for
-    /// e.g. baking drag deltas into a widget's position before
-    /// recording it.
+    /// `disabled` are from the previous frame's cascade; the interaction
+    /// fields (`pressed`, `hovered`, `drag_started`, `drag_delta`, …) are
+    /// computed against this frame's input state.
+    ///
+    /// **Read it during the frame's record** — as every widget does. The
+    /// interaction half is gated on a `frame_quiescent` snapshot taken
+    /// once at record-pass start, so a read taken *between* frames would
+    /// reflect the previous frame's input, not events fed since. Reading
+    /// earlier in the same record than the widget's own node is fine —
+    /// e.g. baking a drag delta into a widget's position before recording it.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
         // Wheel-line → pixels uses `InputState::frame_line_px`, the
         // once-per-frame snapshot of the theme's default line height
