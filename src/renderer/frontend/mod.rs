@@ -64,6 +64,7 @@ impl Frontend {
     /// the shape, so compose lists each off-screen target in
     /// `buffer.frame_targets` (with its callback) directly, no registry — so
     /// the `Ui` stays frozen after record.
+    #[profiling::function]
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
         // Two scoped borrows, not one held across both passes: encode
         // only reads the arena (shared borrow), compose appends polyline

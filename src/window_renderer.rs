@@ -319,6 +319,7 @@ impl WindowRenderer {
 
         let report = self.cpu_frame(display, record);
         let present = self.present(gpu, surface, config, report, pre_present);
+
         profiling::finish_frame!();
 
         present
@@ -357,6 +358,7 @@ impl WindowRenderer {
     /// No GPU input — the `GpuView` size cap was captured on the `Frontend` at
     /// construction. Shared by [`Self::frame`] (surface) and
     /// [`Self::frame_offscreen`] (texture).
+    #[profiling::function]
     fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
         // Ui::frame clears the shared Rc arena at the top of the record
         // cycle — the same Rc the frontend + shared backend hold.
@@ -386,13 +388,13 @@ impl WindowRenderer {
     /// `target` so callers that always present still see valid pixels.
     /// Shared by [`Self::frame`]'s present path (the acquired swapchain
     /// texture) and [`Self::frame_offscreen`] (an offscreen texture).
+    #[profiling::function]
     fn render_to_texture(
         &mut self,
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
         report: &FrameReport,
     ) {
-        profiling::scope!("WindowRenderer::render_to_texture");
         let size = target.size();
         let display_phys = self.ui.display.physical;
         assert!(
@@ -459,6 +461,7 @@ impl WindowRenderer {
         self.ui.frame_state.mark_submitted();
     }
 
+    #[profiling::function]
     fn present(
         &mut self,
         gpu: &mut WgpuBackend,
