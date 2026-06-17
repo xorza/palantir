@@ -165,7 +165,9 @@ mod hot_struct_sizes {
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::forest::node::NodeRecord;
     use crate::forest::rollups::{CascadeInputHash, NodeHash};
-    use crate::forest::shapes::record::{ChromeRow, ShapeRecord};
+    use crate::forest::shapes::record::{
+        ChromeRow, LoweredGradient, LoweredShadow, ShapeRecord, ShapeStroke,
+    };
     use crate::forest::tree::ExtrasIdx;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
@@ -175,59 +177,100 @@ mod hot_struct_sizes {
         DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
     };
     use crate::renderer::quad::Quad;
+    use crate::renderer::render_buffer::CurveInstance;
+    use crate::text::TextCacheKey;
     use crate::ui::cascade::EntryRow;
     use crate::ui::cascade::Paint;
     use crate::ui::damage::NodeSnapshot;
     use crate::ui::damage::region::DamageRegion;
 
-    fn row<T>(name: &str) -> (String, usize, usize) {
-        (name.to_string(), size_of::<T>(), align_of::<T>())
+    /// Single source of truth for the per-frame hot-struct inventory.
+    /// Each entry is `Type => "name": expected_size / expected_align`.
+    /// Drives two tests from one list:
+    ///
+    /// - [`print_hot_struct_sizes`] (`#[ignore]`) prints the live
+    ///   `size`/`align` table — run it to read off a new number when a
+    ///   layout change is intentional.
+    /// - [`hot_struct_sizes_are_pinned`] (a real gate) asserts each
+    ///   `(size, align)` so a *silent* footprint regression — an added
+    ///   field, a stop-cap bump, an enum variant that re-inlines a boxed
+    ///   payload — fails `cargo test` instead of diffusing across the
+    ///   codebase. When the change is intended, update the number next to
+    ///   the type; that one-line edit is the review signal.
+    ///
+    /// Sizes are for the 64-bit target (the only one). Covers the SoA
+    /// per-node columns, per-shape/per-chrome lowered forms, the
+    /// encoder↔composer wire payloads, and the GPU instance types.
+    macro_rules! hot_structs {
+        ($($ty:ty => $name:literal : $size:literal / $align:literal),+ $(,)?) => {
+            #[test]
+            #[ignore = "print-only"]
+            fn print_hot_struct_sizes() {
+                let rows = [$(($name, size_of::<$ty>(), align_of::<$ty>())),+];
+                let name_w = rows.iter().map(|(n, ..): &(&str, _, _)| n.len()).max().unwrap_or(0);
+                println!();
+                println!("{:<w$}  {:>5}  {:>5}", "struct", "size", "align", w = name_w);
+                println!("{:-<w$}  {:->5}  {:->5}", "", "", "", w = name_w);
+                for (n, s, a) in &rows {
+                    println!("{:<w$}  {:>5}  {:>5}", n, s, a, w = name_w);
+                }
+                println!();
+            }
+
+            #[test]
+            fn hot_struct_sizes_are_pinned() {
+                $(
+                    assert_eq!(
+                        (size_of::<$ty>(), align_of::<$ty>()),
+                        ($size, $align),
+                        concat!(
+                            "size/align of ", $name,
+                            " drifted from the pin — update it here if the change is intentional",
+                        ),
+                    );
+                )+
+            }
+        };
     }
 
-    /// `cargo test --lib print_hot_struct_sizes -- --nocapture --ignored`
-    #[test]
-    #[ignore = "print-only"]
-    fn print_hot_struct_sizes() {
-        let rows = [
-            row::<NodeRecord>("forest::NodeRecord"),
-            row::<LayoutCore>("forest::LayoutCore"),
-            row::<NodeFlags>("forest::NodeFlags"),
-            row::<ExtrasIdx>("forest::ExtrasIdx"),
-            row::<BoundsExtras>("forest::BoundsExtras"),
-            row::<PanelExtras>("forest::PanelExtras"),
-            row::<ShapeRecord>("forest::ShapeRecord"),
-            row::<ChromeRow>("forest::ChromeRow"),
-            row::<Background>("primitives::Background"),
-            row::<Brush>("primitives::Brush"),
-            row::<Element>("forest::Element"),
-            row::<Span>("layout::Span"),
-            row::<ShapedText>("layout::ShapedText"),
-            row::<NodeHash>("rollups::NodeHash"),
-            row::<CascadeInputHash>("rollups::CascadeInputHash"),
-            row::<EntryRow>("cascade::EntryRow"),
-            row::<DamageRegion>("damage::DamageRegion"),
-            row::<NodeSnapshot>("damage::NodeSnapshot"),
-            row::<Paint>("cascade::Paint"),
-            row::<DrawRectPayload>("cmd::DrawRectPayload"),
-            row::<DrawTextPayload>("cmd::DrawTextPayload"),
-            row::<DrawPolylinePayload>("cmd::DrawPolylinePayload"),
-            row::<DrawMeshPayload>("cmd::DrawMeshPayload"),
-            row::<Quad>("renderer::Quad"),
-        ];
-
-        let name_w = rows.iter().map(|(n, ..)| n.len()).max().unwrap_or(0);
-        println!();
-        println!(
-            "{:<w$}  {:>5}  {:>5}",
-            "struct",
-            "size",
-            "align",
-            w = name_w
-        );
-        println!("{:-<w$}  {:->5}  {:->5}", "", "", "", w = name_w);
-        for (n, s, a) in &rows {
-            println!("{:<w$}  {:>5}  {:>5}", n, s, a, w = name_w);
-        }
-        println!();
+    hot_structs! {
+        // Per-node SoA columns (touched every node, every frame).
+        NodeRecord => "forest::NodeRecord": 56 / 8,
+        LayoutCore => "forest::LayoutCore": 28 / 4,
+        NodeFlags => "forest::NodeFlags": 2 / 2,
+        ExtrasIdx => "forest::ExtrasIdx": 6 / 2,
+        BoundsExtras => "forest::BoundsExtras": 32 / 4,
+        PanelExtras => "forest::PanelExtras": 20 / 4,
+        Element => "forest::Element": 104 / 8,
+        // Per-shape / per-chrome paint records + lowered fill forms.
+        ShapeRecord => "forest::ShapeRecord": 96 / 8,
+        ChromeRow => "forest::ChromeRow": 56 / 8,
+        ShapeStroke => "shapes::ShapeStroke": 10 / 2,
+        LoweredShadow => "shapes::LoweredShadow": 18 / 2,
+        LoweredGradient => "shapes::LoweredGradient": 16 / 4,
+        // Authoring paint primitives.
+        Background => "primitives::Background": 168 / 4,
+        Brush => "primitives::Brush": 60 / 4,
+        Span => "layout::Span": 8 / 4,
+        // Layout / text outputs.
+        ShapedText => "layout::ShapedText": 32 / 8,
+        TextCacheKey => "text::TextCacheKey": 24 / 8,
+        // Cross-frame hash keys.
+        NodeHash => "rollups::NodeHash": 8 / 8,
+        CascadeInputHash => "rollups::CascadeInputHash": 8 / 8,
+        // Cascade per-node rows.
+        EntryRow => "cascade::EntryRow": 48 / 8,
+        Paint => "cascade::Paint": 24 / 8,
+        // Damage.
+        DamageRegion => "damage::DamageRegion": 140 / 4,
+        NodeSnapshot => "damage::NodeSnapshot": 32 / 8,
+        // Encoder↔composer wire payloads.
+        DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
+        DrawTextPayload => "cmd::DrawTextPayload": 48 / 8,
+        DrawPolylinePayload => "cmd::DrawPolylinePayload": 52 / 4,
+        DrawMeshPayload => "cmd::DrawMeshPayload": 48 / 4,
+        // GPU instance types.
+        Quad => "renderer::Quad": 60 / 4,
+        CurveInstance => "renderer::CurveInstance": 60 / 4,
     }
 }
