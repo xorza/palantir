@@ -138,15 +138,27 @@ Fix anything that fails. Don't tell the user a change is complete unless these a
 
 ## Hot-path struct sizes
 
-`src/lib.rs` has an `#[ignore]`-d test, `hot_struct_sizes::print_hot_struct_sizes`,
-that prints `size_of` / `align_of` for every per-frame struct touched
-by layout / cascade / encode / compose / damage. Run it with:
+`src/lib.rs`'s `hot_struct_sizes` module drives two tests from one
+`hot_structs!` inventory of every per-frame struct touched by layout /
+cascade / encode / compose / damage (the SoA columns, the per-shape /
+per-chrome lowered forms, the encoder↔composer wire payloads, and the
+GPU instance types):
+
+- **`hot_struct_sizes_are_pinned`** — a real (non-ignored) gate that
+  asserts `(size, align)` for every entry. A silent footprint
+  regression (added field, stop-cap bump, an enum variant re-inlining a
+  boxed payload) fails `cargo test` instead of diffusing through the
+  codebase.
+- **`print_hot_struct_sizes`** (`#[ignore]`) — prints the live table.
+  Run it to read off a new number when a layout change is intentional:
 
 ```sh
 cargo test --lib print_hot_struct_sizes -- --nocapture --ignored
 ```
 
-When changing any hot row (`NodeRecord`, `LayoutCore`, `ShapeRecord`,
-`Brush`, `DrawRectPayload`, `CascadeInputHash`, `DamageRegion`, `Quad`, etc.)
-re-run the test and eyeball the printed sizes against the previous run
-to catch regressions.
+When a hot row (`NodeRecord`, `LayoutCore`, `ShapeRecord`, `Brush`,
+`DrawRectPayload`, `CascadeInputHash`, `DamageRegion`, `Quad`, etc.)
+changes size on purpose, update the `expected_size / expected_align`
+next to that type in the `hot_structs!` list — that one-line edit is
+the review signal. Adding a new per-frame struct? Add it to the list so
+it gets both the printout and the gate.
