@@ -94,6 +94,57 @@ fn grid_hug_column_takes_max_span1_child_intrinsic() {
     assert_eq!(long_btn.min.x, 0.0);
 }
 
+/// A `Hug` grid column whose cells are `FILL`-width hugs to the *widest*
+/// cell's content, and every cell stretches to that width. Backs the node
+/// editor's value column: each editor fills the column so they're a uniform
+/// width, while the column sizes to the longest value (no overflow).
+#[test]
+fn hug_column_stretches_fill_cells_to_widest_content() {
+    let mut ui = Ui::for_test();
+    let mut root = None;
+    ui.run_at(UVec2::new(400, 200), |ui| {
+        root = Some(
+            Grid::new()
+                .auto_id()
+                .cols([Track::hug()])
+                .rows([Track::hug(), Track::hug()])
+                .size((Sizing::Hug, Sizing::Hug))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("a"))
+                        .grid_cell((0, 0))
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("fa"))
+                                .size((Sizing::Fixed(120.0), Sizing::Fixed(20.0)))
+                                .show(ui);
+                        });
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("b"))
+                        .grid_cell((1, 0))
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("fb"))
+                                .size((Sizing::Fixed(60.0), Sizing::Fixed(20.0)))
+                                .show(ui);
+                        });
+                })
+                .node(),
+        );
+    });
+    let kids = child_rects(&ui, root.unwrap());
+    assert_eq!(
+        kids[0].size.w, 120.0,
+        "column hugs to the widest cell's content"
+    );
+    assert_eq!(
+        kids[1].size.w, 120.0,
+        "the narrow FILL cell stretched to match"
+    );
+}
+
 #[test]
 fn grid_fill_weights_and_clamps() {
     type Case = (
