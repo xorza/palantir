@@ -47,7 +47,7 @@ pub(crate) const LINE_HEIGHT_MULT: f32 = 1.2;
 /// extent.
 ///
 /// Single source — `composer::TEXT_SCALE_STEP` re-exports this value.
-pub(crate) const TEXT_SCALE_STEP: f32 = 0.025;
+pub(crate) const TEXT_SCALE_STEP: f32 = 0.005;
 
 use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 

@@ -893,7 +893,7 @@ impl Composer {
                         color: t.color.into(),
                         key: t.key,
                         // Snap the ancestor-transform component of the
-                        // text scale to discrete 2.5% steps. Continuous
+                        // text scale to discrete 0.5% steps. Continuous
                         // zoom would otherwise mint a fresh glyphon
                         // cache key every frame (subpixel font size +
                         // bin shift), forcing swash to re-rasterize
@@ -927,8 +927,8 @@ const MAX_SUB_INSTANCES: u32 = 256;
 
 /// Additive step on the text-scale ladder. Same step in *scale units*
 /// across the range, so the step in *percent of current size* shrinks
-/// as zoom grows (0.025/4 ≈ 0.6% at 4×, 0.025/1 = 2.5% at 1×, 0.025/0.5
-/// = 5% at 0.5×). The user-perceptual case for this layout: at high
+/// as zoom grows (0.005/4 ≈ 0.125% at 4×, 0.005/1 = 0.5% at 1×, 0.005/0.5
+/// = 1% at 0.5×). The user-perceptual case for this layout: at high
 /// zoom every percent of size change is visible, so we want fine steps;
 /// at low zoom text is small and crispness stepping doesn't matter, so
 /// coarse steps + fewer atlas keys is the right trade.
@@ -947,7 +947,7 @@ const MAX_SUB_INSTANCES: u32 = 256;
 const TEXT_SCALE_STEP: f32 = crate::text::TEXT_SCALE_STEP;
 
 /// Snap the ancestor-transform component of a text run's scale to the
-/// additive 2.5% ladder. Identity is preserved exactly so non-zoom UIs
+/// additive 0.5% ladder. Identity is preserved exactly so non-zoom UIs
 /// stay on the trivial path. See call-site comment in `DrawText` for
 /// rationale.
 fn snap_text_scale(s: f32) -> f32 {
