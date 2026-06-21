@@ -145,6 +145,39 @@ fn hug_column_stretches_fill_cells_to_widest_content() {
     );
 }
 
+/// A `Hug` column with a `.max()` clamp caps at the max: shrinkable content
+/// (an ellipsizing button) fills the cap instead of stretching the column.
+/// Backs the node editor's value-column max width (long file paths
+/// ellipsize rather than blowing the node out).
+#[test]
+fn hug_column_max_clamps_shrinkable_content() {
+    use crate::shape::TextWrap;
+
+    let mut ui = Ui::for_test();
+    let mut root = None;
+    ui.run_at(UVec2::new(600, 200), |ui| {
+        root = Some(
+            Grid::new()
+                .auto_id()
+                .cols([Track::hug().max(150.0)])
+                .rows([Track::hug()])
+                .size((Sizing::Hug, Sizing::Hug))
+                .show(ui, |ui| {
+                    Button::new()
+                        .id(WidgetId::from_hash("btn"))
+                        .label("a_very_long_value_label_here")
+                        .text_wrap(TextWrap::Ellipsis)
+                        .size((Sizing::FILL, Sizing::Hug))
+                        .grid_cell((0, 0))
+                        .show(ui);
+                })
+                .node(),
+        );
+    });
+    let btn = child_rects(&ui, root.unwrap())[0];
+    assert_eq!(btn.size.w, 150.0, "hug column capped at its max");
+}
+
 #[test]
 fn grid_fill_weights_and_clamps() {
     type Case = (
