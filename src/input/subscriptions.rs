@@ -21,7 +21,7 @@
 //! active (the mask check short-circuits the push), so idle frames
 //! pay nothing.
 
-use crate::input::keyboard::{Key, Modifiers};
+use crate::input::keyboard::KeyPress;
 use crate::input::shortcut::Shortcut;
 use bitflags::bitflags;
 
@@ -106,10 +106,12 @@ impl Subscriptions {
         }
     }
 
-    /// Test whether a key event would wake any specific-chord
-    /// subscriber.
-    pub(crate) fn matches_key(&self, key: Key, mods: Modifiers) -> bool {
-        self.keys.iter().any(|s| s.matches_key(key, mods))
+    /// Test whether a key press would wake any specific-chord subscriber.
+    /// Takes the whole [`KeyPress`] so [`Shortcut::matches`]'s non-Latin
+    /// layout fallback applies — an off-focus Cmd/Ctrl chord on e.g. a
+    /// Russian layout still wakes its subscriber.
+    pub(crate) fn matches_press(&self, kp: KeyPress) -> bool {
+        self.keys.iter().any(|s| s.matches(kp))
     }
 
     /// Capacity-retained pre-record clear. Called from

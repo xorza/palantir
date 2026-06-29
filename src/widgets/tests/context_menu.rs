@@ -134,6 +134,7 @@ fn shortcut_press_fires_item_and_dismisses() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('C'),
         repeat: false,
+        physical: None,
     });
     let mut copied = false;
     let mut dismissed = false;
@@ -158,6 +159,7 @@ fn escape_dismisses_menu() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
+        physical: None,
     });
     let mut copied = false;
     let mut dismissed = false;
