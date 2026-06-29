@@ -24,10 +24,10 @@ fn frame(ui: &mut Ui, buf: &mut String) -> Signals {
                 .id(WidgetId::from_hash(EDITOR))
                 .size((Sizing::Fixed(180.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            out.changed |= r.changed();
-            out.submitted |= r.submitted();
-            out.gained |= r.gained_focus();
-            out.lost |= r.lost_focus();
+            out.changed |= r.changed;
+            out.submitted |= r.submitted;
+            out.gained |= r.gained_focus;
+            out.lost |= r.lost_focus;
         });
     });
     out

@@ -44,6 +44,15 @@ const MULTI_CLICK_RADIUS: f32 = 5.0;
 /// a forever 2 Hz repaint loop on a focused-but-idle editor.
 const BLINK_STOP_AFTER_IDLE: f32 = 30.0;
 
+/// Editing shortcuts, shared by the keyboard dispatch ([`dispatch_shortcut`])
+/// and the default context menu, so a chord and its menu label can't drift.
+const CUT: Shortcut = Shortcut::ctrl('X');
+const COPY: Shortcut = Shortcut::ctrl('C');
+const PASTE: Shortcut = Shortcut::ctrl('V');
+const SELECT_ALL: Shortcut = Shortcut::ctrl('A');
+const UNDO: Shortcut = Shortcut::ctrl('Z');
+const REDO: Shortcut = Shortcut::ctrl_shift('Z');
+
 /// Cross-frame state for one [`TextEdit`]. Stored in [`Ui`]'s
 /// `WidgetId → Any` map keyed by the widget's id; lifecycle managed by
 /// the same removed-widget sweep that drives the layout/text caches.
@@ -978,64 +987,9 @@ impl<'a> TextEdit<'a> {
         let state = ui.response_for(id);
         let snapshot = ResponseSnapshot { id, state };
 
-        // Phase 5: default Cut / Copy / Paste / Clear context menu.
-        // Triggered by secondary click on the editor; items mutate
-        // the host's buffer through the same `&mut String` borrow
-        // `show` was given, then sync `TextEditState.caret` /
-        // `selection` so the next frame paints the right place.
-        // Selection range snapshotted before the closure for the
-        // `.enabled(...)` flags. Clipboard liveness is read **inside**
-        // the closure — `ContextMenu::show` early-returns when the
-        // menu is closed, so probing the OS clipboard every frame on
-        // every TextEdit (via `arboard` → `NSPasteboardItem`) would
-        // be pure overhead. Deferred read keeps the closed-menu path
-        // syscall-free.
-        let sel = ui.state_mut::<TextEditState>(id).sel_range();
-        let has_sel = sel.is_some();
-        let has_text = !self.text.is_empty();
-        let text = self.text;
-        ContextMenu::attach(ui, &snapshot).show(ui, |ui, popup| {
-            if MenuItem::new("Cut")
-                .shortcut(Shortcut::ctrl('X'))
-                .enabled(has_sel)
-                .show(ui, popup)
-                .clicked()
-            {
-                cut_selection(text, ui.state_mut::<TextEditState>(id));
-            }
-            if MenuItem::new("Copy")
-                .shortcut(Shortcut::ctrl('C'))
-                .enabled(has_sel)
-                .show(ui, popup)
-                .clicked()
-                && let Some(r) = sel.clone()
-            {
-                set(&text[r]);
-            }
-            let cb_has = !get().is_empty();
-            if MenuItem::new("Paste")
-                .shortcut(Shortcut::ctrl('V'))
-                .enabled(cb_has)
-                .show(ui, popup)
-                .clicked()
-            {
-                paste_at_caret(
-                    text,
-                    ui.state_mut::<TextEditState>(id),
-                    &get(),
-                    ctx.multiline,
-                    self.max_chars,
-                );
-            }
-            MenuItem::separator(ui);
-            if MenuItem::new("Clear")
-                .enabled(has_text)
-                .show(ui, popup)
-                .clicked()
-            {
-                clear_buffer(text, ui.state_mut::<TextEditState>(id));
-            }
-        });
+        // Phase 5: the default Cut / Copy / Paste / Clear context menu, opened
+        // by secondary-click and mutating the buffer through the same borrow.
+        default_context_menu(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
 
         // Eager Response build last — all `&mut ui` ops above are
         // done. Caller inherits the cached state without a re-probe. The
@@ -1056,46 +1010,89 @@ impl Configure for TextEdit<'_> {
     }
 }
 
+/// The editor's default Cut / Copy / Paste / Clear context menu, opened by
+/// secondary-click. Items mutate the host's `&mut String` through the same
+/// borrow `show` holds and sync `TextEditState` caret/selection for the next
+/// frame. Clipboard liveness is probed **inside** the closure — `ContextMenu`
+/// early-returns when closed, so a closed menu makes no clipboard syscall
+/// (`arboard` → `NSPasteboardItem`) on the common path. `Cut`/`Copy` gate on a
+/// live selection; `Paste` on a non-empty clipboard; `Clear` on a non-empty
+/// buffer.
+fn default_context_menu(
+    ui: &mut Ui,
+    id: WidgetId,
+    snapshot: &ResponseSnapshot,
+    text: &mut String,
+    multiline: bool,
+    max_chars: Option<usize>,
+) {
+    let sel = ui.state_mut::<TextEditState>(id).sel_range();
+    let has_sel = sel.is_some();
+    let has_text = !text.is_empty();
+    ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
+        if MenuItem::new("Cut")
+            .shortcut(CUT)
+            .enabled(has_sel)
+            .show(ui, popup)
+            .clicked()
+        {
+            cut_selection(text, ui.state_mut::<TextEditState>(id));
+        }
+        if MenuItem::new("Copy")
+            .shortcut(COPY)
+            .enabled(has_sel)
+            .show(ui, popup)
+            .clicked()
+            && let Some(r) = sel.clone()
+        {
+            set(&text[r]);
+        }
+        let cb_has = !get().is_empty();
+        if MenuItem::new("Paste")
+            .shortcut(PASTE)
+            .enabled(cb_has)
+            .show(ui, popup)
+            .clicked()
+        {
+            paste_at_caret(
+                text,
+                ui.state_mut::<TextEditState>(id),
+                &get(),
+                multiline,
+                max_chars,
+            );
+        }
+        MenuItem::separator(ui);
+        if MenuItem::new("Clear")
+            .enabled(has_text)
+            .show(ui, popup)
+            .clicked()
+        {
+            clear_buffer(text, ui.state_mut::<TextEditState>(id));
+        }
+    });
+}
+
 /// What [`TextEdit::show`] returns: the widget's [`Response`] (pointer / click /
 /// hover — reachable directly via `Deref`) plus the edit-specific signals
 /// computed *inside* `show()`. Callers read commit/focus state from here instead
 /// of re-polling `ui` for focus and key presses, which is both terser and
 /// authoritative (the editor knows what it did with the input this frame).
 pub struct TextEditResponse<'a> {
-    response: Response<'a>,
-    changed: bool,
-    submitted: bool,
-    gained_focus: bool,
-    lost_focus: bool,
-}
-
-impl<'a> TextEditResponse<'a> {
+    /// The widget's pointer/click/hover [`Response`]. Also reachable through
+    /// `Deref`, so `resp.clicked()` resolves here; use the field when you need
+    /// the `Response` itself (`&resp.response`).
+    pub response: Response<'a>,
     /// The buffer was edited this frame (characters inserted or removed).
-    pub fn changed(&self) -> bool {
-        self.changed
-    }
-
+    pub changed: bool,
     /// The user pressed Enter in a single-line editor — the conventional
     /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
-    pub fn submitted(&self) -> bool {
-        self.submitted
-    }
-
+    pub submitted: bool,
     /// The editor took focus this frame.
-    pub fn gained_focus(&self) -> bool {
-        self.gained_focus
-    }
-
+    pub gained_focus: bool,
     /// The editor lost focus this frame (clicked away, another widget focused,
     /// or Escape) — the conventional "commit on blur" signal.
-    pub fn lost_focus(&self) -> bool {
-        self.lost_focus
-    }
-
-    /// The underlying widget [`Response`] (also reachable through `Deref`).
-    pub fn response(&self) -> &Response<'a> {
-        &self.response
-    }
+    pub lost_focus: bool,
 }
 
 impl<'a> std::ops::Deref for TextEditResponse<'a> {
@@ -1368,13 +1365,6 @@ fn dispatch_shortcut(
     menu_open: bool,
     max_chars: Option<usize>,
 ) -> bool {
-    const SELECT_ALL: Shortcut = Shortcut::ctrl('A');
-    const COPY: Shortcut = Shortcut::ctrl('C');
-    const CUT: Shortcut = Shortcut::ctrl('X');
-    const PASTE: Shortcut = Shortcut::ctrl('V');
-    const UNDO: Shortcut = Shortcut::ctrl('Z');
-    const REDO: Shortcut = Shortcut::ctrl_shift('Z');
-
     if UNDO.matches(kp) {
         apply_undo(text, state);
         return true;
