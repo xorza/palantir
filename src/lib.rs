@@ -140,7 +140,7 @@ pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
 pub use widgets::switch::ToggleSwitch;
 pub use widgets::text::Text;
-pub use widgets::text_edit::TextEdit;
+pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
 pub use widgets::theme::button::ButtonTheme;
 pub use widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme};

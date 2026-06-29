@@ -547,7 +547,7 @@ impl<'a> TextEdit<'a> {
         self
     }
 
-    pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
+    pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = ui.widget_id(&self.element);
         let is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
@@ -700,11 +700,12 @@ impl<'a> TextEdit<'a> {
         // the blink reset can detect any change without instrumenting
         // every mutation site.
         let text_len_before = self.text.len();
-        let (caret_before, sel_before) = {
+        let (caret_before, sel_before, was_focused) = {
             let s = ui.state_mut::<TextEditState>(id);
-            (s.caret, s.selection)
+            (s.caret, s.selection, s.prev_focused)
         };
         let mut blur_after = false;
+        let mut submitted = false;
         let input = handle_input(
             ui,
             id,
@@ -714,9 +715,18 @@ impl<'a> TextEdit<'a> {
             offset,
             self.max_chars,
             &mut blur_after,
+            &mut submitted,
         );
         let caret_byte = input.caret;
         let selection = input.selection;
+        // Edit-specific signals for the returned `TextEditResponse`, captured
+        // before `self.text` is moved below. `changed` is a length-delta proxy —
+        // it catches every insert/delete (a same-length overwrite is the only
+        // miss, negligible for the fields this serves). Focus edges read against
+        // `was_focused` (this frame's `prev_focused`, before Phase 2 rewrites it).
+        let changed = text_len_before != self.text.len();
+        let gained_focus = is_focused && !was_focused;
+        let lost_focus = was_focused && !is_focused;
 
         // Phase 2: scroll-to-caret + blink-phase reset. One `state`
         // borrow covers (a) the post-input caret_changed compare for
@@ -1028,14 +1038,70 @@ impl<'a> TextEdit<'a> {
         });
 
         // Eager Response build last — all `&mut ui` ops above are
-        // done. Caller inherits the cached state without a re-probe.
-        Response::eager(id, ui, state)
+        // done. Caller inherits the cached state without a re-probe. The
+        // edit-specific signals were captured up in Phase 1.
+        TextEditResponse {
+            response: Response::eager(id, ui, state),
+            changed,
+            submitted,
+            gained_focus,
+            lost_focus,
+        }
     }
 }
 
 impl Configure for TextEdit<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
+    }
+}
+
+/// What [`TextEdit::show`] returns: the widget's [`Response`] (pointer / click /
+/// hover — reachable directly via `Deref`) plus the edit-specific signals
+/// computed *inside* `show()`. Callers read commit/focus state from here instead
+/// of re-polling `ui` for focus and key presses, which is both terser and
+/// authoritative (the editor knows what it did with the input this frame).
+pub struct TextEditResponse<'a> {
+    response: Response<'a>,
+    changed: bool,
+    submitted: bool,
+    gained_focus: bool,
+    lost_focus: bool,
+}
+
+impl<'a> TextEditResponse<'a> {
+    /// The buffer was edited this frame (characters inserted or removed).
+    pub fn changed(&self) -> bool {
+        self.changed
+    }
+
+    /// The user pressed Enter in a single-line editor — the conventional
+    /// "accept" signal. Always `false` in multi-line mode (Enter inserts `\n`).
+    pub fn submitted(&self) -> bool {
+        self.submitted
+    }
+
+    /// The editor took focus this frame.
+    pub fn gained_focus(&self) -> bool {
+        self.gained_focus
+    }
+
+    /// The editor lost focus this frame (clicked away, another widget focused,
+    /// or Escape) — the conventional "commit on blur" signal.
+    pub fn lost_focus(&self) -> bool {
+        self.lost_focus
+    }
+
+    /// The underlying widget [`Response`] (also reachable through `Deref`).
+    pub fn response(&self) -> &Response<'a> {
+        &self.response
+    }
+}
+
+impl<'a> std::ops::Deref for TextEditResponse<'a> {
+    type Target = Response<'a>;
+    fn deref(&self) -> &Self::Target {
+        &self.response
     }
 }
 
@@ -1061,6 +1127,7 @@ fn handle_input(
     align_offset: Vec2,
     max_chars: Option<usize>,
     blur_after: &mut bool,
+    submitted: &mut bool,
 ) -> InputResult {
     let resp_state = ui.response_for(id);
     // Snapshot once before the long `&mut state` borrow below. The
@@ -1200,6 +1267,13 @@ fn handle_input(
                 }
             }
             KeyboardEvent::Down(kp) => {
+                // Single-line Enter is a *submit* signal, not an edit: the buffer
+                // is left untouched (multi-line handles `\n` in `apply_key`), but
+                // the caller learns the user accepted the value.
+                if !ctx.multiline && kp.key == Key::Enter && !kp.mods.any_command() {
+                    *submitted = true;
+                    continue;
+                }
                 if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open, max_chars) {
                     continue;
                 }
