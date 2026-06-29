@@ -128,6 +128,7 @@ fn clipboard_shortcuts_apply_keypresses() {
                 ..Modifiers::NONE
             },
             repeat: false,
+            physical: None,
         }
     }
 
@@ -140,6 +141,7 @@ fn clipboard_shortcuts_apply_keypresses() {
                 ..Modifiers::NONE
             },
             repeat: false,
+            physical: None,
         }
     }
 
@@ -246,6 +248,7 @@ fn clipboard_shortcut_does_not_insert_char() {
                 ..Modifiers::NONE
             },
             repeat: false,
+            physical: None,
         },
     );
     assert_eq!(text, "ab", "primary+c without a selection is a no-op");

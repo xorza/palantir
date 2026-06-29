@@ -68,6 +68,7 @@ fn apply_key_word_nav_cases() {
             key,
             mods,
             repeat: false,
+            physical: None,
         }
     }
     fn word_nav_shift(key: Key) -> KeyPress {

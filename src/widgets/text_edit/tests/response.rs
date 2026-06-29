@@ -59,6 +59,7 @@ fn reports_changed_on_edit_but_not_submit() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
+        physical: None,
     });
     let s = frame(&mut ui, &mut buf);
     assert_eq!(buf, "x");
@@ -76,6 +77,7 @@ fn reports_submitted_on_single_line_enter() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
+        physical: None,
     });
     let s = frame(&mut ui, &mut buf);
     assert!(s.submitted, "single-line Enter submits");

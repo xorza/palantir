@@ -132,6 +132,7 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
+        physical: None,
     });
     assert!(!delta.requests_repaint);
 
@@ -147,6 +148,7 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
+        physical: None,
     });
     assert!(!delta.requests_repaint);
 
@@ -154,6 +156,7 @@ fn key_chord_subscriber_wakes_only_exact_chord() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
+        physical: None,
     });
     assert!(delta.requests_repaint);
 }

@@ -328,6 +328,7 @@ fn shift_end_paints_selection_highlight() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Home,
         repeat: false,
+        physical: None,
     });
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
     ui.on_input(InputEvent::ModifiersChanged(Modifiers {
@@ -337,6 +338,7 @@ fn shift_end_paints_selection_highlight() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
+        physical: None,
     });
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
@@ -384,6 +386,7 @@ fn drag_select_extends_selection() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
+        physical: None,
     });
     ui.run_at_acked(NARROW, editor_at(&mut buf, None));
     assert_eq!(
@@ -409,6 +412,7 @@ fn click_without_drag_clears_prior_selection() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('a'),
         repeat: false,
+        physical: None,
     });
     ui.on_input(InputEvent::ModifiersChanged(Modifiers::NONE));
     ui.run_at_acked(NARROW, editor_at(&mut buf, None));
@@ -421,6 +425,7 @@ fn click_without_drag_clears_prior_selection() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('Z'),
         repeat: false,
+        physical: None,
     });
     ui.run_at_acked(NARROW, editor_at(&mut buf, None));
     assert_eq!(
