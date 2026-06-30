@@ -475,12 +475,26 @@ impl ShapeRecord {
                 )
             }
             ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
-            ShapeRecord::RoundedRect { local_rect, .. }
-            | ShapeRecord::Mesh { local_rect, .. }
-            | ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
-                min: Vec2::ZERO,
-                size: owner_size,
-            }),
+            // A mesh's vertex hull can exceed the owner rect (rotated /
+            // overflowing meshes), so it must report that hull — like
+            // `Polyline` / `Curve` — or partial damage clips the overflow.
+            // `local_rect` only *offsets* the mesh (its size is the vertex
+            // hull, not `local_rect.size`), so translate the bbox by its min.
+            ShapeRecord::Mesh {
+                bbox, local_rect, ..
+            } => {
+                let origin = local_rect.map_or(Vec2::ZERO, |r| r.min);
+                Rect {
+                    min: bbox.min + origin,
+                    size: bbox.size,
+                }
+            }
+            ShapeRecord::RoundedRect { local_rect, .. } | ShapeRecord::Image { local_rect, .. } => {
+                local_rect.unwrap_or(Rect {
+                    min: Vec2::ZERO,
+                    size: owner_size,
+                })
+            }
             // Always paints the owner's full arranged rect.
             ShapeRecord::GpuView { .. } => Rect {
                 min: Vec2::ZERO,
@@ -588,6 +602,53 @@ mod tests {
     use crate::forest::shapes::hash::compute_record_hash;
     use crate::forest::shapes::record::*;
     use crate::primitives::rect::Rect;
+    use crate::primitives::size::Size;
+    use glam::Vec2;
+
+    /// A mesh whose vertex hull overflows its owner box (a rotated / scaled
+    /// glyph) must report that hull as its paint bbox. Returning the owner
+    /// rect instead makes partial damage too small — the overflow paints with
+    /// cut vertices and leaves leftover pixels when it changes. Regression for
+    /// the subscription-glyph triangle.
+    #[test]
+    fn mesh_paint_bbox_is_vertex_hull_not_owner_rect() {
+        let owner = Size::new(13.0, 13.0);
+        // Hull reaches left/up past the owner origin and right/down past its
+        // size — i.e. paints outside the owner box on every side.
+        let hull = Rect {
+            min: Vec2::new(-5.0, -4.0),
+            size: Size::new(25.0, 24.0),
+        };
+        let mesh = |local_rect| ShapeRecord::Mesh {
+            local_rect,
+            tint: ColorF16::from(Color::WHITE),
+            vertices: Span::new(0, 3),
+            indices: Span::new(0, 3),
+            bbox: hull,
+            content_hash: 0,
+        };
+
+        assert_eq!(
+            mesh(None).paint_bbox_local(owner),
+            hull,
+            "the paint bbox is the vertex hull, not the owner rect"
+        );
+
+        // `local_rect` translates the hull (its size still comes from the
+        // vertices, not `local_rect.size`).
+        let offset = Rect {
+            min: Vec2::new(2.0, 3.0),
+            size: Size::new(99.0, 99.0),
+        };
+        assert_eq!(
+            mesh(Some(offset)).paint_bbox_local(owner),
+            Rect {
+                min: hull.min + offset.min,
+                size: hull.size,
+            },
+            "local_rect offsets the hull; the size is unchanged"
+        );
+    }
 
     #[test]
     fn shape_mesh_hash_excludes_span_offsets() {
