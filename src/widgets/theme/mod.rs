@@ -55,7 +55,7 @@ pub struct Theme {
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
     /// Default chrome paint for container widgets (`Panel`, `Grid`,
-    /// `Popup`) that didn't call [`the widget builder`].
+    /// `Popup`) that didn't set their own background.
     /// `None` leaves containers unpainted by default. Setting
     /// `Some(...)` lights up every unstyled container at once — useful
     /// for prototyping or shipping a design-system default.

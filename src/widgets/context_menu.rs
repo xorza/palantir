@@ -104,7 +104,13 @@ impl ContextMenu {
             ContextMenu::close(ui, self.for_id);
         }
 
-        let Some(raw_anchor) = ui.state_mut::<ContextMenuState>(self.for_id).anchor else {
+        // Read via `try_state` so a never-opened menu doesn't materialize a
+        // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
+        // path); the row only needs to exist after `open`.
+        let Some(raw_anchor) = ui
+            .try_state::<ContextMenuState>(self.for_id)
+            .and_then(|st| st.anchor)
+        else {
             return ContextMenuResponse::default();
         };
 

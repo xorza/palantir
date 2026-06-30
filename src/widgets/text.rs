@@ -9,12 +9,12 @@ use crate::widgets::theme::text_style::TextStyle;
 /// Standalone shaped-text leaf. Use for labels, paragraphs, headings —
 /// anything that's just a string. Hugs its measured size when it has room;
 /// **by default a single-line label keeps its full natural width**
-/// ([`TextWrap::Overflow`]) — its min-content equals its full line, so a
+/// ([`TextWrap::SingleLine`]) — its min-content equals its full line, so a
 /// Hug parent / grid track sizes to it and never shrinks it below its text
 /// (the label "stays natural"); if a parent commits a width narrower than
 /// the line, the line runs past the slot rather than being silently cut.
 /// Use [`Self::text_wrap`] to opt into clipping or wrapping instead:
-/// `SingleLine` hard-cuts to the committed width (no marker), `Ellipsis`
+/// `Truncate` hard-cuts to the committed width (no marker), `Ellipsis`
 /// marks the cut with `…`, `Wrap` / `WrapWithOverflow` reflow onto multiple
 /// lines. Widgets that should clip a too-long label (e.g. `Button`,
 /// `DragValue`) set `SingleLine` explicitly.
@@ -61,10 +61,10 @@ impl Text {
     }
 
     /// Set how the text handles a committed width narrower than its natural
-    /// line. Default [`TextWrap::Overflow`] (one unbroken line that runs past
+    /// line. Default [`TextWrap::SingleLine`] (one unbroken line that runs past
     /// the slot; its min-content is the full line width, so a Hug track won't
     /// shrink below it — the label keeps its natural width). Pass
-    /// [`TextWrap::SingleLine`] to hard-cut to the committed width with no
+    /// [`TextWrap::Truncate`] to hard-cut to the committed width with no
     /// marker, [`TextWrap::Ellipsis`] to mark the cut with `…`, or
     /// [`TextWrap::WrapWithOverflow`] to reshape onto multiple lines.
     pub fn text_wrap(mut self, wrap: TextWrap) -> Self {

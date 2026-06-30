@@ -20,7 +20,7 @@ use crate::widgets::theme::widget_look::{WidgetLook, pick_4};
 /// is `element.padding == Spacing::ZERO` — so if you want a button
 /// with no padding while the theme has padding, set a custom theme
 /// rather than passing zero.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
     pub normal: WidgetLook,
     pub hovered: WidgetLook,

@@ -10,7 +10,7 @@ use std::ops::RangeInclusive;
 /// Per-id drag anchor: the value captured when a drag latches, so
 /// cumulative `drag_delta` offsets from a stable base rather than
 /// accumulating frame-to-frame rounding.
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct DragAnchor {
     value: f32,
 }

@@ -62,24 +62,22 @@ impl<'a, T: PartialEq> RadioButton<'a, T> {
             raw: raw_state,
             merged: state,
         } = enter_widget(ui, &self.element);
-        let selected = *self.current == self.value;
+        let mut selected = *self.current == self.value;
         // Radios latch — re-clicking the selected option is a no-op,
-        // matches platform behavior on every OS.
+        // matches platform behavior on every OS. A fresh click selects
+        // this option, so flip `selected` now (`value` is moved into
+        // `current`, so we can't re-derive it) — otherwise the chrome +
+        // pip below paint unselected until the next unrelated repaint.
         if state.clicked && !state.disabled && !selected {
             *self.current = self.value;
+            selected = true;
         }
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.radio);
         // `pill: true` forces the box chrome to a circle regardless of
         // any re-themed `radio.checked.normal.background.radius` — the
         // pip must never square-corner. Applied in `toggle_row`.
-        let chrome = ToggleChrome {
-            look_target: theme.pick(state, selected).clone(),
-            anim: theme.anim,
-            box_size: theme.box_size,
-            row_gap: theme.row_gap,
-            pill: true,
-        };
+        let chrome = ToggleChrome::new(theme, state, selected, true);
         let indicator = theme.indicator;
         let dot_inset = theme.indicator_inset;
 

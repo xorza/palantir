@@ -9,6 +9,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::text::Text;
+use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::widget_look::WidgetLook;
 
 /// Chrome inputs for [`toggle_row`], built by the caller from its
@@ -25,6 +26,23 @@ pub(crate) struct ToggleChrome {
     /// RadioButton forces the box chrome to a pill (`box_size * 0.5`
     /// radius) regardless of the theme's stored corner radius.
     pub(crate) pill: bool,
+}
+
+impl ToggleChrome {
+    /// Build the chrome from a resolved [`ToggleTheme`] and the toggle's
+    /// `(state, on)` — the shape Checkbox and RadioButton both need; they
+    /// differ only in `pill`. `look_target` is the *picked* look (cloned out),
+    /// so the borrow on `theme` (which may point into `ui.theme`) is released
+    /// before `toggle_row`'s `&mut Ui` animate reborrow.
+    pub(crate) fn new(theme: &ToggleTheme, state: ResponseState, on: bool, pill: bool) -> Self {
+        Self {
+            look_target: theme.pick(state, on).clone(),
+            anim: theme.anim,
+            box_size: theme.box_size,
+            row_gap: theme.row_gap,
+            pill,
+        }
+    }
 }
 
 /// Shared `HStack [box, label]` scaffolding behind [`crate::Checkbox`]

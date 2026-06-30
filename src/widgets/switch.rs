@@ -137,6 +137,7 @@ impl Configure for ToggleSwitch<'_> {
     }
 }
 
+#[derive(Debug)]
 struct SwitchGeom {
     track_w: f32,
     knob: f32,
