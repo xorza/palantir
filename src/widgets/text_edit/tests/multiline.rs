@@ -19,7 +19,7 @@ fn multiline_enter_inserts_newline() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\n");
@@ -30,7 +30,7 @@ fn multiline_enter_inserts_newline() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('d'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(UVec2::new(300, 160), multiline_editor(&mut buf));
     assert_eq!(buf, "abc\nd");
@@ -63,7 +63,7 @@ fn multiline_paste_keeps_newlines() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('v'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     // Inject the primary command modifier via the key event —
     // InputState reads modifiers from a separate `ModifiersChanged`
@@ -99,7 +99,7 @@ fn multiline_selection_crosses_newline() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowDown,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
         kp.mods = Modifiers {

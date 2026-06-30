@@ -13,12 +13,12 @@ fn typing_inserts_text_when_focused() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('h'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('i'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -33,7 +33,7 @@ fn keystrokes_ignored_when_not_focused() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -54,7 +54,7 @@ fn escape_blurs_focus() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(SMALL, editor_only(&mut buf));
     assert_eq!(ui.focused_id(), None);
@@ -72,7 +72,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(SMALL, editor_only(&mut buf));
 
@@ -80,7 +80,7 @@ fn caret_clamps_after_external_buffer_shrink() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('!'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(SMALL, editor_only(&mut buf));
     assert_eq!(
@@ -117,7 +117,7 @@ fn pointer_state_respects_pointer_left() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('z'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
 
     ui.run_at_acked(SMALL, editor_only(&mut buf));
@@ -145,7 +145,7 @@ fn pressed_button_does_not_route_to_textedit_under_default_policy() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(WIDE, editor_and_button(&mut buf));
     assert_eq!(buf, "");
@@ -165,7 +165,7 @@ fn pressed_button_under_preserve_policy_keeps_focus() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('x'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(WIDE, editor_and_button(&mut buf));
     assert_eq!(buf, "x");
@@ -182,7 +182,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(WIDE, editor_only(&mut buf));
 
@@ -190,7 +190,7 @@ fn pressed_button_pointer_jitter_does_not_steal_caret() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('!'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
 
     ui.run_at_acked(WIDE, editor_only(&mut buf));
@@ -212,7 +212,7 @@ fn click_lands_caret_at_pressed_position() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(NARROW, editor_at(&mut buf, None));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -236,7 +236,7 @@ fn click_uses_overridden_padding() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('X'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(NARROW, editor_at(&mut buf, pad));
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -272,7 +272,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('1'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(WIDE, |ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1");
@@ -284,7 +284,7 @@ fn two_textedits_only_one_focused_at_a_time() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('2'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     ui.run_at_acked(WIDE, |ui| body(ui, &mut a, &mut b));
     assert_eq!(a, "1", "A's buffer untouched once focus moved to B");

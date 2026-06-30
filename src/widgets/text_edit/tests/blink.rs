@@ -110,7 +110,7 @@ fn caret_blinks_on_and_off_while_focused() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Char('a'),
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     frame_at(&mut ui, 1.75, |ui| body(ui, &mut buf, &mut leaf));
     assert!(

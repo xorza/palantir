@@ -112,7 +112,7 @@ fn shift_arrow_right(ui: &mut Ui) {
     ui.on_input(InputEvent::KeyDown {
         key: Key::ArrowRight,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     if let Some(KeyboardEvent::Down(kp)) = ui.input.frame_keyboard_events.last_mut() {
         kp.mods = Modifiers {
@@ -195,7 +195,7 @@ fn caret_tracks_aligned_text() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::End,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
     let node = frame(&mut ui, &mut buf, Some(Align::RIGHT), None);
@@ -317,7 +317,7 @@ fn selection_rects_offset_matches_text() {
     ui.on_input(InputEvent::KeyDown {
         key: Key::Home,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     shift_arrow_right(&mut ui);
     shift_arrow_right(&mut ui);

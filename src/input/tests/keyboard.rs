@@ -121,7 +121,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
         InputEvent::KeyDown {
             key: Key::ArrowLeft,
             repeat: false,
-            physical: None,
+            physical: Key::Other,
         },
         &cascades,
     );
@@ -148,7 +148,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         InputEvent::KeyDown {
             key: Key::Char('a'),
             repeat: false,
-            physical: None,
+            physical: Key::Other,
         },
         &cascades,
     );
@@ -157,7 +157,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
         InputEvent::KeyDown {
             key: Key::Char('b'),
             repeat: true,
-            physical: None,
+            physical: Key::Other,
         },
         &cascades,
     );
@@ -372,7 +372,7 @@ fn post_record_clears_keys_and_text_but_preserves_modifiers() {
         InputEvent::KeyDown {
             key: Key::ArrowLeft,
             repeat: false,
-            physical: None,
+            physical: Key::Other,
         },
         &cascades,
     );
