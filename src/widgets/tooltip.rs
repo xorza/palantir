@@ -14,38 +14,28 @@ use crate::widgets::text::Text;
 use glam::Vec2;
 use std::borrow::Cow;
 
-/// Result of `place_anchor` — anchor point and a flag noting whether
-/// the bubble was flipped above the trigger instead of below.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct PlacedAnchor {
-    pub(crate) anchor: Vec2,
-    pub(crate) flipped_above: bool,
-}
-
 /// Pure positioning math: pick a top-left anchor for a `bubble`-sized
 /// bubble next to a `trigger` rect, inside `viewport`. Default = below;
 /// flip above when below would clip; horizontally clamp so the bubble
 /// stays on-screen. `gap` is the breathing room between trigger and
-/// bubble.
-pub(crate) fn place_anchor(trigger: Rect, bubble: Size, viewport: Rect, gap: f32) -> PlacedAnchor {
+/// bubble. The chosen `y` encodes the flip (below-edge vs above-edge).
+pub(crate) fn place_anchor(trigger: Rect, bubble: Size, viewport: Rect, gap: f32) -> Vec2 {
     let below_y = trigger.min.y + trigger.size.h + gap;
     let above_y = trigger.min.y - gap - bubble.h;
     let viewport_bottom = viewport.min.y + viewport.size.h;
     let viewport_right = viewport.min.x + viewport.size.w;
     let fits_below = below_y + bubble.h <= viewport_bottom;
-    let (y, flipped_above) = if fits_below || above_y < viewport.min.y {
-        (below_y, false)
+    // Below by default; flip above only when below would clip and above fits.
+    let y = if fits_below || above_y < viewport.min.y {
+        below_y
     } else {
-        (above_y, true)
+        above_y
     };
     let x = trigger.min.x.clamp(
         viewport.min.x,
         (viewport_right - bubble.w).max(viewport.min.x),
     );
-    PlacedAnchor {
-        anchor: Vec2::new(x, y),
-        flipped_above,
-    }
+    Vec2::new(x, y)
 }
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
@@ -206,7 +196,7 @@ impl<'r> Tooltip<'r> {
         {
             global.last_visible_at = Some(now);
             let viewport = ui.display().logical_rect();
-            let placed = place_anchor(trigger_rect, state.last_size, viewport, gap);
+            let anchor = place_anchor(trigger_rect, state.last_size, viewport, gap);
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
@@ -222,7 +212,7 @@ impl<'r> Tooltip<'r> {
             if element.max_size == Size::INF {
                 element.max_size = ui.theme.tooltip.max_size;
             }
-            ui.layer(Layer::Tooltip, placed.anchor, None, |ui| {
+            ui.layer(Layer::Tooltip, anchor, None, |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(text_style)

@@ -343,14 +343,14 @@ impl ColorMode {
 /// Wrap mode for [`ShapeRecord::Text`].
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum TextWrap {
-    /// Single line shaped once at unbounded width and never reshaped, so it
-    /// overflows a too-narrow slot rather than truncating. Min-content equals
-    /// the full line width, so a Hug track won't shrink below it. The explicit
-    /// opt-out from the truncating default — for editable buffers and
-    /// horizontally-scrolled text that are *meant* to run past the viewport.
+    /// **Default.** Single line shaped once at unbounded width and never
+    /// reshaped, so it overflows a too-narrow slot rather than truncating.
+    /// Min-content equals the full line width, so a Hug track won't shrink
+    /// below it — keeps labels, editable buffers, and horizontally-scrolled
+    /// text at their natural width, *meant* to run past the viewport.
     #[default]
     SingleLine,
-    /// **Default.** Single line, hard-truncated to the committed width with
+    /// Single line, hard-truncated to the committed width with
     /// no trailing marker — glyphs past the box edge are simply dropped.
     /// Min-content is zero (the run can shrink to nothing), so a bounded
     /// parent clips it to its slot instead of overflowing — single-line text

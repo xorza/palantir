@@ -35,9 +35,9 @@ fn place_anchor_below_when_room() {
     };
     let bubble = Size::new(120.0, 32.0);
     let placed = place_anchor(trigger, bubble, viewport, 6.0);
-    assert!(!placed.flipped_above);
-    assert!((placed.anchor.x - 50.0).abs() < 1e-4);
-    assert!((placed.anchor.y - (50.0 + 24.0 + 6.0)).abs() < 1e-4);
+    assert!((placed.x - 50.0).abs() < 1e-4);
+    // Below the trigger (the flip didn't fire) — `y` encodes that.
+    assert!((placed.y - (50.0 + 24.0 + 6.0)).abs() < 1e-4);
 }
 
 #[test]
@@ -53,8 +53,8 @@ fn place_anchor_flips_above_at_bottom_edge() {
     };
     let bubble = Size::new(120.0, 32.0);
     let placed = place_anchor(trigger, bubble, viewport, 6.0);
-    assert!(placed.flipped_above);
-    assert!((placed.anchor.y - (270.0 - 6.0 - 32.0)).abs() < 1e-4);
+    // Flipped above the trigger (below would clip): `y` sits at the above-edge.
+    assert!((placed.y - (270.0 - 6.0 - 32.0)).abs() < 1e-4);
 }
 
 #[test]
@@ -71,7 +71,7 @@ fn place_anchor_clamps_horizontally() {
     };
     let bubble = Size::new(120.0, 32.0);
     let placed = place_anchor(trigger, bubble, viewport, 6.0);
-    assert!((placed.anchor.x - (400.0 - 120.0)).abs() < 1e-4);
+    assert!((placed.x - (400.0 - 120.0)).abs() < 1e-4);
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
