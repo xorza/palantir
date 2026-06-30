@@ -11,6 +11,7 @@
 
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
+use crate::input::keyboard::Key;
 use crate::input::pointer::PointerButton;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::size::Size;
@@ -95,6 +96,42 @@ fn click_outside_popup_dismisses_and_blocks_main() {
         !main_panel_clicked(&ui),
         "outside click must be eaten by the popup eater, not leak to Main",
     );
+}
+
+#[test]
+fn escape_dismisses_dismiss_popup_but_not_block() {
+    let esc = || InputEvent::KeyDown {
+        key: Key::Escape,
+        repeat: false,
+        physical: Key::Escape,
+    };
+
+    // `Dismiss`: Esc folds into `dismissed`.
+    let mut ui = Ui::for_test();
+    let mut dismissed = false;
+    ui.run_at_acked(SURFACE, |ui| {
+        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
+    });
+    ui.on_input(esc());
+    let mut dismissed = false;
+    ui.run_at(SURFACE, |ui| {
+        record_body(ui, ClickOutside::Dismiss, &mut dismissed);
+    });
+    assert!(dismissed, "Esc dismisses a `Dismiss` popup");
+
+    // `Block`: Esc is ignored (stop-the-world prompts close only on the
+    // host's terms).
+    let mut ui = Ui::for_test();
+    let mut dismissed = false;
+    ui.run_at_acked(SURFACE, |ui| {
+        record_body(ui, ClickOutside::Block, &mut dismissed);
+    });
+    ui.on_input(esc());
+    let mut dismissed = false;
+    ui.run_at(SURFACE, |ui| {
+        record_body(ui, ClickOutside::Block, &mut dismissed);
+    });
+    assert!(!dismissed, "Esc does not dismiss a `Block` popup");
 }
 
 /// `Ui::frame` settles popup dismissal in a single host call.

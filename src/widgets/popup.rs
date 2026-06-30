@@ -20,11 +20,11 @@ use std::cell::Cell;
 /// whether the popup widget signals
 /// dismissal:
 ///
-/// - [`Self::Block`] — eater consumes the click; no signal. Use for
-///   confirm dialogs, stop-the-world prompts.
-/// - [`Self::Dismiss`] — eater consumes the click AND
-///   `PopupResponse.dismissed` is set so the host can flip its open
-///   flag. Use for dropdowns, context menus, autocomplete.
+/// - [`Self::Block`] — eater consumes the click; no signal (and Esc is
+///   ignored). Use for confirm dialogs, stop-the-world prompts.
+/// - [`Self::Dismiss`] — an eaten outside-click **or** an Esc press sets
+///   `PopupResponse.dismissed` so the host can flip its open flag. Use for
+///   dropdowns, context menus, autocomplete.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum ClickOutside {
     Block,
@@ -55,9 +55,9 @@ impl PopupHandle {
     }
 }
 
-/// Result of [`Popup::show`]. `dismissed` is set when an outside
-/// click was eaten this frame and the popup was configured for
-/// [`ClickOutside::Dismiss`]. `close_requested` is set when a
+/// Result of [`Popup::show`]. `dismissed` is set when a
+/// [`ClickOutside::Dismiss`] popup is dismissed this frame — an eaten
+/// outside-press or an Esc press. `close_requested` is set when a
 /// content widget inside the body called [`PopupHandle::close`].
 /// Hosts read either to flip their open flag in the same frame.
 #[derive(Copy, Clone, Debug, Default)]
@@ -189,9 +189,14 @@ impl Popup {
             // feeds back into the placement algorithm.
             ui.request_relayout();
         }
+        let dismiss_mode = self.click_outside == ClickOutside::Dismiss;
         let eater_clicked = ui.response_for(eater_id).clicked;
         PopupResponse {
-            dismissed: eater_clicked && self.click_outside == ClickOutside::Dismiss,
+            // A `Dismiss` popup closes on an eaten outside-press OR an Esc
+            // press — so overlay hosts (ComboBox / ContextMenu) read one
+            // `closed()` signal instead of each re-deriving Esc. (`Block`
+            // short-circuits, so it neither dismisses on nor subscribes Esc.)
+            dismissed: dismiss_mode && (eater_clicked || ui.escape_pressed()),
             close_requested: handle.requested.get(),
         }
     }

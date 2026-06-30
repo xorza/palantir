@@ -100,10 +100,9 @@ impl ContextMenu {
         ui: &mut Ui,
         body: impl FnOnce(&mut Ui, &PopupHandle),
     ) -> ContextMenuResponse {
-        if ui.escape_pressed() {
-            ContextMenu::close(ui, self.for_id);
-        }
-
+        // Esc dismissal is owned by the `Dismiss` popup below — it folds into
+        // `resp.closed()`, so no hand-rolled `escape_pressed` here.
+        //
         // Read via `try_state` so a never-opened menu doesn't materialize a
         // StateMap row every frame `show` is called (matches `is_open`'s no-alloc
         // path); the row only needs to exist after `open`.

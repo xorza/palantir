@@ -108,9 +108,8 @@ impl<'a> ComboBox<'a> {
         if !state.disabled && raw_state.clicked {
             open = !open;
         }
-        if ui.escape_pressed() {
-            open = false;
-        }
+        // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
+        // separate `escape_pressed` here.
 
         if open && let Some(rect) = trigger_rect {
             let panel = ui.theme.context_menu.panel.clone();
