@@ -10,8 +10,12 @@
 
 use crate::common::platform::{PLATFORM, Platform};
 
-/// Logical key, after the keyboard layout has been applied. Shift+'a'
-/// arrives as `Char('A')`, not `Char('a')` — same convention as winit.
+/// A key identity. Used two ways on [`KeyPress`]: as the **logical** key
+/// ([`KeyPress::key`]) — after the keyboard layout has been applied, so Shift+'a'
+/// arrives as `Char('A')`, same convention as winit — and as the
+/// **layout-independent physical** key ([`KeyPress::physical`]), the US-QWERTY
+/// identity of the pressed position (always the unshifted form, e.g. `Char('z')`
+/// for the Z position).
 ///
 /// `Char` covers letters, digits, and punctuation in a single arm; the
 /// named variants only exist for keys that *don't* produce a printable
@@ -161,6 +165,14 @@ pub struct KeyPress {
     /// initial press. Editors typically treat both the same; some
     /// commands (e.g. focus-cycle on Tab) only fire on `!repeat`.
     pub repeat: bool,
+    /// The key at this physical position, identified **independent of the
+    /// active layout** — `Char('z')` for the physical Z key whatever the layout
+    /// maps it to, `Enter` / `ArrowLeft` / … for named keys, `Other` for an
+    /// unidentified position. Lets [`crate::Shortcut`] recover a command chord
+    /// whose logical [`key`](Self::key) arrived as a non-Latin character
+    /// (Cyrillic `'я'` for the physical Z on a Russian layout — see
+    /// [`crate::Shortcut::matches`]).
+    pub physical: Key,
 }
 
 /// One entry in [`InputState::frame_keyboard_events`] — a press or
@@ -219,6 +231,86 @@ pub(crate) fn key_from_winit(k: &winit::keyboard::Key) -> Key {
     }
 }
 
+/// The [`Key`] at a *physical* key position, independent of the active layout —
+/// the US-QWERTY identity of the position. Letters/digits map to their unshifted
+/// `Char`; named keys to their variant; anything else (and an `Unidentified`
+/// position) to [`Key::Other`]. This is what lets [`crate::Shortcut`] match a
+/// command chord whose logical key arrived as a non-Latin character: the
+/// physical Z key is `Char('z')` on a Russian layout even though its logical key
+/// is `'я'`. Mirrors [`key_from_winit`], which does the same for the *logical*
+/// `winit::keyboard::Key`.
+pub(crate) fn physical_key_from_winit(physical: &winit::keyboard::PhysicalKey) -> Key {
+    use winit::keyboard::{KeyCode as KC, PhysicalKey};
+    let PhysicalKey::Code(code) = physical else {
+        return Key::Other;
+    };
+    match code {
+        KC::KeyA => Key::Char('a'),
+        KC::KeyB => Key::Char('b'),
+        KC::KeyC => Key::Char('c'),
+        KC::KeyD => Key::Char('d'),
+        KC::KeyE => Key::Char('e'),
+        KC::KeyF => Key::Char('f'),
+        KC::KeyG => Key::Char('g'),
+        KC::KeyH => Key::Char('h'),
+        KC::KeyI => Key::Char('i'),
+        KC::KeyJ => Key::Char('j'),
+        KC::KeyK => Key::Char('k'),
+        KC::KeyL => Key::Char('l'),
+        KC::KeyM => Key::Char('m'),
+        KC::KeyN => Key::Char('n'),
+        KC::KeyO => Key::Char('o'),
+        KC::KeyP => Key::Char('p'),
+        KC::KeyQ => Key::Char('q'),
+        KC::KeyR => Key::Char('r'),
+        KC::KeyS => Key::Char('s'),
+        KC::KeyT => Key::Char('t'),
+        KC::KeyU => Key::Char('u'),
+        KC::KeyV => Key::Char('v'),
+        KC::KeyW => Key::Char('w'),
+        KC::KeyX => Key::Char('x'),
+        KC::KeyY => Key::Char('y'),
+        KC::KeyZ => Key::Char('z'),
+        KC::Digit0 => Key::Char('0'),
+        KC::Digit1 => Key::Char('1'),
+        KC::Digit2 => Key::Char('2'),
+        KC::Digit3 => Key::Char('3'),
+        KC::Digit4 => Key::Char('4'),
+        KC::Digit5 => Key::Char('5'),
+        KC::Digit6 => Key::Char('6'),
+        KC::Digit7 => Key::Char('7'),
+        KC::Digit8 => Key::Char('8'),
+        KC::Digit9 => Key::Char('9'),
+        KC::Space => Key::Char(' '),
+        KC::ArrowLeft => Key::ArrowLeft,
+        KC::ArrowRight => Key::ArrowRight,
+        KC::ArrowUp => Key::ArrowUp,
+        KC::ArrowDown => Key::ArrowDown,
+        KC::Backspace => Key::Backspace,
+        KC::Delete => Key::Delete,
+        KC::Home => Key::Home,
+        KC::End => Key::End,
+        KC::PageUp => Key::PageUp,
+        KC::PageDown => Key::PageDown,
+        KC::Enter => Key::Enter,
+        KC::Tab => Key::Tab,
+        KC::Escape => Key::Escape,
+        KC::F1 => Key::F1,
+        KC::F2 => Key::F2,
+        KC::F3 => Key::F3,
+        KC::F4 => Key::F4,
+        KC::F5 => Key::F5,
+        KC::F6 => Key::F6,
+        KC::F7 => Key::F7,
+        KC::F8 => Key::F8,
+        KC::F9 => Key::F9,
+        KC::F10 => Key::F10,
+        KC::F11 => Key::F11,
+        KC::F12 => Key::F12,
+        _ => Key::Other,
+    }
+}
+
 pub(crate) fn modifiers_from_winit(m: &winit::keyboard::ModifiersState) -> Modifiers {
     // Normalize the platform's primary command key into `ctrl` here, at
     // the boundary, so nothing downstream branches on platform: Cmd
@@ -255,6 +347,30 @@ mod tests {
                 assert_eq!(c.as_str().is_empty(), *expect_empty, "case {label}: empty");
             }
         }
+    }
+
+    #[test]
+    fn physical_key_maps_layout_independent_identities() {
+        use winit::keyboard::{KeyCode, NativeKeyCode, PhysicalKey};
+        let code = |c| physical_key_from_winit(&PhysicalKey::Code(c));
+        // Letters/digits → unshifted `Char` (anchors + bounds guard the
+        // hand-written arms against a transposed entry).
+        assert_eq!(code(KeyCode::KeyA), Key::Char('a'));
+        assert_eq!(code(KeyCode::KeyM), Key::Char('m'));
+        assert_eq!(code(KeyCode::KeyZ), Key::Char('z'));
+        assert_eq!(code(KeyCode::Digit0), Key::Char('0'));
+        assert_eq!(code(KeyCode::Digit9), Key::Char('9'));
+        // Named keys → their layout-independent variant.
+        assert_eq!(code(KeyCode::Enter), Key::Enter);
+        assert_eq!(code(KeyCode::ArrowLeft), Key::ArrowLeft);
+        assert_eq!(code(KeyCode::F1), Key::F1);
+        // An unmapped position and an unidentified physical key (synthetic /
+        // virtual keyboards) both collapse to `Other`.
+        assert_eq!(code(KeyCode::Insert), Key::Other);
+        assert_eq!(
+            physical_key_from_winit(&PhysicalKey::Unidentified(NativeKeyCode::Unidentified)),
+            Key::Other
+        );
     }
 
     #[test]

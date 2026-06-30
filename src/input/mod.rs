@@ -8,6 +8,7 @@ pub(crate) mod subscriptions;
 
 use crate::input::keyboard::{
     Key, KeyPress, KeyboardEvent, Modifiers, TextChunk, key_from_winit, modifiers_from_winit,
+    physical_key_from_winit,
 };
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::response::{DragState, InputDelta, ResponseState};
@@ -123,6 +124,9 @@ pub enum InputEvent {
     KeyDown {
         key: Key,
         repeat: bool,
+        /// Layout-independent physical key — see
+        /// [`KeyPress::physical`](crate::input::keyboard::KeyPress::physical).
+        physical: Key,
     },
     /// Committed text — a typed character or an IME composition that
     /// just finalized. Distinct from `KeyDown` because IME / dead-key
@@ -194,6 +198,7 @@ impl InputEvent {
                 emit(InputEvent::KeyDown {
                     key: key_from_winit(&event.logical_key),
                     repeat: event.repeat,
+                    physical: physical_key_from_winit(&event.physical_key),
                 });
             }
             // IME commit: what the user *meant* to insert after composition
@@ -655,17 +660,29 @@ impl InputState {
                 };
                 self.pinch_target.is_some() || subbed
             }
-            InputEvent::KeyDown { key, repeat } => {
+            InputEvent::KeyDown {
+                key,
+                repeat,
+                physical,
+            } => {
                 let mods = self.modifiers;
-                self.frame_keyboard_events
-                    .push(KeyboardEvent::Down(KeyPress { key, mods, repeat }));
+                let kp = KeyPress {
+                    key,
+                    mods,
+                    repeat,
+                    physical,
+                };
+                self.frame_keyboard_events.push(KeyboardEvent::Down(kp));
                 // Wake when a focused widget would consume the key
                 // OR a specific-chord subscriber asked for it
                 // OR a `KeyboardSense::KEY` subscriber is recording
                 // raw key events. Idle keys with none of those
-                // (typing into empty surface) skip the frame.
+                // (typing into empty surface) skip the frame. The
+                // chord check takes the whole `KeyPress` so the
+                // non-Latin layout fallback applies — an off-focus
+                // Cmd+Z still wakes on a Russian layout.
                 self.focused.is_some()
-                    || self.subs.matches_key(key, mods)
+                    || self.subs.matches_press(kp)
                     || self.subs.keyboard_mask.contains(KeyboardSense::KEY)
             }
             InputEvent::Text(chunk) => {

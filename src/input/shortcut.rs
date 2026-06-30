@@ -126,16 +126,32 @@ impl Shortcut {
 
     /// True iff `kp` matches this shortcut. Modifier comparison is
     /// exact (`ctrl+a` ≠ `ctrl+shift+a`); `Char` keys compare
-    /// ignore-case to absorb shift-layout effects. Delegates to
-    /// [`Self::matches_key`] — the `repeat` flag is ignored.
+    /// ignore-case to absorb shift-layout effects. The `repeat` flag is
+    /// ignored.
+    ///
+    /// Non-Latin-layout fallback: a command chord's letter key arrives as the
+    /// *active layout's* character (Cyrillic `'я'` for the physical Z on a
+    /// Russian layout), which never matches the ASCII shortcut. When the
+    /// logical key is a **non-ASCII** `Char` and the chord carries a command
+    /// modifier, retry against the layout-independent [physical key]
+    /// ([`KeyPress::physical`]) so `Cmd/Ctrl+Z` fires on any layout. The
+    /// non-ASCII gate leaves Dvorak / AZERTY untouched — their keys still
+    /// produce ASCII letters, in their own intended positions.
     pub fn matches(self, kp: KeyPress) -> bool {
-        self.matches_key(kp.key, kp.mods)
+        if self.matches_key(kp.key, kp.mods) {
+            return true;
+        }
+        (self.mods.ctrl || self.mods.alt)
+            && matches!(kp.key, Key::Char(c) if !c.is_ascii())
+            && self.matches_key(kp.physical, kp.mods)
     }
 
-    /// As [`Self::matches`] but takes the `(key, mods)` pair
-    /// directly. Used by subscription wake-gate checks that don't
-    /// have a `KeyPress` in hand.
-    pub fn matches_key(self, key: Key, mods: Modifiers) -> bool {
+    /// Logical-key match: exact modifiers + ignore-case `Char`, with **no**
+    /// layout fallback. The building block [`Self::matches`] layers the
+    /// non-Latin physical-key fallback onto. Crate-internal on purpose —
+    /// external callers go through [`Self::matches`] so they get the
+    /// layout-correct path rather than this logical-only one.
+    pub(crate) fn matches_key(self, key: Key, mods: Modifiers) -> bool {
         if Mods::from_event(mods) != self.mods {
             return false;
         }
@@ -239,6 +255,7 @@ mod tests {
             key,
             mods,
             repeat: false,
+            physical: Key::Other,
         }
     }
 
@@ -265,6 +282,47 @@ mod tests {
         let cut = Shortcut::ctrl('X');
         assert!(cut.matches(kp(primary_mod(), Key::Char('x'))));
         assert!(cut.matches(kp(primary_mod(), Key::Char('X'))));
+    }
+
+    #[test]
+    fn non_latin_layout_matches_command_chord_via_physical_key() {
+        // A Russian layout reports the physical Z key as Cyrillic 'я'; the
+        // physical char ('z') recovers the Cmd/Ctrl+Z chord.
+        let undo = Shortcut::ctrl('Z');
+        let russian_z = KeyPress {
+            key: Key::Char('я'),
+            mods: primary_mod(),
+            repeat: false,
+            physical: Key::Char('z'),
+        };
+        assert!(undo.matches(russian_z), "Cmd+Z fires on a Russian layout");
+
+        // The non-ASCII gate leaves ASCII layouts on the logical path: a
+        // Dvorak chord whose logical char is ASCII never consults `physical`,
+        // so the physical position can't trigger the wrong shortcut.
+        let dvorak_semicolon = KeyPress {
+            key: Key::Char(';'),
+            mods: primary_mod(),
+            repeat: false,
+            physical: Key::Char('z'), // physical Z position, but ';' under Dvorak
+        };
+        assert!(
+            !undo.matches(dvorak_semicolon),
+            "an ASCII logical key never falls back to the physical position"
+        );
+    }
+
+    #[test]
+    fn non_latin_fallback_requires_a_command_modifier() {
+        // No command modifier ⇒ no physical fallback (it's typing, not a chord).
+        let bare = Shortcut::key(Key::Char('z'));
+        let russian_z = KeyPress {
+            key: Key::Char('я'),
+            mods: Modifiers::NONE,
+            repeat: false,
+            physical: Key::Char('z'),
+        };
+        assert!(!bare.matches(russian_z));
     }
 
     #[test]
