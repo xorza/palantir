@@ -104,17 +104,15 @@ impl<'a> ComboBox<'a> {
         });
 
         let trigger_rect = state.rect;
+        let mut open = ui.state_mut::<ComboState>(id).open;
         if !state.disabled && raw_state.clicked {
-            let st = ui.state_mut::<ComboState>(id);
-            st.open = !st.open;
+            open = !open;
         }
         if ui.escape_pressed() {
-            ui.state_mut::<ComboState>(id).open = false;
+            open = false;
         }
 
-        if ui.state_mut::<ComboState>(id).open
-            && let Some(rect) = trigger_rect
-        {
+        if open && let Some(rect) = trigger_rect {
             let panel = ui.theme.context_menu.panel.clone();
             let anchor = Vec2::new(rect.min.x, rect.min.y + rect.size.h);
             let options = self.options;
@@ -133,9 +131,10 @@ impl<'a> ComboBox<'a> {
                 }
             });
             if resp.closed() {
-                ui.state_mut::<ComboState>(id).open = false;
+                open = false;
             }
         }
+        ui.state_mut::<ComboState>(id).open = open;
 
         Response::eager(id, ui, raw_state)
     }

@@ -64,13 +64,7 @@ impl<'a> Checkbox<'a> {
         let checked = *self.value;
 
         let theme = self.style.as_ref().unwrap_or(&ui.theme.checkbox);
-        let chrome = ToggleChrome {
-            look_target: theme.pick(state, checked).clone(),
-            anim: theme.anim,
-            box_size: theme.box_size,
-            row_gap: theme.row_gap,
-            pill: false,
-        };
+        let chrome = ToggleChrome::new(theme, state, checked, false);
         let indicator = theme.indicator;
         let indicator_stroke = theme.indicator_stroke;
 

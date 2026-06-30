@@ -20,7 +20,7 @@ use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 /// reads through the same `pick`'s `text` slot (defaults: `None` on
 /// active states inherits `Theme::text`, `disabled` carries
 /// `TEXT_DISABLED`) — same flow as Button.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ToggleTheme {
     pub unchecked: StatefulLook,
     pub checked: StatefulLook,

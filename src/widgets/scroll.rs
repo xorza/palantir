@@ -292,6 +292,7 @@ pub enum BarMode {
 /// that owns sizing / placement / sense / visibility and an inner
 /// viewport that owns the `Scroll` layout mode, padding, and the panel
 /// knobs (gap / justify / child_align).
+#[derive(Debug)]
 struct ScrollWrappers {
     outer: Element,
     inner: Element,
@@ -347,6 +348,7 @@ fn scroll_wrappers(element: Element) -> ScrollWrappers {
 /// previous frame's clamp. The scrollbar's relationship to the
 /// content area — reserved gutter, overlay, or hidden — is selected
 /// via [`BarMode`].
+#[derive(Debug)]
 pub struct Scroll {
     element: Element,
     zoom: Option<ZoomConfig>,
@@ -680,8 +682,8 @@ impl Scroll {
         // inner under the same ZStack) can reach into the gutter
         // strip with absolute positions. The field routing
         // (outer = sizing/placement, inner = layout/panel knobs) lives
-        // in `Element::into_scroll_wrappers`; the per-frame computed
-        // fields below patch `inner`.
+        // in `scroll_wrappers`; the per-frame computed fields below
+        // patch `inner`.
         let ScrollWrappers { outer, mut inner } = scroll_wrappers(self.element);
 
         // Inner viewport owns the clip, the pan transform, the user-set

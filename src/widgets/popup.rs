@@ -14,9 +14,10 @@ use std::cell::Cell;
 /// What happens when the user presses outside the popup's body.
 ///
 /// Both modes install a full-surface "click-eater" leaf in the
-/// `Popup` layer behind the popup body — outside clicks hit the
-/// eater (`Sense::CLICK`) and don't propagate to the `Main` tree
-/// underneath. They differ only in whether the popup widget signals
+/// `Popup` layer behind the popup body — outside presses hit the
+/// eater (it senses `CLICK | DRAG | SCROLL | PINCH`) and don't
+/// propagate to the `Main` tree underneath. They differ only in
+/// whether the popup widget signals
 /// dismissal:
 ///
 /// - [`Self::Block`] — eater consumes the click; no signal. Use for
