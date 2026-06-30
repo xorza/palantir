@@ -662,7 +662,7 @@ fn frame_pass_count_matches_action_trigger() {
                 ui.on_input(InputEvent::KeyDown {
                     key: Key::Enter,
                     repeat: false,
-                    physical: None,
+                    physical: Key::Other,
                 });
             },
             2,
@@ -1380,7 +1380,7 @@ fn input_policy_routes_paint_only_gate() {
         ui.on_input(InputEvent::KeyDown {
             key: Key::Enter,
             repeat: false,
-            physical: None,
+            physical: Key::Other,
         });
         assert!(
             ui.input.repaint_requested_since_last_frame,

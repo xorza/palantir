@@ -35,7 +35,7 @@ fn press(key: Key) -> KeyPress {
         key,
         mods: Modifiers::NONE,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     }
 }
 
@@ -62,7 +62,7 @@ fn shift(key: Key) -> KeyPress {
             ..Modifiers::NONE
         },
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     }
 }
 
@@ -78,7 +78,7 @@ fn ctrl_press(key: Key) -> KeyPress {
             ..Modifiers::NONE
         },
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     }
 }
 

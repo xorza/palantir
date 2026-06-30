@@ -183,7 +183,7 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     assert!(!delta.requests_repaint, "idle key must skip the frame");
 
@@ -192,7 +192,7 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Enter,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     assert!(delta.requests_repaint);
 
@@ -208,7 +208,7 @@ fn keydown_wakes_only_when_focus_or_subscription_exists() {
     let delta = ui.on_input(InputEvent::KeyDown {
         key: Key::Escape,
         repeat: false,
-        physical: None,
+        physical: Key::Other,
     });
     assert!(delta.requests_repaint);
 }
