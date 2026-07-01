@@ -15,6 +15,7 @@ use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size, widget_id::WidgetId};
+use crate::renderer::backend::viewport::DAMAGE_AA_PADDING;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
     GpuFillFields, RenderCmdBuffer,
@@ -92,6 +93,17 @@ pub(crate) fn encode(
     let viewport = ui.display.logical_rect();
     let now = ui.time;
     let gradients = arena.gradients.as_slice();
+    // Logical-px slack the damage subtree-cull inflates by so it matches
+    // the *padded* region the backend actually PreClears. The scissor is
+    // `round(edge · scale) ± DAMAGE_AA_PADDING` physical px
+    // (`viewport::logical_rect_to_phys_scissor`); the round can push each
+    // edge out by ½ px, so the cleared region reaches
+    // `(DAMAGE_AA_PADDING + 0.5) / scale` logical px past the raw damage
+    // rect. Inflate by one extra px so the strict `Rect::intersects`
+    // (touching doesn't count) can't drop a node sitting exactly on that
+    // boundary. Without this, a node in the pad ring is cleared but
+    // culled from repaint → a hard cut at the wire/shape bbox edge.
+    let damage_cull_margin = (DAMAGE_AA_PADDING as f32 + 1.0) / ui.display.scale_factor;
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layer_cascades = &ui.cascades.layers[layer];
         let ctx = LayerCtx {
@@ -102,6 +114,7 @@ pub(crate) fn encode(
             gradients,
             gpu_views: &ui.gpu_views,
             damage_filter,
+            damage_cull_margin,
             viewport,
             now,
         };
@@ -128,6 +141,10 @@ struct LayerCtx<'a> {
     /// stable `TextureId` + paint callback up here by the owner node's id.
     gpu_views: &'a FxHashMap<WidgetId, GpuViewEntry>,
     damage_filter: Option<&'a DamageRegion>,
+    /// Logical-px inflation applied to each node's `subtree_paint_rect`
+    /// before the damage-cull intersection test, so the cull covers the
+    /// AA-padded region the backend PreClears (see [`encode`]).
+    damage_cull_margin: f32,
     viewport: Rect,
     now: Duration,
 }
@@ -419,8 +436,15 @@ fn encode_node(ctx: &LayerCtx, id: NodeId, out: &mut RenderCmdBuffer) {
     // covers descendants too, so a horizontal pan that translates
     // an overhanging port circle into the damage region still
     // recurses through the (potentially own-rect-tight) ancestor.
+    //
+    // Inflate by `damage_cull_margin` so the cull covers the AA-padded
+    // region the backend PreClears, not just the raw damage rect. A
+    // node whose paint bound lands in that pad ring (near a moving
+    // shape's bbox edge — e.g. a bezier wire dragged past a node border
+    // or port circle) would otherwise be cleared but skipped here,
+    // leaving a hard cut along the wire's bbox boundary.
     if let Some(region) = ctx.damage_filter
-        && !region.any_intersects(subtree_paint_rect)
+        && !region.any_intersects(subtree_paint_rect.inflated(ctx.damage_cull_margin))
     {
         return;
     }

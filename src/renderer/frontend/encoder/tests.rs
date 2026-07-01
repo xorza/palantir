@@ -953,6 +953,53 @@ fn damage_filter_includes_descendant_overflowing_parent_rect() {
     );
 }
 
+/// Regression: a static node sitting in the backend's AA-padding ring —
+/// just *outside* the raw damage rect but inside the `DAMAGE_AA_PADDING`
+/// (2 physical px) the backend PreClears around each scissor — must still
+/// emit its draw. The backend clears the padded region every partial
+/// frame; if the encoder's subtree-cull only tested the raw (unpadded)
+/// damage rect, that node would be cleared but never repainted, leaving a
+/// hard cut exactly along the damage boundary. This is the "dragging a
+/// bezier wire past a node border / port circle leaves it cropped along
+/// the wire's bbox edge" bug.
+///
+/// A node comfortably *beyond* the pad ring must still be culled, so the
+/// margin doesn't silently disable damage culling.
+#[test]
+fn damage_filter_repaints_neighbor_in_aa_pad_ring() {
+    // At `scale_factor == 1` (Ui::for_test) the cull margin is
+    // `DAMAGE_AA_PADDING + 1 = 3` logical px. A neighbor 2 px away is
+    // inside the pad the backend clears → must repaint; one 10 px away is
+    // well past the margin → must stay culled.
+    let cases: &[(&str, Rect, usize)] = &[
+        ("within_aa_pad_gap_2", Rect::new(60.0, 100.0, 38.0, 20.0), 1),
+        ("beyond_pad_gap_10", Rect::new(60.0, 100.0, 30.0, 20.0), 0),
+    ];
+    for (label, damage, expected) in cases {
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(UVec2::new(200, 200), |ui| {
+            Panel::canvas()
+                .auto_id()
+                .size((Sizing::FILL, Sizing::FILL))
+                .show(ui, |ui| {
+                    // Static neighbour at (100..120, 100..120) — stands in
+                    // for a node border / port circle the wire swept past.
+                    Frame::new()
+                        .id(WidgetId::from_hash("neighbour"))
+                        .position(Vec2::new(100.0, 100.0))
+                        .size((Sizing::Fixed(20.0), Sizing::Fixed(20.0)))
+                        .background(Background {
+                            fill: Color::rgb(1.0, 0.0, 0.0).into(),
+                            ..Default::default()
+                        })
+                        .show(ui);
+                });
+        });
+        let cmds = ui.encode_cmds_filtered(Some(*damage));
+        assert_eq!(count_draw_rects(&cmds), *expected, "case: {label}");
+    }
+}
+
 /// Pin: image `fit` resolution. A 100×50 image painted into a 200×200
 /// rect produces a different paint rect for each fit mode:
 /// - `Fill` keeps the full 200×200 rect (image stretched).

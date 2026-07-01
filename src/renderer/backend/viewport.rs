@@ -18,7 +18,13 @@ use glam::Vec2;
 /// nominal rect (SDF rounded-rect AA, italic descenders); without
 /// padding the scissor would clip the AA fringe and leave a
 /// 1-px-hard edge along the damage boundary.
-const DAMAGE_AA_PADDING: u32 = 2;
+///
+/// The backend's PreClear wipes this *padded* region, so the encoder's
+/// damage subtree-cull (`encode_node`) must inflate its intersection
+/// test by the logical equivalent of this pad — otherwise a node
+/// landing in the pad ring is cleared but culled from repaint, leaving
+/// a hard cut at the damage boundary. That's why this is `pub(crate)`.
+pub(crate) const DAMAGE_AA_PADDING: u32 = 2;
 
 /// Convert a logical-px damage rect to a physical-px scissor, padded
 /// by [`DAMAGE_AA_PADDING`] on every side and clamped to the viewport.
