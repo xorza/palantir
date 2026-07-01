@@ -1,3 +1,6 @@
 {
-  "file_scan_exclusions": ["**/.git", ".tmp", ".DS_Store"],
+  // This list replaces Zed's defaults, so the defaults are re-listed.
+  // "**/target" keeps the fs watcher off cargo's build churn (see the
+  // workspace-root .zed/settings.json for the rationale).
+  "file_scan_exclusions": ["**/.git", "**/.DS_Store", "**/target"],
 }
