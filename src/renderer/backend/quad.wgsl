@@ -51,6 +51,11 @@ const BRUSH_KIND_CONIC:        u32 = 3u;
 //            inside the shader via `fill_axis.w`.
 const BRUSH_KIND_SHADOW_DROP:  u32 = 4u;
 const BRUSH_KIND_SHADOW_INSET: u32 = 5u;
+// Rounded-triangle SDF. `fill` is the solid fill; the three corner points
+// ride the reused instance lanes — `radius.xy = a`, `radius.zw = b`,
+// `fill_axis.xy = c` — all in `local` (0..size) coords, and `fill_axis.z`
+// is the corner radius. Stroke uses the usual `stroke_color`/`stroke_width`.
+const BRUSH_KIND_TRIANGLE:     u32 = 6u;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
 const SPREAD_PAD:     u32 = 0u;
 const SPREAD_REPEAT:  u32 = 1u;
@@ -154,6 +159,24 @@ fn sdf_rounded_box_centered(p: vec2<f32>, b: vec2<f32>, radius: vec4<f32>) -> f3
 fn sdf_rounded_rect(p: vec2<f32>, size: vec2<f32>, radius: vec4<f32>) -> f32 {
     let half = size * 0.5;
     return sdf_rounded_box_centered(p - half, half, radius);
+}
+
+// Signed distance to the triangle (a, b, c) — negative inside, positive
+// outside (Inigo Quilez's `sdTriangle`). `s` folds in the winding sign so
+// the result is correctly signed for either orientation; subtracting a
+// radius from the caller rounds all three corners uniformly.
+fn sdf_triangle(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>, c: vec2<f32>) -> f32 {
+    let e0 = b - a; let e1 = c - b; let e2 = a - c;
+    let v0 = p - a; let v1 = p - b; let v2 = p - c;
+    let pq0 = v0 - e0 * clamp(dot(v0, e0) / dot(e0, e0), 0.0, 1.0);
+    let pq1 = v1 - e1 * clamp(dot(v1, e1) / dot(e1, e1), 0.0, 1.0);
+    let pq2 = v2 - e2 * clamp(dot(v2, e2) / dot(e2, e2), 0.0, 1.0);
+    let s = sign(e0.x * e2.y - e0.y * e2.x);
+    let d = min(min(
+        vec2<f32>(dot(pq0, pq0), s * (v0.x * e0.y - v0.y * e0.x)),
+        vec2<f32>(dot(pq1, pq1), s * (v1.x * e1.y - v1.y * e1.x))),
+        vec2<f32>(dot(pq2, pq2), s * (v2.x * e2.y - v2.y * e2.x)));
+    return -sqrt(d.x) * sign(d.y);
 }
 
 // Apply the user-selected spread mode to a parametric `t`. `Pad` clamps
@@ -291,6 +314,34 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         let cov_hole = blurred_rect_coverage(d_hole, sigma);
         let cov = clamp(1.0 - cov_hole, 0.0, 1.0);
         let a = in.fill.a * cov;
+        return vec4<f32>(in.fill.rgb * a, a);
+    }
+
+    if (kind == BRUSH_KIND_TRIANGLE) {
+        // Three corner points (in `local` 0..size coords) + corner radius
+        // ride the reused instance lanes. `sdf_triangle - radius` gives the
+        // rounded shape; coverage AA is the same half-pixel `clamp(0.5 - d)`
+        // the rounded-rect path uses, so a triangle gets crisp AA + rounded
+        // corners with no MSAA and no tessellation.
+        let ta = in.radius.xy;
+        let tb = in.radius.zw;
+        let tc = in.fill_axis.xy;
+        let corner_r = in.fill_axis.z;
+        let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
+        let t_outer = clamp(0.5 - td, 0.0, 1.0);
+        if (in.stroke_width > 0.0) {
+            // Same disjoint stroke/fill partition as the rounded-rect path:
+            // stroke covers the annulus, fill the interior; summed in
+            // premultiplied space so total coverage stays `t_outer`.
+            let inner_d  = td + in.stroke_width;
+            let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
+            let stroke_a = (t_outer - inner_aa) * in.stroke_color.a;
+            let fill_a   = inner_aa * in.fill.a;
+            let rgb = in.stroke_color.rgb * stroke_a + in.fill.rgb * fill_a;
+            let a   = stroke_a + fill_a;
+            return vec4<f32>(rgb, a);
+        }
+        let a = in.fill.a * t_outer;
         return vec4<f32>(in.fill.rgb * a, a);
     }
 

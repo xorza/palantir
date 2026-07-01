@@ -396,6 +396,24 @@ pub(crate) enum ShapeRecord {
         bbox: Rect,
         content_hash: u64,
     } = 6,
+    /// Filled/stroked rounded triangle, rendered as an analytic SDF on the
+    /// shared quad pipeline (`FillKind::TRIANGLE`). `a`/`b`/`c` are owner-local
+    /// corner points; the composer transforms them to physical px, packs them
+    /// into the reused `Quad` corner/axis lanes, and the shader evaluates
+    /// `sdf_triangle - radius` for rounded corners + coverage AA. Solid fill
+    /// only (gradients don't fit the reused lanes). `bbox` is the owner-local
+    /// AABB inflated by `radius + AA fringe` for damage / cull (the stroke is
+    /// inner-edge, so it adds no outward reach).
+    Triangle {
+        a: Vec2,
+        b: Vec2,
+        c: Vec2,
+        radius: f32,
+        /// Solid linear-RGB fill (straight alpha).
+        fill: ColorF16,
+        stroke: ShapeStroke,
+        bbox: Rect,
+    } = 8,
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
     /// stable render-target [`TextureId`] + the app `paint` callback live in
     /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
@@ -474,7 +492,9 @@ impl ShapeRecord {
                     shadow.inset(),
                 )
             }
-            ShapeRecord::Polyline { bbox, .. } | ShapeRecord::Curve { bbox, .. } => *bbox,
+            ShapeRecord::Polyline { bbox, .. }
+            | ShapeRecord::Curve { bbox, .. }
+            | ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
             // `Polyline` / `Curve` — or partial damage clips the overflow.
@@ -523,6 +543,7 @@ impl ShapeRecord {
             ShapeRecord::Image { .. } => 5,
             ShapeRecord::Curve { .. } => 6,
             ShapeRecord::GpuView { .. } => 7,
+            ShapeRecord::Triangle { .. } => 8,
         }
     }
 }

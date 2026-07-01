@@ -29,6 +29,7 @@ const _: () = assert!(
 );
 const _: () = assert!(FillKind::SHADOW_DROP.0 == 4, "BRUSH_KIND_SHADOW_DROP");
 const _: () = assert!(FillKind::SHADOW_INSET.0 == 5, "BRUSH_KIND_SHADOW_INSET");
+const _: () = assert!(FillKind::TRIANGLE.0 == 6, "BRUSH_KIND_TRIANGLE");
 const _: () = assert!(
     (FillKind::linear(Spread::Pad).0 >> 8) & 0xFF == 0,
     "SPREAD_PAD"

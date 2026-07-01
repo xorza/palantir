@@ -155,6 +155,13 @@ pub(crate) enum CmdKind {
     /// `RenderBuffer.curves`. A single `draw` per scissor group covers
     /// every instance in the group's `CurveBatch`.
     DrawCurve,
+    /// Rounded-triangle SDF. Payload: [`DrawTrianglePayload`]. The composer
+    /// transforms the three owner-local corner points to physical px, derives
+    /// the covering AABB, and emits one `Quad` with `FillKind::TRIANGLE` —
+    /// reusing the shared quad pipeline (the three points + radius pack into
+    /// the `Quad`'s `corners` / `fill_axis` lanes; the shader evaluates the
+    /// triangle SDF per fragment).
+    DrawTriangle,
 }
 
 /// Scissor clip payload. `corners` is all-zero for plain rect clips
@@ -450,6 +457,37 @@ pub(crate) struct DrawCurvePayload {
     pub(crate) fill_lut_row: LutRow,
 }
 
+/// Rounded-triangle payload. The three corner points `a`/`b`/`c` are stored
+/// **owner-local**; the composer folds in `origin` (owner-rect top-left) + the
+/// active push-transform before scaling to physical px, then derives the
+/// covering AABB (from the points inflated by `radius + AA fringe`) and packs
+/// the physical points into a `Quad` with `FillKind::TRIANGLE`.
+/// `fill` is the solid fill; `stroke_color` / `stroke_width` the inner-edge
+/// stroke. `radius` rounds all three corners (`0.0` = sharp).
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawTrianglePayload {
+    pub(crate) origin: glam::Vec2,
+    pub(crate) a: glam::Vec2,
+    pub(crate) b: glam::Vec2,
+    pub(crate) c: glam::Vec2,
+    /// Solid linear-RGB fill (straight alpha).
+    pub(crate) fill: ColorF16,
+    pub(crate) stroke_color: ColorF16,
+    pub(crate) radius: f32,
+    pub(crate) stroke_width: f32,
+}
+
+impl DrawTrianglePayload {
+    /// Canonical noop predicate — nothing paints when the fill is
+    /// transparent *and* the stroke is a no-op (transparent or zero width).
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        self.fill.is_noop() && (self.stroke_color.is_noop() || noop_f32(self.stroke_width))
+    }
+}
+
 impl DrawCurvePayload {
     /// Canonical noop predicate — zero/negative stroke width or a
     /// solid fill that's fully transparent. Gradient fills always
@@ -630,6 +668,16 @@ impl RenderCmdBuffer {
             return;
         }
         self.record_start(CmdKind::DrawCurve);
+        write_pod(&mut self.data, payload);
+    }
+
+    /// Record a `DrawTriangle` cmd. Composer transforms the three corner
+    /// points to physical-px and emits one `Quad` with `FillKind::TRIANGLE`.
+    pub(crate) fn draw_triangle(&mut self, payload: DrawTrianglePayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.record_start(CmdKind::DrawTriangle);
         write_pod(&mut self.data, payload);
     }
 

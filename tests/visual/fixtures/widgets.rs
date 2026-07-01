@@ -829,6 +829,60 @@ fn curve_caps_match_golden() {
     assert_matches_golden("curve_caps", &img, Tolerance::default());
 }
 
+/// Rounded-triangle SDF primitive: pins the `FillKind::TRIANGLE` shader
+/// branch. Four triangles exercise the axes that matter — sharp vs rounded
+/// corners, solid fill vs fill+inner-stroke vs stroke-only (transparent
+/// fill), and both windings (the bottom-right is CW to prove the SDF's
+/// winding-sign fold handles either orientation).
+#[test]
+fn triangle_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(240, 240), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                // Top-left: sharp solid fill.
+                ui.add_shape(Shape::Triangle {
+                    a: Vec2::new(20.0, 100.0),
+                    b: Vec2::new(65.0, 15.0),
+                    c: Vec2::new(110.0, 100.0),
+                    radius: 0.0,
+                    fill: Color::rgb(1.0, 0.4, 0.4).into(),
+                    stroke: Stroke::ZERO,
+                });
+                // Top-right: rounded solid fill.
+                ui.add_shape(Shape::Triangle {
+                    a: Vec2::new(130.0, 100.0),
+                    b: Vec2::new(175.0, 15.0),
+                    c: Vec2::new(220.0, 100.0),
+                    radius: 12.0,
+                    fill: Color::rgb(0.4, 1.0, 0.5).into(),
+                    stroke: Stroke::ZERO,
+                });
+                // Bottom-left: rounded fill + inner-edge stroke.
+                ui.add_shape(Shape::Triangle {
+                    a: Vec2::new(20.0, 220.0),
+                    b: Vec2::new(65.0, 135.0),
+                    c: Vec2::new(110.0, 220.0),
+                    radius: 8.0,
+                    fill: Color::rgb(0.2, 0.5, 1.0).into(),
+                    stroke: Stroke::solid(Color::WHITE, 3.0),
+                });
+                // Bottom-right: stroke-only (transparent fill), CW winding.
+                ui.add_shape(Shape::Triangle {
+                    a: Vec2::new(220.0, 220.0),
+                    b: Vec2::new(175.0, 135.0),
+                    c: Vec2::new(130.0, 220.0),
+                    radius: 6.0,
+                    fill: Color::TRANSPARENT.into(),
+                    stroke: Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0),
+                });
+            });
+    });
+    assert_matches_golden("triangle", &img, Tolerance::default());
+}
+
 /// ProgressBar at 50%: the two-`Fill`-leaf split resolves to a
 /// half-width accent fill over the rounded pill track.
 #[test]
