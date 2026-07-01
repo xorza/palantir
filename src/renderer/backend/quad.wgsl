@@ -76,8 +76,9 @@ struct VertexOut {
     @location(6) @interpolate(flat) fill_kind:    u32,
     @location(7) @interpolate(flat) fill_lut_row: u32,
     @location(8) @interpolate(flat) fill_axis:    vec4<f32>,
-    // Precomputed `1.0 / max(size, ZERO_EPS)` so `eval_fill` and the
-    // shadow paths can multiply per-fragment instead of dividing.
+    // Precomputed `1.0 / max(size, ZERO_EPS)` so `eval_fill`'s gradient
+    // path multiplies per-fragment instead of dividing (solid fills and the
+    // shadow / triangle paths don't read it).
     @location(9) @interpolate(flat) inv_size:     vec2<f32>,
 };
 
@@ -268,6 +269,30 @@ fn blurred_rect_coverage(d: f32, sigma: f32) -> f32 {
     return 0.5 - 0.5 * erf_approx(d * inv);
 }
 
+// Composite an SDF shape's fill + inner-edge stroke into premultiplied linear
+// RGBA, given the signed distance `d` (negative inside). `outer_aa =
+// clamp(0.5 - d)` is the coverage. With a stroke, the stroke covers the annulus
+// between the outer edge and the edge inset by `stroke_width`, and the fill
+// covers the interior inside that inset. The two are *spatially disjoint*
+// within any pixel (stroke = `outer_aa - inner_aa`, fill = `inner_aa`), so they
+// sum additively in premultiplied space — the coverages partition and add back
+// to `outer_aa`. Compositing stroke OVER fill instead (`a = stroke_a +
+// fill_a*(1-stroke_a)`) dips total alpha to ~0.75 where the two AA bands cross
+// at ~0.5 each, showing a 1px seam of background bleeding between stroke and
+// fill at fractional zoom; summing keeps total coverage at `outer_aa`. Shared
+// by the rounded-rect and triangle paths so they can't drift.
+fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
+    if (stroke_width > 0.0) {
+        let inner_aa = clamp(0.5 - (d + stroke_width), 0.0, 1.0);
+        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
+        let fill_a   = inner_aa * fill.a;
+        return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
+    }
+    let a = fill.a * outer_aa;
+    return vec4<f32>(fill.rgb * a, a);
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     let kind = in.fill_kind & 0xFFu;
@@ -318,61 +343,21 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
 
     if (kind == BRUSH_KIND_TRIANGLE) {
-        // Three corner points (in `local` 0..size coords) + corner radius
-        // ride the reused instance lanes. `sdf_triangle - radius` gives the
-        // rounded shape; coverage AA is the same half-pixel `clamp(0.5 - d)`
-        // the rounded-rect path uses, so a triangle gets crisp AA + rounded
-        // corners with no MSAA and no tessellation.
+        // Three corner points (in `local` 0..size coords) + corner radius ride
+        // the reused instance lanes. `sdf_triangle - radius` gives the rounded
+        // shape; `composite` applies the same coverage AA + inner stroke as the
+        // rounded-rect path, so a triangle gets crisp AA + rounded corners with
+        // no MSAA and no tessellation. Solid fill only (no gradient lanes).
         let ta = in.radius.xy;
         let tb = in.radius.zw;
         let tc = in.fill_axis.xy;
         let corner_r = in.fill_axis.z;
         let td = sdf_triangle(in.local, ta, tb, tc) - corner_r;
-        let t_outer = clamp(0.5 - td, 0.0, 1.0);
-        if (in.stroke_width > 0.0) {
-            // Same disjoint stroke/fill partition as the rounded-rect path:
-            // stroke covers the annulus, fill the interior; summed in
-            // premultiplied space so total coverage stays `t_outer`.
-            let inner_d  = td + in.stroke_width;
-            let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
-            let stroke_a = (t_outer - inner_aa) * in.stroke_color.a;
-            let fill_a   = inner_aa * in.fill.a;
-            let rgb = in.stroke_color.rgb * stroke_a + in.fill.rgb * fill_a;
-            let a   = stroke_a + fill_a;
-            return vec4<f32>(rgb, a);
-        }
-        let a = in.fill.a * t_outer;
-        return vec4<f32>(in.fill.rgb * a, a);
+        return composite(td, in.fill, in.stroke_color, in.stroke_width);
     }
 
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
-    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
-
-    let fill_rgba = eval_fill(in);
-
-    if (in.stroke_width > 0.0) {
-        // Stroke sits on the inner edge: the stroke covers the annulus
-        // between the outer edge and the edge inset by `stroke_width`,
-        // the fill covers the interior inside that inset. The two are
-        // *spatially disjoint* within any pixel (`stroke_cov` is
-        // `outer_aa - inner_aa`, the fill is `inner_aa`), so they sum
-        // additively in premultiplied space — `cov`s partition the
-        // covered area and add up to `outer_aa`. Compositing stroke OVER
-        // fill instead (`a = stroke_a + fill_a*(1-stroke_a)`) dips the
-        // total alpha to 0.75 where the two AA bands cross at ~0.5 each,
-        // which shows up as a 1px seam of background bleeding between the
-        // stroke and the fill at fractional zoom. Summing keeps total
-        // coverage at `outer_aa` across the seam.
-        let inner_d  = d + in.stroke_width;
-        let inner_aa = clamp(0.5 - inner_d, 0.0, 1.0);
-        let stroke_a = (outer_aa - inner_aa) * in.stroke_color.a;
-        let fill_a   = inner_aa * fill_rgba.a;
-        let rgb = in.stroke_color.rgb * stroke_a + fill_rgba.rgb * fill_a;
-        let a   = stroke_a + fill_a;
-        return vec4<f32>(rgb, a);
-    }
-    let a = fill_rgba.a * outer_aa;
-    return vec4<f32>(fill_rgba.rgb * a, a);
+    return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
 }
 
 // Stencil mask-write: `discard` outside the rounded shape so those
