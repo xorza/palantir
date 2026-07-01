@@ -217,8 +217,17 @@ impl GpuPaint for Cube {
         let mvp = {
             let size = ctx.size_px.max(UVec2::ONE);
             let aspect = size.x as f32 / size.y as f32;
-            let proj = Mat4::perspective_rh(45f32.to_radians(), aspect, 0.1, 100.0);
-            let view = Mat4::look_at_rh(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+            // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the
+            // `directx` RH perspective — the non-deprecated peer of the old
+            // `Mat4::perspective_rh`.
+            let proj = glam::camera::rh::proj::directx::perspective(
+                45f32.to_radians(),
+                aspect,
+                0.1,
+                100.0,
+            );
+            let view =
+                glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
             let model =
                 Mat4::from_rotation_y(self.spin + self.yaw) * Mat4::from_rotation_x(self.pitch);
             proj * view * model
