@@ -175,7 +175,7 @@ mod hot_struct_sizes {
     use crate::primitives::brush::Brush;
     use crate::primitives::span::Span;
     use crate::renderer::frontend::cmd_buffer::{
-        DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload,
+        DrawMeshPayload, DrawPolylinePayload, DrawRectPayload, DrawTextPayload, DrawTrianglePayload,
     };
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::CurveInstance;
@@ -270,6 +270,7 @@ mod hot_struct_sizes {
         DrawTextPayload => "cmd::DrawTextPayload": 48 / 8,
         DrawPolylinePayload => "cmd::DrawPolylinePayload": 52 / 4,
         DrawMeshPayload => "cmd::DrawMeshPayload": 48 / 4,
+        DrawTrianglePayload => "cmd::DrawTrianglePayload": 56 / 4,
         // GPU instance types.
         Quad => "renderer::Quad": 60 / 4,
         CurveInstance => "renderer::CurveInstance": 60 / 4,

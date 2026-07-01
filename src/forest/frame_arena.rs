@@ -23,6 +23,7 @@ use crate::primitives::paint::FillKind;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
+use crate::primitives::stroke::Stroke;
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::stroke_tessellate::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
@@ -288,6 +289,44 @@ impl FrameArena {
         let cubic = quadratic_to_cubic(p0, c, p2);
         let lowered = self.0.borrow_mut().lower_brush_inner(&brush, atlas);
         lower_curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap, 1)
+    }
+
+    /// Lower a triangle into a [`ShapeRecord::Triangle`]. Solid fill only —
+    /// gradients can't ride the reused quad-instance lanes, so `fill` is
+    /// `expect_solid`'d here (rejecting a gradient at the authoring boundary).
+    /// `bbox` is the owner-local AABB of `a`/`b`/`c` inflated by
+    /// `radius + AA fringe` (the SDF offsets the shape outward by `radius`;
+    /// the stroke is inner-edge and adds no outward reach), so damage and
+    /// clip-cull cover the rounded, antialiased extent. No arena touch (no
+    /// gradient to register); `&self` mirrors the sibling `lower_*` call shape.
+    pub(crate) fn lower_triangle(
+        &self,
+        a: Vec2,
+        b: Vec2,
+        c: Vec2,
+        radius: f32,
+        fill: Brush,
+        stroke: Stroke,
+    ) -> ShapeRecord {
+        let lo = a.min(b).min(c);
+        let hi = a.max(b).max(c);
+        let pad = radius.max(0.0) + HALF_FRINGE;
+        let bbox = Rect {
+            min: Vec2::new(lo.x - pad, lo.y - pad),
+            size: Size {
+                w: (hi.x - lo.x) + 2.0 * pad,
+                h: (hi.y - lo.y) + 2.0 * pad,
+            },
+        };
+        ShapeRecord::Triangle {
+            a,
+            b,
+            c,
+            radius,
+            fill: fill.expect_solid().into(),
+            stroke: ShapeStroke::from(stroke),
+            bbox,
+        }
     }
 }
 

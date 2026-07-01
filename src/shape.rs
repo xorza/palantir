@@ -30,6 +30,22 @@ pub enum Shape<'a> {
         fill: Brush,
         stroke: Stroke,
     },
+    /// Filled/stroked triangle with optional corner rounding, drawn as an
+    /// analytic SDF on the shared quad pipeline (a sibling of `RoundedRect` —
+    /// no tessellation, crisp AA at any zoom, rounded corners = `SDF - radius`).
+    /// `a`/`b`/`c` are the corner points in owner-local coords; `radius`
+    /// rounds all three corners uniformly (`0.0` = sharp). `fill` must be
+    /// `Brush::Solid` — gradients aren't packable into the reused quad
+    /// instance lanes (a dedicated-pipeline follow-up if ever needed);
+    /// `stroke` sits on the inner edge like `RoundedRect`'s.
+    Triangle {
+        a: Vec2,
+        b: Vec2,
+        c: Vec2,
+        radius: f32,
+        fill: Brush,
+        stroke: Stroke,
+    },
     /// Two-point stroked line — ergonomic shorthand for a 2-point
     /// `Polyline { Single(color) }`. Lowers to `ShapeRecord::Polyline`
     /// at authoring time; there's no `ShapeRecord::Line`. `cap`
@@ -399,6 +415,19 @@ impl Shape<'_> {
                 stroke,
                 ..
             } => local_rect_paint_empty(local_rect) || (fill.is_noop() && stroke.is_noop()),
+            Shape::Triangle {
+                a,
+                b,
+                c,
+                fill,
+                stroke,
+                ..
+            } => {
+                (fill.is_noop() && stroke.is_noop())
+                    // Fully-degenerate triangle (all three corners coincident)
+                    // paints nothing even rounded — a point has zero area.
+                    || (vec2_approx_eq(*a, *b) && vec2_approx_eq(*a, *c))
+            }
             Shape::Line { width, brush, .. } => noop_f32(*width) || brush.is_noop(),
             Shape::Polyline {
                 points,

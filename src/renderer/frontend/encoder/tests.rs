@@ -496,7 +496,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
             | CmdKind::DrawMesh
             | CmdKind::DrawPolyline
             | CmdKind::DrawImage
-            | CmdKind::DrawCurve => {}
+            | CmdKind::DrawCurve
+            | CmdKind::DrawTriangle => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");

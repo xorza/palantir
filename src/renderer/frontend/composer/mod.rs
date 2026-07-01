@@ -1,13 +1,16 @@
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::layout::types::display::Display;
 use crate::primitives::approx::EPS;
+use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
+use crate::primitives::corners::Corners;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawRectPayload, DrawShadowPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
+    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
+    RenderCmdBuffer,
 };
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
@@ -554,6 +557,60 @@ impl Composer {
                         fill_kind: p.fill_kind,
                         fill_lut_row: LutRow::FALLBACK,
                         fill_axis,
+                    });
+                }
+                CmdKind::DrawTriangle => {
+                    let p: DrawTrianglePayload = cmds.read(start);
+                    // Fold owner origin + active transform, scale to physical
+                    // px. No pixel-snap — the SDF handles sub-pixel placement;
+                    // snapping the covering rect would only shift the AA band.
+                    let phys_scale = current_transform.scale * scale;
+                    let xf = |q: Vec2| current_transform.apply_point(q + p.origin) * scale;
+                    let a = xf(p.a);
+                    let b = xf(p.b);
+                    let c = xf(p.c);
+                    let radius_phys = (p.radius * phys_scale).max(0.0);
+                    let stroke_phys = (p.stroke_width * phys_scale).max(0.0);
+                    // Covering AABB: the rounded shape (the SDF offsets the
+                    // triangle outward by `radius` to round its corners) plus
+                    // the ½px AA fringe. The stroke sits on the *inner* edge
+                    // (like `RoundedRect`), so it adds no outward reach.
+                    let lo = a.min(b).min(c);
+                    let hi = a.max(b).max(c);
+                    let pad = radius_phys + 0.5;
+                    let rect = Rect {
+                        min: lo - Vec2::splat(pad),
+                        size: Size {
+                            w: (hi.x - lo.x) + 2.0 * pad,
+                            h: (hi.y - lo.y) + 2.0 * pad,
+                        },
+                    };
+                    let tri_urect = urect_from_phys(rect.min, rect.max(), viewport_phys);
+                    // Triangle is a quad-tier draw (lowest paint kind), so it
+                    // culls + flushes exactly like `DrawRect`.
+                    if self.cull_against_active_clip(tri_urect) {
+                        continue;
+                    }
+                    self.quad_forces_flush(tri_urect, out);
+                    // Pack the three points in rect-local coords (0..size,
+                    // matching the shader's `in.local`) + the corner radius
+                    // into the reused `corners` / `fill_axis` lanes;
+                    // `FillKind::TRIANGLE` tells the shader to read them as a
+                    // triangle SDF rather than rounded-rect radii / gradient
+                    // axis. No occlusion annotation — a triangle covers only
+                    // its interior, not the whole `rect`.
+                    let al = a - rect.min;
+                    let bl = b - rect.min;
+                    let cl = c - rect.min;
+                    out.quads.push(Quad {
+                        rect,
+                        fill: p.fill,
+                        corners: Corners::from_array([al.x, al.y, bl.x, bl.y]),
+                        stroke_color: p.stroke_color,
+                        stroke_width: stroke_phys,
+                        fill_kind: FillKind::TRIANGLE,
+                        fill_lut_row: LutRow::FALLBACK,
+                        fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
                     });
                 }
                 CmdKind::DrawMesh => {

@@ -90,6 +90,14 @@ impl Shapes {
                     fill_grad_hash: lowered.hash,
                 }
             }
+            Shape::Triangle {
+                a,
+                b,
+                c,
+                radius,
+                fill,
+                stroke,
+            } => arena.lower_triangle(a, b, c, radius, fill, stroke),
             Shape::Line {
                 a,
                 b,

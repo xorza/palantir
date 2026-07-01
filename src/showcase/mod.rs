@@ -38,5 +38,6 @@ pub mod text_edit;
 pub mod text_zorder;
 pub mod tooltips;
 pub mod transform;
+pub mod triangle;
 pub mod visibility;
 pub mod wrap;

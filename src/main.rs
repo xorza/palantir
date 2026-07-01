@@ -11,7 +11,7 @@ use showcase::{
     alignment, animations, bezier, buttons, checkbox, clip, context_menu, cube, dialogs, disabled,
     drag, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
     pan_zoom_auto, panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider,
-    spacing, switch, text, text_edit, text_zorder, tooltips, transform, visibility, wrap,
+    spacing, switch, text, text_edit, text_zorder, tooltips, transform, triangle, visibility, wrap,
 };
 
 /// Token for the bootstrap window (the showcase itself).
@@ -78,6 +78,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("image", image::build),
     ("lines", lines::build),
     ("bezier", bezier::build),
+    ("triangle", triangle::build),
     ("drag", drag::build),
     ("gradients", gradients::build),
     ("shadow", shadow::build),

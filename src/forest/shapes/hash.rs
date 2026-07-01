@@ -159,6 +159,22 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
         ShapeRecord::GpuView { epoch } => {
             h.write_u64(*epoch);
         }
+        // `bbox` is derived from `a`/`b`/`c` + `radius`, so it's excluded —
+        // the geometry that determines it is already hashed.
+        ShapeRecord::Triangle {
+            a,
+            b,
+            c,
+            radius,
+            fill,
+            stroke,
+            bbox: _,
+        } => {
+            h.pod(&[*a, *b, *c]);
+            h.write_u32(radius.to_bits());
+            fill.hash(&mut h);
+            h.write(bytemuck::bytes_of(stroke));
+        }
     }
     NodeHash(h.finish())
 }

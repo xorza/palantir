@@ -18,7 +18,7 @@ use crate::primitives::{corners::Corners, rect::Rect, size::Size, widget_id::Wid
 use crate::renderer::backend::viewport::DAMAGE_AA_PADDING;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    GpuFillFields, RenderCmdBuffer,
+    DrawTrianglePayload, GpuFillFields, RenderCmdBuffer,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
@@ -363,6 +363,35 @@ fn emit_one_shape(
                 cap: *cap as u32,
                 fill_kind,
                 fill_lut_row,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
+        ShapeRecord::Triangle {
+            a,
+            b,
+            c,
+            radius,
+            fill,
+            stroke,
+            bbox: _,
+        } => {
+            // Corner points are owner-local; the composer folds `origin` +
+            // the active transform and derives the covering AABB. Solid
+            // fill only — the reused quad lanes have no room for a gradient.
+            let (stroke_color, stroke_width) = if stroke.is_noop() {
+                (ColorF16::TRANSPARENT, 0.0)
+            } else {
+                (stroke.color, stroke.width())
+            };
+            out.draw_triangle(DrawTrianglePayload {
+                origin: owner_rect.min,
+                a: *a,
+                b: *b,
+                c: *c,
+                fill: *fill,
+                stroke_color,
+                radius: *radius,
+                stroke_width,
                 ..bytemuck::Zeroable::zeroed()
             });
         }

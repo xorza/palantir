@@ -66,6 +66,13 @@ impl FillKind {
     /// shader inverts coverage and clips to inside the source rect.
     pub(crate) const SHADOW_INSET: Self = Self(5);
 
+    /// Rounded-triangle SDF marker. `fill: Color` is the solid fill; the
+    /// three corner points (packed into the reused `corners` + `fill_axis`
+    /// lanes as `(a.x,a.y,b.x,b.y)` / `(c.x,c.y,radius,_)`) and the corner
+    /// radius drive `sdf_triangle - radius` in the shader. Stroke rides the
+    /// usual `stroke_color` / `stroke_width` fields.
+    pub(crate) const TRIANGLE: Self = Self(6);
+
     /// True iff this `FillKind` marks a shadow draw. Shadow blur
     /// extends visually past the stored rect, so shadows are never
     /// safe to drop in the occlusion-prune sweep — checked at
