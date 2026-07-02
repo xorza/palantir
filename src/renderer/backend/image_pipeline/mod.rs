@@ -111,7 +111,7 @@ impl ImagePipeline {
                 layout_label: "palantir.image.pl",
                 shader,
                 bind_group_layouts: &[Some(image_bgl)],
-                vertex_buffers: &[instance_layout()],
+                vertex_buffers: &[Some(instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,

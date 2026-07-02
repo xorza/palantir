@@ -111,6 +111,7 @@ impl DynamicBuffer {
             self.buffer
                 .slice(..bytes.len() as u64)
                 .get_mapped_range_mut()
+                .expect("map mapped-at-creation range")
                 .copy_from_slice(bytes);
             self.buffer.unmap();
             return;

@@ -120,7 +120,7 @@ impl QuadPipeline {
                 layout_label: "palantir.quad.pl",
                 shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
-                vertex_buffers: &[quad_instance_layout()],
+                vertex_buffers: &[Some(quad_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,
@@ -138,7 +138,7 @@ impl QuadPipeline {
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
         let layout = build_pipeline_layout(device, "palantir.quad.pl.mask", &[Some(gradient_bgl)]);
-        let instance = quad_instance_layout();
+        let instance = Some(quad_instance_layout());
         let mask_face = wgpu::StencilFaceState {
             compare: wgpu::CompareFunction::Always,
             fail_op: wgpu::StencilOperation::Keep,

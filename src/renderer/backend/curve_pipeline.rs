@@ -87,7 +87,7 @@ impl CurvePipeline {
                 layout_label: "palantir.curve.pl",
                 shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
-                vertex_buffers: &[curve_instance_layout()],
+                vertex_buffers: &[Some(curve_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
             format,

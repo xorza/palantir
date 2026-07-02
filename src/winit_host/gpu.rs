@@ -63,6 +63,7 @@ impl Gpu {
             power_preference: cfg.power_preference,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         }))
         .expect("request adapter");
 
@@ -148,6 +149,10 @@ impl Gpu {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format,
+            // `Auto` reproduces wgpu's pre-30 behaviour: sRGB for our
+            // `*Srgb` swapchain format, keeping the colour contract
+            // (linear-in, sRGB-encode on write) intact.
+            color_space: wgpu::SurfaceColorSpace::Auto,
             width: size.x.max(1),
             height: size.y.max(1),
             present_mode: self.present_mode,

@@ -228,7 +228,7 @@ impl TextBackend {
                 layout_label: "palantir.text.pl",
                 shader,
                 bind_group_layouts: &[Some(atlas_bgl)],
-                vertex_buffers: &[glyph_instance_layout()],
+                vertex_buffers: &[Some(glyph_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
             format,
@@ -639,6 +639,7 @@ mod gpu_regression {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .block_on()
             .expect("request adapter (headless)");

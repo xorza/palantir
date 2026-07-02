@@ -392,7 +392,11 @@ impl GpuTimings {
 /// Caller is responsible for clearing `in_flight` / `ready` after this
 /// returns.
 fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
-    let ts_range = slot.timestamps_buffer.slice(..).get_mapped_range();
+    let ts_range = slot
+        .timestamps_buffer
+        .slice(..)
+        .get_mapped_range()
+        .expect("map timestamps range");
     let count = slot.timestamps_count as usize;
     // Always: pass duration = last - first.
     if count >= 2 {
@@ -432,7 +436,10 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
     slot.timestamps_buffer.unmap();
 
     if let Some(stats_buf) = &slot.stats_buffer {
-        let s_range = stats_buf.slice(..).get_mapped_range();
+        let s_range = stats_buf
+            .slice(..)
+            .get_mapped_range()
+            .expect("map stats range");
         let mut values = [0u64; STATS_FIELD_COUNT];
         for (i, v) in values.iter_mut().enumerate() {
             let off = i * 8;

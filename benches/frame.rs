@@ -106,6 +106,7 @@ fn gpu() -> &'static Gpu {
                 power_preference: wgpu::PowerPreference::HighPerformance,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .block_on()
             .expect("request adapter (headless)");
