@@ -674,9 +674,8 @@ mod gpu_regression {
             backend.prepare_batch(&mut ctx, scale, 0, runs);
             backend.flush_atlas_uploads(&mut ctx);
         }
-        belt.finish();
+        belt.finish_and_recall_on_submit(&encoder);
         queue.submit([encoder.finish()]);
-        belt.recall();
         device
             .poll(wgpu::PollType::Wait {
                 submission_index: None,

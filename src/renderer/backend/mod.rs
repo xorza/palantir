@@ -649,18 +649,18 @@ impl WgpuBackend {
             t.resolve(&mut encoder);
         }
 
-        // Close the belt: no more `belt.write_buffer` calls allowed
-        // until after `submit + recall` below.
-        self.staging_belt.finish();
+        // Close the belt and tie its chunk remap to this frame's
+        // submission: `finish_and_recall_on_submit` records a
+        // `map_buffer_on_submit` onto the encoder, so the just-used
+        // chunks re-map automatically once the submission completes —
+        // no explicit `recall()`. Must precede `encoder.finish()`,
+        // which needs the still-live encoder. Chunks come back when the
+        // map callback fires off a `device.poll`: a `PollType::Wait`
+        // caller sees them next frame; a `PollType::Poll` caller may
+        // allocate one more chunk during the catch-up window, which
+        // wgpu's docs flag as harmless.
+        self.staging_belt.finish_and_recall_on_submit(&encoder);
         self.queue.submit(std::iter::once(encoder.finish()));
-
-        // Return the just-used staging-belt chunks for remap. Closed
-        // chunks come back when their `map_async` callback fires off
-        // the next `device.poll` — `PollType::Wait` callers see them
-        // ready next frame; `PollType::Poll` callers may need to
-        // allocate one more chunk during the catch-up window. wgpu's
-        // own docs flag this as harmless.
-        self.staging_belt.recall();
 
         // Kick the map_async on this frame's staging slot and read
         // back any prior frame whose map has completed. Cheap (one
