@@ -484,7 +484,7 @@ impl WindowRenderer {
                     // behind the compositor's configure cadence. See
                     // winit #2609, slint #4200.
                     pre_present();
-                    frame.present();
+                    gpu.present(frame);
                     report.repaint_requested()
                 }
                 Suboptimal(_) | Outdated | Lost => {

@@ -31,6 +31,7 @@ fn gpu() -> &'static Gpu {
                 power_preference: wgpu::PowerPreference::LowPower,
                 compatible_surface: None,
                 force_fallback_adapter: false,
+                apply_limit_buckets: false,
             })
             .block_on()
             .expect("request adapter (headless)");
@@ -228,7 +229,7 @@ fn readback(
         .expect("poll");
     rx.recv().expect("map_async result").expect("map ok");
 
-    let data = slice.get_mapped_range();
+    let data = slice.get_mapped_range().expect("map readback range");
     let mut out = Vec::with_capacity(row_bytes * size.y as usize);
     for y in 0..size.y as usize {
         let row_start = y * padded as usize;

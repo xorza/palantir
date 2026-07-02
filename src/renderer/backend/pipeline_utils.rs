@@ -19,7 +19,7 @@ pub(crate) struct PipelineRecipe<'a> {
     pub label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
     pub layout: &'a wgpu::PipelineLayout,
-    pub vertex_buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub topology: wgpu::PrimitiveTopology,
     pub color_format: wgpu::TextureFormat,
     pub fragment_entry: &'static str,
@@ -88,7 +88,7 @@ pub(crate) struct ColorVariantSpec<'a> {
     pub layout_label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
     pub bind_group_layouts: &'a [Option<&'a wgpu::BindGroupLayout>],
-    pub vertex_buffers: &'a [wgpu::VertexBufferLayout<'a>],
+    pub vertex_buffers: &'a [Option<wgpu::VertexBufferLayout<'a>>],
     pub topology: wgpu::PrimitiveTopology,
 }
 

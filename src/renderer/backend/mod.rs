@@ -387,6 +387,13 @@ impl WgpuBackend {
         self.device.limits().max_texture_dimension_2d
     }
 
+    /// Present an acquired swapchain frame. wgpu 30 moved `present` off
+    /// `SurfaceTexture` onto the queue, so the window renderer routes it
+    /// through the backend's owned queue here.
+    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
+        self.queue.present(frame);
+    }
+
     /// Render `buffer` for `plan` onto `surface_tex`. When `via_backbuffer` is
     /// `Some`, the pass renders into that backbuffer and the result is copied
     /// out (the backbuffer-copy path); when `None`, it renders straight into

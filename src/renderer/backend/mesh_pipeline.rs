@@ -72,7 +72,7 @@ impl MeshPipeline {
                 layout_label: "palantir.mesh.pl",
                 shader,
                 bind_group_layouts: &[],
-                vertex_buffers: &[mesh_vertex_layout(), mesh_instance_layout()],
+                vertex_buffers: &[Some(mesh_vertex_layout()), Some(mesh_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
             },
             format,

@@ -22,7 +22,7 @@ half = { version = "2.7", features = ["bytemuck"] }
 rustc-hash = "2.1"
 tracing = "0.1"
 pollster = "0.4"
-wgpu = { version = "29.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
+wgpu = { version = "30.0", default-features = false, features = ["std", "parking_lot", "wgsl", "vulkan", "metal", "dx12"] }
 winit = "0.30"
 rayon = "1.12"
 padding-struct = "0.2"
@@ -150,7 +150,7 @@ opt-level = 3
 opt-level = 3
 [profile.dev.package.naga]
 opt-level = 3
-[profile.dev.package.gpu-descriptor]
+[profile.dev.package.gpu-allocator]
 opt-level = 3
 [profile.dev.package.image]
 opt-level = 3
