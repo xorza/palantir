@@ -149,10 +149,12 @@ impl Gpu {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_DST,
             format,
-            // `Auto` reproduces wgpu's pre-30 behaviour: sRGB for our
-            // `*Srgb` swapchain format, keeping the colour contract
-            // (linear-in, sRGB-encode on write) intact.
-            color_space: wgpu::SurfaceColorSpace::Auto,
+            // Pinned to `Srgb` (not `Auto`) to state the colour contract in
+            // code: our `is_srgb()` format pick encodes linear→sRGB on write,
+            // so the swapchain must read its bytes as sRGB. Guaranteed valid —
+            // a non-fp16 format lists in `caps.formats` only when its `Auto`
+            // fallback (`Srgb`) is supported, so this can't fail configure.
+            color_space: wgpu::SurfaceColorSpace::Srgb,
             width: size.x.max(1),
             height: size.y.max(1),
             present_mode: self.present_mode,
