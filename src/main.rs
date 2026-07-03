@@ -141,6 +141,12 @@ fn build_inspector(ui: &mut Ui, state: &mut State) {
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
+    // ⌘Q / Ctrl+Q quits — palantir drops winit's default macOS menu (so its
+    // Quit item can't hard-terminate past a close-request veto), which also
+    // removes the native ⌘Q, so wire it here.
+    if ui.key_pressed(Shortcut::ctrl('Q')) {
+        ui.close_window(MAIN_WINDOW);
+    }
     // F8 toggles a second OS window mirroring the counter page. The live
     // window set is the source of truth (`Ui::window_open`), so closing
     // the inspector via its titlebar X stays in sync — the next F8

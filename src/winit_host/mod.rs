@@ -178,9 +178,18 @@ where
         // EventLoop is built up front so `handle()` can hand out a proxy
         // before `run()` is called — that's the whole point of letting
         // threads spawn knowing where to send their pokes.
-        let event_loop = EventLoop::<UserEvent<T>>::with_user_event()
-            .build()
-            .expect("event loop");
+        let mut event_loop_builder = EventLoop::<UserEvent<T>>::with_user_event();
+        // winit installs a default macOS menu whose Quit item binds ⌘Q to
+        // `terminate:`, which kills the process before the event loop can
+        // hand the app a `CloseRequested` to veto (save-on-exit prompts).
+        // Drop that menu so ⌘Q arrives as an ordinary key event the app
+        // handles like any other quit request.
+        #[cfg(target_os = "macos")]
+        {
+            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            event_loop_builder.with_default_menu(false);
+        }
+        let event_loop = event_loop_builder.build().expect("event loop");
         let proxy = event_loop.create_proxy();
         Self {
             bootstrap: Some(Bootstrap {
