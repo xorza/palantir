@@ -11,6 +11,7 @@ pub mod cube;
 pub mod dialogs;
 pub mod disabled;
 pub mod drag;
+pub mod exit_confirm;
 pub mod gap;
 pub mod gradients;
 pub mod grid;

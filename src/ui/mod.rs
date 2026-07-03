@@ -174,6 +174,16 @@ pub struct Ui {
     /// Window-close requests filed by [`Self::close_window`]; drained
     /// alongside [`Self::pending_windows`]. Same retained-Vec contract.
     pub(crate) pending_closes: Vec<WindowToken>,
+    /// Set by the host for the frame where the OS asked to close this
+    /// window (titlebar X). Read by app code through
+    /// [`Self::close_requested`]; the window auto-closes after the frame
+    /// unless the app calls [`Self::keep_open`]. Host-managed per draw —
+    /// never touched by `frame`'s internal passes. Always `false` in
+    /// headless / offscreen contexts (no OS window to close).
+    pub(crate) wants_close: bool,
+    /// Set by [`Self::keep_open`] to veto this frame's pending auto-close.
+    /// Reset by the host before each draw; read back after the frame.
+    pub(crate) close_vetoed: bool,
 }
 
 /// Standalone `Ui` with a fresh private [`HostContext`] (mono-fallback
@@ -245,6 +255,8 @@ impl Ui {
             relayout_requested: false,
             pending_windows: Vec::new(),
             pending_closes: Vec::new(),
+            wants_close: false,
+            close_vetoed: false,
         }
     }
 
@@ -893,6 +905,33 @@ impl Ui {
     /// no live window, or in headless contexts.
     pub fn close_window(&mut self, token: WindowToken) {
         self.pending_closes.push(token);
+    }
+
+    /// `true` for the single frame where the OS asked to close this window
+    /// (titlebar X). The window auto-closes after this frame **unless** you
+    /// call [`Self::keep_open`] — so a simple app needs no close handling
+    /// at all (X just works), while an app that wants a "save changes?"
+    /// prompt vetoes the auto-close and shows a dialog:
+    ///
+    /// ```ignore
+    /// if ui.close_requested() && self.has_unsaved_changes() {
+    ///     ui.keep_open();               // veto this frame's auto-close
+    ///     self.show_quit_dialog = true; // remember to prompt
+    /// }
+    /// // …later, on the dialog's "Discard"/"Save" button:
+    /// ui.close_window(win);             // close for real
+    /// ```
+    ///
+    /// Always `false` in headless / offscreen contexts (no OS window).
+    pub fn close_requested(&self) -> bool {
+        self.wants_close
+    }
+
+    /// Veto the auto-close pending from this frame's [`Self::close_requested`].
+    /// The window stays open past this frame; close it for real later with
+    /// [`Self::close_window`]. A no-op when no close was requested.
+    pub fn keep_open(&mut self) {
+        self.close_vetoed = true;
     }
 
     /// Mutable handle to this app's debug overlay; the guard derefs to

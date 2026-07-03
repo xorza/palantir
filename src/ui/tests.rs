@@ -1718,3 +1718,51 @@ fn window_requests_queue_and_survive_the_frame() {
     assert!(ui.window_open(open));
     assert!(!ui.window_open(close), "only `open` is live");
 }
+
+/// The OS-close veto protocol between the host and app code:
+/// [`Ui::close_requested`] reflects the host's per-frame `wants_close`
+/// signal, and [`Ui::keep_open`] sets the veto the host reads back to
+/// decide whether to actually close. The host's decision rule is
+/// `wants_close && !close_vetoed` (the tail of `WinitHost::draw`); pin it
+/// here so the two flags can't drift out from under that resolution.
+#[test]
+fn close_request_veto_protocol() {
+    let mut ui = Ui::for_test();
+
+    // No close pending: the flag is false and keep_open never fires.
+    ui.run_at(SURFACE, |ui| {
+        assert!(
+            !ui.close_requested(),
+            "no close pending ⇒ close_requested() false"
+        );
+    });
+    assert!(!ui.close_vetoed);
+
+    // Host signals a close; an app that vetoes keeps the window open.
+    ui.wants_close = true;
+    ui.close_vetoed = false;
+    ui.run_at(SURFACE, |ui| {
+        assert!(
+            ui.close_requested(),
+            "host signalled close ⇒ close_requested() true"
+        );
+        ui.keep_open();
+    });
+    assert!(ui.close_vetoed, "keep_open must set the veto the host reads");
+    assert!(
+        !(ui.wants_close && !ui.close_vetoed),
+        "a vetoed request must NOT resolve to a close",
+    );
+
+    // Same signal, app ignores it: resolves to a real close. (The host
+    // resets the veto before every draw.)
+    ui.close_vetoed = false;
+    ui.run_at(SURFACE, |ui| {
+        assert!(ui.close_requested());
+    });
+    assert!(!ui.close_vetoed, "untouched ⇒ no veto");
+    assert!(
+        ui.wants_close && !ui.close_vetoed,
+        "an un-vetoed request must resolve to a close",
+    );
+}
