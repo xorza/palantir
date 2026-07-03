@@ -5,7 +5,9 @@
 //! changes are pending, and shows a Save / Discard / Cancel dialog instead
 //! of letting the window vanish.
 
-use palantir::{Button, Checkbox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken};
+use palantir::{
+    Button, Checkbox, Configure, Modal, Panel, Sizing, Text, TextWrap, Ui, WidgetId, WindowToken,
+};
 
 /// Shared between the tab (writes `pretend_dirty`) and [`intercept`]
 /// (reads it, drives `show_dialog`). Keyed on one stable id so both reach
@@ -41,6 +43,7 @@ pub fn build(ui: &mut Ui) {
                  normally.",
             )
             .id_salt(("exit", "desc"))
+            .text_wrap(TextWrap::Wrap)
             .show(ui);
 
             let mut dirty = ui.state_mut::<ExitState>(id).pretend_dirty;
