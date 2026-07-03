@@ -1748,11 +1748,12 @@ fn close_request_veto_protocol() {
         );
         ui.keep_open();
     });
-    assert!(ui.close_vetoed, "keep_open must set the veto the host reads");
     assert!(
-        !(ui.wants_close && !ui.close_vetoed),
-        "a vetoed request must NOT resolve to a close",
+        ui.close_vetoed,
+        "keep_open must set the veto the host reads"
     );
+    let should_close = ui.wants_close && !ui.close_vetoed;
+    assert!(!should_close, "a vetoed request must NOT resolve to a close");
 
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
@@ -1761,8 +1762,6 @@ fn close_request_veto_protocol() {
         assert!(ui.close_requested());
     });
     assert!(!ui.close_vetoed, "untouched ⇒ no veto");
-    assert!(
-        ui.wants_close && !ui.close_vetoed,
-        "an un-vetoed request must resolve to a close",
-    );
+    let should_close = ui.wants_close && !ui.close_vetoed;
+    assert!(should_close, "an un-vetoed request must resolve to a close");
 }
