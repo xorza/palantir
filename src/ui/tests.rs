@@ -1753,7 +1753,10 @@ fn close_request_veto_protocol() {
         "keep_open must set the veto the host reads"
     );
     let should_close = ui.wants_close && !ui.close_vetoed;
-    assert!(!should_close, "a vetoed request must NOT resolve to a close");
+    assert!(
+        !should_close,
+        "a vetoed request must NOT resolve to a close"
+    );
 
     // Same signal, app ignores it: resolves to a real close. (The host
     // resets the veto before every draw.)
