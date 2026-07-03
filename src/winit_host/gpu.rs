@@ -54,7 +54,9 @@ impl Gpu {
     /// first window's `surface`. Returns the context alongside that
     /// window's configured surface.
     pub(crate) fn create(window: &Arc<Window>, cfg: &WinitHostConfig) -> GpuInit {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let mut desc = wgpu::InstanceDescriptor::new_without_display_handle();
+        desc.flags = desc.flags.with_env();
+        let instance = wgpu::Instance::new(desc);
         let surface = instance
             .create_surface(window.clone())
             .expect("create surface");
