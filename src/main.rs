@@ -9,7 +9,7 @@ mod showcase;
 use showcase::app_state::{self, AppState};
 use showcase::{
     alignment, animations, bezier, buttons, checkbox, clip, context_menu, cube, dialogs, disabled,
-    drag, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
+    drag, exit_confirm, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
     pan_zoom_auto, panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider,
     spacing, switch, text, text_edit, text_zorder, tooltips, transform, triangle, visibility, wrap,
 };
@@ -71,6 +71,7 @@ const SHOWCASES: &[(&str, ShowcaseFn)] = &[
     ("popup", popup::build),
     ("tooltips", tooltips::build),
     ("context menu", context_menu::build),
+    ("exit confirm", exit_confirm::build),
     ("animations", animations::build),
     (APP_STATE_LABEL, |_ui| {}),
     (CUBE_LABEL, |_ui| {}),
@@ -204,6 +205,10 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                     }
                 });
         });
+
+    // Catch the window's close request: with "unsaved changes" toggled on
+    // (the `exit confirm` tab), veto it and prompt instead of quitting.
+    exit_confirm::intercept(ui, MAIN_WINDOW);
 }
 
 /// Build a one-off ButtonTheme that highlights the active toolbar

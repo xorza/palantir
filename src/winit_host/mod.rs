@@ -100,6 +100,13 @@ struct WindowState {
     /// `FramePresent` the frame returned; re-armed to `Immediate` by
     /// input, resize, surface loss, occlusion, and animation tickers.
     next: FramePresent,
+    /// Set when the OS delivers `WindowEvent::CloseRequested` (titlebar X),
+    /// cleared once the next `draw` resolves it. `draw` mirrors it into the
+    /// window's `Ui` (`Ui::close_requested`) for that frame and, unless the
+    /// app vetoed via `Ui::keep_open`, closes the window afterward. This
+    /// deferral is what lets an app show a "save changes?" prompt instead
+    /// of the window vanishing on the click.
+    close_requested: bool,
 }
 
 /// What [`WinitHost::new`] stashes for the first `resumed`: the bootstrap
@@ -232,6 +239,10 @@ where
             .window
             .current_monitor()
             .and_then(|m| m.refresh_rate_millihertz());
+        // Surface any pending OS close request to the app for this frame;
+        // it may veto (`Ui::keep_open`) to prompt instead of closing.
+        win.renderer.ui.wants_close = win.close_requested;
+        win.renderer.ui.close_vetoed = false;
         win.next = win.renderer.frame(
             &mut run.backend,
             FrameTarget {
@@ -243,6 +254,17 @@ where
             |ui| run.app.frame(token, ui),
             || window.pre_present_notify(),
         );
+        // Resolve the close request now the app has had its say. Unless
+        // vetoed, route it through the same `pending_closes` path an
+        // explicit `Ui::close_window` uses, so `drain_window_requests`
+        // handles removal + the all-windows-closed exit uniformly.
+        if win.close_requested {
+            win.close_requested = false;
+            if !win.renderer.ui.close_vetoed {
+                win.renderer.ui.pending_closes.push(token);
+            }
+        }
+        win.renderer.ui.wants_close = false;
     }
 
     /// Build a winit window + surface + `WindowRenderer` for `token` and
@@ -294,6 +316,7 @@ where
                 renderer,
                 scale_factor,
                 next: FramePresent::Immediate,
+                close_requested: false,
             },
         );
     }
@@ -491,10 +514,16 @@ where
             WindowEvent::RedrawRequested => self.draw(id),
 
             WindowEvent::CloseRequested => {
-                // Removal only — the all-windows-closed exit decision
-                // lives in `drain_window_requests`, which `about_to_wait`
-                // runs right after this event batch.
-                self.windows.remove(&id);
+                // Don't remove the window here — flag it and force a frame.
+                // `draw` surfaces the flag as `Ui::close_requested` so the
+                // app can veto (`Ui::keep_open`) to show a "save changes?"
+                // prompt; absent a veto, `draw` closes the window via the
+                // normal `pending_closes` path and `drain_window_requests`
+                // makes the all-windows-closed exit decision as before.
+                if let Some(win) = self.windows.get_mut(&id) {
+                    win.close_requested = true;
+                    win.next = FramePresent::Immediate;
+                }
             }
 
             WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
