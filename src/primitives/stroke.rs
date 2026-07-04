@@ -1,7 +1,7 @@
+use crate::primitives::approx::canon_bits;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
-use crate::primitives::num::canon_bits;
 use palantir_anim_derive::Animatable;
 
 /// Stroke paint: brush + width. No longer `Pod` (the user-facing

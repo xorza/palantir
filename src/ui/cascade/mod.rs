@@ -236,25 +236,26 @@ impl Cascades {
         Some(self.layers[ep.layer].entries_base + ep.node.0)
     }
 
-    /// True when `id` appears in the most recent cascade run.
-    #[inline]
-    pub(crate) fn contains_widget(&self, id: WidgetId) -> bool {
-        self.by_id.contains_key(&id)
-    }
-
-    /// Reverse-iter entries → topmost-first under pre-order paint walk.
-    /// `filter` decides which `Sense` values participate (hoverable for
-    /// hover, clickable for press/release).
-    pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
+    /// Reverse walk (topmost-first under the pre-order paint walk) returning
+    /// the first entry whose rect contains `pos` and whose `gate(i)` passes.
+    /// Shared by [`Self::hit_test`] and [`Self::hit_test_focusable`], which
+    /// differ only in the per-entry gate column they consult.
+    fn hit_first(&self, pos: Vec2, gate: impl Fn(usize) -> bool) -> Option<WidgetId> {
         let rects = self.entries.rect();
-        let senses = self.entries.sense();
         let ids = self.entries.widget_id();
         for i in (0..rects.len()).rev() {
-            if filter(senses[i]) && rects[i].contains(pos) {
+            if gate(i) && rects[i].contains(pos) {
                 return Some(ids[i]);
             }
         }
         None
+    }
+
+    /// Topmost entry under `pos` whose `Sense` passes `filter` (hoverable for
+    /// hover, clickable for press/release).
+    pub(crate) fn hit_test(&self, pos: Vec2, filter: impl Fn(Sense) -> bool) -> Option<WidgetId> {
+        let senses = self.entries.sense();
+        self.hit_first(pos, |i| filter(senses[i]))
     }
 
     /// One reverse walk that finds the topmost match for each of
@@ -301,15 +302,8 @@ impl Cascades {
     }
 
     pub(crate) fn hit_test_focusable(&self, pos: Vec2) -> Option<WidgetId> {
-        let rects = self.entries.rect();
         let focusables = self.entries.focusable();
-        let ids = self.entries.widget_id();
-        for i in (0..rects.len()).rev() {
-            if focusables[i] && rects[i].contains(pos) {
-                return Some(ids[i]);
-            }
-        }
-        None
+        self.hit_first(pos, |i| focusables[i])
     }
 }
 

@@ -11,6 +11,7 @@ use crate::input::keyboard::{
     physical_key_from_winit,
 };
 use crate::input::pointer::{PointerButton, PointerEvent};
+use crate::input::policy::FocusPolicy;
 use crate::input::response::{DragState, InputDelta, ResponseState};
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
@@ -65,22 +66,6 @@ impl Capture {
         self.drag_latched = false;
         self.frame_drag_started = None;
     }
-}
-
-/// What happens to the currently-focused widget when the user presses
-/// the pointer somewhere that *isn't* a focusable widget. Set via
-/// [`crate::Ui::set_focus_policy`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum FocusPolicy {
-    /// Pressing on a non-focusable widget or empty surface preserves
-    /// the current focus. Friendlier for sketches and tooling UIs
-    /// where every other widget is a Button — clicking a Button while
-    /// editing a field keeps the cursor in the field. Default.
-    PreserveOnMiss,
-    /// Pressing anywhere that isn't a focusable widget clears focus.
-    /// Native-app convention on most platforms (click-outside-to-blur).
-    #[default]
-    ClearOnMiss,
 }
 
 /// Palantir-native input event. Independent of any windowing toolkit.
@@ -753,7 +738,7 @@ impl InputState {
         // stay `true`.
         for cap in &mut self.captures {
             if let Some(a) = cap.active
-                && !cascades.contains_widget(a)
+                && !cascades.by_id.contains_key(&a)
             {
                 cap.active = None;
                 cap.clear_press();
@@ -764,7 +749,7 @@ impl InputState {
         // focus to None; otherwise next frame's keystrokes route to a
         // ghost.
         if let Some(focused) = self.focused
-            && !cascades.contains_widget(focused)
+            && !cascades.by_id.contains_key(&focused)
         {
             self.focused = None;
         }

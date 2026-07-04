@@ -1,5 +1,5 @@
+use crate::primitives::approx::canon_bits;
 use crate::primitives::color::Color;
-use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use palantir_anim_derive::Animatable;
 

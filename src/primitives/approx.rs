@@ -18,6 +18,24 @@ pub(crate) const fn approx_zero(c: f32) -> bool {
     c >= -EPS && c <= EPS
 }
 
+/// Canonicalize an `f32` so equal-up-to-`EPS` values hash identically:
+/// collapse any value with `|f| <= EPS` (including `-0.0`, `+0.0`, and
+/// sub-`EPS` subnormals) to a single zero bit pattern, and every NaN
+/// to a single quiet-NaN. Shared by every content-hash that includes
+/// f32 fields (gradient stops, axes, atlas row keys) so they can't
+/// drift apart — and so visually identical inputs (e.g. an angle of
+/// `1e-8` vs `0.0`) share a cache row.
+#[inline]
+pub(crate) fn canon_bits(f: f32) -> u32 {
+    if f.is_nan() {
+        f32::NAN.to_bits()
+    } else if approx_zero(f) {
+        0u32
+    } else {
+        f.to_bits()
+    }
+}
+
 /// True if `v` would produce no visible paint when used as a
 /// magnitude (stroke width, alpha, etc.). Captures three cases in
 /// one comparison: `v <= EPS` is true for near-zero positives,
