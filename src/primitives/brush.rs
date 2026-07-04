@@ -1,7 +1,7 @@
 use crate::animation::animatable::Animatable;
+use crate::primitives::approx::canon_bits;
 use crate::primitives::color::{Color, ColorU8};
 use crate::primitives::half_simd::F16x4;
-use crate::primitives::num::canon_bits;
 use glam::Vec2;
 use tinyvec::ArrayVec;
 

@@ -136,8 +136,8 @@ impl Corners {
     /// Inverse of [`Self::as_array`] — pack 4 runtime f32s into the
     /// lane array via the batched f32→f16 path (`fcvtn` on aarch64-fp16,
     /// `vcvtps2ph` on x86-f16c, scalar fallback). Use at hot sites that
-    /// compute all 4 lanes at runtime; `Self::new` is fine for const /
-    /// compile-time-known values.
+    /// compute all 4 lanes at runtime. `Self::new` is the same path with
+    /// the corners passed as separate args instead of an array.
     #[inline]
     pub fn from_array(v: [f32; 4]) -> Self {
         Self(F16x4::from_lanes(v))
