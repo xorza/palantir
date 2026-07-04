@@ -350,6 +350,7 @@ fn selection_rects_offset_matches_text() {
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
     use crate::text::FontFamily;
+    use crate::text::ShapeParams;
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};
     use glam::UVec2;
@@ -374,7 +375,17 @@ mod per_line {
         let left = ui
             .ctx
             .shaper
-            .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
+            .cursor_xy(
+                text,
+                2,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Left,
+                },
+            )
             .x;
         let center = ui
             .ctx
@@ -382,17 +393,29 @@ mod per_line {
             .cursor_xy(
                 text,
                 2,
-                fs,
-                lh,
-                Some(wrap),
-                FontFamily::Sans,
-                HAlign::Center,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Center,
+                },
             )
             .x;
         let right = ui
             .ctx
             .shaper
-            .cursor_xy(text, 2, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
+            .cursor_xy(
+                text,
+                2,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Right,
+                },
+            )
             .x;
 
         // Right > Center > Left (caret follows the per-line offset).
@@ -425,21 +448,25 @@ mod per_line {
         let l = c
             .measure(
                 "hi",
-                16.0,
-                19.2,
-                Some(100.0),
-                FontFamily::Sans,
-                HAlign::Left,
+                ShapeParams {
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    max_width_px: Some(100.0),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Left,
+                },
             )
             .key;
         let r = c
             .measure(
                 "hi",
-                16.0,
-                19.2,
-                Some(100.0),
-                FontFamily::Sans,
-                HAlign::Right,
+                ShapeParams {
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    max_width_px: Some(100.0),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Right,
+                },
             )
             .key;
         assert_ne!(l, r, "halign must enter the cache key");
@@ -459,10 +486,28 @@ mod per_line {
         use crate::text::cosmic::CosmicMeasure;
         let mut c = CosmicMeasure::with_bundled_fonts();
         let left = c
-            .measure("hi", 16.0, 19.2, None, FontFamily::Sans, HAlign::Left)
+            .measure(
+                "hi",
+                ShapeParams {
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    halign: HAlign::Left,
+                },
+            )
             .key;
         let right = c
-            .measure("hi", 16.0, 19.2, None, FontFamily::Sans, HAlign::Right)
+            .measure(
+                "hi",
+                ShapeParams {
+                    font_size_px: 16.0,
+                    line_height_px: 19.2,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    halign: HAlign::Right,
+                },
+            )
             .key;
         assert_eq!(left, right, "halign must not split the unbounded cache");
         assert_eq!(
@@ -659,17 +704,47 @@ mod per_line {
         let right = ui
             .ctx
             .shaper
-            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Right)
+            .cursor_xy(
+                "",
+                0,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Right,
+                },
+            )
             .x;
         let center = ui
             .ctx
             .shaper
-            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Center)
+            .cursor_xy(
+                "",
+                0,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Center,
+                },
+            )
             .x;
         let left = ui
             .ctx
             .shaper
-            .cursor_xy("", 0, fs, lh, Some(wrap), FontFamily::Sans, HAlign::Left)
+            .cursor_xy(
+                "",
+                0,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(wrap),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Left,
+                },
+            )
             .x;
         assert!(
             (right - wrap).abs() < 1e-3,
@@ -700,11 +775,13 @@ mod per_line {
         let wrap = 290.0_f32;
         let aligned = c.measure(
             "hi\nyo",
-            16.0,
-            19.2,
-            Some(wrap),
-            FontFamily::Sans,
-            HAlign::Right,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 19.2,
+                max_width_px: Some(wrap),
+                family: FontFamily::Sans,
+                halign: HAlign::Right,
+            },
         );
         // The widest visual line content is ~13 px for "hi"; with
         // right-align it sits at x ≈ 277 inside a 290 wrap. Bbox
@@ -755,11 +832,13 @@ mod per_line {
             .cursor_xy(
                 &buf,
                 5,
-                fs,
-                lh,
-                Some(290.0),
-                FontFamily::Sans,
-                HAlign::Right,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh,
+                    max_width_px: Some(290.0),
+                    family: FontFamily::Sans,
+                    halign: HAlign::Right,
+                },
             )
             .x;
         // Without per-line alignment, the short line would land at

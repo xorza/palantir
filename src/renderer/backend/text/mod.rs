@@ -480,7 +480,7 @@ pub mod test_support {
     use crate::renderer::backend::pipeline_utils::StencilVariant;
     use crate::renderer::backend::text::ViewportPush;
 
-    use crate::text::{FontFamily, TextShaper};
+    use crate::text::{FontFamily, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
 
     /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
@@ -558,11 +558,13 @@ pub mod test_support {
     ) -> TextRun {
         let m = shaper.measure(
             text,
-            font_size_px,
-            line_height_px,
-            None,
-            FontFamily::Sans,
-            HAlign::Auto,
+            ShapeParams {
+                font_size_px,
+                line_height_px,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
         );
         TextRun {
             key: m.key,

@@ -17,9 +17,11 @@ use crate::forest::tree::{NodeId, Tree};
 use crate::layout::axis::Axis;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
+use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::{canvas, grid, stack, wrapstack, zstack};
 use crate::shape::TextWrap;
+use crate::text::ShapeParams;
 
 /// Intrinsic content-size kind, per CSS Grid spec terminology.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
@@ -186,9 +188,13 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
             ordinal,
             curr_hash,
             ts.text,
-            ts.font_size_px,
-            ts.line_height_px,
-            ts.family,
+            ShapeParams {
+                font_size_px: ts.font_size_px,
+                line_height_px: ts.line_height_px,
+                max_width_px: None,
+                family: ts.family,
+                halign: HAlign::Auto,
+            },
         );
         let v = match (axis, req) {
             // Non-wrapping text can't break, so its min-content equals its

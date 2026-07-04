@@ -12,6 +12,7 @@ use crate::layout::support::{
     AxisCtx, LeafTextShape, TextCtx, leaf_text_shapes, resolve_axis_size, stretched_extent,
     zero_subtree,
 };
+use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::wrapstack::WrapScratch;
 use crate::layout::{
@@ -23,7 +24,7 @@ use crate::primitives::spacing::Sums;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
-use crate::text::{LineFit, TextShaper};
+use crate::text::{LineFit, ShapeParams, TextShaper};
 use rustc_hash::FxHashSet;
 
 /// Per-frame intermediate state: every field is reset / overwritten at
@@ -784,9 +785,13 @@ impl LayoutEngine {
             ordinal,
             curr_hash,
             ts.text,
-            ts.font_size_px,
-            ts.line_height_px,
-            ts.family,
+            ShapeParams {
+                font_size_px: ts.font_size_px,
+                line_height_px: ts.line_height_px,
+                max_width_px: None,
+                family: ts.family,
+                halign: HAlign::Auto,
+            },
         );
 
         // Re-shape through the width-bounded path for `Wrap` and the
@@ -832,12 +837,14 @@ impl LayoutEngine {
                 wid,
                 ordinal,
                 ts.text,
-                ts.font_size_px,
-                ts.line_height_px,
-                target,
+                ShapeParams {
+                    font_size_px: ts.font_size_px,
+                    line_height_px: ts.line_height_px,
+                    max_width_px: Some(target),
+                    family: ts.family,
+                    halign: ts.halign,
+                },
                 target_q,
-                ts.family,
-                ts.halign,
                 fit,
             )
         } else {
