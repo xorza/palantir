@@ -1,6 +1,6 @@
 //! Palantir-native glyph atlas + text render pipeline.
 //!
-//! Replaces the vendored glyphon. Built to Palantir's contracts:
+//! Built to Palantir's contracts:
 //!
 //! - **Linear-premul end to end.** `ColorU8` is straight-linear-u8 in,
 //!   shader writes `vec4(rgb*a, a)`, blend is

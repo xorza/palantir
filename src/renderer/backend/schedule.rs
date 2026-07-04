@@ -37,10 +37,10 @@ pub(crate) enum RenderStep {
     /// Bind the quad pipeline (stencil-test variant when stencil is
     /// active, plain otherwise) + draw the group's quad range.
     Quads { group: usize, range: Span },
-    /// Render a coalesced text batch via the glyphon pool slot.
+    /// Render a coalesced text batch via the text-renderer pool slot.
     /// Emitted once per batch, immediately after the last group in
     /// the batch has drawn its quads (any meshes in that group still
-    /// follow). One `Text { batch }` step → one `glyphon::render` →
+    /// follow). One `Text { batch }` step → one text-backend render →
     /// one wgpu draw call covering every run in the batch.
     Text { batch: usize },
     /// Bind the mesh pipeline + issue one `draw_indexed` per

@@ -8,8 +8,8 @@
 //! of growing without limit.
 //!
 //! The renderer (`WgpuBackend`) downcasts the trait object to this concrete
-//! type to reach the cached `Buffer`s and the `FontSystem` for
-//! `glyphon::TextRenderer::prepare_append`.
+//! type to reach the cached `Buffer`s and the `FontSystem` for its
+//! text prepare/append path.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
 //! text rather than storing the full string), but at typical UI scales the
@@ -129,8 +129,8 @@ fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
 }
 
 struct CacheEntry {
-    /// Shaped buffer. Looked up by [`TextCacheKey`] at render time so glyphon
-    /// can build a `TextArea` without reshaping.
+    /// Shaped buffer. Looked up by [`TextCacheKey`] at render time so the
+    /// text backend can build a `TextArea` without reshaping.
     buffer: Buffer,
     measured: Size,
     /// Width of the widest unbreakable run, in logical px. Computed once on
@@ -549,8 +549,8 @@ fn shaped_extent(buffer: &Buffer) -> ShapedExtent {
         // align shifts glyphs right, the glyph cluster's physical x
         // extends past `line_w`. Take the last glyph's trailing edge so
         // the measured bbox encloses every rendered pixel — otherwise
-        // glyphon clips right-aligned glyphs against an undersized
-        // `TextBounds`.
+        // the text backend clips right-aligned glyphs against an
+        // undersized `TextBounds`.
         let line_right = run.glyphs.last().map(|g| g.x + g.w).unwrap_or(run.line_w);
         max_w = max_w.max(line_right);
         total_h = total_h.max(run.line_top + run.line_height);

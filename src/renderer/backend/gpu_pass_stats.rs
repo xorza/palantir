@@ -39,7 +39,7 @@ pub enum BatchKind {
     Mask = 2,
     /// `RenderStep::Quads` — the main quad pipeline.
     Quads = 3,
-    /// `RenderStep::Text` — text batches via the inlined glyphon
+    /// `RenderStep::Text` — text batches via the inlined text
     /// pipeline.
     Text = 4,
     /// `RenderStep::MeshBatch` — the mesh pipeline.
