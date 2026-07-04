@@ -46,7 +46,8 @@ use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use crate::window::{PendingWindow, WindowConfig, WindowToken};
+use crate::window::{PendingWindow, WindowConfig, WindowGeometry, WindowToken};
+use glam::{IVec2, UVec2};
 use rustc_hash::FxHashMap;
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
@@ -184,6 +185,16 @@ pub struct Ui {
     /// Set by [`Self::keep_open`] to veto this frame's pending auto-close.
     /// Reset by the host before each draw; read back after the frame.
     pub(crate) close_vetoed: bool,
+    /// This window's outer position in physical pixels, refreshed by the
+    /// host before each draw; `None` where the platform doesn't report it
+    /// (Wayland) or in headless contexts. The window-manager half of
+    /// [`Self::window_geometry`] — the size half is derived from
+    /// [`Self::display`], not stored twice.
+    pub(crate) window_position: Option<IVec2>,
+    /// Whether this window is currently maximized, refreshed by the host
+    /// before each draw. The other window-manager fact
+    /// [`Self::window_geometry`] carries.
+    pub(crate) window_maximized: bool,
 }
 
 /// Standalone `Ui` with a fresh private [`HostContext`] (mono-fallback
@@ -257,6 +268,8 @@ impl Ui {
             pending_closes: Vec::new(),
             wants_close: false,
             close_vetoed: false,
+            window_position: None,
+            window_maximized: false,
         }
     }
 
@@ -932,6 +945,27 @@ impl Ui {
     /// [`Self::close_window`]. A no-op when no close was requested.
     pub fn keep_open(&mut self) {
         self.close_vetoed = true;
+    }
+
+    /// This window's live geometry for persist-and-restore across launches.
+    /// A computed view, not stored state: the logical inner size comes from
+    /// [`Self::display`] (the single source of truth for surface size), and
+    /// the physical outer position + maximized flag from the host-refreshed
+    /// window-manager facts. Feed it back through
+    /// [`WindowConfig::position`](crate::WindowConfig) / `inner_size` /
+    /// `maximized` on the next launch to reopen where the user left off.
+    /// `outer_position` is `None` on platforms that don't report it
+    /// (Wayland). All-zero / `None` in headless contexts.
+    pub fn window_geometry(&self) -> WindowGeometry {
+        let logical = self.display.logical_size();
+        WindowGeometry {
+            inner_size: UVec2::new(
+                (logical.w.round() as u32).max(1),
+                (logical.h.round() as u32).max(1),
+            ),
+            outer_position: self.window_position,
+            maximized: self.window_maximized,
+        }
     }
 
     /// Mutable handle to this app's debug overlay; the guard derefs to

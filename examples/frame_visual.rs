@@ -34,6 +34,7 @@ fn main() {
             title: String::from("palantir — frame bench (visual)"),
             inner_size: Some(UVec2::new(1280, 800)),
             min_inner_size: Some(UVec2::new(640, 480)),
+            ..WindowConfig::default()
         },
         ..WinitHostConfig::default()
     };

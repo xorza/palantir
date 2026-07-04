@@ -50,8 +50,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
+use glam::IVec2;
 use winit::application::ApplicationHandler;
-use winit::dpi::LogicalSize;
+use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
@@ -252,6 +253,18 @@ where
         // it may veto (`Ui::keep_open`) to prompt instead of closing.
         win.renderer.ui.wants_close = win.close_requested;
         win.renderer.ui.close_vetoed = false;
+        // Refresh the window-manager facts the app persists (position +
+        // maximized); the size half of `Ui::window_geometry` is derived
+        // from the `Display` this frame already builds, so it isn't read or
+        // stored twice. Reading fresh each draw makes a `Moved`/`Maximized`
+        // handler unnecessary — every quit path passes through a draw, so
+        // the close frame captures the final values.
+        win.renderer.ui.window_position = win
+            .window
+            .outer_position()
+            .ok()
+            .map(|p| IVec2::new(p.x, p.y));
+        win.renderer.ui.window_maximized = win.window.is_maximized();
         win.next = win.renderer.frame(
             &mut run.backend,
             FrameTarget {
@@ -387,14 +400,39 @@ where
 /// the backend-agnostic logical `UVec2` sizes into winit `LogicalSize`
 /// here so the winit type stays internal.
 fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window> {
-    let mut attrs = Window::default_attributes().with_title(cfg.title.clone());
+    let mut attrs = Window::default_attributes()
+        .with_title(cfg.title.clone())
+        .with_maximized(cfg.maximized);
     if let Some(s) = cfg.inner_size {
         attrs = attrs.with_inner_size(LogicalSize::new(s.x, s.y));
     }
     if let Some(s) = cfg.min_inner_size {
         attrs = attrs.with_min_inner_size(LogicalSize::new(s.x, s.y));
     }
+    // Restore a saved position only if it still lands on a connected
+    // monitor — winit does no such clamping, so a window saved on a
+    // since-disconnected display would otherwise reopen off-screen and
+    // unreachable.
+    if let Some(p) = cfg.position
+        && position_on_monitor(event_loop, p)
+    {
+        attrs = attrs.with_position(PhysicalPosition::new(p.x, p.y));
+    }
     Arc::new(event_loop.create_window(attrs).expect("create window"))
+}
+
+/// Whether `pos` (physical, window top-left) falls inside any currently
+/// connected monitor's bounds — the guard that keeps a restored position
+/// from placing the window off every screen.
+fn position_on_monitor(event_loop: &ActiveEventLoop, pos: IVec2) -> bool {
+    event_loop.available_monitors().any(|m| {
+        let mp = m.position();
+        let ms = m.size();
+        pos.x >= mp.x
+            && pos.y >= mp.y
+            && pos.x < mp.x + ms.width as i32
+            && pos.y < mp.y + ms.height as i32
+    })
 }
 
 impl<T> ApplicationHandler<UserEvent<T>> for WinitHost<T>
