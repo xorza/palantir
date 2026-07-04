@@ -11,7 +11,7 @@ use strum::EnumCount as _;
 /// `Index<Layer>` / `IndexMut<Layer>` for the natural sugar,
 /// `IntoIterator` for `&` and `&mut` so `for t in &per` works, plus
 /// the project's two common iteration shapes (`iter_paint_order` and
-/// the bare `iter` / `iter_mut`).
+/// the bare `iter`; mutable iteration goes through `&mut PerLayer`).
 #[derive(Debug)]
 #[repr(transparent)]
 pub(crate) struct PerLayer<T>(pub(crate) [T; Layer::COUNT]);

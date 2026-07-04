@@ -178,7 +178,7 @@ fn mesh_vertex_layout() -> wgpu::VertexBufferLayout<'static> {
 }
 
 // `translate.xy : Float32x2`, `scale : Float32`, `tint : Unorm8x4`.
-// Tint storage matches `MeshVertex.color` (linear-u8 premultiplied);
+// Tint storage matches `MeshVertex.color` (straight-alpha linear-u8);
 // shader multiplies per-fragment, no decode either side.
 const MESH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 3] = wgpu::vertex_attr_array![
     2 => Float32x2,

@@ -3,7 +3,7 @@
 //! is on) and the damage-rect outline quads (drawn after the
 //! backbuffer→surface copy when `damage_rect` is on). Both ride
 //! the quad pipeline's no-stencil base pipeline + bind group —
-//! `WgpuBackend::run_dim_pass` / `draw_debug_overlay` pass those
+//! `WgpuBackend::run_dim_pass` / `draw_overlays` pass those
 //! references through.
 //!
 //! Lives in its own module so the GPU resources, upload helpers,

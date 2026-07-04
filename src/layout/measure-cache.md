@@ -11,16 +11,16 @@ Code lives in `cache/` (this directory's sibling).
 
 ## Mechanism
 
-- **Subtree-hash rollup.** `Tree.subtree_hashes: Vec<NodeHash>` is
-  populated alongside `hashes` in `compute_hashes` via a reverse
-  pre-order walk. Pinned by `forest::tree::tests::subtree_hash_*`.
+- **Subtree-hash rollup.** `Tree.rollups.subtree: Vec<NodeHash>` is
+  populated alongside `rollups.node` in `Tree::post_record` via a fused
+  reverse-pre-order walk. Pinned by `forest::tree::tests::subtree_hash_*`.
 - **Subtree-skip lookup.** `MeasureCache::try_lookup` fires at every
   non-collapsed node in `LayoutEngine::measure`. A hit blits the whole
   subtree's `desired` + `text_shapes` from the cache and skips
   recursion. `available_q` (integer-px-quantized) gates `Hug` / `Fill`
   variance.
-- **Single-arena storage.** Three flat node-indexed arenas
-  (`desired`, `text_spans`, `scroll_content`) shared across all
+- **Single-arena storage.** Two flat node-indexed arenas
+  (`desired`, `text_spans`) shared across all
   snapshots, plus a per-`WidgetId` map of
   `ArenaSnapshot { subtree_hash, available_q, root_intrinsics, nodes: Span,
   hugs: Span, text_shapes: Span }`. The dimensional cache key
@@ -35,8 +35,8 @@ Code lives in `cache/` (this directory's sibling).
   unchanged sibling subtrees on a localized change or a resize. Per-grid hug arrays for `LayoutMode::Grid`
   descendants live in a separate `hugs` arena; flat shaped-text runs
   live in `text_shapes_arena`. Liveness bookkeeping rides on the
-  shared [`LiveArena`] primitive (`src/common/cache_arena.rs`); the
-  three node-indexed arenas share `nodes.live`; `hugs` and
+  shared [`LiveArena`] primitive (`src/common/live_arena.rs`); the
+  two node-indexed arenas share `nodes.live`; `hugs` and
   `text_shapes_arena` track their own. In-place rewrite on same-len
   writes; append + mark-garbage on size changes; lazy compaction when
   `arena.len() > live × COMPACT_RATIO` (= 2) and `live > COMPACT_FLOOR`
