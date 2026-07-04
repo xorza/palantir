@@ -78,10 +78,6 @@ impl Default for ZoomConfig {
 // Bar drawing + reservation logic stay here as widget concerns; the
 // layout primitive itself is unaware of scrollbars.
 
-// ---------------------------------------------------------------------------
-// Bar geometry helpers
-// ---------------------------------------------------------------------------
-
 /// Cross-axis space stolen from children when an axis's bar is shown:
 /// the bar's `width` plus a `gap` strip so the bar doesn't touch the
 /// visible content. Returns 0 when the axis isn't panned.
@@ -260,10 +256,6 @@ fn push_bar_nodes(
     };
     ui.node(thumb_id, thumb, Some(&chrome), |_| {});
 }
-
-// ---------------------------------------------------------------------------
-// Scroll widget
-// ---------------------------------------------------------------------------
 
 /// How the scrollbars relate to the content area on the pan axes.
 ///

@@ -793,8 +793,8 @@ fn ui_layer_records_popup_into_separate_tree() {
     assert_eq!(popup_tree.roots.len(), 1);
     assert_eq!(main_tree.roots[0].first_node.idx(), 0);
     assert_eq!(popup_tree.roots[0].first_node.idx(), 0);
-    assert_eq!(popup_tree.roots[0].anchor, popup_anchor);
-    assert_eq!(popup_tree.roots[0].size, None);
+    assert_eq!(popup_tree.roots[0].placement.anchor, popup_anchor);
+    assert_eq!(popup_tree.roots[0].placement.size, None);
     assert_eq!(
         main_tree.records.subtree_end()[0].end() as usize,
         main_tree.records.len(),

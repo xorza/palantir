@@ -191,8 +191,6 @@ impl Configure for ContextMenu {
     }
 }
 
-// ── MenuItem ────────────────────────────────────────────────────────
-
 /// One row inside a [`ContextMenu`]. Label on the left, optional
 /// right-aligned shortcut hint, theme-driven hover chrome. Reports
 /// `Response` so callers branch on `clicked()`; the row also calls

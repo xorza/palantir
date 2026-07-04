@@ -2,7 +2,7 @@
 //! downstream passes holding `&Tree` are type-prevented from reaching
 //! transient state — `Tree` itself is the finalized output. The
 //! ancestor stack + pending layer anchor ([`RecordingScratch`]) are
-//! cleared by `Forest::pre_record`; [`RootSlot`] / [`PendingAnchor`]
+//! cleared by `Forest::pre_record`; [`RootSlot`] / [`Placement`]
 //! carry per-root placement minted during recording.
 
 use glam::Vec2;
@@ -46,10 +46,10 @@ pub(crate) struct RecordingScratch {
     /// inside the scope read it (don't consume — multiple roots share
     /// the same anchor). `None` outside any scope and always on `Main`
     /// (its implicit root paints the full surface); in that case root
-    /// mints fall through to `PendingAnchor::default()` =
+    /// mints fall through to `Placement::default()` =
     /// `(Vec2::ZERO, None)`. `Forest::push_layer` asserts no nesting,
     /// so a single slot suffices.
-    pub(crate) pending_anchor: Option<PendingAnchor>,
+    pub(crate) pending_anchor: Option<Placement>,
 }
 
 impl RecordingScratch {
@@ -81,6 +81,17 @@ impl RecordingScratch {
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct RootSlot {
     pub(crate) first_node: NodeId,
+    pub(crate) placement: Placement,
+}
+
+/// Screen-space placement of a layer root: a top-left `anchor` plus an
+/// optional caller-supplied `size` cap. Shared by [`RootSlot`] (the
+/// finalized per-root record) and the pending-anchor slot the layer scope
+/// stamps onto its roots (`Tree::pending_anchor` — populated by
+/// `Forest::push_layer`, read by root mints inside the scope, cleared by
+/// `pop_layer`).
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct Placement {
     /// Top-left placement in screen space. `Vec2::ZERO` for `Main`;
     /// set by `Forest::push_layer` for side layers.
     pub(crate) anchor: Vec2,
@@ -91,14 +102,5 @@ pub(crate) struct RootSlot {
     /// natural size regardless of where it'll paint. The caller takes
     /// responsibility for placement in that mode (typically via a
     /// popup's flip-then-clamp). Always `None` for `Main`.
-    pub(crate) size: Option<Size>,
-}
-
-/// Pending anchor entry for `Tree::pending_anchor`. Populated by
-/// `Forest::push_layer`, consumed by root mints inside the scope, and
-/// cleared by `pop_layer`.
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct PendingAnchor {
-    pub(crate) anchor: Vec2,
     pub(crate) size: Option<Size>,
 }

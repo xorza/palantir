@@ -5,7 +5,7 @@ use crate::widgets::text_edit::tests::*;
 /// `handle_input` against the configured time/distance thresholds.
 #[test]
 fn double_and_triple_click_select_word_and_all() {
-    use crate::layout::types::display::Display;
+    use crate::display::Display;
     use std::time::Duration;
 
     let ed_id = WidgetId::from_hash("multi-ed");

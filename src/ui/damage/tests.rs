@@ -4,7 +4,6 @@ use crate::forest::element::Configure;
 use crate::forest::rollups::CascadeInputHash;
 use crate::forest::tree::NodeId;
 use crate::input::InputEvent;
-use crate::layout::types::{display::Display, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
@@ -17,6 +16,7 @@ use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::popup::Popup;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
+use crate::{display::Display, layout::types::sizing::Sizing};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 

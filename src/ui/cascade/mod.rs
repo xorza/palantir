@@ -324,7 +324,7 @@ impl CascadesEngine {
     /// node in each tree's slot, and append a global hit entry per
     /// node. Reads the layout pass's output, writes into `cascades`.
     /// Anchor offset for each layer is read from the layer's own
-    /// `RootSlot.anchor` — no parent transform plumbing is needed
+    /// `RootSlot.placement.anchor` — no parent transform plumbing is needed
     /// because trees never share NodeId space.
     #[profiling::function]
     pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout, cascades: &mut Cascades) {

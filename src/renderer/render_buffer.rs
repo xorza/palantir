@@ -1,4 +1,4 @@
-use crate::layout::types::display::Display;
+use crate::display::Display;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;

@@ -122,7 +122,7 @@ fn editor_at(buf: &mut String, padding: Option<Spacing>) -> impl FnMut(&mut Ui) 
 /// fallback drives caret-x (8 px/char at 16 px font) — predictable
 /// widths the click-positioning tests rely on.
 fn ui_at_no_cosmic(size: UVec2) -> Ui {
-    use crate::layout::types::display::Display;
+    use crate::display::Display;
     let mut ui = Ui::for_test();
     ui.display = Display::from_physical(size, 1.0);
     ui

@@ -6,7 +6,7 @@
 
 use std::time::Duration;
 
-use crate::layout::types::display::Display;
+use crate::display::Display;
 
 /// Bitset over wake causes. OR-merged when two requests coalesce
 /// onto the same deadline slot, so the frame-entry classifier can see
