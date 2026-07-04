@@ -392,7 +392,7 @@ impl LayoutEngine {
             for slot in &tree.roots {
                 let root = slot.first_node;
                 // Main: implicit root spans the surface. Side layers:
-                // `slot.anchor` is the paint placement. `slot.size`
+                // `slot.placement.anchor` is the paint placement. `slot.placement.size`
                 // controls the measurement available:
                 //   - `None` → "fill from anchor to bottom-right", so
                 //     `available = surface - anchor`. The dropdown /
@@ -412,14 +412,14 @@ impl LayoutEngine {
                 let (origin, available) = if layer == Layer::Main {
                     (surface.min, surface.size)
                 } else {
-                    let available = match slot.size {
+                    let available = match slot.placement.size {
                         None => {
-                            let rem = (surface_end - slot.anchor).max(glam::Vec2::ZERO);
+                            let rem = (surface_end - slot.placement.anchor).max(glam::Vec2::ZERO);
                             Size::new(rem.x, rem.y)
                         }
                         Some(s) => Size::new(s.w.min(surface.size.w), s.h.min(surface.size.h)),
                     };
-                    (slot.anchor, available)
+                    (slot.placement.anchor, available)
                 };
                 let desired = self.measure(tree, root, available, tc, out);
                 // The layer engine *is* the parent for the root, so it

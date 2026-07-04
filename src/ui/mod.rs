@@ -12,6 +12,7 @@ use crate::common::hash::Hasher;
 use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
 use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
+use crate::display::Display;
 use crate::forest::Chrome;
 use crate::forest::Forest;
 use crate::forest::Layer;
@@ -28,7 +29,6 @@ use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
 use crate::layout::layoutengine::LayoutEngine;
 use crate::layout::support::TextCtx;
-use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;
 use crate::primitives::background::Background;
@@ -699,8 +699,8 @@ impl Ui {
                 // pass A's pre-flip screen rects (else the popup paints
                 // at the raw anchor until an unrelated content change
                 // forces a recompute).
-                h.pod(&slot.anchor);
-                match slot.size {
+                h.pod(&slot.placement.anchor);
+                match slot.placement.size {
                     Some(s) => h.pod(&s),
                     None => h.write_u32(u32::MAX),
                 }

@@ -50,7 +50,7 @@ fn caret_blinks_on_and_off_while_focused() {
     }
 
     fn frame_at(ui: &mut Ui, now_secs: f32, mut f: impl FnMut(&mut Ui)) {
-        use crate::layout::types::display::Display;
+        use crate::display::Display;
         let display = Display::from_physical(NARROW, 1.0);
         ui.frame(
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
@@ -135,7 +135,7 @@ fn caret_blinks_on_and_off_while_focused() {
 /// `entry.anim.next_wake(prev_now) <= now`.
 #[test]
 fn caret_anim_does_not_damage_between_quantum_boundaries() {
-    use crate::layout::types::display::Display;
+    use crate::display::Display;
     use crate::ui::frame_report::FrameReport;
     use std::time::Duration;
 
@@ -204,7 +204,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
 /// the mouse" bug.
 #[test]
 fn focus_gain_resets_blink_even_without_caret_change() {
-    use crate::layout::types::display::Display;
+    use crate::display::Display;
     use std::time::Duration;
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -250,7 +250,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
 /// last frame landed on.
 #[test]
 fn focused_text_edit_schedules_blink_wake() {
-    use crate::layout::types::display::Display;
+    use crate::display::Display;
     use std::time::Duration;
 
     let mut ui = ui_at_no_cosmic(NARROW);

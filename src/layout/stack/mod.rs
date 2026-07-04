@@ -246,7 +246,7 @@ pub(crate) fn measure(
     // width. It does, because the Stack's outer main size is a
     // deterministic function of (its own `Sizing` + parent-supplied
     // `available`) via `resolve_axis_size`, and the parent passes the
-    // same `available` to `measure` that it later derives `slot.size`
+    // same `available` to `measure` that it later derives `slot.placement.size`
     // from for `arrange`. Any future driver that clamps a child's slot
     // *between* its own measure and arrange would break this.
     let mut fill_main = 0.0f32;

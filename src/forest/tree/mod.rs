@@ -364,8 +364,7 @@ impl Tree {
             let pending = scratch.pending_anchor.unwrap_or_default();
             self.roots.push(RootSlot {
                 first_node: new_id,
-                anchor: pending.anchor,
-                size: pending.size,
+                placement: pending,
             });
         }
         if matches!(element.mode, LayoutMode::Grid) {

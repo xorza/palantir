@@ -6,10 +6,10 @@
 //! gates `TooltipState.visible`.
 
 use crate::Ui;
+use crate::display::Display;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
-use crate::layout::types::display::Display;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;

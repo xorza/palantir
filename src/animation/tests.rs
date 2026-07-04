@@ -5,8 +5,8 @@
 
 use crate::Ui;
 use crate::animation::*;
+use crate::display::Display;
 use crate::forest::element::Configure;
-use crate::layout::types::display::Display;
 use crate::primitives::color::Color;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame::FrameStamp;

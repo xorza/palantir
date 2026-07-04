@@ -1,5 +1,5 @@
+use crate::display::Display;
 use crate::forest::frame_arena::FrameArenaInner;
-use crate::layout::types::display::Display;
 use crate::primitives::span::Span;
 use crate::primitives::{
     color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,

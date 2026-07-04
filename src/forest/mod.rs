@@ -9,7 +9,7 @@ use crate::forest::per_layer::PerLayer;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::Tree;
 use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
-use crate::forest::tree::record::{PendingAnchor, RecordingScratch};
+use crate::forest::tree::record::{Placement, RecordingScratch};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -149,7 +149,7 @@ impl Forest {
         }
     }
 
-    /// Finalize every tree. Pure structural pass — `RootSlot.anchor`
+    /// Finalize every tree. Pure structural pass — `RootSlot.placement.anchor`
     /// is just a placement; the surface needed to derive each root's
     /// "available" room is passed straight to `LayoutEngine::run`.
     /// The paint-anim wake fold is centralised in
@@ -320,7 +320,7 @@ impl Forest {
             scratch.pending_anchor.is_none(),
             "push_layer({layer:?}) found pending_anchor already set — no-nesting invariant violated",
         );
-        scratch.pending_anchor = Some(PendingAnchor { anchor, size });
+        scratch.pending_anchor = Some(Placement { anchor, size });
         self.active_side = Some(layer);
     }
 

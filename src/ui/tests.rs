@@ -1,10 +1,10 @@
 use crate::TextStyle;
 use crate::Ui;
+use crate::display::Display;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
 use crate::input::InputEvent;
-use crate::layout::types::display::Display;
 use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect};

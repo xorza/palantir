@@ -22,6 +22,10 @@ pub mod animation;
 pub(crate) mod common;
 pub(crate) mod context;
 pub(crate) mod debug_overlay;
+/// Per-output display state (physical size, DPR, pixel-snap, refresh) —
+/// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
+/// `window_renderer`; not owned by any one subsystem.
+pub(crate) mod display;
 pub mod forest;
 pub mod input;
 pub mod layout;
@@ -66,6 +70,7 @@ pub use animation::{AnimSlot, AnimSpec};
 // the trait in the type namespace — `use palantir::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use debug_overlay::DebugOverlayConfig;
+pub use display::Display;
 pub use forest::Layer;
 pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::visibility::Visibility;
@@ -79,7 +84,6 @@ pub use input::shortcut::{Mods, Shortcut};
 pub use input::subscriptions::{KeyboardSense, PointerSense};
 pub use layout::types::align::{Align, HAlign, VAlign};
 pub use layout::types::clip_mode::ClipMode;
-pub use layout::types::display::Display;
 pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
