@@ -201,7 +201,7 @@ pub(crate) struct BoundsExtras {
 /// and `Grid` expose `.transform()` in the public API** — every
 /// transformed node is already a panel that typically customizes
 /// `gap`/`justify`/`child_align`, so the field amortizes against an
-/// already-allocated row. Keeps `ExtrasIdx` at 8 B (one fewer slot) and
+/// already-allocated row. Keeps `ExtrasIdx` at 6 B (one fewer slot) and
 /// avoids a separate `transform_table` sparse column.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct PanelExtras {

@@ -334,10 +334,11 @@ pub(crate) struct MeshInstance {
 ///
 /// **Layout**: fields ordered so the struct is `Pod` with no internal
 /// padding. `TextCacheKey` (24 B, align 8) leads so its alignment
-/// requirement is satisfied without filler. Color stores already-encoded
-/// sRGB bytes (glyphon's `ColorMode::Accurate` consumes sRGB; doing the
-/// conversion at compose time keeps the per-frame hot path Pod-shaped
-/// and lets the backend hash whole `TextRun` slices via `bytemuck`).
+/// requirement is satisfied without filler. Color stores **straight-alpha
+/// linear** bytes: the native text backend consumes linear and premultiplies
+/// at output (no sRGB roundtrip — matches the crate's colour contract), which
+/// keeps the per-frame hot path Pod-shaped and lets the backend hash whole
+/// `TextRun` slices via `bytemuck`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 // `pub` (not `pub(crate)`) is load-bearing: the text backend's gated

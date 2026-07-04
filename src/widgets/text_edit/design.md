@@ -1,5 +1,12 @@
 # TextEdit — design
 
+> **Doc status:** design record, not a spec. The `struct` / `enum` snippets
+> below illustrate intent and can lag the code — the authoritative
+> definitions are `text_edit/mod.rs` (`TextEdit`, `TextEditState`,
+> `TextEditResponse`), `theme/text_edit.rs` (`TextEditTheme`), and
+> `input/mod.rs` (`InputEvent`). Verify against those before relying on a
+> field list here.
+
 Focusable, click/drag-to-place-caret editable text leaf. Single-line
 by default; flip to multi-line with `.multiline(true)`. Typing via
 `KeyDown` printable chars or IME `Text` commits; backspace/delete,
@@ -99,9 +106,10 @@ pub enum InputEvent {
     PointerLeft,
     PointerPressed(PointerButton),
     PointerReleased(PointerButton),
-    Scroll(Vec2),
-    KeyDown { key: Key, mods: Modifiers, repeat: bool },
-    KeyUp   { key: Key, mods: Modifiers },
+    ScrollPixels(Vec2),                    // pixel-precise (touchpad)
+    ScrollLines(Vec2),                     // notched wheel (raw line count)
+    Zoom(f32),                             // pinch factor (1.0 = identity)
+    KeyDown { key: Key, repeat: bool, physical: Key },
     Text(TextChunk),                       // committed character(s)
     ModifiersChanged(Modifiers),
 }

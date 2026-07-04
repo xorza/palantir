@@ -553,14 +553,6 @@ impl Ui {
             // needs `BUTTONS` to still be set when the next click
             // outside lands.
             self.input.subs.clear();
-            // Snapshot the theme's default line height once per frame
-            // for `InputState::response_for` to consume — avoids
-            // repeating the `line_height_for` multiply on every
-            // per-widget response_for call.
-            self.input.frame_line_px = self
-                .theme
-                .text
-                .line_height_for(self.theme.text.font_size_px);
             // Snapshot whether any widget interaction is possible this
             // frame; `response_for` skips its per-button capture scans for
             // every widget when none is (the common idle frame).
@@ -1209,11 +1201,6 @@ impl Ui {
     /// earlier in the same record than the widget's own node is fine —
     /// e.g. baking a drag delta into a widget's position before recording it.
     pub fn response_for(&self, id: WidgetId) -> ResponseState {
-        // Wheel-line → pixels uses `InputState::frame_line_px`, the
-        // once-per-frame snapshot of the theme's default line height
-        // (populated by `record_pass`). Per-widget call here avoids
-        // redoing the multiply and stays consistent if the theme is
-        // swapped mid-frame.
         let mut state = self.input.response_for(id, &self.cascades);
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.

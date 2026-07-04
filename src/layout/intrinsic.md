@@ -48,13 +48,13 @@ needs it. See "Deferred" below.
 
 ```rust
 impl LayoutEngine {
-    pub fn intrinsic(
+    pub(crate) fn intrinsic(
         &mut self,
         tree: &Tree,
         node: NodeId,
         axis: Axis,
         req: LenReq,
-        text: &mut TextMeasurer,
+        tc: &TextCtx<'_>,
     ) -> f32;
 }
 ```
@@ -77,9 +77,9 @@ before delegating content sizing to the driver.
 ## Per-driver behavior
 
 - **Leaf.** `intrinsic.rs::leaf` walks the node's shapes. `Shape::Text`
-  contributes via `TextMeasurer::measure(src, size, max_w = None)` —
-  cosmic returns both `intrinsic_min` and natural width from one
-  unbounded shape, cached on the cosmic side. Other shapes contribute
+  contributes via `TextShaper::shape_unbounded` (reached through the
+  `TextCtx`) — cosmic returns both `intrinsic_min` and natural width from
+  one unbounded shape, cached on the cosmic side. Other shapes contribute
   zero (they paint relative to the owner's arranged rect, they don't
   drive size).
 - **HStack / VStack on main axis.** Sum of children's intrinsic on that

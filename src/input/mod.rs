@@ -286,19 +286,11 @@ pub(crate) struct InputState {
     /// at the widget from [`Self::frame_scroll_pixels`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
     pub(crate) frame_zoom_delta: f32,
-    /// Frame-snapshot of the theme's default font line height in
-    /// logical px. Filled by [`crate::Ui::frame`] before any
-    /// `response_for` calls; read here to convert
-    /// `frame_scroll_lines` into pixels for `scroll_delta_for` without
-    /// each call dereffing `theme.text` again. Cached on `InputState`
-    /// (not on `Ui`) because the consumer (`scroll_delta_for`) already
-    /// takes `&self.input`, so the snapshot lives in the same borrow.
-    pub(crate) frame_line_px: f32,
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
     /// scroll/pinch target, no live button capture or click/double-click
     /// edge. Filled once per record pass by [`crate::Ui::record_pass`]
-    /// (alongside `frame_line_px`) from [`Self::compute_frame_quiescent`];
+    /// from [`Self::compute_frame_quiescent`];
     /// read in [`Self::response_for`] to default the whole interaction
     /// half out for every widget instead of re-deriving it per call.
     /// `focused` is excluded on purpose (see `compute_frame_quiescent`),
@@ -393,11 +385,6 @@ impl InputState {
             frame_scroll_pixels: Vec2::ZERO,
             frame_scroll_lines: Vec2::ZERO,
             frame_zoom_delta: 1.0,
-            // Populated by `Ui::frame` before record runs;
-            // 16.0 is a safe pre-frame fallback (matches the default
-            // theme's body line height) so the rare "response_for
-            // before first frame" path doesn't divide by zero.
-            frame_line_px: 16.0,
             // Recomputed each record pass before any `response_for`
             // call; `false` is the safe pre-frame default (forces the
             // full path).
@@ -487,8 +474,7 @@ impl InputState {
             InputEvent::PointerPressed(_)
                 | InputEvent::PointerReleased(_)
                 | InputEvent::KeyDown { .. }
-                | InputEvent::Text(_) // | InputEvent::Scroll{Pixels,Lines}(_)
-                                      // | InputEvent::Zoom(_)
+                | InputEvent::Text(_)
         ) {
             self.frame_had_action = true;
         }

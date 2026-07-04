@@ -112,17 +112,20 @@ impl LayoutScratch {
 ///
 /// - `scratch` — per-frame intermediate state (see [`LayoutScratch`]).
 ///   Cleared at the top of every `run`.
-/// - `result` — per-frame output, one [`LayerLayout`] slot per `Layer`,
-///   indexed via `result[layer]`. Internal measure/arrange code
-///   reads/writes `self.result[self.active_layer]`; outside `run` every
-///   slot is the finalized output for its layer. Read by the encoder,
-///   cascade, hit-index, scroll-state refresh, and tests.
 /// - `active_layer` — which layer's slot the recursive measure/arrange
 ///   currently writes to. Set at the top of each iteration in `run`;
 ///   between/outside `run` invocations its value is whatever the last
 ///   iteration left, but no recursive code runs there to read it.
+/// - `scroll_states` — cross-frame `WidgetId → ScrollLayoutState` for
+///   every scroll widget (see the field doc below).
 /// - `cache` — cross-frame measure cache. See [`cache`] and
 ///   `src/layout/measure-cache.md`.
+///
+/// Per-frame *output* is **not** held here: `run` threads it through an
+/// `out: &mut Layout` (one [`LayerLayout`] slot per `Layer`, written via
+/// `out[self.active_layer]`), so the finalized layout is owned by the
+/// caller and read by the encoder, cascade, hit-index, scroll-state
+/// refresh, and tests.
 #[derive(Default)]
 pub(crate) struct LayoutEngine {
     pub(crate) scratch: LayoutScratch,

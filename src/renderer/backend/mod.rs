@@ -346,6 +346,20 @@ impl WgpuBackend {
         });
     }
 
+    /// Device limit `max_texture_dimension_2d`, read by the frontend `Composer`
+    /// to cap each `GpuView`'s off-screen-target size (ceiled from the composed
+    /// paint rect). The only backend-owned input the composer needs.
+    pub(crate) fn max_texture_dim(&self) -> u32 {
+        self.device.limits().max_texture_dimension_2d
+    }
+
+    /// Present an acquired swapchain frame. wgpu 30 moved `present` off
+    /// `SurfaceTexture` onto the queue, so the window renderer routes it
+    /// through the backend's owned queue here.
+    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
+        self.queue.present(frame);
+    }
+
     /// Render one frame to the persistent backbuffer, then copy the
     /// backbuffer onto the swapchain texture. The caller's surface
     /// texture must have `COPY_DST` usage (set in
@@ -359,7 +373,7 @@ impl WgpuBackend {
     /// group runs. So a child quad declared *after* a label correctly
     /// occludes that label.
     ///
-    /// Two damage paths, branching on `damage`:
+    /// Two damage paths, branching on the `plan`'s damage region:
     ///
     /// - [`Damage::Full`]: a single `LoadOp::Clear(clear)` pass
     ///   paints every group at its native scissor. First frame,
@@ -379,27 +393,13 @@ impl WgpuBackend {
     ///
     /// A region whose every rect clamps to zero physical-px area
     /// degrades to a single `Full` pass — correct, just wasteful.
-    #[profiling::function]
-    /// Device limit `max_texture_dimension_2d`, read by the frontend `Composer`
-    /// to cap each `GpuView`'s off-screen-target size (ceiled from the composed
-    /// paint rect). The only backend-owned input the composer needs.
-    pub(crate) fn max_texture_dim(&self) -> u32 {
-        self.device.limits().max_texture_dimension_2d
-    }
-
-    /// Present an acquired swapchain frame. wgpu 30 moved `present` off
-    /// `SurfaceTexture` onto the queue, so the window renderer routes it
-    /// through the backend's owned queue here.
-    pub(crate) fn present(&self, frame: wgpu::SurfaceTexture) {
-        self.queue.present(frame);
-    }
-
-    /// Render `buffer` for `plan` onto `surface_tex`. When `via_backbuffer` is
-    /// `Some`, the pass renders into that backbuffer and the result is copied
-    /// out (the backbuffer-copy path); when `None`, it renders straight into
+    ///
+    /// `via_backbuffer` `Some` renders into that backbuffer and copies the
+    /// result out (backbuffer-copy path); `None` renders straight into
     /// `surface_tex` (direct present). `plan` is the *effective* plan — the
     /// caller (`WindowRenderer`) has already escalated a Partial to Full if the
     /// backbuffer was just (re)created, and ensured the stencil + backbuffer.
+    #[profiling::function]
     pub(crate) fn submit(
         &mut self,
         surface_tex: &wgpu::Texture,

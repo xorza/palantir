@@ -1,8 +1,9 @@
 //! Bezier-curve utilities. Curves are rendered natively on the GPU
 //! (see `renderer::backend::curve_pipeline`); CPU flattening is no
-//! longer part of the pipeline. The only thing left here is the
-//! quadratic→cubic promotion the curve-lowering path uses to feed a
-//! single shader code path.
+//! longer part of the pipeline. What remains: the quadratic→cubic
+//! promotion the curve-lowering path uses to feed a single shader code
+//! path, plus the curve-bbox helpers (`cubic_bezier_bbox` / `CurveBounds`
+//! / `solve_quadratic`) that size the arena payload.
 
 use glam::Vec2;
 

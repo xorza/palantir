@@ -25,9 +25,9 @@
 //! one length compare, and `Forest::add_shape` doesn't push a sentinel
 //! per shape in the common (no-anim) frame.
 //!
-//! Slice 1 ships [`PaintAnim::BlinkOpacity`] only. The rotation / pulse /
-//! marquee variants in `docs/roadmap/paint-tick.md` need encoder
-//! transform-mod plumbing and land in a follow-up.
+//! [`PaintAnim::BlinkOpacity`] (alpha) and [`PaintAnim::Spin`] (rotation)
+//! ship today; the pulse / marquee variants in `docs/roadmap/paint-tick.md`
+//! need further encoder transform-mod plumbing and land in a follow-up.
 //!
 //! See `docs/roadmap/paint-tick.md` for the full design.
 
@@ -219,7 +219,7 @@ pub(crate) struct PaintAnimEntry {
 #[derive(Default)]
 pub(crate) struct PaintAnims {
     /// Live anim entries, in registration order. Iterated by
-    /// `Tree::post_record` (quantum + next_wake fold) and
+    /// `Forest::min_paint_anim_wake` (next-wake fold) and
     /// `DamageEngine::compute` (anim-damage union).
     pub(crate) entries: Vec<PaintAnimEntry>,
     /// Sparse `shape_idx → entries[idx]` lookup. Empty when no shape

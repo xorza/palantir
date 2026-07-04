@@ -196,13 +196,12 @@ impl Color {
         )
     }
 
-    /// Quantize this linear-RGB colour to **sRGB-encoded** 8-bit
-    /// packed bytes via the cubic-Newton inverse (`linear_to_srgb`).
-    /// Used at the two boundaries that need sRGB-perceptual storage —
-    /// glyphon (its API expects sRGB) and any non-default consumer.
-    /// The default `From<Color> for ColorU8` is a **linear** quantize
-    /// (no cubic); call this explicitly when you need the sRGB-encoded
-    /// form. Lossy roundtrip ≤ 1 LSB per channel.
+    /// Quantize this linear-RGB colour to **sRGB-encoded** 8-bit packed
+    /// bytes via the cubic-Newton inverse (`linear_to_srgb`). The default
+    /// `From<Color> for ColorU8` is a **linear** quantize (no cubic); call
+    /// this when a consumer needs sRGB-perceptual bytes (e.g. quantizing a
+    /// theme colour into an sRGB image tile). Lossy roundtrip ≤ 1 LSB per
+    /// channel.
     pub fn to_srgb_u8(self) -> ColorU8 {
         let q = |x: f32| -> u8 { (linear_to_srgb(x).clamp(0.0, 1.0) * 255.0).round() as u8 };
         ColorU8 {
@@ -221,8 +220,8 @@ impl Color {
 /// `f32` linear-space precision.
 ///
 /// Default `From<Color>` / `From<ColorU8>` are straight linear quantize
-/// pairs (no sRGB encode). For the sRGB-encoded form (glyphon, hex
-/// constructors), use [`Color::to_srgb_u8`] / [`Self::hex`] explicitly.
+/// pairs (no sRGB encode). For the sRGB-encoded form (CSS-style hex
+/// input), use [`Self::hex`] / [`Self::hexa`] explicitly.
 #[repr(C)]
 #[derive(
     Copy,
@@ -329,8 +328,7 @@ impl From<Color> for ColorU8 {
     /// **Linear** quantize — straight `(channel * 255) as u8`, no
     /// sRGB encoding. Used by every linear-storage consumer (vertex
     /// colours, gradient stops baked into the linear LUT, etc.). Call
-    /// `Color::to_srgb_u8()` explicitly for the sRGB-encoded path
-    /// (glyphon).
+    /// [`Color::to_srgb_u8`] for the sRGB-encoded path.
     #[inline]
     fn from(c: Color) -> Self {
         let q = |x: f32| -> u8 { (x.clamp(0.0, 1.0) * 255.0).round() as u8 };

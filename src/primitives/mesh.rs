@@ -15,9 +15,10 @@ use std::hash::Hasher;
 /// composer bakes the accumulated transform + DPI scale into a
 /// physical-px copy at compose time.
 ///
-/// `color` is **linear RGBA, premultiplied**, stored as `ColorU8`
-/// (8 bits per channel, linear-space — the default `From<Color> for
-/// ColorU8` is a linear quantize, no sRGB encoding). The GPU vertex
+/// `color` is **straight-alpha linear RGBA** — the mesh shader
+/// premultiplies at output — stored as `ColorU8` (8 bits per channel,
+/// linear-space — the default `From<Color> for ColorU8` is a linear
+/// quantize, no sRGB encoding). The GPU vertex
 /// attribute is `Unorm8x4`, so `u8/255` lands in the rasterizer as
 /// `0..1` linear floats with no shader decode. Banding in dark
 /// gradients across a mesh face is the trade-off for the 12 B vertex
