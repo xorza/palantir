@@ -951,7 +951,7 @@ impl Composer {
                         key: t.key,
                         // Snap the ancestor-transform component of the
                         // text scale to discrete 0.5% steps. Continuous
-                        // zoom would otherwise mint a fresh glyphon
+                        // zoom would otherwise mint a fresh glyph
                         // cache key every frame (subpixel font size +
                         // bin shift), forcing swash to re-rasterize
                         // every glyph. Snapping stabilizes the key

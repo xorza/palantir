@@ -834,7 +834,7 @@ impl WgpuBackend {
         // can skip redundant `set_pipeline` / `set_vertex_buffer` calls
         // across consecutive same-kind steps. wgpu records every
         // `set_pipeline` as a real command — drivers don't dedupe.
-        // `PreClear` and glyphon's `render_group` set their own state,
+        // `PreClear` and the text backend's render set their own state,
         // so we reset to `None` after them and re-bind on the next
         // non-text step.
         #[derive(PartialEq, Eq)]

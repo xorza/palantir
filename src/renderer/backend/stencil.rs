@@ -5,7 +5,7 @@
 //! `QuadPipeline`'s `mask_write` variant), then every color draw
 //! inside the clipped region runs through this state. Sole source of
 //! truth so [`QuadPipeline::stencil_test`], `MeshPipeline::stencil_test`,
-//! `ImagePipeline::stencil_test`, and glyphon's stencil-aware text
+//! `ImagePipeline::stencil_test`, and the stencil-aware text
 //! renderer all agree on `read_mask`, `compare`, and the face ops —
 //! mismatched bits would silently mis-clip text or images under a
 //! rounded panel.

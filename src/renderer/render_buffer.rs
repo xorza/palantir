@@ -23,7 +23,7 @@ pub(crate) struct RenderBuffer {
     pub(crate) texts: Vec<TextRun>,
     pub(crate) meshes: MeshScene,
     pub(crate) groups: Vec<DrawGroup>,
-    /// One entry per *batch* of text runs that share a single glyphon
+    /// One entry per *batch* of text runs that share a single text-backend
     /// `prepare`/`render` call. The composer coalesces text across
     /// adjacent groups when paint-order is preserved (no occluding
     /// quad/mesh, no rounded-clip change) — collapsing many small
@@ -74,7 +74,7 @@ pub(crate) struct RenderBuffer {
     pub(crate) viewport_phys_f: Vec2,
     /// Logical→physical conversion factor, propagated from `Display`.
     /// Glyph rasterization needs it: shaped buffers are sized in logical px,
-    /// so glyphon scales by this when emitting glyph quads.
+    /// so the text backend scales by this when emitting glyph quads.
     pub(crate) scale: f32,
     /// This frame's monotonic time (window-start `elapsed`), stamped by
     /// `Frontend::build` from `Ui::time` (not derivable from `Display`).
@@ -151,7 +151,7 @@ pub(crate) struct DrawGroup {
     pub(crate) texts: Span,
 }
 
-/// A coalesced batch of text runs sharing one `glyphon::prepare` /
+/// A coalesced batch of text runs sharing one text-backend `prepare` /
 /// `render` call. `texts` is a contiguous range into
 /// `RenderBuffer.texts`. The schedule emits the render step at the
 /// end of the batch's last group (after that group's quads), so any
@@ -357,7 +357,7 @@ pub struct TextRun {
     /// the cumulative ancestor `TranslateScale.scale` at compose time
     /// and snapped to a log-multiplicative ladder
     /// (`composer::snap_text_scale`). `1.0` outside any transformed
-    /// subtree. Multiplied into glyphon's per-`TextArea.scale`, which
+    /// subtree. Multiplied into the text backend's per-`TextArea.scale`, which
     /// cosmic-text mixes into its glyph `CacheKey` (`font_size * scale`),
     /// so every distinct value here mints a fresh swash rasterization +
     /// atlas slot. Snapping is what keeps a continuous zoom gesture from
