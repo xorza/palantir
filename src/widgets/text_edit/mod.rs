@@ -15,7 +15,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CursorPos, FontFamily, TextShaper};
+use crate::text::{CursorPos, FontFamily, ShapeParams, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -685,11 +685,13 @@ impl<'a> TextEdit<'a> {
                 .shaper
                 .measure(
                     measure_str,
-                    ctx.font_size,
-                    ctx.line_height_px,
-                    ctx.wrap_target,
-                    ctx.family,
-                    ctx.halign,
+                    ShapeParams {
+                        font_size_px: ctx.font_size,
+                        line_height_px: ctx.line_height_px,
+                        max_width_px: ctx.wrap_target,
+                        family: ctx.family,
+                        halign: ctx.halign,
+                    },
                 )
                 .size;
             content_w = m.w;
@@ -746,11 +748,13 @@ impl<'a> TextEdit<'a> {
         let caret_pos = ui.ctx.shaper.cursor_xy(
             self.text,
             caret_byte,
-            ctx.font_size,
-            ctx.line_height_px,
-            ctx.wrap_target,
-            ctx.family,
-            ctx.halign,
+            ShapeParams {
+                font_size_px: ctx.font_size,
+                line_height_px: ctx.line_height_px,
+                max_width_px: ctx.wrap_target,
+                family: ctx.family,
+                halign: ctx.halign,
+            },
         );
         let now = ui.time;
         let (scroll, last_caret_change) = {
@@ -835,11 +839,13 @@ impl<'a> TextEdit<'a> {
                     .shaper
                     .measure(
                         measure_str,
-                        ctx.font_size,
-                        ctx.line_height_px,
-                        None,
-                        ctx.family,
-                        ctx.halign,
+                        ShapeParams {
+                            font_size_px: ctx.font_size,
+                            line_height_px: ctx.line_height_px,
+                            max_width_px: None,
+                            family: ctx.family,
+                            halign: ctx.halign,
+                        },
                     )
                     .size
                     .w;
@@ -867,11 +873,13 @@ impl<'a> TextEdit<'a> {
                 ui.ctx.shaper.selection_rects(
                     text_ptr,
                     range,
-                    ctx.font_size,
-                    ctx.line_height_px,
-                    ctx.wrap_target,
-                    ctx.family,
-                    ctx.halign,
+                    ShapeParams {
+                        font_size_px: ctx.font_size,
+                        line_height_px: ctx.line_height_px,
+                        max_width_px: ctx.wrap_target,
+                        family: ctx.family,
+                        halign: ctx.halign,
+                    },
                     &mut rects,
                 );
                 let dx = pad_l + offset.x - scroll.x;
@@ -1168,11 +1176,13 @@ fn handle_input(
             text,
             local_x,
             if ctx.multiline { local_y } else { 0.0 },
-            ctx.font_size,
-            ctx.line_height_px,
-            ctx.wrap_target,
-            ctx.family,
-            ctx.halign,
+            ShapeParams {
+                font_size_px: ctx.font_size,
+                line_height_px: ctx.line_height_px,
+                max_width_px: ctx.wrap_target,
+                family: ctx.family,
+                halign: ctx.halign,
+            },
         );
         if !state.prev_pressed {
             // Press rising edge. Detect multi-click: consecutive
@@ -1325,11 +1335,13 @@ fn resolve_vertical_motion(
     let pos = shaper.cursor_xy(
         text,
         state.caret,
-        ctx.font_size,
-        ctx.line_height_px,
-        ctx.wrap_target,
-        ctx.family,
-        ctx.halign,
+        ShapeParams {
+            font_size_px: ctx.font_size,
+            line_height_px: ctx.line_height_px,
+            max_width_px: ctx.wrap_target,
+            family: ctx.family,
+            halign: ctx.halign,
+        },
     );
     let probe_y = match v.direction {
         VerticalDir::Up => pos.y_top - 1.0,
@@ -1342,11 +1354,13 @@ fn resolve_vertical_motion(
             text,
             pos.x,
             probe_y,
-            ctx.font_size,
-            ctx.line_height_px,
-            ctx.wrap_target,
-            ctx.family,
-            ctx.halign,
+            ShapeParams {
+                font_size_px: ctx.font_size,
+                line_height_px: ctx.line_height_px,
+                max_width_px: ctx.wrap_target,
+                family: ctx.family,
+                halign: ctx.halign,
+            },
         )
     };
     move_caret(state, target, v.extend);

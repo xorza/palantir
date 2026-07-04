@@ -86,11 +86,13 @@ fn cursor_xy_x_cases() {
             m.cursor_xy(
                 text,
                 *offset,
-                *fs,
-                *lh_v,
-                None,
-                FontFamily::Sans,
-                HAlign::Auto,
+                ShapeParams {
+                    font_size_px: *fs,
+                    line_height_px: *lh_v,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    halign: HAlign::Auto
+                }
             )
             .x,
             *expected,
@@ -111,15 +113,26 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     let a = c
         .measure(
             "hi",
-            16.0,
-            16.0 * LINE_HEIGHT_MULT,
-            None,
-            FontFamily::Sans,
-            HAlign::Auto,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0 * LINE_HEIGHT_MULT,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
         )
         .key;
     let b = c
-        .measure("hi", 16.0, 24.0, None, FontFamily::Sans, HAlign::Auto)
+        .measure(
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 24.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
+        )
         .key;
     assert_ne!(a, b, "different leading must produce different key");
     assert_ne!(a.lh_q, b.lh_q, "lh_q is the discriminating field");
@@ -127,11 +140,13 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     let a2 = c
         .measure(
             "hi",
-            16.0,
-            16.0 * LINE_HEIGHT_MULT,
-            None,
-            FontFamily::Sans,
-            HAlign::Auto,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0 * LINE_HEIGHT_MULT,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
         )
         .key;
     assert_eq!(a, a2);
@@ -171,14 +186,34 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
 
     let segoe = c.measure(
         "MMMM",
-        16.0,
-        lh(16.0),
-        None,
-        FontFamily::SegoeUi,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::SegoeUi,
+            halign: HAlign::Auto,
+        },
     );
-    let sans = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
-    let mono = c.measure("MMMM", 16.0, lh(16.0), None, FontFamily::Mono, HAlign::Auto);
+    let sans = c.measure(
+        "MMMM",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
+    let mono = c.measure(
+        "MMMM",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Mono,
+            halign: HAlign::Auto,
+        },
+    );
 
     // Discriminants 2 / 0 / 1 — all distinct, so the shaped-buffer
     // cache slots for the three families never collide.
@@ -215,15 +250,51 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
     let wid = WidgetId::from_hash("a");
     let h1 = NodeHash(1);
     let h2 = NodeHash(2);
-    let r1 = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0, FontFamily::Sans);
-    let r2 = m.shape_unbounded(wid, 0, h2, "hi", 16.0, 24.0, FontFamily::Sans);
+    let r1 = m.shape_unbounded(
+        wid,
+        0,
+        h1,
+        "hi",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
+    let r2 = m.shape_unbounded(
+        wid,
+        0,
+        h2,
+        "hi",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 24.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     assert_ne!(
         r1.size.h, r2.size.h,
         "different leading via different hash → distinct cache entries",
     );
     // Re-querying with the original hash returns the original (16
     // px height), proving the entry wasn't overwritten.
-    let r1_again = m.shape_unbounded(wid, 0, h1, "hi", 16.0, 16.0, FontFamily::Sans);
+    let r1_again = m.shape_unbounded(
+        wid,
+        0,
+        h1,
+        "hi",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     assert_eq!(r1.size.h, r1_again.size.h);
 }
 
@@ -240,12 +311,14 @@ fn shape_wrap_panics_without_prime() {
         wid,
         0,
         "hi",
-        16.0,
-        16.0,
-        100.0,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: Some(100.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         100,
-        FontFamily::Sans,
-        HAlign::Auto,
         LineFit::Wrap,
     );
 }
@@ -275,11 +348,13 @@ fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
             m.cursor_xy(
                 s,
                 i,
-                16.0,
-                16.0 * LINE_HEIGHT_MULT,
-                None,
-                FontFamily::Sans,
-                HAlign::Auto,
+                ShapeParams {
+                    font_size_px: 16.0,
+                    line_height_px: 16.0 * LINE_HEIGHT_MULT,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    halign: HAlign::Auto,
+                },
             )
             .x
         })
@@ -315,11 +390,13 @@ fn byte_at_xy_mono_fallback() {
             "hello",
             *x,
             0.0,
-            16.0,
-            16.0,
-            None,
-            FontFamily::Sans,
-            HAlign::Auto,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
         );
         assert_eq!(got, *expected, "case: {label}");
     }
@@ -336,9 +413,30 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
     let probes: Vec<usize> = (0..=s.len())
         .map(|i| {
             let x = m
-                .cursor_xy(s, i, fs, lh_v, None, FontFamily::Sans, HAlign::Auto)
+                .cursor_xy(
+                    s,
+                    i,
+                    ShapeParams {
+                        font_size_px: fs,
+                        line_height_px: lh_v,
+                        max_width_px: None,
+                        family: FontFamily::Sans,
+                        halign: HAlign::Auto,
+                    },
+                )
                 .x;
-            m.byte_at_xy(s, x, 0.0, fs, lh_v, None, FontFamily::Sans, HAlign::Auto)
+            m.byte_at_xy(
+                s,
+                x,
+                0.0,
+                ShapeParams {
+                    font_size_px: fs,
+                    line_height_px: lh_v,
+                    max_width_px: None,
+                    family: FontFamily::Sans,
+                    halign: HAlign::Auto,
+                },
+            )
         })
         .collect();
     // Monotone non-decreasing — hit-test never goes backwards as x grows.
@@ -350,11 +448,13 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
         s,
         10_000.0,
         0.0,
-        fs,
-        lh_v,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh_v,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     assert_eq!(past, s.len(), "x past end must clamp to text.len()");
 }
@@ -367,11 +467,13 @@ fn selection_rects_empty_range_is_noop() {
     m.selection_rects(
         "hello",
         5..5,
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         &mut out,
     );
     assert!(
@@ -387,11 +489,13 @@ fn selection_rects_single_line_emits_one_rect() {
     m.selection_rects(
         "hello",
         1..4,
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         &mut out,
     );
     assert_eq!(out.len(), 1, "single-line range → one rect");
@@ -418,11 +522,13 @@ fn selection_rects_multiline_emits_one_rect_per_line() {
     m.selection_rects(
         text,
         0..text.len(),
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         &mut out,
     );
     assert!(
@@ -479,20 +585,24 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
     let p0 = m.cursor_xy(
         "abc\ndef",
         0,
-        fs,
-        lh_v,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh_v,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     let p1 = m.cursor_xy(
         "abc\ndef",
         4,
-        fs,
-        lh_v,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh_v,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     assert!(p0.y_top.abs() < 0.5, "line 0 y_top ≈ 0, got {}", p0.y_top);
     assert!(
@@ -511,11 +621,13 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let r = c.measure(
         "",
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     assert_eq!(r.size, Size::ZERO);
     assert!(r.key.is_invalid());
@@ -530,7 +642,16 @@ fn cosmic_nonpositive_font_size_returns_invalid() {
     use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     for fs in [0.0_f32, -1.0, -16.0] {
-        let r = c.measure("hi", fs, 16.0, None, FontFamily::Sans, HAlign::Auto);
+        let r = c.measure(
+            "hi",
+            ShapeParams {
+                font_size_px: fs,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
+        );
         assert_eq!(r.size, Size::ZERO, "fs={fs}");
         assert!(r.key.is_invalid(), "fs={fs}");
     }
@@ -548,35 +669,43 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let full = c.measure(
         "hello world hi",
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     let hello = c.measure(
         "hello",
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     let world = c.measure(
         "world",
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     let hi = c.measure(
         "hi",
-        16.0,
-        16.0 * LINE_HEIGHT_MULT,
-        None,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0 * LINE_HEIGHT_MULT,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     let longest_w = hello.size.w.max(world.size.w).max(hi.size.w);
     assert!(
@@ -621,13 +750,40 @@ fn cache_key_collapses_halign_when_unbounded() {
     use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let auto = c
-        .measure("hi", 16.0, 16.0, None, FontFamily::Sans, HAlign::Auto)
+        .measure(
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
+        )
         .key;
     let right = c
-        .measure("hi", 16.0, 16.0, None, FontFamily::Sans, HAlign::Right)
+        .measure(
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Right,
+            },
+        )
         .key;
     let center = c
-        .measure("hi", 16.0, 16.0, None, FontFamily::Sans, HAlign::Center)
+        .measure(
+            "hi",
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: None,
+                family: FontFamily::Sans,
+                halign: HAlign::Center,
+            },
+        )
         .key;
     assert_eq!(auto, right, "unbounded: halign collapses to Auto in key");
     assert_eq!(auto, center, "unbounded: halign collapses to Auto in key");
@@ -636,21 +792,25 @@ fn cache_key_collapses_halign_when_unbounded() {
     let auto_w = c
         .measure(
             "hi",
-            16.0,
-            16.0,
-            Some(200.0),
-            FontFamily::Sans,
-            HAlign::Auto,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(200.0),
+                family: FontFamily::Sans,
+                halign: HAlign::Auto,
+            },
         )
         .key;
     let right_w = c
         .measure(
             "hi",
-            16.0,
-            16.0,
-            Some(200.0),
-            FontFamily::Sans,
-            HAlign::Right,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: 16.0,
+                max_width_px: Some(200.0),
+                family: FontFamily::Sans,
+                halign: HAlign::Right,
+            },
         )
         .key;
     assert_ne!(auto_w, right_w, "wrap-bounded: halign must enter the key");
@@ -665,19 +825,33 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     let m = TextShaper::with_bundled_fonts();
     let wid = WidgetId::from_hash("w");
     let hash = NodeHash(7);
-    m.shape_unbounded(wid, 0, hash, "hi", 16.0, 16.0, FontFamily::Sans);
+    m.shape_unbounded(
+        wid,
+        0,
+        hash,
+        "hi",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     let baseline = m.measure_calls();
     // First wrap shape — dispatches once.
     m.shape_wrap(
         wid,
         0,
         "hi",
-        16.0,
-        16.0,
-        200.0,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: Some(200.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
         200 * 64,
-        FontFamily::Sans,
-        HAlign::Left,
         LineFit::Wrap,
     );
     let after_left = m.measure_calls();
@@ -687,12 +861,14 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         wid,
         0,
         "hi",
-        16.0,
-        16.0,
-        200.0,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: Some(200.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
         200 * 64,
-        FontFamily::Sans,
-        HAlign::Left,
         LineFit::Wrap,
     );
     assert_eq!(
@@ -705,12 +881,14 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         wid,
         0,
         "hi",
-        16.0,
-        16.0,
-        200.0,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: Some(200.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Right,
+        },
         200 * 64,
-        FontFamily::Sans,
-        HAlign::Right,
         LineFit::Wrap,
     );
     assert_eq!(
@@ -728,8 +906,32 @@ fn sweep_removed_evicts_reuse_entries() {
     let m = TextShaper::default();
     let a = WidgetId::from_hash("a");
     let b = WidgetId::from_hash("b");
-    m.shape_unbounded(a, 0, NodeHash(1), "hi", 16.0, 16.0, FontFamily::Sans);
-    m.shape_unbounded(b, 0, NodeHash(2), "yo", 16.0, 16.0, FontFamily::Sans);
+    m.shape_unbounded(
+        a,
+        0,
+        NodeHash(1),
+        "hi",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
+    m.shape_unbounded(
+        b,
+        0,
+        NodeHash(2),
+        "yo",
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: 16.0,
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     assert!(m.has_reuse_entry(a, 0));
     assert!(m.has_reuse_entry(b, 0));
     let removed: FxHashSet<WidgetId> = FxHashSet::from_iter([a]);
@@ -761,11 +963,13 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     let pos = m.cursor_xy(
         text,
         text.len(),
-        font,
-        line_h,
-        Some(wrap),
-        FontFamily::Sans,
-        HAlign::Right,
+        ShapeParams {
+            font_size_px: font,
+            line_height_px: line_h,
+            max_width_px: Some(wrap),
+            family: FontFamily::Sans,
+            halign: HAlign::Right,
+        },
     );
     assert!(
         (pos.x - wrap).abs() < 0.5,
@@ -779,11 +983,13 @@ fn cursor_xy_on_empty_line_respects_right_align() {
     let pos_left = m.cursor_xy(
         text,
         text.len(),
-        font,
-        line_h,
-        Some(wrap),
-        FontFamily::Sans,
-        HAlign::Left,
+        ShapeParams {
+            font_size_px: font,
+            line_height_px: line_h,
+            max_width_px: Some(wrap),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
     );
     assert!(
         pos_left.x.abs() < 0.5,
@@ -804,15 +1010,26 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     let w = 120.0;
     let elided = c.measure_truncated(
         long,
-        16.0,
-        lh(16.0),
-        w,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         true,
     );
     // Precondition: the natural single line genuinely overflows `w`.
-    let full = c.measure(long, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    let full = c.measure(
+        long,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     assert!(
         full.size.w > w,
         "precondition: natural line ({}) must overflow the cap ({w})",
@@ -837,11 +1054,13 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     // same width — they hold different strings, so distinct cache keys.
     let wrapped = c.measure(
         long,
-        16.0,
-        lh(16.0),
-        Some(w),
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     assert_ne!(
         elided.key, wrapped.key,
@@ -856,14 +1075,25 @@ fn cosmic_ellipsis_short_text_not_truncated() {
     use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let short = "ok";
-    let natural = c.measure(short, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    let natural = c.measure(
+        short,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     let elided = c.measure_truncated(
         short,
-        16.0,
-        lh(16.0),
-        200.0,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(200.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         true,
     );
     assert!(
@@ -885,15 +1115,26 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let label = "File";
     let cap = 400.0;
-    let natural = c.measure(label, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    let natural = c.measure(
+        label,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     for fit in [false, true] {
         let m = c.measure_truncated(
             label,
-            16.0,
-            lh(16.0),
-            cap,
-            FontFamily::Sans,
-            HAlign::Center,
+            ShapeParams {
+                font_size_px: 16.0,
+                line_height_px: lh(16.0),
+                max_width_px: Some(cap),
+                family: FontFamily::Sans,
+                halign: HAlign::Center,
+            },
             fit,
         );
         assert!(
@@ -915,7 +1156,16 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
     let w = 120.0;
-    let full = c.measure(long, 16.0, lh(16.0), None, FontFamily::Sans, HAlign::Auto);
+    let full = c.measure(
+        long,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
+    );
     assert!(
         full.size.w > w,
         "precondition: natural line ({}) must overflow the cap ({w})",
@@ -923,11 +1173,13 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     );
     let clipped = c.measure_truncated(
         long,
-        16.0,
-        lh(16.0),
-        w,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         false,
     );
     assert!(
@@ -949,21 +1201,25 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     // distinct cache slots.
     let elided = c.measure_truncated(
         long,
-        16.0,
-        lh(16.0),
-        w,
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
         true,
     );
     // Clip, ellipsis, and wrap each bake a distinct buffer at the same width.
     let wrapped = c.measure(
         long,
-        16.0,
-        lh(16.0),
-        Some(w),
-        FontFamily::Sans,
-        HAlign::Auto,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Auto,
+        },
     );
     assert_ne!(
         clipped.key, elided.key,
@@ -1009,8 +1265,17 @@ fn truncation_probe_reuse_is_order_independent() {
 
     // Fresh measurer: only the target measurement.
     let mut fresh = CosmicMeasure::with_bundled_fonts();
-    let r_fresh =
-        fresh.measure_truncated(long, fs, lh(fs), w, FontFamily::Sans, HAlign::Left, true);
+    let r_fresh = fresh.measure_truncated(
+        long,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh(fs),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
+        true,
+    );
 
     // Reused measurer: drive several unrelated shapes through the shared
     // `probe_buffer` (different texts, sizes, families) and the ellipsis
@@ -1018,24 +1283,37 @@ fn truncation_probe_reuse_is_order_independent() {
     let mut reused = CosmicMeasure::with_bundled_fonts();
     reused.measure_truncated(
         "a considerably longer string that grows the probe buffer capacity",
-        20.0,
-        lh(20.0),
-        220.0,
-        FontFamily::Mono,
-        HAlign::Left,
+        ShapeParams {
+            font_size_px: 20.0,
+            line_height_px: lh(20.0),
+            max_width_px: Some(220.0),
+            family: FontFamily::Mono,
+            halign: HAlign::Left,
+        },
         true,
     );
     reused.measure_truncated(
         "short",
-        10.0,
-        lh(10.0),
-        30.0,
-        FontFamily::Sans,
-        HAlign::Left,
+        ShapeParams {
+            font_size_px: 10.0,
+            line_height_px: lh(10.0),
+            max_width_px: Some(30.0),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
         false,
     );
-    let r_reused =
-        reused.measure_truncated(long, fs, lh(fs), w, FontFamily::Sans, HAlign::Left, true);
+    let r_reused = reused.measure_truncated(
+        long,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh(fs),
+            max_width_px: Some(w),
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
+        true,
+    );
 
     assert_eq!(
         r_fresh.size, r_reused.size,
@@ -1048,7 +1326,16 @@ fn truncation_probe_reuse_is_order_independent() {
 
     // Truncation actually fired: the ellipsized line is narrower than the
     // full unbounded shape (and fits within the width budget).
-    let unbounded = fresh.measure(long, fs, lh(fs), None, FontFamily::Sans, HAlign::Left);
+    let unbounded = fresh.measure(
+        long,
+        ShapeParams {
+            font_size_px: fs,
+            line_height_px: lh(fs),
+            max_width_px: None,
+            family: FontFamily::Sans,
+            halign: HAlign::Left,
+        },
+    );
     assert!(
         r_fresh.size.w < unbounded.size.w,
         "expected truncation: ellipsized {} should be < unbounded {}",
@@ -1075,7 +1362,17 @@ fn ellipsis_cache_bounded_under_size_churn() {
     for i in 0..(ELLIPSIS_CACHE_CAP * 2 + 5) {
         // Distinct quantized size each iteration (0.1px steps × 64 ≥ 1).
         let fs = 8.0 + i as f32 * 0.1;
-        let r = c.measure_truncated(long, fs, lh(fs), 60.0, FontFamily::Sans, HAlign::Left, true);
+        let r = c.measure_truncated(
+            long,
+            ShapeParams {
+                font_size_px: fs,
+                line_height_px: lh(fs),
+                max_width_px: Some(60.0),
+                family: FontFamily::Sans,
+                halign: HAlign::Left,
+            },
+            true,
+        );
         assert!(r.size.w <= 61.0, "still truncates to budget at size {fs}");
     }
     assert!(
@@ -1104,11 +1401,13 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
         // stamped with that frame's generation.
         let r = c.measure(
             "hello world",
-            14.0,
-            lh(18.0),
-            Some(40.0 + i as f32 * 5.0),
-            FontFamily::Sans,
-            HAlign::Left,
+            ShapeParams {
+                font_size_px: 14.0,
+                line_height_px: lh(18.0),
+                max_width_px: Some(40.0 + i as f32 * 5.0),
+                family: FontFamily::Sans,
+                halign: HAlign::Left,
+            },
         );
         keys.push(r.key);
         // Step the frame generation so the next insert lands in a later
@@ -1153,11 +1452,13 @@ fn end_frame_evict_is_noop_under_budget() {
     for i in 0..4u32 {
         let r = c.measure(
             "rotation",
-            14.0,
-            lh(18.0),
-            Some(100.0 + i as f32 * 20.0),
-            FontFamily::Sans,
-            HAlign::Left,
+            ShapeParams {
+                font_size_px: 14.0,
+                line_height_px: lh(18.0),
+                max_width_px: Some(100.0 + i as f32 * 20.0),
+                family: FontFamily::Sans,
+                halign: HAlign::Left,
+            },
         );
         keys.push(r.key);
         c.advance_frame();

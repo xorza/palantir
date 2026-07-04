@@ -18,7 +18,7 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::text::{FontFamily, LineFit, MeasureResult, TextCacheKey};
+use crate::text::{FontFamily, LineFit, MeasureResult, ShapeParams, TextCacheKey};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     fontdb,
@@ -251,15 +251,14 @@ impl Default for CosmicMeasure {
 
 impl CosmicMeasure {
     #[profiling::function]
-    pub fn measure(
-        &mut self,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
-    ) -> MeasureResult {
+    pub fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
+        let ShapeParams {
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            halign,
+        } = params;
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
         }
@@ -322,17 +321,20 @@ impl CosmicMeasure {
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
     /// to nothing.
-    #[allow(clippy::too_many_arguments)]
     pub fn measure_truncated(
         &mut self,
         text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        w: f32,
-        family: FontFamily,
-        halign: HAlign,
+        params: ShapeParams,
         with_ellipsis: bool,
     ) -> MeasureResult {
+        let ShapeParams {
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            family,
+            halign,
+        } = params;
+        let w = max_width_px.expect("measure_truncated requires a finite width");
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
         }

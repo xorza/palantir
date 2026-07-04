@@ -154,6 +154,21 @@ pub(crate) struct ShaperInner {
 /// limit.
 const STALE_BUFFER_BUDGET: usize = 2048;
 
+/// Bundled text-shaping parameters, threaded through the `TextShaper` /
+/// `CosmicMeasure` query surface so every call carries one value instead
+/// of the same loose args (font metrics + wrap width + family + per-line
+/// alignment). `max_width_px` is the wrap/truncation width (`None` =
+/// unbounded); `halign` aligns each line inside that width (ignored when
+/// unbounded, as in `shape_unbounded`).
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ShapeParams {
+    pub font_size_px: f32,
+    pub line_height_px: f32,
+    pub max_width_px: Option<f32>,
+    pub family: FontFamily,
+    pub halign: HAlign,
+}
+
 impl TextShaper {
     /// Mono fallback shaper. Every glyph is `font_size_px * 0.5` wide;
     /// returned [`MeasureResult::key`] is [`TextCacheKey::INVALID`] so
@@ -181,41 +196,22 @@ impl TextShaper {
     /// ShapeRecord `text` and return its measurement. Bypasses the per-widget
     /// reuse cache — direct dispatch to cosmic (if installed) or mono.
     /// Used by [`Self::cursor_xy`] and other shape/probe paths.
-    pub fn measure(
-        &self,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
-    ) -> MeasureResult {
+    pub fn measure(&self, text: &str, params: ShapeParams) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        inner.dispatch(
-            text,
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            halign,
-            LineFit::Wrap,
-        )
+        inner.dispatch(text, params, LineFit::Wrap)
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
     /// clearing any stale wrap entry) when the authoring hash has
     /// shifted.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_unbounded(
         &self,
         wid: WidgetId,
         ordinal: u16,
         hash: NodeHash,
         text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        family: FontFamily,
+        params: ShapeParams,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -233,11 +229,11 @@ impl TextShaper {
         // look it up without an align param.
         let unbounded = inner.dispatch(
             text,
-            font_size_px,
-            line_height_px,
-            None,
-            family,
-            HAlign::Auto,
+            ShapeParams {
+                max_width_px: None,
+                halign: HAlign::Auto,
+                ..params
+            },
             LineFit::Wrap,
         );
         inner.reuse.insert(
@@ -258,20 +254,16 @@ impl TextShaper {
     /// halign + mode was used last frame; otherwise dispatches and refreshes
     /// the entry. Must be preceded by [`Self::shape_unbounded`] on the same
     /// `(wid, ordinal)` so the parent entry exists.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_wrap(
         &self,
         wid: WidgetId,
         ordinal: u16,
         text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        target: f32,
+        params: ShapeParams,
         target_q: u32,
-        family: FontFamily,
-        halign: HAlign,
         fit: LineFit,
     ) -> MeasureResult {
+        let halign = params.halign;
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let entry = match inner.reuse.entry((wid, ordinal)) {
@@ -288,15 +280,7 @@ impl TextShaper {
             return w.result;
         }
         inner.measure_calls += 1;
-        let m = inner.dispatch(
-            text,
-            font_size_px,
-            line_height_px,
-            Some(target),
-            family,
-            halign,
-            fit,
-        );
+        let m = inner.dispatch(text, params, fit);
         // Re-borrow `entry` because dispatch took `&mut inner` over the
         // whole struct; the prior borrow ended at the early-return.
         inner
@@ -318,25 +302,13 @@ impl TextShaper {
     /// returns the invalid sentinel key). Centralises the
     /// `measure → borrow → cosmic → buffer_for` preamble for every
     /// caret/selection helper below.
-    #[allow(clippy::too_many_arguments)]
     fn with_buffer<R>(
         &self,
         text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
+        params: ShapeParams,
         body: impl FnOnce(&cosmic_text::Buffer) -> R,
     ) -> Option<R> {
-        let result = self.measure(
-            text,
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            halign,
-        );
+        let result = self.measure(text, params);
         let inner = self.inner.borrow();
         let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
         Some(body(buffer))
@@ -349,78 +321,71 @@ impl TextShaper {
     /// distinct visual line). Mono fallback / empty-text path
     /// collapses to a 1D layout — `y_top = 0`, `x` from a flat mono
     /// per-byte estimate — usable for tests / headless.
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn cursor_xy(
         &self,
         text: &str,
         byte_offset: usize,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
+        params: ShapeParams,
     ) -> CursorPos {
-        let target = cursor_from_byte(text, byte_offset);
-        self.with_buffer(
-            text,
+        let ShapeParams {
             font_size_px,
             line_height_px,
             max_width_px,
-            family,
             halign,
-            |buffer| {
-                // Iterate visual lines (buffer lines × soft-wrap
-                // segments). For each run on the target's buffer line,
-                // locate the glyph whose `[start, end)` byte span
-                // contains `target.index`. For a trailing-edge caret
-                // (no glyph matches in this run), remember the last
-                // glyph's `(x + w)` — that's the post-aligned
-                // line-end position. Using `run.line_w` instead would
-                // ignore cosmic's per-line halign offset and the
-                // caret would jump back to the left on right/center-
-                // aligned lines. Empty lines (no glyphs) need the
-                // explicit halign-aware position because cosmic's
-                // per-line offset only kicks in when there's a glyph
-                // to offset — `line_w` stays 0.
-                let mut last_in_line: Option<(f32, f32, f32)> = None;
-                for run in buffer.layout_runs() {
-                    if run.line_i != target.line {
-                        continue;
-                    }
-                    let line_end_x = run
-                        .glyphs
-                        .last()
-                        .map(|g| g.x + g.w)
-                        .unwrap_or_else(|| empty_line_x(max_width_px, halign));
-                    last_in_line = Some((line_end_x, run.line_top, run.line_height));
-                    for g in run.glyphs {
-                        if g.start == target.index {
-                            return CursorPos {
-                                x: g.x,
-                                y_top: run.line_top,
-                                line_height: run.line_height,
-                            };
-                        }
-                        if g.start < target.index && target.index < g.end {
-                            return CursorPos {
-                                x: g.x + g.w,
-                                y_top: run.line_top,
-                                line_height: run.line_height,
-                            };
-                        }
-                    }
-                    // Past the last glyph of this run: continue iterating
-                    // — a soft-wrap continuation may carry `target.index`.
+            ..
+        } = params;
+        let target = cursor_from_byte(text, byte_offset);
+        self.with_buffer(text, params, |buffer| {
+            // Iterate visual lines (buffer lines × soft-wrap
+            // segments). For each run on the target's buffer line,
+            // locate the glyph whose `[start, end)` byte span
+            // contains `target.index`. For a trailing-edge caret
+            // (no glyph matches in this run), remember the last
+            // glyph's `(x + w)` — that's the post-aligned
+            // line-end position. Using `run.line_w` instead would
+            // ignore cosmic's per-line halign offset and the
+            // caret would jump back to the left on right/center-
+            // aligned lines. Empty lines (no glyphs) need the
+            // explicit halign-aware position because cosmic's
+            // per-line offset only kicks in when there's a glyph
+            // to offset — `line_w` stays 0.
+            let mut last_in_line: Option<(f32, f32, f32)> = None;
+            for run in buffer.layout_runs() {
+                if run.line_i != target.line {
+                    continue;
                 }
-                let (line_end_x, line_top, line_h) =
-                    last_in_line.unwrap_or((0.0, 0.0, line_height_px));
-                CursorPos {
-                    x: line_end_x,
-                    y_top: line_top,
-                    line_height: line_h,
+                let line_end_x = run
+                    .glyphs
+                    .last()
+                    .map(|g| g.x + g.w)
+                    .unwrap_or_else(|| empty_line_x(max_width_px, halign));
+                last_in_line = Some((line_end_x, run.line_top, run.line_height));
+                for g in run.glyphs {
+                    if g.start == target.index {
+                        return CursorPos {
+                            x: g.x,
+                            y_top: run.line_top,
+                            line_height: run.line_height,
+                        };
+                    }
+                    if g.start < target.index && target.index < g.end {
+                        return CursorPos {
+                            x: g.x + g.w,
+                            y_top: run.line_top,
+                            line_height: run.line_height,
+                        };
+                    }
                 }
-            },
-        )
+                // Past the last glyph of this run: continue iterating
+                // — a soft-wrap continuation may carry `target.index`.
+            }
+            let (line_end_x, line_top, line_h) = last_in_line.unwrap_or((0.0, 0.0, line_height_px));
+            CursorPos {
+                x: line_end_x,
+                y_top: line_top,
+                line_height: line_h,
+            }
+        })
         .unwrap_or_else(|| {
             // No shaped buffer (mono fallback OR empty text → cosmic
             // returns INVALID sentinel → `with_buffer` returns None).
@@ -443,32 +408,14 @@ impl TextShaper {
     /// path via `Buffer::hit`. Mono / empty-text falls back to a 1D
     /// `(x ÷ 0.5·font_size)` scan over char boundaries — enough for
     /// headless single-line click tests, ignores `y` entirely.
-    #[allow(clippy::too_many_arguments)]
-    pub(crate) fn byte_at_xy(
-        &self,
-        text: &str,
-        x: f32,
-        y: f32,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
-    ) -> usize {
-        self.with_buffer(
-            text,
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            halign,
-            |buffer| {
-                buffer
-                    .hit(x, y)
-                    .map(|c| cursor_to_byte(text, c))
-                    .unwrap_or(text.len())
-            },
-        )
+    pub(crate) fn byte_at_xy(&self, text: &str, x: f32, y: f32, params: ShapeParams) -> usize {
+        let font_size_px = params.font_size_px;
+        self.with_buffer(text, params, |buffer| {
+            buffer
+                .hit(x, y)
+                .map(|c| cursor_to_byte(text, c))
+                .unwrap_or(text.len())
+        })
         .unwrap_or_else(|| mono_byte_at_x(text, x, font_size_px))
     }
 
@@ -479,40 +426,29 @@ impl TextShaper {
     /// spanning the byte range. Caller applies any padding / offset /
     /// scroll math when consuming. Stack-fast for typical line
     /// counts; oversized selections spill to heap (rare, user-driven).
-    #[allow(clippy::too_many_arguments)]
     pub(crate) fn selection_rects(
         &self,
         text: &str,
         range: std::ops::Range<usize>,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
+        params: ShapeParams,
         out: &mut SelectionRects,
     ) {
+        let font_size_px = params.font_size_px;
+        let line_height_px = params.line_height_px;
         out.clear();
         if range.is_empty() {
             return;
         }
         let cosmic_ran = self
-            .with_buffer(
-                text,
-                font_size_px,
-                line_height_px,
-                max_width_px,
-                family,
-                halign,
-                |buffer| {
-                    let start = cursor_from_byte(text, range.start);
-                    let end = cursor_from_byte(text, range.end);
-                    for run in buffer.layout_runs() {
-                        for (x, w) in run.highlight(start, end) {
-                            out.push(Rect::new(x, run.line_top, w, run.line_height));
-                        }
+            .with_buffer(text, params, |buffer| {
+                let start = cursor_from_byte(text, range.start);
+                let end = cursor_from_byte(text, range.end);
+                for run in buffer.layout_runs() {
+                    for (x, w) in run.highlight(start, end) {
+                        out.push(Rect::new(x, run.line_top, w, run.line_height));
                     }
-                },
-            )
+                }
+            })
             .is_some();
         if !cosmic_ran {
             let x0 = caret_x_mono_single_line(text, range.start, font_size_px);
@@ -596,39 +532,22 @@ impl ShaperInner {
     /// Caller is responsible for incrementing `measure_calls` on cache
     /// misses (we don't bump it here because some paths — `shape_wrap`
     /// — already account for it).
-    #[allow(clippy::too_many_arguments)]
-    fn dispatch(
-        &mut self,
-        text: &str,
-        font_size_px: f32,
-        line_height_px: f32,
-        max_width_px: Option<f32>,
-        family: FontFamily,
-        halign: HAlign,
-        fit: LineFit,
-    ) -> MeasureResult {
+    fn dispatch(&mut self, text: &str, params: ShapeParams, fit: LineFit) -> MeasureResult {
+        let ShapeParams {
+            font_size_px,
+            line_height_px,
+            max_width_px,
+            ..
+        } = params;
         match self.cosmic.as_mut() {
             // Truncation needs a finite width to cut against; without one
             // it's just an unbounded single line, so fall through to the
             // plain measure.
             Some(c) => match (fit, max_width_px) {
-                (LineFit::Ellipsis | LineFit::Clip, Some(w)) => c.measure_truncated(
-                    text,
-                    font_size_px,
-                    line_height_px,
-                    w,
-                    family,
-                    halign,
-                    matches!(fit, LineFit::Ellipsis),
-                ),
-                _ => c.measure(
-                    text,
-                    font_size_px,
-                    line_height_px,
-                    max_width_px,
-                    family,
-                    halign,
-                ),
+                (LineFit::Ellipsis | LineFit::Clip, Some(_)) => {
+                    c.measure_truncated(text, params, matches!(fit, LineFit::Ellipsis))
+                }
+                _ => c.measure(text, params),
             },
             // Mono fallback is single-line; cosmic per-line align
             // can't be applied so `halign` is unused here.
