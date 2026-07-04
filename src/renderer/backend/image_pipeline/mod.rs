@@ -313,11 +313,7 @@ impl ImagePipeline {
     /// the shared slice; the schedule slices by batch at draw time.
     #[profiling::function]
     pub(crate) fn upload_instances(&mut self, ctx: &mut GpuCtx<'_>, instances: &[ImageInstance]) {
-        if instances.is_empty() {
-            return;
-        }
-        self.instance_buffer
-            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
+        self.instance_buffer.upload_instances(ctx, instances);
     }
 
     /// Bind once per pass. Viewport rides immediates; per-image
