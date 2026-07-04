@@ -96,11 +96,7 @@ impl CurvePipeline {
 
     #[profiling::function]
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, instances: &[CurveInstance]) {
-        if instances.is_empty() {
-            return;
-        }
-        self.instance_buffer
-            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
+        self.instance_buffer.upload_instances(ctx, instances);
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per

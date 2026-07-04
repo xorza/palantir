@@ -311,13 +311,7 @@ impl FrameArena {
         let lo = a.min(b).min(c);
         let hi = a.max(b).max(c);
         let pad = radius.max(0.0) + HALF_FRINGE;
-        let bbox = Rect {
-            min: Vec2::new(lo.x - pad, lo.y - pad),
-            size: Size {
-                w: (hi.x - lo.x) + 2.0 * pad,
-                h: (hi.y - lo.y) + 2.0 * pad,
-            },
-        };
+        let bbox = padded_bbox(lo, hi, pad);
         ShapeRecord::Triangle {
             a,
             b,
@@ -375,13 +369,7 @@ fn lower_curve_inner(
         LineCap::Square | LineCap::Round => half,
     };
     let pad = half + cap_extent + HALF_FRINGE;
-    let bbox = Rect {
-        min: Vec2::new(lo.x - pad, lo.y - pad),
-        size: Size {
-            w: (hi.x - lo.x) + 2.0 * pad,
-            h: (hi.y - lo.y) + 2.0 * pad,
-        },
-    };
+    let bbox = padded_bbox(lo, hi, pad);
     let mut h = FxHasher::new();
     h.write_u16(0xCB00 | u16::from(degree_tag));
     h.write(bytemuck::bytes_of(&ctrl));
@@ -533,6 +521,13 @@ fn inflate_stroke_bbox(lo: Vec2, hi: Vec2, width: f32, cap: LineCap, join: LineJ
         0.0
     };
     let pad = join_extent.max(cap_extent) + HALF_FRINGE;
+    padded_bbox(lo, hi, pad)
+}
+
+/// Axis-aligned bbox of `[lo, hi]` inflated by `pad` on every side.
+/// Shared by the triangle / curve / stroke lowering paths above, which
+/// differ only in how they derive `lo` / `hi` / `pad`.
+fn padded_bbox(lo: Vec2, hi: Vec2, pad: f32) -> Rect {
     Rect {
         min: Vec2::new(lo.x - pad, lo.y - pad),
         size: Size {

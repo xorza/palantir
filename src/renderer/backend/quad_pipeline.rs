@@ -175,11 +175,7 @@ impl QuadPipeline {
 
     #[profiling::function]
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, quads: &[Quad]) {
-        if quads.is_empty() {
-            return;
-        }
-        self.instance_buffer
-            .upload(ctx, bytemuck::cast_slice(quads), quads.len());
+        self.instance_buffer.upload_instances(ctx, quads);
     }
 
     /// Bind pipeline + gradient bind group + instance buffer once per

@@ -80,6 +80,17 @@ impl DynamicBuffer {
         self.upload_tail(ctx, bytes, item_count, 0);
     }
 
+    /// Upload a slice of `Pod` instances to offset 0 (no-op when empty).
+    /// The empty-guard + `cast_slice` + count are identical across every
+    /// instanced pipeline, so they live here rather than re-spelled per
+    /// pipeline.
+    pub(crate) fn upload_instances<T: bytemuck::Pod>(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
+        if items.is_empty() {
+            return;
+        }
+        self.upload(ctx, bytemuck::cast_slice(items), items.len());
+    }
+
     /// Tail write: items `start_item..item_count` are new; earlier
     /// items' bytes are already on the GPU, so only the tail slice is
     /// belt-written, at its byte offset. On a grow frame the new buffer
