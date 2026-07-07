@@ -1,7 +1,12 @@
-# Aperture
+<p align="center">
+  <img src="assets/logo/aperture-mark.svg" width="116" alt="Aperture logo" />
+</p>
 
-An immediate-mode GUI library for Rust, with WPF-style two-pass layout and a
-wgpu renderer.
+<h1 align="center">Aperture</h1>
+
+<p align="center">
+  An immediate-mode GUI library for Rust — WPF-style two-pass layout, wgpu renderer.
+</p>
 
 Status: **beta** — feature-rich and usable, but still pre-1.0: the public
 API can still change and break between releases.
