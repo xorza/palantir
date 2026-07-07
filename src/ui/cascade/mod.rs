@@ -96,6 +96,12 @@ pub(crate) struct EntryRow {
     /// clip applied — useful for drawing connection geometry into a
     /// scrolling/zoomed parent's coordinate system.
     pub layout_rect: Rect,
+    /// The cumulative ancestor transform mapping this node's `layout_rect`
+    /// into `rect` (screen space): `rect == transform.apply_rect(layout_rect)`.
+    /// Surfaced via `ResponseState::transform` so a widget can convert a
+    /// surface-space pointer back into its own logical coordinates (e.g.
+    /// caret hit-testing under a zoomed canvas) — `IDENTITY` when untransformed.
+    pub transform: TranslateScale,
 }
 
 struct Frame {
@@ -513,6 +519,7 @@ fn run_tree(
             focusable,
             disabled,
             layout_rect,
+            transform: parent_transform,
         });
 
         if subtree_end == i + 1 {

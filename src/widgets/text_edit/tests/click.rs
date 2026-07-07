@@ -446,3 +446,51 @@ fn select_all_on_focus_gates_on_the_flag() {
         "flag off: focus leaves the selection untouched"
     );
 }
+
+#[test]
+fn caret_click_is_scale_invariant_under_zoom() {
+    use crate::primitives::transform::TranslateScale;
+
+    // Clicking the same fraction of the field must land the caret on the same
+    // glyph whether the canvas is zoomed or not: the click arrives in surface
+    // (post-transform) space and must be de-scaled before hit-testing glyphs.
+    fn caret_at_scale(scale: f32) -> usize {
+        let mut ui = Ui::for_test_at_text(WIDE);
+        let mut buf = String::from("abcdefghij");
+        let id = WidgetId::from_hash("scaled-ed");
+        let render = |ui: &mut Ui, buf: &mut String| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("scale-row"))
+                .transform(TranslateScale::new(Vec2::ZERO, scale))
+                .size((Sizing::Fixed(300.0), Sizing::Fixed(60.0)))
+                .show(ui, |ui| {
+                    TextEdit::new(buf)
+                        .id(id)
+                        .size((Sizing::Fixed(200.0), Sizing::Fixed(40.0)))
+                        .show(ui);
+                });
+        };
+        ui.run_at_acked(WIDE, |ui| render(ui, &mut buf));
+        // 40% into the widget's on-screen width — the same logical point at any
+        // zoom, so the resulting caret byte must match.
+        let rect = ui.response_for(id).rect.expect("editor laid out");
+        let click = Vec2::new(
+            rect.min.x + rect.size.w * 0.4,
+            rect.min.y + rect.size.h * 0.5,
+        );
+        ui.press_at(click);
+        ui.run_at_acked(WIDE, |ui| render(ui, &mut buf));
+        ui.state_mut::<TextEditState>(id).caret
+    }
+
+    let full = caret_at_scale(1.0);
+    let zoomed_out = caret_at_scale(0.5);
+    assert!(
+        full > 0 && full < 10,
+        "click should land mid-text, got {full}"
+    );
+    assert_eq!(
+        full, zoomed_out,
+        "caret placement must be zoom-invariant (1x={full}, 0.5x={zoomed_out})"
+    );
+}

@@ -8,6 +8,7 @@ use glam::Vec2;
 
 use crate::input::pointer::PointerButton;
 use crate::primitives::rect::Rect;
+use crate::primitives::transform::TranslateScale;
 
 /// Repaint hint returned by `Ui::on_input`: `true` when the event
 /// changed something the next frame must reflect.
@@ -58,6 +59,13 @@ pub struct ResponseState {
     /// or clips it; subtract two such rects to get one widget's
     /// owner-local offset under another.
     pub layout_rect: Option<Rect>,
+    /// Cumulative ancestor transform mapping this widget's `layout_rect`
+    /// into `rect` (screen space): `rect == transform.apply_rect(layout_rect)`.
+    /// [`TranslateScale::IDENTITY`] when the widget sits under no transform.
+    /// Use it to convert a surface-space pointer into the widget's own
+    /// logical coordinates — e.g. `(ptr - rect.min) / transform.scale` for
+    /// hit-testing content laid out in logical px under a zoomed canvas.
+    pub transform: TranslateScale,
     pub hovered: bool,
     pub pressed: bool,
     /// The primary (left) button's press is currently latched on this
@@ -129,6 +137,7 @@ impl Default for ResponseState {
         Self {
             rect: None,
             layout_rect: None,
+            transform: TranslateScale::IDENTITY,
             hovered: false,
             pressed: false,
             held: false,

@@ -15,6 +15,7 @@ use crate::input::policy::FocusPolicy;
 use crate::input::response::{DragState, InputDelta, ResponseState};
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::cascade::Cascades;
 use glam::Vec2;
@@ -874,6 +875,9 @@ impl InputState {
         let entry_idx = cascades.entry_idx_of(id).map(|i| i as usize);
         let rect = entry_idx.map(|i| cascades.entries.rect()[i]);
         let layout_rect = entry_idx.map(|i| cascades.entries.layout_rect()[i]);
+        let transform = entry_idx.map_or(TranslateScale::IDENTITY, |i| {
+            cascades.entries.transform()[i]
+        });
         // Cascade flattens parent-disabled into each entry, so this is
         // the **effective** ancestor-or-self disabled — one frame stale.
         // Widgets that need lag-free self-toggle response merge their
@@ -890,6 +894,7 @@ impl InputState {
             return ResponseState {
                 rect,
                 layout_rect,
+                transform,
                 disabled,
                 focused: self.focused == Some(id),
                 ..ResponseState::default()
@@ -927,6 +932,7 @@ impl InputState {
         ResponseState {
             rect,
             layout_rect,
+            transform,
             hovered,
             pressed,
             held,

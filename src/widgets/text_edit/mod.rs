@@ -1207,14 +1207,22 @@ fn handle_input(
     if resp_state.held
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
+        // `ptr` and `rect` are in surface (post-transform) space, but glyphs
+        // are laid out — and `byte_at_xy` hit-tests — in logical px. Under a
+        // scaled ancestor (canvas zoom) the widget's on-screen size differs
+        // from its layout size, so divide out the transform's scale to bring
+        // the click's offset into logical space before subtracting the logical
+        // padding / align / scroll — else the caret lands on the wrong glyph
+        // whenever zoom ≠ 1.
+        let scale = resp_state.transform.scale;
         // Hit-test runs against the *unscrolled* shaped layout, so
         // we add last frame's scroll back into the pointer's local
         // coords. Updated scroll for this frame is computed after
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
-        let local_x = ptr.x - rect.min.x - pad_l - align_offset.x + state.scroll.x;
-        let local_y = ptr.y - rect.min.y - pad_t - align_offset.y + state.scroll.y;
+        let local_x = (ptr.x - rect.min.x) / scale - pad_l - align_offset.x + state.scroll.x;
+        let local_y = (ptr.y - rect.min.y) / scale - pad_t - align_offset.y + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.

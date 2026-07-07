@@ -265,7 +265,7 @@ mod hot_struct_sizes {
         NodeHash => "rollups::NodeHash": 8 / 8,
         CascadeInputHash => "rollups::CascadeInputHash": 8 / 8,
         // Cascade per-node rows.
-        EntryRow => "cascade::EntryRow": 48 / 8,
+        EntryRow => "cascade::EntryRow": 56 / 8,
         Paint => "cascade::Paint": 24 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
