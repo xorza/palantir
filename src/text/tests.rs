@@ -90,7 +90,8 @@ fn cursor_xy_x_cases() {
                     font_size_px: *fs,
                     line_height_px: *lh_v,
                     max_width_px: None,
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Auto
                 }
             )
@@ -117,7 +118,8 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
                 font_size_px: 16.0,
                 line_height_px: 16.0 * LINE_HEIGHT_MULT,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         )
@@ -129,7 +131,8 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
                 font_size_px: 16.0,
                 line_height_px: 24.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         )
@@ -144,7 +147,8 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
                 font_size_px: 16.0,
                 line_height_px: 16.0 * LINE_HEIGHT_MULT,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         )
@@ -154,15 +158,13 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
 
 #[test]
 fn cosmic_text_family_distinguishes_key_and_metrics() {
-    // Pin two independent properties of the three bundled families
-    // (SegoeUi — the default — / Sans / Mono):
+    // Pin two independent properties of the two bundled families
+    // (SegoeUi — the default proportional — / Mono):
     //
     // 1. Each `FontFamily` resolves, at shape time, to its intended
     //    physical face. Asserted on the resolved family name, not the
-    //    measured width: Inter and Segoe UI happen to shape "MMMM" to
-    //    the same rounded advance, so a width comparison would falsely
-    //    flag Segoe UI as falling back to Inter even though `font_id`
-    //    proves it didn't.
+    //    measured width, so a coincidental advance match can't masquerade
+    //    as the right face.
     // 2. Family enters the cache key (distinct `family_q`), so two runs
     //    differing only by family never collide on one shaped buffer.
     use crate::text::cosmic::CosmicMeasure;
@@ -172,11 +174,6 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
         c.resolved_family("M", FontFamily::SegoeUi).as_deref(),
         Some("Segoe UI"),
         "SegoeUi must shape with the bundled Segoe UI face",
-    );
-    assert_eq!(
-        c.resolved_family("M", FontFamily::Sans).as_deref(),
-        Some("Inter"),
-        "Sans must shape with the bundled Inter face",
     );
     assert_eq!(
         c.resolved_family("M", FontFamily::Mono).as_deref(),
@@ -191,16 +188,7 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
             line_height_px: lh(16.0),
             max_width_px: None,
             family: FontFamily::SegoeUi,
-            halign: HAlign::Auto,
-        },
-    );
-    let sans = c.measure(
-        "MMMM",
-        ShapeParams {
-            font_size_px: 16.0,
-            line_height_px: lh(16.0),
-            max_width_px: None,
-            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -211,29 +199,78 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
             line_height_px: lh(16.0),
             max_width_px: None,
             family: FontFamily::Mono,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
 
-    // Discriminants 2 / 0 / 1 — all distinct, so the shaped-buffer
-    // cache slots for the three families never collide.
+    // Discriminants 0 / 1 — distinct, so the shaped-buffer cache slots
+    // for the two families never collide.
     assert_eq!(segoe.key.family_q, FontFamily::SegoeUi as u8);
-    assert_eq!(sans.key.family_q, FontFamily::Sans as u8);
     assert_eq!(mono.key.family_q, FontFamily::Mono as u8);
-    assert_ne!(segoe.key, sans.key, "family must enter the cache key");
     assert_ne!(segoe.key, mono.key, "family must enter the cache key");
-    assert_ne!(sans.key, mono.key, "family must enter the cache key");
 
-    // Cross-check the proportional families against the monospace one:
-    // their advances genuinely differ (Segoe/Inter ≈ 58, JBMono ≈ 39).
+    // Cross-check the proportional family against the monospace one:
+    // their advances genuinely differ (Segoe ≈ 58, JBMono ≈ 39).
     assert!(segoe.size.w > 0.0 && segoe.size.w.is_finite());
     assert_ne!(
         segoe.size.w, mono.size.w,
         "Segoe UI (proportional) and JBMono (monospace) differ for 'MMMM'",
     );
+}
+
+#[test]
+fn cosmic_text_weight_distinguishes_key_and_metrics() {
+    // Pin that `FontWeight` is a live axis end-to-end:
+    //
+    // 1. Weight enters the cache key (distinct `weight_q`), so a Regular
+    //    and a Bold run never collide on one shaped buffer.
+    // 2. For the *proportional* Segoe UI, Bold genuinely selects the
+    //    bundled bold face — proven by a wider advance. A silent fallback
+    //    to Regular (missing/unwired bold face) would shape identical
+    //    widths and fail here.
+    // 3. For the *monospace*, variable JetBrains Mono, Bold still splits
+    //    the cache key (weight instantiated on the `wght` axis) while the
+    //    advance stays fixed — monospace keeps its cell width across
+    //    weights, so we assert equality there rather than a widening.
+    use crate::text::cosmic::CosmicMeasure;
+    let mut c = CosmicMeasure::with_bundled_fonts();
+
+    let params = |family, weight| ShapeParams {
+        font_size_px: 16.0,
+        line_height_px: lh(16.0),
+        max_width_px: None,
+        family,
+        weight,
+        halign: HAlign::Auto,
+    };
+
+    let segoe_reg = c.measure("MMMM", params(FontFamily::SegoeUi, FontWeight::Regular));
+    let segoe_bold = c.measure("MMMM", params(FontFamily::SegoeUi, FontWeight::Bold));
+
+    assert_eq!(segoe_reg.key.weight_q, FontWeight::Regular as u8);
+    assert_eq!(segoe_bold.key.weight_q, FontWeight::Bold as u8);
     assert_ne!(
-        sans.size.w, mono.size.w,
-        "Inter and JBMono produce different glyph widths for 'MMMM'",
+        segoe_reg.key, segoe_bold.key,
+        "weight must enter the cache key",
+    );
+    assert!(
+        segoe_bold.size.w > segoe_reg.size.w,
+        "Segoe UI Bold ({}) must be wider than Regular ({}) — a smaller-or-equal \
+         width means Bold silently fell back to the Regular face",
+        segoe_bold.size.w,
+        segoe_reg.size.w,
+    );
+
+    let mono_reg = c.measure("MMMM", params(FontFamily::Mono, FontWeight::Regular));
+    let mono_bold = c.measure("MMMM", params(FontFamily::Mono, FontWeight::Bold));
+    assert_ne!(
+        mono_reg.key, mono_bold.key,
+        "weight must enter the cache key for the variable mono face too",
+    );
+    assert_eq!(
+        mono_reg.size.w, mono_bold.size.w,
+        "monospace advance must be weight-invariant",
     );
 }
 
@@ -259,7 +296,8 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -272,7 +310,8 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
             font_size_px: 16.0,
             line_height_px: 24.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -291,7 +330,8 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -315,7 +355,8 @@ fn shape_wrap_panics_without_prime() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: Some(100.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         100,
@@ -331,8 +372,14 @@ fn text_cache_key_invalid_constant_zero_filled() {
     assert!(TextCacheKey::INVALID.is_invalid());
     // And a non-INVALID key registers as such even with all
     // hashable fields zero except text_hash.
-    let real = TextCacheKey::new(1, 0, 0, 0, 0, 0);
+    let real = TextCacheKey::new(1, 0, 0, 0, 0, 0, 0);
     assert!(!real.is_invalid());
+    // A Bold-weight key (weight_q = 1) is likewise not the sentinel,
+    // even with every other hashable field zero — the added `weight_q`
+    // byte joins the all-zeroes check without swallowing real runs.
+    let bold = TextCacheKey::new(1, 0, 0, 0, 0, FontWeight::Bold as u8, 0);
+    assert!(!bold.is_invalid());
+    assert_eq!(bold.weight_q, 1);
 }
 
 #[test]
@@ -352,7 +399,8 @@ fn cursor_xy_cosmic_path_is_monotonic_and_bounded() {
                     font_size_px: 16.0,
                     line_height_px: 16.0 * LINE_HEIGHT_MULT,
                     max_width_px: None,
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Auto,
                 },
             )
@@ -394,7 +442,8 @@ fn byte_at_xy_mono_fallback() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         );
@@ -420,7 +469,8 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
                         font_size_px: fs,
                         line_height_px: lh_v,
                         max_width_px: None,
-                        family: FontFamily::Sans,
+                        family: FontFamily::SegoeUi,
+                        weight: FontWeight::Regular,
                         halign: HAlign::Auto,
                     },
                 )
@@ -433,7 +483,8 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
                     font_size_px: fs,
                     line_height_px: lh_v,
                     max_width_px: None,
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Auto,
                 },
             )
@@ -452,7 +503,8 @@ fn byte_at_xy_cosmic_path_monotonic_and_bounded() {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -471,7 +523,8 @@ fn selection_rects_empty_range_is_noop() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         &mut out,
@@ -493,7 +546,8 @@ fn selection_rects_single_line_emits_one_rect() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         &mut out,
@@ -526,7 +580,8 @@ fn selection_rects_multiline_emits_one_rect_per_line() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         &mut out,
@@ -589,7 +644,8 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -600,7 +656,8 @@ fn cursor_xy_multiline_y_top_advances_per_line() {
             font_size_px: fs,
             line_height_px: lh_v,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -625,7 +682,8 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -648,7 +706,8 @@ fn cosmic_nonpositive_font_size_returns_invalid() {
                 font_size_px: fs,
                 line_height_px: 16.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         );
@@ -673,7 +732,8 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -683,7 +743,8 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -693,7 +754,8 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -703,7 +765,8 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
             font_size_px: 16.0,
             line_height_px: 16.0 * LINE_HEIGHT_MULT,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -756,7 +819,8 @@ fn cache_key_collapses_halign_when_unbounded() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         )
@@ -768,7 +832,8 @@ fn cache_key_collapses_halign_when_unbounded() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Right,
             },
         )
@@ -780,7 +845,8 @@ fn cache_key_collapses_halign_when_unbounded() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Center,
             },
         )
@@ -796,7 +862,8 @@ fn cache_key_collapses_halign_when_unbounded() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: Some(200.0),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         )
@@ -808,7 +875,8 @@ fn cache_key_collapses_halign_when_unbounded() {
                 font_size_px: 16.0,
                 line_height_px: 16.0,
                 max_width_px: Some(200.0),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Right,
             },
         )
@@ -834,7 +902,8 @@ fn shape_wrap_busts_on_halign_change_same_target() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -848,7 +917,8 @@ fn shape_wrap_busts_on_halign_change_same_target() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: Some(200.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         200 * 64,
@@ -865,7 +935,8 @@ fn shape_wrap_busts_on_halign_change_same_target() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: Some(200.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         200 * 64,
@@ -885,7 +956,8 @@ fn shape_wrap_busts_on_halign_change_same_target() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: Some(200.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Right,
         },
         200 * 64,
@@ -915,7 +987,8 @@ fn sweep_removed_evicts_reuse_entries() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -928,7 +1001,8 @@ fn sweep_removed_evicts_reuse_entries() {
             font_size_px: 16.0,
             line_height_px: 16.0,
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -967,7 +1041,8 @@ fn cursor_xy_on_empty_line_respects_right_align() {
             font_size_px: font,
             line_height_px: line_h,
             max_width_px: Some(wrap),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Right,
         },
     );
@@ -987,7 +1062,8 @@ fn cursor_xy_on_empty_line_respects_right_align() {
             font_size_px: font,
             line_height_px: line_h,
             max_width_px: Some(wrap),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
     );
@@ -1014,7 +1090,8 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         true,
@@ -1026,7 +1103,8 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1058,7 +1136,8 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1081,7 +1160,8 @@ fn cosmic_ellipsis_short_text_not_truncated() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1091,7 +1171,8 @@ fn cosmic_ellipsis_short_text_not_truncated() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(200.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         true,
@@ -1121,7 +1202,8 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1132,7 +1214,8 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
                 font_size_px: 16.0,
                 line_height_px: lh(16.0),
                 max_width_px: Some(cap),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Center,
             },
             fit,
@@ -1162,7 +1245,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1177,7 +1261,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         false,
@@ -1205,7 +1290,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
         true,
@@ -1217,7 +1303,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             font_size_px: 16.0,
             line_height_px: lh(16.0),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
     );
@@ -1271,7 +1358,8 @@ fn truncation_probe_reuse_is_order_independent() {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         true,
@@ -1288,6 +1376,7 @@ fn truncation_probe_reuse_is_order_independent() {
             line_height_px: lh(20.0),
             max_width_px: Some(220.0),
             family: FontFamily::Mono,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         true,
@@ -1298,7 +1387,8 @@ fn truncation_probe_reuse_is_order_independent() {
             font_size_px: 10.0,
             line_height_px: lh(10.0),
             max_width_px: Some(30.0),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         false,
@@ -1309,7 +1399,8 @@ fn truncation_probe_reuse_is_order_independent() {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: Some(w),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
         true,
@@ -1332,7 +1423,8 @@ fn truncation_probe_reuse_is_order_independent() {
             font_size_px: fs,
             line_height_px: lh(fs),
             max_width_px: None,
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
     );
@@ -1368,7 +1460,8 @@ fn ellipsis_cache_bounded_under_size_churn() {
                 font_size_px: fs,
                 line_height_px: lh(fs),
                 max_width_px: Some(60.0),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Left,
             },
             true,
@@ -1405,7 +1498,8 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
                 font_size_px: 14.0,
                 line_height_px: lh(18.0),
                 max_width_px: Some(40.0 + i as f32 * 5.0),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Left,
             },
         );
@@ -1456,7 +1550,8 @@ fn end_frame_evict_is_noop_under_budget() {
                 font_size_px: 14.0,
                 line_height_px: lh(18.0),
                 max_width_px: Some(100.0 + i as f32 * 20.0),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Left,
             },
         );

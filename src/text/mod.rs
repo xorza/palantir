@@ -60,14 +60,15 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 
 /// Font family picker on [`crate::TextStyle`] and
 /// [`crate::Shape::Text`]. `SegoeUi` resolves to bundled Segoe UI (the
-/// default); `Sans` resolves to bundled Inter; `Mono` resolves to
-/// bundled JetBrains Mono. All three ship inside
-/// [`CosmicMeasure::with_bundled_fonts`]; the mono-fallback shaper
-/// (when no `CosmicMeasure` is installed) ignores family entirely.
+/// default proportional face); `Mono` resolves to bundled JetBrains
+/// Mono. Both ship inside [`CosmicMeasure::with_bundled_fonts`]; the
+/// mono-fallback shaper (when no `CosmicMeasure` is installed) ignores
+/// family entirely. Weight (Regular/Bold) is an independent axis —
+/// see [`FontWeight`].
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
 /// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
-/// stay stable across variant reordering. `Sans = 0` is also load-
+/// stay stable across variant reordering. `SegoeUi = 0` is also load-
 /// bearing for [`TextCacheKey::is_invalid`], which folds family into
 /// its all-zeroes check.
 #[repr(u8)]
@@ -75,18 +76,37 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
 )]
 pub enum FontFamily {
-    Sans = 0,
-    Mono = 1,
     #[default]
-    SegoeUi = 2,
+    SegoeUi = 0,
+    Mono = 1,
 }
 
 // `TextCacheKey::is_invalid` and `TextCacheKey::INVALID` both fold
-// `family_q == 0` into the all-zeros sentinel. If `Sans`'s
-// discriminant ever moves off zero, a real `Sans` key collides with
+// `family_q == 0` into the all-zeros sentinel. If `SegoeUi`'s
+// discriminant ever moves off zero, a real `SegoeUi` key collides with
 // `INVALID` and the renderer silently drops valid text runs. Pin
 // here so the drift trips the compile.
-const _: () = assert!(FontFamily::Sans as u8 == 0);
+const _: () = assert!(FontFamily::SegoeUi as u8 == 0);
+
+/// Font weight picker on [`crate::TextStyle`] and [`crate::Shape::Text`],
+/// independent of [`FontFamily`]. `Regular` shapes with the family's
+/// normal face; `Bold` requests the bold face (a distinct static face
+/// for Segoe UI, an instantiated `wght` for the variable JetBrains
+/// Mono) via cosmic-text's `Attrs::weight` in [`attrs_for`].
+///
+/// `#[repr(u8)]` pins the tag for `TextCacheKey::weight_q` and the
+/// `ShapeRecord::Text` hash byte. `Regular = 0` folds into the
+/// `TextCacheKey::INVALID` all-zeroes sentinel, mirroring
+/// [`FontFamily::SegoeUi`].
+#[repr(u8)]
+#[derive(
+    Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
+)]
+pub enum FontWeight {
+    #[default]
+    Regular = 0,
+    Bold = 1,
+}
 
 /// Shared, cloneable text shaper. Holds (1) an optional [`CosmicMeasure`]
 /// for real shaping (`None` ⇒ mono fallback), (2) a cross-frame reuse
@@ -156,16 +176,17 @@ const STALE_BUFFER_BUDGET: usize = 2048;
 
 /// Bundled text-shaping parameters, threaded through the `TextShaper` /
 /// `CosmicMeasure` query surface so every call carries one value instead
-/// of the same loose args (font metrics + wrap width + family + per-line
-/// alignment). `max_width_px` is the wrap/truncation width (`None` =
-/// unbounded); `halign` aligns each line inside that width (ignored when
-/// unbounded, as in `shape_unbounded`).
+/// of the same loose args (font metrics + wrap width + family + weight +
+/// per-line alignment). `max_width_px` is the wrap/truncation width
+/// (`None` = unbounded); `halign` aligns each line inside that width
+/// (ignored when unbounded, as in `shape_unbounded`).
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct ShapeParams {
     pub font_size_px: f32,
     pub line_height_px: f32,
     pub max_width_px: Option<f32>,
     pub family: FontFamily,
+    pub weight: FontWeight,
     pub halign: HAlign,
 }
 
@@ -586,6 +607,13 @@ pub(crate) struct TextCacheKey {
     /// slack so `bytemuck::Pod`'s no-padding-bytes invariant still
     /// holds.
     pub family_q: u8,
+    /// [`FontWeight`] discriminant. Two runs with identical text/size/
+    /// family but different weight shape against different physical faces
+    /// (Regular vs Bold), so the key has to discriminate. `0`
+    /// ([`FontWeight::Regular`]) folds into the all-zeroes `INVALID`
+    /// sentinel. Fits in the trailing alignment slack the `padding_struct`
+    /// macro already reserved — no size change.
+    pub weight_q: u8,
     /// [`HAlign`] discriminant for per-line text alignment. Cosmic
     /// shapes the buffer with line-internal x offsets that depend on
     /// the per-line align, so two runs with identical text/size but
@@ -600,13 +628,13 @@ impl TextCacheKey {
     /// with this key. `bytemuck::Zeroable::zeroed` fills the padding
     /// fields the `padding_struct` proc macro generated.
     ///
-    /// `is_invalid` folds `family_q == 0` into the all-zeroes check,
-    /// which lines up with [`FontFamily::Sans`] also having
-    /// discriminant 0. If the variant order ever changes, update
-    /// `is_invalid` and the sentinel together.
+    /// `is_invalid` folds `family_q == 0` and `weight_q == 0` into the
+    /// all-zeroes check, which lines up with [`FontFamily::SegoeUi`] and
+    /// [`FontWeight::Regular`] also having discriminant 0. If the variant
+    /// order ever changes, update `is_invalid` and the sentinel together.
     pub const INVALID: Self = unsafe { std::mem::zeroed() };
 
-    /// Construct from the six hashed fields. The `padding_struct` proc
+    /// Construct from the seven hashed fields. The `padding_struct` proc
     /// macro injects trailing padding fields to satisfy
     /// `bytemuck::Pod`'s no-padding-bytes invariant; the
     /// `..Zeroable::zeroed()` spread fills them with zeros so callers
@@ -617,6 +645,7 @@ impl TextCacheKey {
         max_w_q: u32,
         lh_q: u32,
         family_q: u8,
+        weight_q: u8,
         halign_q: u8,
     ) -> Self {
         Self {
@@ -625,6 +654,7 @@ impl TextCacheKey {
             max_w_q,
             lh_q,
             family_q,
+            weight_q,
             halign_q,
             ..bytemuck::Zeroable::zeroed()
         }
@@ -636,6 +666,7 @@ impl TextCacheKey {
             && self.max_w_q == 0
             && self.lh_q == 0
             && self.family_q == 0
+            && self.weight_q == 0
             && self.halign_q == 0
     }
 }

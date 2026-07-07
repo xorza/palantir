@@ -12,7 +12,7 @@ use crate::primitives::{
     stroke::Stroke,
 };
 use crate::renderer::image_registry::ImageHandle;
-use crate::text::FontFamily;
+use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 
 /// User-facing paint primitive. Pushed into the active tree via
@@ -127,6 +127,7 @@ pub enum Shape<'a> {
         /// both consumers want the user-intended alignment.
         align: Align,
         family: FontFamily,
+        weight: FontWeight,
     },
     /// User-supplied colored triangle mesh. The framework copies
     /// `mesh.vertices` / `mesh.indices` into the active `Tree`'s mesh

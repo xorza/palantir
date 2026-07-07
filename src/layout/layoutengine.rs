@@ -790,6 +790,7 @@ impl LayoutEngine {
                 line_height_px: ts.line_height_px,
                 max_width_px: None,
                 family: ts.family,
+                weight: ts.weight,
                 halign: HAlign::Auto,
             },
         );
@@ -842,6 +843,7 @@ impl LayoutEngine {
                     line_height_px: ts.line_height_px,
                     max_width_px: Some(target),
                     family: ts.family,
+                    weight: ts.weight,
                     halign: ts.halign,
                 },
                 target_q,

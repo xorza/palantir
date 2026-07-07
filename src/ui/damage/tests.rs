@@ -2283,7 +2283,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
     use crate::forest::element::{Element, LayoutMode, Salt};
     use crate::primitives::size::Size;
     use crate::shape::{Shape, TextWrap};
-    use crate::text::FontFamily;
+    use crate::text::{FontFamily, FontWeight};
 
     let mut ui = Ui::for_test();
     // Mono fallback geometry: glyph width = font_size_px * 0.5, line
@@ -2308,7 +2308,8 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         line_height_px: FONT,
                         wrap: TextWrap::Truncate,
                         align: Default::default(),
-                        family: FontFamily::Sans,
+                        family: FontFamily::SegoeUi,
+                        weight: FontWeight::Regular,
                     });
                 });
             });

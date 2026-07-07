@@ -193,6 +193,7 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
                 line_height_px: ts.line_height_px,
                 max_width_px: None,
                 family: ts.family,
+                weight: ts.weight,
                 halign: HAlign::Auto,
             },
         );

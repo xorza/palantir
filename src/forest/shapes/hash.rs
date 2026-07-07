@@ -62,6 +62,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             wrap,
             align,
             family,
+            weight,
         } => {
             match local_origin {
                 None => h.write_u8(0),
@@ -74,7 +75,13 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             color.hash(&mut h);
             let dims = ((font_size_px.to_bits() as u64) << 32) | line_height_px.to_bits() as u64;
             h.write_u64(dims);
-            let style = ((align.raw() as u32) << 16) | ((*wrap as u32) << 8) | (*family as u32);
+            // `weight` rides the free high byte of `style`; `align`/`wrap`/
+            // `family` occupy bytes 2/1/0, so bold vs regular can't collide
+            // in the node hash (would break damage/reuse).
+            let style = ((*weight as u32) << 24)
+                | ((align.raw() as u32) << 16)
+                | ((*wrap as u32) << 8)
+                | (*family as u32);
             h.write_u32(style);
         }
         ShapeRecord::Mesh {

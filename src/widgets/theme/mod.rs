@@ -157,7 +157,7 @@ mod tests {
     use crate::primitives::corners::Corners;
     use crate::primitives::shadow::Shadow;
     use crate::primitives::stroke::Stroke;
-    use crate::text::FontFamily;
+    use crate::text::{FontFamily, FontWeight};
     use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
     use crate::widgets::theme::*;
 
@@ -309,7 +309,8 @@ mod tests {
                 font_size_px: 16.0,
                 color: Color::TRANSPARENT,
                 line_height_mult: 1.5,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
             },
         };
         assert!((look.line_height_px() - 24.0).abs() < 1e-6);

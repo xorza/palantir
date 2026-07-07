@@ -18,43 +18,46 @@
 
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
-use crate::text::{FontFamily, LineFit, MeasureResult, ShapeParams, TextCacheKey};
+use crate::text::{FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextCacheKey};
 use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
-    fontdb,
+    Weight, fontdb,
 };
 use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// Bundled fonts shipped with the crate. Segoe UI is the default UI /
-/// proportional body font, Inter an alternate proportional, JetBrains
-/// Mono the monospace. Inter and JetBrains Mono are OFL 1.1.
+/// Bundled fonts shipped with the crate. Segoe UI (Regular + Bold) is
+/// the default UI / proportional body font; JetBrains Mono is the
+/// monospace, shipped as a single variable-weight face. JetBrains Mono
+/// is OFL 1.1. Bold is selected per-run via [`FontWeight`] on the
+/// [`crate::TextStyle`], resolved in [`attrs_for`].
 const SEGOE_UI: &[u8] = include_bytes!("../../assets/fonts/Segoe UI.ttf");
-const INTER_REGULAR: &[u8] = include_bytes!("../../assets/fonts/Inter-Regular.ttf");
-const JBMONO_REGULAR: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono-Regular.ttf");
+const SEGOE_UI_BOLD: &[u8] = include_bytes!("../../assets/fonts/Segoe UI Bold.ttf");
+const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf");
 
 const MAX_W_NONE: u32 = u32::MAX;
 
 /// Cap on [`CosmicMeasure::ellipsis_cache`] entries. The cache keys on
-/// `(quantized size, family)` — a handful in normal use, but unbounded
-/// under a continuous font-size zoom. Cleared wholesale past this; a
-/// miss is one cheap "…" shape, so the occasional reset is negligible.
+/// `(quantized size, family, weight)` — a handful in normal use, but
+/// unbounded under a continuous font-size zoom. Cleared wholesale past
+/// this; a miss is one cheap "…" shape, so the occasional reset is
+/// negligible.
 pub(crate) const ELLIPSIS_CACHE_CAP: usize = 128;
 
 fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
 }
 
-fn key_for(
-    text: &str,
-    size_px: f32,
-    line_height_px: f32,
-    max_w_px: Option<f32>,
-    family: FontFamily,
-    halign: HAlign,
-    fit: LineFit,
-) -> TextCacheKey {
+fn key_for(text: &str, params: ShapeParams, fit: LineFit) -> TextCacheKey {
+    let ShapeParams {
+        font_size_px,
+        line_height_px,
+        max_width_px,
+        family,
+        weight,
+        halign,
+    } = params;
     // FxHasher beats SipHash here by ~10× for the short ASCII strings
     // typical of UI labels — the cache-key fingerprint doesn't need
     // DoS resistance, and the bulk byte-write path stays in registers
@@ -84,28 +87,35 @@ fn key_for(
     // same shaped buffer, so fold `halign_q` to `Auto`'s discriminant
     // (0) on that path — single-line callers don't pay an N-way
     // cache split for identical glyph positions.
-    let halign_q = if max_w_px.is_some() {
+    let halign_q = if max_width_px.is_some() {
         halign as u8
     } else {
         HAlign::Auto as u8
     };
     TextCacheKey::new(
         text_hash,
-        quantize(size_px),
-        max_w_px.map(quantize).unwrap_or(MAX_W_NONE),
+        quantize(font_size_px),
+        max_width_px.map(quantize).unwrap_or(MAX_W_NONE),
         quantize(line_height_px),
         family as u8,
+        weight as u8,
         halign_q,
     )
 }
 
-fn attrs_for(family: FontFamily) -> Attrs<'static> {
+fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
     // Skip TrueType bytecode hinting: skrifa's hint VM dominated zoom-frame
     // CPU time, and at HiDPI / during animated zoom the visual difference
     // is imperceptible.
     let base = Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING);
+    let base = match weight {
+        // `Weight::NORMAL` is fontdb's default; requesting Bold makes it
+        // pick the bold static face (Segoe UI) or instantiate the `wght`
+        // axis (variable JetBrains Mono).
+        FontWeight::Regular => base,
+        FontWeight::Bold => base.weight(Weight::BOLD),
+    };
     match family {
-        FontFamily::Sans => base.family(Family::Name("Inter")),
         FontFamily::Mono => base.family(Family::Name("JetBrains Mono")),
         FontFamily::SegoeUi => base.family(Family::Name("Segoe UI")),
     }
@@ -143,11 +153,11 @@ struct CacheEntry {
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
-/// [`CosmicMeasure::with_bundled_fonts`] (Inter + JetBrains Mono) and a
-/// cache of shaped `Buffer`s keyed on the inputs that affect shaping.
-/// Per-call font family selection comes from [`FontFamily`] on each
-/// [`Self::measure`] invocation; the named lookups in [`attrs_for`]
-/// resolve against the bundled set.
+/// [`CosmicMeasure::with_bundled_fonts`] (Segoe UI + JetBrains Mono) and
+/// a cache of shaped `Buffer`s keyed on the inputs that affect shaping.
+/// Per-call font family + weight selection comes from [`FontFamily`] /
+/// [`FontWeight`] on each [`Self::measure`] invocation; the named lookups
+/// in [`attrs_for`] resolve against the bundled set.
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextCacheKey, CacheEntry>,
@@ -167,23 +177,24 @@ pub struct CosmicMeasure {
     /// drag stops `Buffer::new`-ing and reallocating per truncated run per
     /// frame. Never handed to the cache — only the final buffer is.
     probe_buffer: Buffer,
-    /// Trailing advance of "…" per `(quantized font size, family)`. The
-    /// ellipsis width is constant for a given size + family, so this turns
+    /// Trailing advance of "…" per `(quantized font size, family, weight)`.
+    /// The ellipsis width is constant for a given size + face, so this turns
     /// the per-truncation ellipsis reshape into a map lookup (one shape
-    /// per distinct size+family, ever).
-    ellipsis_cache: FxHashMap<(u32, u8), f32>,
+    /// per distinct size+family+weight, ever).
+    ellipsis_cache: FxHashMap<(u32, u8, u8), f32>,
 }
 
 impl CosmicMeasure {
-    /// Register the three bundled families — Segoe UI (the default),
-    /// Inter, and JetBrains Mono — so they're always resolvable by name.
+    /// Register the bundled faces — Segoe UI Regular + Bold (the default
+    /// proportional family) and the variable-weight JetBrains Mono
+    /// (monospace) — so they're always resolvable by name + weight.
     /// cosmic-text's `new_with_fonts` *also* loads the platform's system
     /// fonts, which act as glyph fallback for scripts the bundled faces
     /// don't cover — so text metrics are *not* guaranteed identical
-    /// across machines. Per-call family selection comes from
-    /// [`FontFamily`] on each [`Self::measure`] invocation.
+    /// across machines. Per-call family + weight selection comes from
+    /// [`FontFamily`] / [`FontWeight`] on each [`Self::measure`] invocation.
     pub fn with_bundled_fonts() -> Self {
-        let sources = [SEGOE_UI, INTER_REGULAR, JBMONO_REGULAR]
+        let sources = [SEGOE_UI, SEGOE_UI_BOLD, JBMONO]
             .into_iter()
             .map(|b| fontdb::Source::Binary(Arc::new(b)));
         let font_system = FontSystem::new_with_fonts(sources);
@@ -257,20 +268,13 @@ impl CosmicMeasure {
             line_height_px,
             max_width_px,
             family,
+            weight,
             halign,
         } = params;
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
         }
-        let key = key_for(
-            text,
-            font_size_px,
-            line_height_px,
-            max_width_px,
-            family,
-            halign,
-            LineFit::Wrap,
-        );
+        let key = key_for(text, params, LineFit::Wrap);
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
@@ -288,7 +292,12 @@ impl CosmicMeasure {
         // line width); without one we pass `None` so single-line
         // editors keep their widget-side `dx` placement.
         let alignment = max_width_px.and_then(|_| cosmic_align(halign));
-        buffer.set_text(text, &attrs_for(family), Shaping::Advanced, alignment);
+        buffer.set_text(
+            text,
+            &attrs_for(family, weight),
+            Shaping::Advanced,
+            alignment,
+        );
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let extent = shaped_extent(&buffer);
@@ -332,6 +341,7 @@ impl CosmicMeasure {
             line_height_px,
             max_width_px,
             family,
+            weight,
             halign,
         } = params;
         let w = max_width_px.expect("measure_truncated requires a finite width");
@@ -340,11 +350,7 @@ impl CosmicMeasure {
         }
         let key = key_for(
             text,
-            font_size_px,
-            line_height_px,
-            Some(w),
-            family,
-            halign,
+            params,
             if with_ellipsis {
                 LineFit::Ellipsis
             } else {
@@ -355,7 +361,7 @@ impl CosmicMeasure {
             return hit;
         }
         let metrics = Metrics::new(font_size_px, line_height_px);
-        let attrs = attrs_for(family);
+        let attrs = attrs_for(family, weight);
         // Probe: unbounded single-pass shape to read glyph advances and
         // decide whether (and where) to cut. Reuses `probe_buffer` (reset
         // per call) so the throwaway probe doesn't reallocate cosmic's
@@ -375,7 +381,7 @@ impl CosmicMeasure {
             // Reserve the ellipsis width only when we'll append one; a plain
             // clip cuts flush to the full available width.
             let avail = if with_ellipsis {
-                (w - self.ellipsis_advance(metrics, family)).max(0.0)
+                (w - self.ellipsis_advance(metrics, family, weight)).max(0.0)
             } else {
                 w
             };
@@ -427,24 +433,29 @@ impl CosmicMeasure {
         }
     }
 
-    /// Trailing advance of "…" at `metrics`/`family`, memoized per
-    /// `(quantized size, family)`. The width is constant for a given
-    /// size + family, so this is a map lookup after the first shape. The
+    /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
+    /// `(quantized size, family, weight)`. The width is constant for a given
+    /// size + face, so this is a map lookup after the first shape. The
     /// rare miss shapes into a throwaway buffer rather than `probe_buffer`
     /// so it can't clobber an in-flight truncation probe whose glyphs the
     /// caller reads next.
-    fn ellipsis_advance(&mut self, metrics: Metrics, family: FontFamily) -> f32 {
-        let key = (quantize(metrics.font_size), family as u8);
+    fn ellipsis_advance(
+        &mut self,
+        metrics: Metrics,
+        family: FontFamily,
+        weight: FontWeight,
+    ) -> f32 {
+        let key = (quantize(metrics.font_size), family as u8, weight as u8);
         if let Some(&w) = self.ellipsis_cache.get(&key) {
             return w;
         }
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(None, None);
-        buffer.set_text("…", &attrs_for(family), Shaping::Advanced, None);
+        buffer.set_text("…", &attrs_for(family, weight), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
         let w = first_line_right(&buffer);
-        // Bounded: the key space is (discrete font sizes × families) and
-        // normally tiny, but a continuous font-size zoom over ellipsized
+        // Bounded: the key space is (discrete font sizes × families × weights)
+        // and normally tiny, but a continuous font-size zoom over ellipsized
         // text mints a new quantized size each frame. Entries are trivially
         // recomputable (one "…" shape), so clear wholesale on overflow
         // rather than track recency.
@@ -598,11 +609,15 @@ mod test_support {
         /// with for `family`. Proves [`attrs_for`] maps each
         /// [`FontFamily`] to the intended physical face — a measured-
         /// width comparison can't, since two different faces can share
-        /// an advance (Inter and Segoe UI both shape "MMMM" to the same
-        /// rounded width).
+        /// an advance.
         pub(crate) fn resolved_family(&mut self, text: &str, family: FontFamily) -> Option<String> {
             let mut buf = Buffer::new(&mut self.font_system, Metrics::new(16.0, 19.2));
-            buf.set_text(text, &attrs_for(family), Shaping::Advanced, None);
+            buf.set_text(
+                text,
+                &attrs_for(family, FontWeight::Regular),
+                Shaping::Advanced,
+                None,
+            );
             buf.shape_until_scroll(&mut self.font_system, false);
             let id = buf.layout_runs().next()?.glyphs.first()?.font_id;
             self.font_system
