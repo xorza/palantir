@@ -1,7 +1,7 @@
 use crate::primitives::approx::canon_bits;
 use crate::primitives::color::Color;
+use aperture_anim_derive::Animatable;
 use glam::Vec2;
-use palantir_anim_derive::Animatable;
 
 /// Single drop-or-inset shadow. Used in two places: embedded in a
 /// `Shape::Shadow` (paints via the shape buffer, multi-shadow stacks

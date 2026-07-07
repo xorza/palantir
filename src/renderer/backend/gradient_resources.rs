@@ -59,10 +59,10 @@ impl GradientResources {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         // Group 0 = gradient LUT atlas + sampler. Viewport rides
         // immediates (shared with every pipeline) — no bind-group slot.
-        let bgl = texture_sampler_bgl(device, "palantir.gradient.bgl");
+        let bgl = texture_sampler_bgl(device, "aperture.gradient.bgl");
 
         let texture = device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.gradient_atlas"),
+            label: Some("aperture.gradient_atlas"),
             size: wgpu::Extent3d {
                 width: GRADIENT_ATLAS_SIDE,
                 height: GRADIENT_ATLAS_SIDE,
@@ -81,7 +81,7 @@ impl GradientResources {
         // applied shader-side on `t` before the sample, so the GPU
         // sampler never sees t outside 0..1.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.gradient_sampler"),
+            label: Some("aperture.gradient_sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -92,7 +92,7 @@ impl GradientResources {
         });
 
         let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("palantir.gradient.bg"),
+            label: Some("aperture.gradient.bg"),
             layout: &bgl,
             entries: &[
                 wgpu::BindGroupEntry {

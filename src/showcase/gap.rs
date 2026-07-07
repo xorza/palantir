@@ -1,5 +1,5 @@
 use crate::showcase::swatch;
-use palantir::{Configure, Frame, Panel, Sizing, Ui};
+use aperture::{Configure, Frame, Panel, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

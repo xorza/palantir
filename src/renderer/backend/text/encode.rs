@@ -47,7 +47,7 @@ pub(crate) struct ResolvedRun<'a> {
 ///
 /// `area_color` is in the key because the run's colour is baked into
 /// every cached [`EncodedGlyph::color`] at insert time. **This is only
-/// sufficient because palantir shapes every run with one uniform
+/// sufficient because aperture shapes every run with one uniform
 /// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are
 /// ever added, fold a colour-span fingerprint into this key *first*, or
@@ -270,7 +270,7 @@ pub(crate) fn encode_batch<'a>(
 
                 // `EncodedKey` caches on the run's `area_color`, not
                 // per-glyph colour — correct only while cosmic never
-                // produces a per-glyph override (palantir's `attrs_for`
+                // produces a per-glyph override (aperture's `attrs_for`
                 // sets no per-span colour). If this fires, per-span
                 // colour was added without growing `EncodedKey`, and the
                 // encoded cache would alias runs differing only in glyph

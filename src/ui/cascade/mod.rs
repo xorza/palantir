@@ -71,7 +71,7 @@ impl PaintArena {
 /// [`Cascades::entries`] so each field becomes its own contiguous
 /// slice — the hot reverse-scan in `hit_test*` reads `rect` and the
 /// flags but ignores `widget_id` / `layout_rect` until a match
-/// surfaces. Same cache argument as palantir's
+/// surfaces. Same cache argument as aperture's
 /// `Tree.records: Soa<NodeRecord>`.
 #[derive(Soars, Clone, Copy, Debug)]
 #[soa_derive(Debug)]

@@ -1,6 +1,6 @@
 use crate::showcase::swatch;
 use crate::showcase::swatch::swatch_bg;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
+use aperture::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Inner-panel background used for padding/margin demos. The whole
 /// point of these demos is to *see* where the parent's bounds are

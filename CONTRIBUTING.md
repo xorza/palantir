@@ -1,11 +1,11 @@
-# Contributing to Palantir
+# Contributing to Aperture
 
 Thanks for your interest in contributing. A few things to know before you
 open a PR.
 
 ## Licensing and the CLA
 
-Palantir is dual-licensed (GPL-3.0-or-later + a separate commercial
+Aperture is dual-licensed (GPL-3.0-or-later + a separate commercial
 license). To preserve this model, every contribution must be made under
 the terms of the [Contributor License Agreement](CLA.md).
 
@@ -44,6 +44,6 @@ See [CLAUDE.md](CLAUDE.md) for the project's coding conventions.
 
 ## Scope
 
-Palantir is pre-1.0 and breaks freely. Before investing time in a large
+Aperture is pre-1.0 and breaks freely. Before investing time in a large
 change, open an issue to discuss direction — speculative refactors with no
 motivating workload tend to be shelved.

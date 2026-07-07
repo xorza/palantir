@@ -32,7 +32,7 @@
 //!
 //! ```ignore
 //! struct MyApp;
-//! impl palantir::App for MyApp {
+//! impl aperture::App for MyApp {
 //!     fn frame(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
 //! WinitHost::new(WindowToken(0), WinitHostConfig::new("title"), |ui, _handle| {
@@ -139,7 +139,7 @@ struct Running<T> {
     backend: WgpuBackend,
 }
 
-/// Top-level winit-driven palantir runtime. Owns the caller-supplied app
+/// Top-level winit-driven aperture runtime. Owns the caller-supplied app
 /// `T: App` (RAII lifetime, no `Rc<RefCell<>>` to manage) and calls
 /// `T::frame` once per redraw, per window. Two-state lifecycle, one
 /// `Option` each: [`Bootstrap`] (pre-`resumed` inputs, consumed once)

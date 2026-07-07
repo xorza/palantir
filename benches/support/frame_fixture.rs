@@ -14,7 +14,7 @@
 use std::cell::OnceCell;
 use std::rc::Rc;
 
-use palantir::{
+use aperture::{
     Align, Background, Brush, Button, Checkbox, Color, ColorU8, ComboBox, Configure, ConicGradient,
     Corners, DragValue, Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel,
     PolylineColors, Popup, ProgressBar, RadialGradient, RadioButton, Rect, Scroll, Separator,
@@ -104,7 +104,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                 .size((Sizing::FILL, Sizing::Hug))
                 .child_align(Align::CENTER)
                 .show(ui, |ui| {
-                    Text::new("Palantir — Frame Bench")
+                    Text::new("Aperture — Frame Bench")
                         .id_salt("title")
                         .style(TextStyle::default().with_font_size(20.0))
                         .show(ui);
@@ -129,7 +129,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
             Panel::hstack()
                 .gap(12.0)
                 .size((Sizing::FILL, Sizing::FILL))
-                .transform(palantir::TranslateScale::from_translation(
+                .transform(aperture::TranslateScale::from_translation(
                     state.scroll_offset,
                 ))
                 .show(ui, |ui| {

@@ -1,7 +1,7 @@
 //! Per-frame aggregate benchmark — two cleanly-separated benches in one
-//! file, selected by `PALANTIR_BENCH_MODE` (`cpu` / `gpu` / `both`):
+//! file, selected by `APERTURE_BENCH_MODE` (`cpu` / `gpu` / `both`):
 //!
-//! - **`bench_cpu`** (`frame/*_cpu`) — palantir's CPU pipeline in
+//! - **`bench_cpu`** (`frame/*_cpu`) — aperture's CPU pipeline in
 //!   isolation, driven on a **bare `Ui` + standalone `Frontend` with no
 //!   wgpu device at all** (same deviceless path as `alloc_free`). Each
 //!   iter runs record → measure → arrange → cascade → damage → encode +
@@ -11,7 +11,7 @@
 //!   `WindowRenderer::frame_offscreen` + a poll (the old shape) charged every iter
 //!   driver work that profiled as NVIDIA / kernel self-time — ~20% on
 //!   `cached_cpu` and ~50% on `resizing_cpu` (multi-MB backbuffer
-//!   reallocations per size) — swamping the palantir cost being measured.
+//!   reallocations per size) — swamping the aperture cost being measured.
 //! - **`bench_gpu`** (`frame/*_gpu`) — the full public path:
 //!   `WindowRenderer::frame_offscreen` against an offscreen `wgpu::Texture` +
 //!   `PollType::Wait`. Wall time covers the whole CPU + GPU pipeline;
@@ -42,7 +42,7 @@
 //! After all selected arms run, each arm's criterion `time:` estimate
 //! (the slope it reports to stdout) is prepended to
 //! `benches/results/<machine>.txt` so per-machine history
-//! is captured automatically. `PALANTIR_BENCH_MACHINE` overrides the
+//! is captured automatically. `APERTURE_BENCH_MACHINE` overrides the
 //! filename derived from `hostname -s`.
 //!
 //! The `build_ui` workload lives in `benches/support/frame_fixture.rs`
@@ -51,12 +51,12 @@
 #[path = "support/frame_fixture.rs"]
 mod fixture;
 
+use aperture::offscreen_host::OffscreenHost;
+use aperture::renderer::frontend::Frontend;
+use aperture::ui::frame_report::{RenderKind, RenderPlan};
+use aperture::{Color, Display, Ui};
 use criterion::{Criterion, criterion_group, criterion_main};
 use fixture::{BENCH_SCALE, FormState, build_ui};
-use palantir::offscreen_host::OffscreenHost;
-use palantir::renderer::frontend::Frontend;
-use palantir::ui::frame_report::{RenderKind, RenderPlan};
-use palantir::{Color, Display, Ui};
 use pollster::FutureExt;
 use std::fs::OpenOptions;
 use std::hint::black_box;
@@ -134,7 +134,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.frame_bench.device"),
+                label: Some("aperture.frame_bench.device"),
                 required_features: timing_features | wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -154,7 +154,7 @@ fn bench_host(g: &Gpu) -> OffscreenHost {
     OffscreenHost::new(
         g.device.clone(),
         g.queue.clone(),
-        palantir::TextShaper::with_bundled_fonts(),
+        aperture::TextShaper::with_bundled_fonts(),
         true,
         // Bench arms reuse their target(s) across iters → direct-present path.
         true,
@@ -187,7 +187,7 @@ fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::T
 /// `frame` runs record → measure → arrange → cascade → damage and then,
 /// when the frame produced a render plan, encode + compose — **stopping
 /// before any GPU submit**. No `wgpu::Device` is ever created, so the
-/// `frame/*_cpu` arms profile as pure palantir CPU work.
+/// `frame/*_cpu` arms profile as pure aperture CPU work.
 ///
 /// Time is advanced from a real `Instant` exactly like `WindowRenderer::cpu_frame`
 /// (`self.start.elapsed()`) so paint-anim / tooltip wakes fire on the
@@ -226,7 +226,7 @@ impl CpuHarness {
     /// (the partial-encode path is its real workload); the substitution
     /// only kicks in when there's nothing to paint at all.
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
-        let stamp = palantir::FrameStamp::new(display, self.start.elapsed());
+        let stamp = aperture::FrameStamp::new(display, self.start.elapsed());
         let report = self.ui.frame(stamp, record);
         let plan = report.plan().unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
@@ -313,7 +313,7 @@ fn assert_partial_invariant() {
         state.tick = state.tick.wrapping_add(1);
     }
     let report = h.ui.frame(
-        palantir::FrameStamp::new(display, h.start.elapsed()),
+        aperture::FrameStamp::new(display, h.start.elapsed()),
         |ui| build_ui(&mut state, BENCH_SCALE, ui),
     );
     assert!(
@@ -356,7 +356,7 @@ where
 }
 
 fn gpu_cached(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.cached");
+    let target = make_target(&gpu().device, CACHED_SIZE, "aperture.frame_bench.cached");
     run_gpu_arm(c, "frame/cached_gpu", |host, state, device| {
         host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
         gpu_wait(device);
@@ -365,7 +365,7 @@ fn gpu_cached(c: &mut Criterion) {
 }
 
 fn gpu_partial(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.partial");
+    let target = make_target(&gpu().device, CACHED_SIZE, "aperture.frame_bench.partial");
     run_gpu_arm(c, "frame/partial_gpu", |host, state, device| {
         state.tick = state.tick.wrapping_add(1);
         host.frame_offscreen(&target, SCALE, |ui| build_ui(state, BENCH_SCALE, ui));
@@ -375,7 +375,7 @@ fn gpu_partial(c: &mut Criterion) {
 }
 
 fn gpu_scrolling(c: &mut Criterion) {
-    let target = make_target(&gpu().device, CACHED_SIZE, "palantir.frame_bench.scrolling");
+    let target = make_target(&gpu().device, CACHED_SIZE, "aperture.frame_bench.scrolling");
     run_gpu_arm(c, "frame/scrolling_gpu", |host, state, device| {
         state.scroll_offset.x = (state.scroll_offset.x + 1.5) % 256.0;
         state.scroll_offset.y = (state.scroll_offset.y + 0.7) % 256.0;
@@ -393,7 +393,7 @@ fn gpu_resizing(c: &mut Criterion) {
             make_target(
                 &gpu().device,
                 *s,
-                &format!("palantir.frame_bench.resize.{i}"),
+                &format!("aperture.frame_bench.resize.{i}"),
             )
         })
         .collect();
@@ -409,9 +409,9 @@ fn gpu_resizing(c: &mut Criterion) {
 
 /// Per-frame `queue.write_*` counts + GPU main-pass time for each
 /// arm, frames 0..=5, so the cold→warm transition is visible.
-/// Upload columns come from the counting `palantir::renderer::backend::queue::Queue`
+/// Upload columns come from the counting `aperture::renderer::backend::queue::Queue`
 /// wrapper; the GPU pass column comes from `wgpu` timestamp queries
-/// surfaced via [`palantir::gpu_pass_stats::last_pass_ms`].
+/// surfaced via [`aperture::gpu_pass_stats::last_pass_ms`].
 /// The pass readout is one frame lagged (the `map_async` callback
 /// fires after the next `device.poll`), so frame 0's column is
 /// omitted.
@@ -424,11 +424,11 @@ fn report_write_stats() {
         eprintln!("[write_stats] {label}:");
         for frame in 0..6 {
             mutate(&mut state, frame);
-            let _ = palantir::write_stats::take();
+            let _ = aperture::write_stats::take();
             let target = &targets[frame % targets.len()];
             host.frame_offscreen(target, SCALE, |ui| build_ui(&mut state, BENCH_SCALE, ui));
             gpu_wait(&g.device);
-            let s = palantir::write_stats::take();
+            let s = aperture::write_stats::take();
             // The pass-time readout lags by one frame (the
             // `map_async` callback that publishes a value fires off
             // the *next* `device.poll`). One extra Poll here drains
@@ -449,7 +449,7 @@ fn report_write_stats() {
             // pipeline stats (PIPELINE_STATISTICS_QUERY). Print only
             // when at least one value resolved, so adapters that lack
             // the feature stay quiet.
-            use palantir::gpu_pass_stats::BatchKind;
+            use aperture::gpu_pass_stats::BatchKind;
             use strum::IntoEnumIterator;
             let per_kind: Vec<String> = BatchKind::iter()
                 .filter_map(|k| stats.last_kind_ms(k).map(|ms| (k, ms)))
@@ -510,12 +510,12 @@ impl BenchMode {
 }
 
 /// Required mode selector for the frame bench. Read from
-/// `PALANTIR_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. The bench
+/// `APERTURE_BENCH_MODE`; accepts `cpu`, `gpu`, or `both`. The bench
 /// refuses to run without one so every invocation is an explicit
 /// decision about which arms to pay for (the full `both` matrix is
 /// ~90 s; `cpu` or `gpu` alone is ~45 s).
 fn bench_mode() -> BenchMode {
-    match std::env::var("PALANTIR_BENCH_MODE")
+    match std::env::var("APERTURE_BENCH_MODE")
         .ok()
         .as_deref()
         .map(str::trim)
@@ -526,8 +526,8 @@ fn bench_mode() -> BenchMode {
         Some("gpu") => BenchMode::Gpu,
         Some("both") => BenchMode::Both,
         _ => panic!(
-            "frame bench requires PALANTIR_BENCH_MODE=cpu|gpu|both; \
-             e.g. PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='...' cargo bench --bench frame",
+            "frame bench requires APERTURE_BENCH_MODE=cpu|gpu|both; \
+             e.g. APERTURE_BENCH_MODE=cpu APERTURE_BENCH_NOTE='...' cargo bench --bench frame",
         ),
     }
 }
@@ -681,11 +681,11 @@ struct Estimate {
 /// binary's own path: criterion writes under the same `target/` tree the
 /// binary lives in (`<target>/<profile>/deps/<bin>`), and in this
 /// workspace that's the shared `Scenarium/target`, NOT the submodule-local
-/// `palantir/target`.
+/// `aperture/target`.
 ///
 /// A CWD walk-up (the previous approach) is wrong: cargo runs the bench
 /// with CWD at the submodule package dir, and a stale
-/// `palantir/target/criterion` left by an earlier standalone build
+/// `aperture/target/criterion` left by an earlier standalone build
 /// shadows the real workspace dir — so the finalizer read months-old
 /// estimates from it and every per-machine row was stale.
 fn criterion_root() -> PathBuf {
@@ -769,7 +769,7 @@ fn fmt_estimate(e: Estimate) -> String {
     format!("[{} {} {}]", one(e.lo_ns), one(e.mid_ns), one(e.hi_ns))
 }
 
-/// `PALANTIR_BENCH_MACHINE` overrides the default hostname-derived
+/// `APERTURE_BENCH_MACHINE` overrides the default hostname-derived
 /// label. Sanitized to lowercase alnum + `-_` (first dotted component
 /// only, so FQDNs collapse to their short form) so it's safe as a
 /// filename. Falls back to `gethostname`; empty result → `unknown`.
@@ -784,7 +784,7 @@ fn machine_label() -> String {
             .collect::<String>()
             .to_lowercase()
     }
-    if let Ok(env) = std::env::var("PALANTIR_BENCH_MACHINE") {
+    if let Ok(env) = std::env::var("APERTURE_BENCH_MACHINE") {
         let n = sanitize(&env);
         if !n.is_empty() {
             return n;
@@ -796,14 +796,14 @@ fn machine_label() -> String {
 }
 
 /// Required context tag for the results row. Read from
-/// `PALANTIR_BENCH_NOTE`; the bench refuses to run without one so
+/// `APERTURE_BENCH_NOTE`; the bench refuses to run without one so
 /// every appended row has a why-was-this-measured caption.
 fn bench_annotation() -> String {
-    match std::env::var("PALANTIR_BENCH_NOTE") {
+    match std::env::var("APERTURE_BENCH_NOTE") {
         Ok(s) if !s.trim().is_empty() => s.trim().to_owned(),
         _ => panic!(
-            "frame bench requires PALANTIR_BENCH_NOTE=<short context>; \
-             e.g. PALANTIR_BENCH_NOTE='after staging-belt rework' cargo bench --bench frame",
+            "frame bench requires APERTURE_BENCH_NOTE=<short context>; \
+             e.g. APERTURE_BENCH_NOTE='after staging-belt rework' cargo bench --bench frame",
         ),
     }
 }

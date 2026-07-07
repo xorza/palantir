@@ -1,13 +1,13 @@
 //! Per-widget fixtures: smallest possible scene that exercises one
 //! widget's render path.
 
-use glam::{UVec2, Vec2};
-use image::Rgba;
-use palantir::{
+use aperture::{
     Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
     DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
     Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Text, ToggleSwitch, ToggleTheme,
 };
+use glam::{UVec2, Vec2};
+use image::Rgba;
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -127,7 +127,7 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
 /// the visual against shader / atlas drift.
 #[test]
 fn showcase_gradients_tab_matches_golden() {
-    use palantir::{Interp, Spread, Stop};
+    use aperture::{Interp, Spread, Stop};
     let mut h = Harness::new();
     let img = h.render(UVec2::new(560, 360), 1.0, DARK_BG, |ui| {
         let navy = ColorU8::hex(0x1a1a2e);
@@ -260,11 +260,11 @@ fn radial_and_conic_gradient_matches_golden() {
                     glam::Vec2::splat(0.5),
                     0.0,
                     [
-                        palantir::Stop::new(0.0, ColorU8::hex(0xff5e44)),
-                        palantir::Stop::new(0.25, ColorU8::hex(0xfacc15)),
-                        palantir::Stop::new(0.5, ColorU8::hex(0x46c46c)),
-                        palantir::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
-                        palantir::Stop::new(1.0, ColorU8::hex(0xff5e44)),
+                        aperture::Stop::new(0.0, ColorU8::hex(0xff5e44)),
+                        aperture::Stop::new(0.25, ColorU8::hex(0xfacc15)),
+                        aperture::Stop::new(0.5, ColorU8::hex(0x46c46c)),
+                        aperture::Stop::new(0.75, ColorU8::hex(0x4c5cdb)),
+                        aperture::Stop::new(1.0, ColorU8::hex(0xff5e44)),
                     ],
                 );
                 Frame::new()
@@ -435,7 +435,7 @@ fn rounded_clip_partially_offscreen_does_not_bleed_corners() {
 #[test]
 fn rounded_clip_survives_surface_resize() {
     let mut h = Harness::new();
-    let scene = |ui: &mut palantir::Ui| {
+    let scene = |ui: &mut aperture::Ui| {
         Panel::vstack()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -572,7 +572,7 @@ fn line_diagonal_aa_matches_golden() {
 /// strips, which would fail the gradient sample tolerance.
 #[test]
 fn polyline_gradient_matches_golden() {
-    use palantir::PolylineColors;
+    use aperture::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(160, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -612,7 +612,7 @@ fn polyline_gradient_matches_golden() {
 /// as missing pixels in the right stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
-    use palantir::PolylineColors;
+    use aperture::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -688,7 +688,7 @@ fn polyline_round_caps_match_golden() {
 /// reaches the tessellator and emits the right geometry.
 #[test]
 fn polyline_round_join_matches_golden() {
-    use palantir::PolylineColors;
+    use aperture::PolylineColors;
     let mut h = Harness::new();
     let img = h.render(UVec2::new(180, 200), 1.0, DARK_BG, |ui| {
         Panel::zstack()
@@ -737,7 +737,7 @@ fn polyline_round_join_matches_golden() {
 /// step fails this with `delta ≈ 60+`.
 #[test]
 fn polyline_translucent_premultiplies_in_mesh_shader() {
-    use palantir::PolylineColors;
+    use aperture::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
     let img = h.render(UVec2::new(120, 120), 1.0, Color::BLACK, |ui| {

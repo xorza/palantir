@@ -2,7 +2,7 @@ use crate::primitives::brush::Brush;
 use crate::primitives::corners::Corners;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
-use palantir_anim_derive::Animatable;
+use aperture_anim_derive::Animatable;
 
 /// Paint data shared by container widgets (`Frame`, `Panel`, `Grid`)
 /// and per-state widget visuals: fill colour, optional stroke, and

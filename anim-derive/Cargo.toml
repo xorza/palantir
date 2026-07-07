@@ -1,5 +1,5 @@
 [package]
-name = "palantir-anim-derive"
+name = "aperture-anim-derive"
 version = "0.1.0"
 edition = "2024"
 

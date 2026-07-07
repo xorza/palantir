@@ -18,12 +18,12 @@
 # report) is identical on both.
 #
 # Outputs (all in tmp/, gitignored):
-#   tmp/palantir-perf.data         - perf record output (cycles, callgraph)
-#   tmp/palantir-perf-report.txt   - flat top-functions report (self time)
-#   tmp/palantir-perf-stat.txt     - perf stat counters (IPC, cache, branch)
-#   tmp/palantir-perf-micro.txt    - microarch metrics (Intel TMA / AMD groups)
-#   tmp/palantir-perf-ibs.txt      - precise-IP report (IBS / PEBS), no skid
-#   tmp/palantir-perf-mem.txt      - load/store data-source report (cache levels)
+#   tmp/aperture-perf.data         - perf record output (cycles, callgraph)
+#   tmp/aperture-perf-report.txt   - flat top-functions report (self time)
+#   tmp/aperture-perf-stat.txt     - perf stat counters (IPC, cache, branch)
+#   tmp/aperture-perf-micro.txt    - microarch metrics (Intel TMA / AMD groups)
+#   tmp/aperture-perf-ibs.txt      - precise-IP report (IBS / PEBS), no skid
+#   tmp/aperture-perf-mem.txt      - load/store data-source report (cache levels)
 #
 # Usage:
 #   scripts/bench-perf.sh                              # default: frame bench, --profile-time 5
@@ -45,22 +45,22 @@
 #   LDLAT       Intel PEBS load-latency cutoff in cycles (default: 50; AMD ignores)
 #   SKIP_MEM / SKIP_MICRO / SKIP_IBS   set non-empty to skip that pass
 #
-# The frame bench refuses to run without PALANTIR_BENCH_MODE + _NOTE; export
-# them before invoking (e.g. `PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE=x`).
+# The frame bench refuses to run without APERTURE_BENCH_MODE + _NOTE; export
+# them before invoking (e.g. `APERTURE_BENCH_MODE=cpu APERTURE_BENCH_NOTE=x`).
 #
 # Reading order (top-down):
-#   1. tmp/palantir-perf-micro.txt — where's the bottleneck class?
+#   1. tmp/aperture-perf-micro.txt — where's the bottleneck class?
 #      Intel TMA: retiring / frontend / backend / bad-spec buckets.
 #      AMD Zen3 (no slot-based topdown): read the cache/TLB/branch group
 #      counters directly (Zen4+ exposes a real topdown — see note below).
 #      A retiring-bound / high-IPC workload (IPC > 2.5, low miss rates)
 #      wins only from doing *fewer* instructions, not microarch tuning.
-#   2. tmp/palantir-perf-stat.txt — IPC = insn/cycles; cache & TLB MPKI
+#   2. tmp/aperture-perf-stat.txt — IPC = insn/cycles; cache & TLB MPKI
 #      (= misses * 1000 / instructions).
-#   3. tmp/palantir-perf-ibs.txt — precise (no-skid) leaf IPs; feed the
+#   3. tmp/aperture-perf-ibs.txt — precise (no-skid) leaf IPs; feed the
 #      hottest symbol to `perf annotate` for the exact instruction.
-#   4. tmp/palantir-perf-mem.txt — which loads stall, at which level.
-#   5. tmp/palantir-perf-report.txt + `perf report -i tmp/palantir-perf.data`
+#   4. tmp/aperture-perf-mem.txt — which loads stall, at which level.
+#   5. tmp/aperture-perf-report.txt + `perf report -i tmp/aperture-perf.data`
 #      — callgraph context (callers/callees) for the top self-time symbols.
 #
 # For allocations (the project's "alloc-free per frame after warmup"
@@ -72,14 +72,14 @@ set -uo pipefail
 cd "$(dirname "$0")/.."
 mkdir -p tmp
 
-PERF_DATA=tmp/palantir-perf.data
-PERF_REPORT=tmp/palantir-perf-report.txt
-PERF_STAT=tmp/palantir-perf-stat.txt
-PERF_MICRO=tmp/palantir-perf-micro.txt
-PERF_IBS_DATA=tmp/palantir-perf-ibs.data
-PERF_IBS=tmp/palantir-perf-ibs.txt
-PERF_MEM_DATA=tmp/palantir-perf-mem.data
-PERF_MEM=tmp/palantir-perf-mem.txt
+PERF_DATA=tmp/aperture-perf.data
+PERF_REPORT=tmp/aperture-perf-report.txt
+PERF_STAT=tmp/aperture-perf-stat.txt
+PERF_MICRO=tmp/aperture-perf-micro.txt
+PERF_IBS_DATA=tmp/aperture-perf-ibs.data
+PERF_IBS=tmp/aperture-perf-ibs.txt
+PERF_MEM_DATA=tmp/aperture-perf-mem.data
+PERF_MEM=tmp/aperture-perf-mem.txt
 
 BENCH_NAME="${BENCH:-frame}"
 FILTER_ARG="${FILTER:-}"
@@ -136,7 +136,7 @@ CARGO_BUILD_ARGS=(--bench "$BENCH_NAME")
 CARGO_PROFILE_BENCH_DEBUG=line-tables-only \
     cargo bench "${CARGO_BUILD_ARGS[@]}" --no-run 2>&1 | tail -3
 
-# Criterion writes to the workspace target; palantir is a git submodule so
+# Criterion writes to the workspace target; aperture is a git submodule so
 # its package dir isn't the workspace root — search up for target/release.
 BENCH_BIN=""
 for d in target ../target; do

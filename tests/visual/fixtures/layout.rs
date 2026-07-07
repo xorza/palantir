@@ -1,11 +1,11 @@
 //! Layout-driver fixtures: vstack/grid/zstack at their minimal
 //! exercise-everything sizes.
 
-use glam::UVec2;
-use palantir::{
+use aperture::{
     Align, Background, Button, Color, Configure, Corners, Frame, Grid, Panel, Shadow, Sizing,
     Stroke, Text, TextStyle, TextWrap, Track,
 };
+use glam::UVec2;
 use std::rc::Rc;
 
 use crate::diff::Tolerance;

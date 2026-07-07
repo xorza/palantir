@@ -5,13 +5,13 @@
 //! ~2000 nodes total vs `pan_zoom`'s ~580. The auto-demo tab
 //! (`pan_zoom_auto`) drives synthetic input over this same tree.
 
-use glam::Vec2;
-use palantir::TextWrap;
-use palantir::{
+use aperture::TextWrap;
+use aperture::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Color, Configure, Corners, Frame, Grid,
     LineCap, LineJoin, LinearGradient, Panel, PolylineColors, Scroll, Shadow, Shape, Sizing,
     Spacing, Stroke, Text, TextStyle, Track, Ui, WidgetLook,
 };
+use glam::Vec2;
 use std::rc::Rc;
 
 pub fn build(ui: &mut Ui) {

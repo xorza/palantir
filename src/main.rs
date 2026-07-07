@@ -1,4 +1,4 @@
-use palantir::{
+use aperture::{
     AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shadow, Shortcut,
     Sizing, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
 };
@@ -97,7 +97,7 @@ fn main() {
 
     WinitHost::new(
         MAIN_WINDOW,
-        WinitHostConfig::new("palantir showcase"),
+        WinitHostConfig::new("aperture showcase"),
         State::new,
     )
     .run();
@@ -141,7 +141,7 @@ fn build_inspector(ui: &mut Ui, state: &mut State) {
 
 fn build_ui(ui: &mut Ui, state: &mut State) {
     handle_debug_keys(ui);
-    // ⌘Q / Ctrl+Q quits — palantir drops winit's default macOS menu (so its
+    // ⌘Q / Ctrl+Q quits — aperture drops winit's default macOS menu (so its
     // Quit item can't hard-terminate past a close-request veto), which also
     // removes the native ⌘Q, so wire it here.
     if ui.key_pressed(Shortcut::ctrl('Q')) {
@@ -196,8 +196,8 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                 .padding(16.0)
                 .background(Background {
                     fill: Color::hex(0x343434).into(),
-                    stroke: palantir::Stroke::solid(Color::hex(0x363636), 1.0),
-                    corners: palantir::Corners::all(8.0),
+                    stroke: aperture::Stroke::solid(Color::hex(0x363636), 1.0),
+                    corners: aperture::Corners::all(8.0),
                     shadow: Shadow::NONE,
                 })
                 .show(ui, |ui| {
@@ -221,8 +221,8 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
 /// entry: copy the default theme, swap the `normal` slot to use the
 /// `hovered` background. Pressed / disabled / hovered fall through to
 /// the defaults.
-fn active_toolbar_button(default: &palantir::ButtonTheme) -> palantir::ButtonTheme {
-    palantir::ButtonTheme {
+fn active_toolbar_button(default: &aperture::ButtonTheme) -> aperture::ButtonTheme {
+    aperture::ButtonTheme {
         normal: default.hovered.clone(),
         ..default.clone()
     }

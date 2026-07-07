@@ -4,7 +4,7 @@ use crate::primitives::background::Background;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::text_style::TextStyle;
-use palantir_anim_derive::Animatable;
+use aperture_anim_derive::Animatable;
 
 /// Paint settings for one widget state — the same shape that Button
 /// (`normal`/`hovered`/`pressed`/`disabled`) and TextEdit

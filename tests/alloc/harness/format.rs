@@ -1,7 +1,7 @@
 //! Backtrace filter + pretty-printer for audit failures. Resolves
 //! captured `backtrace::Backtrace`s lazily (capture used
 //! `new_unresolved`) and renders only the frames a debug-this reader
-//! cares about: palantir `src/...` (where the bug usually lives) and
+//! cares about: aperture `src/...` (where the bug usually lives) and
 //! the entry point inside `tests/alloc/fixtures/...` (the call site).
 //! Std/runtime, external deps, and the audit machinery itself are
 //! dropped. Demangled names are stripped of the `alloc::` test-binary
@@ -11,11 +11,11 @@ use backtrace::Backtrace;
 use std::fmt::Write as _;
 
 /// Render `bt` as a tight call stack from fixture closure down to the
-/// allocating call site. With `PALANTIR_ALLOC_FULL_BT=1`, bypass the
+/// allocating call site. With `APERTURE_ALLOC_FULL_BT=1`, bypass the
 /// filter and dump the raw resolved backtrace instead.
 pub(crate) fn user_frames(bt: &mut Backtrace) -> String {
     bt.resolve();
-    if std::env::var_os("PALANTIR_ALLOC_FULL_BT").is_some() {
+    if std::env::var_os("APERTURE_ALLOC_FULL_BT").is_some() {
         return format!("{bt:?}");
     }
 
@@ -93,9 +93,9 @@ fn strip_test_crate_prefix(name: String) -> String {
 
 /// Workspace-relative tail of a captured filename, or `None` if the path
 /// isn't inside this crate. `backtrace`'s symbol resolver returns absolute
-/// paths (`/home/.../palantir/src/widgets/button.rs`); strip the crate
+/// paths (`/home/.../aperture/src/widgets/button.rs`); strip the crate
 /// root resolved at compile time so we don't depend on the project
-/// directory's case or name (`Palantir` vs `palantir`, etc.).
+/// directory's case or name (`Aperture` vs `aperture`, etc.).
 fn user_relative(path: &str) -> Option<&str> {
     let manifest = env!("CARGO_MANIFEST_DIR");
     let stripped = path.strip_prefix(manifest)?;

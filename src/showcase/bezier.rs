@@ -1,5 +1,5 @@
+use aperture::{Brush, Color, Configure, LineCap, LinearGradient, Panel, Shape, Sizing, Stop, Ui};
 use glam::Vec2;
-use palantir::{Brush, Color, Configure, LineCap, LinearGradient, Panel, Shape, Sizing, Stop, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

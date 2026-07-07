@@ -44,7 +44,7 @@ use crate::ui::frame_report::RenderPlan;
 use rustc_hash::FxHashMap;
 
 /// Size of the per-pipeline immediate (push-constant) region every
-/// palantir shader's `var<immediate> imm: Immediates` reads. Locked
+/// aperture shader's `var<immediate> imm: Immediates` reads. Locked
 /// at the maximum used by any pipeline so a `set_immediates` for one
 /// shader stays valid across pipeline switches:
 ///
@@ -307,7 +307,7 @@ impl WgpuBackend {
             return false;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.backbuffer"),
+            label: Some("aperture.renderer.backbuffer"),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -331,7 +331,7 @@ impl WgpuBackend {
             return;
         }
         let tex = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.renderer.stencil"),
+            label: Some("aperture.renderer.stencil"),
             size,
             mip_level_count: 1,
             sample_count: 1,
@@ -458,7 +458,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.renderer.main"),
+                label: Some("aperture.renderer.main"),
             });
 
         // Belt-routed upload phase. Scoped so the borrows release
@@ -575,7 +575,7 @@ impl WgpuBackend {
         // Force alpha to 1: the surface clear is the bottom-most
         // paint layer of the frame, so any sub-1 alpha would let the
         // host's desktop show through the framebuffer's transparent
-        // regions. Palantir doesn't support transparent windows
+        // regions. Aperture doesn't support transparent windows
         // (and the occlusion-prune assumes the clear is opaque).
         let clear_color = wgpu::Color {
             r: clear.r as f64,
@@ -688,7 +688,7 @@ impl WgpuBackend {
         viewport: ViewportPush,
     ) {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("palantir.renderer.dim.pass"),
+            label: Some("aperture.renderer.dim.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color_view,
                 resolve_target: None,
@@ -772,7 +772,7 @@ impl WgpuBackend {
         // stream covers begin → midpoints → end without index gaps.
         let timestamp_writes = self.gpu_timings.as_ref().and_then(|t| t.pass_writes());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("palantir.renderer.main.pass"),
+            label: Some("aperture.renderer.main.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: color_view,
                 resolve_target: None,
@@ -1015,7 +1015,7 @@ impl WgpuBackend {
     ) {
         let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("palantir.renderer.overlay.damage_rect"),
+            label: Some("aperture.renderer.overlay.damage_rect"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &surface_view,
                 resolve_target: None,
@@ -1059,7 +1059,7 @@ impl WgpuBackend {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some("palantir.renderer.skip"),
+                label: Some("aperture.renderer.skip"),
             });
         let bb = backbuffer
             .as_ref()

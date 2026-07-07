@@ -3,10 +3,10 @@
 
 use std::sync::OnceLock;
 
+use aperture::offscreen_host::OffscreenHost;
+use aperture::{Color, DebugOverlayConfig, TextShaper, Ui};
 use glam::UVec2;
 use image::RgbaImage;
-use palantir::offscreen_host::OffscreenHost;
-use palantir::{Color, DebugOverlayConfig, TextShaper, Ui};
 use pollster::FutureExt;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
@@ -41,7 +41,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.visual_test.device"),
+                label: Some("aperture.visual_test.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -108,7 +108,7 @@ impl Harness {
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
         let target = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("palantir.visual_test.target"),
+            label: Some("aperture.visual_test.target"),
             size: wgpu::Extent3d {
                 width: physical.x,
                 height: physical.y,
@@ -186,14 +186,14 @@ fn readback(
     let row_bytes = (size.x * BYTES_PER_PIXEL) as usize;
     let padded = (size.x * BYTES_PER_PIXEL).div_ceil(COPY_ALIGN) * COPY_ALIGN;
     let buffer = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("palantir.visual_test.readback"),
+        label: Some("aperture.visual_test.readback"),
         size: (padded * size.y) as u64,
         usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
         mapped_at_creation: false,
     });
 
     let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-        label: Some("palantir.visual_test.copy"),
+        label: Some("aperture.visual_test.copy"),
     });
     encoder.copy_texture_to_buffer(
         wgpu::TexelCopyTextureInfo {

@@ -7,8 +7,8 @@
 
 use crate::showcase::swatch;
 use crate::showcase::swatch::{caption_style, swatch_bg};
-use palantir::TextWrap;
-use palantir::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
+use aperture::TextWrap;
+use aperture::{Color, Configure, Frame, Panel, Sizing, Text, TextStyle, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

@@ -4,8 +4,8 @@
 //! fixture for `Ui::animate` end-to-end (target → tick → record →
 //! repaint loop).
 
-use palantir::TextWrap;
-use palantir::{
+use aperture::TextWrap;
+use aperture::{
     AnimSpec, Background, Button, Color, Configure, Easing, Frame, Panel, Sizing, Text, Ui,
     WidgetId,
 };

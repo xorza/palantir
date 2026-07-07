@@ -6,7 +6,7 @@
 //! [`AnimMapTyped<T>`] per `TypeId` actually used. Adding a new
 //! `Animatable` type costs no central edits — first call to
 //! `Ui::animate::<T>` allocates the typed slot on demand.
-//! `#[derive(Animatable)]` from `palantir-anim-derive` wires the
+//! `#[derive(Animatable)]` from `aperture-anim-derive` wires the
 //! math; this module wires the storage.
 
 pub(crate) mod animatable;

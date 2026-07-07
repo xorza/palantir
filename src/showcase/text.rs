@@ -1,8 +1,8 @@
 use crate::showcase::swatch;
 use crate::showcase::swatch::section;
-use palantir::TextWrap;
-use palantir::Track;
-use palantir::{
+use aperture::TextWrap;
+use aperture::Track;
+use aperture::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, Ui,
 };
 use std::rc::Rc;

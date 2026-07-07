@@ -12,12 +12,12 @@
 //! `Ui::for_test()` leaves the cosmic shaper unset, so text measurement
 //! runs through the mono fallback (matches `frame.rs` / `caches.rs`).
 
-use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use palantir::ui::damage::region::test_support::region_after_adds;
-use palantir::{
+use aperture::ui::damage::region::test_support::region_after_adds;
+use aperture::{
     Background, Color, Configure, Corners, Display, Frame, FrameStamp, Panel, Rect, Shape, Sizing,
     Stroke, Ui, WidgetId,
 };
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 use std::time::Duration;
 

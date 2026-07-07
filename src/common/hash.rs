@@ -144,7 +144,7 @@ mod tests {
         // sites, every cache key changes silently — pin the equality.
         let mut wrapped = Hasher::new();
         let mut raw = FxHasher::default();
-        let bytes: &[u8] = b"palantir";
+        let bytes: &[u8] = b"aperture";
         wrapped.write(bytes);
         raw.write(bytes);
         assert_eq!(wrapped.finish(), raw.finish());

@@ -1,22 +1,22 @@
-// Re-import `palantir` as a self-alias so proc-macros that emit
-// `::palantir::Animatable` paths (from `palantir-anim-derive`) resolve
+// Re-import `aperture` as a self-alias so proc-macros that emit
+// `::aperture::Animatable` paths (from `aperture-anim-derive`) resolve
 // when the derive is used *inside* the crate (e.g. on `Stroke`,
 // `Background`). Outside the crate this path resolves naturally.
 #![allow(private_interfaces, private_bounds)]
 //! Most parent modules are `pub` so that gated `test_support` submodules
 //! (`#[cfg(any(test, feature = "internals"))] pub mod test_support`) are
 //! reachable from external benches / integration tests as
-//! `palantir::foo::bar::test_support::*`. Many items inside those parents
+//! `aperture::foo::bar::test_support::*`. Many items inside those parents
 //! stay `pub(crate)`; a `pub` `test_support` fn signature may name a
 //! `pub(crate)` type, but external callers can't instantiate / name it
 //! on their side, so the leak is nominal.
 
-extern crate self as palantir;
+extern crate self as aperture;
 
 // Top-level modules are `pub` so that gated `test_support` submodules
 // inside them (`#[cfg(any(test, feature = "internals"))] pub mod
 // test_support`) are reachable from external benches / integration
-// tests as `palantir::foo::bar::test_support::*`. Items inside that
+// tests as `aperture::foo::bar::test_support::*`. Items inside that
 // aren't `pub` remain unreachable to external consumers.
 pub mod animation;
 pub(crate) mod common;
@@ -67,8 +67,9 @@ pub use animation::animatable::Animatable;
 pub use animation::easing::Easing;
 pub use animation::{AnimSlot, AnimSpec};
 // Same-name re-export: the derive lives in the macro namespace,
-// the trait in the type namespace — `use palantir::Animatable;` pulls
+// the trait in the type namespace — `use aperture::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
+pub use aperture_anim_derive::Animatable;
 pub use debug_overlay::DebugOverlayConfig;
 pub use display::Display;
 pub use forest::Layer;
@@ -88,7 +89,6 @@ pub use layout::types::grid_cell::GridCell;
 pub use layout::types::justify::Justify;
 pub use layout::types::sizing::{Sizes, Sizing};
 pub use layout::types::track::Track;
-pub use palantir_anim_derive::Animatable;
 pub use primitives::background::Background;
 pub use primitives::brush::{
     Brush, ConicGradient, Interp, LinearGradient, RadialGradient, Spread, Stop,
@@ -105,7 +105,7 @@ pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
 pub use window_renderer::FramePresent;
 pub use window_renderer::WindowRenderer;
-// Re-exported (not a palantir type) because it's the canonical integer
+// Re-exported (not an aperture type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
 // (`.x` = width, `.y` = height). Saves consumers a direct `glam` dep.

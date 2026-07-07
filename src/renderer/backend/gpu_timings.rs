@@ -139,12 +139,12 @@ impl GpuTimings {
         // Basic mode only uses indices 0 and 1, but the over-allocation
         // is 32 * 8 = 256 bytes, not worth a second code path.
         let timestamp_query_set = device.create_query_set(&wgpu::QuerySetDescriptor {
-            label: Some("palantir.gpu_timings.timestamps"),
+            label: Some("aperture.gpu_timings.timestamps"),
             ty: wgpu::QueryType::Timestamp,
             count: MAX_TIMESTAMPS,
         });
         let timestamps_resolve = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.gpu_timings.timestamps.resolve"),
+            label: Some("aperture.gpu_timings.timestamps.resolve"),
             size: TIMESTAMP_BUFFER_BYTES,
             usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
             mapped_at_creation: false,
@@ -152,12 +152,12 @@ impl GpuTimings {
 
         let (stats_query_set, stats_resolve) = if pipeline_stats {
             let qs = device.create_query_set(&wgpu::QuerySetDescriptor {
-                label: Some("palantir.gpu_timings.stats"),
+                label: Some("aperture.gpu_timings.stats"),
                 ty: wgpu::QueryType::PipelineStatistics(pipeline_stats_flags()),
                 count: 1,
             });
             let buf = device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.gpu_timings.stats.resolve"),
+                label: Some("aperture.gpu_timings.stats.resolve"),
                 size: STATS_BUFFER_BYTES,
                 usage: wgpu::BufferUsages::QUERY_RESOLVE | wgpu::BufferUsages::COPY_SRC,
                 mapped_at_creation: false,
@@ -169,7 +169,7 @@ impl GpuTimings {
 
         let slots = std::array::from_fn(|_| Slot {
             timestamps_buffer: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir.gpu_timings.timestamps.staging"),
+                label: Some("aperture.gpu_timings.timestamps.staging"),
                 size: TIMESTAMP_BUFFER_BYTES,
                 usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -178,7 +178,7 @@ impl GpuTimings {
             segment_kinds: Vec::new(),
             stats_buffer: pipeline_stats.then(|| {
                 device.create_buffer(&wgpu::BufferDescriptor {
-                    label: Some("palantir.gpu_timings.stats.staging"),
+                    label: Some("aperture.gpu_timings.stats.staging"),
                     size: STATS_BUFFER_BYTES,
                     usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
                     mapped_at_creation: false,

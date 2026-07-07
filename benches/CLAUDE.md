@@ -10,18 +10,18 @@ criterion regex.
 ## Running
 
 ```sh
-PALANTIR_BENCH_MODE=both PALANTIR_BENCH_NOTE='baseline' cargo bench --bench frame  # all arms
-PALANTIR_BENCH_MODE=cpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
-PALANTIR_BENCH_MODE=gpu  PALANTIR_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
+APERTURE_BENCH_MODE=both APERTURE_BENCH_NOTE='baseline' cargo bench --bench frame  # all arms
+APERTURE_BENCH_MODE=cpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame      # CPU arms only
+APERTURE_BENCH_MODE=gpu  APERTURE_BENCH_NOTE='note' cargo bench --bench frame -- 'cached_gpu'  # filter
 cargo bench --bench caches --features internals        # gated benches
 ```
 
 `frame` refuses to run without both:
-- `PALANTIR_BENCH_NOTE` — non-empty context string. Inlined into the
+- `APERTURE_BENCH_NOTE` — non-empty context string. Inlined into the
   per-run header in `benches/results/<machine>.txt`
   (`=== <utc> — [<mode>] <note> ===`) so each appended row carries
   context for why it was measured.
-- `PALANTIR_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which of
+- `APERTURE_BENCH_MODE` — one of `cpu`, `gpu`, `both`. Selects which of
   the two benches run; `both` is the full ~90 s matrix, `cpu`/`gpu`
   alone is ~45 s. Forces every invocation to be an explicit decision
   rather than defaulting to the full matrix.
@@ -30,12 +30,12 @@ cargo bench --bench caches --features internals        # gated benches
 
 `frame.rs` defines two independent criterion groups (`cpu_benches`,
 `gpu_benches`) plus a `results_group` finalizer that prepends the
-per-machine row last. `PALANTIR_BENCH_MODE` gates each group wholesale,
+per-machine row last. `APERTURE_BENCH_MODE` gates each group wholesale,
 so **`MODE=cpu` runs zero GPU code** — no adapter / device request, no
 `write_stats` — which is the point: a `perf` / `samply` capture of the
 CPU bench is uncontaminated by driver activity.
 
-- **`frame/*_cpu`** — palantir's CPU pipeline measured on a **bare `Ui`
+- **`frame/*_cpu`** — aperture's CPU pipeline measured on a **bare `Ui`
   + standalone `Frontend` with no `wgpu::Device` at all** (`CpuHarness`,
   same deviceless path as `alloc_free`). Each iter runs record →
   measure → arrange → cascade → damage and then, when the frame
@@ -47,7 +47,7 @@ CPU bench is uncontaminated by driver activity.
   does a GPU backbuffer copy — together ~20 % NVIDIA/kernel self-time on
   `cached_cpu` and ~50 % on `resizing_cpu` (multi-MB backbuffer
   realloc per size, `ensure_backbuffer → create_texture`), swamping the
-  palantir cost. Time is advanced from a real `Instant` like
+  aperture cost. Time is advanced from a real `Instant` like
   `WindowRenderer::cpu_frame` so wake cadence matches production.
 - **`frame/*_gpu`** — the full public path: `WindowRenderer::frame_offscreen`
   against an offscreen `wgpu::Texture` + `PollType::Wait`. Wall time
@@ -84,7 +84,7 @@ rest need `--features internals`.
 Three benches share the `support/frame_fixture.rs` workload (see
 below). Two pin a floor and fail; one only measures.
 
-- **`alloc_free`** — palantir CPU pipeline only (record → measure →
+- **`alloc_free`** — aperture CPU pipeline only (record → measure →
   arrange → cascade → encode), no GPU. **Strict zero** — any non-zero
   block delta over 256 steady-state frames fails. This pins the
   load-bearing CLAUDE.md invariant.
@@ -95,7 +95,7 @@ below). Two pin a floor and fail; one only measures.
   hal scratch). Current floor ~27 blocks/frame, all attributed to
   `wgpu_core` / `wgpu_hal` (verified via `DHAT_DUMP=1` + dh_view).
   Gate trips above `RENDER_BLOCKS_PER_FRAME_MAX` (35) — a regression
-  is either a palantir bug or a wgpu/cosmic-text version drift.
+  is either an aperture bug or a wgpu/cosmic-text version drift.
 - **`alloc_resize`** — same CPU pipeline as `alloc_free`, but rotates
   the `Display` size each frame to bust the measure / text-shaping
   caches the way `frame/resizing_cpu` does. **Not
@@ -127,7 +127,7 @@ blocks. Don't use these benches for timing — dhat adds 10-30×
 allocator overhead.
 
 When the GPU baseline legitimately moves (wgpu/cosmic-text upgrade,
-intentional palantir change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
+intentional aperture change), bump `RENDER_BLOCKS_PER_FRAME_MAX` in
 `benches/alloc_free_gpu.rs` and note the new floor in the PR.
 
 All three benches and the `frame` bench pull `build_ui` + `FormState`
@@ -264,7 +264,7 @@ RVAs; symbolication normally happens at `samply load` time):
 
 `scripts/profile-metal.sh` captures a **Metal System Trace** of an
 example via `xctrace`. Shows the encode→submit→GPU-execute timeline,
-named per-pass (`palantir.renderer.main.pass`, `…overlay.damage_rect`)
+named per-pass (`aperture.renderer.main.pass`, `…overlay.damage_rect`)
 and per-batch debug groups (`preclear` / `mask` / `quads` / `text` /
 `meshes`).
 
@@ -290,7 +290,7 @@ distort timings.
 - CPU encode time eating into the frame budget → CPU-bound; profile
   with `samply` instead.
 - Per-pass duration: should be dominated by
-  `palantir.renderer.main.pass`. If `overlay.damage_rect` is heavy,
+  `aperture.renderer.main.pass`. If `overlay.damage_rect` is heavy,
   the debug overlay is on — disable it for production timing.
 - Sub-pass debug groups (`quads` / `text` / `meshes`) let you see
   which workload dominates each pass.
@@ -313,27 +313,27 @@ microarch metrics, and precise-sampling mechanism. It pins to one core
    auto-expands across cpu_core + cpu_atom on a hybrid and half-counts).
    AMD: plain `cpu` PMU via `perf stat -d` (homogeneous cores; LLC shows
    `<not supported>` — it's an uncore PMU).
-   → `tmp/palantir-perf-stat.txt`
+   → `tmp/aperture-perf-stat.txt`
 2. **microarch metrics** — Intel: `perf stat -M TopdownL1` (TMA L1
    buckets: retiring / frontend / backend / bad-spec). AMD: `perf stat
    -M branch_prediction,tlb` (Zen<4 has **no** slot-based topdown; Zen4+
    adds `Pipeline_Util_*`, auto-detected). Other AMD groups —
    `l2_cache`, `decoder`, and the uncore `l3_cache`/`data_fabric` (need
    `-a`) — run one at a time for clean (un-multiplexed) counts.
-   → `tmp/palantir-perf-micro.txt`
+   → `tmp/aperture-perf-micro.txt`
 3. **`perf record`** (cycles + callgraph) — the flat/inclusive
    workhorse. `dwarf,16384` default (full depth, ~5-10×). `CALLGRAPH=lbr`
    is Intel-only (AMD Zen3 BRS isn't wired for cycles → falls back to
-   dwarf). → `tmp/palantir-perf.data` + `tmp/palantir-perf-report.txt`
+   dwarf). → `tmp/aperture-perf.data` + `tmp/aperture-perf-report.txt`
 4. **precise-IP** (no skid) — Intel: `cpu_core/cycles/ppp` (PEBS). AMD:
    `ibs_op//` (IBS). Tags the exact retiring op, unlike skid-prone cycles
    sampling — pair with `perf annotate` to land on the instruction.
-   → `tmp/palantir-perf-ibs.txt`
+   → `tmp/aperture-perf-ibs.txt`
 5. **`perf mem record`** — load/store data-source (cache-level). Intel:
    PEBS `-t load --ldlat=50`. AMD: IBS (no `--ldlat` on Zen<5 — the
    ibs_op `ldlat` cap is absent, and Intel's `50` is outside AMD's valid
    128–2048 range anyway). Report sorted by `mem,sym,dso`.
-   → `tmp/palantir-perf-mem.txt`
+   → `tmp/aperture-perf-mem.txt`
 
 IBS / raw events / kernel symbols need `kernel.perf_event_paranoid <= -1`
 (`sudo sysctl kernel.perf_event_paranoid=-1`); the script warns if it's
@@ -361,7 +361,7 @@ Env: `BENCH` (default `frame`), `FILTER` (criterion regex),
 > Intel-specific** (cpu_core / TopdownL1 / PEBS). On AMD there's no
 > slot-based TMA on Zen<4 — read `perf-micro.txt`'s cache/TLB/branch
 > counters and the precise `perf-ibs.txt` directly, then
-> `perf annotate -i tmp/palantir-perf-ibs.data <symbol>`.
+> `perf annotate -i tmp/aperture-perf-ibs.data <symbol>`.
 
 ### Workflow (top-down)
 
@@ -390,7 +390,7 @@ Read in this order — drives sampling effort to where it pays off:
    spills LLC; high `L3` = spills L2; high `LFB` = prefetcher is
    covering you (cheap miss).
 4. **`perf annotate -M intel <hot_sym>`** (interactive, on
-   `palantir-perf.data`) — pinpoint the exact instruction. Use Intel
+   `aperture-perf.data`) — pinpoint the exact instruction. Use Intel
    syntax for readability over AT&T.
 
 ### Interpretation reference
@@ -437,8 +437,8 @@ allocation attribution use the `alloc_free*` benches with `DHAT_DUMP=1`.
 ```sh
 cargo bench --bench frame --features internals --no-run
 BIN=$(ls -t target/release/deps/frame-* | grep -v '\.d$' | head -1)
-# frame bench requires PALANTIR_BENCH_MODE + PALANTIR_BENCH_NOTE in env.
-export PALANTIR_BENCH_MODE=cpu PALANTIR_BENCH_NOTE='drill note'
+# frame bench requires APERTURE_BENCH_MODE + APERTURE_BENCH_NOTE in env.
+export APERTURE_BENCH_MODE=cpu APERTURE_BENCH_NOTE='drill note'
 
 # TMA L1
 taskset -c 0 perf stat -M TopdownL1 -- "$BIN" --bench --profile-time 5
@@ -493,7 +493,7 @@ perf report -i tmp/perf-stfwd.data --stdio --no-children -g none \
     --percent-limit 1.0 | head -40
 
 # Drill to the exact instruction in the worst symbol:
-perf annotate -i tmp/perf-stfwd.data -M intel palantir::forest::Forest::open_node
+perf annotate -i tmp/perf-stfwd.data -M intel aperture::forest::Forest::open_node
 ```
 
 **Reading the L1-bound sub-leaves** (Raptor Cove):
@@ -551,14 +551,14 @@ sibling re-walk, not microarch tuning — see `docs/cpu-arm-profiling.md`.)
 
 **Drill order:**
 
-1. `tmp/palantir-perf-ibs.txt` — precise (no-skid) self-time
+1. `tmp/aperture-perf-ibs.txt` — precise (no-skid) self-time
    leaderboard. Trust it over the cycles flat report, whose IP skids
    past the costly instruction.
-2. `tmp/palantir-perf-stat.txt` — IPC = insn/cycles. >2.5 with low
+2. `tmp/aperture-perf-stat.txt` — IPC = insn/cycles. >2.5 with low
    miss rates ⇒ retiring-bound (do less work); <1.0 ⇒ stalled, go to (4).
-3. `perf annotate -i tmp/palantir-perf-ibs.data <symbol>` — IBS lands on
+3. `perf annotate -i tmp/aperture-perf-ibs.data <symbol>` — IBS lands on
    the exact retiring op, so the hot source line is real (no skid).
-4. *Only if stalled:* `tmp/palantir-perf-mem.txt` (IBS data-source)
+4. *Only if stalled:* `tmp/aperture-perf-mem.txt` (IBS data-source)
    buckets loads by level — the label column reads `L2 hit` / `L3 hit` /
    `core, same node Any cache hit` / `Local RAM`. Lots of `RAM` = the
    locality problem; mostly `L1`/`L2` is fine.
@@ -612,8 +612,8 @@ sibling re-walk, not microarch tuning — see `docs/cpu-arm-profiling.md`.)
   `bench-perf.sh`, source-line resolved. macOS has no direct equivalent.
 - **Precise instruction attribution** (no sampling skid): Intel PEBS
   (`cycles/ppp`); AMD IBS (`ibs_op//`). The `bench-perf.sh` precise pass
-  emits `tmp/palantir-perf-ibs.txt`; `perf annotate -i
-  tmp/palantir-perf-ibs.data <symbol>` lands on the exact instruction.
+  emits `tmp/aperture-perf-ibs.txt`; `perf annotate -i
+  tmp/aperture-perf-ibs.data <symbol>` lands on the exact instruction.
 - **False sharing** in multithreaded code: `perf c2c record/report`.
   Not wired in — single-threaded benches don't need it.
 - **HW counters** (IPC, L1/L2/TLB miss rates, branch mispredicts) on
@@ -645,7 +645,7 @@ thermal — re-run on power, lid open, with other apps closed.
 1. Drop a file under `benches/`, register it in `Cargo.toml`'s
    `[[bench]]` table.
 2. If it needs `test_support` reach-in helpers from a production
-   module (e.g. `palantir::ui::damage::region::test_support::…`), add
+   module (e.g. `aperture::ui::damage::region::test_support::…`), add
    `required-features = ["internals"]` to the `[[bench]]` entry and
    profile with `FEATURES=internals scripts/profile-bench.sh`. Reach
    in via the canonical per-module `test_support` path — there is no

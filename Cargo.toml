@@ -1,5 +1,5 @@
 [package]
-name = "palantir"
+name = "aperture"
 version = "0.3.0"
 edition = "2024"
 license = "GPL-3.0-or-later"
@@ -9,7 +9,7 @@ exclude = ["tmp/", "references/"]
 doctest = false
 
 [dependencies]
-palantir-anim-derive = { path = "anim-derive" }
+aperture-anim-derive = { path = "anim-derive" }
 arboard = "3.6"
 bitflags = "2.13"
 bytemuck = { version = "1.25", features = ["derive"] }

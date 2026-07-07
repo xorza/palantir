@@ -4,11 +4,11 @@
 //! every frame. Stop colours stay vivid so spread/interp differences
 //! read at a glance.
 
-use glam::Vec2;
-use palantir::{
+use aperture::{
     Background, Brush, ColorU8, Configure, ConicGradient, Corners, Frame, Interp, LinearGradient,
     Panel, RadialGradient, Sizing, Spread, Ui,
 };
+use glam::Vec2;
 
 const NAVY: ColorU8 = ColorU8::hex(0x1a1a2e);
 const BLUE: ColorU8 = ColorU8::hex(0x4c5cdb);
@@ -133,9 +133,9 @@ fn radial_offset(ui: &mut Ui) {
         Vec2::new(0.25, 0.3),
         Vec2::new(0.9, 0.9),
         [
-            palantir::Stop::new(0.0, ORANGE),
-            palantir::Stop::new(0.6, RED),
-            palantir::Stop::new(1.0, NAVY),
+            aperture::Stop::new(0.0, ORANGE),
+            aperture::Stop::new(0.6, RED),
+            aperture::Stop::new(1.0, NAVY),
         ],
     );
     Frame::new()
@@ -152,8 +152,8 @@ fn radial_ellipse(ui: &mut Ui) {
         Vec2::splat(0.5),
         Vec2::new(0.55, 0.25),
         [
-            palantir::Stop::new(0.0, GREEN),
-            palantir::Stop::new(1.0, NAVY),
+            aperture::Stop::new(0.0, GREEN),
+            aperture::Stop::new(1.0, NAVY),
         ],
     );
     Frame::new()
@@ -171,13 +171,13 @@ fn conic_wheel(ui: &mut Ui) {
         Vec2::splat(0.5),
         0.0,
         [
-            palantir::Stop::new(0.0, RED),
-            palantir::Stop::new(0.166, YELLOW),
-            palantir::Stop::new(0.333, GREEN),
-            palantir::Stop::new(0.5, ColorU8::hex(0x22ccdd)),
-            palantir::Stop::new(0.666, BLUE),
-            palantir::Stop::new(0.833, ColorU8::hex(0xd14fdf)),
-            palantir::Stop::new(1.0, RED),
+            aperture::Stop::new(0.0, RED),
+            aperture::Stop::new(0.166, YELLOW),
+            aperture::Stop::new(0.333, GREEN),
+            aperture::Stop::new(0.5, ColorU8::hex(0x22ccdd)),
+            aperture::Stop::new(0.666, BLUE),
+            aperture::Stop::new(0.833, ColorU8::hex(0xd14fdf)),
+            aperture::Stop::new(1.0, RED),
         ],
     );
     Frame::new()
@@ -194,9 +194,9 @@ fn conic_rotated(ui: &mut Ui) {
         Vec2::splat(0.5),
         std::f32::consts::FRAC_PI_2,
         [
-            palantir::Stop::new(0.0, NAVY),
-            palantir::Stop::new(0.5, YELLOW),
-            palantir::Stop::new(1.0, NAVY),
+            aperture::Stop::new(0.0, NAVY),
+            aperture::Stop::new(0.5, YELLOW),
+            aperture::Stop::new(1.0, NAVY),
         ],
     );
     Frame::new()
@@ -221,8 +221,8 @@ fn spread_and_interp(ui: &mut Ui) {
                 Vec2::splat(0.5),
                 Vec2::splat(0.25),
                 [
-                    palantir::Stop::new(0.0, BLUE),
-                    palantir::Stop::new(1.0, ORANGE),
+                    aperture::Stop::new(0.0, BLUE),
+                    aperture::Stop::new(1.0, ORANGE),
                 ],
             )
             .with_spread(Spread::Reflect);

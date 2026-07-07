@@ -19,9 +19,9 @@
 #[path = "support/frame_fixture.rs"]
 mod fixture;
 
+use aperture::{Display, FrameStamp, Ui};
 use fixture::{FormState, build_ui};
 use glam::UVec2;
-use palantir::{Display, FrameStamp, Ui};
 use std::hint::black_box;
 
 #[global_allocator]

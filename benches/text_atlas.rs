@@ -42,13 +42,13 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use glam::{UVec2, Vec2};
-use palantir::ColorU8;
-use palantir::TextShaper;
-use palantir::renderer::backend::text::test_support::{
+use aperture::ColorU8;
+use aperture::TextShaper;
+use aperture::renderer::backend::text::test_support::{
     BenchText, GpuCtx, Queue, TextRun, make_run,
 };
+use criterion::{Criterion, criterion_group, criterion_main};
+use glam::{UVec2, Vec2};
 use pollster::FutureExt;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -85,7 +85,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.text_atlas.device"),
+                label: Some("aperture.text_atlas.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -103,7 +103,7 @@ fn gpu() -> &'static Gpu {
 
 fn make_target(device: &wgpu::Device) -> wgpu::Texture {
     device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.text_atlas.target"),
+        label: Some("aperture.text_atlas.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,
@@ -196,7 +196,7 @@ fn run_frame(
     let mut encoder = g
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("palantir.text_atlas.encoder"),
+            label: Some("aperture.text_atlas.encoder"),
         });
     {
         let mut ctx = GpuCtx::new(&g.device, &g.queue, belt, &mut encoder);
@@ -205,7 +205,7 @@ fn run_frame(
     }
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("palantir.text_atlas.pass"),
+            label: Some("aperture.text_atlas.pass"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: target_view,
                 depth_slice: None,
@@ -272,7 +272,7 @@ fn bench_text_atlas(c: &mut Criterion) {
                 let mut encoder =
                     g.device
                         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                            label: Some("palantir.text_atlas.cpu_prepare"),
+                            label: Some("aperture.text_atlas.cpu_prepare"),
                         });
                 {
                     let mut ctx = GpuCtx::new(&g.device, &g.queue, &mut belt, &mut encoder);

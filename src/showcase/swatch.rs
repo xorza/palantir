@@ -6,7 +6,7 @@
 //! where layout puts each child — picked from the Ayu syntax-color
 //! block so they harmonize with the default theme.
 
-use palantir::{Background, Color, Configure, Corners, Panel, Sizing, Text, TextStyle, Ui};
+use aperture::{Background, Color, Configure, Corners, Panel, Sizing, Text, TextStyle, Ui};
 use std::hash::Hash;
 
 /// Teal-blue. Default swatch when one color is enough.

@@ -45,8 +45,8 @@ rm -rf "$TRACE"
 # else resolves as a cargo example.
 if [ "$TARGET" = "showcase" ]; then
     echo "==> Building showcase binary (release)"
-    BUILD_ARGS=(build --release --bin palantir)
-    BIN="target/release/palantir"
+    BUILD_ARGS=(build --release --bin aperture)
+    BIN="target/release/aperture"
 else
     echo "==> Building example '$TARGET' (release)"
     BUILD_ARGS=(build --release --example "$TARGET")
@@ -98,6 +98,6 @@ echo "Open in GUI  : open '$TRACE'"
 echo
 echo "What to look for:"
 echo "  * GPU timeline gaps (CPU not feeding the GPU fast enough)"
-echo "  * Per-pass duration: 'palantir.renderer.main.pass' should dominate"
+echo "  * Per-pass duration: 'aperture.renderer.main.pass' should dominate"
 echo "  * Sub-pass debug groups: preclear / mask / quads / text / meshes"
 echo "  * Encode→submit→GPU-execute latency for steady-state frames"

@@ -3,7 +3,7 @@
 //! has a squared magnitude (used by spring settle checks). Built-in
 //! impls cover `f32`, `Vec2`, `Color`. Domain types (`Stroke`,
 //! `Background`, ...) opt in via `#[derive(Animatable)]` — see
-//! `palantir-anim-derive` and the type-erased `AnimMap` storage.
+//! `aperture-anim-derive` and the type-erased `AnimMap` storage.
 
 use glam::Vec2;
 

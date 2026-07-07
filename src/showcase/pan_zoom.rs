@@ -1,5 +1,5 @@
-use palantir::TextWrap;
-use palantir::{
+use aperture::TextWrap;
+use aperture::{
     AnimSpec, Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Scroll, Shadow,
     Sizing, Stroke, TextStyle, Ui, WidgetLook,
 };
@@ -11,7 +11,7 @@ use palantir::{
 /// correctly through the scroll viewport's transform; the hovered cell
 /// brightens via the standard ButtonTheme animation path.
 pub fn build(ui: &mut Ui) {
-    let last_click_id = palantir::WidgetId::from_hash("pz-last-click");
+    let last_click_id = aperture::WidgetId::from_hash("pz-last-click");
     let mut clicked: Option<(u32, u32)> = *ui.state_mut::<Option<(u32, u32)>>(last_click_id);
     Panel::vstack()
         .auto_id()
@@ -28,7 +28,7 @@ pub fn build(ui: &mut Ui) {
                      the zoom transform."
                     .to_string(),
             };
-            palantir::Text::new(header)
+            aperture::Text::new(header)
                 .auto_id()
                 .text_wrap(TextWrap::WrapWithOverflow)
                 .style(TextStyle::default().with_font_size(13.0))
@@ -108,8 +108,8 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
             background: Some(bg(base)),
             text: Some(label_text),
         },
-        padding: palantir::Spacing::xy(6.0, 4.0),
-        margin: palantir::Spacing::ZERO,
+        padding: aperture::Spacing::xy(6.0, 4.0),
+        margin: aperture::Spacing::ZERO,
         anim: Some(AnimSpec::FAST),
     }
 }

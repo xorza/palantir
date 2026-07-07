@@ -1,4 +1,4 @@
-use palantir::{Configure, Panel, Sizing, Text, ToggleSwitch, Ui, WidgetId};
+use aperture::{Configure, Panel, Sizing, Text, ToggleSwitch, Ui, WidgetId};
 
 #[derive(Default)]
 struct State {

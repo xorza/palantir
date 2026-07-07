@@ -1,5 +1,5 @@
 use crate::showcase::swatch;
-use palantir::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
+use aperture::{Background, Color, Configure, Corners, Frame, Panel, Shadow, Sizing, Stroke, Ui};
 
 /// Card with a rounded background. Used in three configurations below
 /// (no clip, scissor clip, rounded stencil clip) to demonstrate how

@@ -99,14 +99,14 @@ impl GlyphAtlas {
                 size,
                 wgpu::TextureFormat::R8Unorm,
                 1,
-                "palantir text mask atlas",
+                "aperture text mask atlas",
             ),
             Side::new(
                 device,
                 size,
                 wgpu::TextureFormat::Rgba8UnormSrgb,
                 4,
-                "palantir text color atlas",
+                "aperture text color atlas",
             ),
         ];
 
@@ -247,7 +247,7 @@ impl GlyphAtlas {
             if let Some(pg) = side.pending_grow.take() {
                 if !any_grow {
                     ctx.encoder
-                        .push_debug_group("palantir text atlas grow blit");
+                        .push_debug_group("aperture text atlas grow blit");
                     any_grow = true;
                 }
                 ctx.encoder.copy_texture_to_texture(
@@ -275,7 +275,7 @@ impl GlyphAtlas {
                 .max(self.staging_cap * 2)
                 .max(4096);
             self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("palantir text atlas staging"),
+                label: Some("aperture text atlas staging"),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -286,7 +286,7 @@ impl GlyphAtlas {
         ctx.write(buf, 0, &self.pending_staging);
 
         ctx.encoder
-            .push_debug_group("palantir text atlas batch upload");
+            .push_debug_group("aperture text atlas batch upload");
         for c in &self.pending_copies {
             let side = &self.sides[c.side as usize];
             ctx.encoder.copy_buffer_to_texture(

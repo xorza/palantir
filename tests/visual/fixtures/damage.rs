@@ -8,9 +8,9 @@
 
 use std::path::Path;
 
+use aperture::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 use glam::{UVec2, Vec2};
 use image::{Rgba, RgbaImage};
-use palantir::{Background, Button, Color, Configure, DebugOverlayConfig, Frame, Panel, Sizing};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -50,8 +50,8 @@ fn is_red(r: u8, g: u8, b: u8) -> bool {
 fn button_scene(
     id_salt: &'static str,
     label: &'static str,
-) -> impl FnMut(&mut palantir::Ui) + Copy {
-    move |ui: &mut palantir::Ui| {
+) -> impl FnMut(&mut aperture::Ui) + Copy {
+    move |ui: &mut aperture::Ui| {
         Panel::vstack()
             .auto_id()
             .padding(12.0)
@@ -70,8 +70,8 @@ fn button_scene(
 fn corner_pair_scene(
     tl_label: &'static str,
     br_label: &'static str,
-) -> impl FnMut(&mut palantir::Ui) + Copy {
-    move |ui: &mut palantir::Ui| {
+) -> impl FnMut(&mut aperture::Ui) + Copy {
+    move |ui: &mut aperture::Ui| {
         Panel::canvas()
             .auto_id()
             .size((Sizing::FILL, Sizing::FILL))
@@ -357,7 +357,7 @@ fn damage_rect_overlay_outlines_thin_sliver() {
     let mut h = Harness::new();
     let size = UVec2::new(120, 80);
     let sliver = |on: bool| {
-        move |ui: &mut palantir::Ui| {
+        move |ui: &mut aperture::Ui| {
             Panel::canvas()
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))

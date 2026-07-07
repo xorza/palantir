@@ -1,4 +1,4 @@
-use palantir::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
+use aperture::{Configure, Panel, RadioButton, Sizing, Text, Ui, WidgetId};
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
 enum Flavor {

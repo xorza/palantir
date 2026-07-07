@@ -2,7 +2,7 @@
 // example. Run with `cargo run --example dump_theme` — produces
 // `examples/theme.toml` and prints the same content to stdout.
 
-use palantir::Theme;
+use aperture::Theme;
 use std::fs;
 use std::path::PathBuf;
 

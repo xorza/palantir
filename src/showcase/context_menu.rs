@@ -3,7 +3,7 @@
 //! report `clicked()` and the menu auto-closes on click, outside-
 //! click, or Esc.
 
-use palantir::{
+use aperture::{
     Background, Button, Color, Configure, ContextMenu, Corners, Frame, Key, MenuItem, Mods, Panel,
     Sense, Shadow, Shortcut, Sizing, Spacing, Stroke, Text, Ui, WidgetId,
 };
@@ -93,7 +93,7 @@ enum MenuFlavor {
 
 fn attach_menu(
     ui: &mut Ui,
-    trigger: &palantir::ResponseSnapshot,
+    trigger: &aperture::ResponseSnapshot,
     state_id: WidgetId,
     flavor: MenuFlavor,
 ) {

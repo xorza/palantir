@@ -1,4 +1,4 @@
-use palantir::{Checkbox, Configure, Panel, Sizing, Text, Ui, WidgetId};
+use aperture::{Checkbox, Configure, Panel, Sizing, Text, Ui, WidgetId};
 
 #[derive(Default)]
 struct State {

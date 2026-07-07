@@ -81,7 +81,7 @@ budget violation dump captured backtraces (filtered to user code via
 ## Trace filtering
 
 `user_frames` resolves the captured backtrace and emits only:
-- `src/...` frames (palantir library code), and
+- `src/...` frames (aperture library code), and
 - the *first* `tests/alloc/fixtures/...` frame (the entry point into
   the scene closure).
 
@@ -89,7 +89,7 @@ Everything else — std/runtime, hashbrown/cosmic-text/etc., the
 harness machinery itself — is dropped. Demangled names are stripped
 of the `alloc::` test-binary-crate prefix and the `::h<hash>` suffix.
 
-Set `PALANTIR_ALLOC_FULL_BT=1` to bypass the filter and dump the raw
+Set `APERTURE_ALLOC_FULL_BT=1` to bypass the filter and dump the raw
 unfiltered backtrace; useful when the filter rejects something it
 shouldn't.
 
@@ -151,7 +151,7 @@ Don't raise the budget. Find the alloc:
    audit-window alloc and dumps them all on failure, filtered to
    user code, so you usually see the offending call site directly.
 2. If the trace is ambiguous (deep inside a generic), set
-   `PALANTIR_ALLOC_FULL_BT=1` to see the unfiltered stack, or add
+   `APERTURE_ALLOC_FULL_BT=1` to see the unfiltered stack, or add
    `dbg!(...)` around suspect spans inside the frame loop to bisect
    which pass introduced it.
 3. The fix is almost always: lift a `Vec::new()` to a retained scratch

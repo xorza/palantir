@@ -3,7 +3,7 @@
 //! ButtonTheme from scratch when an app wants something different
 //! from the framework default. Default styling demoed in the first row.
 
-use palantir::{
+use aperture::{
     Background, Button, ButtonTheme, Color, Configure, Corners, Panel, Shadow, Sizing, Stroke,
     TextStyle, TextWrap, Ui, WidgetLook,
 };

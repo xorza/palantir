@@ -6,8 +6,8 @@
 
 use crate::showcase::swatch;
 use crate::showcase::swatch::{caption_style, section, swatch_bg};
-use palantir::TextWrap;
-use palantir::{
+use aperture::TextWrap;
+use aperture::{
     Background, Configure, Corners, Frame, Justify, Panel, Shadow, Sizing, Stroke, Text, TextStyle,
     Ui,
 };
@@ -125,9 +125,9 @@ fn chip<H: std::hash::Hash>(ui: &mut Ui, key: H, label: &'static str) {
         .id_salt(("chip-row", &key))
         .padding((10.0, 4.0))
         .background(Background {
-            fill: palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20).into(),
+            fill: aperture::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.20).into(),
             stroke: Stroke::solid(
-                palantir::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
+                aperture::Color::linear_rgba(swatch::A.r, swatch::A.g, swatch::A.b, 0.45),
                 1.0,
             ),
             corners: Corners::all(10.0),

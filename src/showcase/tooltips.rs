@@ -3,7 +3,7 @@
 //! between adjacent buttons quickly to see the warmup window (no
 //! re-delay within ~1 s of the previous bubble).
 
-use palantir::{Button, Configure, Panel, Sizing, Tooltip, Ui};
+use aperture::{Button, Configure, Panel, Sizing, Tooltip, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::vstack()

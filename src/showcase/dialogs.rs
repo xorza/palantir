@@ -1,4 +1,4 @@
-use palantir::{Button, ComboBox, Configure, Modal, Panel, Separator, Sizing, Text, Ui, WidgetId};
+use aperture::{Button, ComboBox, Configure, Modal, Panel, Separator, Sizing, Text, Ui, WidgetId};
 
 #[derive(Default)]
 struct State {
