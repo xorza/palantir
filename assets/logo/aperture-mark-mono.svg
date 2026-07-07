@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="Aperture" fill="none" stroke="currentColor">
+  <g stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="64" cy="64" r="53" stroke-width="2.2" stroke-opacity="0.95"/>
+    <g stroke-width="2.1" stroke-opacity="0.9">
+      <line x1="69.47" y1="48.96" x2="64" y2="11"/>
+      <line x1="79.76" y1="61.22" x2="109.90" y2="37.5"/>
+      <line x1="74.28" y1="76.26" x2="109.90" y2="90.5"/>
+      <line x1="58.53" y1="79.04" x2="64" y2="117"/>
+      <line x1="48.24" y1="66.78" x2="18.10" y2="90.5"/>
+      <line x1="53.72" y1="51.74" x2="18.10" y2="37.5"/>
+    </g>
+    <polygon points="69.47,48.96 79.76,61.22 74.28,76.26 58.53,79.04 48.24,66.78 53.72,51.74" stroke-width="2.2" stroke-opacity="0.95"/>
+  </g>
+  <circle cx="64" cy="64" r="3.4" fill="currentColor" stroke="none"/>
+</svg>
