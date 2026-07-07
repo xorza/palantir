@@ -2308,7 +2308,7 @@ fn text_content_change_damages_shaped_extent_not_just_origin() {
                         line_height_px: FONT,
                         wrap: TextWrap::Truncate,
                         align: Default::default(),
-                        family: FontFamily::SegoeUi,
+                        family: FontFamily::Sans,
                         weight: FontWeight::Regular,
                     });
                 });

@@ -27,13 +27,12 @@ use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
 use std::hash::Hasher;
 use std::sync::Arc;
 
-/// Bundled fonts shipped with the crate. Segoe UI (Regular + Bold) is
-/// the default UI / proportional body font; JetBrains Mono is the
-/// monospace, shipped as a single variable-weight face. JetBrains Mono
-/// is OFL 1.1. Bold is selected per-run via [`FontWeight`] on the
-/// [`crate::TextStyle`], resolved in [`attrs_for`].
-const SEGOE_UI: &[u8] = include_bytes!("../../assets/fonts/Segoe UI.ttf");
-const SEGOE_UI_BOLD: &[u8] = include_bytes!("../../assets/fonts/Segoe UI Bold.ttf");
+/// Bundled fonts shipped with the crate. Inter is the default UI /
+/// proportional body font; JetBrains Mono is the monospace. Both ship as
+/// a single variable-weight (`wght`) face, so Regular and Bold come from
+/// one file each. Both are OFL 1.1. Weight is selected per-run via
+/// [`FontWeight`] on the [`crate::TextStyle`], resolved in [`attrs_for`].
+const INTER: &[u8] = include_bytes!("../../assets/fonts/Inter-VariableFont_opsz,wght.ttf");
 const JBMONO: &[u8] = include_bytes!("../../assets/fonts/JetBrainsMono[wght].ttf");
 
 const MAX_W_NONE: u32 = u32::MAX;
@@ -109,15 +108,15 @@ fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
     // is imperceptible.
     let base = Attrs::new().cache_key_flags(CacheKeyFlags::DISABLE_HINTING);
     let base = match weight {
-        // `Weight::NORMAL` is fontdb's default; requesting Bold makes it
-        // pick the bold static face (Segoe UI) or instantiate the `wght`
-        // axis (variable JetBrains Mono).
+        // `Weight::NORMAL` is fontdb's default; requesting Bold makes
+        // fontdb instantiate the `wght` axis at 700 on the variable face
+        // (both Inter and JetBrains Mono ship as single variable fonts).
         FontWeight::Regular => base,
         FontWeight::Bold => base.weight(Weight::BOLD),
     };
     match family {
         FontFamily::Mono => base.family(Family::Name("JetBrains Mono")),
-        FontFamily::SegoeUi => base.family(Family::Name("Segoe UI")),
+        FontFamily::Sans => base.family(Family::Name("Inter")),
     }
 }
 
@@ -153,7 +152,7 @@ struct CacheEntry {
 }
 
 /// Real-shaping text measurer. Owns a [`FontSystem`] populated by
-/// [`CosmicMeasure::with_bundled_fonts`] (Segoe UI + JetBrains Mono) and
+/// [`CosmicMeasure::with_bundled_fonts`] (Inter + JetBrains Mono) and
 /// a cache of shaped `Buffer`s keyed on the inputs that affect shaping.
 /// Per-call font family + weight selection comes from [`FontFamily`] /
 /// [`FontWeight`] on each [`Self::measure`] invocation; the named lookups
@@ -185,7 +184,7 @@ pub struct CosmicMeasure {
 }
 
 impl CosmicMeasure {
-    /// Register the bundled faces — Segoe UI Regular + Bold (the default
+    /// Register the bundled faces — the variable-weight Inter (the default
     /// proportional family) and the variable-weight JetBrains Mono
     /// (monospace) — so they're always resolvable by name + weight.
     /// cosmic-text's `new_with_fonts` *also* loads the platform's system
@@ -194,7 +193,7 @@ impl CosmicMeasure {
     /// across machines. Per-call family + weight selection comes from
     /// [`FontFamily`] / [`FontWeight`] on each [`Self::measure`] invocation.
     pub fn with_bundled_fonts() -> Self {
-        let sources = [SEGOE_UI, SEGOE_UI_BOLD, JBMONO]
+        let sources = [INTER, JBMONO]
             .into_iter()
             .map(|b| fontdb::Source::Binary(Arc::new(b)));
         let font_system = FontSystem::new_with_fonts(sources);

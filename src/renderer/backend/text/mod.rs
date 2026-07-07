@@ -562,7 +562,7 @@ pub mod test_support {
                 font_size_px,
                 line_height_px,
                 max_width_px: None,
-                family: FontFamily::SegoeUi,
+                family: FontFamily::Sans,
                 weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
