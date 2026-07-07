@@ -35,7 +35,7 @@ https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
 ---
 
 [Darkroom app](https://github.com/xorza/Darkroom)
-![Darkroom app screenshot](docs/Screenshot%202026-06-03%20at%2017.16.43.png)
+![Darkroom app screenshot](docs/darkroom-screenshot.png)
 
 ## Highlights
 
