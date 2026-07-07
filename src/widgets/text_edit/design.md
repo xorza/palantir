@@ -57,7 +57,7 @@ pub(crate) struct TextEditState {
     pub(crate) caret: usize,                       // byte offset (active end)
     pub(crate) selection: Option<usize>,           // anchor byte; None == no sel
     pub(crate) drag_anchor: Option<usize>,         // latched on press rising edge
-    pub(crate) prev_pressed: bool,                 // edge detection for `pressed`
+    pub(crate) prev_held: bool,                    // edge detection for `held` (capture-based)
     pub(crate) undo: VecDeque<EditSnapshot>,       // capped at UNDO_LIMIT (128)
     pub(crate) redo: Vec<EditSnapshot>,            // cleared on every fresh edit
     pub(crate) last_edit_kind: Option<EditKind>,   // Typing / Delete / Other; None ⇒ new group
@@ -196,9 +196,11 @@ borrow choreography):
 
 1. **Input.** `handle_input` (free fn in the same module) holds the
    `TextEditState` row, clamps `caret`, applies click-to-place-caret
-   from this frame's pointer pos when `response_state.pressed` (drag-
+   from this frame's pointer pos when `response_state.held` (drag-
    to-place falls out for free since the press tracks pointer x while
-   held), then — when focused — drains `frame_text` first (insert at
+   held — `held` is capture-based, so it keeps tracking after the pointer
+   leaves the editor's rect), then — when focused — drains `frame_text`
+   first (insert at
    caret) and `frame_keys` second (navigation/edits). Returns the caret
    byte to render.
 2. **Record.** `ui.node(...)` opens the leaf and pushes background →
@@ -261,13 +263,20 @@ deferred.)
 in caret count, multi-line aware. Mono / empty-text falls back to a 1D
 `(x ÷ 0.5·font_size)` scan over char boundaries.
 
-Drag-select rides on the same pressed-frame loop: on the *rising edge*
-of `ResponseState::pressed` (detected via `state.prev_pressed`) the
+Drag-select rides on the same held-frame loop: on the *rising edge*
+of `ResponseState::held` (detected via `state.prev_held`) the
 hit caret is latched into `state.drag_anchor` and any prior selection
-clears. On subsequent pressed frames `state.caret` follows the pointer
+clears. On subsequent held frames `state.caret` follows the pointer
 and `state.selection` flips to `Some(drag_anchor)` once the active end
 diverges from the anchor (collapses back to `None` if they coincide,
 matching the invariant). The release edge clears `drag_anchor`.
+
+`held` is capture-based (`ResponseState::held` == the left press is
+latched on this widget), **not** hover-gated like `pressed`. That's what
+lets the drag keep selecting — and keep its anchor — after the pointer
+leaves the editor's rect: the hit clamps to byte 0 / end-of-text and the
+selection extends toward it, instead of freezing and losing the anchor
+the instant the cursor crosses the boundary.
 
 ### Overflow handling
 

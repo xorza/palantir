@@ -245,6 +245,111 @@ fn click_uses_overridden_padding() {
 }
 
 #[test]
+fn drag_select_continues_past_editor_bounds() {
+    // Regression: while the button is held, dragging the pointer outside
+    // the editor's rect must keep extending the selection (caret rides the
+    // clamped hit) and must NOT drop the drag anchor. Before the fix the
+    // drag-select gated on `pressed` (hover-gated), which flipped false the
+    // instant the pointer left the rect — freezing selection, clearing the
+    // anchor, and (on re-entry) re-latching as a fresh press that wiped the
+    // selection. Now it gates on the capture-based, rect-independent `held`.
+    // Mono fallback (8 px/char) for predictable hit math.
+    let ed_id = WidgetId::from_hash("drag-ed");
+    fn body(ui: &mut Ui, buf: &mut String) {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(buf)
+                .id(WidgetId::from_hash("drag-ed"))
+                .size((Sizing::Fixed(280.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    }
+
+    let mut ui = ui_at_no_cosmic(NARROW);
+    let mut buf = String::from("hello world"); // 11 bytes
+
+    // Record once so the editor's rect is known to the next frame's hit-test.
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+
+    // Press inside: caret lands mid-text and the anchor latches there.
+    ui.press_at(Vec2::new(22.0, 20.0));
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    let anchor = ui.state_mut::<TextEditState>(ed_id).caret;
+    assert!(
+        anchor > 0 && anchor < buf.len(),
+        "press should land mid-text (room to extend both ways), got {anchor}",
+    );
+    {
+        let st = ui.state_mut::<TextEditState>(ed_id);
+        assert_eq!(st.drag_anchor, Some(anchor));
+        assert_eq!(st.selection, None, "a single press selects nothing yet");
+    }
+
+    // Drag far RIGHT, way past the editor's right edge. Selection extends
+    // to end-of-text; the anchor is preserved.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(4000.0, 20.0)));
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    {
+        let st = ui.state_mut::<TextEditState>(ed_id);
+        assert_eq!(
+            st.caret,
+            buf.len(),
+            "caret rides to the clamped end past the right edge"
+        );
+        assert_eq!(
+            st.selection,
+            Some(anchor),
+            "selection extends from the anchor — not lost"
+        );
+        assert_eq!(
+            st.drag_anchor,
+            Some(anchor),
+            "anchor survives the out-of-bounds drag"
+        );
+    }
+
+    // Drag far LEFT, past the left edge. Caret clamps to 0; the anchor is
+    // still latched so the selection just flips direction.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(-2000.0, 20.0)));
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    {
+        let st = ui.state_mut::<TextEditState>(ed_id);
+        assert_eq!(st.caret, 0, "caret clamps to 0 past the left edge");
+        assert_eq!(
+            st.selection,
+            Some(anchor),
+            "still selected — the anchor held"
+        );
+    }
+
+    // Pointer leaves the surface entirely mid-drag: no position this frame,
+    // but the gesture is still live — anchor and selection must persist.
+    ui.on_input(InputEvent::PointerLeft);
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    {
+        let st = ui.state_mut::<TextEditState>(ed_id);
+        assert_eq!(
+            st.selection,
+            Some(anchor),
+            "off-surface must not drop the selection"
+        );
+        assert_eq!(
+            st.drag_anchor,
+            Some(anchor),
+            "off-surface must not drop the anchor"
+        );
+    }
+
+    // Release ends the gesture: the anchor drops, the selection persists.
+    ui.release_left();
+    ui.run_at_acked(NARROW, |ui| body(ui, &mut buf));
+    {
+        let st = ui.state_mut::<TextEditState>(ed_id);
+        assert_eq!(st.selection, Some(anchor), "selection survives release");
+        assert_eq!(st.drag_anchor, None, "release clears the drag anchor");
+    }
+}
+
+#[test]
 fn two_textedits_only_one_focused_at_a_time() {
     let mut ui = Ui::for_test_at_text(WIDE);
     let mut a = String::new();

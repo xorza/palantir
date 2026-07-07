@@ -74,9 +74,12 @@ pub(crate) struct TextEditState {
     /// Caret byte at the rising edge of the pointer press, used as the
     /// drag anchor for click+drag selection. Reset on release.
     pub(crate) drag_anchor: Option<usize>,
-    /// Was the widget pressed last frame? Used to detect the press
-    /// rising edge for anchor latching.
-    pub(crate) prev_pressed: bool,
+    /// Was the left-button press latched on the widget last frame
+    /// (`ResponseState::held` — capture-based, rect-independent)? Used to
+    /// detect the press rising edge for anchor latching. Capture-based so
+    /// a drag that leaves the editor's rect stays a continuation, not a
+    /// fresh press that would drop the selection.
+    pub(crate) prev_held: bool,
     /// Was the widget focused last frame? Used to detect the
     /// focus rising edge so the caret blink resets on re-focus
     /// even when the caret position itself didn't change.
@@ -1160,12 +1163,23 @@ fn handle_input(
     // derivation.
     state.clamp_in_bounds(text.len());
 
-    // Click + drag-to-select. On the rising edge of `pressed`, latch the
+    // Click + drag-to-select. On the rising edge of the press, latch the
     // hit caret as the drag anchor and clear any prior selection. On
-    // subsequent pressed frames, the active end follows the pointer and
+    // subsequent held frames, the active end follows the pointer and
     // the anchor flips into `selection` once it diverges. On release
     // (falling edge), drop the anchor so the next press starts fresh.
-    if resp_state.pressed
+    //
+    // Gated on `held` (capture-based), not `pressed` (which also demands
+    // the pointer stay *over* the widget): a drag-select must keep
+    // tracking — and keep its anchor — while the pointer drags outside
+    // the editor's rect or off the surface. `held` stays true from press
+    // to release regardless of pointer position, so the caret follows the
+    // clamped hit (byte 0 / end-of-text) and the selection grows instead
+    // of freezing and dropping the anchor at the edge. When the pointer
+    // has left the surface (`pointer_pos == None`) the inner `let` fails
+    // and we fall through *without* clearing the anchor — the gesture is
+    // still live, just position-less this frame.
+    if resp_state.held
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
         // Hit-test runs against the *unscrolled* shaped layout, so
@@ -1192,7 +1206,7 @@ fn handle_input(
                 halign: ctx.halign,
             },
         );
-        if !state.prev_pressed {
+        if !state.prev_held {
             // Press rising edge. Detect multi-click: consecutive
             // presses within `MULTI_CLICK_WINDOW` and `MULTI_CLICK_RADIUS`
             // increment `click_count`; otherwise it resets to 1.
@@ -1243,10 +1257,10 @@ fn handle_input(
             state.caret = hit;
             state.selection = if hit == anchor { None } else { Some(anchor) };
         }
-    } else if !resp_state.pressed {
+    } else if !resp_state.held {
         state.drag_anchor = None;
     }
-    state.prev_pressed = resp_state.pressed;
+    state.prev_held = resp_state.held;
 
     if !is_focused {
         state.normalize(text);
