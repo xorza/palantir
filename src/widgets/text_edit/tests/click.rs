@@ -395,3 +395,54 @@ fn two_textedits_only_one_focused_at_a_time() {
     assert_eq!(a, "1", "A's buffer untouched once focus moved to B");
     assert_eq!(b, "2");
 }
+
+#[test]
+fn select_all_on_focus_gates_on_the_flag() {
+    // Focus handed over programmatically (no pointer press) — the DragValue
+    // click-to-edit handoff. With the flag the buffer is selected so the first
+    // keystroke replaces it; without it, focus leaves the selection untouched.
+    let mut ui = Ui::for_test_at_text(WIDE);
+    let mut on = String::from("1.985");
+    let mut off = String::from("42.0");
+    let on_id = WidgetId::from_hash("sa-on");
+    let off_id = WidgetId::from_hash("sa-off");
+
+    let render = |ui: &mut Ui, on: &mut String, off: &mut String| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            TextEdit::new(on)
+                .id(on_id)
+                .select_all_on_focus()
+                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .show(ui);
+            TextEdit::new(off)
+                .id(off_id)
+                .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
+                .show(ui);
+        });
+    };
+
+    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    ui.request_focus(Some(on_id));
+    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    {
+        let st = ui.state_mut::<TextEditState>(on_id);
+        assert_eq!(
+            st.selection,
+            Some(0),
+            "flag on: focus selects from the start"
+        );
+        assert_eq!(
+            st.caret,
+            "1.985".len(),
+            "flag on: ...to the end of the buffer"
+        );
+    }
+
+    ui.request_focus(Some(off_id));
+    ui.run_at_acked(WIDE, |ui| render(ui, &mut on, &mut off));
+    assert_eq!(
+        ui.state_mut::<TextEditState>(off_id).selection,
+        None,
+        "flag off: focus leaves the selection untouched"
+    );
+}
