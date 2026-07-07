@@ -5,7 +5,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
-use crate::widgets::text_edit::{TextEdit, TextEditState};
+use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::{Response, WidgetEntry, button_look, enter_widget};
 use std::ops::RangeInclusive;
@@ -232,15 +232,10 @@ impl<'a> DragValue<'a> {
 
         // A plain click (no drag latched) enters keyboard entry. Seed the
         // buffer from the value now so the field shows it the instant it
-        // focuses next frame, and select the whole thing so the first
-        // keystroke replaces it (egui-style click-to-edit).
+        // focuses next frame; the editor's `select_all_on_focus` then selects
+        // it so the first keystroke replaces it (egui-style click-to-edit).
         if self.editable && state.clicked {
-            let text = self.value.edit_string();
-            let len = text.len();
-            ui.state_mut::<DragEdit>(id).buffer = text;
-            let edit_state = ui.state_mut::<TextEditState>(id);
-            edit_state.selection = Some(0);
-            edit_state.caret = len;
+            ui.state_mut::<DragEdit>(id).buffer = self.value.edit_string();
             ui.request_focus(Some(id));
         }
 
@@ -293,6 +288,7 @@ impl<'a> DragValue<'a> {
                 .id(id)
                 .text_align(Align::CENTER)
                 .style(editor)
+                .select_all_on_focus()
                 .size(self.element.size)
                 .min_size(self.element.min_size)
                 .max_size((max_w, self.element.max_size.h))

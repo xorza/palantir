@@ -487,6 +487,11 @@ pub struct TextEdit<'a> {
     /// `None` = unbounded. Enforced at every insertion path (typing,
     /// IME/text, paste, newline): input that would overflow is dropped.
     max_chars: Option<usize>,
+    /// Select the whole buffer when the field gains focus without a
+    /// same-frame press (e.g. focus handed off programmatically, as
+    /// [`crate::DragValue`] does on click-to-edit) so the first keystroke
+    /// replaces it. A press that focuses the field still places the caret.
+    select_all_on_focus: bool,
 }
 
 impl<'a> TextEdit<'a> {
@@ -512,7 +517,17 @@ impl<'a> TextEdit<'a> {
             multiline: false,
             text_align: None,
             max_chars: None,
+            select_all_on_focus: false,
         }
+    }
+
+    /// Select the whole buffer the moment the field gains focus without a
+    /// same-frame pointer press — so a value handed to it (via `request_focus`)
+    /// is replaced by the first keystroke. Clicking into the field still
+    /// places the caret at the hit. Default off.
+    pub fn select_all_on_focus(mut self) -> Self {
+        self.select_all_on_focus = true;
+        self
     }
 
     /// Cap the buffer at `n` characters. Insertions are truncated to
@@ -731,6 +746,7 @@ impl<'a> TextEdit<'a> {
             &ctx,
             offset,
             self.max_chars,
+            self.select_all_on_focus,
             &mut blur_after,
             &mut submitted,
         );
@@ -1141,6 +1157,7 @@ fn handle_input(
     ctx: &ShapeCtx,
     align_offset: Vec2,
     max_chars: Option<usize>,
+    select_all_on_focus: bool,
     blur_after: &mut bool,
     submitted: &mut bool,
 ) -> InputResult {
@@ -1162,6 +1179,14 @@ fn handle_input(
     // between frames; an OOB anchor would corrupt the selection range
     // derivation.
     state.clamp_in_bounds(text.len());
+
+    // Select-all-on-focus: the frame focus lands (and no press this frame — a
+    // press falls through to place the caret below). `prev_focused` still holds
+    // last frame's value here; `show`'s Phase 2 rewrites it after this returns.
+    if select_all_on_focus && is_focused && !state.prev_focused && !resp_state.held {
+        state.selection = Some(0);
+        state.caret = text.len();
+    }
 
     // Click + drag-to-select. On the rising edge of the press, latch the
     // hit caret as the drag anchor and clear any prior selection. On
