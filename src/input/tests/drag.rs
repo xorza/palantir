@@ -103,6 +103,39 @@ fn drag_delta_persists_when_pointer_leaves_widget_rect() {
 }
 
 #[test]
+fn held_is_rect_independent_unlike_pressed() {
+    // `held` reports "the left press is latched on this widget" regardless
+    // of where the pointer has moved — unlike `pressed`, which also demands
+    // the pointer stay over the widget. This is the signal drag-select
+    // rides so it keeps tracking after the pointer leaves the editor.
+    let mut ui = Ui::for_test();
+    let s = UVec2::new(400, 400);
+    ui.run_at_acked(s, build_clickable);
+
+    // Idle over the widget: neither pressed nor held.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(!r.held && !r.pressed, "hover without press is neither");
+
+    // Press inside: both live, pointer is over the widget.
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(r.held && r.pressed, "press over the widget sets both");
+
+    // Drag well outside the 100×100 rect: `pressed` drops (no longer
+    // hovered), `held` stays — the capture is still latched.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(r.held, "held survives the pointer leaving the rect");
+    assert!(!r.pressed, "pressed dies once the pointer leaves the rect");
+
+    // Release ends the capture: held clears.
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(!r.held && !r.pressed, "release clears the capture");
+}
+
+#[test]
 fn drag_delta_clears_on_release() {
     let mut ui = Ui::for_test();
     let s = UVec2::new(200, 200);

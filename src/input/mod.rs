@@ -904,6 +904,9 @@ impl InputState {
         let nothing_left_captured = left.active.is_none();
 
         let pressed = me_left_captured && me_under_pointer;
+        // Rect-independent: stays true from press to release even after
+        // the pointer drags off the widget, so drag-select keeps tracking.
+        let held = me_left_captured;
         let hovered = me_under_pointer && (nothing_left_captured || me_left_captured);
         let clicked = left.frame_click == Some(id);
         let secondary_clicked = right.frame_click == Some(id);
@@ -926,6 +929,7 @@ impl InputState {
             layout_rect,
             hovered,
             pressed,
+            held,
             clicked,
             secondary_clicked,
             disabled,

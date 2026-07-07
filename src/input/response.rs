@@ -60,6 +60,16 @@ pub struct ResponseState {
     pub layout_rect: Option<Rect>,
     pub hovered: bool,
     pub pressed: bool,
+    /// The primary (left) button's press is currently latched on this
+    /// widget — `true` from the press that captured it until release,
+    /// **regardless of where the pointer has since moved**. Unlike
+    /// [`Self::pressed`] (which also requires the pointer to stay over
+    /// the widget), this keeps reporting while the pointer drags outside
+    /// the widget's rect or off the surface entirely, and — unlike
+    /// [`Self::drag`] — it has no travel threshold, so it's live from the
+    /// very first press frame. Drag-tracking widgets (text selection)
+    /// use it to keep following the pointer past their own bounds.
+    pub held: bool,
     pub clicked: bool,
     /// One-frame edge: right-button click landed and released on this
     /// widget without a drag. Independent of `clicked` (left-button).
@@ -121,6 +131,7 @@ impl Default for ResponseState {
             layout_rect: None,
             hovered: false,
             pressed: false,
+            held: false,
             clicked: false,
             secondary_clicked: false,
             disabled: false,
