@@ -341,7 +341,10 @@ impl CosmicMeasure {
             max_width_px,
             family,
             weight,
-            halign,
+            // A truncated single line is positioned/aligned by the encoder,
+            // not shaped with a per-line align — so `halign` doesn't feed
+            // shaping here (it still discriminates the cache key via `params`).
+            halign: _,
         } = params;
         let w = max_width_px.expect("measure_truncated requires a finite width");
         if text.is_empty() || font_size_px <= 0.0 {
