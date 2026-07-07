@@ -7,10 +7,10 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use glam::{Mat4, UVec2, Vec3};
-use palantir::{
+use aperture::{
     Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sense, Sizing, Text, Ui,
 };
+use glam::{Mat4, UVec2, Vec3};
 use wgpu::util::DeviceExt;
 
 #[repr(C)]

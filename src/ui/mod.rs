@@ -746,7 +746,7 @@ impl Ui {
 /// (`frame` + its private record/cascade/finalize passes), which user
 /// code never calls directly.
 impl Ui {
-    /// Feed a palantir-native input event. Returns an [`InputDelta`]
+    /// Feed an aperture-native input event. Returns an [`InputDelta`]
     /// the host reads to decide whether to request a redraw — pointer
     /// moves over inert surfaces leave `requests_repaint` false so the
     /// host can skip the frame entirely. Animation/tooltip-delay wakes
@@ -805,7 +805,7 @@ impl Ui {
     /// stateful logic, iterate directly instead.
     ///
     /// Side-effect: auto-subscribes the chord for wake-up. Without
-    /// this, palantir's keyboard wake-gate ([`crate::input::InputState`]'s
+    /// this, aperture's keyboard wake-gate ([`crate::input::InputState`]'s
     /// `KeyDown` arm) parks off-focus presses until the next unrelated
     /// frame, and the caller sees the event one user gesture late.
     /// Pair with the call-it-every-frame discipline that the
@@ -852,7 +852,7 @@ impl Ui {
     pub fn request_repaint(&mut self) {
         let caller = std::panic::Location::caller();
         tracing::trace!(
-            target: "palantir.repaint",
+            target: "aperture.repaint",
             "request_repaint @ {}:{} (frame={})",
             caller.file(),
             caller.line(),
@@ -873,7 +873,7 @@ impl Ui {
     pub fn request_repaint_after(&mut self, after: Duration) {
         let caller = std::panic::Location::caller();
         tracing::trace!(
-            target: "palantir.repaint",
+            target: "aperture.repaint",
             "request_repaint_after({:?}) @ {}:{} (frame={})",
             after,
             caller.file(),

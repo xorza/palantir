@@ -2,10 +2,10 @@
 //! bar positioning, corner avoidance) and the encoder-cache replay
 //! correctness that bit us with the `exit_idx` panic.
 
-use glam::UVec2;
-use palantir::{
+use aperture::{
     Background, Color, Configure, Corners, Frame, Panel, Scroll, ScrollbarTheme, Sizing,
 };
+use glam::UVec2;
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -18,7 +18,7 @@ const ROW: Color = Color::rgb(0.42, 0.55, 0.78);
 /// Override the default near-black thumb to a light translucent fill
 /// so it shows up against the dark fixture background. Mirrors what
 /// the showcase binary (`src/main.rs`) does.
-fn light_thumb_theme(ui: &mut palantir::Ui) {
+fn light_thumb_theme(ui: &mut aperture::Ui) {
     ui.theme.scrollbar = ScrollbarTheme {
         thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),
         thumb_hover: Color::rgba(1.0, 1.0, 1.0, 0.75),
@@ -34,7 +34,7 @@ fn light_thumb_theme(ui: &mut palantir::Ui) {
 #[test]
 fn scroll_vertical_overflow_matches_golden() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::vstack()
             .auto_id()
@@ -70,7 +70,7 @@ fn scroll_vertical_overflow_matches_golden() {
 #[test]
 fn scroll_horizontal_overflow_matches_golden() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::vstack()
             .auto_id()
@@ -107,7 +107,7 @@ fn scroll_horizontal_overflow_matches_golden() {
 #[test]
 fn scroll_xy_overflow_matches_golden() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::vstack()
             .auto_id()
@@ -141,7 +141,7 @@ fn scroll_xy_overflow_matches_golden() {
 #[test]
 fn scroll_no_bar_when_content_fits_matches_golden() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::vstack()
             .auto_id()
@@ -176,7 +176,7 @@ fn scroll_no_bar_when_content_fits_matches_golden() {
 #[test]
 fn scroll_with_user_padding_matches_golden() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::vstack()
             .auto_id()
@@ -221,7 +221,7 @@ fn scroll_with_user_padding_matches_golden() {
 #[test]
 fn scroll_warm_cache_matches_cold_encoded_second_frame() {
     let mut h = Harness::new();
-    fn scene(ui: &mut palantir::Ui) {
+    fn scene(ui: &mut aperture::Ui) {
         light_thumb_theme(ui);
         Panel::hstack()
             .auto_id()

@@ -1,4 +1,4 @@
-use palantir::{Color, Configure, Mesh, Panel, Shape, Sizing, Ui};
+use aperture::{Color, Configure, Mesh, Panel, Shape, Sizing, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()

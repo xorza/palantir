@@ -12,7 +12,7 @@ mod scroll;
 mod text;
 mod widgets;
 
-use palantir::Color;
+use aperture::Color;
 
 /// Default scene background — a dark surrogate so fixtures look
 /// roughly like a real shell at a glance. Not tied to any specific

@@ -1,4 +1,4 @@
-//! Strict per-frame allocation invariant for palantir's record/measure/
+//! Strict per-frame allocation invariant for aperture's record/measure/
 //! arrange/cascade/encode pipeline (no GPU). Pinning test for the
 //! `CLAUDE.md` claim: "Per-frame allocation is a real metric.
 //! Steady-state must be heap-alloc-free after warmup."
@@ -6,7 +6,7 @@
 //! Runs the shared `frame_fixture` workload through `Ui::frame`, warms
 //! up so retained scratch / caches stabilize, then measures heap-block
 //! delta over a batch of steady-state frames. **Fails on any non-zero
-//! delta** — palantir-side regressions show up here.
+//! delta** — aperture-side regressions show up here.
 //!
 //! For the GPU submission path (wgpu backend allocations under
 //! `WgpuBackend::submit`), see `alloc_free_gpu.rs` — driver overhead
@@ -21,9 +21,9 @@
 #[path = "support/frame_fixture.rs"]
 mod fixture;
 
+use aperture::{Display, FrameStamp, Ui};
 use fixture::{FormState, build_ui};
 use glam::UVec2;
-use palantir::{Display, FrameStamp, Ui};
 use std::hint::black_box;
 
 #[global_allocator]
@@ -105,5 +105,5 @@ fn main() {
     }
 
     println!();
-    println!("PASS: palantir CPU pipeline is allocation-free in steady state.");
+    println!("PASS: aperture CPU pipeline is allocation-free in steady state.");
 }

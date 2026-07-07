@@ -1,4 +1,4 @@
-# Palantir module map
+# Aperture module map
 
 Point-in-time structural snapshot (production code only — tests, `test_support`, and `src/showcase/` excluded). Per file: `[loc]` and the types it defines.
 

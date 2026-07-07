@@ -942,7 +942,7 @@ impl Composer {
                         origin: phys_rect.min,
                         bounds,
                         // Linear ColorU8 straight to the text backend.
-                        // Palantir's native text shader (see
+                        // Aperture's native text shader (see
                         // `src/renderer/backend/text/`) consumes linear
                         // bytes and premultiplies at output — matching
                         // the rest of the renderer's pipelines. No sRGB

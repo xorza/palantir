@@ -25,11 +25,11 @@
 //! text fallback, same path as `benches/frame.rs`); the `heavy/*` arms
 //! use `Ui::for_test_text()` so text-shaping cost is in the measurement.
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use palantir::{
+use aperture::{
     Background, Color, Configure, Corners, Display, Frame, FrameStamp, Panel, Shadow, Sizing,
     Stroke, Text, TextStyle, Ui,
 };
+use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
 
 const GROUPS: usize = 100;
@@ -54,7 +54,7 @@ fn build(ui: &mut Ui) {
                     .show(ui, |ui| {
                         Text::new("Group header")
                             .id_salt(("g-hdr", g))
-                            .style(palantir::TextStyle::default().with_font_size(14.0))
+                            .style(aperture::TextStyle::default().with_font_size(14.0))
                             .show(ui);
                         for r in 0..ROWS_PER_GROUP {
                             Panel::hstack()
@@ -68,11 +68,11 @@ fn build(ui: &mut Ui) {
                                         .show(ui);
                                     Text::new("row name")
                                         .id_salt(("name", g, r))
-                                        .style(palantir::TextStyle::default().with_font_size(12.0))
+                                        .style(aperture::TextStyle::default().with_font_size(12.0))
                                         .show(ui);
                                     Text::new("meta info")
                                         .id_salt(("meta", g, r))
-                                        .style(palantir::TextStyle::default().with_font_size(11.0))
+                                        .style(aperture::TextStyle::default().with_font_size(11.0))
                                         .show(ui);
                                 });
                         }

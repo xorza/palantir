@@ -5,7 +5,7 @@
 //
 // Run with `cargo run --example frame_visual --release`.
 
-use palantir::{App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig};
+use aperture::{App, HostHandle, UVec2, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig};
 
 #[path = "../benches/support/frame_fixture.rs"]
 mod fixture;
@@ -31,7 +31,7 @@ impl App for FrameVisual {
 fn main() {
     let config = WinitHostConfig {
         window: WindowConfig {
-            title: String::from("palantir — frame bench (visual)"),
+            title: String::from("aperture — frame bench (visual)"),
             inner_size: Some(UVec2::new(1280, 800)),
             min_inner_size: Some(UVec2::new(640, 480)),
             ..WindowConfig::default()

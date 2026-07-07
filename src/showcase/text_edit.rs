@@ -1,5 +1,5 @@
-use palantir::TextWrap;
-use palantir::{
+use aperture::TextWrap;
+use aperture::{
     Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
     WidgetId,
 };

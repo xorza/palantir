@@ -1,4 +1,4 @@
-# Palantir
+# Aperture
 
 An immediate-mode GUI library for Rust, with WPF-style two-pass layout and a
 wgpu renderer.
@@ -45,7 +45,7 @@ https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
 available_q)`; subtree hits blit last frame's measure result and skip
   recursion.
 - **In-house text backend** on top of `cosmic-text` so the GPU upload
-  path routes through palantir's staging belt.
+  path routes through aperture's staging belt.
 - **`GpuView` — raw `wgpu` inside a widget.** Implement `GpuPaint` on your
   own renderer (a 3D scene, a custom shader) and hand it to
   `GpuView::new(paint)`; the framework owns an off-screen target sized to the
@@ -83,7 +83,7 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 ## Example
 
 ```rust
-use palantir::{
+use aperture::{
     App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost, WinitHostConfig,
 };
 
@@ -134,14 +134,14 @@ cargo run --example custom_widget
 
 ## License
 
-Palantir is dual-licensed:
+Aperture is dual-licensed:
 
 - **Open source / non-commercial use** — [GPL-3.0-or-later](LICENSE).
   Free to use, modify, and redistribute, provided your combined work is also
   released under GPL-3.0-or-later with complete corresponding source.
 
 - **Commercial use** — see [LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md).
-  If you want to ship Palantir as part of a proprietary, closed-source
+  If you want to ship Aperture as part of a proprietary, closed-source
   product, contact xxorza@gmail.com for a commercial license.
 
 ## Contributing

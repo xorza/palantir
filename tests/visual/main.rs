@@ -13,9 +13,9 @@ mod fixtures;
 mod golden;
 mod harness;
 
+use aperture::Color;
 use glam::UVec2;
 use image::Rgba;
-use palantir::Color;
 
 use crate::harness::Harness;
 

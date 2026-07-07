@@ -18,7 +18,7 @@ use crate::widgets::theme::palette;
     PartialEq,
     serde::Serialize,
     serde::Deserialize,
-    palantir_anim_derive::Animatable,
+    aperture_anim_derive::Animatable,
 )]
 pub struct TextStyle {
     /// Default font size in logical px. Button labels read this

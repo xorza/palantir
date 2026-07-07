@@ -1,5 +1,5 @@
 use crate::harness::audit_steady_state;
-use palantir::{
+use aperture::{
     Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, TextEdit,
     Track, Ui, WidgetId,
 };

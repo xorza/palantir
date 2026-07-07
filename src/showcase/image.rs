@@ -1,5 +1,5 @@
+use aperture::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 use glam::Vec2;
-use palantir::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
 use std::cell::RefCell;
 
 /// Synthesize a 64×64 sRGB checkerboard.

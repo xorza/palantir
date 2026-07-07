@@ -1,7 +1,7 @@
 //! Per-frame allocation regression gate for the wgpu submission path.
 //!
 //! Sister to `alloc_free.rs`. Where that bench asserts a *strict zero*
-//! on palantir's CPU pipeline (record → measure → arrange → cascade →
+//! on aperture's CPU pipeline (record → measure → arrange → cascade →
 //! encode), this bench measures the additional allocations introduced
 //! by `WindowRenderer::frame_offscreen` against an offscreen target texture, with
 //! a GPU poll between frames so submitted work drains before the next
@@ -15,7 +15,7 @@
 //! beneath `WindowRenderer::frame_offscreen` (verified via `DHAT_DUMP=1` +
 //! dh_view). The bench treats this as a baseline: the gate trips when
 //! the per-frame block count exceeds `RENDER_BLOCKS_PER_FRAME_MAX`,
-//! indicating either a palantir regression or a wgpu/cosmic-text
+//! indicating either an aperture regression or a wgpu/cosmic-text
 //! version drift worth investigating.
 //!
 //! Uses `dhat` as the global allocator (10-30x overhead — never use
@@ -29,10 +29,10 @@ mod fixture;
 
 use std::sync::OnceLock;
 
+use aperture::Color;
+use aperture::offscreen_host::OffscreenHost;
 use fixture::{FormState, build_ui};
 use glam::UVec2;
-use palantir::Color;
-use palantir::offscreen_host::OffscreenHost;
 use pollster::FutureExt;
 
 #[global_allocator]
@@ -42,9 +42,9 @@ const WARMUP_FRAMES: usize = 16;
 const MEASURE_FRAMES: usize = 256;
 
 // Driver floor on the current wgpu/cosmic-text pin. Bump if a driver
-// upgrade or a deliberate palantir change moves the baseline; trip
+// upgrade or a deliberate aperture change moves the baseline; trip
 // the gate otherwise. All current attribution is wgpu_core/wgpu_hal —
-// no palantir-side per-frame allocs in this path.
+// no aperture-side per-frame allocs in this path.
 const RENDER_BLOCKS_PER_FRAME_MAX: u64 = 35;
 
 const PHYSICAL: UVec2 = UVec2::new(1280, 800);
@@ -77,7 +77,7 @@ fn gpu() -> &'static Gpu {
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
             .request_device(&wgpu::DeviceDescriptor {
-                label: Some("palantir.alloc_free_gpu.device"),
+                label: Some("aperture.alloc_free_gpu.device"),
                 required_features: wgpu::Features::IMMEDIATES,
                 required_limits: limits,
                 experimental_features: wgpu::ExperimentalFeatures::default(),
@@ -102,7 +102,7 @@ fn main() {
     let mut host = OffscreenHost::new(
         g.device.clone(),
         g.queue.clone(),
-        palantir::TextShaper::with_bundled_fonts(),
+        aperture::TextShaper::with_bundled_fonts(),
         false,
         // Stay on the backbuffer+copy path so the per-frame alloc floor this
         // bench pins is unaffected by the direct-present fast path.
@@ -111,7 +111,7 @@ fn main() {
     let mut state = FormState::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.alloc_free_gpu.target"),
+        label: Some("aperture.alloc_free_gpu.target"),
         size: wgpu::Extent3d {
             width: PHYSICAL.x,
             height: PHYSICAL.y,
@@ -175,7 +175,7 @@ fn main() {
         eprintln!("  open dhat-heap.json at https://nnethercote.github.io/dh_view/");
         eprintln!();
         eprintln!(
-            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional palantir"
+            "If the baseline legitimately moved (wgpu/cosmic-text upgrade, intentional aperture"
         );
         eprintln!("change), bump RENDER_BLOCKS_PER_FRAME_MAX in benches/alloc_free_gpu.rs.");
         std::process::exit(1);

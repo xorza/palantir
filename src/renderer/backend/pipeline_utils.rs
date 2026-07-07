@@ -165,7 +165,7 @@ pub(crate) fn texture_sampler_bgl(
     })
 }
 
-/// Build a pipeline layout. Every palantir pipeline declares the same
+/// Build a pipeline layout. Every aperture pipeline declares the same
 /// immediate-region size ([`crate::renderer::backend::IMMEDIATES_BYTES`]) so the
 /// immediate state set by the backend at pass open (viewport) stays
 /// valid as pipelines switch, and the text pipeline can additionally

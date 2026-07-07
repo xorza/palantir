@@ -73,14 +73,14 @@ impl QuadPipeline {
     /// from [`Self::build_variant`] / [`Self::build_mask_write`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.quad.shader"),
+            label: Some("aperture.quad.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
 
-        let instance_buffer = DynamicBuffer::vertex::<Quad>(device, "palantir.quad.instances", 256);
+        let instance_buffer = DynamicBuffer::vertex::<Quad>(device, "aperture.quad.instances", 256);
 
         let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
-            label: Some("palantir.quad.clear"),
+            label: Some("aperture.quad.clear"),
             size: std::mem::size_of::<Quad>() as u64,
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -115,9 +115,9 @@ impl QuadPipeline {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "palantir.quad.pipeline",
-                stencil_label: "palantir.quad.pipeline.stencil_test",
-                layout_label: "palantir.quad.pl",
+                label: "aperture.quad.pipeline",
+                stencil_label: "aperture.quad.pipeline.stencil_test",
+                layout_label: "aperture.quad.pl",
                 shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[Some(quad_instance_layout())],
@@ -137,7 +137,7 @@ impl QuadPipeline {
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        let layout = build_pipeline_layout(device, "palantir.quad.pl.mask", &[Some(gradient_bgl)]);
+        let layout = build_pipeline_layout(device, "aperture.quad.pl.mask", &[Some(gradient_bgl)]);
         let instance = Some(quad_instance_layout());
         let mask_face = wgpu::StencilFaceState {
             compare: wgpu::CompareFunction::Always,
@@ -148,7 +148,7 @@ impl QuadPipeline {
         build_pipeline(
             device,
             PipelineRecipe {
-                label: "palantir.quad.pipeline.mask",
+                label: "aperture.quad.pipeline.mask",
                 shader,
                 layout: &layout,
                 vertex_buffers: std::slice::from_ref(&instance),
@@ -295,7 +295,7 @@ impl QuadPipeline {
         // reuse across frames (capacity grows monotonically through
         // `DynamicBuffer::upload`).
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::vertex::<Quad>(ctx.device, "palantir.quad.masks", 8)
+            DynamicBuffer::vertex::<Quad>(ctx.device, "aperture.quad.masks", 8)
         });
         buf.upload(ctx, bytemuck::cast_slice(&self.masks), self.masks.len());
     }

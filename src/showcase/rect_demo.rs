@@ -3,7 +3,7 @@
 //! rect nested inside, inset by the stroke width so its corners sit
 //! concentric with the inner edge of the green border.
 
-use palantir::{Align, Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
+use aperture::{Align, Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, Ui};
 
 const STROKE: f32 = 8.0;
 const OUTER_CORNERS: f32 = 40.0;

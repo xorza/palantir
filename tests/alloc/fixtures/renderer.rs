@@ -5,7 +5,7 @@
 //! per-frame `Vec::new()` in those paths can't slip in unnoticed.
 
 use crate::harness::audit_steady_state;
-use palantir::{
+use aperture::{
     Color, Configure, Frame, Grid, LineCap, LineJoin, Mesh, Panel, PolylineColors, Shape, Sizing,
     Track,
 };
@@ -30,7 +30,7 @@ fn many_rects_compose_alloc_free() {
                     for c in 0..16u16 {
                         Frame::new()
                             .id_salt((r, c))
-                            .background(palantir::Background {
+                            .background(aperture::Background {
                                 fill: Color::WHITE.into(),
                                 ..Default::default()
                             })

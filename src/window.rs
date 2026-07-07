@@ -13,7 +13,7 @@ use glam::{IVec2, UVec2};
 /// to address a window in [`Ui::close_window`](crate::Ui::close_window) /
 /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint).
 /// The app owns the semantics — use it as an enum discriminant, an index,
-/// a document-id hash, whatever. Palantir only stores and compares it;
+/// a document-id hash, whatever. Aperture only stores and compares it;
 /// winit's `WindowId` never reaches the app.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct WindowToken(pub u64);

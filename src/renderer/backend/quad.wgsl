@@ -1,6 +1,6 @@
 // Viewport lives in the shared immediate region (set by the backend
 // once per pass via `set_immediates(0, ..)`). Same struct shape lands
-// at offset 0 of every palantir shader, so the immediate state stays
+// at offset 0 of every aperture shader, so the immediate state stays
 // valid across pipeline switches.
 struct Viewport {
     size: vec2<f32>,

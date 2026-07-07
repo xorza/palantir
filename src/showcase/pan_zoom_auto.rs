@@ -8,8 +8,8 @@
 //! from `ui.request_repaint()` each frame so the host keeps scheduling
 //! the next one.
 
+use aperture::{InputEvent, Ui, WidgetId};
 use glam::Vec2;
-use palantir::{InputEvent, Ui, WidgetId};
 
 pub const NAME: &str = "pan+zoom auto";
 

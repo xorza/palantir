@@ -1,4 +1,4 @@
-use palantir::{Configure, DragValue, Panel, Separator, Sizing, Slider, Text, Ui, WidgetId};
+use aperture::{Configure, DragValue, Panel, Separator, Sizing, Slider, Text, Ui, WidgetId};
 
 struct State {
     volume: f32,

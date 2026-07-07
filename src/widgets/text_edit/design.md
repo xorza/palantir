@@ -115,7 +115,7 @@ pub enum InputEvent {
 }
 ```
 
-`Key` is a small palantir-native enum — arrows, Backspace/Delete,
+`Key` is a small aperture-native enum — arrows, Backspace/Delete,
 Home/End, PageUp/PageDown, Enter, Tab, Escape, `Char(char)` for
 printables (post-layout; shift+'a' arrives as `Char('A')`), and a
 catch-all `Other`. `Modifiers` carries `shift/ctrl/alt/meta` (meta =

@@ -7,7 +7,7 @@
 //! Buttons mutate the counter; a deeply-nested helper also reads it
 //! to prove the parameter threads through arbitrary nesting.
 
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
+use aperture::{Button, Configure, Panel, Sizing, Text, Ui};
 
 /// State threaded through the entire showcase frame. Lives on `State`
 /// in `main.rs` and is handed to `build` by the central dispatcher.

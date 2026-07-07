@@ -1,4 +1,4 @@
-use palantir::{Button, Configure, Panel, Sizing, Text, Ui};
+use aperture::{Button, Configure, Panel, Sizing, Text, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()

@@ -45,7 +45,7 @@ pub(crate) fn make_target(
     size: UVec2,
 ) -> wgpu::TextureView {
     let tex = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("palantir.gpu_view.target"),
+        label: Some("aperture.gpu_view.target"),
         size: wgpu::Extent3d {
             width: size.x,
             height: size.y,
@@ -59,7 +59,7 @@ pub(crate) fn make_target(
         view_formats: &[],
     });
     let view = tex.create_view(&wgpu::TextureViewDescriptor::default());
-    let bg = texture_bind_group(device, bgl, sampler, &view, "palantir.gpu_view.tex.bg");
+    let bg = texture_bind_group(device, bgl, sampler, &view, "aperture.gpu_view.tex.bg");
     cache.insert(id, bg);
     view
 }

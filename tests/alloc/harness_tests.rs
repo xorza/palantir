@@ -9,7 +9,7 @@
 use crate::allocator::with_audit;
 use crate::harness;
 use crate::harness::{run_audit, user_frames};
-use palantir::{Button, Configure, Display, FrameStamp, Sizing, Ui};
+use aperture::{Button, Configure, Display, FrameStamp, Sizing, Ui};
 use std::hint::black_box;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
@@ -163,8 +163,8 @@ fn run_audit_panics_with_diagnostic_message_on_budget_violation() {
 }
 
 #[test]
-fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
-    // Provoke a real palantir frame stack so the filter has both
+fn user_frames_keeps_aperture_src_and_excludes_harness_internals() {
+    // Provoke a real aperture frame stack so the filter has both
     // `src/...` and `tests/alloc/...` candidates to choose between.
     // The rendered output must:
     //   - include `src/...` frames (the bug source we want to surface),
@@ -201,7 +201,7 @@ fn user_frames_keeps_palantir_src_and_excludes_harness_internals() {
 
     assert!(
         rendered.contains("src/"),
-        "rendered frames should include palantir src/ frames:\n{rendered}",
+        "rendered frames should include aperture src/ frames:\n{rendered}",
     );
     for plumbing in [
         "tests/alloc/allocator.rs",

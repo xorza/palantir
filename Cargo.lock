@@ -1765,7 +1765,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "palantir"
+name = "aperture"
 version = "0.1.0"
 dependencies = [
  "arboard",
@@ -1783,7 +1783,7 @@ dependencies = [
  "half",
  "image",
  "padding-struct",
- "palantir-anim-derive",
+ "aperture-anim-derive",
  "pollster",
  "profiling",
  "rayon",
@@ -1804,7 +1804,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "palantir-anim-derive"
+name = "aperture-anim-derive"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",

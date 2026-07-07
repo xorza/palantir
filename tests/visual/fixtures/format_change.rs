@@ -11,11 +11,11 @@
 //! and that format-independent resources (the uploaded image texture)
 //! survive the switch with no re-upload.
 
-use glam::UVec2;
-use palantir::{
+use aperture::{
     Background, Button, Color, Configure, Corners, Frame, Image, ImageFit, Panel, Shape, Sizing,
     Stroke,
 };
+use glam::UVec2;
 use wgpu::TextureFormat;
 
 use crate::diff::{Tolerance, diff};
@@ -26,7 +26,7 @@ use crate::harness::Harness;
 /// rounded frame (quad pipeline) wrapping a button with a text label
 /// (quad + text atlas). Both pipelines get rebuilt on the format flip,
 /// so an incorrect rebuild shows up as a pixel mismatch.
-fn scene(ui: &mut palantir::Ui) {
+fn scene(ui: &mut aperture::Ui) {
     Panel::vstack()
         .auto_id()
         .padding(16.0)
@@ -158,13 +158,13 @@ thread_local! {
     /// GPU texture alive), so register once and hold it here for the
     /// whole test run — exactly what this fixture is asserting survives a
     /// format change.
-    static TEST_IMAGE: std::cell::RefCell<Option<palantir::ImageHandle>> =
+    static TEST_IMAGE: std::cell::RefCell<Option<aperture::ImageHandle>> =
         const { std::cell::RefCell::new(None) };
 }
 
 /// Scene drawing the test image stretched to fill. Registers once (held
 /// in `TEST_IMAGE`); later frames clone the handle.
-fn image_scene(ui: &mut palantir::Ui) {
+fn image_scene(ui: &mut aperture::Ui) {
     let handle = TEST_IMAGE.with_borrow_mut(|slot| {
         slot.get_or_insert_with(|| ui.register_image(test_image()))
             .clone()

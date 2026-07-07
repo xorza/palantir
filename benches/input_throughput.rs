@@ -21,12 +21,12 @@
 //!   accumulator-only path.
 //! - `input/mixed_stream` — interleaved moves / clicks / scrolls.
 
-use criterion::{Criterion, criterion_group, criterion_main};
-use glam::{UVec2, Vec2};
-use palantir::{
+use aperture::{
     Button, Configure, Display, Frame, FrameStamp, InputEvent, Panel, PointerButton, Scroll, Sense,
     Sizing, Text, Ui,
 };
+use criterion::{Criterion, criterion_group, criterion_main};
+use glam::{UVec2, Vec2};
 use std::hint::black_box;
 use std::time::Duration;
 

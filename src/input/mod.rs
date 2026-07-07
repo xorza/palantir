@@ -69,7 +69,7 @@ impl Capture {
     }
 }
 
-/// Palantir-native input event. Independent of any windowing toolkit.
+/// Aperture-native input event. Independent of any windowing toolkit.
 /// Convert from winit via [`InputEvent::from_winit`], then dispatch
 /// through [`crate::Ui::on_input`].
 ///
@@ -133,7 +133,7 @@ pub enum InputEvent {
 /// the frame can be skipped entirely. Animation/tooltip-delay wakes
 /// still drive paints via `FrameReport::repaint_after`, independently.
 impl InputEvent {
-    /// Translate a winit `WindowEvent` into one or more palantir input
+    /// Translate a winit `WindowEvent` into one or more aperture input
     /// events, invoking `emit` for each. Most events fan out 1:1; IME
     /// commits over [`TextChunk`]'s inline capacity split into multiple
     /// `Text` events at char boundaries so long CJK compositions don't
@@ -442,7 +442,7 @@ impl InputState {
         true
     }
 
-    /// Feed a palantir-native input event. Hit-tests against the
+    /// Feed an aperture-native input event. Hit-tests against the
     /// frozen `Cascades` from this frame's most recent run. Returns an
     /// [`InputDelta`] hosts use to decide whether to request a redraw —
     /// a `PointerMoved` over a non-hover-reactive surface (no active

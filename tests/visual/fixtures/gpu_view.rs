@@ -5,9 +5,9 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use aperture::{GpuFrameCtx, GpuPaint, GpuView};
 use glam::UVec2;
 use image::Rgba;
-use palantir::{GpuFrameCtx, GpuPaint, GpuView};
 
 use crate::fixtures::DARK_BG;
 use crate::harness::Harness;
@@ -99,7 +99,7 @@ fn fs() -> @location(0) vec4<f32> {
 const DEPTH_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 
 impl GpuPaint for DepthTriangle {
-    fn init(&mut self, ctx: &palantir::GpuInitCtx<'_>) {
+    fn init(&mut self, ctx: &aperture::GpuInitCtx<'_>) {
         let device = ctx.device;
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("visual.gpu_view.tri.shader"),

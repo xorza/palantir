@@ -1,4 +1,4 @@
-// Palantir text shader. Contract:
+// Aperture text shader. Contract:
 // - color comes in straight-alpha linear-u8 (no sRGB decode here).
 // - output is premultiplied linear: vec4(rgb*a, a).
 // - blend = PREMULTIPLIED_ALPHA_BLENDING; render target is sRGB

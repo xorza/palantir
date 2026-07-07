@@ -120,7 +120,7 @@ fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
     }
 }
 
-/// Map a Palantir [`HAlign`] to cosmic-text's per-line align.
+/// Map an Aperture [`HAlign`] to cosmic-text's per-line align.
 /// `Auto`/`Stretch` map to `None` — cosmic falls back to its
 /// left-or-rtl-aware default, identical bit-for-bit to the legacy
 /// "no per-line align" path. `Left`/`Center`/`Right` translate

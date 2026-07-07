@@ -34,15 +34,15 @@ impl MeshPipeline {
     /// from [`Self::build_variant`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.mesh.shader"),
+            label: Some("aperture.mesh.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("mesh.wgsl").into()),
         });
 
         let vertex_buffer =
-            DynamicBuffer::vertex::<MeshVertex>(device, "palantir.mesh.vertices", 256);
-        let index_buffer = DynamicBuffer::index::<u16>(device, "palantir.mesh.indices", 1024);
+            DynamicBuffer::vertex::<MeshVertex>(device, "aperture.mesh.vertices", 256);
+        let index_buffer = DynamicBuffer::index::<u16>(device, "aperture.mesh.indices", 1024);
         let instance_buffer =
-            DynamicBuffer::vertex::<MeshInstance>(device, "palantir.mesh.instances", 64);
+            DynamicBuffer::vertex::<MeshInstance>(device, "aperture.mesh.instances", 64);
 
         Self {
             vertex_buffer,
@@ -67,9 +67,9 @@ impl MeshPipeline {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "palantir.mesh.pipeline",
-                stencil_label: "palantir.mesh.pipeline.stencil_test",
-                layout_label: "palantir.mesh.pl",
+                label: "aperture.mesh.pipeline",
+                stencil_label: "aperture.mesh.pipeline.stencil_test",
+                layout_label: "aperture.mesh.pl",
                 shader,
                 bind_group_layouts: &[],
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(mesh_instance_layout())],

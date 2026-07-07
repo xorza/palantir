@@ -2,7 +2,7 @@
 //! at representative fractions; the animated row drives a bar through
 //! `Ui::animate` so the fill tracks a spring tween end-to-end.
 
-use palantir::{
+use aperture::{
     AnimSpec, Button, Color, Configure, Panel, ProgressBar, Separator, Sizing, Spinner, Text, Ui,
     WidgetId,
 };
@@ -33,7 +33,7 @@ pub fn build(ui: &mut Ui) {
             Separator::horizontal()
                 .id_salt(("pg", "sep-2"))
                 .thickness(3.0)
-                .color(palantir::Color::hex(0x9adbfb))
+                .color(aperture::Color::hex(0x9adbfb))
                 .show(ui);
 
             Text::new("ProgressBar — static")

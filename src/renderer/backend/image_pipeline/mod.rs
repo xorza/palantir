@@ -61,14 +61,14 @@ impl ImagePipeline {
     /// from [`Self::build_variant`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("palantir.image.shader"),
+            label: Some("aperture.image.shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("image.wgsl").into()),
         });
 
-        let image_bgl = texture_sampler_bgl(device, "palantir.image.tex.bgl");
+        let image_bgl = texture_sampler_bgl(device, "aperture.image.tex.bgl");
 
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("palantir.image.sampler"),
+            label: Some("aperture.image.sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -79,7 +79,7 @@ impl ImagePipeline {
         });
 
         let instance_buffer =
-            DynamicBuffer::vertex::<ImageInstance>(device, "palantir.image.instances", 16);
+            DynamicBuffer::vertex::<ImageInstance>(device, "aperture.image.instances", 16);
 
         Self {
             instance_buffer,
@@ -106,9 +106,9 @@ impl ImagePipeline {
         StencilVariant::build(
             device,
             ColorVariantSpec {
-                label: "palantir.image.pipeline",
-                stencil_label: "palantir.image.pipeline.stencil_test",
-                layout_label: "palantir.image.pl",
+                label: "aperture.image.pipeline",
+                stencil_label: "aperture.image.pipeline.stencil_test",
+                layout_label: "aperture.image.pl",
                 shader,
                 bind_group_layouts: &[Some(image_bgl)],
                 vertex_buffers: &[Some(instance_layout())],
@@ -172,7 +172,7 @@ impl ImagePipeline {
                 profiling::scope!("GpuView::init");
                 // No encoder commands recorded in `init`, so this group is
                 // usually empty in a capture — kept for symmetry with paint.
-                ctx.encoder.push_debug_group("palantir.gpu_view.init");
+                ctx.encoder.push_debug_group("aperture.gpu_view.init");
                 paint.init(&GpuInitCtx {
                     device: ctx.device,
                     target_format: GPU_VIEW_FORMAT,
@@ -187,7 +187,7 @@ impl ImagePipeline {
             profiling::scope!("GpuView::paint");
             // Encoder-level group so the user's own passes nest under one
             // navigable region per view in a RenderDoc / Metal capture.
-            ctx.encoder.push_debug_group("palantir.gpu_view.paint");
+            ctx.encoder.push_debug_group("aperture.gpu_view.paint");
             paint.paint(&mut GpuFrameCtx {
                 device: ctx.device,
                 queue: ctx.queue,
@@ -276,8 +276,8 @@ impl ImagePipeline {
         };
         // Per-handle labels surface in wgpu validation traces so a
         // mis-bound image points to its source asset directly.
-        let tex_label = format!("palantir.image.tex.{id:016x}");
-        let bg_label = format!("palantir.image.tex.bg.{id:016x}");
+        let tex_label = format!("aperture.image.tex.{id:016x}");
+        let bg_label = format!("aperture.image.tex.bg.{id:016x}");
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some(&tex_label),
             size,

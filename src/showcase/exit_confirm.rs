@@ -5,7 +5,7 @@
 //! changes are pending, and shows a Save / Discard / Cancel dialog instead
 //! of letting the window vanish.
 
-use palantir::{
+use aperture::{
     Button, Checkbox, Configure, Modal, Panel, Sizing, Text, TextWrap, Ui, WidgetId, WindowToken,
 };
 

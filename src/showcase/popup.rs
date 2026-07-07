@@ -10,7 +10,7 @@
 //! mid-recording mechanic; this file is the pinned target for that
 //! work.
 
-use palantir::{
+use aperture::{
     Align, Background, Button, Color, Configure, Corners, Panel, Popup, Rect, Shadow, Sizing,
     Stroke, Text, Ui, WidgetId,
 };
@@ -86,7 +86,7 @@ pub fn build(ui: &mut Ui) {
         // floored width.
         .min_size((220.0, 110.0))
         .max_size((280, 200))
-        .justify(palantir::Justify::Center)
+        .justify(aperture::Justify::Center)
         .child_align(Align::CENTER)
         .gap(10.0)
         .background(Background {

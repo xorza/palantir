@@ -16,7 +16,7 @@ fn wheel(delta: MouseScrollDelta) -> WindowEvent {
 fn from_winit_line_delta_emits_scroll_lines_with_flipped_signs() {
     // winit's +y wheel = rotation away from user = scroll up; +x wheel
     // = swipe right (reveal content right = pan offset forward). We flip
-    // both so palantir's +delta means "advance the scroll offset." Line
+    // both so aperture's +delta means "advance the scroll offset." Line
     // count flows through unscaled — the consuming widget multiplies by
     // its own font-derived line step.
     let mut got = None;

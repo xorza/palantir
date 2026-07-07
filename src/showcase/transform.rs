@@ -1,6 +1,6 @@
 use crate::showcase::swatch;
+use aperture::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 use glam::Vec2;
-use palantir::{Configure, Frame, Panel, Sizing, TranslateScale, Ui};
 
 pub fn build(ui: &mut Ui) {
     Panel::hstack()
