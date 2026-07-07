@@ -120,13 +120,16 @@ pub(crate) struct Forest {
     /// paint walk; cleared by the next `pre_record`. Public-in-crate
     /// so tests can introspect.
     pub(crate) collisions: Vec<CollisionRecord>,
-    /// Active side-layer scope, or `None` for the `Main` baseline.
-    /// `push_layer` asserts the current layer is `Main` (no nesting),
-    /// so the scope is at most one deep — `Some(side)` or `None` —
-    /// and a single slot captures it without a stack. Anchors live on
-    /// the per-`Tree` `pending_anchor` slot; `push_layer`'s no-nesting
-    /// assert keeps that slot single-occupancy too.
-    active_side: Option<Layer>,
+    /// Stack of active side-layer scopes; empty for the `Main`
+    /// baseline. `push_layer` pushes, `pop_layer` pops, so a side layer
+    /// nested inside a *distinct* one (a tooltip raised from a popup
+    /// body, a popup opened from a modal) restores the parent scope on
+    /// pop. Same-layer re-entry stays forbidden — each layer owns a
+    /// single per-`Tree` `pending_anchor` slot, so `push_layer` asserts
+    /// the pushed layer differs from the current one. Retained across
+    /// frames (cleared with capacity kept in `pre_record`) so
+    /// steady-state recording is alloc-free.
+    layer_stack: Vec<Layer>,
 }
 
 impl Forest {
@@ -134,11 +137,11 @@ impl Forest {
     /// `Ui::layer` scopes; switched by `push_layer` / `pop_layer`.
     #[inline]
     pub(crate) fn current_layer(&self) -> Layer {
-        self.active_side.unwrap_or(Layer::Main)
+        self.layer_stack.last().copied().unwrap_or(Layer::Main)
     }
 
     pub(crate) fn pre_record(&mut self) {
-        self.active_side = None;
+        self.layer_stack.clear();
         self.ids.pre_record();
         self.collisions.clear();
         for t in &mut self.trees {
@@ -306,10 +309,15 @@ impl Forest {
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
         let active = self.current_layer();
-        assert_eq!(
-            active,
-            Layer::Main,
-            "Ui::layer must be called from the Main scope (current: {active:?})",
+        // A side layer may nest inside a *distinct* side layer — a
+        // tooltip raised from a popup body, a popup opened from a modal —
+        // but not inside itself: each layer owns a single `pending_anchor`
+        // slot, so re-entering the same layer would clobber it.
+        // `Layer::PAINT_ORDER` puts Tooltip above Popup above Modal, so a
+        // nested layer paints on top of the scope it was raised from.
+        assert_ne!(
+            layer, active,
+            "Ui::layer({layer:?}) cannot nest inside its own layer",
         );
         let scratch = &mut self.scratch[layer];
         assert!(
@@ -318,15 +326,16 @@ impl Forest {
         );
         debug_assert!(
             scratch.pending_anchor.is_none(),
-            "push_layer({layer:?}) found pending_anchor already set — no-nesting invariant violated",
+            "push_layer({layer:?}) found pending_anchor already set — same-layer nesting slipped past the assert",
         );
         scratch.pending_anchor = Some(Placement { anchor, size });
-        self.active_side = Some(layer);
+        self.layer_stack.push(layer);
     }
 
     pub(crate) fn pop_layer(&mut self) {
         let layer = self
-            .active_side
+            .layer_stack
+            .pop()
             .expect("pop_layer without matching push_layer");
         let scratch = &mut self.scratch[layer];
         assert!(
@@ -336,7 +345,6 @@ impl Forest {
             layer,
         );
         scratch.pending_anchor = None;
-        self.active_side = None;
     }
 
     /// Borrow the tree owned by `layer`.

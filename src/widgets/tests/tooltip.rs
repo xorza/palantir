@@ -156,3 +156,82 @@ fn delay_gates_visibility() {
         "Tooltip layer must contain at least one recorded node",
     );
 }
+
+/// A tooltip attached to a trigger *inside* a popup body must record
+/// into the `Tooltip` layer without tripping the layer-nesting assert:
+/// `Tooltip::show` raises `Ui::layer(Tooltip)` while the active scope is
+/// already `Popup`. Regression for the panic that forced tooltips out of
+/// darkroom's new-node menu.
+#[test]
+fn tooltip_inside_popup_records_without_panic() {
+    use crate::widgets::popup::{ClickOutside, Popup};
+
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    // Near top-left so the popup never flips its anchor — the trigger
+    // rect stays put across the settle frames we read it on.
+    let popup_anchor = Vec2::new(40.0, 40.0);
+    let mut captured: Option<WidgetId> = None;
+    let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
+        ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(secs)),
+            |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        Popup::anchored_to(popup_anchor)
+                            .id(WidgetId::from_hash("popup"))
+                            .click_outside(ClickOutside::Dismiss)
+                            .padding(4.0)
+                            .show(ui, |ui, _popup| {
+                                let r = Button::new()
+                                    .id(WidgetId::from_hash("trig"))
+                                    .label("hi")
+                                    .show(ui)
+                                    .snapshot();
+                                *captured = Some(r.widget_id());
+                                Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                            });
+                    });
+            },
+        );
+    };
+
+    // Settle the popup's first-open relayout, then grab the trigger rect.
+    frame_at(&mut ui, 0.0, &mut captured);
+    frame_at(&mut ui, 0.01, &mut captured);
+    let trigger_id = captured.expect("button id");
+    let state_id = trigger_id.with("tooltip");
+    let trigger_rect = ui.response_for(trigger_id).rect.expect("button rect");
+    let trigger_pos =
+        trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
+
+    // Hover the popup-nested trigger and tick past the delay. Each frame
+    // re-hovers and advances Ui-time by 0.1 s; hover lag is one frame.
+    let mut t = 0.01_f32;
+    for _ in 0..20 {
+        t += 0.1;
+        ui.on_input(InputEvent::PointerMoved(trigger_pos));
+        frame_at(&mut ui, t, &mut captured);
+    }
+
+    let state = ui
+        .try_state::<TooltipState>(state_id)
+        .copied()
+        .unwrap_or_default();
+    assert!(
+        state.visible,
+        "tooltip on a popup-nested trigger must become visible after the delay (started_at={:?})",
+        state.hover_started_at,
+    );
+
+    // The bubble records into the Tooltip layer — a root distinct from
+    // the Popup layer it was raised inside.
+    let tooltip_tree = &ui.forest.trees[Layer::Tooltip];
+    assert!(
+        tooltip_tree.records.len() > 1,
+        "Tooltip layer must contain the bubble recorded from inside the popup",
+    );
+}
