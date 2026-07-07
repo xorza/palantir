@@ -1101,8 +1101,10 @@ impl Ui {
     /// caps it at `s`, still clamped to the surface so an oversized
     /// cap can't bleed past the viewport. The root's own `Sizing`
     /// (Hug/Fill/Fixed) then governs the painted size within that
-    /// available. Must be called at top-level (no node open) —
-    /// egui-style: finish the `Main` scope first, then layer.
+    /// available. Recordable from the `Main` baseline or nested inside a
+    /// *distinct* side layer's body (a tooltip raised from a popup, a
+    /// popup opened from a modal); the only bar is re-entering the same
+    /// layer, since each layer owns one `pending_anchor` slot.
     pub fn layer(
         &mut self,
         layer: Layer,
