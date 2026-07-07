@@ -120,13 +120,15 @@ pub(crate) struct Forest {
     /// paint walk; cleared by the next `pre_record`. Public-in-crate
     /// so tests can introspect.
     pub(crate) collisions: Vec<CollisionRecord>,
-    /// Stack of active side-layer scopes; empty for the `Main`
-    /// baseline. `push_layer` pushes, `pop_layer` pops, so a side layer
-    /// nested inside a *distinct* one (a tooltip raised from a popup
-    /// body, a popup opened from a modal) restores the parent scope on
-    /// pop. Same-layer re-entry stays forbidden — each layer owns a
-    /// single per-`Tree` `pending_anchor` slot, so `push_layer` asserts
-    /// the pushed layer differs from the current one. Retained across
+    /// Stack of active side-layer scopes; empty for the `Main` baseline.
+    /// `push_layer` pushes, `pop_layer` pops and restores the parent
+    /// scope. A nested layer must rank strictly higher than the scope it
+    /// opens from (`push_layer` asserts `layer > current`) — the
+    /// cross-layer paint/hit order is `Layer::PAINT_ORDER` with no
+    /// per-node z, so a lower nest would paint under its parent. Real
+    /// case: a tooltip rising from a popup or modal body. Strictly
+    /// increasing ⇒ each layer appears at most once, keeping the
+    /// per-`Tree` `pending_anchor` slot single-occupancy. Retained across
     /// frames (cleared with capacity kept in `pre_record`) so
     /// steady-state recording is alloc-free.
     layer_stack: Vec<Layer>,
@@ -309,24 +311,26 @@ impl Forest {
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {
         let active = self.current_layer();
-        // A side layer may nest inside a *distinct* side layer — a
-        // tooltip raised from a popup body, a popup opened from a modal —
-        // but not inside itself: each layer owns a single `pending_anchor`
-        // slot, so re-entering the same layer would clobber it.
-        // `Layer::PAINT_ORDER` puts Tooltip above Popup above Modal, so a
-        // nested layer paints on top of the scope it was raised from.
-        assert_ne!(
-            layer, active,
-            "Ui::layer({layer:?}) cannot nest inside its own layer",
+        // A nested side layer must paint *above* the scope it's raised
+        // from. The cross-layer scheme has no per-node z-index — paint
+        // and hit order are entirely `Layer::PAINT_ORDER` — so `layer`
+        // must rank strictly higher than the active scope. This admits
+        // the real cases (a tooltip rising from a popup or modal body:
+        // Tooltip > Popup, Tooltip > Modal) and rejects a lower-or-equal
+        // nest, which would record fine but then render *underneath* its
+        // parent (occluded, un-hittable). Equal is rejected too: it would
+        // also clobber the single per-layer `pending_anchor` slot.
+        // Strictly increasing ⇒ each layer appears at most once on the
+        // stack, so that slot stays single-occupancy without a guard.
+        assert!(
+            layer > active,
+            "Ui::layer({layer:?}) must rank above the current scope ({active:?}) \
+             in Layer::PAINT_ORDER — a nested layer painting under its parent is a bug",
         );
         let scratch = &mut self.scratch[layer];
         assert!(
             scratch.open_frames.is_empty(),
             "Ui::layer({layer:?}) called while a node is still open in that layer",
-        );
-        debug_assert!(
-            scratch.pending_anchor.is_none(),
-            "push_layer({layer:?}) found pending_anchor already set — same-layer nesting slipped past the assert",
         );
         scratch.pending_anchor = Some(Placement { anchor, size });
         self.layer_stack.push(layer);
