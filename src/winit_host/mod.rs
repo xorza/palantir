@@ -55,7 +55,7 @@ use winit::application::ApplicationHandler;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
-use winit::window::{Window, WindowId};
+use winit::window::{Icon, Window, WindowId};
 
 use crate::context::HostContext;
 use crate::input::InputEvent;
@@ -408,6 +408,14 @@ fn create_window(event_loop: &ActiveEventLoop, cfg: &WindowConfig) -> Arc<Window
     }
     if let Some(s) = cfg.min_inner_size {
         attrs = attrs.with_min_inner_size(LogicalSize::new(s.x, s.y));
+    }
+    // Title-bar / taskbar icon (X11/Wayland/Windows; macOS ignores it and
+    // uses the .app bundle icon instead). A malformed buffer just yields no
+    // icon rather than aborting window creation.
+    if let Some(ic) = &cfg.icon
+        && let Ok(icon) = Icon::from_rgba(ic.rgba.clone(), ic.width, ic.height)
+    {
+        attrs = attrs.with_window_icon(Some(icon));
     }
     // Restore a saved position only if it still lands on a connected
     // monitor — winit does no such clamping, so a window saved on a

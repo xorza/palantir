@@ -159,7 +159,7 @@ pub use widgets::theme::tooltip::TooltipTheme;
 pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot};
-pub use window::{WindowConfig, WindowGeometry, WindowToken};
+pub use window::{WindowConfig, WindowGeometry, WindowIcon, WindowToken};
 pub use winit_host::config::WinitHostConfig;
 pub use winit_host::handle::{HostHandle, UserEvent};
 pub use winit_host::{App, WinitHost};
