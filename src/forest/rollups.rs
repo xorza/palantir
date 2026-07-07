@@ -154,7 +154,7 @@ mod tests {
             line_height_px,
             wrap: TextWrap::Truncate,
             align: Align::default(),
-            family: FontFamily::SegoeUi,
+            family: FontFamily::Sans,
             weight,
         }
     }

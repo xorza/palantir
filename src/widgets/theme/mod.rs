@@ -309,7 +309,7 @@ mod tests {
                 font_size_px: 16.0,
                 color: Color::TRANSPARENT,
                 line_height_mult: 1.5,
-                family: FontFamily::SegoeUi,
+                family: FontFamily::Sans,
                 weight: FontWeight::Regular,
             },
         };

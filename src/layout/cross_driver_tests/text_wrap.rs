@@ -612,7 +612,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: FontFamily::SegoeUi,
+                family: FontFamily::Sans,
                 weight: FontWeight::Regular,
             });
             ui.add_shape(Shape::Text {
@@ -623,7 +623,7 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: FontFamily::SegoeUi,
+                family: FontFamily::Sans,
                 weight: FontWeight::Regular,
             });
         });

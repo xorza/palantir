@@ -39,7 +39,7 @@ pub struct TextStyle {
     #[animate(snap)]
     pub line_height_mult: f32,
     /// Font family used for shaping. Default
-    /// [`FontFamily::SegoeUi`] resolves to bundled Segoe UI; the debug
+    /// [`FontFamily::Sans`] resolves to bundled Inter; the debug
     /// `frame_stats` overlay overrides to [`FontFamily::Mono`].
     #[animate(snap)]
     pub family: FontFamily,
@@ -56,7 +56,7 @@ impl Default for TextStyle {
             font_size_px: 16.0,
             color: palette::TEXT,
             line_height_mult: LINE_HEIGHT_MULT,
-            family: FontFamily::SegoeUi,
+            family: FontFamily::Sans,
             weight: FontWeight::Regular,
         }
     }

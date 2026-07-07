@@ -59,16 +59,15 @@ use crate::text::cosmic::{CosmicMeasure, RenderSplit};
 pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 
 /// Font family picker on [`crate::TextStyle`] and
-/// [`crate::Shape::Text`]. `SegoeUi` resolves to bundled Segoe UI (the
-/// default proportional face); `Mono` resolves to bundled JetBrains
-/// Mono. Both ship inside [`CosmicMeasure::with_bundled_fonts`]; the
-/// mono-fallback shaper (when no `CosmicMeasure` is installed) ignores
-/// family entirely. Weight (Regular/Bold) is an independent axis —
-/// see [`FontWeight`].
+/// [`crate::Shape::Text`]. `Sans` resolves to bundled Inter (the default
+/// proportional face); `Mono` resolves to bundled JetBrains Mono. Both
+/// ship inside [`CosmicMeasure::with_bundled_fonts`]; the mono-fallback
+/// shaper (when no `CosmicMeasure` is installed) ignores family entirely.
+/// Weight (Regular/Bold) is an independent axis — see [`FontWeight`].
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
 /// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
-/// stay stable across variant reordering. `SegoeUi = 0` is also load-
+/// stay stable across variant reordering. `Sans = 0` is also load-
 /// bearing for [`TextCacheKey::is_invalid`], which folds family into
 /// its all-zeroes check.
 #[repr(u8)]
@@ -77,27 +76,27 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 )]
 pub enum FontFamily {
     #[default]
-    SegoeUi = 0,
+    Sans = 0,
     Mono = 1,
 }
 
 // `TextCacheKey::is_invalid` and `TextCacheKey::INVALID` both fold
-// `family_q == 0` into the all-zeros sentinel. If `SegoeUi`'s
-// discriminant ever moves off zero, a real `SegoeUi` key collides with
+// `family_q == 0` into the all-zeros sentinel. If `Sans`'s
+// discriminant ever moves off zero, a real `Sans` key collides with
 // `INVALID` and the renderer silently drops valid text runs. Pin
 // here so the drift trips the compile.
-const _: () = assert!(FontFamily::SegoeUi as u8 == 0);
+const _: () = assert!(FontFamily::Sans as u8 == 0);
 
 /// Font weight picker on [`crate::TextStyle`] and [`crate::Shape::Text`],
 /// independent of [`FontFamily`]. `Regular` shapes with the family's
 /// normal face; `Bold` requests the bold face (a distinct static face
-/// for Segoe UI, an instantiated `wght` for the variable JetBrains
+/// for Inter, an instantiated `wght` for the variable JetBrains
 /// Mono) via cosmic-text's `Attrs::weight` in [`attrs_for`].
 ///
 /// `#[repr(u8)]` pins the tag for `TextCacheKey::weight_q` and the
 /// `ShapeRecord::Text` hash byte. `Regular = 0` folds into the
 /// `TextCacheKey::INVALID` all-zeroes sentinel, mirroring
-/// [`FontFamily::SegoeUi`].
+/// [`FontFamily::Sans`].
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
@@ -629,7 +628,7 @@ impl TextCacheKey {
     /// fields the `padding_struct` proc macro generated.
     ///
     /// `is_invalid` folds `family_q == 0` and `weight_q == 0` into the
-    /// all-zeroes check, which lines up with [`FontFamily::SegoeUi`] and
+    /// all-zeroes check, which lines up with [`FontFamily::Sans`] and
     /// [`FontWeight::Regular`] also having discriminant 0. If the variant
     /// order ever changes, update `is_invalid` and the sentinel together.
     pub const INVALID: Self = unsafe { std::mem::zeroed() };
