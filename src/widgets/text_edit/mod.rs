@@ -15,7 +15,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CursorPos, FontFamily, ShapeParams, TextShaper};
+use crate::text::{CursorPos, FontFamily, FontWeight, ShapeParams, TextShaper};
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -372,6 +372,7 @@ struct ShapeCtx {
     padding: Spacing,
     wrap_target: Option<f32>,
     family: FontFamily,
+    weight: FontWeight,
     multiline: bool,
     halign: HAlign,
 }
@@ -650,6 +651,7 @@ impl<'a> TextEdit<'a> {
             padding,
             wrap_target,
             family: look.text.family,
+            weight: look.text.weight,
             multiline: self.multiline,
             halign: text_align.halign(),
         };
@@ -690,6 +692,7 @@ impl<'a> TextEdit<'a> {
                         line_height_px: ctx.line_height_px,
                         max_width_px: ctx.wrap_target,
                         family: ctx.family,
+                        weight: ctx.weight,
                         halign: ctx.halign,
                     },
                 )
@@ -753,6 +756,7 @@ impl<'a> TextEdit<'a> {
                 line_height_px: ctx.line_height_px,
                 max_width_px: ctx.wrap_target,
                 family: ctx.family,
+                weight: ctx.weight,
                 halign: ctx.halign,
             },
         );
@@ -844,6 +848,7 @@ impl<'a> TextEdit<'a> {
                             line_height_px: ctx.line_height_px,
                             max_width_px: None,
                             family: ctx.family,
+                            weight: ctx.weight,
                             halign: ctx.halign,
                         },
                     )
@@ -878,6 +883,7 @@ impl<'a> TextEdit<'a> {
                         line_height_px: ctx.line_height_px,
                         max_width_px: ctx.wrap_target,
                         family: ctx.family,
+                        weight: ctx.weight,
                         halign: ctx.halign,
                     },
                     &mut rects,
@@ -946,6 +952,7 @@ impl<'a> TextEdit<'a> {
                     // accident, but the user sees unaligned text.
                     align: text_align,
                     family: ctx.family,
+                    weight: ctx.weight,
                 });
             }
 
@@ -1181,6 +1188,7 @@ fn handle_input(
                 line_height_px: ctx.line_height_px,
                 max_width_px: ctx.wrap_target,
                 family: ctx.family,
+                weight: ctx.weight,
                 halign: ctx.halign,
             },
         );
@@ -1340,6 +1348,7 @@ fn resolve_vertical_motion(
             line_height_px: ctx.line_height_px,
             max_width_px: ctx.wrap_target,
             family: ctx.family,
+            weight: ctx.weight,
             halign: ctx.halign,
         },
     );
@@ -1359,6 +1368,7 @@ fn resolve_vertical_motion(
                 line_height_px: ctx.line_height_px,
                 max_width_px: ctx.wrap_target,
                 family: ctx.family,
+                weight: ctx.weight,
                 halign: ctx.halign,
             },
         )

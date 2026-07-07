@@ -349,8 +349,8 @@ fn selection_rects_offset_matches_text() {
 /// `dx_per_line = (line_width - line_w) * factor` where factor is
 /// 0 (Left), 0.5 (Center), 1.0 (Right).
 mod per_line {
-    use crate::text::FontFamily;
     use crate::text::ShapeParams;
+    use crate::text::{FontFamily, FontWeight};
     use crate::widgets::text_edit::tests::*;
     use crate::{Align, HAlign};
     use glam::UVec2;
@@ -382,7 +382,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -397,7 +398,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Center,
                 },
             )
@@ -412,7 +414,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )
@@ -452,7 +455,8 @@ mod per_line {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: Some(100.0),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -464,7 +468,8 @@ mod per_line {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: Some(100.0),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )
@@ -492,7 +497,8 @@ mod per_line {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: None,
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -504,7 +510,8 @@ mod per_line {
                     font_size_px: 16.0,
                     line_height_px: 19.2,
                     max_width_px: None,
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )
@@ -711,7 +718,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )
@@ -726,7 +734,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Center,
                 },
             )
@@ -741,7 +750,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(wrap),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Left,
                 },
             )
@@ -779,7 +789,8 @@ mod per_line {
                 font_size_px: 16.0,
                 line_height_px: 19.2,
                 max_width_px: Some(wrap),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Right,
             },
         );
@@ -836,7 +847,8 @@ mod per_line {
                     font_size_px: fs,
                     line_height_px: lh,
                     max_width_px: Some(290.0),
-                    family: FontFamily::Sans,
+                    family: FontFamily::SegoeUi,
+                    weight: FontWeight::Regular,
                     halign: HAlign::Right,
                 },
             )

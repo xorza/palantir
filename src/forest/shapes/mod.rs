@@ -145,6 +145,7 @@ impl Shapes {
                 wrap,
                 align,
                 family,
+                weight,
             } => {
                 use crate::primitives::interned_str::InternedStr;
                 // Each carrier costs only its hash compute:
@@ -166,6 +167,7 @@ impl Shapes {
                     wrap,
                     align,
                     family,
+                    weight,
                 }
             }
             Shape::Shadow {

@@ -138,9 +138,13 @@ mod tests {
     use crate::primitives::color::Color;
     use crate::primitives::interned_str::InternedStr;
     use crate::shape::TextWrap;
-    use crate::text::FontFamily;
+    use crate::text::{FontFamily, FontWeight};
 
-    fn text_shape(line_height_px: f32, local_origin: Option<glam::Vec2>) -> ShapeRecord {
+    fn text_shape(
+        line_height_px: f32,
+        weight: FontWeight,
+        local_origin: Option<glam::Vec2>,
+    ) -> ShapeRecord {
         ShapeRecord::Text {
             local_origin,
             text: InternedStr::from("hi"),
@@ -150,7 +154,8 @@ mod tests {
             line_height_px,
             wrap: TextWrap::Truncate,
             align: Align::default(),
-            family: FontFamily::Sans,
+            family: FontFamily::SegoeUi,
+            weight,
         }
     }
 
@@ -161,28 +166,35 @@ mod tests {
     /// Pin: every authoring-relevant `ShapeRecord::Text` field participates
     /// in the node hash. Without this, the measure cache would
     /// conflate runs whose shaped buffers genuinely differ
-    /// (`line_height_px` → different `Metrics::new`) or whose paint
-    /// position differs (`local_rect` → different `DrawText` rects).
-    /// New fields go in the table, not in a new test.
+    /// (`line_height_px` → different `Metrics::new`; `weight` → different
+    /// physical face) or whose paint position differs (`local_rect` →
+    /// different `DrawText` rects). New fields go in the table, not in a
+    /// new test.
     #[test]
     fn text_shape_hash_distinguishes_each_authoring_field() {
+        use FontWeight::{Bold, Regular};
         let o_a = Some(glam::Vec2::new(0.0, 0.0));
         let o_b = Some(glam::Vec2::new(5.0, 5.0));
-        let cases: [(&str, ShapeRecord, ShapeRecord); 3] = [
+        let cases: [(&str, ShapeRecord, ShapeRecord); 4] = [
             (
                 "line_height_px",
-                text_shape(16.0 * 1.2, None),
-                text_shape(16.0 * 1.5, None),
+                text_shape(16.0 * 1.2, Regular, None),
+                text_shape(16.0 * 1.5, Regular, None),
+            ),
+            (
+                "weight Regular vs Bold",
+                text_shape(19.2, Regular, None),
+                text_shape(19.2, Bold, None),
             ),
             (
                 "local_origin None vs Some",
-                text_shape(19.2, None),
-                text_shape(19.2, o_a),
+                text_shape(19.2, Regular, None),
+                text_shape(19.2, Regular, o_a),
             ),
             (
                 "local_origin Some(a) vs Some(b)",
-                text_shape(19.2, o_a),
-                text_shape(19.2, o_b),
+                text_shape(19.2, Regular, o_a),
+                text_shape(19.2, Regular, o_b),
             ),
         ];
         for (label, a, b) in cases {
@@ -200,8 +212,8 @@ mod tests {
     #[test]
     fn text_shape_hash_matches_when_inputs_match() {
         assert_eq!(
-            hash_shape(&text_shape(19.2, None)),
-            hash_shape(&text_shape(19.2, None)),
+            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
+            hash_shape(&text_shape(19.2, FontWeight::Regular, None)),
         );
     }
 }

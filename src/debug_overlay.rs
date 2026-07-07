@@ -15,7 +15,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::spacing::Spacing;
-use crate::text::FontFamily;
+use crate::text::{FontFamily, FontWeight};
 use crate::ui::Ui;
 use crate::widgets::panel::Panel;
 use crate::widgets::text::Text;
@@ -70,6 +70,7 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
     let label = format!("f {} · {:>4.0} fps{}", ui.frame_id, ui.fps_ema, gpu);
     let style = TextStyle {
         family: FontFamily::Mono,
+        weight: FontWeight::Regular,
         color: Color::rgb(1.0, 0.2, 0.2),
         font_size_px: 12.0,
         ..ui.theme.text

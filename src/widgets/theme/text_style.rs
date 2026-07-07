@@ -1,11 +1,11 @@
 use crate::primitives::color::Color;
-use crate::text::{FontFamily, LINE_HEIGHT_MULT};
+use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT};
 use crate::widgets::theme::palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
-/// whole "text look" with one assignment, and so future axes (font
-/// family, weight, italic, letter-spacing) extend a single struct
-/// rather than scattering across [`crate::Theme`].
+/// whole "text look" with one assignment, and so future axes (italic,
+/// letter-spacing) extend a single struct rather than scattering across
+/// [`crate::Theme`].
 ///
 /// `Animatable` derived: `color` interpolates; `font_size_px` and
 /// `line_height_mult` are `#[animate(snap)]` because animating font
@@ -43,6 +43,11 @@ pub struct TextStyle {
     /// `frame_stats` overlay overrides to [`FontFamily::Mono`].
     #[animate(snap)]
     pub family: FontFamily,
+    /// Font weight used for shaping. Default [`FontWeight::Regular`];
+    /// set [`FontWeight::Bold`] (or call [`Self::bold`]) to shape against
+    /// the family's bold face.
+    #[animate(snap)]
+    pub weight: FontWeight,
 }
 
 impl Default for TextStyle {
@@ -52,6 +57,7 @@ impl Default for TextStyle {
             color: palette::TEXT,
             line_height_mult: LINE_HEIGHT_MULT,
             family: FontFamily::SegoeUi,
+            weight: FontWeight::Regular,
         }
     }
 }
@@ -89,5 +95,17 @@ impl TextStyle {
     pub const fn with_line_height_mult(mut self, mult: f32) -> Self {
         self.line_height_mult = mult;
         self
+    }
+
+    #[inline]
+    pub const fn with_weight(mut self, weight: FontWeight) -> Self {
+        self.weight = weight;
+        self
+    }
+
+    /// Shorthand for `.with_weight(FontWeight::Bold)`.
+    #[inline]
+    pub const fn bold(self) -> Self {
+        self.with_weight(FontWeight::Bold)
     }
 }

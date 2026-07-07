@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::layout::types::align::Align;
 use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
+use crate::text::FontWeight;
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::text_style::TextStyle;
@@ -32,6 +33,10 @@ pub struct Text {
     element: Element,
     text: InternedStr,
     style: Option<TextStyle>,
+    /// Single-axis weight override applied over the resolved `style` in
+    /// `show`. Lets `Text::new("x").bold()` request bold without cloning
+    /// the whole ambient `TextStyle` at the call site.
+    weight: Option<FontWeight>,
     wrap: TextWrap,
     align: Align,
 }
@@ -43,6 +48,7 @@ impl Text {
             element: Element::new(LayoutMode::Leaf),
             text: text.into(),
             style: None,
+            weight: None,
             wrap: TextWrap::SingleLine,
             // Default = (Auto, Auto) → top-left. Only matters when the
             // widget has Fixed size larger than its measured content;
@@ -57,6 +63,13 @@ impl Text {
     /// `TextStyle { color: red, ..ui.theme.text }`.
     pub fn style(mut self, s: TextStyle) -> Self {
         self.style = Some(s);
+        self
+    }
+
+    /// Shape this run bold, overriding just the weight of the resolved
+    /// style (whether that came from `.style(...)` or the theme default).
+    pub fn bold(mut self) -> Self {
+        self.weight = Some(FontWeight::Bold);
         self
     }
 
@@ -84,7 +97,10 @@ impl Text {
     }
 
     pub fn show(self, ui: &mut Ui) -> Response<'_> {
-        let style = self.style.unwrap_or(ui.theme.text);
+        let mut style = self.style.unwrap_or(ui.theme.text);
+        if let Some(weight) = self.weight {
+            style.weight = weight;
+        }
         let line_height_px = style.line_height_for(style.font_size_px);
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
@@ -97,6 +113,7 @@ impl Text {
                 wrap: self.wrap,
                 align: self.align,
                 family: style.family,
+                weight: style.weight,
             });
         });
         // Decorative: skip eager `response_for`. Discarded responses

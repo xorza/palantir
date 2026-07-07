@@ -15,7 +15,7 @@ use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
-use crate::text::FontFamily;
+use crate::text::{FontFamily, FontWeight};
 use glam::Vec2;
 use half::f16;
 use std::hash::Hash;
@@ -312,6 +312,7 @@ pub(crate) enum ShapeRecord {
         wrap: TextWrap,
         align: Align,
         family: FontFamily,
+        weight: FontWeight,
     } = 2,
     /// User-supplied colored triangle mesh. Vertex/index data lives in
     /// the active `Tree`'s `mesh_vertices` / `mesh_indices` arenas;

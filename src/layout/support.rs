@@ -14,7 +14,7 @@ use crate::layout::types::align::HAlign;
 use crate::layout::types::{align::Align, align::AxisAlign, justify::Justify, sizing::Sizing};
 use crate::primitives::{rect::Rect, size::Size};
 use crate::shape::TextWrap;
-use crate::text::{FontFamily, TextShaper};
+use crate::text::{FontFamily, FontWeight, TextShaper};
 use glam::Vec2;
 
 /// Read-only context every layout method threads through the
@@ -38,6 +38,7 @@ pub(crate) struct LeafTextShape<'a> {
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
     pub(crate) family: FontFamily,
+    pub(crate) weight: FontWeight,
     /// Horizontal alignment from `Shape::Text.align`. Cosmic-text
     /// bakes per-line offsets into the shaped buffer when wrap is on,
     /// so the layout pass has to thread this all the way down to
@@ -77,6 +78,7 @@ pub(crate) fn leaf_text_shapes<'a>(
                 line_height_px,
                 wrap,
                 family,
+                weight,
                 align,
                 ..
             } => Some(LeafTextShape {
@@ -85,6 +87,7 @@ pub(crate) fn leaf_text_shapes<'a>(
                 line_height_px: *line_height_px,
                 wrap: *wrap,
                 family: *family,
+                weight: *weight,
                 halign: align.halign(),
             }),
             _ => None,

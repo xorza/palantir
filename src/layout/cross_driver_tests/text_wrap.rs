@@ -14,7 +14,7 @@ use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
 use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
 use crate::shape::{Shape, TextWrap};
-use crate::text::FontFamily;
+use crate::text::{FontFamily, FontWeight};
 use crate::widgets::{button::Button, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -612,7 +612,8 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
             });
             ui.add_shape(Shape::Text {
                 local_origin: Some(glam::Vec2::new(0.0, 22.0)),
@@ -622,7 +623,8 @@ fn build_multi_text_leaf(ui: &mut Ui) -> NodeId {
                 line_height_px: 16.0,
                 wrap: TextWrap::Truncate,
                 align: Default::default(),
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
             });
         });
     });

@@ -121,6 +121,7 @@ impl<'a> DragValue<'a> {
                 wrap: TextWrap::Truncate,
                 align: Align::CENTER,
                 family: look.text.family,
+                weight: look.text.weight,
             });
         });
         Response::eager(id, ui, raw_state)

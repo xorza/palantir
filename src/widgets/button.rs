@@ -95,6 +95,7 @@ impl Button {
                     wrap: label_wrap,
                     align: label_align,
                     family: look.text.family,
+                    weight: look.text.weight,
                 });
             }
         });

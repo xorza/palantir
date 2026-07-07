@@ -480,7 +480,7 @@ pub mod test_support {
     use crate::renderer::backend::pipeline_utils::StencilVariant;
     use crate::renderer::backend::text::ViewportPush;
 
-    use crate::text::{FontFamily, ShapeParams, TextShaper};
+    use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
 
     /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
@@ -562,7 +562,8 @@ pub mod test_support {
                 font_size_px,
                 line_height_px,
                 max_width_px: None,
-                family: FontFamily::Sans,
+                family: FontFamily::SegoeUi,
+                weight: FontWeight::Regular,
                 halign: HAlign::Auto,
             },
         );
