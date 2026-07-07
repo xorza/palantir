@@ -47,9 +47,11 @@ pub(crate) struct RecordingScratch {
     /// the same anchor). `None` outside any scope and always on `Main`
     /// (its implicit root paints the full surface); in that case root
     /// mints fall through to `Placement::default()` =
-    /// `(Vec2::ZERO, None)`. `Forest::push_layer` forbids re-entering the
-    /// *same* layer, so this per-layer slot stays single-occupancy even
-    /// though distinct layers may nest (tooltip inside a popup).
+    /// `(Vec2::ZERO, None)`. `Forest::push_layer` requires each nested
+    /// layer to rank strictly above the current scope, so the layer stack
+    /// is strictly increasing and this per-layer slot stays
+    /// single-occupancy even though distinct layers nest (tooltip inside
+    /// a popup).
     pub(crate) pending_anchor: Option<Placement>,
 }
 

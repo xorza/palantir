@@ -1102,9 +1102,9 @@ impl Ui {
     /// cap can't bleed past the viewport. The root's own `Sizing`
     /// (Hug/Fill/Fixed) then governs the painted size within that
     /// available. Recordable from the `Main` baseline or nested inside a
-    /// *distinct* side layer's body (a tooltip raised from a popup, a
-    /// popup opened from a modal); the only bar is re-entering the same
-    /// layer, since each layer owns one `pending_anchor` slot.
+    /// higher-ranked side layer's body (a tooltip raised from a popup or
+    /// modal). The nested layer must sit strictly above the current scope
+    /// in `Layer::PAINT_ORDER`, else it would paint under its parent.
     pub fn layer(
         &mut self,
         layer: Layer,

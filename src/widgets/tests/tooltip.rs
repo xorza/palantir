@@ -235,3 +235,18 @@ fn tooltip_inside_popup_records_without_panic() {
         "Tooltip layer must contain the bubble recorded from inside the popup",
     );
 }
+
+/// A nested layer that ranks at or below the current scope is rejected:
+/// with no per-node z-index, `Layer::PAINT_ORDER` is the only ordering,
+/// so a `Popup` (1) raised inside a `Modal` (2) body would paint *under*
+/// the modal. `push_layer` must catch this rather than silently misrender.
+#[test]
+#[should_panic(expected = "must rank above")]
+fn layer_below_current_scope_panics() {
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(SURFACE, |ui| {
+        ui.layer(Layer::Modal, Vec2::ZERO, None, |ui| {
+            ui.layer(Layer::Popup, Vec2::ZERO, None, |_ui| {});
+        });
+    });
+}
