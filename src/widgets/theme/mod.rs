@@ -1,5 +1,6 @@
 pub(crate) mod button;
 pub(crate) mod context_menu;
+pub(crate) mod drag_value;
 pub(crate) mod modal;
 pub(crate) mod palette;
 pub(crate) mod progress_bar;
@@ -16,6 +17,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
+use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
@@ -46,6 +48,10 @@ pub struct Theme {
     pub switch: ToggleTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
+    /// Theme for [`crate::DragValue`] — the scrub chip plus its inline editor.
+    /// Default derives the editor from `button` + `text_edit` so the two modes
+    /// match; apps that restyle either should rebuild this to stay consistent.
+    pub drag_value: DragValueTheme,
     pub context_menu: ContextMenuTheme,
     pub modal: ModalTheme,
     pub tooltip: TooltipTheme,
@@ -122,6 +128,7 @@ impl Theme {
         self.radio.for_each_text(f);
         self.switch.for_each_text(f);
         self.text_edit.for_each_text(f);
+        self.drag_value.for_each_text(f);
         self.context_menu.for_each_text(f);
         f(&mut self.tooltip.text);
     }
@@ -137,6 +144,7 @@ impl Default for Theme {
             switch: ToggleTheme::switch(),
             scrollbar: ScrollbarTheme::default(),
             text_edit: TextEditTheme::default(),
+            drag_value: DragValueTheme::default(),
             context_menu: ContextMenuTheme::default(),
             modal: ModalTheme::default(),
             tooltip: TooltipTheme::default(),
