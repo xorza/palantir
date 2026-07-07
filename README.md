@@ -3,7 +3,8 @@
 An immediate-mode GUI library for Rust, with WPF-style two-pass layout and a
 wgpu renderer.
 
-Status: pre-1.0, under active development. APIs break freely.
+Status: **beta** — feature-rich and usable, but still pre-1.0: the public
+API can still change and break between releases.
 
 ![Showcase screenshot](docs/frame_bench.png)
 
@@ -58,9 +59,10 @@ available_q)`; subtree hits blit last frame's measure result and skip
 Pre-1.0 — these are known gaps, not design rejections:
 
 - **Accessibility** — no AccessKit / screen-reader support yet.
-- **Bold / italic / weight rendering + app-facing font loading** — text
-  currently renders at a single weight from a fixed family set; arbitrary
-  font registration and style variants aren't wired through to shaping.
+- **Italic + app-facing font loading** — text shapes in Regular or **Bold**
+  (weight is wired through to shaping and rasterization), but there's no
+  italic / oblique axis, and only the two bundled families (Inter, JetBrains
+  Mono) exist — no arbitrary font registration yet.
 - **Tab-key focus traversal** — focus exists (click-to-focus, programmatic
   `request_focus`), but `Tab` / `Shift+Tab` cycling does not.
 - **Virtualized list / table** — `Scroll` records all children; no
@@ -81,12 +83,16 @@ that reuses capacity across frames; any new per-frame `Vec::new()` /
 ## Example
 
 ```rust
-use palantir::{App, Button, Configure, Panel, Sizing, Text, Ui, WinitHost, WinitHostConfig};
+use palantir::{
+    App, Button, Configure, Panel, Sizing, Text, Ui, WindowToken, WinitHost, WinitHostConfig,
+};
 
 struct Counter { clicks: u32 }
 
 impl App for Counter {
-    fn frame(&mut self, ui: &mut Ui) {
+    // `win` names which window is being drawn; switch on it for multi-window
+    // apps. This one has a single window, so it's ignored.
+    fn frame(&mut self, _win: WindowToken, ui: &mut Ui) {
         Panel::vstack()
             .auto_id()
             .gap(8.0)
@@ -101,7 +107,12 @@ impl App for Counter {
 }
 
 fn main() {
-    WinitHost::new(WinitHostConfig::new("counter"), Counter { clicks: 0 }).run();
+    // `new` takes the first window's token + config and a builder that
+    // constructs the app once its `Ui` and host handle are live.
+    WinitHost::new(WindowToken(0), WinitHostConfig::new("counter"), |_ui, _host| {
+        Counter { clicks: 0 }
+    })
+    .run();
 }
 ```
 
