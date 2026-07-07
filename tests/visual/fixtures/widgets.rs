@@ -972,7 +972,7 @@ fn slider_thirty_percent_matches_golden() {
 fn drag_value_matches_golden() {
     let mut h = Harness::new();
     let img = h.render(UVec2::new(140, 64), 1.0, DARK_BG, |ui| {
-        let mut v = 42.5_f32;
+        let mut v = 42.5_f64;
         Panel::vstack()
             .auto_id()
             .padding(16.0)

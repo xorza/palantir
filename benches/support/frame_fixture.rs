@@ -57,7 +57,7 @@ pub struct FormState {
     /// widget coverage only. Seeded to mid-range values so the visual
     /// harness shows them in a representative, non-empty state.
     pub volume: f32,
-    pub zoom: f32,
+    pub zoom: f64,
     pub quality: usize,
     pub dark_mode: bool,
 }
@@ -72,7 +72,7 @@ impl Default for FormState {
             tick: 0,
             scroll_offset: glam::Vec2::ZERO,
             volume: 0.65,
-            zoom: 42.0,
+            zoom: 42.0_f64,
             quality: 2,
             dark_mode: true,
         }
