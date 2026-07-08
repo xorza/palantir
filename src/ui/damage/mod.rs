@@ -12,13 +12,25 @@
 //! its merge policy; the result drives the encoder filter and the
 //! per-pass scissor list in the backend.
 //!
-//! **Painting-only invariant.** `DamageEngine.prev` only holds entries for
-//! widgets that painted on their last recorded frame (have chrome OR
-//! direct shapes — i.e. `cascades.layers[li].paint_arena.node_spans[i].len > 0`).
-//! Non-painting nodes contribute zero pixels, so they're skipped on
-//! insert. A painting→non-painting transition evicts the entry in the
-//! same diff loop; the prev rects contribute (clear those pixels), the
-//! curr rect doesn't.
+//! **Row invariant.** `DamageEngine.prev` only holds entries for
+//! widgets with at least one paint row on their last recorded frame —
+//! chrome, a direct shape, or a child marker (i.e.
+//! `cascades.layers[li].paint_arena.node_spans[i].len > 0`). Rowless
+//! nodes (childless, chromeless, shapeless) contribute zero pixels and
+//! are skipped on insert; child markers carry zero rects, so a parent
+//! that paints nothing itself still can't trip the full-repaint
+//! coverage threshold on add or remove. A rows→rowless transition
+//! evicts the entry in the same diff loop; the prev rects contribute
+//! (clear those pixels), the curr rect doesn't.
+//!
+//! **Paint order.** Child markers put the shape/child interleave into
+//! each node's row span, and `compute_hashes` folds child identity
+//! into `node_hash` — so a pure z-order change (raising a node, a
+//! shape crossing a child boundary, two coincident shapes swapping)
+//! routes its parent to the changed-paints arm, where the row
+//! matcher's position map feeds the order-inversion check and each
+//! inverted pair's extent overlap is damaged. No separate order
+//! tracking exists; the row span *is* the retained order.
 //!
 //! `DamageEngine.dirty` is the per-node dirty list (added / hash- or
 //! cascade-changed / evicted) in pre-order paint order. It's
@@ -27,14 +39,15 @@
 //! assert on it through this gate.
 
 use crate::forest::Forest;
+use crate::forest::node::SubtreeEnd;
 use crate::forest::rollups::{CascadeInputHash, NodeHash};
 use crate::forest::seen_ids::WidgetIdMap;
-use crate::forest::tree::NodeId;
 use crate::forest::tree::iter::TreeItem;
+use crate::forest::tree::{NodeId, Tree};
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
-use crate::ui::cascade::{Cascades, Paint};
+use crate::ui::cascade::{Cascades, Paint, PaintArena};
 use crate::ui::damage::region::{DEFAULT_PASS_BUDGET_PX, DamageRegion};
 use rustc_hash::FxHashSet;
 use std::collections::hash_map::Entry;
@@ -42,17 +55,17 @@ use std::time::Duration;
 
 pub mod region;
 
-/// Per-painting-widget snapshot held in [`DamageEngine::prev`], keyed by
-/// stable [`WidgetId`]. Only widgets that painted last frame have an
-/// entry — non-painting nodes (e.g. a popup's invisible click-eater)
+/// Per-widget snapshot held in [`DamageEngine::prev`], keyed by stable
+/// [`WidgetId`]. Only widgets with paint rows last frame have an entry
+/// — rowless nodes (e.g. a popup's childless invisible click-eater)
 /// are skipped on insert, so their full-surface rect can't trip the
 /// full-repaint coverage threshold on add or remove.
 ///
 /// **Storage shape.** Per-paint snapshots don't live inline here —
 /// they live in [`DamageEngine::arena`], a single contiguous
-/// arena shared by every painting widget, and this struct just holds
-/// a `Span` into it. Each row is either chrome (row 0 when present)
-/// or one direct shape, mirroring `LayerCascades::paint_arena`.
+/// arena shared by every widget, and this struct just holds a `Span`
+/// into it. Each row is chrome (row 0 when present), one direct
+/// shape, or a child marker, mirroring `LayerCascades::paint_arena`.
 ///
 /// **No cached `rect`.** The node's own paint extent (the union of its
 /// `paint_arena` rows — what the cascade used to store as
@@ -67,9 +80,9 @@ pub mod region;
 pub(crate) struct NodeSnapshot {
     /// Slice into [`DamageEngine::arena`] describing this
     /// widget's per-paint snapshots in record order (chrome at row 0
-    /// when present, then shapes). Empty span for non-painting nodes
-    /// — though the painting-only invariant means they don't get an
-    /// entry in `prev` at all.
+    /// when present, then shapes + child markers). Never empty — the
+    /// row invariant means rowless nodes don't get an entry in `prev`
+    /// at all.
     pub(crate) paint_span: Span,
     /// Authoring hash from last frame's `Tree.rollups.node`.
     pub(crate) hash: NodeHash,
@@ -85,11 +98,11 @@ pub(crate) struct NodeSnapshot {
     pub(crate) cascade_input: CascadeInputHash,
 }
 
-/// Per-painting-widget paint snapshots packed contiguously, plus the
+/// Per-widget paint snapshots packed contiguously, plus the
 /// scratch buffer + orphan counter that drive double-buffered
 /// compaction. Each [`NodeSnapshot::paint_span`] is a slice into
 /// `snaps`; chrome lives at row 0 of the owner's span when present,
-/// followed by direct shapes in record order.
+/// followed by direct shapes and child markers in record order.
 ///
 /// Lifecycle: append-only on count-change paths (new span at end,
 /// old slice orphaned); in-place on same-count refreshes;
@@ -107,6 +120,12 @@ pub(crate) struct PaintSnapArena {
     /// `prev_span.len` per call; capacity is reused so steady-state
     /// content reshuffles don't allocate.
     prev_matched: Vec<bool>,
+    /// Pass-1 exact-match position map: for each curr paint, the prev
+    /// row it paired with (`ROW_UNMATCHED` when pass 1 didn't pair
+    /// it). Feeds the within-node order-inversion check — an exact
+    /// pair emits no content damage, but two of them swapping paint
+    /// order still flips their overlap's pixels. Capacity retained.
+    matched_pos: Vec<u32>,
     /// Curr indices that pass 1 of [`Self::diff_changed_leg`] couldn't
     /// pair on exact `(screen, hash)`. Empty after pass 1 → pass 2 is
     /// skipped entirely (the common "shapes reshuffled but content
@@ -143,8 +162,8 @@ pub(crate) struct DamageEngine {
     /// debug-overlay slider, a TBDR backend init, or a test) before
     /// the next `Ui::post_record` runs.
     pub(crate) budget_px: f32,
-    /// Last frame's snapshot, **only for widgets that painted last
-    /// frame** (see the painting-only invariant in the module doc).
+    /// Last frame's snapshot, **only for widgets with paint rows last
+    /// frame** (see the row invariant in the module doc).
     /// Read by the diff in `compute`, then updated/inserted/evicted
     /// in place per node. Cross-layer uniqueness of `WidgetId` is
     /// already enforced by `SeenIds::record` at recording time, so
@@ -160,6 +179,13 @@ pub(crate) struct DamageEngine {
     /// which produces the bounded region. Retained capacity — no
     /// per-frame allocation in steady state.
     pub(crate) raw_rects: Vec<Rect>,
+
+    /// Retained scratch for [`build_row_extents`] — the per-row screen
+    /// extents (child markers swapped for their subtree's painted
+    /// extent) fed to [`emit_inverted_overlaps`]. Only filled on the
+    /// rare frame a node's row order actually inverted; capacity
+    /// persists so that frame allocates nothing.
+    order_extents: Vec<Rect>,
 
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the tier-1 subtree-skip arm jumped `subtree_end - i`
@@ -182,6 +208,7 @@ impl Default for DamageEngine {
             prev: WidgetIdMap::default(),
             arena: PaintSnapArena::default(),
             raw_rects: Vec::new(),
+            order_extents: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
@@ -342,9 +369,20 @@ impl PaintSnapArena {
     /// hash-only fallback recovers the move signal without losing the
     /// exact-match optimisation.
     ///
-    /// Linear scan per curr paint is O(n·m); the retained
-    /// `prev_matched` bitmap and `pending_curr` index list keep both
-    /// passes alloc-free across frames. Pass 1 collects unmatched
+    /// **Order check** — exact pairs emit no content damage, but two of
+    /// them swapping paint order still flips their overlap's pixels
+    /// (two coincident wires trading which is on top, a raised node,
+    /// a shape crossing a child boundary — child markers make all of
+    /// these row reorders). This leg only *records* the pairing: on
+    /// the slow path `matched_pos` is left populated for the caller,
+    /// who runs [`has_order_inversion`] and emits each inverted pair's
+    /// extent overlap — child-marker extents need tree context this
+    /// arena doesn't hold.
+    ///
+    /// Pass 1's positional pre-pass pairs in-place rows in O(n); only
+    /// the leftovers pay the O(n·m) first-fit scan. The retained
+    /// `prev_matched` / `matched_pos` / `pending_curr` scratch keeps
+    /// every pass alloc-free across frames. Pass 1 collects unmatched
     /// curr indices into `pending_curr`; pass 2 walks only those —
     /// `pending_curr.is_empty()` (every shape paired exactly) skips
     /// pass 2 outright. The slow path spills `curr_paints` to the
@@ -374,6 +412,7 @@ impl PaintSnapArena {
         let Self {
             snaps,
             prev_matched,
+            matched_pos,
             pending_curr,
             ..
         } = self;
@@ -381,15 +420,32 @@ impl PaintSnapArena {
 
         prev_matched.clear();
         prev_matched.resize(prev_len, false);
+        matched_pos.clear();
+        matched_pos.resize(curr_paints.len(), ROW_UNMATCHED);
         pending_curr.clear();
 
-        // Pass 1 — exact (screen, hash) pairs. No damage. Curr indices
-        // that didn't pair queue up for pass 2.
+        // Pass 1 — exact (screen, hash) pairs. No damage. A positional
+        // pre-pass claims same-index matches first: the dominant churn
+        // shape (one shape changed, the rest in place — every wire of a
+        // dragged canvas node) pairs in O(n), and the first-fit scan
+        // below only touches the leftovers. Identical rows are
+        // interchangeable, so which duplicate pairs up doesn't matter.
+        // Curr indices that didn't pair queue up for pass 2.
+        for (j, (&c, &p)) in curr_paints.iter().zip(prev_slice).enumerate() {
+            if p == c {
+                prev_matched[j] = true;
+                matched_pos[j] = j as u32;
+            }
+        }
         for (j, &c) in curr_paints.iter().enumerate() {
+            if matched_pos[j] != ROW_UNMATCHED {
+                continue;
+            }
             let mut matched = false;
             for (i, &p) in prev_slice.iter().enumerate() {
                 if !prev_matched[i] && p == c {
                     prev_matched[i] = true;
+                    matched_pos[j] = i as u32;
                     matched = true;
                     break;
                 }
@@ -401,27 +457,30 @@ impl PaintSnapArena {
         // Pass 2 — hash-only pairs surface as moves; unmatched curr
         // surfaces as adds. Skipped entirely when pass 1 paired every
         // curr paint (the common "reshuffled but content unchanged"
-        // case).
+        // case). Child markers can't reach the move leg's pushes with
+        // anything visible — their screens are zero (paint-empty), so
+        // the pushes below skip them; an added/removed child's pixels
+        // are damaged by its own nodes' Vacant/evict arms.
         for &j in pending_curr.iter() {
             let c = curr_paints[j as usize];
             let mut moved = false;
             for (i, &p) in prev_slice.iter().enumerate() {
                 if !prev_matched[i] && p.hash == c.hash {
-                    out.push(p.screen);
-                    out.push(c.screen);
+                    push_screen(out, p.screen);
+                    push_screen(out, c.screen);
                     prev_matched[i] = true;
                     moved = true;
                     break;
                 }
             }
             if !moved {
-                out.push(c.screen);
+                push_screen(out, c.screen);
             }
         }
         // Remaining prev paints — removals.
         for (i, &p) in prev_slice.iter().enumerate() {
             if !prev_matched[i] {
-                out.push(p.screen);
+                push_screen(out, p.screen);
             }
         }
 
@@ -451,17 +510,15 @@ impl PaintSnapArena {
                 let Some(snap) = prev.get_mut(wid) else {
                     continue;
                 };
-                // Painting-only invariant: every entry in `prev`
-                // covers at least one Paint row (chrome at row 0 OR
-                // ≥1 shape). The unified `paint_arena.rows` doesn't
-                // distinguish chrome from shape spans, so a
-                // chrome-only owner contributes one row, not zero.
-                // A zero-len snap would have a stale `start` after
-                // the swap below — assert rather than silently skip.
+                // Row invariant: every entry in `prev` covers at least
+                // one Paint row (chrome at row 0 OR ≥1 shape / child
+                // marker). A zero-len snap would have a stale `start`
+                // after the swap below — assert rather than silently
+                // skip.
                 assert!(
                     snap.paint_span.len > 0,
                     "PaintSnapArena::compact: prev entry for {wid:?} has zero-len paint_span, \
-                     violating the painting-only invariant",
+                     violating the row invariant",
                 );
                 let new_start = self.scratch.len() as u32;
                 self.scratch
@@ -566,9 +623,9 @@ impl DamageEngine {
         // Every damage source pushes its contributions into
         // `self.raw_rects` without applying the merge or budget
         // policy. Sources: structural diff (added / hash-changed /
-        // removed widget), predamaged anim rects, and the
-        // `removed`-set eviction tail. Pass 2 collapses the buffer
-        // into the bounded region.
+        // removed widget), paint-order inversions, predamaged anim
+        // rects, and the `removed`-set eviction tail. Pass 2 collapses
+        // the buffer into the bounded region.
         self.raw_rects.clear();
 
         // Alias each mutated field once so the diff body can name
@@ -577,6 +634,7 @@ impl DamageEngine {
         let prev_map = &mut self.prev;
         let arena = &mut self.arena;
         let raw_rects = &mut self.raw_rects;
+        let order_extents = &mut self.order_extents;
 
         #[cfg(any(test, feature = "internals"))]
         let dirty_out = &mut self.dirty;
@@ -586,6 +644,8 @@ impl DamageEngine {
         for (layer, tree) in forest.iter_paint_order() {
             let layer_cascades = &cascades.layers[layer];
             let cascade_inputs = layer_cascades.cascade_inputs.as_slice();
+            let node_hashes = tree.rollups.node.as_slice();
+            let subtree_hashes = tree.rollups.subtree.as_slice();
             let n = tree.records.len();
             let widget_ids = tree.records.widget_id();
             let subtree_end = tree.records.subtree_end();
@@ -595,9 +655,8 @@ impl DamageEngine {
             while i < n {
                 let node_span = layer_node_paints[i];
                 let curr_paints_slice = &layer_paints[node_span.range()];
-                let curr_paints = node_span.len > 0;
-                let curr_node_hash = tree.rollups.node[i];
-                let curr_subtree_hash = tree.rollups.subtree[i];
+                let curr_node_hash = node_hashes[i];
+                let curr_subtree_hash = subtree_hashes[i];
                 let curr_cascade_input = cascade_inputs[i];
                 // This node's next-frame snapshot — every field but
                 // `paint_span` is fixed per node, so the arms differ
@@ -609,13 +668,18 @@ impl DamageEngine {
                     cascade_input: curr_cascade_input,
                 };
                 let advance = match prev_map.entry(widget_ids[i]) {
-                    // Skip the snapshot insert for a new node that paints
-                    // nothing or paints entirely off-surface. `union_screens`
-                    // is the former `Cascade.paint_rect`, recomputed here on
-                    // the cold (Vacant) path rather than stored per node.
+                    // Skip the snapshot insert for a new *childless* node
+                    // that paints nothing or paints entirely off-surface.
+                    // `union_screens` is the former `Cascade.paint_rect`,
+                    // recomputed here on the cold (Vacant) path rather than
+                    // stored per node. A node with children always inserts
+                    // — its child-marker rows track paint order, and its
+                    // children can paint on-surface (canvas overhang) even
+                    // when its own rows don't.
                     Entry::Vacant(_)
-                        if !union_screens(curr_paints_slice)
-                            .is_some_and(|u| u.intersects(surface)) =>
+                        if subtree_end[i].end() as usize == i + 1
+                            && !union_screens(curr_paints_slice)
+                                .is_some_and(|u| u.intersects(surface)) =>
                     {
                         1
                     }
@@ -659,10 +723,33 @@ impl DamageEngine {
                         e.get_mut().subtree_hash = curr_subtree_hash;
                         1
                     }
-                    Entry::Occupied(mut e) if curr_paints => {
+                    Entry::Occupied(mut e) if !curr_paints_slice.is_empty() => {
                         let prev = *e.get();
                         let leg =
                             arena.diff_changed_leg(raw_rects, prev.paint_span, curr_paints_slice);
+                        // Order check — exact-matched rows emitted no content
+                        // damage, but pairs whose relative paint order
+                        // inverted (a raised node, a shape crossing a child
+                        // boundary, coincident shapes swapping) still flip
+                        // their overlap's pixels. `matched_pos` is only
+                        // populated on the slow path — the fast path
+                        // (`geometry_unchanged`) is order-identical by
+                        // construction. Moved/added rows already pushed
+                        // their full rects, which cover any overlap they
+                        // sit in, so only exact pairs participate.
+                        if !leg.geometry_unchanged && has_order_inversion(&arena.matched_pos) {
+                            build_row_extents(
+                                NodeId(i as u32),
+                                tree,
+                                &layer_cascades.paint_arena,
+                                order_extents,
+                            );
+                            emit_inverted_overlaps(
+                                &arena.matched_pos,
+                                |j| order_extents[j],
+                                raw_rects,
+                            );
+                        }
                         // The per-shape diff covers shapes that moved or
                         // changed. When it found every `Paint` identical
                         // (`geometry_unchanged`) it emitted nothing — and
@@ -692,7 +779,7 @@ impl DamageEngine {
                         1
                     }
                     Entry::Occupied(e) => {
-                        // Painting → non-painting transition: push
+                        // Rows → rowless transition: push
                         // everything the node *was* painting, then
                         // evict.
                         let prev = *e.get();
@@ -784,27 +871,159 @@ impl DamageEngine {
     }
 }
 
+/// Push one screen rect into the raw-rect buffer, dropping
+/// paint-empty rects — child markers (always zero) and fully
+/// clipped-away shapes produce no pixels, so they have nothing to
+/// clear or repaint.
+#[inline]
+fn push_screen(out: &mut Vec<Rect>, screen: Rect) {
+    if !screen.is_paint_empty() {
+        out.push(screen);
+    }
+}
+
 /// Drain every paint's screen rect into the raw-rect buffer. Used by
 /// the Vacant-insert arm (everything's new), the eviction arm
 /// (everything's going), and the removed-widget tail.
 #[inline]
 fn push_screens(out: &mut Vec<Rect>, paints: &[Paint]) {
     for p in paints {
-        out.push(p.screen);
+        push_screen(out, p.screen);
     }
 }
 
-/// Screen-space union of a node's paint rows — the node's own paint
-/// extent, formerly stored as `Cascade.paint_rect`. The cascade no
-/// longer caches it; the damage diff recomputes it here on its cold
-/// paths (the Vacant surface-cull and the tier-3 cascade-state union
-/// push) from the same `paint_arena` slice those arms already touch.
-/// `None` for a non-painting node (empty slice).
+/// Screen-space union of a node's pixel-producing paint rows — the
+/// node's own paint extent, formerly stored as `Cascade.paint_rect`.
+/// The cascade no longer caches it; the damage diff recomputes it here
+/// on its cold paths (the Vacant surface-cull and the tier-3
+/// cascade-state union push) from the same `paint_arena` slice those
+/// arms already touch. Paint-empty rows (child markers, clipped-away
+/// shapes) are skipped — folding their zero boxes in would bias the
+/// union toward the origin / clip edge. `None` when no row produces
+/// pixels.
 #[inline]
 fn union_screens(paints: &[Paint]) -> Option<Rect> {
-    let mut it = paints.iter();
-    let first = it.next()?.screen;
-    Some(it.fold(first, |acc, p| acc.union(p.screen)))
+    paints
+        .iter()
+        .map(|p| p.screen)
+        .filter(|s| !s.is_paint_empty())
+        .reduce(|acc, s| acc.union(s))
+}
+
+/// `matched_pos` sentinel for a curr row with no exact match in the
+/// prev span (moved / added / content-changed — the content diff
+/// damages those over their full rects).
+const ROW_UNMATCHED: u32 = u32::MAX;
+
+/// True when some pair of matched rows inverted its relative order —
+/// i.e. the matched prev positions aren't non-decreasing in curr order.
+/// O(n) gate in front of the quadratic pair enumeration.
+fn has_order_inversion(matched_pos: &[u32]) -> bool {
+    // `last` starts at 0, which no unsigned position undercuts, so the
+    // first matched row can't false-trigger.
+    let mut last = 0u32;
+    for &pos in matched_pos {
+        if pos == ROW_UNMATCHED {
+            continue;
+        }
+        if pos < last {
+            return true;
+        }
+        last = pos;
+    }
+    false
+}
+
+/// Screen-space extent per row of `node`'s paint span, in row order:
+/// chrome and direct shapes keep their own `Paint.screen`; a child
+/// marker's zero rect is swapped for [`child_paint_extent`] — the
+/// pixels that actually move when the child's paint order flips. Only
+/// built on the inversion path — child extents walk the whole child
+/// subtree's rows.
+///
+/// Rows are 1:1 with chrome + the node's `TreeItems` stream (the
+/// cascade emits them from the same walk), so the two cursors advance
+/// in lockstep.
+fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Vec<Rect>) {
+    let node_span = arena.node_spans[node.idx()];
+    let subtree_end = tree.records.subtree_end();
+    out.clear();
+    if tree.chrome(node).is_some() {
+        out.push(arena.rows[node_span.start as usize].screen);
+    }
+    for item in tree.tree_items(node) {
+        out.push(match item {
+            TreeItem::ShapeRecord(..) => arena.rows[node_span.start as usize + out.len()].screen,
+            TreeItem::Child(c) => {
+                child_paint_extent(c.id, subtree_end, arena).unwrap_or(Rect::ZERO)
+            }
+        });
+    }
+    assert_eq!(
+        out.len(),
+        node_span.len as usize,
+        "row extents out of sync with the owner's paint span",
+    );
+}
+
+/// Push the extent intersection of every exact-matched row pair whose
+/// relative paint order inverted since last frame. `extent(j)` maps a
+/// curr row index to its screen extent (a [`build_row_extents`] slot).
+/// O(rows²) pair enumeration, reached only behind a
+/// [`has_order_inversion`] gate on the rare frame an order actually
+/// flipped. Rows that merely shifted because a sibling was added or
+/// removed keep their relative order and contribute nothing; a
+/// paint-empty extent (offscreen child, clipped-away shape) can't
+/// strictly `intersects` anything and drops out for free.
+fn emit_inverted_overlaps(
+    matched_pos: &[u32],
+    extent: impl Fn(usize) -> Rect,
+    out: &mut Vec<Rect>,
+) {
+    for j2 in 1..matched_pos.len() {
+        let p2 = matched_pos[j2];
+        if p2 == ROW_UNMATCHED {
+            continue;
+        }
+        for (j1, &p1) in matched_pos.iter().enumerate().take(j2) {
+            if p1 == ROW_UNMATCHED || p1 < p2 {
+                continue;
+            }
+            let (a, b) = (extent(j1), extent(j2));
+            if a.intersects(b) {
+                out.push(a.intersect(b));
+            }
+        }
+    }
+}
+
+/// Screen-space painted extent of `child`'s whole subtree — the union of
+/// every paint row in `[child, child_subtree_end)`. Built from the
+/// per-shape `Paint.screen` rects (already transformed + clipped) rather
+/// than `Cascades::subtree_paint_rects`, which seeds non-painting nodes
+/// with a zero rect at the origin and so biases their rolled-up extent
+/// toward `(0, 0)` — harmless for the encoder's conservative cull, but it
+/// would fabricate origin overlaps here. `None` when the subtree paints
+/// nothing.
+///
+/// The cascade visits nodes in pre-order with a monotone arena cursor
+/// and stamps every node's `node_spans` slot (empty spans still carry
+/// the cursor as `start`), so a subtree's rows are one contiguous run:
+/// from the child's own `start` to the `start` of the first node past
+/// the subtree (or the arena's end). One linear fold, no per-node span
+/// hops.
+fn child_paint_extent(
+    child: NodeId,
+    subtree_end: &[SubtreeEnd],
+    arena: &PaintArena,
+) -> Option<Rect> {
+    let end = subtree_end[child.idx()].end() as usize;
+    let start_row = arena.node_spans[child.idx()].start as usize;
+    let end_row = match arena.node_spans.get(end) {
+        Some(next) => next.start as usize,
+        None => arena.rows.len(),
+    };
+    union_screens(&arena.rows[start_row..end_row])
 }
 
 fn extend_predamaged(
@@ -827,23 +1046,21 @@ fn extend_predamaged(
                 continue;
             }
             // Map the shape to its paint slot inside the owner's
-            // `node_span`. Chrome (when present) sits at row 0, shape
-            // paints follow — one per *direct* shape, in `TreeItems`
-            // order (the same stream `compute_paint_rect` emitted
-            // from). `shape_idx - shape_span.start` would be wrong
-            // here: the span covers the whole subtree, so a
+            // `node_span`. Chrome (when present) sits at row 0, then
+            // one row per `TreeItems` item — direct shapes and child
+            // markers alike, in the same stream `compute_paint_rect`
+            // emitted from — so the row index is the shape's position
+            // in that stream. `shape_idx - shape_span.start` would be
+            // wrong here: the span covers the whole subtree, so a
             // shape-bearing child recorded before the animated shape
             // (Scroll's bars-after-child pattern) would shift the
-            // arithmetic onto a different row. Count direct rows
-            // instead.
+            // arithmetic onto a different row.
             let node = NodeId(e.node_idx);
             let ordinal = tree
                 .tree_items(node)
-                .filter_map(|item| match item {
-                    TreeItem::ShapeRecord(idx, _) => Some(idx),
-                    TreeItem::Child(_) => None,
-                })
-                .position(|idx| idx == e.shape_idx)
+                .position(
+                    |item| matches!(item, TreeItem::ShapeRecord(idx, _) if idx == e.shape_idx),
+                )
                 .expect("paint-anim shape_idx is a direct shape of its owner")
                 as u32;
             let chrome_offset = u32::from(tree.chrome(node).is_some());
@@ -873,9 +1090,7 @@ impl DamageEngine {
     /// didn't paint last frame (no `prev` entry).
     pub(crate) fn prev_paint_rect(&self, wid: WidgetId) -> Option<Rect> {
         let snap = self.prev.get(&wid)?;
-        let mut screens = self.arena.snaps[snap.paint_span.range()].iter();
-        let first = screens.next()?.screen;
-        Some(screens.fold(first, |acc, p| acc.union(p.screen)))
+        union_screens(&self.arena.snaps[snap.paint_span.range()])
     }
 }
 

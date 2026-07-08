@@ -27,16 +27,24 @@ use glam::Vec2;
 use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
 
-/// One paintable contribution from a single node — either chrome (row 0
-/// of the node's paint span when the node has chrome) or one direct
-/// shape. Single source of truth for "did this pixel-producer change
-/// since last frame?"
+/// One row of a node's paint span — chrome (row 0 when the node has
+/// chrome), one direct shape, or a child marker, in record order.
+/// Single source of truth for "did this pixel-producer change since
+/// last frame?" — including paint *order*: child markers put the
+/// shape/child interleave into the span, so the damage diff's row
+/// matcher sees z-order changes (a raised node, a shape crossing a
+/// child boundary) as row reorders, not silent no-ops.
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 pub(crate) struct Paint {
-    /// Screen-space rect after parent transform + clip.
+    /// Screen-space rect after parent transform + clip. Child markers
+    /// carry `Rect::ZERO` — they produce no pixels themselves (the
+    /// child's own rows do); damage computes a child's painted extent
+    /// on demand from its subtree's rows when an order check needs it.
     pub(crate) screen: Rect,
     /// Authoring hash. For chrome: `Tree.rollups.chrome[node]`.
-    /// For shape: `Tree.shapes.hashes[shape_idx]`.
+    /// For shape: `Tree.shapes.hashes[shape_idx]`. For a child marker:
+    /// the child's `WidgetId` bits — its stable identity across
+    /// reorders.
     pub(crate) hash: NodeHash,
 }
 
@@ -46,8 +54,9 @@ pub(crate) struct Paint {
 #[derive(Default)]
 pub(crate) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
-    /// span when present) or shape contribution. Pushed in pre-order
-    /// paint order; cleared each frame.
+    /// span when present), direct shape, or immediate-child marker,
+    /// in record order per node. Pushed in pre-order paint order;
+    /// cleared each frame.
     pub(crate) rows: Vec<Paint>,
     /// Per-node [`Span`] into [`Self::rows`]. Empty span
     /// (`Span::default()`) means the node paints nothing — replaces
@@ -632,6 +641,17 @@ fn lift_to_screen(local: Rect, origin: Vec2, t: TranslateScale, clip: Option<Rec
 /// painted extent at any zoom.
 #[inline]
 fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect {
+    // `screen` is already clipped, so a fully-off-clip run has collapsed
+    // to zero on an axis (a zero-width box pinned at the clip edge). It
+    // has no visible glyphs to pad; inflating it here would re-grow the
+    // box *back across the clip edge*, fabricating a sub-pixel damage
+    // sliver at the viewport edge for text that isn't on screen at all
+    // (the "offscreen node casts a shadow at the window edge" bug). Leave
+    // a non-paintable box empty — `is_paint_empty` also folds in the NaN
+    // and float-boundary near-zero cases a bare `<= 0` compare would miss.
+    if screen.is_paint_empty() {
+        return screen;
+    }
     let pad_w = measured.w * (TEXT_SCALE_STEP * 0.5);
     let pad_h = measured.h * (TEXT_SCALE_STEP * 0.5);
     let inflated = Rect {
@@ -649,31 +669,18 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
 
 /// Push one paint row and fold its screen rect into the running union
 /// in a single step. [`compute_paint_rect`]'s invariant requires the
-/// union to track exactly the set of pushed rows; doing both here makes
-/// the two legs impossible to desync at a call site.
+/// union to track exactly the set of pushed non-paint-empty rows;
+/// doing both here makes the two legs impossible to desync at a call
+/// site. A paint-empty screen (shape fully clipped away) still pushes
+/// its row — damage matches rows by identity and needs the slot — but
+/// stays out of the union, which would otherwise grow to include the
+/// degenerate box pinned at the clip edge.
 #[inline]
 fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, hash: NodeHash) {
-    *union = Some(union.map_or(screen, |a| a.union(screen)));
-    arena.rows.push(Paint { screen, hash });
-}
-
-/// Fold a shape's z-band — the count of child subtrees painted before it
-/// in its owner's record stream — into its content hash, so the damage
-/// diff treats two otherwise-identical `Paint`s that sit on opposite
-/// sides of a child as distinct. `rank == 0` (the overwhelmingly common
-/// "all direct shapes recorded before any child" case, and every chrome
-/// row) returns the content hash untouched, so band-0 damage behavior is
-/// bit-identical to before this existed and only the rare after-a-child
-/// shapes pay the extra fold.
-#[inline]
-fn paint_hash(content: NodeHash, rank: u32) -> NodeHash {
-    if rank == 0 {
-        return content;
+    if !screen.is_paint_empty() {
+        *union = Some(union.map_or(screen, |a| a.union(screen)));
     }
-    let mut h = Hasher::new();
-    h.write_u64(content.0);
-    h.write_u32(rank);
-    NodeHash(h.finish())
+    arena.rows.push(Paint { screen, hash });
 }
 
 /// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
@@ -694,27 +701,31 @@ struct PaintRectCtx<'a> {
     clips: bool,
 }
 
-/// Emit every paint row for `node` (chrome at row 0 when present, then
-/// direct shapes in record order) via [`push_paint`], write the
+/// Emit every paint row for `node` — chrome at row 0 when present,
+/// then direct shapes and child markers in record order — write the
 /// covering [`Span`] into `node_spans[node]`, and return the
-/// screen-space union of every row — used locally as the
-/// `subtree_paint_rects` seed for the encoder's cull. Damage recomputes
-/// the same union from the `paint_arena` rows on demand (its cold
-/// paths), so it isn't stored per node.
+/// screen-space union of the pixel-producing rows — used locally as
+/// the `subtree_paint_rects` seed for the encoder's cull. Damage
+/// recomputes the same union from the `paint_arena` rows on demand
+/// (its cold paths), so it isn't stored per node.
 ///
 /// Chrome rides `parent_transform` (encoder emits chrome before the
 /// body push); shapes ride `shape_transform = parent ∘ self_anchored`
-/// (inside the body push, per `Panel::transform`). The two transforms
-/// are the only structural difference between the two row kinds.
+/// (inside the body push, per `Panel::transform`). Child markers are
+/// pushed raw (zero screen, child `WidgetId` as hash) — they exist so
+/// the damage diff sees the paint-order interleave; the child's pixels
+/// are covered by its own rows.
 ///
 /// # Invariant
 ///
 /// The returned `Rect` is bit-identical to the screen-space union of
-/// `arena.rows[paints_start..arena.rows.len()].iter().map(|p| p.screen)`
-/// — the same union `damage::union_screens` recomputes from the stored
-/// rows. [`push_paint`] keeps the union and the pushed rows in lockstep;
-/// the chromeless clip-only branch is the sole fold-without-push case
-/// (it contributes a cull rect but emits no pixels).
+/// the non-paint-empty rows in
+/// `arena.rows[paints_start..arena.rows.len()]` — the same union
+/// `damage::union_screens` recomputes from the stored rows.
+/// [`push_paint`] keeps the union and the pushed rows in lockstep;
+/// child markers bypass it (zero rect, no pixels), and the chromeless
+/// clip-only branch is the sole fold-without-push case (it contributes
+/// a cull rect but emits no pixels).
 fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     let PaintRectCtx {
         tree,
@@ -764,26 +775,21 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         union = Some(union.map_or(screen, |a| a.union(screen)));
     }
 
-    if tree.records.shape_span()[node.idx()].len > 0 {
+    let has_shapes = tree.records.shape_span()[node.idx()].len > 0;
+    let has_children = tree.records.subtree_end()[node.idx()].end() > node.0 + 1;
+    if has_shapes || has_children {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
-        // Count child subtrees painted before each direct shape so a
-        // shape's z-band becomes part of its damage identity (folded
-        // into its `Paint.hash` below). Without it, a shape that keeps
-        // identical content + screen but crosses a child boundary —
-        // moving from *above* the children to *below* them or back —
-        // pairs with its old row in the content-keyed `diff_changed_leg`
-        // and emits no damage, stranding the stale on-top pixels over
-        // the child. Real repro: darkroom commits an in-flight
-        // connection preview (drawn over the nodes) into a byte-identical
-        // committed wire drawn under them; same curve, flipped z-order.
-        let mut child_rank: u32 = 0;
         let shape_hashes = tree.shapes.hashes.as_slice();
+        let widget_ids = tree.records.widget_id();
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             let (idx, s) = match item {
                 TreeItem::ShapeRecord(idx, s) => (idx, s),
-                TreeItem::Child(_) => {
-                    child_rank += 1;
+                TreeItem::Child(c) => {
+                    arena.rows.push(Paint {
+                        screen: Rect::ZERO,
+                        hash: NodeHash(widget_ids[c.id.idx()].0),
+                    });
                     continue;
                 }
             };
@@ -820,8 +826,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             if let Some(measured) = text_measured {
                 screen = inflate_text_damage(screen, measured, shape_clip);
             }
-            let hash = paint_hash(shape_hashes[idx as usize], child_rank);
-            push_paint(arena, &mut union, screen, hash);
+            push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
         }
     }
 
