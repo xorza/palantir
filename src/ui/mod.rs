@@ -1125,12 +1125,14 @@ impl Ui {
     /// sub-id derivation), then hand the *same* id to [`Self::node`]. Every
     /// built-in widget follows this resolve-once-then-`node` shape.
     ///
-    /// The egui `make_persistent_id` analogue: a [`crate::Configure::id_salt`]
-    /// salt resolves to `parent.with(salt)` (so per-site state stays stable
-    /// across frames); auto / explicit ids resolve as-is. Parent context is
-    /// the most-recently-opened node in the current layer — `Layer::Main`'s
-    /// synthetic viewport counts as a parent with a frame-stable id, so
-    /// widgets get stable ids with no layer carve-out.
+    /// The egui `make_persistent_id` analogue: an [`crate::Configure::id_salt`]
+    /// salt *and* a `#[track_caller]` auto id both resolve to
+    /// `parent.with(id)` (so identity tracks tree position, not global
+    /// record order, keeping per-site state stable across frames and
+    /// sibling reorders); only an explicit `.id(id)` resolves verbatim.
+    /// Parent context is the most-recently-opened node in the current layer
+    /// — `Layer::Main`'s synthetic viewport counts as a parent with a
+    /// frame-stable id, so widgets get stable ids with no layer carve-out.
     ///
     /// **Eagerly disambiguates** via `SeenIds`: a salt colliding with a
     /// sibling already recorded this frame is bumped to a fresh occurrence
