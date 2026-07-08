@@ -36,8 +36,13 @@ impl InternedStr {
     /// arena passed in. Caller is responsible for passing the right
     /// arena — typically `&frame_arena.fmt_scratch` during the layout
     /// / readback pass.
+    ///
+    /// Crate-internal: only the frame pipeline holds the arena an
+    /// `Interned` value indexes into, so this is not a public accessor.
+    /// Consumers that keep their own text should store [`SmolStr`]
+    /// (aperture re-exports it) and convert via `Into<InternedStr>`.
     #[inline]
-    pub fn as_str<'a>(&'a self, text_bytes: &'a str) -> &'a str {
+    pub(crate) fn as_str<'a>(&'a self, text_bytes: &'a str) -> &'a str {
         match self {
             Self::Owned(s) => s,
             Self::Interned { span, .. } => {
