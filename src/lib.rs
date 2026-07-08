@@ -113,11 +113,6 @@ pub use glam::UVec2;
 // `Vec2` is in the public surface (Shape polyline points, `Configure::position`,
 // `Canvas` placement); re-export so widget authors don't need a direct `glam` dep.
 pub use glam::Vec2;
-// The owned string type behind `InternedStr::Owned`. Re-exported as the
-// canonical owned-text carrier for consumers that keep their own strings and
-// hand them to widgets via `Into<InternedStr>` (alloc-free clone), rather than
-// storing the frame-local `InternedStr` themselves.
-pub use smol_str::SmolStr;
 pub use primitives::span::Span;
 pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
@@ -125,6 +120,11 @@ pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
 pub use renderer::image_registry::{ImageHandle, ImageRegistry};
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
+// The owned string type behind `InternedStr::Owned`. Re-exported as the
+// canonical owned-text carrier for consumers that keep their own strings and
+// hand them to widgets via `Into<InternedStr>` (alloc-free clone), rather than
+// storing the frame-local `InternedStr` themselves.
+pub use smol_str::SmolStr;
 pub use text::cosmic::CosmicMeasure;
 pub use text::{FontFamily, FontWeight, ShapeParams, TextShaper};
 pub use ui::Ui;
