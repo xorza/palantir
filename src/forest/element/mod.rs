@@ -399,11 +399,19 @@ const _: () = assert!(
 /// at record time when the parent context is known. Three sources:
 ///
 /// - [`Salt::Auto`] — `#[track_caller]`-derived. The captured
-///   `(file, line, column)` already encodes call-site identity, so
-///   the resolved id is the stored [`WidgetId`] **as-is** (no
-///   parent-scoping — auto ids stay stable across moves in the tree).
-///   `Ui::node`'s built-in occurrence-counter disambiguation handles
-///   loops / helper closures that resolve to the same call site.
+///   `(file, line, column)` encodes call-site identity, but a call
+///   site reached from a loop or helper resolves to the *same* base id
+///   for every iteration, so identity must also depend on **where in
+///   the tree** the widget sits. So an auto id is **parent-scoped**
+///   too: mixed with the most-recently-opened parent's resolved
+///   `WidgetId`, exactly like [`Salt::Hash`]. This is what keeps two
+///   nodes drawn from one `draw_one` helper — whose interior text /
+///   shape leaves share an auto call site — from swapping ids when the
+///   nodes' paint order flips: each leaf hangs off its own stable-id
+///   node body, so a raise/reorder can't churn its identity (and thus
+///   can't spuriously damage or re-key state for untouched nodes).
+///   Same-parent collisions from a genuine sibling loop are still
+///   disambiguated by `SeenIds`' occurrence counter.
 ///
 /// - [`Salt::Hash`] — raw user-supplied hash from `.id_salt(key)`.
 ///   At resolve time the hash is **mixed with the most-recently-
@@ -416,8 +424,8 @@ const _: () = assert!(
 ///
 /// - [`Salt::Verbatim`] — precomputed [`WidgetId`] from `.id(id)`,
 ///   used as-is. Escape hatch for ids derived elsewhere
-///   (cross-layer popups, sibling pairs sharing a seed). Skips
-///   parent-scoping.
+///   (cross-layer popups, sibling pairs sharing a seed). The **only**
+///   variant that skips parent-scoping.
 #[derive(Clone, Copy, Debug)]
 pub(crate) enum Salt {
     Auto(WidgetId),
@@ -427,18 +435,20 @@ pub(crate) enum Salt {
 
 impl Salt {
     /// Mix `self` with `parent`'s already-resolved `WidgetId` to
-    /// produce the id that will be recorded into the tree. Only
-    /// [`Salt::Hash`] consults `parent`; `Auto` and `Verbatim` pass
-    /// through. `parent == None` covers the "no user-visible parent"
-    /// case (root of a layer, or the first user-recorded widget
-    /// under `Layer::Main`'s synthetic viewport).
+    /// produce the id that will be recorded into the tree.
+    /// [`Salt::Auto`] and [`Salt::Hash`] both consult `parent` (so a
+    /// widget's identity tracks its position in the tree, not its
+    /// global record order); only [`Salt::Verbatim`] passes through.
+    /// `parent == None` covers the "no user-visible parent" case (root
+    /// of a layer, or the first user-recorded widget under
+    /// `Layer::Main`'s synthetic viewport).
     #[inline]
     pub(crate) fn resolve(self, parent: Option<WidgetId>) -> WidgetId {
         match self {
-            Salt::Auto(id) | Salt::Verbatim(id) => id,
-            Salt::Hash(salt) => match parent {
-                Some(p) => p.with(salt.0),
-                None => salt,
+            Salt::Verbatim(id) => id,
+            Salt::Auto(id) | Salt::Hash(id) => match parent {
+                Some(p) => p.with(id.0),
+                None => id,
             },
         }
     }

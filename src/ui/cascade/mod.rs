@@ -657,6 +657,25 @@ fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, ha
     arena.rows.push(Paint { screen, hash });
 }
 
+/// Fold a shape's z-band — the count of child subtrees painted before it
+/// in its owner's record stream — into its content hash, so the damage
+/// diff treats two otherwise-identical `Paint`s that sit on opposite
+/// sides of a child as distinct. `rank == 0` (the overwhelmingly common
+/// "all direct shapes recorded before any child" case, and every chrome
+/// row) returns the content hash untouched, so band-0 damage behavior is
+/// bit-identical to before this existed and only the rare after-a-child
+/// shapes pay the extra fold.
+#[inline]
+fn paint_hash(content: NodeHash, rank: u32) -> NodeHash {
+    if rank == 0 {
+        return content;
+    }
+    let mut h = Hasher::new();
+    h.write_u64(content.0);
+    h.write_u32(rank);
+    NodeHash(h.finish())
+}
+
 /// Inputs to [`compute_paint_rect`], threaded from `run_tree`.
 /// `shape_transform` (the `parent ∘ self_anchored` descendants also
 /// inherit) and `clips` are computed once at the call site and passed
@@ -748,10 +767,25 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     if tree.records.shape_span()[node.idx()].len > 0 {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
+        // Count child subtrees painted before each direct shape so a
+        // shape's z-band becomes part of its damage identity (folded
+        // into its `Paint.hash` below). Without it, a shape that keeps
+        // identical content + screen but crosses a child boundary —
+        // moving from *above* the children to *below* them or back —
+        // pairs with its old row in the content-keyed `diff_changed_leg`
+        // and emits no damage, stranding the stale on-top pixels over
+        // the child. Real repro: darkroom commits an in-flight
+        // connection preview (drawn over the nodes) into a byte-identical
+        // committed wire drawn under them; same curve, flipped z-order.
+        let mut child_rank: u32 = 0;
         let shape_hashes = tree.shapes.hashes.as_slice();
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
-            let TreeItem::ShapeRecord(idx, s) = item else {
-                continue;
+            let (idx, s) = match item {
+                TreeItem::ShapeRecord(idx, s) => (idx, s),
+                TreeItem::Child(_) => {
+                    child_rank += 1;
+                    continue;
+                }
             };
             // Text shapes live only on Leaf nodes (`leaf_text_shapes`
             // asserts the same), so when this node has any text shape
@@ -786,7 +820,8 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
             if let Some(measured) = text_measured {
                 screen = inflate_text_damage(screen, measured, shape_clip);
             }
-            push_paint(arena, &mut union, screen, shape_hashes[idx as usize]);
+            let hash = paint_hash(shape_hashes[idx as usize], child_rank);
+            push_paint(arena, &mut union, screen, hash);
         }
     }
 

@@ -178,6 +178,135 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
     );
 }
 
+/// Regression: two panels at fixed canvas positions, each with an
+/// auto-id painting leaf recorded from a shared helper (one call site →
+/// one auto base id). Only the draw order flips between frames;
+/// positions + content are identical, so nothing visible changes and
+/// damage must be empty. Before auto ids were parent-scoped, the leaf's
+/// id was disambiguated by *global* occurrence order, so reordering the
+/// nodes shuffled which node each disambiguated id mapped to and
+/// spuriously damaged both — darkroom's "selecting/raising a node
+/// rerenders untouched nodes" bug. Parent-scoping ties each leaf to its
+/// own stable-id node body, so a reorder can't churn its identity.
+#[test]
+fn reordering_nodes_does_not_damage_unchanged_leaves() {
+    fn node(ui: &mut Ui, key: &str, pos: (f32, f32)) {
+        Panel::vstack()
+            .id(WidgetId::from_hash(key))
+            .position(pos)
+            .size((Sizing::Fixed(30.0), Sizing::Fixed(30.0)))
+            .show(ui, |ui| {
+                // Auto id — no `.id`/`.id_salt`; same call site for every
+                // node, so it collides across nodes and is disambiguated.
+                Frame::new()
+                    .size(10.0)
+                    .background(Background {
+                        fill: RED.into(),
+                        ..Default::default()
+                    })
+                    .show(ui);
+            });
+    }
+    let canvas = |ui: &mut Ui, order: [(&str, (f32, f32)); 2]| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (key, pos) in order {
+                    node(ui, key, pos);
+                }
+            });
+    };
+
+    let a = ("a", (10.0, 10.0));
+    let b = ("b", (120.0, 120.0));
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| canvas(ui, [a, b]));
+    // Same positions + content, only draw order flips.
+    frame(&mut ui, |ui| canvas(ui, [b, a]));
+
+    assert!(
+        ui.damage_region().is_empty(),
+        "reordering nodes must not damage unchanged leaves; region = {:?}",
+        ui.damage_region().iter_rects().collect::<Vec<_>>(),
+    );
+}
+
+/// Regression: a direct shape whose content + screen rect are unchanged
+/// but which moves from *above* a child subtree to *below* it (its
+/// interleave position relative to the child flips) changes the
+/// composited pixels — the shape now paints under the child instead of
+/// over it. The content-keyed per-shape diff used to pair the two
+/// byte-identical `Paint`s and emit nothing, so the old on-top pixels
+/// stayed stranded over the child. Mirrors darkroom committing an
+/// in-flight connection preview (drawn over the nodes) into a
+/// byte-identical wire drawn under them: same curve, flipped z-order.
+/// The fix folds each shape's preceding-child count into its `Paint.hash`
+/// so the band change registers as damage.
+#[test]
+fn shape_crossing_child_boundary_is_redamaged() {
+    // The line overlaps the child, so a stale on-top draw would visibly
+    // cover it. Probe a point inside both the line strip and the child.
+    const CHILD: Rect = Rect::new(20.0, 20.0, 40.0, 40.0);
+    const PROBE: Rect = Rect::new(30.0, 39.0, 2.0, 2.0);
+
+    let line = |ui: &mut Ui| {
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(10.0, 40.0),
+            b: Vec2::new(70.0, 40.0),
+            width: 4.0,
+            brush: Brush::Solid(BLUE),
+            cap: LineCap::Round,
+            join: LineJoin::Round,
+        });
+    };
+    let child = |ui: &mut Ui| {
+        Frame::new()
+            .id(WidgetId::from_hash("child"))
+            .position((CHILD.min.x, CHILD.min.y))
+            .size(CHILD.size.w)
+            .background(Background {
+                fill: RED.into(),
+                ..Default::default()
+            })
+            .show(ui);
+    };
+    // `over`: line recorded after the child → paints on top (child_rank
+    // 1). `under`: identical line recorded before the child → paints
+    // beneath (child_rank 0). Fixed-size canvas so its own rect (and
+    // thus `cascade_input`) can't change between the two.
+    let over = |ui: &mut Ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                child(ui);
+                line(ui);
+            });
+    };
+    let under = |ui: &mut Ui| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                line(ui);
+                child(ui);
+            });
+    };
+
+    let mut ui = Ui::for_test();
+    frame(&mut ui, over);
+    frame(&mut ui, under);
+
+    let region = ui.damage_region();
+    assert!(
+        region.any_intersects(PROBE),
+        "the shape's overlap with the child must be re-damaged when the \
+         shape crosses the child z-boundary; region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+}
+
 /// Pin: when a subtree's `(paint_rect, node_hash, subtree_hash,
 /// cascade_input)` all match the prev-frame snapshot at its painting
 /// root, the damage diff jumps to `subtree_end` instead of walking every
