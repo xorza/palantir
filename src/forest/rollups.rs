@@ -106,8 +106,10 @@ impl CascadeInputHash {
 ///
 /// "Does this node directly contribute pixels?" used to live here as
 /// a `paints: FixedBitSet`; the unified
-/// `Cascades::paint_arenas[].node_spans` answers the same question
-/// (empty span means "paints nothing"), so the bitset was removed.
+/// `Cascades::paint_arenas[].node_spans` answers a superset of that
+/// question (empty span means "no rows" — no chrome, no shapes, and
+/// no children, since child markers occupy rows too), so the bitset
+/// was removed.
 #[derive(Default)]
 pub(crate) struct SubtreeRollups {
     pub(crate) node: Vec<NodeHash>,
@@ -115,7 +117,7 @@ pub(crate) struct SubtreeRollups {
 }
 
 impl SubtreeRollups {
-    /// Reset and size every column for `n` records. Both columns are
+    /// Reset and size every column for `n` records. Columns are
     /// resized with default values — filled by indexed assignment
     /// during the fused reverse-pre-order pass in
     /// `Tree::compute_hashes`.

@@ -305,9 +305,10 @@ fn empty_then_populated_frame() {
     });
     // Synthetic viewport root + user Panel = 2 records.
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 2);
-    // Root Panel is non-painting (no chrome, no shapes) so prev stays
-    // empty — only painting widgets are tracked.
-    assert!(ui.damage_engine.prev.is_empty());
+    // The user Panel is rowless (no chrome, no shapes, no children) so
+    // it gets no prev entry; the viewport root tracks it as a
+    // child-marker row — one entry total.
+    assert_eq!(ui.damage_engine.prev.len(), 1);
 }
 
 /// Pin: `Ui::frame` panics if `display.scale_factor` is below `EPS`.
@@ -337,11 +338,13 @@ fn prev_frame_empty_before_first_frame() {
     assert!(ui.damage_engine.prev.is_empty());
 }
 
-/// Pin: after the first frame, painting widgets land in `prev` with
-/// their arranged rect and authoring hash; non-painting widgets (Panel
-/// without chrome) don't.
+/// Pin the row invariant: after the first frame, widgets with paint
+/// rows land in `prev` — painting widgets with their arranged rect and
+/// authoring hash, and chromeless parents via their child-marker rows
+/// (paint-order tracking), whose all-zero screens union to no paint
+/// extent. A rowless node (childless Panel without chrome) stays out.
 #[test]
-fn prev_frame_captures_painting_nodes() {
+fn prev_frame_captures_nodes_with_rows() {
     let mut ui = Ui::for_test();
     let mut frame_node = None;
     ui.run_at(SURFACE, |ui| {
@@ -349,13 +352,22 @@ fn prev_frame_captures_painting_nodes() {
             .id(WidgetId::from_hash("root"))
             .show(ui, |ui| {
                 frame_node = Some(blue_frame(ui, "a"));
+                Panel::hstack()
+                    .id(WidgetId::from_hash("empty"))
+                    .show(ui, |_| {});
             });
     });
     let frame_node = frame_node.unwrap();
     let prev = &ui.damage_engine.prev;
     let snap = &prev[&WidgetId::from_hash("a")];
 
-    assert!(!prev.contains_key(&WidgetId::from_hash("root")));
+    assert!(prev.contains_key(&WidgetId::from_hash("root")));
+    assert!(!prev.contains_key(&WidgetId::from_hash("empty")));
+    assert_eq!(
+        ui.damage_engine
+            .prev_paint_rect(WidgetId::from_hash("root")),
+        None,
+    );
     assert_eq!(
         ui.damage_engine
             .prev_paint_rect(WidgetId::from_hash("a"))

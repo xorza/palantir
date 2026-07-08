@@ -129,11 +129,13 @@ fn self_transform_anchors_scale_at_panel_origin() {
     );
 }
 
-/// A panel with chrome emits a Paint row at the start of its
-/// node's `node_spans` span; a chromeless panel emits an empty
-/// span.
+/// A panel with chrome emits a Paint row at the start of its node's
+/// `node_spans` span; a chromeless childless panel emits an empty
+/// span; a chromeless *parent* emits one marker row per child — zero
+/// screen (markers produce no pixels), hash = the child's `WidgetId`
+/// bits (its paint-order identity for the damage diff's row matcher).
 #[test]
-fn node_spans_populated_for_chrome_panels_only() {
+fn node_spans_rows_mirror_chrome_and_children() {
     use crate::primitives::background::Background;
 
     let mut ui = Ui::for_test();
@@ -151,27 +153,50 @@ fn node_spans_populated_for_chrome_panels_only() {
                 .id(WidgetId::from_hash("bare"))
                 .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                 .show(ui, |_| {});
+            Panel::hstack()
+                .id(WidgetId::from_hash("parent"))
+                .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("kid"))
+                        .size((Sizing::Fixed(10.0), Sizing::Fixed(10.0)))
+                        .show(ui, |_| {});
+                });
         });
     });
 
     let layer = Layer::Main;
     let cascades = &ui.cascades;
+    let arena = &cascades.layers[layer].paint_arena;
     let chrome_idx = cascades.by_id[&WidgetId::from_hash("chrome")].node.idx();
     let bare_idx = cascades.by_id[&WidgetId::from_hash("bare")].node.idx();
-    let chrome_span = cascades.layers[layer].paint_arena.node_spans[chrome_idx];
-    let bare_span = cascades.layers[layer].paint_arena.node_spans[bare_idx];
+    let parent_idx = cascades.by_id[&WidgetId::from_hash("parent")].node.idx();
+    let chrome_span = arena.node_spans[chrome_idx];
+    let bare_span = arena.node_spans[bare_idx];
+    let parent_span = arena.node_spans[parent_idx];
 
     assert!(
-        chrome_span.len > 0
-            && cascades.layers[layer].paint_arena.rows[chrome_span.start as usize]
-                .screen
-                .area()
-                > 0.0,
+        chrome_span.len > 0 && arena.rows[chrome_span.start as usize].screen.area() > 0.0,
         "chromed panel must have a non-empty paint span with non-zero chrome rect",
     );
     assert_eq!(
         bare_span.len, 0,
-        "chromeless panel must have empty paint span; got {bare_span:?}",
+        "chromeless childless panel must have empty paint span; got {bare_span:?}",
+    );
+    assert_eq!(
+        parent_span.len, 1,
+        "chromeless one-child parent must have exactly its marker row; got {parent_span:?}",
+    );
+    let marker = arena.rows[parent_span.start as usize];
+    assert!(
+        marker.screen.is_paint_empty(),
+        "child marker row must carry no pixels; got {:?}",
+        marker.screen,
+    );
+    assert_eq!(
+        marker.hash.0,
+        WidgetId::from_hash("kid").0,
+        "child marker hash must be the child's WidgetId bits",
     );
 }
 

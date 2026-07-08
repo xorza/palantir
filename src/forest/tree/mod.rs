@@ -234,6 +234,7 @@ impl Tree {
         // at lowering time. compute_hashes just folds them into the
         // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
+        let widget_ids = self.records.widget_id();
         let extras = self.extras_idx.as_slice();
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
@@ -277,13 +278,26 @@ impl Tree {
             // interleave cursor logic (encoder uses the same iterator).
             // Each shape's canonical hash was computed at `Shapes::add`
             // time; fold it in as a u64 so we don't re-hash the record
-            // fields here. The `0xFF` child marker is a domain
-            // separator between adjacent shape-hash u64 writes.
+            // fields here. Child markers carry the child's `WidgetId`
+            // (behind a `0xFF` domain separator) so `node_hash` covers
+            // the full paint-order identity stream: a child↔child
+            // reorder or a shape crossing a child boundary flips the
+            // hash and routes the parent to the damage diff's
+            // changed-paints arm, whose row matcher emits the
+            // order-inversion damage. The cost is that re-keying a
+            // child (same content, new id) also flips the parent
+            // chain's node/subtree hashes — a one-frame MeasureCache
+            // miss and a no-damage re-diff of the parent's rows —
+            // accepted, since re-keys are rare and almost always ride
+            // a structural change that invalidates those anyway.
             let subtree_end = ends[i].end();
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
-                    TreeItem::Child(_) => h.write_u8(0xFF),
+                    TreeItem::Child(c) => {
+                        h.write_u8(0xFF);
+                        h.write_u64(widget_ids[c.id.idx()].0);
+                    }
                 }
             }
             if layouts[i].mode == LayoutMode::Grid {
