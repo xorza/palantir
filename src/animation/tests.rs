@@ -157,7 +157,7 @@ fn instant_duration_is_noop_and_drops_row() {
                 .id(WidgetId::from_hash("anim-instant"))
                 .show(ui);
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(!repaint);
     assert_eq!(ui.anim_row_count::<f32>(), 0);
 
@@ -530,7 +530,7 @@ fn animate_drives_repaint_until_settle() {
             let _ = ui.animate(id, SLOT, 0.0_f32, Some(AnimSpec::FAST));
             Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(
         !repaint,
         "first-touch settled animation must not request repaint",
@@ -541,7 +541,7 @@ fn animate_drives_repaint_until_settle() {
             let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
             Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(repaint, "in-flight animation must request repaint");
 
     let mut now = Duration::from_millis(16);
@@ -553,7 +553,7 @@ fn animate_drives_repaint_until_settle() {
                 let _ = ui.animate(id, SLOT, 1.0_f32, Some(AnimSpec::FAST));
                 Frame::new().id(WidgetId::from_hash("anim-test")).show(ui);
             })
-            .repaint_requested();
+            .repaint_requested;
         if !repaint {
             settled_at = Some(i);
             break;
@@ -598,7 +598,7 @@ fn spring_settles_under_sub_millisecond_dt_via_fixed_step_accumulator() {
                     .id(WidgetId::from_hash("anim-novsync"))
                     .show(ui);
             })
-            .repaint_requested();
+            .repaint_requested;
         if !repaint {
             settled_at = Some(i);
             break;
@@ -731,7 +731,7 @@ fn animate_with_none_spec_snaps_and_skips_repaint() {
             assert_eq!(v2, 9.0);
             Frame::new().id(WidgetId::from_hash("anim-none")).show(ui);
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(!repaint, "None spec must never request a repaint");
     assert!(
         ui.anim_row_count::<f32>() == 0,

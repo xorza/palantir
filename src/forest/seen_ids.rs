@@ -24,9 +24,13 @@
 //!    [`crate::text::TextShaper`] / measure cache / state /
 //!    animation), then swaps `curr → prev` so the next frame diffs
 //!    against this one. Called once per `run_frame` from
-//!    [`crate::Ui::finalize_frame`]; discarded record passes don't
-//!    touch seen-id state, so `prev` stays anchored at the last
-//!    *painted* frame regardless of how many discard passes ran.
+//!    [`crate::Ui::finalize_frame`]; `prev` stays anchored at the last
+//!    *painted* frame regardless of how many discard passes ran. Ids
+//!    seen only in a discarded pass (double-layout pass A, cold-start
+//!    warmup) are collected into `discarded` at the next `pre_record`
+//!    and folded into `removed` — they reach neither `prev` nor the
+//!    final `curr`, and without the fold their state/anim/text rows
+//!    would leak and resume stale if the widget later reappeared.
 
 use crate::forest::Layer;
 use crate::forest::tree::NodeId;
@@ -135,18 +139,28 @@ pub(crate) struct SeenIds {
     /// endpoint arrives when `record_endpoint` opens it). Cleared
     /// each frame.
     pending: Vec<PendingExplicitCollision>,
+    /// Ids recorded by a pass this frame that was then discarded —
+    /// drained from `curr` by the next `pre_record` of the same
+    /// frame. Folded into `removed` at [`Self::rollover`] (unless
+    /// re-recorded by the final pass) so rows created during a
+    /// discarded pass don't leak. Capacity retained.
+    discarded: FxHashSet<WidgetId>,
 }
 
 impl SeenIds {
-    /// Reset per-frame state at the top of a frame. Clears the
+    /// Reset per-frame state at the top of a record pass. Clears the
     /// `curr` recording map + the disambiguation counter + pending
     /// collisions. **Doesn't touch `prev`** — that holds the last
     /// *painted* frame's recording, established by [`Self::rollover`].
     /// A `run_frame` two-pass discard build calls `pre_record` then
     /// never reaches `rollover`, so `prev` must be preserved across
-    /// the discard.
+    /// the discard. A non-empty `curr` here IS such a discarded pass
+    /// (rollover empties it at frame end) — its ids move to
+    /// `discarded` so rows they created can be swept if the final
+    /// pass drops them.
     pub(crate) fn pre_record(&mut self) {
         self.counters.clear();
+        self.discarded.extend(self.curr.keys().copied());
         self.curr.clear();
         self.pending.clear();
     }
@@ -251,6 +265,17 @@ impl SeenIds {
                 self.removed.insert(*wid);
             }
         }
+        // Ids seen only in a discarded pass this frame (double-layout
+        // pass A, cold-start warmup) are in neither `prev` nor `curr`
+        // — the prev-minus-curr diff can't see them, but any state /
+        // anim / measure / text rows they created during that pass are
+        // real and must be swept with everything else.
+        for wid in self.discarded.iter() {
+            if !self.curr.contains_key(wid) {
+                self.removed.insert(*wid);
+            }
+        }
+        self.discarded.clear();
         std::mem::swap(&mut self.curr, &mut self.prev);
         self.curr.clear();
         &self.removed
@@ -371,6 +396,35 @@ mod tests {
             second_final_id: second,
         });
         ids.record_endpoint(second, ep(2));
+    }
+
+    #[test]
+    fn rollover_sweeps_ids_seen_only_in_a_discarded_pass() {
+        let mut ids = SeenIds::default();
+        let a = WidgetId::from_hash("a");
+        let b = WidgetId::from_hash("b");
+        // Pass A records a + b, then is discarded by the next
+        // pre_record (double-layout / warmup shape).
+        open(&mut ids, a, false, 1);
+        open(&mut ids, b, false, 2);
+        ids.pre_record();
+        // Final pass records only a.
+        open(&mut ids, a, false, 1);
+        let removed = ids.rollover();
+        assert!(
+            removed.contains(&b),
+            "pass-A-only id must be swept or its state rows leak"
+        );
+        assert!(
+            !removed.contains(&a),
+            "id re-recorded in the final pass survives"
+        );
+        // The discarded set drained at rollover: the next frame's diff
+        // doesn't resurrect b.
+        ids.pre_record();
+        open(&mut ids, a, false, 1);
+        let removed = ids.rollover();
+        assert!(removed.is_empty(), "got {removed:?}");
     }
 
     #[test]

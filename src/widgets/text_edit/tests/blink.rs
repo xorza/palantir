@@ -240,7 +240,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
     // Focus rising edge must reset blink: anim registered → wake
     // scheduled at the next half-period boundary.
     assert!(
-        r.repaint_after().is_some(),
+        r.repaint_after.is_some(),
         "focus gain must restart blink scheduling regardless of caret movement",
     );
 }
@@ -267,8 +267,7 @@ fn focused_text_edit_schedules_blink_wake() {
         });
     });
     assert_eq!(
-        report.repaint_after(),
-        None,
+        report.repaint_after, None,
         "unfocused editor doesn't schedule blink wakes",
     );
 
@@ -284,7 +283,7 @@ fn focused_text_edit_schedules_blink_wake() {
         });
     });
     assert!(
-        report.repaint_after().is_some(),
+        report.repaint_after.is_some(),
         "focused editor schedules a blink wake",
     );
 }

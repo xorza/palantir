@@ -29,8 +29,12 @@
 //! shape crossing a child boundary, two coincident shapes swapping)
 //! routes its parent to the changed-paints arm, where the row
 //! matcher's position map feeds the order-inversion check and each
-//! inverted pair's extent overlap is damaged. No separate order
-//! tracking exists; the row span *is* the retained order.
+//! inverted pair's extent overlap is damaged. Cross-parent moves are
+//! the one ordering change no row span or hash captures — a widget
+//! reparented (or moved between layers) at an identical rect keeps
+//! every hash — so each snapshot also carries
+//! [`NodeSnapshot::parent_key`], and a mismatch damages the moved
+//! subtree's painted extent.
 //!
 //! `DamageEngine.dirty` is the per-node dirty list (added / hash- or
 //! cascade-changed / evicted) in pre-order paint order. It's
@@ -96,6 +100,14 @@ pub(crate) struct NodeSnapshot {
     /// transform/clip/disabled/invisible + own arranged rect). See
     /// [`crate::forest::rollups::CascadeInputHash`].
     pub(crate) cascade_input: CascadeInputHash,
+    /// Paint-order position: the immediate parent's `WidgetId` bits,
+    /// or the layer discriminant for a root. A widget reparented (or
+    /// moved to another layer) at an identical rect with identical
+    /// content keeps `hash`, `subtree_hash`, AND `cascade_input`
+    /// (which folds ancestor *state*, not identity) — yet its
+    /// compositing order against outside overlappers flipped, so the
+    /// skip tiers must not treat it as unchanged.
+    pub(crate) parent_key: u64,
 }
 
 /// Per-widget paint snapshots packed contiguously, plus the
@@ -109,7 +121,7 @@ pub(crate) struct NodeSnapshot {
 /// [`Self::maybe_compact`] reseats live spans into `scratch` once
 /// orphans exceed the threshold, then swaps. Retained capacity —
 /// steady-state alloc-free even under paint-count churn.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct PaintSnapArena {
     pub(crate) snaps: Vec<Paint>,
     /// Reusable destination for compaction (and a swap target). Same
@@ -126,12 +138,14 @@ pub(crate) struct PaintSnapArena {
     /// pair emits no content damage, but two of them swapping paint
     /// order still flips their overlap's pixels. Capacity retained.
     matched_pos: Vec<u32>,
-    /// Curr indices that pass 1 of [`Self::diff_changed_leg`] couldn't
-    /// pair on exact `(screen, hash)`. Empty after pass 1 → pass 2 is
-    /// skipped entirely (the common "shapes reshuffled but content
-    /// unchanged" case). Capacity retained across frames so the slow
-    /// path stays alloc-free.
-    pending_curr: Vec<u32>,
+    /// Sort-merge scratch for the content-keyed passes: `(key, row
+    /// index)` pairs for the unclaimed prev side / the unmatched curr
+    /// side. Sorting + merging both sides replaces the old restart-
+    /// from-zero first-fit scan, bounding the all-rows-shifted case
+    /// (one shape inserted at the front of a big node) at
+    /// O(n log n) instead of O(n²). Capacity retained.
+    prev_keyed: Vec<(PaintKey, u32)>,
+    curr_keyed: Vec<(PaintKey, u32)>,
     /// Count of `Paint` entries in `snaps` that no live
     /// `NodeSnapshot::paint_span` points into. Drives the compaction
     /// trigger.
@@ -155,6 +169,7 @@ pub(crate) struct PaintSnapArena {
 /// Capacities on `prev` are retained across frames; the returned
 /// [`Damage`] / [`DamageRegion`] is `Copy` and threads through
 /// `FrameOutput` by value.
+#[derive(Debug)]
 pub(crate) struct DamageEngine {
     /// Per-pass merge budget (extra-overdraw px) used when
     /// `compute` builds the next frame's region. Defaults to
@@ -186,6 +201,10 @@ pub(crate) struct DamageEngine {
     /// rare frame a node's row order actually inverted; capacity
     /// persists so that frame allocates nothing.
     order_extents: Vec<Rect>,
+    /// Retained scratch for the diff walk's parent tracking: one frame
+    /// per open ancestor, `(subtree_end, WidgetId bits)`. Feeds each
+    /// snapshot's [`NodeSnapshot::parent_key`].
+    parent_stack: Vec<ParentFrame>,
 
     /// Count of subtree-skip jumps the last `compute` performed —
     /// every match of the tier-1 subtree-skip arm jumped `subtree_end - i`
@@ -209,10 +228,22 @@ impl Default for DamageEngine {
             arena: PaintSnapArena::default(),
             raw_rects: Vec::new(),
             order_extents: Vec::new(),
+            parent_stack: Vec::new(),
             #[cfg(any(test, feature = "internals"))]
             subtree_skips: 0,
         }
     }
+}
+
+/// One open ancestor on the diff walk's parent stack.
+#[derive(Clone, Copy, Debug)]
+struct ParentFrame {
+    /// Pre-order index one past the ancestor's subtree — popped once
+    /// the walk reaches it.
+    end: u32,
+    /// The ancestor's `WidgetId` bits — the `parent_key` of every node
+    /// directly under it.
+    key: u64,
 }
 
 /// Per-frame inputs shared by [`DamageEngine::compute`] and
@@ -228,14 +259,24 @@ pub(crate) struct DamageInput<'a> {
     pub(crate) forest: &'a Forest,
     pub(crate) cascades: &'a Cascades,
     /// WindowRenderer-arranged surface rect for this frame. A degenerate
-    /// zero-area surface shouldn't happen in practice (host filters
-    /// resize-to-zero, and a surface *change* takes the `force_full`
-    /// path before the diff runs); if one slips through, every region
-    /// rect surface-clips to empty so [`Damage::new`] returns
-    /// [`Damage::Skip`].
+    /// zero-area surface is a caller logic error: hosts clamp physical
+    /// size to ≥ 1 px and skip occluded windows before `Ui::frame`
+    /// runs, and `DamageRegion::collapse_from` asserts on it — the one
+    /// site that divides by surface area — rather than degrading
+    /// silently.
     pub(crate) surface: Rect,
     pub(crate) prev_time: Option<Duration>,
     pub(crate) now: Duration,
+}
+
+impl std::fmt::Debug for DamageInput<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("DamageInput")
+            .field("surface", &self.surface)
+            .field("prev_time", &self.prev_time)
+            .field("now", &self.now)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Coverage fraction above which [`Damage::new`] stops tracking partial damage
@@ -304,7 +345,7 @@ impl Damage {
     ///
     /// [`DamageRegion::collapse_from`]: crate::ui::damage::region::DamageRegion::collapse_from
     pub(crate) fn new(region: DamageRegion) -> Damage {
-        if region.is_empty() {
+        if region.rects.is_empty() {
             return Damage::Skip;
         }
         if region.coverage > FULL_REPAINT_THRESHOLD {
@@ -315,6 +356,7 @@ impl Damage {
 }
 
 /// Result of [`PaintSnapArena::diff_changed_leg`].
+#[derive(Debug)]
 pub(crate) struct ChangedLeg {
     /// Span covering this frame's paints — `prev_span` reused on the
     /// fast path, a fresh tail span on the slow path.
@@ -362,7 +404,11 @@ impl PaintSnapArena {
     /// Exact-first ordering matters: it preserves the "shape stayed
     /// put" pairing even when another shape with the same `hash`
     /// moved within the same node, avoiding the spurious move-damage
-    /// a single-pass matcher would emit.
+    /// a single-pass matcher would emit. Both passes run as sorted
+    /// merges over `(PaintKey, index)` scratch — ascending-index
+    /// pairing within equal-key runs, the same claims the first-fit
+    /// scan produced, at O(n log n) instead of O(n²) when every row
+    /// shifted (one shape inserted at the front of a big node).
     ///
     /// Sub-pixel float wobble on `Paint.screen` (composer's pixel
     /// snapping runs downstream) makes strict `==` brittle; the
@@ -380,12 +426,11 @@ impl PaintSnapArena {
     /// arena doesn't hold.
     ///
     /// Pass 1's positional pre-pass pairs in-place rows in O(n); only
-    /// the leftovers pay the O(n·m) first-fit scan. The retained
-    /// `prev_matched` / `matched_pos` / `pending_curr` scratch keeps
-    /// every pass alloc-free across frames. Pass 1 collects unmatched
-    /// curr indices into `pending_curr`; pass 2 walks only those —
-    /// `pending_curr.is_empty()` (every shape paired exactly) skips
-    /// pass 2 outright. The slow path spills `curr_paints` to the
+    /// the leftovers pay the keyed sort + merge. The retained
+    /// `prev_matched` / `matched_pos` / `prev_keyed` / `curr_keyed`
+    /// scratch keeps every pass alloc-free across frames; empty
+    /// leftovers (every shape paired positionally) make both merges
+    /// trivially skip. The slow path spills `curr_paints` to the
     /// tail of `snaps` and routes the prev span through
     /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail
     /// once orphans accumulate.
@@ -408,12 +453,13 @@ impl PaintSnapArena {
         }
 
         // Split-borrow: the matching passes read prev_slice (& self.snaps)
-        // and write the scratch bitmap + pending-index list simultaneously.
+        // and write the scratch bitmap + keyed-index lists simultaneously.
         let Self {
             snaps,
             prev_matched,
             matched_pos,
-            pending_curr,
+            prev_keyed,
+            curr_keyed,
             ..
         } = self;
         let prev_slice = &snaps[prev_start..prev_start + prev_len];
@@ -422,59 +468,87 @@ impl PaintSnapArena {
         prev_matched.resize(prev_len, false);
         matched_pos.clear();
         matched_pos.resize(curr_paints.len(), ROW_UNMATCHED);
-        pending_curr.clear();
 
         // Pass 1 — exact (screen, hash) pairs. No damage. A positional
         // pre-pass claims same-index matches first: the dominant churn
         // shape (one shape changed, the rest in place — every wire of a
-        // dragged canvas node) pairs in O(n), and the first-fit scan
-        // below only touches the leftovers. Identical rows are
+        // dragged canvas node) pairs in O(n). Identical rows are
         // interchangeable, so which duplicate pairs up doesn't matter.
-        // Curr indices that didn't pair queue up for pass 2.
         for (j, (&c, &p)) in curr_paints.iter().zip(prev_slice).enumerate() {
             if p == c {
                 prev_matched[j] = true;
                 matched_pos[j] = j as u32;
             }
         }
-        for (j, &c) in curr_paints.iter().enumerate() {
-            if matched_pos[j] != ROW_UNMATCHED {
-                continue;
-            }
-            let mut matched = false;
-            for (i, &p) in prev_slice.iter().enumerate() {
-                if !prev_matched[i] && p == c {
-                    prev_matched[i] = true;
-                    matched_pos[j] = i as u32;
-                    matched = true;
-                    break;
-                }
-            }
-            if !matched {
-                pending_curr.push(j as u32);
+        // Key the leftovers once for both merge passes below. Sorting
+        // by (key, row index) makes each merge claim ascending indices
+        // on both sides — the same pairing the old first-fit scan
+        // produced.
+        prev_keyed.clear();
+        curr_keyed.clear();
+        for (i, p) in prev_slice.iter().enumerate() {
+            if !prev_matched[i] {
+                prev_keyed.push((PaintKey::of(p), i as u32));
             }
         }
+        for (j, c) in curr_paints.iter().enumerate() {
+            if matched_pos[j] == ROW_UNMATCHED {
+                curr_keyed.push((PaintKey::of(c), j as u32));
+            }
+        }
+        prev_keyed.sort_unstable();
+        curr_keyed.sort_unstable();
+
+        // Pass 1b — exact pairs anywhere in the span, merged over the
+        // sorted keys.
+        let (mut pi, mut ci) = (0, 0);
+        while pi < prev_keyed.len() && ci < curr_keyed.len() {
+            let (pk, prow) = prev_keyed[pi];
+            let (ck, crow) = curr_keyed[ci];
+            match pk.cmp(&ck) {
+                std::cmp::Ordering::Less => pi += 1,
+                std::cmp::Ordering::Greater => ci += 1,
+                std::cmp::Ordering::Equal => {
+                    // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
+                    // screens are never `==` — confirm before pairing.
+                    if prev_slice[prow as usize] == curr_paints[crow as usize] {
+                        prev_matched[prow as usize] = true;
+                        matched_pos[crow as usize] = prow;
+                        ci += 1;
+                    }
+                    pi += 1;
+                }
+            }
+        }
+
         // Pass 2 — hash-only pairs surface as moves; unmatched curr
-        // surfaces as adds. Skipped entirely when pass 1 paired every
-        // curr paint (the common "reshuffled but content unchanged"
-        // case). Child markers can't reach the move leg's pushes with
-        // anything visible — their screens are zero (paint-empty), so
-        // the pushes below skip them; an added/removed child's pixels
+        // surfaces as adds. `PaintKey` orders hash-major, so the same
+        // sorted buffers merge by hash alone — no re-sort. Child
+        // markers can't reach the move leg's pushes with anything
+        // visible — their screens are zero (paint-empty), so the
+        // pushes below skip them; an added/removed child's pixels
         // are damaged by its own nodes' Vacant/evict arms.
-        for &j in pending_curr.iter() {
-            let c = curr_paints[j as usize];
-            let mut moved = false;
-            for (i, &p) in prev_slice.iter().enumerate() {
-                if !prev_matched[i] && p.hash == c.hash {
-                    push_screen(out, p.screen);
-                    push_screen(out, c.screen);
-                    prev_matched[i] = true;
-                    moved = true;
+        let mut pi = 0;
+        for &(ck, crow) in curr_keyed.iter() {
+            if matched_pos[crow as usize] != ROW_UNMATCHED {
+                continue;
+            }
+            while pi < prev_keyed.len() {
+                let (pk, prow) = prev_keyed[pi];
+                if prev_matched[prow as usize] || pk.hash < ck.hash {
+                    pi += 1;
+                } else {
                     break;
                 }
             }
-            if !moved {
-                push_screen(out, c.screen);
+            match prev_keyed.get(pi) {
+                Some(&(pk, prow)) if pk.hash == ck.hash => {
+                    push_screen(out, prev_slice[prow as usize].screen);
+                    push_screen(out, curr_paints[crow as usize].screen);
+                    prev_matched[prow as usize] = true;
+                    pi += 1;
+                }
+                _ => push_screen(out, curr_paints[crow as usize].screen),
             }
         }
         // Remaining prev paints — removals.
@@ -607,20 +681,22 @@ impl DamageEngine {
         // `force_full` is the "treat as a fresh frame" signal — set
         // by the caller when `Ui::classify_frame` decided
         // this frame must repaint everything (surface changed, last
-        // frame wasn't acked, or first frame). Caller has already
-        // called `invalidate_prev` to drop the per-widget snapshot
-        // map; we still run the full diff pass to repopulate it for
-        // next frame, just return `Damage::Full` instead of the
-        // filtered region.
+        // frame wasn't acked, or first frame). Drop the per-widget
+        // snapshot map here — owning the pairing keeps a caller from
+        // passing `force_full` without the invalidation and corrupting
+        // the next incremental diff with stale spans — then run the
+        // full diff pass to repopulate it for next frame, just return
+        // `Damage::Full` instead of the filtered region.
+        if force_full {
+            self.invalidate_prev();
+        }
         #[cfg(any(test, feature = "internals"))]
         {
             self.dirty.clear();
             self.subtree_skips = 0;
         }
 
-        // ── Pass 1: collect raw rects ─────────────────────────────
-        //
-        // Every damage source pushes its contributions into
+        // Pass 1: every damage source pushes its contributions into
         // `self.raw_rects` without applying the merge or budget
         // policy. Sources: structural diff (added / hash-changed /
         // removed widget), paint-order inversions, predamaged anim
@@ -635,6 +711,7 @@ impl DamageEngine {
         let arena = &mut self.arena;
         let raw_rects = &mut self.raw_rects;
         let order_extents = &mut self.order_extents;
+        let parent_stack = &mut self.parent_stack;
 
         #[cfg(any(test, feature = "internals"))]
         let dirty_out = &mut self.dirty;
@@ -651,8 +728,15 @@ impl DamageEngine {
             let subtree_end = tree.records.subtree_end();
             let layer_paints = &layer_cascades.paint_arena.rows;
             let layer_node_paints = &layer_cascades.paint_arena.node_spans;
+            parent_stack.clear();
             let mut i = 0;
             while i < n {
+                while parent_stack.last().is_some_and(|f| i as u32 >= f.end) {
+                    parent_stack.pop();
+                }
+                // Roots key on the layer discriminant, so a subtree
+                // migrating between layers can't read as "unchanged".
+                let parent_key = parent_stack.last().map_or(layer as u64, |f| f.key);
                 let node_span = layer_node_paints[i];
                 let curr_paints_slice = &layer_paints[node_span.range()];
                 let curr_node_hash = node_hashes[i];
@@ -666,6 +750,7 @@ impl DamageEngine {
                     hash: curr_node_hash,
                     subtree_hash: curr_subtree_hash,
                     cascade_input: curr_cascade_input,
+                    parent_key,
                 };
                 let advance = match prev_map.entry(widget_ids[i]) {
                     // Skip the snapshot insert for a new *childless* node
@@ -701,7 +786,8 @@ impl DamageEngine {
                     // so it goes first.
                     Entry::Occupied(e)
                         if e.get().subtree_hash == curr_subtree_hash
-                            && e.get().cascade_input == curr_cascade_input =>
+                            && e.get().cascade_input == curr_cascade_input
+                            && e.get().parent_key == parent_key =>
                     {
                         let span = (subtree_end[i].end() as usize) - i;
                         #[cfg(any(test, feature = "internals"))]
@@ -718,7 +804,8 @@ impl DamageEngine {
                     // descend.
                     Entry::Occupied(mut e)
                         if e.get().hash == curr_node_hash
-                            && e.get().cascade_input == curr_cascade_input =>
+                            && e.get().cascade_input == curr_cascade_input
+                            && e.get().parent_key == parent_key =>
                     {
                         e.get_mut().subtree_hash = curr_subtree_hash;
                         1
@@ -744,32 +831,46 @@ impl DamageEngine {
                                 &layer_cascades.paint_arena,
                                 order_extents,
                             );
-                            emit_inverted_overlaps(
-                                &arena.matched_pos,
-                                |j| order_extents[j],
-                                raw_rects,
-                            );
+                            emit_inverted_overlaps(&arena.matched_pos, order_extents, raw_rects);
                         }
-                        // The per-shape diff covers shapes that moved or
-                        // changed. When it found every `Paint` identical
-                        // (`geometry_unchanged`) it emitted nothing — and
-                        // only a `cascade_input` change (ancestor disable,
-                        // clip-saturated pan, visibility toggle) can alter
-                        // this node's pixels while leaving every `Paint`
-                        // bit-identical, so we repaint the union only then.
-                        // A pure `node_hash` flip with unchanged
-                        // `cascade_input` means the authoring stream
-                        // differed without touching own pixels — most
-                        // commonly a child added/removed (the per-child
-                        // marker folded into `node_hash` by
-                        // `compute_hashes`), already covered by the
-                        // subtree/eviction diff. Repainting the union there
-                        // spuriously re-damages every direct shape — e.g.
-                        // all canvas connections when an unrelated node is
-                        // deleted.
-                        if leg.geometry_unchanged
-                            && prev.cascade_input != curr_cascade_input
+                        // A `cascade_input` change (ancestor disable,
+                        // clip-saturated pan, visibility toggle) alters
+                        // pixels of rows the per-shape diff matched
+                        // exactly and emitted nothing for — a hidden
+                        // node's untouched shapes must still clear. So
+                        // the union repaints on any `cascade_input`
+                        // flip, INCLUDING frames where some row also
+                        // changed (`!geometry_unchanged`): gating on
+                        // geometry left the exact-matched rows undamaged
+                        // when a visibility flip landed on the same
+                        // frame as a mid-tween shape. A pure `node_hash`
+                        // flip with unchanged `cascade_input` means the
+                        // authoring stream differed without touching own
+                        // pixels — most commonly a child added/removed
+                        // (the per-child marker folded into `node_hash`
+                        // by `compute_hashes`), already covered by the
+                        // subtree/eviction diff. Repainting the union
+                        // there spuriously re-damages every direct shape
+                        // — e.g. all canvas connections when an
+                        // unrelated node is deleted.
+                        if prev.cascade_input != curr_cascade_input
                             && let Some(u) = union_screens(curr_paints_slice)
+                        {
+                            raw_rects.push(u);
+                        }
+                        // Reparent / layer move at otherwise-identical
+                        // content: compositing order against outside
+                        // overlappers flipped, which no hash captures.
+                        // The whole subtree moved together, so damage
+                        // its current painted extent — descendants keep
+                        // their tier-1 skip (their snapshots are intact
+                        // and this push already covers them).
+                        if prev.parent_key != parent_key
+                            && let Some(u) = subtree_paint_extent(
+                                NodeId(i as u32),
+                                subtree_end,
+                                &layer_cascades.paint_arena,
+                            )
                         {
                             raw_rects.push(u);
                         }
@@ -791,6 +892,18 @@ impl DamageEngine {
                         1
                     }
                 };
+                // Descending into children (advance == 1 on a
+                // container) opens a parent frame; subtree-skips jump
+                // past their descendants, so nothing to push there.
+                if advance == 1 {
+                    let end = subtree_end[i].end();
+                    if end as usize > i + 1 {
+                        parent_stack.push(ParentFrame {
+                            end,
+                            key: widget_ids[i].0,
+                        });
+                    }
+                }
                 i += advance;
             }
         }
@@ -798,8 +911,8 @@ impl DamageEngine {
         // Structural diff has populated `self.prev` for next frame's
         // baseline; on `force_full` everything downstream just builds
         // a region we'd discard, so short-circuit here. The removed
-        // eviction tail is a no-op in this branch (caller already
-        // cleared `self.prev` via `invalidate_prev`), and the anim
+        // eviction tail is a no-op in this branch (`self.prev` was
+        // cleared at entry, so no stale entries survive), and the anim
         // iterator is lazy — dropping it without consuming is free.
         if force_full {
             return Damage::Full;
@@ -833,7 +946,7 @@ impl DamageEngine {
         // Reclaim the arena once orphaned slots exceed the threshold.
         self.arena.maybe_compact(forest, &mut self.prev);
 
-        // ── Pass 2: collapse to the bounded region ────────────────
+        // Pass 2: collapse to the bounded region.
         self.finish_region(surface)
     }
 
@@ -915,23 +1028,46 @@ fn union_screens(paints: &[Paint]) -> Option<Rect> {
 /// damages those over their full rects).
 const ROW_UNMATCHED: u32 = u32::MAX;
 
+/// Sort key for the content-keyed matcher: hash-major (so one sorted
+/// order serves both the exact pass and the hash-only move pass),
+/// then the screen rect's bit pattern with `-0.0` normalized to
+/// `+0.0` (the two compare equal under `Paint ==` and must land in
+/// one run). Key-equal rows still confirm with a real `Paint ==`
+/// before pairing, so NaN screens — key-equal but never `==` —
+/// can't false-pair.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct PaintKey {
+    hash: u64,
+    screen_bits: [u32; 4],
+}
+
+impl PaintKey {
+    fn of(p: &Paint) -> PaintKey {
+        // `f + 0.0` folds -0.0 onto +0.0 and leaves every other value
+        // (NaN included) bit-stable.
+        let n = |f: f32| (f + 0.0).to_bits();
+        PaintKey {
+            hash: p.hash.0,
+            screen_bits: [
+                n(p.screen.min.x),
+                n(p.screen.min.y),
+                n(p.screen.size.w),
+                n(p.screen.size.h),
+            ],
+        }
+    }
+}
+
 /// True when some pair of matched rows inverted its relative order —
 /// i.e. the matched prev positions aren't non-decreasing in curr order.
-/// O(n) gate in front of the quadratic pair enumeration.
+/// O(n) gate in front of the quadratic pair enumeration. Equal
+/// adjacent positions can't occur (each prev row is claimed at most
+/// once), so allow-equal `is_sorted` is exact.
 fn has_order_inversion(matched_pos: &[u32]) -> bool {
-    // `last` starts at 0, which no unsigned position undercuts, so the
-    // first matched row can't false-trigger.
-    let mut last = 0u32;
-    for &pos in matched_pos {
-        if pos == ROW_UNMATCHED {
-            continue;
-        }
-        if pos < last {
-            return true;
-        }
-        last = pos;
-    }
-    false
+    !matched_pos
+        .iter()
+        .filter(|&&pos| pos != ROW_UNMATCHED)
+        .is_sorted()
 }
 
 /// Screen-space extent per row of `node`'s paint span, in row order:
@@ -955,7 +1091,7 @@ fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Ve
         out.push(match item {
             TreeItem::ShapeRecord(..) => arena.rows[node_span.start as usize + out.len()].screen,
             TreeItem::Child(c) => {
-                child_paint_extent(c.id, subtree_end, arena).unwrap_or(Rect::ZERO)
+                subtree_paint_extent(c.id, subtree_end, arena).unwrap_or(Rect::ZERO)
             }
         });
     }
@@ -967,19 +1103,16 @@ fn build_row_extents(node: NodeId, tree: &Tree, arena: &PaintArena, out: &mut Ve
 }
 
 /// Push the extent intersection of every exact-matched row pair whose
-/// relative paint order inverted since last frame. `extent(j)` maps a
-/// curr row index to its screen extent (a [`build_row_extents`] slot).
-/// O(rows²) pair enumeration, reached only behind a
-/// [`has_order_inversion`] gate on the rare frame an order actually
-/// flipped. Rows that merely shifted because a sibling was added or
-/// removed keep their relative order and contribute nothing; a
-/// paint-empty extent (offscreen child, clipped-away shape) can't
-/// strictly `intersects` anything and drops out for free.
-fn emit_inverted_overlaps(
-    matched_pos: &[u32],
-    extent: impl Fn(usize) -> Rect,
-    out: &mut Vec<Rect>,
-) {
+/// relative paint order inverted since last frame. `extents[j]` is the
+/// curr row's screen extent (a [`build_row_extents`] slot). O(rows²)
+/// pair enumeration, reached only behind a [`has_order_inversion`]
+/// gate on the rare frame an order actually flipped. Rows that merely
+/// shifted because a sibling was added or removed keep their relative
+/// order and contribute nothing. `push_screen` drops degenerate
+/// results — a zero-size extent pinned strictly inside a sibling DOES
+/// pass `intersects` (all four strict compares hold), and a sub-EPS
+/// overlap sliver paints nothing; neither earns a merge slot.
+fn emit_inverted_overlaps(matched_pos: &[u32], extents: &[Rect], out: &mut Vec<Rect>) {
     for j2 in 1..matched_pos.len() {
         let p2 = matched_pos[j2];
         if p2 == ROW_UNMATCHED {
@@ -989,36 +1122,32 @@ fn emit_inverted_overlaps(
             if p1 == ROW_UNMATCHED || p1 < p2 {
                 continue;
             }
-            let (a, b) = (extent(j1), extent(j2));
-            if a.intersects(b) {
-                out.push(a.intersect(b));
-            }
+            push_screen(out, extents[j1].intersect(extents[j2]));
         }
     }
 }
 
-/// Screen-space painted extent of `child`'s whole subtree — the union of
-/// every paint row in `[child, child_subtree_end)`. Built from the
-/// per-shape `Paint.screen` rects (already transformed + clipped) rather
-/// than `Cascades::subtree_paint_rects`, which seeds non-painting nodes
-/// with a zero rect at the origin and so biases their rolled-up extent
-/// toward `(0, 0)` — harmless for the encoder's conservative cull, but it
-/// would fabricate origin overlaps here. `None` when the subtree paints
-/// nothing.
+/// Screen-space painted extent of `node`'s whole subtree — the union of
+/// every paint row in `[node, subtree_end)`. Built from the per-shape
+/// `Paint.screen` rects (already transformed + clipped) rather than
+/// `Cascades::subtree_paint_rects` so a non-painting descendant can't
+/// bias the extent. `None` when the subtree paints nothing. Used for a
+/// child marker's row extent in [`build_row_extents`] and for the
+/// reparent/layer-move damage push in the diff walk.
 ///
 /// The cascade visits nodes in pre-order with a monotone arena cursor
 /// and stamps every node's `node_spans` slot (empty spans still carry
 /// the cursor as `start`), so a subtree's rows are one contiguous run:
-/// from the child's own `start` to the `start` of the first node past
+/// from the node's own `start` to the `start` of the first node past
 /// the subtree (or the arena's end). One linear fold, no per-node span
 /// hops.
-fn child_paint_extent(
-    child: NodeId,
+fn subtree_paint_extent(
+    node: NodeId,
     subtree_end: &[SubtreeEnd],
     arena: &PaintArena,
 ) -> Option<Rect> {
-    let end = subtree_end[child.idx()].end() as usize;
-    let start_row = arena.node_spans[child.idx()].start as usize;
+    let end = subtree_end[node.idx()].end() as usize;
+    let start_row = arena.node_spans[node.idx()].start as usize;
     let end_row = match arena.node_spans.get(end) {
         Some(next) => next.start as usize,
         None => arena.rows.len(),

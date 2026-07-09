@@ -274,7 +274,7 @@ mod hot_struct_sizes {
         Paint => "cascade::Paint": 24 / 8,
         // Damage.
         DamageRegion => "damage::DamageRegion": 140 / 4,
-        NodeSnapshot => "damage::NodeSnapshot": 32 / 8,
+        NodeSnapshot => "damage::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
         DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
         DrawTextPayload => "cmd::DrawTextPayload": 48 / 8,

@@ -51,7 +51,7 @@ pub(crate) struct Paint {
 /// Per-layer paint state: the unified [`Paint`] arena plus a per-node
 /// index into it. Written during [`compute_paint_rect`], reset together
 /// each frame in [`Self::reset_for`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct PaintArena {
     /// One [`Paint`] row per chrome contribution (row 0 of a node's
     /// span when present), direct shape, or immediate-child marker,
@@ -136,6 +136,20 @@ struct Frame {
     cascade_prefix: Hasher,
 }
 
+impl std::fmt::Debug for Frame {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Frame")
+            .field("transform", &self.transform)
+            .field("clip", &self.clip)
+            .field("disabled", &self.disabled)
+            .field("invisible", &self.invisible)
+            .field("subtree_end", &self.subtree_end)
+            .field("node_idx", &self.node_idx)
+            .field("subtree_paint_rect", &self.subtree_paint_rect)
+            .finish_non_exhaustive()
+    }
+}
+
 /// All per-layer cascade state grouped on one struct. The
 /// `cascade_inputs`, `subtree_paint_rects`, and `paint_arena` columns
 /// are produced together in a single [`run_tree`] pass, reset together
@@ -165,7 +179,7 @@ struct Frame {
 ///   extent (the former `Cascade.paint_rect`) is just the union of its
 ///   `paint_arena` rows — recomputed on demand on damage's cold paths,
 ///   not stored.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct LayerCascades {
     /// Per-node `cascade_input` fingerprint, indexed the same way as
     /// `Tree::records`: `cascade_inputs[node.idx()]`. Packs the
@@ -226,7 +240,7 @@ impl LayerCascades {
 /// Read-only artifact of `CascadesEngine::run`. Holds per-layer
 /// cascade state (per-node rows, subtree rollups, paint arena — see
 /// [`LayerCascades`]) plus the [`Self::by_id`] hit-lookup snapshot.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
@@ -356,7 +370,7 @@ pub(crate) struct HitTargets {
     pub(crate) pinch: Option<WidgetId>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct CascadesEngine {
     stack: Vec<Frame>,
 }
@@ -422,7 +436,14 @@ impl CascadesEngine {
 fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: Frame) {
     subtree_paint_rects[popped.node_idx] = popped.subtree_paint_rect;
     if let Some(parent) = stack.last_mut() {
-        parent.subtree_paint_rect = parent.subtree_paint_rect.union(popped.subtree_paint_rect);
+        // `union_nonempty`: a subtree that paints nothing carries the
+        // `Rect::ZERO` seed, and plain `union` would anchor every
+        // ancestor's rollup at the origin — one layout-only spacer in
+        // an offscreen subtree would defeat the encoder's cull for the
+        // whole chain.
+        parent.subtree_paint_rect = parent
+            .subtree_paint_rect
+            .union_nonempty(popped.subtree_paint_rect);
     }
 }
 
@@ -563,10 +584,12 @@ fn run_tree(
             // Leaf: no descendants, so no frame — its
             // `subtree_paint_rects` slot already holds the seed pushed
             // above; fold the seed straight into the parent
-            // accumulator. Skips a per-leaf Frame push/pop and the 32 B
+            // accumulator (`union_nonempty`: a non-painting leaf's
+            // `Rect::ZERO` seed must not drag the rollup to the
+            // origin). Skips a per-leaf Frame push/pop and the 32 B
             // prefix-hash work leaves could never hand to a child.
             if let Some(parent) = stack.last_mut() {
-                parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
+                parent.subtree_paint_rect = parent.subtree_paint_rect.union_nonempty(subtree_seed);
             }
         } else {
             stack.push(Frame {
@@ -727,6 +750,20 @@ struct PaintRectCtx<'a> {
     shape_clip: Option<Rect>,
     shape_transform: TranslateScale,
     clips: bool,
+}
+
+impl std::fmt::Debug for PaintRectCtx<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PaintRectCtx")
+            .field("node", &self.node)
+            .field("layout_rect", &self.layout_rect)
+            .field("parent_transform", &self.parent_transform)
+            .field("parent_clip", &self.parent_clip)
+            .field("shape_clip", &self.shape_clip)
+            .field("shape_transform", &self.shape_transform)
+            .field("clips", &self.clips)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Emit every paint row for `node` — chrome at row 0 when present,

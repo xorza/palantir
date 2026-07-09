@@ -1,5 +1,6 @@
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::rollups::CascadeInputHash;
+use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
     text_in_rect,
@@ -14,7 +15,7 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
-use crate::primitives::{corners::Corners, rect::Rect, size::Size, widget_id::WidgetId};
+use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::viewport::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
@@ -25,7 +26,6 @@ use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
-use rustc_hash::FxHashMap;
 use std::time::Duration;
 
 /// Always-on outline emitted over widgets whose explicit `WidgetId`
@@ -132,7 +132,7 @@ struct LayerCtx<'a> {
     /// Live `GpuView`s by `WidgetId` (one map across layers). A
     /// `ShapeRecord::GpuView` carries only its epoch; the arm looks the view's
     /// stable `TextureId` + paint callback up here by the owner node's id.
-    gpu_views: &'a FxHashMap<WidgetId, GpuViewEntry>,
+    gpu_views: &'a WidgetIdMap<GpuViewEntry>,
     damage_filter: Option<&'a DamageRegion>,
     /// Logical-px inflation applied to each node's `subtree_paint_rect`
     /// before the damage-cull intersection test, so the cull covers the

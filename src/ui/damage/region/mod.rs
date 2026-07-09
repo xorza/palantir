@@ -66,7 +66,9 @@ pub(crate) const DEFAULT_PASS_BUDGET_PX: f32 = 20_000.0;
 /// the merge predicate — see the module docs.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct DamageRegion {
-    rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
+    /// Mutate only through [`Self::add`] — it owns the merge policy
+    /// and the `len ≤ DAMAGE_RECT_CAP` invariant.
+    pub(crate) rects: ArrayVec<[Rect; DAMAGE_RECT_CAP]>,
     pub(crate) budget_px: f32,
     /// Damaged fraction of the surface (`total_area / surface_area`),
     /// precomputed by [`Self::collapse_from`] against the surface its rects were
@@ -130,8 +132,10 @@ impl DamageRegion {
         );
         let mut region = Self::with_budget(budget_px);
         for r in rects {
+            // `add` re-gates on `is_paint_empty`, so the pre-check is
+            // only an intersect-cost saver, not load-bearing.
             let clipped = r.intersect(surface);
-            if clipped.area() > 0.0 {
+            if !clipped.is_paint_empty() {
                 region.add(clipped);
             }
         }
@@ -139,10 +143,6 @@ impl DamageRegion {
         // logical space, so the ratio is DPI-independent.
         region.coverage = region.total_area() / surface_area;
         region
-    }
-
-    pub(crate) fn is_empty(&self) -> bool {
-        self.rects.is_empty()
     }
 
     pub(crate) fn iter_rects(&self) -> impl Iterator<Item = Rect> + '_ {
@@ -172,7 +172,11 @@ impl DamageRegion {
     /// Fold `r` into the region per the policy described at the top
     /// of this module.
     pub(crate) fn add(&mut self, r: Rect) {
-        if r.area() <= 0.0 {
+        // `is_paint_empty`, not a bare `area() <= 0.0` — the shared
+        // predicate also rejects NaN (which the bare compare admits,
+        // poisoning every downstream intersects/cost comparison) and
+        // sub-EPS slivers that paint nothing.
+        if r.is_paint_empty() {
             return;
         }
         let budget = self.budget_px;
@@ -233,6 +237,19 @@ impl DamageRegion {
     }
 }
 
+impl DamageRegion {
+    /// Fold `rects` in order through [`Self::add`] with the default
+    /// pass-budget. Unsealed (`coverage` stays `0.0`) like every
+    /// non-`collapse_from` constructor.
+    pub(crate) fn from_rects(rects: &[Rect]) -> Self {
+        let mut region = Self::default();
+        for r in rects {
+            region.add(*r);
+        }
+        region
+    }
+}
+
 /// Wrap a single rect with the default pass-budget.
 impl From<Rect> for DamageRegion {
     fn from(r: Rect) -> Self {
@@ -253,11 +270,7 @@ pub mod test_support {
     /// `pub(crate)` — external benches can't name the type to invoke an
     /// associated fn on it. Keep here so benches see a single namespace.
     pub fn region_after_adds(rects: &[Rect]) -> usize {
-        let mut region = DamageRegion::default();
-        for r in rects {
-            region.add(*r);
-        }
-        region.iter_rects().count()
+        DamageRegion::from_rects(rects).iter_rects().count()
     }
 }
 

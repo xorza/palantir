@@ -109,7 +109,7 @@ fn unchanged_authoring_produces_no_damage() {
     frame(&mut ui, build);
 
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_region().is_empty());
+    assert!(ui.damage_region().rects.is_empty());
     assert_eq!(Damage::new(ui.damage_region()), Damage::Skip,);
 }
 
@@ -226,7 +226,7 @@ fn reordering_nodes_does_not_damage_unchanged_leaves() {
     frame(&mut ui, |ui| canvas(ui, [b, a]));
 
     assert!(
-        ui.damage_region().is_empty(),
+        ui.damage_region().rects.is_empty(),
         "reordering nodes must not damage unchanged leaves; region = {:?}",
         ui.damage_region().iter_rects().collect::<Vec<_>>(),
     );
@@ -334,7 +334,7 @@ fn offscreen_text_nodes_reorder_cast_no_edge_shadow() {
     frame(&mut ui, |ui| canvas(ui, [b, a]));
 
     assert!(
-        ui.damage_region().is_empty(),
+        ui.damage_region().rects.is_empty(),
         "off-screen text must not fabricate edge-of-window damage on \
          reorder; region = {:?}",
         ui.damage_region().iter_rects().collect::<Vec<_>>(),
@@ -1087,7 +1087,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
-    assert!(!ui.damage_region().is_empty());
+    assert!(!ui.damage_region().rects.is_empty());
 }
 
 // --- Ui::damage_filter ---------------------------------------------------
@@ -1513,14 +1513,13 @@ fn damage_filter_threshold_cases() {
         }
         r
     }
-    // Adjacent halves on the 100×100 surface — the proximity-merge
-    // policy collapses each pair into one rect whose area equals the
-    // input sum, so the region's `total_area` lands exactly at the
-    // threshold (or just above) and the strict `>` decision logic
-    // is what's under test. Non-mergeable split-pair geometry at the
-    // 0.7 threshold is mathematically impossible under
-    // `MERGE_AREA_RATIO = 1.6` (would need `bbox > 1.12 × surface`),
-    // so threshold-edge two-rect cases all collapse here first.
+    // Adjacent halves on the 100×100 surface — a perfectly adjacent
+    // pair has `union_excess = bbox − a − b = 0`, below any positive
+    // SAH budget, so each pair collapses into one rect whose area
+    // equals the input sum. The region's `total_area` then lands
+    // exactly at the threshold (or just above) and the strict `>`
+    // decision logic is what's under test; the merge is guaranteed by
+    // the zero excess alone, independent of the budget's exact value.
     const PAIR_BELOW: [Rect; 2] = [
         // Merges to Rect(0,0,70,100); total_area = 7000 / 10000 = 0.70
         // → stays Partial (`>` is strict).
@@ -1601,6 +1600,28 @@ fn display_change_forces_full_repaint() {
             "scale_factor",
             Display {
                 scale_factor: 2.0,
+                ..DISPLAY
+            },
+        ),
+        // DPI-monitor move: physical and scale change proportionally,
+        // leaving `logical_rect` bit-identical — yet the swapchain is
+        // reconfigured to a new pixel size and must repaint. Comparing
+        // logical rects alone classified this as Skip and the window
+        // kept stale old-DPI content until unrelated damage arrived.
+        (
+            "dpi_move_constant_logical",
+            Display {
+                physical: UVec2::new(400, 400),
+                scale_factor: 2.0,
+                ..DISPLAY
+            },
+        ),
+        // Snap flips change compose-time rasterization with identical
+        // logical damage — same blind spot as the DPI move.
+        (
+            "pixel_snap_flip",
+            Display {
+                pixel_snap: false,
                 ..DISPLAY
             },
         ),
@@ -2232,7 +2253,7 @@ fn fully_off_surface_rect_is_dropped_from_region() {
     let off_screen = Rect::new(500.0, 500.0, 50.0, 50.0);
     let region = DamageRegion::collapse_from(&[off_screen], f32::INFINITY, surface);
     assert!(
-        region.is_empty(),
+        region.rects.is_empty(),
         "wholly-off-surface rect must produce an empty region (no Damage::Skip vs Partial drift)",
     );
 }
@@ -2278,7 +2299,7 @@ fn off_surface_first_seen_node_skips_prev_insert() {
          node that contributes nothing visible",
     );
     assert!(
-        ui.damage_region().is_empty(),
+        ui.damage_region().rects.is_empty(),
         "no visible widgets means no damage rects on the second-frame \
          diff (first frame is Full and walks differently)",
     );
@@ -2899,15 +2920,180 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let tree = ui.forest.tree(Layer::Main);
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
-    // First Paint row for the host node — chrome row 0 if present,
-    // otherwise the first shape. The host here has no chrome, so
-    // `node_spans[host_node].start` indexes the first shape's `Paint`.
+    // The host paints chrome (the BLUE background), so row 0 of its
+    // span is the chrome `Paint` — whose screen always equals the
+    // 80×40 arranged rect and would pass the assertion below even
+    // with the clip regressed. The direct shape under test is row 1.
     let paint_arena = &cascades.layers[Layer::Main].paint_arena;
-    let paints_start = paint_arena.node_spans[host_ep.node.idx()].start as usize;
-    let shape_rect = paint_arena.rows[paints_start].screen;
+    let node_span = paint_arena.node_spans[host_ep.node.idx()];
+    assert!(node_span.len >= 2, "expected chrome row + shape row");
+    let shape_rect = paint_arena.rows[node_span.start as usize + 1].screen;
     assert!(
         shape_rect.size.w <= host_rect.size.w + 0.5,
         "direct shape rect must be clipped to the host's own mask; \
          host_rect = {host_rect:?}, shape_rect = {shape_rect:?}",
+    );
+}
+
+/// Pin: a visibility flip landing on the SAME frame as a paint-row
+/// change must still damage the exact-matched rows. The union push for
+/// a `cascade_input` change used to be gated on `geometry_unchanged`,
+/// so hiding a node while one of its shapes was mid-change damaged
+/// only the changed shape — the chrome and untouched shapes kept
+/// their stale pixels on screen.
+#[test]
+fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
+    // Chrome corner far from the line, so its damage is geometrically
+    // distinguishable from the changed shape's.
+    const CHROME_PROBE: Rect = Rect::new(44.0, 44.0, 2.0, 2.0);
+    const LINE_PROBE: Rect = Rect::new(10.0, 9.0, 2.0, 2.0);
+    let node = |ui: &mut Ui, hidden: bool, color: Color| {
+        let mut p = Panel::zstack()
+            .id(WidgetId::from_hash("a"))
+            .size(50.0)
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            });
+        if hidden {
+            p = p.hidden();
+        }
+        p.show(ui, |ui| {
+            ui.add_shape(Shape::Line {
+                a: Vec2::new(5.0, 10.0),
+                b: Vec2::new(20.0, 10.0),
+                width: 2.0,
+                brush: Brush::Solid(color),
+                cap: LineCap::Round,
+                join: LineJoin::Round,
+            });
+        });
+    };
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| node(ui, false, BLUE));
+    let damage = frame(&mut ui, |ui| node(ui, true, RED));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial, got {damage:?}");
+    };
+    assert!(
+        region.any_intersects(LINE_PROBE),
+        "changed shape's own rect must be damaged",
+    );
+    assert!(
+        region.any_intersects(CHROME_PROBE),
+        "exact-matched chrome must also clear when the node hides; region = {region:?}",
+    );
+}
+
+/// Pin: reparenting a widget at an identical rect with identical
+/// content must damage its painted extent. Both parents are chromeless
+/// full-surface ZStacks, so the leaf's arranged rect, authoring hash,
+/// and cascade input are all bit-identical across the move — only its
+/// compositing position changed (`NodeSnapshot::parent_key`). The
+/// pre-fix tier-1 skip treated the leaf as unchanged and the frame
+/// classified Skip, leaving stale overlap pixels wherever the leaf's
+/// z-order against outside content flipped.
+#[test]
+fn reparent_at_same_rect_damages_moved_subtree() {
+    const LEAF_PROBE: Rect = Rect::new(10.0, 10.0, 2.0, 2.0);
+    let build = |ui: &mut Ui, under_b: bool| {
+        let leaf = |ui: &mut Ui| {
+            Frame::new()
+                .id(WidgetId::from_hash("L"))
+                .size(30.0)
+                .background(Background {
+                    fill: BLUE.into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        };
+        Panel::zstack()
+            .id(WidgetId::from_hash("root"))
+            .show(ui, |ui| {
+                Panel::zstack()
+                    .id(WidgetId::from_hash("A"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        if !under_b {
+                            leaf(ui);
+                        }
+                    });
+                Panel::zstack()
+                    .id(WidgetId::from_hash("B"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        if under_b {
+                            leaf(ui);
+                        }
+                    });
+            });
+    };
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| build(ui, false));
+    let damage = frame(&mut ui, |ui| build(ui, true));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial for the moved leaf, got {damage:?}");
+    };
+    assert!(
+        region.any_intersects(LEAF_PROBE),
+        "moved leaf's extent must be damaged; region = {region:?}",
+    );
+    // Follow-up frame with no further move settles back to Skip — the
+    // refreshed snapshot carries the new parent_key.
+    let settled = frame(&mut ui, |ui| build(ui, true));
+    assert_eq!(settled, Damage::Skip, "reparent damage must not repeat");
+}
+
+/// Pin: inserting one shape at the FRONT of a node's record stream
+/// (every row shifts by one) damages only the new shape — the shifted
+/// rows exact-match by content through the keyed merge and their
+/// relative order is preserved, so no inversion overlap fires either.
+#[test]
+fn front_insert_damages_only_the_new_shape() {
+    const NEW_PROBE: Rect = Rect::new(150.0, 149.0, 2.0, 2.0);
+    const OLD_PROBE: Rect = Rect::new(30.0, 19.0, 2.0, 2.0);
+    let line = |ui: &mut Ui, y: f32| {
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(10.0, y),
+            b: Vec2::new(70.0, y),
+            width: 2.0,
+            brush: Brush::Solid(BLUE),
+            cap: LineCap::Round,
+            join: LineJoin::Round,
+        });
+    };
+    let build = |ui: &mut Ui, with_front: bool| {
+        Panel::canvas()
+            .id(WidgetId::from_hash("canvas"))
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                if with_front {
+                    ui.add_shape(Shape::Line {
+                        a: Vec2::new(140.0, 150.0),
+                        b: Vec2::new(170.0, 150.0),
+                        width: 2.0,
+                        brush: Brush::Solid(RED),
+                        cap: LineCap::Round,
+                        join: LineJoin::Round,
+                    });
+                }
+                line(ui, 20.0);
+                line(ui, 30.0);
+                line(ui, 40.0);
+            });
+    };
+    let mut ui = Ui::for_test();
+    frame(&mut ui, |ui| build(ui, false));
+    let damage = frame(&mut ui, |ui| build(ui, true));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial, got {damage:?}");
+    };
+    assert!(
+        region.any_intersects(NEW_PROBE),
+        "inserted shape must be damaged; region = {region:?}",
+    );
+    assert!(
+        !region.any_intersects(OLD_PROBE),
+        "shifted-but-identical rows must not re-damage; region = {region:?}",
     );
 }

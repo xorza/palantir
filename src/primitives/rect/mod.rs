@@ -182,8 +182,9 @@ impl Rect {
     /// damage-rect computation to union prev+curr rects of dirty nodes.
     /// A zero-sized rect at the origin (the `Default`) acts as the identity
     /// for accumulation: `Rect::ZERO.union(r) == r` only when `r`'s min is
-    /// `(0,0)` — callers should fold over `Option<Rect>` to avoid biasing
-    /// toward the origin.
+    /// `(0,0)` — callers should fold over `Option<Rect>` (or use
+    /// [`Self::union_nonempty`] where `Rect::ZERO` is the "paints
+    /// nothing" sentinel) to avoid biasing toward the origin.
     pub const fn union(&self, other: Self) -> Self {
         let min_x = if self.min.x < other.min.x {
             self.min.x
@@ -204,6 +205,23 @@ impl Rect {
         Self {
             min: Vec2::new(min_x, min_y),
             size: Size::new(max_x - min_x, max_y - min_y),
+        }
+    }
+
+    /// [`Self::union`] with paint-empty rects as identity elements:
+    /// folding a `Rect::ZERO`-seeded extent (a non-painting or
+    /// invisible node) through plain `union` drags the accumulator's
+    /// min to the origin, anchoring every ancestor rollup at `(0,0)`
+    /// and defeating downstream culls for content offscreen toward
+    /// positive coordinates. Returns the other operand when one side
+    /// paints nothing; both empty returns `self`.
+    pub fn union_nonempty(self, other: Self) -> Self {
+        if self.is_paint_empty() {
+            other
+        } else if other.is_paint_empty() {
+            self
+        } else {
+            self.union(other)
         }
     }
 
