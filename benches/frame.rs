@@ -228,7 +228,7 @@ impl CpuHarness {
     fn frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) {
         let stamp = aperture::FrameStamp::new(display, self.start.elapsed());
         let report = self.ui.frame(stamp, record);
-        let plan = report.plan().unwrap_or(RenderPlan {
+        let plan = report.plan.unwrap_or(RenderPlan {
             clear: WINDOW_CLEAR,
             kind: RenderKind::Full,
         });
@@ -318,7 +318,7 @@ fn assert_partial_invariant() {
     );
     assert!(
         matches!(
-            report.plan(),
+            report.plan,
             Some(RenderPlan {
                 kind: RenderKind::Partial { .. },
                 ..
@@ -326,7 +326,7 @@ fn assert_partial_invariant() {
         ),
         "frame/partial expected RenderPlan::Partial, got {:?} \
          (fixture's footer-status counter must produce a small damage rect)",
-        report.plan(),
+        report.plan,
     );
 }
 

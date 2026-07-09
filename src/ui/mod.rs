@@ -17,6 +17,7 @@ use crate::forest::Chrome;
 use crate::forest::Forest;
 use crate::forest::Layer;
 use crate::forest::element::{Element, LayoutMode};
+use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{KeyboardEvent, Modifiers};
 use crate::input::pointer::PointerEvent;
@@ -49,7 +50,6 @@ use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::{PendingWindow, WindowConfig, WindowGeometry, WindowToken};
 use glam::{IVec2, UVec2};
-use rustc_hash::FxHashMap;
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
@@ -74,7 +74,7 @@ pub struct Ui {
     /// `TextureId` once, refreshing the paint callback); the shape records only
     /// the redraw epoch and the encoder looks the view up here by the node's
     /// `WidgetId`. Swept by the same `removed` set as [`StateMap`].
-    pub(crate) gpu_views: FxHashMap<WidgetId, GpuViewEntry>,
+    pub(crate) gpu_views: WidgetIdMap<GpuViewEntry>,
     /// App-global shared state cloned from the host at construction: the
     /// render resources (`ctx.shaper` / `ctx.frame_arena` / `ctx.caches` /
     /// `ctx.pass_stats`) and the host state behind it (the live-window set,
@@ -198,6 +198,16 @@ pub struct Ui {
     pub(crate) window_maximized: bool,
 }
 
+impl std::fmt::Debug for Ui {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Ui")
+            .field("frame_id", &self.frame_id)
+            .field("time", &self.time)
+            .field("display", &self.display)
+            .finish_non_exhaustive()
+    }
+}
+
 /// Standalone `Ui` with a fresh private [`HostContext`] (mono-fallback
 /// shaper, its own arena, no backend or host writing to it). Delegates to
 /// [`Ui::new`] so the field list lives in one place.
@@ -274,8 +284,6 @@ impl Ui {
         }
     }
 
-    // ── Frame lifecycle ───────────────────────────────────────────────
-
     /// The only public entry point for driving a frame. Runs `record`
     /// once, re-records on action input or `request_relayout`, paints
     /// the last pass. `stamp.time` is monotonic host time;
@@ -304,8 +312,10 @@ impl Ui {
         self.repaint_requested = false;
         self.relayout_requested = false;
 
+        // The damage snapshot itself is cleared inside
+        // `DamageEngine::compute` when it receives `force_full` — the
+        // pairing is owned by the engine, not spread across callers.
         if let FramePlan::FullRecord { force_full: true } = plan {
-            self.damage_engine.invalidate_prev();
             self.prev_stamp = None;
         }
         self.display = stamp.display;
@@ -459,17 +469,19 @@ impl Ui {
     /// until it crosses [`ANIM_SUBSTEP_DT`] so spring integrators
     /// don't churn below f32 ULP between vsync ticks.
     fn advance_clock(&mut self, now: Duration) {
-        let raw_dt = now
-            .saturating_sub(self.time)
-            .as_secs_f32()
-            .min(Self::MAX_DT);
+        // The fps EMA reads the true delta — clamping would record a
+        // multi-second stall as exactly `1/MAX_DT` fps, hiding the
+        // hitches the readout exists to surface. Only the animation
+        // integrator below wants the clamp.
+        let true_dt = now.saturating_sub(self.time).as_secs_f32();
+        let raw_dt = true_dt.min(Self::MAX_DT);
         // EMA over instantaneous fps. First frame: raw_dt is `now`
         // (vs ZERO), giving an absurd reading; skip the update there.
         // Coefficient 0.1 ≈ ~10-frame window — smooth enough that
         // the readout doesn't jitter wildly, fast enough to track
         // real frame-rate drops.
-        if self.frame_id > 0 && raw_dt > EPS {
-            let inst = 1.0 / raw_dt;
+        if self.frame_id > 0 && true_dt > EPS {
+            let inst = 1.0 / true_dt;
             self.fps_ema = if self.fps_ema == 0.0 {
                 inst
             } else {
@@ -506,7 +518,7 @@ impl Ui {
 
         let display_changed = self
             .prev_stamp
-            .is_some_and(|prev| prev.display.logical_rect() != display.logical_rect());
+            .is_some_and(|prev| !prev.display.raster_eq(&display));
         let frame_skipped = !self.frame_state.was_last_submitted();
         let force_full = display_changed || frame_skipped;
         if force_full {
@@ -567,9 +579,9 @@ impl Ui {
         // behavior while letting user roots respect their own sizing.
         let mut viewport = Element::new(LayoutMode::ZStack);
         viewport.size = Sizing::FILL.into();
-        // Hard-coded `WidgetId::VIEWPORT` — `widget_id` skips
-        // this id as a parent, so user `id_salt("k")` at the top level
-        // resolves bare instead of `VIEWPORT.with(salt)`.
+        // Hard-coded `WidgetId::VIEWPORT` — a frame-stable parent id,
+        // so top-level salts/auto ids resolve to `VIEWPORT.with(salt)`
+        // like any other parent-scoped id (see `widget_id`).
         self.forest.open_node(WidgetId::VIEWPORT, viewport, None);
         {
             profiling::scope!("Ui::record_user");
@@ -656,16 +668,13 @@ impl Ui {
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
         let fp = self.cascade_fingerprint();
-        if self.prev_cascade_fp == Some(fp) {
-            #[cfg(test)]
-            {
-                self.dbg_cascade_ran = false;
-            }
-            return;
-        }
+        let skip = self.prev_cascade_fp == Some(fp);
         #[cfg(test)]
         {
-            self.dbg_cascade_ran = true;
+            self.dbg_cascade_ran = !skip;
+        }
+        if skip {
+            return;
         }
         self.prev_cascade_fp = Some(fp);
         self.cascades_engine
@@ -688,8 +697,20 @@ impl Ui {
         h.write_u32(self.display.physical.x);
         h.write_u32(self.display.physical.y);
         h.write_u32(self.display.scale_factor.to_bits());
-        for (_layer, tree) in self.forest.iter_paint_order() {
+        for (layer, tree) in self.forest.iter_paint_order() {
+            // Layer discriminant: an identical root subtree migrating
+            // between side layers (Popup → Tooltip) must not alias, or
+            // the skip reuses per-layer columns sized for the old
+            // assignment and the damage pass indexes them out of
+            // bounds.
+            h.write_u8(layer as u8);
             for slot in &tree.roots {
+                // The root's own id reaches no other hash —
+                // `compute_hashes` folds only child ids into parents,
+                // and a root has no parent — so a re-keyed root with
+                // identical content would otherwise reuse cascades
+                // whose `by_id` still maps the dead old id.
+                h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
                 h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
                 // Layer placement (anchor + measure cap) rides on
                 // `RootSlot`, outside every node hash, yet it feeds
@@ -755,8 +776,6 @@ impl Ui {
         self.input.on_input(event, &self.cascades)
     }
 
-    // ── Subscriptions ─────────────────────────────────────────────
-    //
     // Wake gates for off-target events. All three are idempotent and
     // cleared pre-record: widgets re-call each active frame, stop
     // calling to drop the wake. See `crate::input::subscriptions`.
@@ -780,8 +799,6 @@ impl Ui {
         self.input.subs.subscribe_key(sc);
     }
 
-    // ── Event readers ────────────────────────────────────────────
-
     /// Unified pointer event stream captured this frame. Empty when
     /// no [`PointerSense`] subscriber is active. Subscribers `match`
     /// and filter by rect / button.
@@ -797,8 +814,6 @@ impl Ui {
     pub fn keyboard_events(&self) -> &[KeyboardEvent] {
         &self.input.frame_keyboard_events
     }
-
-    // ── Keyboard convenience queries ──────────────────────────────
 
     /// `true` if any [`KeyboardEvent::Down`] this frame matches
     /// `sc`. Iterates [`Self::keyboard_events`]; for repeat or
@@ -893,8 +908,10 @@ impl Ui {
     /// Creation is deferred, not inline: the request is queued and the
     /// host (`WinitHost`) creates the real window on the event-loop
     /// thread right after this frame, so it's safe to call mid-record.
-    /// Idempotent within a frame is *not* guaranteed — call once per
-    /// window you want; a `token` already in use is ignored with a
+    /// Idempotent within a frame — record passes replay (cold-start
+    /// warmup, double-layout pass B), so repeat calls for one `token`
+    /// collapse to a single request with the last `config` winning. A
+    /// `token` already in use by a live window is ignored with a
     /// warning. No-op in headless contexts (no host to drain the queue).
     ///
     /// `token` is yours to define — an enum discriminant, an index, a
@@ -902,6 +919,10 @@ impl Ui {
     /// is the backend-agnostic [`WindowConfig`] (title + size); the
     /// window inherits the app-global GPU settings from startup.
     pub fn open_window(&mut self, token: WindowToken, config: WindowConfig) {
+        if let Some(p) = self.pending_windows.iter_mut().find(|p| p.token == token) {
+            p.config = config;
+            return;
+        }
         self.pending_windows.push(PendingWindow { token, config });
     }
 
@@ -988,8 +1009,6 @@ impl Ui {
     pub fn window_open(&self, token: WindowToken) -> bool {
         self.ctx.window_open(token)
     }
-
-    // ── Recording (widget-facing) ─────────────────────────────────────
 
     pub fn add_shape(&mut self, shape: Shape<'_>) {
         self.forest
@@ -1210,14 +1229,32 @@ impl Ui {
         // Cascade lags one frame; OR this frame's ancestor-disabled so
         // a freshly-disabled subtree paints disabled on its first frame.
         state.disabled |= self.forest.current_scratch().ancestor_disabled();
+        // The interaction half was routed against the stale cascade, so
+        // without this a freshly-disabled widget reports hovered /
+        // clicked alongside disabled for one frame — a combination the
+        // steady-state hit index can never produce (disabled entries
+        // carry `Sense::NONE`), and one that lets a click land on
+        // just-disabled UI.
+        if state.disabled {
+            state = ResponseState {
+                rect: state.rect,
+                layout_rect: state.layout_rect,
+                transform: state.transform,
+                disabled: true,
+                focused: state.focused,
+                ..ResponseState::default()
+            };
+        }
         state
     }
 
-    // ── Cross-frame state & animation ─────────────────────────────────
-
     /// Cross-frame state row for `id`, `T::default()` on first
     /// access. Rows for `WidgetId`s not recorded this frame are
-    /// evicted in `post_record`. Panics on type collision at `id`.
+    /// evicted in `finalize_frame`, once per `Ui::frame` after the
+    /// final record pass. Type collisions at one `id` are NOT
+    /// detected — each `T` lives in its own store, so two call sites
+    /// using different types at the same id silently coexist (see the
+    /// `state` module doc).
     pub fn state_mut<S: Default + 'static>(&mut self, id: WidgetId) -> &mut S {
         self.state.get_or_insert_with(id, S::default)
     }
@@ -1270,8 +1307,6 @@ impl Ui {
         }
         r.current
     }
-
-    // ── Focus ─────────────────────────────────────────────────────────
 
     /// Currently focused widget id, or `None`.
     pub fn focused_id(&self) -> Option<WidgetId> {
@@ -1355,8 +1390,6 @@ pub mod test_support {
     use std::time::Duration;
 
     impl Ui {
-        // ── forest ──────────────────────────────────────────────
-
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
         pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
             let tree = self.forest.tree(Layer::Main);
@@ -1420,10 +1453,13 @@ pub mod test_support {
         /// cold-start behavior should construct `Ui::default()`
         /// directly and skip this. No real frame is run here —
         /// `frame_id`, `time`, the per-`StateMap`, cascades, and damage
-        /// snapshot all stay at fresh-construction defaults. The
-        /// damage engine still treats the first user frame as fully
-        /// dirty (`prev` map is empty), so `Damage::Full` is still the
-        /// observed first-user-frame outcome.
+        /// snapshot all stay at fresh-construction defaults. First
+        /// user-frame damage depends on the constructor: `for_test` /
+        /// `for_test_text` keep the default 0×0 display, so the first
+        /// `run_at` is a display change ⇒ `Damage::Full`; `for_test_at`
+        /// / `for_test_at_text` pre-stamp a matching display, so the
+        /// first frame classifies by coverage like any other (small
+        /// content ⇒ `Partial`, from the all-Vacant walk).
         fn mark_warm_for_test(&mut self) {
             self.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
             self.frame_state.mark_submitted();
@@ -1472,8 +1508,6 @@ pub mod test_support {
             inner.unwrap()
         }
 
-        // ── input ────────────────────────────────────────────────
-
         pub fn click_at(&mut self, pos: Vec2) {
             self.on_input(InputEvent::PointerMoved(pos));
             self.on_input(InputEvent::PointerPressed(PointerButton::Left));
@@ -1495,8 +1529,6 @@ pub mod test_support {
             self.on_input(InputEvent::PointerReleased(PointerButton::Right));
         }
 
-        // ── layout cache ────────────────────────────────────────
-
         /// Drop every measure-cache entry, forcing full re-measure next frame.
         pub fn clear_measure_cache(&mut self) {
             let cache = &mut self.layout_engine.cache;
@@ -1511,15 +1543,11 @@ pub mod test_support {
             self.layout_engine.scroll_states.entry(id).or_default()
         }
 
-        // ── cascade ─────────────────────────────────────────────
-
         /// Run only the cascade pass against the just-finished frame.
         pub fn run_cascades(&mut self) {
             self.cascades_engine
                 .run(&self.forest, &self.layout, &mut self.cascades);
         }
-
-        // ── damage ──────────────────────────────────────────────
 
         /// Rebuild the post-collapse damage region from `DamageEngine`'s
         /// last-frame pass-1 buffer. Doesn't mutate state.
@@ -1570,14 +1598,10 @@ pub mod test_support {
             }
         }
 
-        // ── animation ───────────────────────────────────────────
-
         /// Animation rows currently allocated for `T`, or 0 if no typed map exists.
         pub fn anim_row_count<T: Animatable>(&mut self) -> usize {
             self.anim.try_typed_mut::<T>().map_or(0, |t| t.rows.len())
         }
-
-        // ── encoder ─────────────────────────────────────────────
 
         pub fn encode_cmds(&self) -> RenderCmdBuffer {
             self.encode_cmds_filtered(None)
@@ -1589,15 +1613,7 @@ pub mod test_support {
 
         /// Multi-rect variant; each rect is fed through `DamageRegion::add` so merge policy applies.
         pub fn encode_cmds_with_rects(&self, rects: &[Rect]) -> RenderCmdBuffer {
-            let region = if rects.is_empty() {
-                None
-            } else {
-                let mut r = DamageRegion::default();
-                for rect in rects {
-                    r.add(*rect);
-                }
-                Some(r)
-            };
+            let region = (!rects.is_empty()).then(|| DamageRegion::from_rects(rects));
             self.encode_cmds_with_region(region)
         }
 

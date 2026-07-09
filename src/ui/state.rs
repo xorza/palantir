@@ -8,11 +8,13 @@
 //! two rows live in different stores and don't see each other. Not
 //! checked; debug aid wasn't worth a hashmap probe per call.
 //!
-//! Sweep: when a widget stops being recorded, `Ui::post_record` calls
-//! `sweep_removed` with the diff; each per-T store `swap_remove`s
-//! affected rows and patches the swapped neighbour's index in O(1)
-//! using the parallel `owners` vec.
+//! Sweep: when a widget stops being recorded, `Ui::finalize_frame`
+//! calls `sweep_removed` with the diff (once per frame, after the
+//! final record pass); each per-T store `swap_remove`s affected rows
+//! and patches the swapped neighbour's index in O(1) using the
+//! parallel `owners` vec.
 
+use crate::forest::seen_ids::WidgetIdMap;
 use crate::primitives::widget_id::WidgetId;
 use rustc_hash::{FxHashMap, FxHashSet};
 use std::any::{Any, TypeId};
@@ -20,6 +22,14 @@ use std::any::{Any, TypeId};
 #[derive(Default)]
 pub(crate) struct StateMap {
     by_type: FxHashMap<TypeId, Box<dyn AnyTyped>>,
+}
+
+impl std::fmt::Debug for StateMap {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StateMap")
+            .field("stores", &self.by_type.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl StateMap {
@@ -32,10 +42,7 @@ impl StateMap {
     }
 
     pub(crate) fn try_get<T: 'static>(&self, id: WidgetId) -> Option<&T> {
-        let store = self
-            .by_type
-            .get(&TypeId::of::<T>())?
-            .as_any()
+        let store = (self.by_type.get(&TypeId::of::<T>())?.as_ref() as &dyn Any)
             .downcast_ref::<Store<T>>()
             .expect("TypeId is stable per T, downcast cannot fail");
         let idx = *store.map.get(&id)? as usize;
@@ -52,10 +59,11 @@ impl StateMap {
     }
 
     fn typed_mut<T: 'static>(&mut self) -> &mut Store<T> {
-        self.by_type
+        (self
+            .by_type
             .entry(TypeId::of::<T>())
             .or_insert_with(|| Box::<Store<T>>::default())
-            .as_any_mut()
+            .as_mut() as &mut dyn Any)
             .downcast_mut::<Store<T>>()
             .expect("TypeId is stable per T, downcast cannot fail")
     }
@@ -63,7 +71,7 @@ impl StateMap {
 
 #[derive(Debug)]
 struct Store<T> {
-    map: FxHashMap<WidgetId, u32>,
+    map: WidgetIdMap<u32>,
     data: Vec<T>,
     owners: Vec<WidgetId>,
 }
@@ -71,7 +79,7 @@ struct Store<T> {
 impl<T> Default for Store<T> {
     fn default() -> Self {
         Self {
-            map: FxHashMap::default(),
+            map: WidgetIdMap::default(),
             data: Vec::new(),
             owners: Vec::new(),
         }
@@ -111,21 +119,15 @@ impl<T> Store<T> {
     }
 }
 
+/// `: Any` is what lets the downcast sites upcast a `&(mut) dyn
+/// AnyTyped` straight to `&(mut) dyn Any` — no `as_any` boilerplate.
 trait AnyTyped: Any {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
-    fn as_any_mut(&mut self) -> &mut dyn Any;
-    fn as_any(&self) -> &dyn Any;
 }
 
 impl<T: 'static> AnyTyped for Store<T> {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>) {
         Store::<T>::sweep_removed(self, removed);
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
-    }
-    fn as_any(&self) -> &dyn Any {
-        self
     }
 }
 

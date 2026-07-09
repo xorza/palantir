@@ -712,6 +712,13 @@ impl InputState {
         }
         self.had_input_since_last_frame = false;
         self.repaint_requested_since_last_frame = false;
+        // An action absorbed by a frame that never records (inert
+        // background click under `OnDelta`, then a PaintOnly wake)
+        // must not stay latched — the next real record pass would see
+        // `take_action_flag() == true` with empty queues and run a
+        // spurious second layout pass. Between double-layout passes
+        // this is a no-op: pass A's `take_action_flag` already reset it.
+        self.frame_had_action = false;
         self.frame_pointer_events.clear();
         self.frame_scroll_pixels = Vec2::ZERO;
         self.frame_scroll_lines = Vec2::ZERO;

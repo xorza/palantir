@@ -8,8 +8,10 @@
 /// finer-grained [`InputDelta::requests_repaint`](crate::input::InputDelta)
 /// instead: pointer moves only force a record when the hover/scroll
 /// target changed or a capture is active; scroll over a non-scroll
-/// surface is dropped; clicks / keys / IME still always record (their
-/// `requests_repaint` is unconditionally `true`).
+/// surface is dropped; a press records when it hits a sense target,
+/// changes focus, or a `BUTTONS` subscriber is live — a press on
+/// fully inert surface is observably a no-op and stays on the
+/// paint-anim path. Keys / IME route through focus and record.
 ///
 /// Default is [`OnDelta`](Self::OnDelta) — the right behavior for
 /// almost every app. Use [`Always`](Self::Always) only for telemetry,

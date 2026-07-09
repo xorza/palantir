@@ -439,9 +439,11 @@ impl Salt {
     /// [`Salt::Auto`] and [`Salt::Hash`] both consult `parent` (so a
     /// widget's identity tracks its position in the tree, not its
     /// global record order); only [`Salt::Verbatim`] passes through.
-    /// `parent == None` covers the "no user-visible parent" case (root
-    /// of a layer, or the first user-recorded widget under
-    /// `Layer::Main`'s synthetic viewport).
+    /// `parent == None` covers the "no open node at all" case (the
+    /// root of a side layer). `Layer::Main`'s synthetic viewport
+    /// counts as a parent with a frame-stable id, so top-level widgets
+    /// resolve to `VIEWPORT.with(salt)` like any other parent-scoped
+    /// id.
     #[inline]
     pub(crate) fn resolve(self, parent: Option<WidgetId>) -> WidgetId {
         match self {

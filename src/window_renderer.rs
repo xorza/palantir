@@ -470,8 +470,8 @@ impl WindowRenderer {
         report: FrameReport,
         pre_present: impl FnOnce(),
     ) -> FramePresent {
-        let repaint = if report.skip_render() {
-            report.repaint_requested()
+        let repaint = if report.plan.is_none() {
+            report.repaint_requested
         } else {
             use wgpu::CurrentSurfaceTexture::*;
             match surface.get_current_texture() {
@@ -485,7 +485,7 @@ impl WindowRenderer {
                     // winit #2609, slint #4200.
                     pre_present();
                     gpu.present(frame);
-                    report.repaint_requested()
+                    report.repaint_requested
                 }
                 Suboptimal(_) | Outdated | Lost => {
                     tracing::warn!("surface acquire: suboptimal / outdated / lost");
@@ -506,7 +506,7 @@ impl WindowRenderer {
 
         if repaint {
             FramePresent::Immediate
-        } else if let Some(deadline) = report.repaint_after() {
+        } else if let Some(deadline) = report.repaint_after {
             FramePresent::At(self.start + deadline)
         } else {
             FramePresent::Idle

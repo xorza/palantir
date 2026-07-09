@@ -10,7 +10,7 @@ fn collect(region: &DamageRegion) -> Vec<Rect> {
 fn add_empty_is_noop() {
     let mut region = DamageRegion::default();
     region.add(Rect::new(10.0, 10.0, 0.0, 0.0));
-    assert!(region.is_empty());
+    assert!(region.rects.is_empty());
 }
 
 /// A rect already covered by an existing slot adds nothing (the

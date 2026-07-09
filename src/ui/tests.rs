@@ -36,6 +36,27 @@ fn blue_frame(ui: &mut Ui, salt: &'static str) -> NodeId {
         .node()
 }
 
+fn add_blink_shape(ui: &mut Ui, half: Duration) {
+    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::primitives::brush::Brush;
+    use crate::primitives::corners::Corners;
+    use crate::primitives::stroke::Stroke;
+    use crate::shape::Shape;
+
+    ui.add_shape_animated(
+        Shape::RoundedRect {
+            local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
+            corners: Corners::ZERO,
+            fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
+            stroke: Stroke::default(),
+        },
+        PaintAnim::BlinkOpacity {
+            half_period: half,
+            started_at: Duration::ZERO,
+        },
+    );
+}
+
 /// Two `.id(WidgetId::from_hash("dup"))` calls in one frame would silently corrupt
 /// every per-id store. Instead of panicking, `SeenIds::record`
 /// disambiguates the second one (same path as auto-id collisions),
@@ -290,7 +311,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
-    assert!(ui.damage_region().is_empty());
+    assert!(ui.damage_region().rects.is_empty());
     assert_eq!(Damage::new(ui.damage_region()), Damage::Skip,);
 }
 
@@ -747,7 +768,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(
         !repaint,
         "no animate-not-settled flag set — must stay false"
@@ -768,7 +789,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
                 .show(ui, |_| {});
             ui.repaint_requested = true;
         })
-        .repaint_requested();
+        .repaint_requested;
     assert!(
         repaint,
         "repaint_requested set during recording must surface on FrameOutput",
@@ -808,7 +829,7 @@ fn frame_plumbs_now_dt_and_repaint_request() {
                     .show(ui, |_| {});
             },
         )
-        .repaint_requested();
+        .repaint_requested;
     assert!(
         !repaint,
         "repaint_requested must reset at the top of frame()",
@@ -899,7 +920,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
     );
     // Earliest deadline wins the report slot.
     assert_eq!(
-        report.repaint_after(),
+        report.repaint_after,
         Some(Duration::from_secs_f32(0.5)),
         "FrameReport must surface the earliest pending wake",
     );
@@ -917,7 +938,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         |_| {},
     );
     assert_eq!(
-        report.repaint_after(),
+        report.repaint_after,
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
@@ -928,7 +949,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         FrameStamp::new(display, Duration::from_secs_f32(1.5)),
         |_| {},
     );
-    assert_eq!(report.repaint_after(), None);
+    assert_eq!(report.repaint_after, None);
     assert!(ui.repaint_wakes.is_empty());
 }
 
@@ -1051,7 +1072,7 @@ fn request_repaint_after_drains_fired_entries() {
         |_| {},
     );
     assert_eq!(ui.repaint_wakes.len(), 1);
-    assert_eq!(report.repaint_after(), Some(Duration::from_secs_f32(2.0)));
+    assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
 // `app_state_round_trip_across_frame` and `app_without_install_panics`
@@ -1065,11 +1086,6 @@ fn request_repaint_after_drains_fired_entries() {
 /// `FrameProcessing::PaintOnly`.
 #[test]
 fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
-    use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::primitives::brush::Brush;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
-    use crate::shape::Shape;
     use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
@@ -1080,18 +1096,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
-            ui.add_shape_animated(
-                Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    corners: Corners::ZERO,
-                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-                    stroke: Stroke::default(),
-                },
-                PaintAnim::BlinkOpacity {
-                    half_period: half,
-                    started_at: Duration::ZERO,
-                },
-            );
+            add_blink_shape(ui, half);
         });
     }
 
@@ -1103,12 +1108,12 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         body(ui, half)
     });
     ui.frame_state.mark_submitted();
-    assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
-    assert_eq!(r0.repaint_after(), Some(half));
+    assert_eq!(r0.processing, FrameProcessing::SingleLayout);
+    assert_eq!(r0.repaint_after, Some(half));
 
     // Frame 1 at the blink boundary: only anim wake fires → fast path.
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
-    assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
+    assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // PaintOnly must emit a Partial damage plan covering the anim's
     // tight rect — not Full (defeats the point) and not None (the
@@ -1134,9 +1139,9 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     // re-fold the retained paint_anims so the *next* blink boundary
     // is queued. Without this fold the caret stops blinking until
     // input forces a FullRecord (mouse-move regression).
-    assert_eq!(r1.repaint_after(), Some(half + half));
+    assert_eq!(r1.repaint_after, Some(half + half));
     let r2 = ui.frame(FrameStamp::new(display, half + half), |ui| body(ui, half));
-    assert_eq!(r2.processing(), FrameProcessing::PaintOnly);
+    assert_eq!(r2.processing, FrameProcessing::PaintOnly);
 }
 
 /// Regression: `Ui::frame` used to clear `frame_arena` unconditionally
@@ -1153,11 +1158,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
 /// and then re-running the encoder against the retained shapes.
 #[test]
 fn paint_only_preserves_gradient_arena_for_retained_shapes() {
-    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::primitives::brush::{Brush, LinearGradient};
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
-    use crate::shape::Shape;
     use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
@@ -1180,18 +1181,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
                 })
                 .show(ui);
             // Animated shape, drives the PaintOnly wake on frame 1.
-            ui.add_shape_animated(
-                Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    corners: Corners::ZERO,
-                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-                    stroke: Stroke::default(),
-                },
-                PaintAnim::BlinkOpacity {
-                    half_period: half,
-                    started_at: Duration::ZERO,
-                },
-            );
+            add_blink_shape(ui, half);
         });
     }
 
@@ -1204,13 +1194,13 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
         body(ui, half)
     });
     ui.frame_state.mark_submitted();
-    assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
+    assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
     // Frame 1 at the blink boundary: only the anim wake fires →
     // PaintOnly. With the old (buggy) clear, `arena.gradients`
     // would be empty here and the encoder below would panic.
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
-    assert_eq!(r1.processing(), FrameProcessing::PaintOnly);
+    assert_eq!(r1.processing, FrameProcessing::PaintOnly);
 
     // Direct pin: the gradient pushed during frame 0's record must
     // still be live for the encoder on a PaintOnly frame.
@@ -1230,11 +1220,6 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
 /// `REAL | ANIM` mix, so the classifier picks Full.
 #[test]
 fn paint_only_skipped_when_widget_requested_repaint() {
-    use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::primitives::brush::Brush;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
-    use crate::shape::Shape;
     use crate::ui::frame_report::FrameProcessing;
 
     let half = Duration::from_millis(500);
@@ -1245,18 +1230,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
                 .id(WidgetId::from_hash("blinker"))
                 .size(20.0)
                 .show(ui);
-            ui.add_shape_animated(
-                Shape::RoundedRect {
-                    local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                    corners: Corners::ZERO,
-                    fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-                    stroke: Stroke::default(),
-                },
-                PaintAnim::BlinkOpacity {
-                    half_period: half,
-                    started_at: Duration::ZERO,
-                },
-            );
+            add_blink_shape(ui, half);
         });
     }
 
@@ -1269,10 +1243,10 @@ fn paint_only_skipped_when_widget_requested_repaint() {
         ui.request_repaint();
     });
     ui.frame_state.mark_submitted();
-    assert!(r0.repaint_requested());
+    assert!(r0.repaint_requested);
 
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
-    assert_eq!(r1.processing(), FrameProcessing::SingleLayout);
+    assert_eq!(r1.processing, FrameProcessing::SingleLayout);
 }
 
 /// At an anim-only wake boundary, the classifier picks `PaintOnly`.
@@ -1287,14 +1261,9 @@ fn paint_only_skipped_when_widget_requested_repaint() {
 /// half of the test.
 #[test]
 fn input_policy_routes_paint_only_gate() {
-    use crate::forest::tree::paint_anims::PaintAnim;
     use crate::input::InputEvent;
     use crate::input::keyboard::Key;
     use crate::input::policy::InputPolicy;
-    use crate::primitives::brush::Brush;
-    use crate::primitives::corners::Corners;
-    use crate::primitives::stroke::Stroke;
-    use crate::shape::Shape;
     use crate::ui::frame_report::FrameProcessing;
     use glam::Vec2;
 
@@ -1312,18 +1281,7 @@ fn input_policy_routes_paint_only_gate() {
                     .id(WidgetId::from_hash("inert"))
                     .size(80.0)
                     .show(ui);
-                ui.add_shape_animated(
-                    Shape::RoundedRect {
-                        local_rect: Some(Rect::new(0.0, 0.0, 4.0, 12.0)),
-                        corners: Corners::ZERO,
-                        fill: Brush::Solid(Color::rgb(1.0, 0.0, 0.0)),
-                        stroke: Stroke::default(),
-                    },
-                    PaintAnim::BlinkOpacity {
-                        half_period: half,
-                        started_at: Duration::ZERO,
-                    },
-                );
+                add_blink_shape(ui, half);
             });
     }
 
@@ -1335,7 +1293,7 @@ fn input_policy_routes_paint_only_gate() {
             body(ui, half)
         });
         ui.frame_state.mark_submitted();
-        assert_eq!(r0.processing(), FrameProcessing::SingleLayout);
+        assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         assert!(
@@ -1349,7 +1307,7 @@ fn input_policy_routes_paint_only_gate() {
 
         let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
-            r1.processing(),
+            r1.processing,
             FrameProcessing::PaintOnly,
             "OnDelta + inert pointer move + anim wake → PaintOnly",
         );
@@ -1371,7 +1329,7 @@ fn input_policy_routes_paint_only_gate() {
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_eq!(
-            r1.processing(),
+            r1.processing,
             FrameProcessing::SingleLayout,
             "Always + any input forces SingleLayout",
         );
@@ -1400,7 +1358,7 @@ fn input_policy_routes_paint_only_gate() {
         );
         let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
         assert_ne!(
-            r1.processing(),
+            r1.processing,
             FrameProcessing::PaintOnly,
             "OnDelta must not pick PaintOnly on action input",
         );
@@ -1779,4 +1737,134 @@ fn close_request_veto_protocol() {
     assert!(!ui.close_vetoed, "untouched ⇒ no veto");
     let should_close = ui.wants_close && !ui.close_vetoed;
     assert!(should_close, "an un-vetoed request must resolve to a close");
+}
+
+/// O5 stage-0 completeness for the *identity* cascade inputs: the
+/// layer a root subtree lives on and the root's own `WidgetId`.
+/// Neither reaches any subtree hash (`compute_hashes` folds only
+/// child ids into parents, and roots have no parent), so the
+/// fingerprint folds them explicitly. A wrongly matching fingerprint
+/// here reuses per-layer cascade columns sized for the previous
+/// layer assignment (index OOB in the damage pass) or a `by_id` map
+/// still keyed by the dead old root id (inert widget).
+#[test]
+fn cascade_fingerprint_covers_layer_and_root_identity() {
+    fn float(ui: &mut Ui, layer: Layer, key: &str) {
+        Frame::new()
+            .id(WidgetId::from_hash("anchor"))
+            .size(50.0)
+            .show(ui);
+        ui.layer(layer, Vec2::new(10.0, 10.0), None, |ui| {
+            Frame::new()
+                .id(WidgetId::from_hash(key))
+                .size(20.0)
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    }
+    let assert_reruns = |label: &str, base: &dyn Fn(&mut Ui), changed: &dyn Fn(&mut Ui)| {
+        let mut ui = Ui::for_test();
+        ui.run_at_acked(SURFACE, |ui| base(ui));
+        ui.run_at_acked(SURFACE, |ui| base(ui));
+        assert!(
+            !ui.dbg_cascade_ran,
+            "{label}: unchanged frame skips the cascade"
+        );
+        ui.run_at_acked(SURFACE, |ui| changed(ui));
+        assert!(
+            ui.dbg_cascade_ran,
+            "{label}: identity change must re-run the cascade",
+        );
+    };
+    assert_reruns(
+        "layer migration",
+        &|ui| float(ui, Layer::Popup, "float"),
+        &|ui| float(ui, Layer::Tooltip, "float"),
+    );
+    assert_reruns(
+        "root re-key",
+        &|ui| float(ui, Layer::Popup, "float"),
+        &|ui| float(ui, Layer::Popup, "float2"),
+    );
+}
+
+/// The interaction half of `response_for` routes against the one-frame
+/// -stale cascade, so on the frame a subtree becomes disabled a widget
+/// could otherwise observe `hovered`/`clicked` alongside
+/// `disabled == true` — a combination the steady-state hit index never
+/// produces (disabled entries carry `Sense::NONE`), and one that lets
+/// a click land on just-disabled UI.
+#[test]
+fn freshly_disabled_subtree_masks_stale_interactions() {
+    let target = WidgetId::from_hash("target");
+    let mut ui = Ui::for_test();
+    let run = |ui: &mut Ui, disabled: bool| {
+        let mut resp = None;
+        ui.run_at_acked(SURFACE, |ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("wrap"))
+                .disabled(disabled)
+                .show(ui, |ui| {
+                    resp = Some(ui.response_for(target));
+                    Button::new().label("hi").id(target).show(ui);
+                });
+        });
+        resp.unwrap()
+    };
+    run(&mut ui, false);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(10.0, 10.0)));
+    let enabled = run(&mut ui, false);
+    assert!(enabled.hovered, "sanity: pointer hovers the button");
+    assert!(!enabled.disabled);
+    // Disable frame: stale cascade still routes the hover; the read
+    // must mask it.
+    let disabled = run(&mut ui, true);
+    assert!(disabled.disabled, "ancestor-disabled ORs in lag-free");
+    assert!(
+        !disabled.hovered,
+        "interactions must mask on the disable frame"
+    );
+}
+
+/// The fps EMA reads the TRUE frame delta — the MAX_DT clamp is for
+/// the animation integrator only. Hand-computed: sample 1 at 1 s →
+/// inst 1.0 seeds the EMA; sample 2 after a 2 s stall → inst 0.5,
+/// EMA = 1.0·0.9 + 0.5·0.1 = 0.95. The clamp would have recorded both
+/// stalls as 10 fps samples (EMA 10.0), reporting a HIGHER rate the
+/// longer the stall.
+#[test]
+fn fps_ema_reads_unclamped_frame_delta() {
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+    let mut noop = |_: &mut Ui| {};
+    ui.frame(FrameStamp::new(display, Duration::ZERO), &mut noop);
+    ui.mark_frame_submitted();
+    ui.frame(FrameStamp::new(display, Duration::from_secs(1)), &mut noop);
+    ui.mark_frame_submitted();
+    assert!((ui.fps_ema - 1.0).abs() < 1e-6, "got {}", ui.fps_ema);
+    ui.frame(FrameStamp::new(display, Duration::from_secs(3)), &mut noop);
+    assert!((ui.fps_ema - 0.95).abs() < 1e-6, "got {}", ui.fps_ema);
+}
+
+/// Record passes replay (cold-start warmup, double-layout pass B), so
+/// one logical `open_window` call reaches the queue two or three times
+/// per frame — dedup by token, last config wins.
+#[test]
+fn open_window_dedups_by_token_within_a_frame() {
+    use crate::window::{WindowConfig, WindowToken};
+    let mut ui = Ui::for_test();
+    let cfg = |title: &str| WindowConfig {
+        title: title.into(),
+        ..Default::default()
+    };
+    ui.open_window(WindowToken(7), cfg("first"));
+    ui.open_window(WindowToken(7), cfg("second"));
+    ui.open_window(WindowToken(8), cfg("other"));
+    assert_eq!(ui.pending_windows.len(), 2);
+    assert_eq!(ui.pending_windows[0].token, WindowToken(7));
+    assert_eq!(ui.pending_windows[0].config.title, "second");
+    assert_eq!(ui.pending_windows[1].token, WindowToken(8));
 }

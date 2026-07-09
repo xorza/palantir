@@ -368,12 +368,12 @@ impl<T: Animatable> AnimMapTyped<T> {
 }
 
 /// Type-erased operations every typed map exposes — end-of-frame
-/// sweep, an emptiness probe so the parent can drop drained maps, plus
-/// `as_any_mut` for downcast back to the concrete map.
-pub(crate) trait AnyTyped: 'static {
+/// sweep plus an emptiness probe so the parent can drop drained maps.
+/// `: Any` is what lets the downcast sites upcast a `&mut dyn
+/// AnyTyped` straight to `&mut dyn Any` — no `as_any` boilerplate.
+pub(crate) trait AnyTyped: Any {
     fn sweep_removed(&mut self, removed: &FxHashSet<WidgetId>);
     fn is_empty(&self) -> bool;
-    fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
 impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
@@ -382,9 +382,6 @@ impl<T: Animatable> AnyTyped for AnimMapTyped<T> {
     }
     fn is_empty(&self) -> bool {
         self.rows.is_empty()
-    }
-    fn as_any_mut(&mut self) -> &mut dyn Any {
-        self
     }
 }
 
@@ -401,10 +398,11 @@ impl AnimMap {
     /// Get-or-create the typed map for `T`. Allocates on first call
     /// per `T`; subsequent calls hit the hashmap and downcast.
     pub(crate) fn typed_mut<T: Animatable>(&mut self) -> &mut AnimMapTyped<T> {
-        self.by_type
+        (self
+            .by_type
             .entry(TypeId::of::<T>())
             .or_insert_with(|| Box::<AnimMapTyped<T>>::default())
-            .as_any_mut()
+            .as_mut() as &mut dyn Any)
             .downcast_mut::<AnimMapTyped<T>>()
             .expect("TypeId is stable per T, downcast cannot fail")
     }
@@ -413,15 +411,13 @@ impl AnimMap {
     /// `Ui::animate(.., None)` short-circuit to drop a stale row
     /// without allocating a fresh typed map.
     pub(crate) fn try_typed_mut<T: Animatable>(&mut self) -> Option<&mut AnimMapTyped<T>> {
-        self.by_type
-            .get_mut(&TypeId::of::<T>())?
-            .as_any_mut()
+        (self.by_type.get_mut(&TypeId::of::<T>())?.as_mut() as &mut dyn Any)
             .downcast_mut::<AnimMapTyped<T>>()
     }
 
     /// Drop rows for removed widgets and for slots that weren't
     /// poked this frame, then clear the `touched` flags on the rows
-    /// that survive. Called from `Ui::post_record` once per frame; the
+    /// that survive. Called from `Ui::finalize_frame` once per frame; the
     /// `removed` set is the same one that drives `StateMap` / text /
     /// layout sweeps. A `(WidgetId, AnimSlot)` row goes away if
     /// either (a) the widget itself disappeared or (b) the call site

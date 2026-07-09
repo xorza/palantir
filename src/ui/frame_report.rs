@@ -80,50 +80,28 @@ pub enum FrameProcessing {
     DoubleLayout,
 }
 
+#[derive(Debug)]
 pub struct FrameReport {
-    pub(crate) repaint_requested: bool,
-    /// Absolute Ui-time deadline at which the host should wake and run
-    /// another frame, even if no input arrives. `None` ⇒ no scheduled
-    /// wake. Set by [`crate::ui::Ui::request_repaint_after`]. Hosts
-    /// pair with `start + deadline → Instant` for
-    /// `winit::ControlFlow::WaitUntil`.
-    pub(crate) repaint_after: Option<Duration>,
-    /// Per-frame render decision. `None` ⇒ skip path (backbuffer is
-    /// correct); `Some(plan)` ⇒ work for the renderer.
-    pub(crate) plan: Option<RenderPlan>,
-    /// How `Ui::frame` resolved this frame — see [`FrameProcessing`].
-    pub(crate) processing: FrameProcessing,
-}
-
-impl FrameReport {
     /// `true` when an animation tick during this frame hasn't
     /// settled (set by `Ui::animate`). Hosts honor by calling
     /// `window.request_redraw()` (or equivalent) after present, so
     /// the next frame runs even when input is idle.
-    pub fn repaint_requested(&self) -> bool {
-        self.repaint_requested
-    }
-
-    /// Absolute Ui-time deadline for a deferred repaint. Compose with
-    /// the host's clock anchor (e.g. `WindowRenderer::start_instant() +
-    /// deadline`) to get a wallclock `Instant`.
-    pub fn repaint_after(&self) -> Option<Duration> {
-        self.repaint_after
-    }
-
-    /// `true` when the renderer has nothing to do this frame — the
-    /// previous backbuffer is correct. Hosts use this to skip the
-    /// surface acquire / present cycle entirely.
-    pub fn skip_render(&self) -> bool {
-        self.plan.is_none()
-    }
-
-    /// How this frame was resolved — informational, used by tests /
-    /// benches / profilers to assert the short-circuit fired or the
-    /// double-layout retry didn't.
-    pub fn processing(&self) -> FrameProcessing {
-        self.processing
-    }
+    pub repaint_requested: bool,
+    /// Absolute Ui-time deadline at which the host should wake and run
+    /// another frame, even if no input arrives. `None` ⇒ no scheduled
+    /// wake. Set by [`crate::ui::Ui::request_repaint_after`]. Hosts
+    /// pair with `start + deadline → Instant` (e.g.
+    /// `WindowRenderer::start_instant() + deadline`) for
+    /// `winit::ControlFlow::WaitUntil`.
+    pub repaint_after: Option<Duration>,
+    /// Per-frame render decision. `None` ⇒ skip path (the previous
+    /// backbuffer is correct — hosts skip the surface acquire /
+    /// present cycle entirely); `Some(plan)` ⇒ work for the renderer.
+    pub plan: Option<RenderPlan>,
+    /// How `Ui::frame` resolved this frame — informational, used by
+    /// tests / benches / profilers to assert the short-circuit fired
+    /// or the double-layout retry didn't. See [`FrameProcessing`].
+    pub processing: FrameProcessing,
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -133,13 +111,6 @@ pub mod test_support {
     use crate::ui::frame_report::*;
 
     impl FrameReport {
-        /// Read `self.plan`. Benches assert against this to pin the
-        /// damage outcome they intend to measure (e.g. `frame/partial`
-        /// asserts `Some(Partial)`).
-        pub fn plan(&self) -> Option<RenderPlan> {
-            self.plan
-        }
-
         /// Overwrite `self.plan`: empty ⇒ `Full { clear }`, otherwise `Partial`
         /// built by adding each rect.
         pub fn force_damage_to_rects(&mut self, rects: &[Rect], clear: Color) {
@@ -150,13 +121,11 @@ pub mod test_support {
                 });
                 return;
             }
-            let mut region = DamageRegion::default();
-            for r in rects {
-                region.add(*r);
-            }
             self.plan = Some(RenderPlan {
                 clear,
-                kind: RenderKind::Partial { region },
+                kind: RenderKind::Partial {
+                    region: DamageRegion::from_rects(rects),
+                },
             });
         }
     }

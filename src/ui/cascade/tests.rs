@@ -14,6 +14,15 @@ use crate::widgets::panel::Panel;
 use crate::{Ui, renderer::frontend::Frontend};
 use glam::{UVec2, Vec2};
 
+/// Screen rect of the first paint row for the widget keyed by
+/// `WidgetId::from_hash(key)` on `Layer::Main`.
+fn first_paint_screen(ui: &Ui, key: &str) -> Rect {
+    let node = ui.cascades.by_id[&WidgetId::from_hash(key)].node;
+    let arena = &ui.cascades.layers[Layer::Main].paint_arena;
+    let span = arena.node_spans[node.idx()];
+    arena.rows[span.start as usize].screen
+}
+
 /// A direct shape recorded on a panel with `.transform(...)` must
 /// land in `Cascades::paint_arenas` at the *composed* transform
 /// (parent ∘ self), not just `parent_transform`. Pins the cascade
@@ -44,11 +53,7 @@ fn shape_rect_composes_self_transform() {
         });
     });
 
-    let layer = Layer::Main;
-    let cascades = &ui.cascades;
-    let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
-    let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
-    let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
+    let shape_rect = first_paint_screen(&ui, "xpanel");
     // The Panel sits at the hstack origin (0, 0). Owner-local
     // shape rect is (0, 0, 30, 30); after `parent ∘ self`:
     //   min = (0, 0) * 3 + (10, 20) = (10, 20)
@@ -102,11 +107,7 @@ fn self_transform_anchors_scale_at_panel_origin() {
         });
     });
 
-    let layer = Layer::Main;
-    let cascades = &ui.cascades;
-    let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
-    let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
-    let shape_rect = cascades.layers[layer].paint_arena.rows[span.start as usize].screen;
+    let shape_rect = first_paint_screen(&ui, "xpanel");
     // Panel sits at (50, 0). Shape's panel-local (0, 0) should
     // map to screen (50, 0) under the anchor — the panel's own
     // top-left is the fixed point of its scale. Size is
@@ -257,13 +258,7 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     });
 
     // Cascade's screen rect for the child shape (what hit-test sees).
-    let layer = Layer::Main;
-    let cascade_rect = {
-        let cascades = &ui.cascades;
-        let xpanel = cascades.by_id[&WidgetId::from_hash("xpanel")].node;
-        let span = cascades.layers[layer].paint_arena.node_spans[xpanel.idx()];
-        cascades.layers[layer].paint_arena.rows[span.start as usize].screen
-    };
+    let cascade_rect = first_paint_screen(&ui, "xpanel");
 
     // Composer's actual painted quad. Surface scale = 1, so physical px
     // == logical px and the rect compares directly. The transparent
@@ -302,5 +297,43 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
             && (quad_rect.size.h - cascade_rect.size.h).abs() < eps,
         "composer quad {quad_rect:?} drifted from cascade screen rect {cascade_rect:?} — \
          encoder/composer transform composition diverged from the cascade walk",
+    );
+}
+
+/// A non-painting sibling seeds `Rect::ZERO`; folding it into the
+/// parent rollup must not anchor `subtree_paint_rects` at the origin —
+/// that would make every ancestor of any layout-only node span
+/// `(0,0)..content`, defeating the encoder's subtree cull for content
+/// offscreen toward +x/+y.
+#[test]
+fn non_painting_sibling_does_not_origin_anchor_subtree_rollup() {
+    use crate::primitives::background::Background;
+    use crate::widgets::frame::Frame;
+    use crate::widgets::panel::Panel;
+    let row = WidgetId::from_hash("row");
+    let mut ui = Ui::for_test();
+    ui.run_at(glam::UVec2::new(200, 200), |ui| {
+        Panel::hstack().id(row).show(ui, |ui| {
+            // Layout-only spacer: occupies 50 px, paints nothing.
+            Panel::hstack()
+                .id(WidgetId::from_hash("spacer"))
+                .size(50.0)
+                .show(ui, |_| {});
+            Frame::new()
+                .id(WidgetId::from_hash("painted"))
+                .size(50.0)
+                .background(Background {
+                    fill: Color::rgb(0.2, 0.4, 0.8).into(),
+                    ..Default::default()
+                })
+                .show(ui);
+        });
+    });
+    let ep = ui.cascades.by_id[&row];
+    let rollup = ui.cascades.layers[ep.layer].subtree_paint_rects[ep.node.idx()];
+    assert_eq!(
+        rollup,
+        Rect::new(50.0, 0.0, 50.0, 50.0),
+        "spacer's ZERO seed must not drag the rollup's min to the origin",
     );
 }

@@ -422,3 +422,17 @@ fn left_and_right_click_are_independent() {
     assert!(lc, "left click should still fire");
     assert!(rc, "right click should still fire alongside left");
 }
+
+/// An action absorbed by a frame that never records (inert background
+/// click under `OnDelta`, then a PaintOnly wake) must not stay
+/// latched: the drain clears it, or the next real record pass sees
+/// `take_action_flag() == true` with empty queues and runs a spurious
+/// second layout pass.
+#[test]
+fn drain_per_frame_queues_clears_action_latch() {
+    use crate::input::InputState;
+    let mut input = InputState::default();
+    input.frame_had_action = true;
+    input.drain_per_frame_queues();
+    assert!(!input.take_action_flag());
+}

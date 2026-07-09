@@ -10,8 +10,10 @@ use glam::UVec2;
 ///
 /// The driving host rebuilds this each frame from the window's surface
 /// config, scale factor, and monitor, then hands it to `WindowRenderer::frame`.
-/// Surface-size changes are detected via `logical_rect`, so `pixel_snap`
-/// and `refresh_millihertz` ride along without ever forcing a relayout.
+/// Changes that alter rasterized output are detected via [`Self::raster_eq`]
+/// (physical size, scale, pixel snapping — a DPI-monitor move keeps
+/// `logical_rect` constant yet must repaint); `refresh_millihertz` is
+/// pacing-only and rides along without ever forcing a repaint.
 ///
 /// Group exists so future rasterization knobs (sRGB correction, MSAA,
 /// gamma) have a clear home.
@@ -80,5 +82,17 @@ impl Display {
             min: glam::Vec2::ZERO,
             size: self.logical_size(),
         }
+    }
+
+    /// True when `other` rasterizes identically: same physical size,
+    /// scale factor, and pixel snapping. `logical_rect` equality is NOT
+    /// enough — a DPI-monitor move scales `physical` and `scale_factor`
+    /// proportionally, leaving the logical rect bit-identical while the
+    /// swapchain is reconfigured to a new pixel size. `refresh_millihertz`
+    /// is pacing-only and deliberately excluded.
+    pub fn raster_eq(&self, other: &Display) -> bool {
+        self.physical == other.physical
+            && self.scale_factor == other.scale_factor
+            && self.pixel_snap == other.pixel_snap
     }
 }
