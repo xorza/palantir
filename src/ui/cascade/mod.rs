@@ -181,6 +181,13 @@ pub(crate) struct LayerCascades {
     /// Invisible subtrees seed with `Rect::ZERO` so a long-lived
     /// hidden subtree doesn't keep the cull from firing at ancestors.
     pub(crate) subtree_paint_rects: Vec<Rect>,
+    /// Per-node pre-order subtree end (`Tree`'s `subtree_end`, grid
+    /// flag stripped), snapshotted so ancestry queries
+    /// ([`Cascades::is_within`]) can run against the frozen cascade
+    /// result *during the next record* — by then the live tree's
+    /// columns are already being rebuilt. Indexed like
+    /// `cascade_inputs`.
+    pub(crate) subtree_ends: Vec<u32>,
     /// Unified paint arena (rows + per-node spans).
     pub(crate) paint_arena: PaintArena,
     /// Offset of this layer's first `EntryRow` in
@@ -206,6 +213,8 @@ impl LayerCascades {
         self.cascade_inputs.reserve(n_nodes);
         self.subtree_paint_rects.clear();
         self.subtree_paint_rects.reserve(n_nodes);
+        self.subtree_ends.clear();
+        self.subtree_ends.reserve(n_nodes);
         self.paint_arena.reset_for(n_nodes);
         self.entries_base = entries_base;
     }
@@ -249,6 +258,21 @@ impl Cascades {
     pub(crate) fn entry_idx_of(&self, id: WidgetId) -> Option<u32> {
         let ep = self.by_id.get(&id)?;
         Some(self.layers[ep.layer].entries_base + ep.node.0)
+    }
+
+    /// True when `descendant`'s most recent record sits inside
+    /// `ancestor`'s subtree — same layer, within the ancestor's
+    /// pre-order interval `[node, subtree_end)`. Self-inclusive:
+    /// `is_within(id, id)` is `true` for any recorded `id`. `false`
+    /// when either id wasn't in the most recent cascade run (layers
+    /// are separate trees, so a popup is never "within" its anchor).
+    pub(crate) fn is_within(&self, descendant: WidgetId, ancestor: WidgetId) -> bool {
+        let (Some(d), Some(a)) = (self.by_id.get(&descendant), self.by_id.get(&ancestor)) else {
+            return false;
+        };
+        d.layer == a.layer
+            && d.node.0 >= a.node.0
+            && d.node.0 < self.layers[a.layer].subtree_ends[a.node.idx()]
     }
 
     /// Reverse walk (topmost-first under the pre-order paint walk) returning
@@ -509,6 +533,7 @@ fn run_tree(
         lc.cascade_inputs
             .push(finish_cascade_input(parent_prefix, layout_rect, invisible));
         lc.subtree_paint_rects.push(subtree_seed);
+        lc.subtree_ends.push(subtree_end);
 
         // Descendants inherit the deflated-mask clip — same value the
         // direct shapes were clipped to above and the encoder pushes

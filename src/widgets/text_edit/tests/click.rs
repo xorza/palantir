@@ -494,3 +494,41 @@ fn caret_click_is_scale_invariant_under_zoom() {
         "caret placement must be zoom-invariant (1x={full}, 0.5x={zoomed_out})"
     );
 }
+
+#[test]
+fn focus_within_follows_the_focused_widgets_ancestry() {
+    let mut ui = Ui::for_test_at_text(SMALL);
+    let mut buf = String::new();
+    let editor = WidgetId::from_hash("editor");
+    let holder = WidgetId::from_hash("holder");
+    let bystander = WidgetId::from_hash("bystander");
+    let mut record = |ui: &mut Ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::hstack().id(holder).show(ui, |ui| {
+                TextEdit::new(&mut buf)
+                    .id(editor)
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+            });
+            Panel::hstack()
+                .id(bystander)
+                .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
+                .show(ui, |_| {});
+        });
+    };
+
+    ui.run_at_acked(SMALL, &mut record);
+    assert!(
+        !ui.focus_within(holder),
+        "nothing focused → no ancestor owns focus"
+    );
+
+    ui.click_at(Vec2::new(50.0, 20.0));
+    assert_eq!(ui.focused_id(), Some(editor));
+    // The focused editor is within itself and its ancestor, not
+    // within a sibling or an id that was never recorded.
+    assert!(ui.focus_within(editor), "self-inclusive");
+    assert!(ui.focus_within(holder));
+    assert!(!ui.focus_within(bystander));
+    assert!(!ui.focus_within(WidgetId::from_hash("unrecorded")));
+}
