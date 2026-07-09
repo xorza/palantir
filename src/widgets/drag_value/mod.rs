@@ -2,6 +2,7 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
+use crate::layout::types::sizing::Sizing;
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
@@ -416,15 +417,16 @@ impl<'a> DragValue<'a> {
             .take()
             .map(|s| s.editor)
             .unwrap_or_else(|| ui.theme.drag_value.editor.clone());
-        // Hold the editor at the width the chip occupied last frame. The chip
-        // shows `decimals`-rounded text; the editor shows every digit, which in
-        // a content-hugging parent would otherwise grow the field. Capping the
-        // width scrolls a long value inside it instead. Floored at `min_size.w`
-        // so the cap can't fall below the floor (which would make
-        // `resolve_axis_size`'s `clamp(min, max)` panic).
-        let max_w = prev_rect
-            .map_or(self.element.max_size.w, |r| r.size.w)
-            .max(self.element.min_size.w);
+        // Hold the editor at exactly the width the chip occupied last frame.
+        // The chip shows `decimals`-rounded text; the editor shows every digit
+        // and, as a `Scroll` field, reports zero content width — so nothing
+        // pulls a `Fill` field up to the chip's width and a plain cap would let
+        // it collapse to `min_size`. Pin the width with `Fixed` (floored at
+        // `min_size.w`) so a long value scrolls inside the chip's box instead
+        // of growing a content-hugging row. Before the first chip frame gives
+        // us a width to hold, fall back to the field's own width sizing.
+        let held_w = prev_rect.map(|r| Sizing::Fixed(r.size.w.max(self.element.min_size.w)));
+        let width = held_w.unwrap_or(self.element.size.w());
         // Entry edge: seed the buffer from the current value — a click and a
         // programmatic focus both get a fresh draft, never a previous
         // session's stale text — and disarm any scrub anchor, so a drag that
@@ -446,9 +448,9 @@ impl<'a> DragValue<'a> {
                 .text_align(Align::CENTER)
                 .style(editor)
                 .select_all_on_focus()
-                .size(self.element.size)
+                .size((width, self.element.size.h()))
                 .min_size(self.element.min_size)
-                .max_size((max_w, self.element.max_size.h))
+                .max_size(self.element.max_size)
                 .show(ui);
             resp.submitted
         };
