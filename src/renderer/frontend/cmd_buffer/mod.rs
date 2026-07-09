@@ -503,7 +503,7 @@ impl DrawCurvePayload {
 }
 
 /// Append-only command buffer. See module docs.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct RenderCmdBuffer {
     pub(crate) kinds: Vec<CmdKind>,
     pub(crate) starts: Vec<u32>,
@@ -672,8 +672,34 @@ impl RenderCmdBuffer {
     }
 
     /// Record a `DrawTriangle` cmd. Composer transforms the three corner
-    /// points to physical-px and emits one `Quad` with `FillKind::TRIANGLE`.
-    pub(crate) fn draw_triangle(&mut self, payload: DrawTrianglePayload) {
+    /// `points` (owner-local, offset by `origin`) to physical-px and emits
+    /// one `Quad` with `FillKind::TRIANGLE`. Noop strokes normalize to
+    /// `(TRANSPARENT, 0.0)` here, exactly like [`Self::draw_rect`].
+    pub(crate) fn draw_triangle(
+        &mut self,
+        origin: glam::Vec2,
+        points: [glam::Vec2; 3],
+        fill: ColorF16,
+        radius: f32,
+        stroke: ShapeStroke,
+    ) {
+        let (stroke_color, stroke_width) = if stroke.is_noop() {
+            (ColorF16::TRANSPARENT, 0.0)
+        } else {
+            (stroke.color, stroke.width())
+        };
+        let [a, b, c] = points;
+        let payload = DrawTrianglePayload {
+            origin,
+            a,
+            b,
+            c,
+            fill,
+            stroke_color,
+            radius,
+            stroke_width,
+            ..bytemuck::Zeroable::zeroed()
+        };
         if payload.is_noop() {
             return;
         }
@@ -734,3 +760,6 @@ impl RenderCmdBuffer {
 fn write_pod<T: bytemuck::Pod>(data: &mut Vec<u32>, v: T) {
     data.extend_from_slice(bytemuck::cast_slice(std::slice::from_ref(&v)));
 }
+
+#[cfg(test)]
+mod tests;

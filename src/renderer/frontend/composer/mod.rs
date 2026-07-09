@@ -1,11 +1,13 @@
 use crate::display::Display;
 use crate::forest::frame_arena::FrameArenaInner;
-use crate::primitives::approx::EPS;
+use crate::primitives::approx::{EPS, noop_f32};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{ColorF16, ColorU8};
 use crate::primitives::corners::Corners;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
@@ -15,8 +17,8 @@ use crate::renderer::frontend::cmd_buffer::{
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
     CurveBatch, CurveInstance, DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch,
-    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RenderTargetDraw, RoundedClip, TextBatch,
-    TextRun,
+    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RenderTargetDraw, RoundedClip,
+    SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
@@ -36,20 +38,23 @@ use text_grid::TextRectGrid;
 /// encode + compose.
 ///
 /// Render order *within* a group is fixed by the backend:
-/// **quads → text → meshes**. That's safe iff for every prior draw of
-/// a higher kind, no later draw of a lower kind overlaps it — a draw
-/// that violates the rule forces a [`Self::flush`] so record order is
-/// honored. The check uses
+/// **quads → text → meshes → images → curves**
+/// (`schedule::emit_group_body`; polylines tessellate to meshes). That
+/// reorder is safe iff no overlapping pair of draws swaps its record
+/// order — two rules, both enforced by forcing a [`Self::flush`]:
+/// a *lower*-kind draw must not follow an overlapping higher-kind draw
+/// in the same group (it would replay under it), and a *higher*-kind
+/// draw must not follow an overlapping higher-kind draw of a
+/// later-replaying kind (e.g. a mesh recorded after an overlapping
+/// image or curve). The checks use
 /// [`text_grid`](Self::text_grid) (per-batch text AABBs, spatially indexed)
-/// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group AABBs
-/// of mesh/image/curve/polyline draws that paint above text under
-/// kind-reorder).
-#[derive(Default)]
+/// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group
+/// kind-tagged AABBs of mesh/image/curve/polyline draws).
+#[derive(Debug, Default)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
-    /// Pairs the resolved scissor with its rounded-clip data (when the
-    /// push carried a non-zero radius); both ride together so a `PopClip`
-    /// restores them as a unit.
+    /// Pairs the resolved scissor with its rounded-mask chain; both
+    /// ride together so a `PopClip` restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
     /// Scratch for `DrawPolyline`: transformed physical-px points
@@ -78,19 +83,24 @@ pub(crate) struct Composer {
     /// closing batch in [`Self::close_batch`]; cleared in [`Self::flush`]
     /// at the group boundary (closed batches have rendered by then).
     closed_text_grid: TextRectGrid,
-    /// Per-group AABBs of draws that paint above both quads and text
-    /// under the kind-reorder (mesh, image, curve, polyline). Used by
-    /// two checks: a later quad overlapping one would be reordered
-    /// *under* it (`quad_forces_flush`), and text recorded after one
-    /// would be reordered *above* it (`DrawText`) — either forces a
-    /// flush to preserve record order. Cleared per flush — independent
-    /// of batch state since every higher-kind draw also closes the batch.
-    higher_kind_rects: Vec<URect>,
-    /// In-flight group clip state: the active scissor + rounded-clip
-    /// pair stamped onto the group at [`Self::flush`]. Changed only
-    /// through [`Self::set_clip`], which flushes when either differs.
+    /// Per-group kind-tagged AABBs of draws that paint above both quads
+    /// and text under the kind-reorder (mesh, image, curve; polylines
+    /// lower to mesh). Used by three checks: a later quad overlapping
+    /// one would be reordered *under* it (`quad_forces_flush`), text
+    /// recorded after one would be reordered *above* it (`DrawText`),
+    /// and a later higher-kind draw of an earlier-replaying kind would
+    /// be reordered under one it overlaps
+    /// ([`Self::higher_kind_conflict`]) — each forces a flush to
+    /// preserve record order. Cleared per flush — independent of batch
+    /// state since every higher-kind draw also closes the batch.
+    higher_kind_rects: Vec<HigherKindRect>,
+    /// In-flight group clip state: the active scissor + rounded-mask
+    /// chain stamped onto the group at [`Self::flush`]. Changed only
+    /// through [`Self::set_clip`], which flushes when either differs
+    /// (chains compare by value, so a pop/re-push of an identical
+    /// rounded clip stays a no-op).
     current_scissor: Option<URect>,
-    current_rounded: Option<RoundedClip>,
+    current_chain: Span,
     /// `*_start` cursors marking where the open group's per-kind slices
     /// begin in `out`. [`Self::flush`] closes each slice and advances
     /// the matching cursor.
@@ -112,18 +122,44 @@ pub(crate) struct Composer {
     max_texture_dim: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct ClipFrame {
     scissor: URect,
-    rounded: Option<RoundedClip>,
+    /// Outer→inner chain of rounded masks active for this frame's
+    /// subtree — a span into `RenderBuffer.rounded_clips`. A rounded
+    /// push extends the parent chain with its own mask; a rect push
+    /// inherits it verbatim. Empty = no rounded ancestor.
+    chain: Span,
+}
+
+/// Above-text paint kinds, declared in the backend's intra-group replay
+/// order (`schedule::emit_group_body`: quads → text → **mesh batches →
+/// image batches → curve batches**), so `Ord` compares replay position.
+/// Polylines tessellate to meshes and enter as `Mesh`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+enum HigherKind {
+    Mesh,
+    Image,
+    Curve,
+}
+
+/// One higher-kind draw recorded into the in-flight group: its
+/// physical-px AABB tagged with its replay tier (see [`HigherKind`]).
+#[derive(Clone, Copy, Debug)]
+struct HigherKindRect {
+    kind: HigherKind,
+    rect: URect,
 }
 
 /// Per-kind slice cursors for the in-flight group. Each field marks
 /// where the open group's slice begins in the matching `out` buffer;
 /// [`Composer::flush`] closes the slices and advances every cursor to
 /// the buffer's current length. Bundled so the flush-boundary contract
-/// is one value instead of five parallel fields.
-#[derive(Default, Clone, Copy)]
+/// is one value instead of five parallel fields. `texts` feeds only the
+/// did-anything-emit check — a text-only group must still push a
+/// `DrawGroup` so its batch's `last_group` index resolves; the run
+/// spans themselves live on [`TextBatch`].
+#[derive(Default, Clone, Copy, Debug)]
 struct GroupCursors {
     quads: u32,
     texts: u32,
@@ -135,7 +171,7 @@ struct GroupCursors {
 /// State carried while a text batch is mid-accumulation. Pushed onto
 /// `out.text_batches` as a [`TextBatch`] when [`Composer::close_batch`]
 /// finalizes it.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct OpenBatch {
     /// Cursor into `out.texts` where this batch's run span begins.
     /// Combined with `out.texts.len()` at close-time to compute the
@@ -210,9 +246,8 @@ impl Composer {
             }
             out.groups.push(DrawGroup {
                 scissor: self.current_scissor,
-                rounded_clip: self.current_rounded,
+                rounded_clips: self.current_chain,
                 quads: (self.cursors.quads..q_end).into(),
-                texts: (self.cursors.texts..t_end).into(),
             });
         }
         self.cursors = GroupCursors {
@@ -257,12 +292,12 @@ impl Composer {
         // (multiple batches can anchor to the same group when a mesh
         // splits mid-group), and their `texts` spans concatenate
         // without gaps in `out.texts`.
-        debug_assert!(
+        assert!(
             out.text_batches
                 .last()
                 .is_none_or(|prev| prev.last_group <= b.last_group),
         );
-        debug_assert!(
+        assert!(
             out.text_batches
                 .last()
                 .is_none_or(|prev| prev.texts.start + prev.texts.len == b.texts_start),
@@ -277,6 +312,10 @@ impl Composer {
             // here and relying on per-run shader clipping that the
             // inlined text backend doesn't actually implement.
             scissor: b.text_union,
+            // Every close site runs before `current_chain` can change
+            // (set_clip closes ahead of the update), so this is the
+            // chain all the batch's runs were recorded under.
+            rounded_clips: self.current_chain,
         });
     }
 
@@ -309,18 +348,55 @@ impl Composer {
     /// geometry paints above text under the backend's kind reorder, and a
     /// batch renders at the END of its last group — past this draw if left
     /// open — so the batch must close here for its text to emit first. Done
-    /// only after the cull: a culled draw must not split the batch. Returns
+    /// only after the cull: a culled draw must not split the batch. Also
+    /// flushes the group when the draw cross-kind-conflicts with an earlier
+    /// higher-kind draw (see [`Self::higher_kind_conflict`]). Returns
     /// `false` when culled — the caller should `continue`.
     ///
     /// Polyline doesn't use this: its close must wait until after
     /// tessellation (an empty tessellation must not split the batch), so it
-    /// culls early via [`Self::cull_against_active_clip`] and closes by hand.
-    fn enter_higher_kind(&mut self, scissor: URect, out: &mut RenderBuffer) -> bool {
+    /// culls early via [`Self::cull_against_active_clip`] and replays the
+    /// close + conflict steps by hand.
+    fn enter_higher_kind(
+        &mut self,
+        kind: HigherKind,
+        scissor: URect,
+        out: &mut RenderBuffer,
+    ) -> bool {
         if self.cull_against_active_clip(scissor) {
             return false;
         }
         self.close_batch(out);
+        if self.higher_kind_conflict(kind, scissor) {
+            self.flush(out);
+        }
         true
+    }
+
+    /// `true` when a higher-kind draw of `kind` at `rect` would violate
+    /// record order against an earlier higher-kind draw in the group.
+    /// The backend replays a group's higher kinds in the fixed tier
+    /// order mesh → image → curve (`schedule::emit_group_body`), so
+    /// record order between two overlapping draws is honored iff the
+    /// later-recorded one replays in a *later* tier. Same-kind overlap
+    /// is fine — order is preserved within a batch. Conflict is
+    /// therefore `kind < recorded.kind` (incoming replays earlier than
+    /// an overlapping recorded draw) — the caller must flush so the
+    /// earlier draw renders in an earlier group.
+    fn higher_kind_conflict(&self, kind: HigherKind, rect: URect) -> bool {
+        self.higher_kind_rects
+            .iter()
+            .any(|e| kind < e.kind && e.rect.intersect(rect).is_some())
+    }
+
+    /// Conservative overlap of `rect` against every recorded higher-kind
+    /// draw, kind-blind: any non-empty intersection counts. False
+    /// positives are correctness-safe (extra flush, costs a drawcall);
+    /// false negatives would reorder paint and corrupt the frame.
+    fn any_higher_kind_overlap(&self, rect: URect) -> bool {
+        self.higher_kind_rects
+            .iter()
+            .any(|e| e.rect.intersect(rect).is_some())
     }
 
     /// Force a flush / batch-close if a quad-tier draw at `overlap`
@@ -351,32 +427,30 @@ impl Composer {
             self.close_batch(out);
             self.flush(out);
         } else if self.closed_text_grid.any_overlap(overlap)
-            || any_overlap(&self.higher_kind_rects, overlap)
+            || self.any_higher_kind_overlap(overlap)
         {
             self.flush(out);
         }
     }
 
-    /// Switch to a new clip (scissor + optional rounded), flushing
-    /// the in-flight group only if anything actually differs. A
-    /// same-clip Push/Pop is a no-op so accumulated overlap state
-    /// persists through redundant clip transitions.
-    fn set_clip(
-        &mut self,
-        scissor: Option<URect>,
-        rounded: Option<RoundedClip>,
-        out: &mut RenderBuffer,
-    ) {
-        if rounded != self.current_rounded {
-            // Stencil ref is tied to the active rounded clip; batched
-            // text under the wrong mask would either over- or
-            // under-clip. Close before the group transition.
+    /// Switch to a new clip (scissor + rounded-mask chain), flushing
+    /// the in-flight group only if anything actually differs. Chains
+    /// compare by value, so a same-clip Push/Pop is a no-op and
+    /// accumulated overlap state persists through redundant clip
+    /// transitions.
+    fn set_clip(&mut self, scissor: Option<URect>, chain: Span, out: &mut RenderBuffer) {
+        let chain_changed = !chains_equal(out, chain, self.current_chain);
+        if chain_changed {
+            // The stencil mask stack is tied to the active chain;
+            // batched text under the wrong masks would either over- or
+            // under-clip. Close before the group transition (while
+            // `current_chain` still names the batch's chain).
             self.close_batch(out);
         }
-        if scissor != self.current_scissor || rounded != self.current_rounded {
+        if scissor != self.current_scissor || chain_changed {
             self.flush(out);
             self.current_scissor = scissor;
-            self.current_rounded = rounded;
+            self.current_chain = chain;
         }
     }
 
@@ -407,7 +481,7 @@ impl Composer {
         self.closed_text_grid.start_frame(viewport_phys);
         self.higher_kind_rects.clear();
         self.current_scissor = None;
-        self.current_rounded = None;
+        self.current_chain = Span::default();
         self.cursors = GroupCursors::default();
         self.open_batch = None;
         self.occlusion.clear();
@@ -422,11 +496,13 @@ impl Composer {
                     let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
                     let world = current_transform.apply_rect(p.rect);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
-                    let scissor = match self.clip_stack.last() {
+                    let parent = self.clip_stack.last().copied();
+                    let scissor = match parent {
                         Some(parent) => me.clamp_to(parent.scissor),
                         None => me,
                     };
-                    let rounded = if let Some(logical_radius) = logical_radius {
+                    let parent_chain = parent.map_or(Span::default(), |f| f.chain);
+                    let chain = if let Some(logical_radius) = logical_radius {
                         // Combine current transform's uniform scale with DPR
                         // so radii match the painted SDF's physical size.
                         let phys_scale = current_transform.scale * scale;
@@ -435,22 +511,36 @@ impl Composer {
                         // would shift inward when the clip partially
                         // leaves the viewport.
                         out.has_rounded_clip = true;
-                        Some(RoundedClip {
+                        let rc = RoundedClip {
                             mask_rect: world.scaled_by(scale, snap),
                             corners: logical_radius.scaled_by(phys_scale),
-                        })
+                        };
+                        // A rounded push nested in rounded ancestors
+                        // STACKS: child chain = ancestor chain + own
+                        // mask, copied so every chain is one contiguous
+                        // span the stencil path can stamp outer→inner.
+                        // Re-pushing the innermost mask verbatim adds no
+                        // depth (a redundant stamp would test/write the
+                        // same pixels).
+                        if out.rounded_clips[parent_chain.range()].last() == Some(&rc) {
+                            parent_chain
+                        } else {
+                            let chain_start = out.rounded_clips.len() as u32;
+                            out.rounded_clips.extend_from_within(parent_chain.range());
+                            out.rounded_clips.push(rc);
+                            Span::new(chain_start, parent_chain.len + 1)
+                        }
                     } else {
-                        // Rect clip nested inside a rounded ancestor: inherit
-                        // the ancestor's rounded data so children stay
-                        // stencil-tested against the active mask. Without
-                        // this, the child group would draw with ref=0 over
-                        // pixels already stenciled to 1 by the parent's
-                        // mask, and the stencil_test pipeline would discard
-                        // every fragment.
-                        self.clip_stack.last().and_then(|f| f.rounded)
+                        // Rect clip nested inside rounded ancestors: inherit
+                        // the ancestor chain so children stay stencil-tested
+                        // against the active masks. Without this, the child
+                        // group would draw with ref=0 over pixels already
+                        // stenciled nonzero by the ancestors' masks, and the
+                        // stencil_test pipeline would discard every fragment.
+                        parent_chain
                     };
-                    self.clip_stack.push(ClipFrame { scissor, rounded });
-                    self.set_clip(Some(scissor), rounded, out);
+                    self.clip_stack.push(ClipFrame { scissor, chain });
+                    self.set_clip(Some(scissor), chain, out);
                 }
                 CmdKind::PopClip => {
                     self.clip_stack
@@ -459,7 +549,7 @@ impl Composer {
                     let parent = self.clip_stack.last().copied();
                     self.set_clip(
                         parent.map(|f| f.scissor),
-                        parent.and_then(|f| f.rounded),
+                        parent.map_or(Span::default(), |f| f.chain),
                         out,
                     );
                 }
@@ -508,15 +598,26 @@ impl Composer {
                     // rect — for sharp corners the cover is the
                     // whole rect; for rounded corners it's the
                     // inscribed rect deflated by KAPPA·radius per
-                    // side. Strokes don't shrink coverage (a centred
-                    // stroke paints OUTSIDE the rect; the interior
-                    // is still fully covered by the fill), so
-                    // stroke_width is irrelevant on this side.
-                    // Record the cover rect with the in-flight slice
-                    // index so `flush()` can drop earlier quads
-                    // contained in it.
+                    // side. quad.wgsl strokes are INNER-edge and
+                    // coverage-partitioned with the fill (annulus
+                    // alpha = stroke alpha), so a translucent stroke
+                    // leaves its ring non-opaque: only the fill-only
+                    // interior — the inscribed rect deflated by the
+                    // stroke width on every side — is guaranteed
+                    // opaque. A noop stroke or a fully-opaque stroke
+                    // colour keeps the full inscribed cover (opaque
+                    // annulus + opaque fill = opaque rect). A stroke
+                    // wider than half the rect deflates the cover to
+                    // empty — nothing is recorded. Record the cover
+                    // rect with the in-flight slice index so `flush()`
+                    // can drop earlier quads contained in it.
                     if p.fill_kind == FillKind::SOLID && p.fill.is_opaque() {
-                        let cover = phys_rect.inscribed_for_corners(phys_radius);
+                        let inscribed = phys_rect.inscribed_for_corners(phys_radius);
+                        let cover = if noop_f32(stroke_width_phys) || p.stroke_color.is_opaque() {
+                            inscribed
+                        } else {
+                            inscribed.deflated_by(Spacing::all(stroke_width_phys))
+                        };
                         if !cover.is_paint_empty() {
                             let idx = out.quads.len() as u32 - 1 - self.cursors.quads;
                             self.occlusion.record_opaque(idx, cover);
@@ -641,7 +742,7 @@ impl Composer {
                     // active scissor (e.g. scrolled out of an ancestor clip)
                     // is skipped; a surviving one closes the open text batch
                     // so its text emits before this above-text geometry.
-                    if !self.enter_higher_kind(mesh_urect, out) {
+                    if !self.enter_higher_kind(HigherKind::Mesh, mesh_urect, out) {
                         continue;
                     }
                     // Verts already live in FrameArena owner-local;
@@ -668,7 +769,10 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
-                    self.higher_kind_rects.push(mesh_urect);
+                    self.higher_kind_rects.push(HigherKindRect {
+                        kind: HigherKind::Mesh,
+                        rect: mesh_urect,
+                    });
                 }
                 CmdKind::DrawImage => {
                     let p: DrawImagePayload = cmds.read(start);
@@ -679,7 +783,7 @@ impl Composer {
                     // Clip-cull + batch-close: image sits above text in the
                     // kind order (same as mesh), so a surviving draw closes
                     // the open text batch first.
-                    if !self.enter_higher_kind(image_urect, out) {
+                    if !self.enter_higher_kind(HigherKind::Image, image_urect, out) {
                         continue;
                     }
                     out.images.rows.push(ImageDrawRow {
@@ -714,8 +818,11 @@ impl Composer {
                             paint: cmds.gpu_view_paints[paint_index as usize].clone(),
                         });
                     }
-                    // Track for paint-order overlap with mesh-tier draws.
-                    self.higher_kind_rects.push(image_urect);
+                    // Track for paint-order overlap with the other tiers.
+                    self.higher_kind_rects.push(HigherKindRect {
+                        kind: HigherKind::Image,
+                        rect: image_urect,
+                    });
                 }
                 CmdKind::DrawCurve => {
                     let p: DrawCurvePayload = cmds.read(start);
@@ -734,7 +841,7 @@ impl Composer {
                     // Clip-cull + batch-close: curve sits above text in the
                     // kind order (same as mesh/image), so a surviving draw
                     // closes the open text batch first.
-                    if !self.enter_higher_kind(bbox_scissor, out) {
+                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
                         continue;
                     }
                     // Transform control points to physical px. Owner
@@ -787,7 +894,10 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         });
                     }
-                    self.higher_kind_rects.push(bbox_scissor);
+                    self.higher_kind_rects.push(HigherKindRect {
+                        kind: HigherKind::Curve,
+                        rect: bbox_scissor,
+                    });
                 }
                 CmdKind::DrawPolyline => {
                     let p: DrawPolylinePayload = cmds.read(start);
@@ -836,9 +946,13 @@ impl Composer {
                         );
                     } else {
                         // Spin: rotate each owner-local point about the
-                        // bbox centre (the pivot the encoder widened bbox
-                        // to) before placing it via the ancestor
-                        // transform, so the shape rotates in place.
+                        // bbox centre before placing it via the ancestor
+                        // transform, so the shape rotates in place. The
+                        // encoder replaced the payload bbox with a
+                        // rotation-invariant square CENTRED on the spin
+                        // pivot (the owner-box centre), so `bbox.center()`
+                        // is the pivot by construction — keep the two
+                        // ends of that contract in sync.
                         let pivot = p.bbox.center();
                         let rotor = Vec2::from_angle(p.rotation);
                         self.polyline_scratch.extend(src_points.iter().map(|&q| {
@@ -867,11 +981,16 @@ impl Composer {
                         continue;
                     }
                     // Polyline tessellates to a mesh — same paint-order
-                    // rule as DrawMesh: close any open text batch so its
-                    // text emits before this group's mesh. Only now that
-                    // the polyline will actually emit geometry — an
-                    // empty or culled polyline must not split the batch.
+                    // rules as DrawMesh: close any open text batch so its
+                    // text emits before this group's mesh, and flush on a
+                    // cross-kind conflict with an earlier image/curve.
+                    // Only now that the polyline will actually emit
+                    // geometry — an empty or culled polyline must not
+                    // split the batch or the group.
                     self.close_batch(out);
+                    if self.higher_kind_conflict(HigherKind::Mesh, bbox_scissor) {
+                        self.flush(out);
+                    }
                     // Polyline points are pre-transformed to physical-px
                     // on CPU (the tessellator needs phys-px width to pick
                     // its AA fringe), so the shader's per-instance state
@@ -888,7 +1007,10 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
-                    self.higher_kind_rects.push(bbox_scissor);
+                    self.higher_kind_rects.push(HigherKindRect {
+                        kind: HigherKind::Mesh,
+                        rect: bbox_scissor,
+                    });
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -896,12 +1018,13 @@ impl Composer {
                     // Scale once: `unclipped` (overlap/cull bounds) and the
                     // emitted run's `origin` both derive from this rect.
                     let phys_rect = world_rect.scaled_by(scale, snap);
-                    // Glyphon clips per-`TextArea` against the run's own
-                    // `bounds`, ignoring whatever `wgpu` scissor is active.
-                    // Intersect with the active clip-stack top so ancestor
-                    // `clip = true` panels actually clip glyphs; an empty
-                    // intersection means the run can't reach pixels — skip
-                    // the push entirely (cull).
+                    // `bounds` feeds the batch GPU scissor (union of the
+                    // batch's runs — see the strict-bounds rule below) and
+                    // the backend's per-line y-cull; there is no per-glyph
+                    // clip. Intersect with the active clip-stack top so
+                    // ancestor `clip = true` panels actually clip glyphs;
+                    // an empty intersection means the run can't reach
+                    // pixels — skip the push entirely (cull).
                     let unclipped = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     let bounds = match self.clip_stack.last() {
                         Some(parent) => unclipped.clamp_to(parent.scissor),
@@ -915,7 +1038,7 @@ impl Composer {
                     // the group overlaps so this text doesn't get
                     // reordered above it. (No need to check quads: text
                     // paints over quads anyway.)
-                    if any_overlap(&self.higher_kind_rects, bounds) {
+                    if self.any_higher_kind_overlap(bounds) {
                         self.flush(out);
                     }
                     // Batch GPU scissor = `text_union` (union of every
@@ -969,12 +1092,6 @@ impl Composer {
     }
 }
 
-/// Chord-subdivisions per curve sub-instance. The shader expands one
-/// instance into this many quads (= 2× this many triangles = 6× this
-/// many indices). Has to stay in lockstep with the `SEGMENTS_PER_INSTANCE`
-/// constant in `curve.wgsl`.
-pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
-
 /// Upper bound on sub-instances per curve. Long, fast-curving strokes
 /// (think a 4k-px-long swooping bezier at 200% zoom) hit this cap;
 /// beyond it the chord error rises but stays well under a pixel for
@@ -1014,14 +1131,6 @@ fn snap_text_scale(s: f32) -> f32 {
     (s / TEXT_SCALE_STEP).round() * TEXT_SCALE_STEP
 }
 
-/// Conservative overlap test: any non-empty intersection counts.
-/// False positives are correctness-safe (extra flush, costs a
-/// drawcall); false negatives would reorder paint and corrupt the
-/// frame.
-fn any_overlap(slots: &[URect], r: URect) -> bool {
-    slots.iter().any(|s| s.intersect(r).is_some())
-}
-
 /// Clamp a physical-px AABB to the viewport, returning the
 /// non-negative `URect` the GPU can consume. NaN/non-finite inputs
 /// collapse to `URect::default()` (zero-sized).
@@ -1051,6 +1160,15 @@ fn urect_from_phys(min: Vec2, max: Vec2, viewport: UVec2) -> URect {
 fn scissor_from_logical(r: Rect, scale: f32, snap: bool, viewport: UVec2) -> URect {
     let phys = r.scaled_by(scale, snap);
     urect_from_phys(phys.min, phys.max(), viewport)
+}
+
+/// Value equality of two rounded-mask chains (spans into
+/// `out.rounded_clips`). Spans differ across a pop/re-push of an
+/// identical clip — the composer pushes a fresh chain per rounded push —
+/// but value-equal chains stamp identical masks, so clip-transition
+/// decisions must not split on span identity alone.
+fn chains_equal(out: &RenderBuffer, a: Span, b: Span) -> bool {
+    out.rounded_clips[a.range()] == out.rounded_clips[b.range()]
 }
 
 /// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds

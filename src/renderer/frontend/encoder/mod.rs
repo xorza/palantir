@@ -15,10 +15,10 @@ use crate::primitives::image::ImageFit;
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size, widget_id::WidgetId};
-use crate::renderer::backend::viewport::DAMAGE_AA_PADDING;
+use crate::renderer::backend::viewport::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawTrianglePayload, GpuFillFields, RenderCmdBuffer,
+    GpuFillFields, RenderCmdBuffer,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
@@ -93,17 +93,10 @@ pub(crate) fn encode(
     let viewport = ui.display.logical_rect();
     let now = ui.time;
     let gradients = arena.gradients.as_slice();
-    // Logical-px slack the damage subtree-cull inflates by so it matches
-    // the *padded* region the backend actually PreClears. The scissor is
-    // `round(edge · scale) ± DAMAGE_AA_PADDING` physical px
-    // (`viewport::logical_rect_to_phys_scissor`); the round can push each
-    // edge out by ½ px, so the cleared region reaches
-    // `(DAMAGE_AA_PADDING + 0.5) / scale` logical px past the raw damage
-    // rect. Inflate by one extra px so the strict `Rect::intersects`
-    // (touching doesn't count) can't drop a node sitting exactly on that
-    // boundary. Without this, a node in the pad ring is cleared but
-    // culled from repaint → a hard cut at the wire/shape bbox edge.
-    let damage_cull_margin = (DAMAGE_AA_PADDING as f32 + 1.0) / ui.display.scale_factor;
+    // Matches the *padded* region the backend actually PreClears — the
+    // pad + rounding-slack derivation lives next to the scissor math in
+    // `viewport::damage_cull_margin` so the two can't drift.
+    let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layer_cascades = &ui.cascades.layers[layer];
         let ctx = LayerCtx {
@@ -147,6 +140,17 @@ struct LayerCtx<'a> {
     damage_cull_margin: f32,
     viewport: Rect,
     now: Duration,
+}
+
+// Manual: `Tree` / `LayerLayout` don't implement `Debug`.
+impl std::fmt::Debug for LayerCtx<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LayerCtx")
+            .field("damage_cull_margin", &self.damage_cull_margin)
+            .field("viewport", &self.viewport)
+            .field("now", &self.now)
+            .finish_non_exhaustive()
+    }
 }
 
 /// Final pass: emit a magenta outline for each explicit-id collision
@@ -276,13 +280,26 @@ fn emit_one_shape(
             // composer folds `origin` into the per-point transform
             // (no per-frame point copy any more).
             let rotation = paint_mod.rotation;
-            // A spun polyline sweeps its whole owner box, so widen the
-            // scissor bbox to that box — its centre is also the pivot the
-            // composer rotates each point about.
+            // A spun polyline sweeps a disc about the owner-box centre
+            // `c`. Replace the payload bbox with the smallest square
+            // centred on `c` containing the lowered bbox (which already
+            // carries the miter/cap/fringe stroke inflation): half-extent
+            // = max distance from `c` to the lowered bbox's corners.
+            // That bound is rotation-invariant about `c`, so the
+            // composer's cull and overlap tracking stay correct at every
+            // angle — and it keeps `bbox.center() == c`, the pivot the
+            // composer rotates each point about (see the Spin arm in
+            // `Composer::compose`).
             let bbox = if rotation != 0.0 {
+                let c = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
+                let d = (bbox.min - c).abs().max((bbox.max() - c).abs());
+                let r = d.length();
                 Rect {
-                    min: glam::Vec2::ZERO,
-                    size: owner_rect.size,
+                    min: c - glam::Vec2::splat(r),
+                    size: Size {
+                        w: 2.0 * r,
+                        h: 2.0 * r,
+                    },
                 }
             } else {
                 *bbox
@@ -378,22 +395,9 @@ fn emit_one_shape(
             // Corner points are owner-local; the composer folds `origin` +
             // the active transform and derives the covering AABB. Solid
             // fill only — the reused quad lanes have no room for a gradient.
-            let (stroke_color, stroke_width) = if stroke.is_noop() {
-                (ColorF16::TRANSPARENT, 0.0)
-            } else {
-                (stroke.color, stroke.width())
-            };
-            out.draw_triangle(DrawTrianglePayload {
-                origin: owner_rect.min,
-                a: *a,
-                b: *b,
-                c: *c,
-                fill: *fill,
-                stroke_color,
-                radius: *radius,
-                stroke_width,
-                ..bytemuck::Zeroable::zeroed()
-            });
+            // Stroke noop-normalization happens inside `draw_triangle`
+            // (the cmd buffer is the single canonical correctness gate).
+            out.draw_triangle(owner_rect.min, [*a, *b, *c], *fill, *radius, *stroke);
         }
         ShapeRecord::Image {
             local_rect,
@@ -645,6 +649,7 @@ fn emit_shadow(
 
 /// Output of [`resolve_fit`]: the final paint rect + UV crop the
 /// encoder hands to the cmd buffer.
+#[derive(Debug)]
 struct Resolved {
     rect: Rect,
     uv_min: glam::Vec2,

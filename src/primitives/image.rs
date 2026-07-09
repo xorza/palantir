@@ -52,9 +52,16 @@ pub struct Image {
 }
 
 impl Image {
-    /// Build from raw RGBA8 bytes. Hard-asserts
+    /// Build from raw RGBA8 bytes. Hard-asserts non-zero dimensions and
     /// `pixels.len() == width * height * 4`.
     pub fn from_rgba8(width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        // A 0×0 image passes the length check (0 == 0) but is a logic
+        // error: it would hit a wgpu validation panic at upload, a frame
+        // later and far from the cause. Fail here, at construction.
+        assert!(
+            width > 0 && height > 0,
+            "Image::from_rgba8: image dimensions must be non-zero, got {width}x{height}",
+        );
         let expected = (width as usize) * (height as usize) * 4;
         assert_eq!(
             pixels.len(),

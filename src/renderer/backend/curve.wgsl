@@ -5,7 +5,7 @@
 // CPU tessellation.
 //
 // Lockstep contract: `SEGMENTS_PER_INSTANCE` here matches the const of
-// the same name in `frontend/composer/mod.rs` — the composer derives
+// the same name in `renderer/render_buffer.rs` — the composer derives
 // the adaptive sub-instance count assuming the shader subdivides each
 // instance into exactly this many chords. Bump together.
 //
@@ -76,10 +76,11 @@ struct VsOut {
     // Signed perpendicular offset across the strip in physical px.
     // Fragment uses |offset| for the AA fringe alpha. Per-vertex.
     @location(0) offset: f32,
-    // Tangential distance past the nearest endpoint (>= 0 inside the
-    // cap zone, 0 inside the body). Round/Square caps key on this;
-    // Butt never sees a non-zero value because Butt doesn't extend.
-    // Per-vertex (only the cap-zone corners carry a non-zero value).
+    // Signed tangential distance past the nearest endpoint: positive
+    // in the cap zone, negative into the cap segment's body (so the
+    // lerp zeroes exactly at the endpoint cross-section), 0 elsewhere.
+    // Round/Square caps key on `> 0`; Butt never sees a positive value
+    // because Butt doesn't extend.
     @location(1) cap_t: f32,
     // Per-instance: constant across all 96 verts of an instance, so
     // flat-interpolate to skip per-fragment varying evaluation.
@@ -167,14 +168,34 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     // Cap extension. Only the leading edge of segment 0 of the first
     // sub-instance (and the trailing edge of the last segment of the
     // last sub-instance) shifts; everything else stays put.
-    let is_leading_edge = (seg == 0u) && (t_off == 0.0)
-        && (in.t_range.x < T_END_EPS);
-    let is_trailing_edge = (seg == SEGMENTS_PER_INSTANCE - 1u) && (t_off == 1.0)
+    let is_first_cap_seg = (seg == 0u) && (in.t_range.x < T_END_EPS);
+    let is_last_cap_seg = (seg == SEGMENTS_PER_INSTANCE - 1u)
         && (in.t_range.y > 1.0 - T_END_EPS);
+    let is_leading_edge = is_first_cap_seg && (t_off == 0.0);
+    let is_trailing_edge = is_last_cap_seg && (t_off == 1.0);
     var cap_shift: f32 = 0.0;
+    // `cap_t` must lerp to zero exactly at the endpoint cross-section,
+    // so a cap segment's body edge carries -chord (not 0): the linear
+    // function -s is then exact across the fused cap+body quad. With 0
+    // at the body edge the zero landed at the segment's far edge and
+    // the round-cap SDF over-estimated r through the whole segment,
+    // visibly necking thin caps (~chord^2 / stroke width).
+    var cap_t: f32 = 0.0;
     if (in.cap != CAP_BUTT) {
-        if (is_leading_edge) { cap_shift = -half_w; }
-        if (is_trailing_edge) { cap_shift =  half_w; }
+        if (is_leading_edge) {
+            cap_shift = -half_w;
+            cap_t = half_w;
+        } else if (is_first_cap_seg) {
+            let lead = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, in.t_range.x);
+            cap_t = -distance(pos, lead.pos);
+        }
+        if (is_trailing_edge) {
+            cap_shift = half_w;
+            cap_t = half_w;
+        } else if (is_last_cap_seg) {
+            let trail = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, in.t_range.y);
+            cap_t = -distance(pos, trail.pos);
+        }
     }
 
     let offset = side * half_w;
@@ -189,7 +210,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.offset = offset;
     out.half_w = core_hw;
     out.color = in.color;
-    out.cap_t = abs(cap_shift);
+    out.cap_t = cap_t;
     out.cap_kind = in.cap;
     out.fill_kind = in.fill_kind;
     out.fill_lut_row = in.fill_lut_row;
@@ -203,8 +224,9 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     var coverage: f32;
     if (in.cap_t > 0.0 && in.cap_kind == CAP_ROUND) {
         // Round cap: distance to the endpoint, not to the centerline.
-        // Endpoint sits at (cap_t = 0, offset = 0) in local strip
-        // coords; cap_t > 0 is the projected cap zone.
+        // The endpoint cross-section is exactly cap_t == 0 (the vertex
+        // shader emits -chord at the cap segment's body edge so the
+        // lerp lands there); cap_t > 0 is the projected cap zone.
         let r = sqrt(in.cap_t * in.cap_t + dist * dist);
         coverage = clamp(in.half_w - r + HALF_FRINGE, 0.0, 1.0);
     } else {

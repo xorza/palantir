@@ -14,7 +14,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::render_target::{RenderTarget, make_target};
 use crate::renderer::backend::pipeline_utils::{
-    ColorVariantSpec, StencilVariant, texture_sampler_bgl,
+    ColorVariantSpec, StencilVariant, texture_bind_group, texture_sampler_bgl,
 };
 use crate::renderer::gpu_view::{GPU_VIEW_FORMAT, GpuFrameCtx, GpuInitCtx};
 use crate::renderer::image_registry::ImageRegistry;
@@ -25,15 +25,17 @@ use rustc_hash::FxHashMap;
 use std::collections::hash_map::Entry;
 use std::time::Duration;
 
+#[derive(Debug)]
 pub(crate) struct ImagePipeline {
     instance_buffer: DynamicBuffer,
-    /// Image shader module — format-independent; `FormatPipelines` reads
-    /// it to build this format's pipelines.
-    pub(crate) shader: wgpu::ShaderModule,
+    /// Image shader module — format-independent; [`Self::build_variants`]
+    /// reads it to build each format's pipelines.
+    shader: wgpu::ShaderModule,
     /// Group 0 layout (per-image texture + sampler). Built once;
-    /// every cached bind group references it. Format-independent;
-    /// `FormatPipelines` reads it to compose the pipeline layout.
-    pub(crate) image_bgl: wgpu::BindGroupLayout,
+    /// every cached bind group references it, and
+    /// [`Self::build_variants`] composes each format's pipeline layout
+    /// against it.
+    image_bgl: wgpu::BindGroupLayout,
     sampler: wgpu::Sampler,
     /// `id → bind group` for every live registration's GPU texture. An
     /// entry is inserted when the registry drains a pending upload, and
@@ -49,7 +51,8 @@ pub(crate) struct ImagePipeline {
     cache: FxHashMap<TextureId, wgpu::BindGroup>,
     /// Framework-owned off-screen `GpuView` targets, keyed by [`TextureId`].
     /// [`Self::paint_gpu_views`] (re)allocates + paints them and frees the
-    /// ones culled this frame; the bind groups live in `cache` above so the
+    /// submitting window's culled ones (eviction is owner-scoped — see
+    /// [`keep_target`]); the bind groups live in `cache` above so the
     /// composite samples a target exactly like any image.
     gpu_view_targets: FxHashMap<TextureId, RenderTarget>,
 }
@@ -96,9 +99,8 @@ impl ImagePipeline {
     /// bind groups, sampler, and layout are all format-independent.
     /// Called by `FormatPipelines` per format.
     pub(crate) fn build_variants(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
-        image_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Per-image tex+sampler at group 0 — viewport rides the
@@ -109,8 +111,8 @@ impl ImagePipeline {
                 label: "aperture.image.pipeline",
                 stencil_label: "aperture.image.pipeline.stencil_test",
                 layout_label: "aperture.image.pl",
-                shader,
-                bind_group_layouts: &[Some(image_bgl)],
+                shader: &self.shader,
+                bind_group_layouts: &[Some(&self.image_bgl)],
                 vertex_buffers: &[Some(instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -150,21 +152,28 @@ impl ImagePipeline {
     /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
     /// so it only has to run before the main pass samples the targets.
     ///
-    /// Eviction is **immediate**: any target absent from this frame's
-    /// `frame_targets` is freed. Correct because every composited view is
-    /// repainted, so a freed-then-recomposited target is never sampled blank —
-    /// but a `repaint(false)` view culled from a frame frees its texture, so
-    /// `GpuPaint::init` re-runs when it next composites (guard expensive setup).
+    /// Eviction is **immediate but owner-scoped**: any target `owner`
+    /// painted before that is absent from this `frame_targets` is freed.
+    /// Correct because every composited view is repainted, so a
+    /// freed-then-recomposited target is never sampled blank — but a
+    /// `repaint(false)` view culled from a frame frees its texture, so
+    /// `GpuPaint::init` re-runs when it next composites (guard expensive
+    /// setup). `owner` is the submitting window's stable buffer identity
+    /// ([`RenderBuffer::owner`](crate::renderer::render_buffer::RenderBuffer)):
+    /// the one shared backend serves all windows, so a submit may only
+    /// evict its *own* absent targets — another window's targets survive
+    /// both this submit and their owner's idle (non-submitting) frames.
     #[profiling::function]
     pub(crate) fn paint_gpu_views(
         &mut self,
         ctx: &mut GpuCtx<'_>,
         frame_targets: &[RenderTargetDraw],
+        owner: u64,
         scale: f32,
         now: Duration,
     ) {
         for draw in frame_targets {
-            let rt = self.ensure_target(ctx.device, draw.id, draw.used);
+            let rt = self.ensure_target(ctx.device, draw.id, draw.used, owner);
             let mut paint = draw.paint.0.borrow_mut();
             // Run `init` once per target (not on a realloc: the recreated
             // texture shares the build-time format).
@@ -200,11 +209,12 @@ impl ImagePipeline {
             ctx.encoder.pop_debug_group();
             rt.last_paint = Some(now);
         }
-        // Evict immediately: a target absent from this frame's `frame_targets`
-        // (its widget vanished, or a `repaint(false)` view was culled) is freed
-        // — texture + shared-cache bind group together.
-        self.gpu_view_targets.retain(|id, _| {
-            let keep = frame_targets.iter().any(|draw| draw.id == *id);
+        // Evict immediately, owner-scoped: a target of *this* submitter absent
+        // from this frame's `frame_targets` (its widget vanished, or a
+        // `repaint(false)` view was culled) is freed — texture + shared-cache
+        // bind group together. Other windows' targets are left alone.
+        self.gpu_view_targets.retain(|id, rt| {
+            let keep = keep_target(rt.owner, *id, owner, frame_targets);
             if !keep {
                 self.cache.remove(id);
             }
@@ -223,10 +233,12 @@ impl ImagePipeline {
         device: &wgpu::Device,
         id: TextureId,
         size: UVec2,
+        owner: u64,
     ) -> &mut RenderTarget {
         match self.gpu_view_targets.entry(id) {
             Entry::Occupied(e) => {
                 let rt = e.into_mut();
+                rt.owner = owner;
                 if rt.size != size {
                     rt.view = make_target(
                         device,
@@ -250,6 +262,7 @@ impl ImagePipeline {
                     size,
                 ),
                 size,
+                owner,
                 initialized: false,
                 last_paint: None,
             }),
@@ -268,6 +281,14 @@ impl ImagePipeline {
         id: TextureId,
         image: &Image,
     ) -> wgpu::BindGroup {
+        // First point on the upload path that knows the device limit —
+        // fail here with the image's size instead of a generic wgpu
+        // validation panic inside `create_texture`.
+        assert_image_uploadable(
+            image.width,
+            image.height,
+            device.limits().max_texture_dimension_2d,
+        );
         let id = id.0;
         let size = wgpu::Extent3d {
             width: image.width,
@@ -382,31 +403,159 @@ fn instance_layout() -> wgpu::VertexBufferLayout<'static> {
     }
 }
 
-/// Build a per-texture bind group (texture view @0 + sampler @1) against the
-/// shared image layout `bgl`. One construction site for both the CPU-image
-/// [`ImagePipeline::upload`] and the `GpuView` target paint
-/// ([`ImagePipeline::paint_gpu_views`]), so their bindings can't drift.
-fn texture_bind_group(
-    device: &wgpu::Device,
-    bgl: &wgpu::BindGroupLayout,
-    sampler: &wgpu::Sampler,
-    view: &wgpu::TextureView,
-    label: &str,
-) -> wgpu::BindGroup {
-    device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some(label),
-        layout: bgl,
-        entries: &[
-            wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(view),
+/// Whether a `GpuView` target entry survives a submit — the
+/// [`ImagePipeline::paint_gpu_views`] eviction policy. Evict only when the
+/// submitting `owner` painted the entry *and* left it out of its
+/// `frame_targets`; entries owned by other windows are never this submit's
+/// to free (an idle window isn't submitting, so its targets must outlive
+/// every other window's frames).
+fn keep_target(
+    entry_owner: u64,
+    id: TextureId,
+    owner: u64,
+    frame_targets: &[RenderTargetDraw],
+) -> bool {
+    entry_owner != owner || frame_targets.iter().any(|draw| draw.id == id)
+}
+
+/// Guard the image-upload boundary: zero-sized or over-device-limit
+/// dimensions would otherwise surface as a generic wgpu validation panic
+/// inside `create_texture`, a frame after the bad `register_image` call.
+/// User data (a decoded file can legitimately exceed the device limit),
+/// but the registry can't see the limit — so the earliest point that can
+/// check is this upload, and the failure names the actionable facts.
+fn assert_image_uploadable(width: u32, height: u32, max_dim: u32) {
+    assert!(
+        width > 0 && height > 0,
+        "registered image has zero dimension ({width}x{height})",
+    );
+    assert!(
+        width <= max_dim && height <= max_dim,
+        "registered image is {width}x{height} px but the device's \
+         max_texture_dimension_2d is {max_dim}; downscale or tile it \
+         before Ui::register_image",
+    );
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::renderer::backend::image_pipeline::*;
+    use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    #[derive(Debug)]
+    struct NoopPaint;
+    impl GpuPaint for NoopPaint {
+        fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+    }
+
+    fn draw(id: u64) -> RenderTargetDraw {
+        RenderTargetDraw {
+            id: TextureId(id),
+            used: UVec2::ONE,
+            paint: GpuPaintRef(Rc::new(RefCell::new(NoopPaint))),
+        }
+    }
+
+    /// Apply [`keep_target`] over `entries` (`(texture id, owner)` pairs)
+    /// for one submit — returns the evicted texture ids, mirroring the
+    /// `paint_gpu_views` retain.
+    fn evicted(entries: &[(u64, u64)], owner: u64, frame_targets: &[RenderTargetDraw]) -> Vec<u64> {
+        entries
+            .iter()
+            .filter(|(id, entry_owner)| {
+                !keep_target(*entry_owner, TextureId(*id), owner, frame_targets)
+            })
+            .map(|(id, _)| *id)
+            .collect()
+    }
+
+    /// The owner-scoped eviction policy, table-driven. Window A owns
+    /// targets 1 and 3, window B owns target 2. Only the submitter's own
+    /// absent targets are evicted — an idle window's targets survive both
+    /// other windows' submits and its own non-submitting frames.
+    #[test]
+    fn gpu_view_eviction_is_owner_scoped() {
+        const A: u64 = 10;
+        const B: u64 = 20;
+        let entries = [(1, A), (3, A), (2, B)];
+        #[derive(Debug)]
+        struct Case {
+            name: &'static str,
+            owner: u64,
+            frame: Vec<RenderTargetDraw>,
+            expect_evicted: Vec<u64>,
+        }
+        let cases = [
+            Case {
+                // A composits both its views; B's idle target untouched.
+                name: "A submits all its targets",
+                owner: A,
+                frame: vec![draw(1), draw(3)],
+                expect_evicted: vec![],
             },
-            wgpu::BindGroupEntry {
-                binding: 1,
-                resource: wgpu::BindingResource::Sampler(sampler),
+            Case {
+                // A culled view 3 (repaint(false) or widget gone) — only
+                // A's absent target goes; B's stays.
+                name: "A submits without target 3",
+                owner: A,
+                frame: vec![draw(1)],
+                expect_evicted: vec![3],
             },
-        ],
-    })
+            Case {
+                // B's submit lists only its own view — A's targets must
+                // survive even though they're absent from B's frame.
+                name: "B submits its target",
+                owner: B,
+                frame: vec![draw(2)],
+                expect_evicted: vec![],
+            },
+            Case {
+                // B stops compositing its view: exactly its own target is
+                // freed, never the other window's.
+                name: "B submits empty frame",
+                owner: B,
+                frame: vec![],
+                expect_evicted: vec![2],
+            },
+            Case {
+                // A's GpuViews all vanish: both its targets are freed in
+                // one submit; B's survives.
+                name: "A submits empty frame",
+                owner: A,
+                frame: vec![],
+                expect_evicted: vec![1, 3],
+            },
+        ];
+        for case in cases {
+            assert_eq!(
+                evicted(&entries, case.owner, &case.frame),
+                case.expect_evicted,
+                "case: {}",
+                case.name,
+            );
+        }
+    }
+
+    #[test]
+    fn image_within_device_limit_is_uploadable() {
+        // Boundary: exactly the limit passes, 1x1 passes.
+        assert_image_uploadable(1, 1, 8192);
+        assert_image_uploadable(8192, 8192, 8192);
+    }
+
+    #[test]
+    #[should_panic(expected = "max_texture_dimension_2d is 8192")]
+    fn oversized_image_panics_with_named_limit() {
+        assert_image_uploadable(8193, 4, 8192);
+    }
+
+    #[test]
+    #[should_panic(expected = "zero dimension")]
+    fn zero_dim_image_panics_at_upload_boundary() {
+        assert_image_uploadable(0, 4, 8192);
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]

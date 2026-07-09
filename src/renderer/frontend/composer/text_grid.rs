@@ -37,7 +37,7 @@ type TileBucket = TinyVec<[u16; 8]>;
 /// rect twice for rects spanning >1 tile — fine, we early-exit on
 /// first hit so duplicate visits cost only constant-factor false
 /// positives.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct TextRectGrid {
     cols: u32,
     rows: u32,

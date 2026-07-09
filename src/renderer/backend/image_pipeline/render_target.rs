@@ -4,7 +4,7 @@
 //! methods stay with the struct in `mod.rs`; the value type and the
 //! `make_target` allocator they call live here.
 
-use super::texture_bind_group;
+use crate::renderer::backend::pipeline_utils::texture_bind_group;
 use crate::renderer::gpu_view::GPU_VIEW_FORMAT;
 use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
@@ -23,6 +23,11 @@ pub(crate) struct RenderTarget {
     /// [`ImagePipeline::ensure_target`](super::ImagePipeline) recreates the
     /// texture only when the requested size differs from this.
     pub(crate) size: UVec2,
+    /// Stable identity of the window whose submit last painted this target
+    /// (`RenderBuffer::owner`). Eviction is scoped to it: a submit frees only
+    /// its *own* targets that left `frame_targets`, so one window's frame
+    /// can't evict another window's live targets from the shared backend.
+    pub(crate) owner: u64,
     /// Whether `GpuPaint::init` has run. Set once and preserved across
     /// reallocations (the recreated texture shares the build-time format).
     pub(crate) initialized: bool,

@@ -62,6 +62,7 @@ pub(crate) const IMMEDIATES_BYTES: u32 = 16;
 /// Construction-time knobs for [`WgpuBackend::new`]. Grouped so the
 /// `WindowRenderer` / `WinitHost` call sites don't grow a long positional
 /// signature each time a new GPU-side setting is exposed.
+#[derive(Debug)]
 pub(crate) struct WgpuBackendConfig {
     /// Opt into GPU instrumentation: the backend wires up timestamp
     /// queries, writes resolved samples through the context's stats
@@ -85,6 +86,7 @@ pub(crate) struct WgpuBackendConfig {
 /// Sized to match the surface texture; recreated on resize or format change.
 /// Owned per-window by [`WindowRenderer`](crate::WindowRenderer); the backend
 /// is otherwise window-agnostic.
+#[derive(Debug)]
 pub(crate) struct Backbuffer {
     tex: wgpu::Texture,
     view: wgpu::TextureView,
@@ -101,6 +103,7 @@ pub(crate) struct Backbuffer {
 /// without paying for a backbuffer color texture it never uses. Transient:
 /// cleared at pass open, never read across frames. Owned per-window by
 /// [`WindowRenderer`](crate::WindowRenderer).
+#[derive(Debug)]
 pub(crate) struct Stencil {
     pub(crate) view: wgpu::TextureView,
     /// Current size, so `ensure_stencil` can skip recreation when unchanged.
@@ -114,6 +117,7 @@ pub(crate) struct Stencil {
 /// and rasterization hit one buffer cache. No layout, no encode, no
 /// compose — those happen elsewhere and arrive here as a
 /// `RenderBuffer`.
+#[derive(Debug)]
 pub(crate) struct WgpuBackend {
     device: wgpu::Device,
     queue: Queue,
@@ -501,8 +505,9 @@ impl WgpuBackend {
             };
             if use_stencil {
                 // After staging, `self.quad.mask_indices` parallels
-                // `buffer.groups` and `render_groups` reads it directly.
-                self.quad.stage_masks(&mut ctx, &buffer.groups);
+                // `buffer.groups` / `buffer.text_batches` and
+                // `render_groups` reads it directly.
+                self.quad.stage_masks(&mut ctx, buffer);
             }
 
             self.quad.upload(&mut ctx, &buffer.quads);
@@ -518,10 +523,16 @@ impl WgpuBackend {
             // target on this same encoder, before the main pass samples it.
             // The composer listed them in `buffer.frame_targets` (size + paint
             // callback); this allocates each + runs its callback, then evicts
-            // targets absent from `frame_targets`. `submit` itself carries no
-            // render-target logic.
-            self.image
-                .paint_gpu_views(&mut ctx, &buffer.frame_targets, buffer.scale, buffer.time);
+            // this submitter's targets absent from `frame_targets` (eviction
+            // is owner-scoped — the shared backend serves every window).
+            // `submit` itself carries no render-target logic.
+            self.image.paint_gpu_views(
+                &mut ctx,
+                &buffer.frame_targets,
+                buffer.owner,
+                buffer.scale,
+                buffer.time,
+            );
             self.curve.upload(&mut ctx, &buffer.curves);
 
             if !damage_scissors.is_empty() {
@@ -549,11 +560,14 @@ impl WgpuBackend {
                 // change — no second sync needed.)
             }
 
-            // Drain glyph atlas uploads (atlas-grow blits + per-glyph
+            // One deferred vbuf write covering every batch prepared
+            // above (see `TextBackend::flush_instances`), then drain
+            // glyph atlas uploads (atlas-grow blits + per-glyph
             // copy_buffer_to_texture) into the same encoder so they
             // share the main render submit. The staging side of those
             // copies also routes through the belt — see
             // `atlas::flush_pending_uploads`.
+            self.text.flush_instances(&mut ctx);
             self.text.flush_atlas_uploads(&mut ctx);
 
             overlay_count
@@ -669,7 +683,7 @@ impl WgpuBackend {
             t.after_submit(&self.device);
         }
 
-        if self.text.prepared_anything {
+        if !self.text.instances.is_empty() {
             self.text.post_record();
         }
     }
@@ -687,25 +701,7 @@ impl WgpuBackend {
         encoder: &mut wgpu::CommandEncoder,
         viewport: ViewportPush,
     ) {
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("aperture.renderer.dim.pass"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: color_view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        // Dim pass uses the quad pipeline outside the main pass.
-        // `draw_dim` binds the pipeline first; immediately after, push
-        // the shared viewport immediate.
+        let mut pass = begin_load_pass(encoder, "aperture.renderer.dim.pass", color_view);
         self.debug.draw_dim(
             &mut pass,
             fmt.quad.select(false),
@@ -721,13 +717,14 @@ impl WgpuBackend {
     /// `SetScissor` + the schedule's group walk (plus the schedule's
     /// own per-rect `PreClear` quad on Partial).
     ///
-    /// Rects are pairwise disjoint (the damage merger always merges
-    /// intersecting pairs — see `ui/damage/region/mod.rs`), so per-rect
-    /// stencil writes from one rect's groups can't bleed into another
-    /// rect's reads. Each `render_groups` call starts with a fresh
-    /// `active_mask = None`; that matches the stencil contents inside
-    /// the rect's scissor (always 0 there at pass open, never written
-    /// outside another rect's scissor).
+    /// Every schedule walk leaves the stencil clean: a walk that ends
+    /// with a mask stamped emits a tail clear under the stamp's
+    /// scissor. That — not rect disjointness — is what keeps one
+    /// rect's stencil writes out of a later rect's reads:
+    /// `DAMAGE_AA_PADDING` can make nominally-disjoint rects' padded
+    /// scissors overlap, and the stencil clears once per pass. Each
+    /// `render_groups` call's fresh `active_mask = None` therefore
+    /// always matches the true stencil contents.
     ///
     /// `partial_scissors == None` ⇒ Full frame: one schedule walk with
     /// no damage scissor, `LoadOp::Clear(color)` covers the whole
@@ -788,7 +785,7 @@ impl WgpuBackend {
             multiview_mask: None,
         });
         if let Some(t) = &self.gpu_timings {
-            if t.inside_passes() {
+            if t.inside_passes {
                 t.pass_begin(&mut pass);
             }
             t.begin_pipeline_stats(&mut pass);
@@ -809,7 +806,7 @@ impl WgpuBackend {
         }
         if let Some(t) = &self.gpu_timings {
             t.end_pipeline_stats(&mut pass);
-            if t.inside_passes() {
+            if t.inside_passes {
                 t.pass_end(&mut pass);
             }
         }
@@ -844,7 +841,8 @@ impl WgpuBackend {
             Mesh,
             Image,
             Curve,
-            MaskWrite,
+            MaskStamp,
+            MaskClear,
         }
         let mut bound = Bound::None;
         let viewport = ViewportPush {
@@ -913,13 +911,24 @@ impl WgpuBackend {
                 RenderStep::SetStencilRef(v) => {
                     pass.set_stencil_reference(v);
                 }
-                RenderStep::MaskQuad(mi) => {
+                RenderStep::MaskStamp(mi) => {
                     mark(pass, BatchKind::Mask);
-                    pass.push_debug_group("mask");
+                    pass.push_debug_group("mask_stamp");
                     rebind!(
-                        Bound::MaskWrite,
+                        Bound::MaskStamp,
                         self.quad
-                            .bind_mask_write(pass, &fmt.quad_mask_write, &self.gradient.bg,)
+                            .bind_mask(pass, &fmt.quad_mask_stamp, &self.gradient.bg)
+                    );
+                    self.quad.draw_mask(pass, mi);
+                    pass.pop_debug_group();
+                }
+                RenderStep::MaskClear(mi) => {
+                    mark(pass, BatchKind::Mask);
+                    pass.push_debug_group("mask_clear");
+                    rebind!(
+                        Bound::MaskClear,
+                        self.quad
+                            .bind_mask(pass, &fmt.quad_mask_clear, &self.gradient.bg)
                     );
                     self.quad.draw_mask(pass, mi);
                     pass.pop_debug_group();
@@ -1014,25 +1023,11 @@ impl WgpuBackend {
         count: u32,
     ) {
         let surface_view = surface_tex.create_view(&wgpu::TextureViewDescriptor::default());
-        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("aperture.renderer.overlay.damage_rect"),
-            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                view: &surface_view,
-                resolve_target: None,
-                depth_slice: None,
-                ops: wgpu::Operations {
-                    load: wgpu::LoadOp::Load,
-                    store: wgpu::StoreOp::Store,
-                },
-            })],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        // Damage-overlay pass uses the quad pipeline against the
-        // swapchain — separate pass, no inherited state. `draw_overlays`
-        // binds the pipeline and pushes viewport in the right order.
+        let mut pass = begin_load_pass(
+            encoder,
+            "aperture.renderer.overlay.damage_rect",
+            &surface_view,
+        );
         self.debug.draw_overlays(
             &mut pass,
             fmt.quad.select(false),
@@ -1092,6 +1087,33 @@ impl WgpuBackend {
             bb.size(),
         );
     }
+}
+
+/// Open a color-only `LoadOp::Load` render pass — the shape shared by
+/// the dim pre-pass and the damage-overlay pass (no stencil, no
+/// timestamps; only the label and target view differ). Both passes run
+/// the debug overlay's quad draws standalone, outside the main pass.
+fn begin_load_pass<'e>(
+    encoder: &'e mut wgpu::CommandEncoder,
+    label: &'static str,
+    view: &wgpu::TextureView,
+) -> wgpu::RenderPass<'e> {
+    encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+        label: Some(label),
+        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+            view,
+            resolve_target: None,
+            depth_slice: None,
+            ops: wgpu::Operations {
+                load: wgpu::LoadOp::Load,
+                store: wgpu::StoreOp::Store,
+            },
+        })],
+        depth_stencil_attachment: None,
+        timestamp_writes: None,
+        occlusion_query_set: None,
+        multiview_mask: None,
+    })
 }
 
 #[cfg(any(test, feature = "internals"))]

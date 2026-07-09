@@ -20,6 +20,7 @@ use crate::renderer::frontend::cmd_buffer::{
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
+#[derive(Debug)]
 struct ClipPairs {
     pushes: usize,
     pops: usize,
@@ -1058,6 +1059,82 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
     assert_eq!(r.rect, base);
     assert_eq!(r.uv_min, Vec2::new(0.5, 0.25));
     assert_eq!(r.uv_size, Vec2::new(3.0, 2.0));
+}
+
+/// A spun polyline's payload bbox must be rotation-invariant: the
+/// smallest square centred on the owner-box centre (the composer's
+/// spin pivot) that contains the LOWERED bbox — which already carries
+/// the stroke's miter/cap/fringe inflation. Owner box 80×40 → pivot
+/// c = (40, 20). Points (10,10)..(70,30), width 1, Butt/Miter:
+/// lowering pads the centreline AABB by
+/// `(w/2)·MITER_LIMIT + HALF_FRINGE = 0.5·4 + 0.5 = 2.5` per side →
+/// lowered bbox (7.5,7.5)..(72.5,32.5). Max corner distance from c:
+/// dx = max(|7.5−40|, |72.5−40|) = 32.5,
+/// dy = max(|7.5−20|, |32.5−20|) = 12.5,
+/// r = √(32.5² + 12.5²) = √1212.5 ≈ 34.8210.
+/// The far endpoint (70,30) rotated 90° CCW about c —
+/// c + rot90(30,10) = c + (−10,30) = (30,50) — lies OUTSIDE the owner
+/// box (0,0,80,40) the old code shipped as the bbox, but inside the
+/// new square: rotation-safety is exactly what the old bound lacked.
+#[test]
+fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
+    use crate::display::Display;
+    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::renderer::frontend::cmd_buffer::DrawPolylinePayload;
+    use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
+    use crate::ui::frame::FrameStamp;
+    use std::time::Duration;
+
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(UVec2::new(200, 200), 1.0);
+    // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0, so the encoder
+    // takes the spin branch.
+    ui.frame(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("spin_owner"))
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .show(ui, |ui| {
+                    ui.add_shape_animated(
+                        Shape::Polyline {
+                            points: &[Vec2::new(10.0, 10.0), Vec2::new(70.0, 30.0)],
+                            colors: PolylineColors::Single(Color::rgb(1.0, 0.0, 0.0)),
+                            width: 1.0,
+                            cap: LineCap::Butt,
+                            join: LineJoin::Miter,
+                        },
+                        PaintAnim::Spin {
+                            speed: 1.0,
+                            started_at: Duration::ZERO,
+                        },
+                    );
+                });
+        });
+    });
+    let cmds = ui.encode_cmds();
+    let p = (0..cmds.kinds.len())
+        .find_map(|i| match cmds.kinds[i] {
+            CmdKind::DrawPolyline => Some(cmds.read::<DrawPolylinePayload>(cmds.starts[i])),
+            _ => None,
+        })
+        .expect("spun polyline must emit a DrawPolyline");
+    assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
+
+    let c = Vec2::new(40.0, 20.0);
+    let r = (32.5_f32 * 32.5 + 12.5 * 12.5).sqrt();
+    let eps = 1e-3;
+    assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.size.w - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.size.h - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
+    // Pivot contract: the composer rotates about `bbox.center()`,
+    // which must still be the owner-box centre.
+    assert!((p.bbox.center() - c).length() < eps);
+    // The far endpoint rotated 90° about c stays inside the new bbox…
+    let p_rot = c + Vec2::new(-10.0, 30.0);
+    assert!(p.bbox.contains(p_rot), "bbox {:?} misses {p_rot:?}", p.bbox);
+    // …but not inside the owner box the old code used.
+    assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }
 
 /// `Panel::transform` applies to the panel's body — both direct

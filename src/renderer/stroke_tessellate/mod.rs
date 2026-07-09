@@ -8,8 +8,8 @@ pub(crate) const HALF_FRINGE: f32 = 0.5;
 /// SVG default. Beyond this the miter would project a long spike,
 /// so we fall back to bevel geometry at the join instead.
 pub(crate) const MITER_LIMIT: f32 = 4.0;
-const MIN_ROUND_FAN_SEGS: u16 = 4;
-const MAX_ROUND_FAN_SEGS: u16 = 16;
+const MIN_ROUND_FAN_SEGS: u32 = 4;
+const MAX_ROUND_FAN_SEGS: u32 = 16;
 /// Threshold on `(normal_prev + normal_next).length_squared()`
 /// below which the two normals count as antiparallel (180° fold).
 const ANTIPARALLEL_EPS_SQ: f32 = 1e-6;
@@ -18,7 +18,7 @@ const ANTIPARALLEL_EPS_SQ: f32 = 1e-6;
 /// degenerate segment contributes no geometry.
 const COINCIDENT_EPS_SQ: f32 = 1e-12;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct StrokeStyle {
     pub(crate) mode: ColorMode,
     pub(crate) cap: LineCap,
@@ -30,8 +30,9 @@ pub(crate) struct StrokeStyle {
 ///
 /// Inputs are in **physical px** — composer applies the active
 /// transform + DPI scale to `points` and `width_phys` before
-/// calling. Colors are premultiplied linear RGBA. `mode` picks
-/// the color-storage interpretation and the vertex layout:
+/// calling. Colors are **straight-alpha** linear RGBA — the mesh
+/// shader premultiplies at output. `mode` picks the color-storage
+/// interpretation and the vertex layout:
 ///
 /// - [`ColorMode::Single`] — `colors.len() == 1`. Same color on
 ///   every cross-section.
@@ -45,10 +46,9 @@ pub(crate) struct StrokeStyle {
 ///   the average of the two adjacent segments' colors.
 ///
 /// **Hairline behavior.** For `width_phys < 1`, geometry freezes
-/// at 1 physical px wide and per-vertex colors are alpha-scaled by
-/// `width_phys` (premultiplied → rgb and alpha by the same
-/// factor). A 0.3-px line paints as a 1-px line at α=0.3 of each
-/// vertex's input color.
+/// at 1 physical px wide and per-vertex **alpha** is scaled by
+/// `width_phys` (rgb unchanged — straight alpha). A 0.3-px line
+/// paints as a 1-px line at α = 0.3 · each vertex's input alpha.
 ///
 /// **Joins.** Miter clamped to [`MITER_LIMIT`] (falls back to bevel
 /// geometry past the limit); Bevel and Round selectable per stroke.
@@ -67,16 +67,12 @@ pub(crate) struct StrokeStyle {
 /// rest of the polyline tessellates as if those points weren't
 /// there. A polyline that collapses to fewer than two distinct
 /// points emits nothing.
-///
-/// **Index width.** Indices are `u16` and scoped per-call:
-/// emitting more than 65 535 verts in a single call panics.
-/// Composer is expected to split when needed.
 pub(crate) fn tessellate_polyline_aa(
     points: &[Vec2],
     colors: &[ColorU8],
     style: StrokeStyle,
     out_verts: &mut Vec<MeshVertex>,
-    out_indices: &mut Vec<u16>,
+    out_indices: &mut Vec<u32>,
 ) {
     if points.len() < 2 {
         return;
@@ -103,20 +99,13 @@ pub(crate) fn tessellate_polyline_aa(
         cap: style.cap,
         join: style.join,
     };
-    let call_start = out_verts.len();
     let mut e = Emitter {
-        call_start,
+        call_start: out_verts.len(),
         verts: out_verts,
         indices: out_indices,
         geo,
     };
     emit_polyline(points, ColorPlan::from_mode(style.mode, colors), &mut e);
-    // u16 index width contract: panic once after emission rather than
-    // checked-cast on every Emitter::cursor call inside the hot loop.
-    assert!(
-        e.verts.len() - call_start <= u16::MAX as usize,
-        "polyline tessellation exceeded u16 vertex limit"
-    );
 }
 
 /// Per-kept-point color picker. Pre-resolved from `(ColorMode,
@@ -146,11 +135,12 @@ impl<'a> ColorPlan<'a> {
     }
 
     /// Trailing/leading colours at the kept point with original index
-    /// `i`. `is_first` / `is_last` signal endpoints — there the missing
-    /// side mirrors the present side so the walker has a single cap
-    /// color to use. Stored colours are `ColorU8`; widened to `Color`
-    /// here so the alpha-scale arithmetic in the walker stays in f32.
-    fn at(self, i: usize, is_first: bool, is_last: bool) -> EdgeColors {
+    /// `i`, whose next kept point has original index `next`. `is_first`
+    /// / `is_last` signal endpoints — there the missing side mirrors
+    /// the present side so the walker has a single cap color to use.
+    /// Stored colours are `ColorU8`; widened to `Color` here so the
+    /// alpha-scale arithmetic in the walker stays in f32.
+    fn at(self, i: usize, next: usize, is_first: bool, is_last: bool) -> EdgeColors {
         match self {
             ColorPlan::Single(c) => EdgeColors {
                 trailing: c.into(),
@@ -161,8 +151,12 @@ impl<'a> ColorPlan<'a> {
                 leading: cs[i].into(),
             },
             ColorPlan::PerSegment(cs) => {
-                let trailing = if is_first { cs[0] } else { cs[i - 1] };
-                let leading = if is_last { trailing } else { cs[i] };
+                // The drawn strip leaving kept point `i` is the segment
+                // ending at the next kept point, so its color is
+                // `cs[next - 1]`, not `cs[i]` — coincident-point skips
+                // drop the degenerate segments' colors in between.
+                let leading = if is_last { cs[i - 1] } else { cs[next - 1] };
+                let trailing = if is_first { leading } else { cs[i - 1] };
                 EdgeColors {
                     trailing: trailing.into(),
                     leading: leading.into(),
@@ -174,7 +168,7 @@ impl<'a> ColorPlan<'a> {
 
 /// Trailing/leading edge colours at one kept polyline point. Equal for
 /// Single / PerPoint; they diverge at PerSegment colour boundaries.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct EdgeColors {
     trailing: Color,
     leading: Color,
@@ -183,7 +177,7 @@ struct EdgeColors {
 /// Geometry + style parameters shared by both emit paths. Pre-
 /// computed in [`tessellate_polyline_aa`]'s setup so the inner
 /// loops just read the resolved values.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Geo {
     outer_offset: f32,
     inner_offset: f32,
@@ -269,7 +263,7 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
         return;
     }
 
-    let mut prev_block_offset: u16 = 0;
+    let mut prev_block_offset: u32 = 0;
     let mut prev_seg_normal: Option<Vec2> = None;
     let mut i = 0;
 
@@ -286,9 +280,10 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
         let EdgeColors {
             trailing: trailing_color,
             leading: leading_color,
-        } = plan.at(i, is_first, is_last);
-        let trailing_color = trailing_color.scale_premultiplied(e.geo.alpha_scale);
-        let leading_color = leading_color.scale_premultiplied(e.geo.alpha_scale);
+        } = plan.at(i, next_idx, is_first, is_last);
+        // Straight-alpha hairline fade: scale only alpha, keep rgb.
+        let trailing_color = trailing_color.with_alpha(trailing_color.a * e.geo.alpha_scale);
+        let leading_color = leading_color.with_alpha(leading_color.a * e.geo.alpha_scale);
         let current_offset = e.cursor();
 
         match (prev_seg_normal, next_seg_normal) {
@@ -362,20 +357,19 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
 /// this so the per-call vertex base, output vecs, and geometry
 /// parameters are threaded through one self reference instead
 /// of six `&mut` arguments per call.
+#[derive(Debug)]
 struct Emitter<'a> {
     verts: &'a mut Vec<MeshVertex>,
-    indices: &'a mut Vec<u16>,
+    indices: &'a mut Vec<u32>,
     call_start: usize,
     geo: Geo,
 }
 
 impl<'a> Emitter<'a> {
-    /// Per-call vertex offset as `u16`. The u16 contract is verified
-    /// once after emission in [`tessellate_polyline_aa`]; here we just
-    /// truncate, since this is on the per-point hot path.
+    /// Per-call vertex offset of the next vert to be pushed.
     #[inline]
-    fn cursor(&self) -> u16 {
-        (self.verts.len() - self.call_start) as u16
+    fn cursor(&self) -> u32 {
+        (self.verts.len() - self.call_start) as u32
     }
 
     #[inline]
@@ -387,19 +381,24 @@ impl<'a> Emitter<'a> {
     fn push_cross_section(&mut self, p: Vec2, normal: Vec2, ext: f32, inner_color: Color) {
         let outer = normal * (self.geo.outer_offset * ext);
         let inner = normal * (self.geo.inner_offset * ext);
+        // Fringe verts keep the stroke rgb at α=0 (not transparent
+        // black): interpolation happens in straight-alpha space, so a
+        // black-rgb fringe would darken the fade before the shader
+        // premultiplies.
+        let fringe_color = inner_color.with_alpha(0.0);
         self.verts.extend_from_slice(&[
-            MeshVertex::new(p + outer, Color::TRANSPARENT),
+            MeshVertex::new(p + outer, fringe_color),
             MeshVertex::new(p + inner, inner_color),
             MeshVertex::new(p - inner, inner_color),
-            MeshVertex::new(p - outer, Color::TRANSPARENT),
+            MeshVertex::new(p - outer, fringe_color),
         ]);
     }
 
     /// Three quads per segment: outer-left fringe, full-α core,
-    /// outer-right fringe. `a` and `b` are u16 vert offsets to
+    /// outer-right fringe. `a` and `b` are per-call vert offsets to
     /// the two cross-section blocks bracketing the segment.
     #[inline]
-    fn push_strip_indices(&mut self, a: u16, b: u16) {
+    fn push_strip_indices(&mut self, a: u32, b: u32) {
         let a1 = a + 1;
         let a2 = a + 2;
         let a3 = a + 3;
@@ -417,8 +416,8 @@ impl<'a> Emitter<'a> {
     fn push_join_chrome(
         &mut self,
         center: Vec2,
-        trailing_block: u16,
-        leading_block: u16,
+        trailing_block: u32,
+        leading_block: u32,
         normal_prev: Vec2,
         normal_next: Vec2,
         inner_color: Color,
@@ -454,8 +453,8 @@ impl<'a> Emitter<'a> {
     fn push_bevel_bridge(
         &mut self,
         center: Vec2,
-        trailing_block: u16,
-        leading_block: u16,
+        trailing_block: u32,
+        leading_block: u32,
         normal_prev: Vec2,
         normal_next: Vec2,
         inner_color: Color,
@@ -487,14 +486,14 @@ impl<'a> Emitter<'a> {
     fn push_concave_fill(
         &mut self,
         center: Vec2,
-        trailing_block: u16,
-        leading_block: u16,
+        trailing_block: u32,
+        leading_block: u32,
         normal_prev: Vec2,
         normal_next: Vec2,
         inner_color: Color,
     ) {
         let cross = normal_prev.perp_dot(normal_next);
-        let inner_off: u16 = if cross > 0.0 { 1 } else { 2 };
+        let inner_off: u32 = if cross > 0.0 { 1 } else { 2 };
         let t_concave = trailing_block + inner_off;
         let l_concave = leading_block + inner_off;
         let center_idx = self.cursor();
@@ -552,7 +551,7 @@ impl<'a> Emitter<'a> {
         center: Vec2,
         center_dir: Vec2,
         half_angle: f32,
-        segments: u16,
+        segments: u32,
         inner_color: Color,
     ) {
         let n = segments.max(1);
@@ -568,11 +567,13 @@ impl<'a> Emitter<'a> {
         let (mut s, mut c) = (-half_angle).sin_cos();
         let inner_off = self.geo.inner_offset;
         let outer_off = self.geo.outer_offset;
+        // Same straight-alpha fringe rule as `push_cross_section`.
+        let fringe_color = inner_color.with_alpha(0.0);
         for _ in 0..=n {
             let dir = c * center_dir + s * perp;
             self.verts.extend_from_slice(&[
                 MeshVertex::new(center + dir * inner_off, inner_color),
-                MeshVertex::new(center + dir * outer_off, Color::TRANSPARENT),
+                MeshVertex::new(center + dir * outer_off, fringe_color),
             ]);
             let c_next = c * cos_step - s * sin_step;
             let s_next = s * cos_step + c * sin_step;
@@ -601,10 +602,11 @@ fn matches_mode(points_len: usize, colors_len: usize, mode: ColorMode) -> bool {
 
 /// Number of fan slices for a round cap or join. Scales with the
 /// stroke's geometry-half so a 1 px hairline cap is the cheap
-/// minimum and a fat stroke gets a smooth arc.
+/// minimum and a fat stroke gets a smooth arc. Clamped in f32 so a
+/// huge half-width can't overflow on the way to an integer.
 #[inline]
-fn round_segments(inner_offset: f32) -> u16 {
-    (inner_offset.ceil() as u16 * 2).clamp(MIN_ROUND_FAN_SEGS, MAX_ROUND_FAN_SEGS)
+fn round_segments(inner_offset: f32) -> u32 {
+    (inner_offset.ceil() * 2.0).clamp(MIN_ROUND_FAN_SEGS as f32, MAX_ROUND_FAN_SEGS as f32) as u32
 }
 
 #[inline]
@@ -647,6 +649,7 @@ pub mod test_support {
     use crate::shape::{ColorMode, LineCap, LineJoin};
 
     /// Bench-public mirror of internal `ColorMode`.
+    #[derive(Debug)]
     pub enum TessColorMode {
         Single,
         PerPoint,
@@ -654,6 +657,7 @@ pub mod test_support {
     }
 
     /// Bench-public mirror of internal `StrokeStyle`.
+    #[derive(Debug)]
     pub struct TessStyle {
         pub mode: TessColorMode,
         pub cap: LineCap,
@@ -667,7 +671,7 @@ pub mod test_support {
         colors: &[ColorU8],
         style: TessStyle,
         out_verts: &mut Vec<MeshVertex>,
-        out_indices: &mut Vec<u16>,
+        out_indices: &mut Vec<u32>,
     ) {
         let mode = match style.mode {
             TessColorMode::Single => ColorMode::Single,

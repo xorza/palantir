@@ -21,11 +21,16 @@ use crate::renderer::backend::text::TextBackend;
 /// All render pipelines built against one swapchain color format. Keyed
 /// by [`Self::color_format`] in the backend so windows on different-format
 /// outputs each bind the right set while sharing every other resource.
+#[derive(Debug)]
 pub(crate) struct FormatPipelines {
     pub(crate) quad: StencilVariant,
-    /// Quad-only stencil mask-write variant (paints the rounded SDF into
-    /// the stencil buffer; mesh/image/curve read the mask, never write).
-    pub(crate) quad_mask_write: wgpu::RenderPipeline,
+    /// Quad-only stencil mask-stamp variant (deepens the rounded SDF
+    /// into the stencil buffer, one chain level per draw;
+    /// mesh/image/curve read the mask, never write).
+    pub(crate) quad_mask_stamp: wgpu::RenderPipeline,
+    /// Quad-only stencil mask-clear variant (resets a stamped chain by
+    /// replaying its outermost quad at ref 0).
+    pub(crate) quad_mask_clear: wgpu::RenderPipeline,
     pub(crate) mesh: StencilVariant,
     pub(crate) image: StencilVariant,
     pub(crate) curve: StencilVariant,
@@ -50,17 +55,13 @@ impl FormatPipelines {
         text: &TextBackend,
     ) -> Self {
         Self {
-            quad: QuadPipeline::build_variants(device, &quad.shader, gradient_bgl, format),
-            quad_mask_write: QuadPipeline::build_mask_write(
-                device,
-                &quad.shader,
-                gradient_bgl,
-                format,
-            ),
-            mesh: MeshPipeline::build_variants(device, &mesh.shader, format),
-            image: ImagePipeline::build_variants(device, &image.shader, &image.image_bgl, format),
-            curve: CurvePipeline::build_variants(device, &curve.shader, gradient_bgl, format),
-            text: TextBackend::build_variants(device, &text.shader, &text.atlas_bgl, format),
+            quad: quad.build_variants(device, gradient_bgl, format),
+            quad_mask_stamp: quad.build_mask_stamp(device, gradient_bgl, format),
+            quad_mask_clear: quad.build_mask_clear(device, gradient_bgl, format),
+            mesh: mesh.build_variants(device, format),
+            image: image.build_variants(device, format),
+            curve: curve.build_variants(device, gradient_bgl, format),
+            text: text.build_variants(device, format),
         }
     }
 }

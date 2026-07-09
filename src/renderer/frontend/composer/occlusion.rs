@@ -8,7 +8,7 @@ use glam::Vec2;
 
 /// One opaque occluder in the in-flight group. See [`OcclusionPruner`]
 /// for the cover-rect contract.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct Occluder {
     /// Index inside the in-flight group's quad slice
     /// (`out.quads[quads_cursor + idx]`).
@@ -29,11 +29,14 @@ struct Occluder {
 /// receive full opaque coverage. For sharp-cornered quads
 /// `cover == Quad.rect`; for rounded quads, `cover` is `Quad.rect`
 /// deflated per-side by `max(adjacent_radii) * (1 − 1/√2)` (the
-/// inscribed-square offset of a corner arc).
-#[derive(Default)]
+/// inscribed-square offset of a corner arc); for quads with a
+/// translucent inner-edge stroke the composer additionally deflates by
+/// the stroke width (the annulus alpha equals the stroke alpha, so only
+/// the fill-only interior is opaque).
+#[derive(Debug, Default)]
 pub(crate) struct OcclusionPruner {
-    /// Solid-opaque no-stroke occluders in the in-flight group, in push
-    /// order (ascending `idx`).
+    /// Solid-opaque occluders in the in-flight group, in push order
+    /// (ascending `idx`).
     opaque_in_group: Vec<Occluder>,
     /// Indices (relative to the group's quad cursor) marked for removal
     /// by the prune sweep. Sorted ascending by construction.
@@ -69,9 +72,10 @@ impl OcclusionPruner {
     /// - `out.quads[quads_cursor..]` is the in-flight group's contiguous
     ///   slice (composer's flush boundary contract).
     /// - `opaque_in_group` holds an entry for every solid-opaque quad
-    ///   pushed into the slice, in push order (ascending `idx`). Stroke
-    ///   status is irrelevant on the occluder side (fill alone covers the
-    ///   interior).
+    ///   pushed into the slice whose cover survived the composer's
+    ///   stroke rule (see the `DrawRect` arm: full inscribed cover for a
+    ///   noop or fully-opaque stroke, deflated by the stroke width for a
+    ///   translucent one), in push order (ascending `idx`).
     ///
     /// Behaviour:
     /// - For each quad at slice index `i`, compute its painted extent as
@@ -129,12 +133,13 @@ impl OcclusionPruner {
             if cursor >= occs.len() {
                 break;
             }
-            // Centred strokes paint outside the rect by
-            // `stroke_width / 2` on every edge. Inflate the
-            // occludee's painted extent for the containment test;
-            // non-stroked quads inflate by zero. Rounded under-quads
-            // share their bounding rect with the painted region, so
-            // no corner-specific handling needed on this side.
+            // quad.wgsl strokes are inner-edge, so `q.rect` (plus the
+            // shared ½px AA fringe every quad has) already bounds the
+            // painted extent; the stroke-width inflation here is
+            // conservative slack — it can only keep a quad, never
+            // wrongly drop one. Rounded under-quads share their
+            // bounding rect with the painted region, so no
+            // corner-specific handling needed on this side.
             let painted = q.rect.inflated(q.stroke_width * 0.5);
             // Cheap reject: no remaining cover is large enough to
             // contain `painted` on at least one axis. This catches

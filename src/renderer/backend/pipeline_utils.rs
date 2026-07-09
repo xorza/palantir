@@ -15,6 +15,7 @@ use crate::renderer::backend::stencil::stencil_test_state;
 /// `'a` is the lifetime of the references passed in; the returned
 /// [`wgpu::RenderPipeline`] retains its own internal references and
 /// outlives the recipe.
+#[derive(Debug)]
 pub(crate) struct PipelineRecipe<'a> {
     pub label: &'static str,
     pub shader: &'a wgpu::ShaderModule,
@@ -82,6 +83,7 @@ pub(crate) struct StencilVariant {
 /// `"fs"`, `ColorWrites::ALL`, premultiplied blend) is fixed across the
 /// quad / mesh / image / curve families and filled in by
 /// [`StencilVariant::build`].
+#[derive(Debug)]
 pub(crate) struct ColorVariantSpec<'a> {
     pub label: &'static str,
     pub stencil_label: &'static str,
@@ -160,6 +162,36 @@ pub(crate) fn texture_sampler_bgl(
                 visibility: wgpu::ShaderStages::FRAGMENT,
                 ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
                 count: None,
+            },
+        ],
+    })
+}
+
+/// Build a bind group pairing a texture view at binding 0 with a sampler
+/// at binding 1 against a [`texture_sampler_bgl`]-shaped layout — the
+/// value twin of that layout builder. One construction site for the
+/// CPU-image upload (`ImagePipeline::upload`), the `GpuView` off-screen
+/// target (`image_pipeline::render_target::make_target`), and the
+/// gradient LUT atlas (`GradientResources::new`), so their bindings
+/// can't drift.
+pub(crate) fn texture_bind_group(
+    device: &wgpu::Device,
+    bgl: &wgpu::BindGroupLayout,
+    sampler: &wgpu::Sampler,
+    view: &wgpu::TextureView,
+    label: &str,
+) -> wgpu::BindGroup {
+    device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some(label),
+        layout: bgl,
+        entries: &[
+            wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::TextureView(view),
+            },
+            wgpu::BindGroupEntry {
+                binding: 1,
+                resource: wgpu::BindingResource::Sampler(sampler),
             },
         ],
     })

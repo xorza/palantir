@@ -255,12 +255,12 @@ fn compose_skips_groups_with_no_quads() {
 }
 
 /// Composer plumbing for rounded clip: radius + rect ride on the
-/// emitted `DrawGroup`, scaled by DPR. Inheritance verified in the
-/// same fixture: a `Rect` clip pushed inside the `Rounded` parent
-/// must inherit the parent's `rounded_clip` so children stay
-/// stencil-tested against the active mask. Without inheritance,
-/// inner draws would land at `stencil_ref=0` over `stencil=1`
-/// pixels and disappear.
+/// emitted `DrawGroup` as a one-entry mask chain, scaled by DPR.
+/// Inheritance verified in the same fixture: a `Rect` clip pushed
+/// inside the `Rounded` parent must inherit the parent's chain so
+/// children stay stencil-tested against the active mask. Without
+/// inheritance, inner draws would land at `stencil_ref=0` over
+/// `stencil=1` pixels and disappear.
 #[test]
 fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let buf = run(
@@ -287,9 +287,9 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     let outer = &buf.groups[0];
     let inner = &buf.groups[1];
 
-    let outer_r = outer
-        .rounded_clip
-        .expect("outer rounded data must ride on group");
+    let outer_chain = &buf.rounded_clips[outer.rounded_clips.range()];
+    assert_eq!(outer_chain.len(), 1, "single rounded clip → depth-1 chain");
+    let outer_r = outer_chain[0];
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
     assert_eq!(outer_r.corners.as_array()[0], 16.0);
     assert_eq!(outer_r.mask_rect.min, glam::Vec2::new(20.0, 40.0));
@@ -299,15 +299,91 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     );
     assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 
-    // Inheritance: inner Rect clip carries the SAME rounded data as
-    // the outer parent (rect AND radius — the mask geometry is the
+    // Inheritance: inner Rect clip carries the SAME chain as the
+    // outer parent (span-identical — the mask geometry is the
     // ancestor's, scissor is narrowed independently).
-    let inner_r = inner
-        .rounded_clip
-        .expect("inner rect clip inside rounded ancestor inherits rounded data");
-    assert_eq!(inner_r, outer_r, "inner group inherits parent's mask data");
+    assert_eq!(
+        inner.rounded_clips, outer.rounded_clips,
+        "inner group inherits parent's mask chain verbatim"
+    );
     // DPR=2: rect (30,40,40,30) → (60,80,80,60), clamped to outer.
     assert_eq!(inner.scissor, Some(URect::new(60, 80, 80, 60)));
+}
+
+/// Nested rounded clips STACK: the child group's chain lists both
+/// masks in outer→inner order (the ancestor's corner cutouts keep
+/// clipping child content — a fresh single mask would paint the child
+/// square over them), and a rect clip nested below inherits the full
+/// depth-2 chain. Hand-computed at DPR 1: outer = (10,10,200,200) r8,
+/// inner = (20,20,100,100) r4.
+#[test]
+fn push_clip_rounded_nested_builds_outer_inner_chain() {
+    let buf = run(
+        |b, _arena| {
+            b.push_clip_rounded(rect(10.0, 10.0, 200.0, 200.0), Corners::all(8.0));
+            draw(b, rect(20.0, 20.0, 40.0, 40.0));
+            b.push_clip_rounded(rect(20.0, 20.0, 100.0, 100.0), Corners::all(4.0));
+            draw(b, rect(30.0, 30.0, 20.0, 20.0));
+            b.push_clip(rect(30.0, 30.0, 50.0, 50.0));
+            draw(b, rect(35.0, 35.0, 10.0, 10.0));
+            b.pop_clip();
+            b.pop_clip();
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(
+        buf.groups.len(),
+        3,
+        "outer rounded, nested rounded, nested rect"
+    );
+    let chain = |g: usize| &buf.rounded_clips[buf.groups[g].rounded_clips.range()];
+
+    let outer = chain(0);
+    assert_eq!(outer.len(), 1);
+    assert_eq!(outer[0].mask_rect, rect(10.0, 10.0, 200.0, 200.0));
+    assert_eq!(outer[0].corners.as_array()[0], 8.0);
+
+    let nested = chain(1);
+    assert_eq!(nested.len(), 2, "nested rounded stacks on the ancestor");
+    assert_eq!(
+        nested[0], outer[0],
+        "chain lists the ancestor first (outer→inner)"
+    );
+    assert_eq!(nested[1].mask_rect, rect(20.0, 20.0, 100.0, 100.0));
+    assert_eq!(nested[1].corners.as_array()[0], 4.0);
+
+    // Rect clip under both: inherits the depth-2 chain verbatim.
+    assert_eq!(
+        buf.groups[2].rounded_clips, buf.groups[1].rounded_clips,
+        "rect inside nested rounded inherits the full chain"
+    );
+    assert_eq!(buf.groups[2].scissor, Some(URect::new(30, 30, 50, 50)));
+}
+
+/// Re-pushing the innermost rounded clip verbatim (same rect + radii)
+/// adds no chain depth and — like the redundant rect Push/Pop — is a
+/// full no-op: no batch split, no group flush.
+#[test]
+fn push_clip_rounded_redundant_identical_push_adds_no_depth() {
+    let buf = run(
+        |b, _arena| {
+            b.push_clip_rounded(rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            draw(b, rect(20.0, 20.0, 20.0, 20.0));
+            b.push_clip_rounded(rect(10.0, 10.0, 100.0, 100.0), Corners::all(8.0));
+            draw(b, rect(50.0, 50.0, 20.0, 20.0));
+            b.pop_clip();
+            b.pop_clip();
+        },
+        &params(1.0, UVec2::new(400, 400)),
+    );
+    assert_eq!(buf.quads.len(), 2);
+    assert_eq!(buf.groups.len(), 1, "identical rounded re-push is a no-op");
+    assert_eq!(
+        buf.rounded_clips[buf.groups[0].rounded_clips.range()].len(),
+        1,
+        "no extra chain level for the redundant mask"
+    );
 }
 
 /// Regression: when a rounded clip partially leaves the viewport, the
@@ -325,7 +401,8 @@ fn push_clip_rounded_mask_rect_is_unclamped_to_viewport() {
         },
         &params(1.0, UVec2::new(120, 60)),
     );
-    let r = buf.groups[0].rounded_clip.expect("rounded data on group");
+    let chain = &buf.rounded_clips[buf.groups[0].rounded_clips.range()];
+    let r = chain[0];
     // Mask rect keeps the off-screen origin (-50,-20) and full size
     // (200,100) — the SDF needs the rect's full geometry.
     assert_eq!(r.mask_rect.min, Vec2::new(-50.0, -20.0));
@@ -347,7 +424,7 @@ fn push_clip_rect_emits_no_rounded_data() {
     );
     assert_eq!(buf.groups.len(), 1);
     assert!(!buf.has_rounded_clip);
-    assert!(buf.groups[0].rounded_clip.is_none());
+    assert_eq!(buf.groups[0].rounded_clips.len, 0);
 }
 
 #[test]
@@ -642,12 +719,14 @@ fn compose_splits_group_on_text_to_quad_transition() {
         2,
         "text→quad transition must start a new group"
     );
-    // First group: quad #0 + text #0.
+    // First group: quad #0; the text rides its batch, anchored at
+    // group 0 so it renders after that group's quad.
     assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-    assert_eq!(buf.groups[0].texts, Span::new(0, 1));
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.text_batches[0].texts, Span::new(0, 1));
+    assert_eq!(buf.text_batches[0].last_group, 0);
     // Second group: quad #1 only — renders after group 0's text.
     assert_eq!(buf.groups[1].quads, Span::new(1, 1));
-    assert_eq!(buf.groups[1].texts, Span::new(1, 0));
 }
 
 /// Pin: consecutive `Text → Text` should NOT split (both go into the
@@ -667,7 +746,10 @@ fn compose_does_not_split_consecutive_texts() {
     assert_eq!(buf.texts.len(), 2);
     assert_eq!(buf.groups.len(), 1);
     assert_eq!(buf.groups[0].quads, Span::new(0, 1));
-    assert_eq!(buf.groups[0].texts, Span::new(0, 2));
+    // Both runs coalesce into one batch anchored at the single group.
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.text_batches[0].texts, Span::new(0, 2));
+    assert_eq!(buf.text_batches[0].last_group, 0);
 }
 
 /// Pin: a nested clip that resolves to the same scissor as its
@@ -730,7 +812,8 @@ fn compose_batches_disjoint_row_units_into_one_group() {
         "disjoint (quad,text) rows must batch into one group",
     );
     assert_eq!(buf.groups[0].quads, Span::new(0, 5));
-    assert_eq!(buf.groups[0].texts, Span::new(0, 5));
+    assert_eq!(buf.text_batches.len(), 1, "one texts batch for all rows");
+    assert_eq!(buf.text_batches[0].texts, Span::new(0, 5));
 }
 
 /// Pin: when a later quad DOES overlap a prior text (the node-editor
@@ -773,10 +856,10 @@ fn compose_keeps_quads_then_text_in_one_group() {
     );
     assert_eq!(buf.groups.len(), 1);
     assert_eq!(buf.groups[0].quads, Span::new(0, 2));
-    assert_eq!(buf.groups[0].texts, Span::new(0, 1));
+    assert_eq!(buf.text_batches.len(), 1);
+    assert_eq!(buf.text_batches[0].texts, Span::new(0, 1));
+    assert_eq!(buf.text_batches[0].last_group, 0);
 }
-
-// ---------- Text batch coalescing across groups -------------------
 
 /// Pin: two adjacent rows where each row sits in its own scissor
 /// (a clipped panel per row) coalesce their text into ONE batch even
@@ -871,8 +954,11 @@ fn compose_strict_text_with_matching_clip_coalesces() {
 
 /// Pin: a rounded-clip change splits the text batch even when text
 /// across the change wouldn't otherwise overlap. Different rounded
-/// clips → different stencil refs at render time; one merged prepare
-/// would mis-clip text under one of them.
+/// clips → different stencil masks at render time; one merged prepare
+/// would mis-clip text under one of them. Each batch also carries the
+/// mask chain its runs were recorded under, value-matching its
+/// `last_group`'s chain — the schedule needs it to stencil a batch
+/// drained past damage-skipped groups against the right mask.
 #[test]
 fn compose_rounded_clip_change_splits_text_batch() {
     let buf = run(
@@ -887,6 +973,21 @@ fn compose_rounded_clip_change_splits_text_batch() {
         &params(1.0, UVec2::new(200, 200)),
     );
     assert_eq!(buf.text_batches.len(), 2, "rounded change must split batch");
+    for (i, tb) in buf.text_batches.iter().enumerate() {
+        let batch_chain = &buf.rounded_clips[tb.rounded_clips.range()];
+        assert_eq!(batch_chain.len(), 1, "batch {i} recorded under one mask");
+        let group_chain =
+            &buf.rounded_clips[buf.groups[tb.last_group as usize].rounded_clips.range()];
+        assert_eq!(
+            batch_chain, group_chain,
+            "batch {i} chain matches its last_group's chain"
+        );
+    }
+    // The two batches carry the two DIFFERENT masks (r4 vs r8).
+    let r0 = buf.rounded_clips[buf.text_batches[0].rounded_clips.range()][0];
+    let r1 = buf.rounded_clips[buf.text_batches[1].rounded_clips.range()][0];
+    assert_eq!(r0.corners.as_array()[0], 4.0);
+    assert_eq!(r1.corners.as_array()[0], 8.0);
 }
 
 /// Pin: a mesh (here, a polyline lowering to a mesh) recorded between
@@ -1284,6 +1385,127 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     }
 }
 
+fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    b.draw_curve(DrawCurvePayload {
+        bbox,
+        origin: Vec2::ZERO,
+        p0: bbox.min,
+        p1: Vec2::new(bbox.min.x + bbox.size.w * 0.3, bbox.max().y),
+        p2: Vec2::new(bbox.min.x + bbox.size.w * 0.7, bbox.max().y),
+        p3: bbox.max(),
+        color: Color::WHITE.into(),
+        width: 2.0,
+        ..bytemuck::Zeroable::zeroed()
+    });
+}
+
+fn image(b: &mut RenderCmdBuffer, r: Rect) {
+    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    b.draw_image(DrawImagePayload::image(
+        r,
+        Vec2::ZERO,
+        Vec2::ONE,
+        Color::WHITE.into(),
+        TextureId(1),
+        0,
+    ));
+}
+
+/// The backend replays a group's higher kinds in fixed tier order —
+/// mesh batches → image batches → curve batches
+/// (`schedule::emit_group_body`) — regardless of record order. A draw
+/// recorded AFTER an overlapping draw of a later-replaying kind would
+/// paint under it if both shared a group, so the composer must flush.
+/// Record [curve, mesh]: one group would replay mesh→curve, inverting
+/// record order → two groups (curve batch anchored at group 0, mesh
+/// batch at group 1, restoring record order across groups).
+#[test]
+fn compose_curve_then_overlapping_mesh_splits_group() {
+    let buf = run(
+        |b, _| {
+            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // overlaps the curve bbox
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 2, "cross-kind conflict must split");
+    assert_eq!(buf.curve_batches.len(), 1);
+    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.mesh_batches.len(), 1);
+    assert_eq!(buf.mesh_batches[0].last_group, 1);
+}
+
+/// Counter-pin: record [mesh, curve] — the replay order mesh→curve
+/// already matches record order, so both stay in one group.
+#[test]
+fn compose_mesh_then_overlapping_curve_keeps_one_group() {
+    let buf = run(
+        |b, _| {
+            mesh(b, rect(10.0, 10.0, 30.0, 30.0));
+            curve(b, rect(0.0, 0.0, 100.0, 100.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1, "record order matches replay order");
+    assert_eq!(buf.mesh_batches[0].last_group, 0);
+    assert_eq!(buf.curve_batches[0].last_group, 0);
+}
+
+/// Mesh→image replays in record order (mesh drains before image in
+/// `emit_group_body`) → one group; image→mesh inverts it (the later-
+/// recorded mesh would drain first) → flush into two groups.
+#[test]
+fn compose_mesh_image_record_order_gates_group_split() {
+    let buf = run(
+        |b, _| {
+            mesh(b, rect(10.0, 10.0, 30.0, 30.0));
+            image(b, rect(20.0, 20.0, 30.0, 30.0)); // overlaps the mesh
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1, "mesh then image: replay == record");
+    assert_eq!(buf.mesh_batches[0].last_group, 0);
+    assert_eq!(buf.image_batches[0].last_group, 0);
+
+    let buf = run(
+        |b, _| {
+            image(b, rect(20.0, 20.0, 30.0, 30.0));
+            mesh(b, rect(10.0, 10.0, 30.0, 30.0)); // overlaps the image
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(
+        buf.groups.len(),
+        2,
+        "image then mesh: replay inverts record",
+    );
+    assert_eq!(buf.image_batches[0].last_group, 0);
+    assert_eq!(buf.mesh_batches[0].last_group, 1);
+}
+
+/// Non-overlapping mixed kinds never conflict — record order between
+/// disjoint draws is invisible, so they share one group (one draw call
+/// per kind). Gaps exceed every bbox inflation: the curve at
+/// (0,0,20,20) tracks (0,0)..(22,22) after its `width/2 + 1` fringe,
+/// the mesh at (40,40,20,20) tracks (39,39)..(61,61) after its 0.5
+/// fringe, the image at (80,80,20,20) is exact.
+#[test]
+fn compose_disjoint_mixed_kinds_share_one_group() {
+    let buf = run(
+        |b, _| {
+            curve(b, rect(0.0, 0.0, 20.0, 20.0));
+            mesh(b, rect(40.0, 40.0, 20.0, 20.0));
+            image(b, rect(80.0, 80.0, 20.0, 20.0));
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert_eq!(buf.groups.len(), 1, "disjoint kinds must not split");
+    assert_eq!(buf.curve_batches[0].last_group, 0);
+    assert_eq!(buf.mesh_batches[0].last_group, 0);
+    assert_eq!(buf.image_batches[0].last_group, 0);
+}
+
 // --- Occlusion-pruning tests -------------------------------------
 //
 // Pruning drops a quad iff a later quad in the same group fully
@@ -1580,10 +1802,12 @@ fn prune_drops_chain_of_opaque_solids_keeping_only_topmost() {
 
 #[test]
 fn prune_stroked_occluder_drops_smaller_sharp_under() {
-    // A solid-opaque occluder with a stroke still has its full rect
-    // covered by the fill (the stroke just paints additional pixels
-    // on/outside the edge — it doesn't subtract). A sharp under
-    // entirely inside the occluder's rect should be dropped.
+    // A solid-opaque occluder with a fully-OPAQUE stroke covers its
+    // whole rect: quad.wgsl strokes are inner-edge and coverage-
+    // partitioned with the fill, so opaque annulus + opaque fill =
+    // opaque rect. A sharp under entirely inside should be dropped.
+    // (Translucent strokes shrink the cover — see
+    // `prune_occluder_stroke_translucency_gates_cover`.)
     use crate::primitives::stroke::Stroke;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     let buf = run(
@@ -1601,8 +1825,86 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     assert_eq!(
         buf.quads.len(),
         1,
-        "stroked occluder still covers its rect (fill alone is opaque)",
+        "opaque-stroked occluder still covers its rect",
     );
+}
+
+/// FIX-pin: quad.wgsl strokes are INNER-edge and coverage-partitioned
+/// with the fill — the annulus's alpha is the stroke's alpha, not the
+/// fill's. An opaque-fill quad is fully opaque only when its stroke is
+/// a noop or fully opaque; a translucent stroke leaves a see-through
+/// ring, so only the fill-only interior — the rect deflated by the
+/// stroke width per side — may occlude.
+///
+/// Fixture: top quad = rect (0,0,100,100), sharp corners, opaque white
+/// fill; stroke width 4 at scale 1. Hand-computed cover per case:
+/// - noop / opaque stroke → cover = full rect (0,0)..(100,100).
+/// - 50%-alpha stroke     → cover = deflated by 4/side = (4,4)..(96,96).
+/// - 50%-alpha stroke w=60 → deflation 60/side exceeds the 50 half-
+///   extent → empty cover, no occluder recorded.
+///
+/// Bottom quad (a,b,c): same rect (0,0,100,100) — inside the full cover
+/// but NOT inside (4,4)..(96,96). Bottom quad (d,e): (10,10,50,50) →
+/// painted (10,10)..(60,60), inside (4,4)..(96,96).
+#[test]
+fn prune_occluder_stroke_translucency_gates_cover() {
+    use crate::primitives::stroke::Stroke;
+    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    #[derive(Debug)]
+    struct Case {
+        label: &'static str,
+        under: Rect,
+        stroke: Stroke,
+        pruned: bool,
+    }
+    let cases = [
+        Case {
+            label: "no_stroke_full_cover",
+            under: rect(0.0, 0.0, 100.0, 100.0),
+            stroke: Stroke::ZERO,
+            pruned: true,
+        },
+        Case {
+            label: "opaque_stroke_full_cover",
+            under: rect(0.0, 0.0, 100.0, 100.0),
+            stroke: Stroke::solid(Color::rgb(0.0, 1.0, 0.0), 4.0),
+            pruned: true,
+        },
+        Case {
+            label: "translucent_stroke_ring_not_covered",
+            under: rect(0.0, 0.0, 100.0, 100.0),
+            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            pruned: false,
+        },
+        Case {
+            label: "translucent_stroke_interior_covered",
+            under: rect(10.0, 10.0, 50.0, 50.0),
+            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 4.0),
+            pruned: true,
+        },
+        Case {
+            label: "stroke_wider_than_half_rect_no_cover",
+            under: rect(10.0, 10.0, 50.0, 50.0),
+            stroke: Stroke::solid(Color::rgba(0.0, 1.0, 0.0, 0.5), 60.0),
+            pruned: false,
+        },
+    ];
+    for case in &cases {
+        let buf = run(
+            |b, _| {
+                draw(b, case.under);
+                b.draw_rect(
+                    rect(0.0, 0.0, 100.0, 100.0),
+                    Corners::default(),
+                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                    (&case.stroke).into(),
+                );
+            },
+            &params(1.0, UVec2::new(200, 200)),
+        );
+        let expected = if case.pruned { 1 } else { 2 };
+        assert_eq!(buf.quads.len(), expected, "case: {}", case.label);
+    }
 }
 
 #[test]

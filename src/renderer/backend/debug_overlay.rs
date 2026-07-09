@@ -51,6 +51,7 @@ const DAMAGE_OVERLAY_GAP: f32 = 1.0;
 /// Partial frame.
 const DIM_ALPHA: f32 = 0.4;
 
+#[derive(Debug)]
 pub(crate) struct DebugOverlay {
     /// Single-instance buffer holding a translucent-black full-viewport
     /// quad. Drawn into the backbuffer with `LoadOp::Load` before any
@@ -105,8 +106,7 @@ impl DebugOverlay {
         ctx.write(&self.dim_buffer, 0, bytemuck::bytes_of(&q));
     }
 
-    /// Bind the supplied quad pipeline's no-stencil base + dim buffer
-    /// and draw one instance. The dim pass runs without a stencil
+    /// Draw the single dim quad. The dim pass runs without a stencil
     /// attachment (uniform dim across the viewport), so the
     /// no-stencil pipeline is always correct here.
     pub(crate) fn draw_dim<'a>(
@@ -116,15 +116,7 @@ impl DebugOverlay {
         gradient_bg: &'a wgpu::BindGroup,
         viewport: &ViewportPush,
     ) {
-        // No-stencil quad base + gradient group 0, then push viewport.
-        pass.set_pipeline(quad_base);
-        pass.set_bind_group(0, gradient_bg, &[]);
-        // Pipeline is now bound — safe to push the shared viewport
-        // immediate. (Dim runs in its own `RenderPass`, separate from
-        // the main pass, so it must self-push.)
-        viewport.push_into(pass);
-        pass.set_vertex_buffer(0, self.dim_buffer.slice(..));
-        pass.draw(0..4, 0..1);
+        draw_quads(pass, quad_base, gradient_bg, viewport, &self.dim_buffer, 1);
     }
 
     /// Build + upload this frame's damage-rect outline quads: `Partial`
@@ -181,9 +173,6 @@ impl DebugOverlay {
         stroke_color: Color,
         stroke_width: f32,
     ) {
-        if rects.is_empty() {
-            return;
-        }
         let stroke_color_f16: ColorF16 = stroke_color.into();
         let mut quads: ArrayVec<[Quad; DAMAGE_RECT_CAP]> = Default::default();
         for r in rects {
@@ -196,12 +185,10 @@ impl DebugOverlay {
                 ..Default::default()
             });
         }
-        self.overlay_buffer
-            .upload(ctx, bytemuck::cast_slice(quads.as_slice()), quads.len());
+        self.overlay_buffer.upload_instances(ctx, quads.as_slice());
     }
 
-    /// Bind the supplied quad pipeline's no-stencil base + overlay
-    /// buffer and draw `count` instances. Used in the post-copy
+    /// Draw `count` damage-rect outline quads. Used in the post-copy
     /// overlay pass on the swapchain texture (no stencil attachment,
     /// no scissor).
     pub(crate) fn draw_overlays<'a>(
@@ -212,13 +199,34 @@ impl DebugOverlay {
         viewport: &ViewportPush,
         count: u32,
     ) {
-        pass.set_pipeline(quad_base);
-        pass.set_bind_group(0, gradient_bg, &[]);
-        // Pipeline is now bound — safe to push viewport. (Overlay
-        // runs in its own swapchain-targeted `RenderPass`, no
-        // inherited immediate state.)
-        viewport.push_into(pass);
-        pass.set_vertex_buffer(0, self.overlay_buffer.buffer.slice(..));
-        pass.draw(0..4, 0..count);
+        draw_quads(
+            pass,
+            quad_base,
+            gradient_bg,
+            viewport,
+            &self.overlay_buffer.buffer,
+            count,
+        );
     }
+}
+
+/// Shared draw tail of [`DebugOverlay::draw_dim`] /
+/// [`DebugOverlay::draw_overlays`]: bind the supplied quad pipeline's
+/// no-stencil base + gradient group 0, push the shared viewport
+/// immediate (both overlay passes run standalone, so no inherited
+/// immediate state — and wgpu rejects `set_immediates` before a
+/// pipeline is bound), then draw `count` instances of `buffer`.
+fn draw_quads<'a>(
+    pass: &mut wgpu::RenderPass<'a>,
+    quad_base: &'a wgpu::RenderPipeline,
+    gradient_bg: &'a wgpu::BindGroup,
+    viewport: &ViewportPush,
+    buffer: &'a wgpu::Buffer,
+    count: u32,
+) {
+    pass.set_pipeline(quad_base);
+    pass.set_bind_group(0, gradient_bg, &[]);
+    viewport.push_into(pass);
+    pass.set_vertex_buffer(0, buffer.slice(..));
+    pass.draw(0..4, 0..count);
 }

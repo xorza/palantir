@@ -47,15 +47,16 @@ impl MeshVertex {
 /// slices into the active `Tree`'s arena at `add_shape` time, so the
 /// `Mesh` only has to outlive the `add_shape` call.
 ///
-/// Indices are `u16`. 65 535 verts per mesh is enormous for a UI
-/// primitive; revisit `u32` when a workload actually needs it.
+/// Indices are `u32` — the whole mesh pipeline (user meshes and
+/// tessellated polylines share one arena index stream) draws with
+/// `wgpu::IndexFormat::Uint32`.
 ///
 /// Winding is conventionally CCW but the pipeline doesn't cull —
 /// either order paints.
 #[derive(Default, Clone, Debug)]
 pub struct Mesh {
     pub(crate) vertices: Vec<MeshVertex>,
-    pub(crate) indices: Vec<u16>,
+    pub(crate) indices: Vec<u32>,
     /// Lazy cache of `content_hash`. `None` = not computed or
     /// invalidated. Set by `content_hash`; cleared by every public
     /// mutator. Internal arena pushes bypass the cache by going
@@ -117,22 +118,20 @@ impl Mesh {
         v
     }
 
-    /// Push a vertex; returns its `u16` index for use in [`Self::triangle`].
-    /// Panics if the mesh already holds 65 535 vertices. `color` accepts
-    /// `Color` or `ColorU8`.
+    /// Push a vertex; returns its index for use in [`Self::triangle`].
+    /// `color` accepts `Color` or `ColorU8`.
     #[inline]
-    pub fn vertex(&mut self, pos: Vec2, color: impl Into<ColorU8>) -> u16 {
+    pub fn vertex(&mut self, pos: Vec2, color: impl Into<ColorU8>) -> u32 {
         let idx = self.vertices.len();
-        assert!(idx < u16::MAX as usize, "Mesh exceeds u16 vertex limit");
         self.vertices.push(MeshVertex::new(pos, color));
         self.cached_hash.set(None);
         self.cached_bbox.set(None);
-        idx as u16
+        idx as u32
     }
 
     /// Push three indices (CCW by convention).
     #[inline]
-    pub fn triangle(&mut self, a: u16, b: u16, c: u16) {
+    pub fn triangle(&mut self, a: u32, b: u32, c: u32) {
         self.indices.push(a);
         self.indices.push(b);
         self.indices.push(c);
@@ -142,12 +141,7 @@ impl Mesh {
     /// Append another mesh, offsetting its indices into this mesh's
     /// vertex space.
     pub fn append(&mut self, other: &Mesh) {
-        let base = self.vertices.len();
-        assert!(
-            base + other.vertices.len() <= u16::MAX as usize,
-            "Mesh::append would overflow u16 vertex index space"
-        );
-        let base = base as u16;
+        let base = self.vertices.len() as u32;
         self.vertices.extend_from_slice(&other.vertices);
         self.indices.reserve(other.indices.len());
         for &i in &other.indices {

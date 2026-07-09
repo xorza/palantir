@@ -19,10 +19,21 @@ fn green() -> ColorU8 {
     })
 }
 
+fn blue() -> ColorU8 {
+    ColorU8::from(Color {
+        r: 0.0,
+        g: 0.0,
+        b: 1.0,
+        a: 1.0,
+    })
+}
+
 /// Single-color: horizontal 2-point line at width=2.
 /// 8 verts (4 per cross-section), 18 indices. `seg_normal`
 /// returns `(-dy, dx) = (0, +1)` for a +x segment, so
-/// "outer-left" (+normal) sits at y = +1.5.
+/// "outer-left" (+normal) sits at y = +1.5. AA fringe verts carry
+/// the stroke's rgb at α=0 — (255,0,0,0), not transparent black —
+/// so straight-alpha interpolation fades without darkening.
 #[test]
 fn single_horizontal_line_geometry() {
     let mut v = Vec::new();
@@ -41,44 +52,49 @@ fn single_horizontal_line_geometry() {
     );
     assert_eq!(v.len(), 8);
     assert_eq!(i.len(), 18);
+    let red_fringe = ColorU8::rgba(255, 0, 0, 0);
     assert_eq!(v[0].pos, Vec2::new(0.0, 1.5));
-    assert_eq!(v[0].color.a, 0);
+    assert_eq!(v[0].color, red_fringe);
     assert_eq!(v[1].pos, Vec2::new(0.0, 1.0));
     assert_eq!(v[1].color, red());
     assert_eq!(v[2].pos, Vec2::new(0.0, -1.0));
     assert_eq!(v[2].color, red());
     assert_eq!(v[3].pos, Vec2::new(0.0, -1.5));
-    assert_eq!(v[3].color.a, 0);
+    assert_eq!(v[3].color, red_fringe);
 }
 
-/// Hairline freeze + alpha fade applies per-vertex with input
-/// color preserved (modulo the scale).
+/// Hairline freeze + straight-alpha fade: only alpha scales by
+/// `width_phys`; rgb is preserved. A 0.4-px white (1,1,1,1) line
+/// must emit inner verts (1,1,1,0.4) — quantized:
+/// round(0.4 · 255) = 102, rgb stays 255. The old premultiplied
+/// convention scaled rgb too (r = 102), double-darkening once the
+/// shader premultiplies.
 #[test]
-fn hairline_alpha_scales_input_color() {
+fn hairline_scales_only_alpha() {
     let mut v = Vec::new();
     let mut i = Vec::new();
     tessellate_polyline_aa(
         &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
-        &[red()],
+        &[ColorU8::WHITE],
         StrokeStyle {
             mode: ColorMode::Single,
             cap: LineCap::Butt,
             join: LineJoin::Miter,
-            width_phys: 0.3,
+            width_phys: 0.4,
         },
         &mut v,
         &mut i,
     );
     assert_eq!(v.len(), 8);
+    // Geometry freezes at 1 phys px: half_geom = max(0.2, 0.5) = 0.5,
+    // outer = 1.0.
     assert_eq!(v[0].pos, Vec2::new(0.0, 1.0));
     assert_eq!(v[1].pos, Vec2::new(0.0, 0.5));
-    // Vertex colours are now stored as `ColorU8` (linear u8); the
-    // tessellator scales the alpha by ~0.3 for hairline. Compare in
-    // u8 space at 1-LSB tolerance.
-    let inner = v[1].color;
-    let q = |x: f32| -> u8 { (x.clamp(0.0, 1.0) * 255.0).round() as u8 };
-    assert!(inner.r.abs_diff(q(0.3)) <= 1);
-    assert!(inner.a.abs_diff(q(0.3)) <= 1);
+    assert_eq!(v[1].color, ColorU8::rgba(255, 255, 255, 102));
+    assert_eq!(v[2].color, ColorU8::rgba(255, 255, 255, 102));
+    // Fringe verts: same rgb, α=0.
+    assert_eq!(v[0].color, ColorU8::rgba(255, 255, 255, 0));
+    assert_eq!(v[3].color, ColorU8::rgba(255, 255, 255, 0));
 }
 
 /// PerPoint: distinct colors on each cross-section, no
@@ -232,7 +248,10 @@ fn antiparallel_turn_is_sharp() {
 }
 
 /// Round cap: `2*N + 3` fan verts per endpoint. width=2 ⇒ N=4, so
-/// each cap contributes 11 verts and 36 indices.
+/// each cap contributes 11 verts and 36 indices. Also pins
+/// `round_segments` directly: ceil(half_width) · 2 clamped to
+/// [4, 16], computed in f32 so a huge half-width can't overflow on
+/// the way to an integer (32 768 · 2 overflowed the old u16 math).
 #[test]
 fn round_caps_emit_fan_verts() {
     let mut v = Vec::new();
@@ -251,6 +270,17 @@ fn round_caps_emit_fan_verts() {
     );
     assert_eq!(v.len(), 30);
     assert_eq!(i.len(), 90);
+
+    // Hand-computed: 0.5·2 = 1 and 1·2 = 2 clamp up to 4;
+    // 3·2 = 6 and 8·2 = 16 pass through; 9·2 = 18 clamps to 16.
+    assert_eq!(round_segments(0.5), 4);
+    assert_eq!(round_segments(1.0), 4);
+    assert_eq!(round_segments(3.0), 6);
+    assert_eq!(round_segments(8.0), 16);
+    assert_eq!(round_segments(9.0), 16);
+    // Half-widths past 32 768 overflowed the old `as u16 * 2`.
+    assert_eq!(round_segments(40_000.0), 16);
+    assert_eq!(round_segments(f32::MAX), 16);
 }
 
 /// Round join at an interior point: dual cross-section + arc fan.
@@ -403,12 +433,42 @@ fn under_two_points_emits_nothing() {
     assert!(i.is_empty());
 }
 
+/// One polyline can emit more verts than a u16 index stream could
+/// address. Collinear points under Miter merge to one cross-section
+/// (4 verts) per point and no join chrome, so 16 384 points emit
+/// 4 · 16 384 = 65 536 verts — one past the old
+/// `verts <= u16::MAX = 65 535` limit that panicked here. Indices:
+/// 16 383 strips × 18 = 294 894, and the largest index references
+/// the last block's outer-fringe vert at 4 · 16 383 + 3 = 65 535.
+#[test]
+fn large_polyline_exceeds_u16_vertex_space() {
+    let n = 16_384;
+    let pts: Vec<Vec2> = (0..n).map(|k| Vec2::new(k as f32, 0.0)).collect();
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &pts,
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 4 * n);
+    assert_eq!(i.len(), 18 * (n - 1));
+    assert_eq!(i.iter().copied().max(), Some(65_535));
+}
+
 /// Indices are 0-based to this call's vert block, even when
 /// the output vecs already contain other data.
 #[test]
 fn indices_are_zero_based_per_call() {
     let mut v = vec![MeshVertex::default(); 5];
-    let mut i = vec![99u16; 3];
+    let mut i = vec![99u32; 3];
     tessellate_polyline_aa(
         &[Vec2::ZERO, Vec2::new(10.0, 0.0)],
         &[red()],
@@ -517,16 +577,17 @@ fn coincident_points_filtered_per_point() {
     assert_eq!(i_a, i_b);
 }
 
-/// PerSegment dedup: when a point coincides with the previous,
-/// the segment ending at it is degenerate; its color is dropped
-/// and the surviving segment uses the next color.
+/// PerSegment dedup: a coincident point's incoming segment is
+/// degenerate; its color is dropped and every drawn strip paints
+/// solid in the color of the segment ending at its far kept point.
 #[test]
 fn coincident_points_filtered_per_segment() {
     let mut v = Vec::new();
     let mut i = Vec::new();
-    // Original: p0, p1=p1, p2. Segments: (p0,p1) red, (p1,p2) green.
-    // After dedup: kept [p0, p1, p2] effectively — but the middle
-    // dup is dropped, leaving [p0, p2] and the surviving color green.
+    // p0=p1: segment (p0,p1) red is degenerate and dropped. The one
+    // drawn strip is (p1,p2) green — solid green at BOTH
+    // cross-sections, not a red→green fade from the stale leading
+    // color at the start point.
     tessellate_polyline_aa(
         &[Vec2::ZERO, Vec2::ZERO, Vec2::new(10.0, 0.0)],
         &[red(), green()],
@@ -542,8 +603,46 @@ fn coincident_points_filtered_per_segment() {
     // 4 start + 4 end = 8 verts, 18 indices (one strip).
     assert_eq!(v.len(), 8);
     assert_eq!(i.len(), 18);
-    // Surviving segment's color is the second (green).
+    // Both cross-sections of the surviving strip are green.
+    assert_eq!(v[1].color, green());
     assert_eq!(v[5].color, green());
+
+    // Interior skip: [A, B, B, C] with segment colors [red, green,
+    // blue]. Kept walk: A(0) → B(1) → C(3); segment (p1,p2) green is
+    // degenerate and dropped. Collinear points + distinct colors hit
+    // the smooth-miter color-boundary branch, so the layout is
+    // A-block(0..4) red, trailing B-block(4..8) red, leading
+    // B-block(8..12), C-block(12..16). The B→C strip must be solid
+    // blue at both cross-sections: leading = cs[next_kept - 1] =
+    // cs[2] = blue (the old cs[i] picked cs[1] = green and rendered
+    // a green→blue fade).
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[
+            Vec2::ZERO,
+            Vec2::new(10.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(20.0, 0.0),
+        ],
+        &[red(), green(), blue()],
+        StrokeStyle {
+            mode: ColorMode::PerSegment,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 16);
+    assert_eq!(i.len(), 36);
+    // A→B strip solid red at both cross-sections.
+    assert_eq!(v[1].color, red());
+    assert_eq!(v[5].color, red());
+    // B→C strip solid blue at both cross-sections.
+    assert_eq!(v[9].color, blue());
+    assert_eq!(v[13].color, blue());
 }
 
 /// All-coincident input emits nothing.

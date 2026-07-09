@@ -12,37 +12,36 @@ use crate::renderer::backend::pipeline_utils::{
 };
 use crate::renderer::backend::stencil::STENCIL_FORMAT;
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::DrawGroup;
+use crate::renderer::render_buffer::RenderBuffer;
 use glam::Vec2;
 
+#[derive(Debug)]
 pub(crate) struct QuadPipeline {
     /// Format-independent quad resources. The format-dependent render
     /// pipelines (base + stencil-test twin via [`StencilVariant`], plus
-    /// the mask-write variant) live in
+    /// the mask stamp / clear variants) live in
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines),
     /// keyed by swapchain format and passed into every `bind*` call —
-    /// `bind` / `bind_clear` / `bind_mask_write` still own the
+    /// `bind` / `bind_clear` / `bind_mask` still own the
     /// `set_pipeline` / `set_bind_group` pair. Group 0 (gradient atlas +
     /// sampler) is owned by
     /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources)
     /// and passed to every `bind*` call.
     instance_buffer: DynamicBuffer,
-    /// Lazy buffer holding one `Quad` per rounded clip in the current
-    /// frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
+    /// Lazy buffer holding one `Quad` per deduped rounded clip in the
+    /// current frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
     /// across frames; capacity grows monotonically. `None` until the
     /// first stencil frame.
     mask_buffer: Option<DynamicBuffer>,
-    /// Retained scratch for the stencil-mask sweep. `Some(j)` at index
-    /// `i` says "group `i`'s mask is mask quad `j` in the upload
-    /// buffer." Sized to `buffer.groups.len()` each frame; capacity
-    /// retained across frames so steady-state runs alloc-free.
-    /// Populated by [`Self::stage_masks`], read by the render schedule.
-    /// Empty slice on non-stencil frames; the schedule only reads it
-    /// when `use_stencil` is true.
-    pub(crate) mask_indices: Vec<Option<u32>>,
-    /// Retained scratch for stencil-mask quads. One entry per rounded
-    /// clip group; uploaded to `mask_buffer`. Cleared at the start of
-    /// each stencil frame; capacity retained.
+    /// Retained scratch for the stencil-mask sweep, populated by
+    /// [`Self::stage_masks`] and read by the render schedule. Stale on
+    /// non-stencil frames; the schedule only reads it when
+    /// `use_stencil` is true.
+    pub(crate) mask_indices: MaskIndices,
+    /// Retained scratch for stencil-mask quads: one entry per chain
+    /// level per run of consecutive groups sharing a chain (see
+    /// [`build_mask_indices`]); uploaded to `mask_buffer`. Cleared at
+    /// the start of each stencil frame; capacity retained.
     masks: Vec<Quad>,
     /// Single-instance buffer holding the partial-repaint pre-clear quad
     /// (full-viewport, opaque, clear color). Drawn before regular groups
@@ -57,9 +56,9 @@ pub(crate) struct QuadPipeline {
     /// the upload guard in `submit` from the per-pass `PreClear` emit
     /// in the schedule.
     last_clear: Option<(Vec2, Color)>,
-    /// Quad shader module — format-independent; `FormatPipelines` reads it
-    /// to build this format's pipelines.
-    pub(crate) shader: wgpu::ShaderModule,
+    /// Quad shader module — format-independent; the `build_*` methods
+    /// read it to build each format's pipelines.
+    shader: wgpu::ShaderModule,
 }
 
 impl QuadPipeline {
@@ -70,7 +69,8 @@ impl QuadPipeline {
     /// Build the format-independent quad resources. The format-dependent
     /// pipelines are built separately by
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
-    /// from [`Self::build_variant`] / [`Self::build_mask_write`].
+    /// from [`Self::build_variants`] / [`Self::build_mask_stamp`] /
+    /// [`Self::build_mask_clear`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.quad.shader"),
@@ -89,7 +89,7 @@ impl QuadPipeline {
         Self {
             instance_buffer,
             mask_buffer: None,
-            mask_indices: Vec::new(),
+            mask_indices: MaskIndices::default(),
             masks: Vec::new(),
             clear_buffer,
             last_clear: None,
@@ -100,13 +100,13 @@ impl QuadPipeline {
     /// Build the base + stencil-test color pipelines against `format` —
     /// the only format-dependent quad objects; the gradient LUT atlas
     /// (texture + bind group + sampler) and the instance / clear buffers
-    /// are reused. The distinct `mask_write` variant
-    /// ([`Self::build_mask_write`]) stays separate — different fragment
+    /// are reused. The distinct mask variants ([`Self::build_mask_stamp`]
+    /// / [`Self::build_mask_clear`]) stay separate — different fragment
     /// entry, color writes off. Called by `FormatPipelines` for each
     /// swapchain format.
     pub(crate) fn build_variants(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
@@ -118,7 +118,7 @@ impl QuadPipeline {
                 label: "aperture.quad.pipeline",
                 stencil_label: "aperture.quad.pipeline.stencil_test",
                 layout_label: "aperture.quad.pl",
-                shader,
+                shader: &self.shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[Some(quad_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -127,29 +127,75 @@ impl QuadPipeline {
         )
     }
 
-    /// Mask-write variant: stencil Replace at every pixel the SDF passes
-    /// (`fs_mask` discards outside), color writes off, blend inert. Used
-    /// once per rounded-clipped draw group to stamp the mask before its
-    /// color draws. Built per format by `FormatPipelines`.
-    pub(crate) fn build_mask_write(
+    /// Mask-stamp variant: stencil `Equal` + `IncrementClamp` at every
+    /// pixel the SDF passes (`fs_mask` discards outside), color writes
+    /// off, blend inert. Drawn once per chain level at
+    /// `stencil_reference = level`: writes `level + 1` only where the
+    /// SDF passes AND the stencil already equals `level`, so nested
+    /// masks intersect — the outermost stamps ref 0 onto the cleared
+    /// stencil, each inner mask deepens only inside its ancestors.
+    pub(crate) fn build_mask_stamp(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> wgpu::RenderPipeline {
-        let layout = build_pipeline_layout(device, "aperture.quad.pl.mask", &[Some(gradient_bgl)]);
-        let instance = Some(quad_instance_layout());
-        let mask_face = wgpu::StencilFaceState {
+        let face = wgpu::StencilFaceState {
+            compare: wgpu::CompareFunction::Equal,
+            fail_op: wgpu::StencilOperation::Keep,
+            depth_fail_op: wgpu::StencilOperation::Keep,
+            pass_op: wgpu::StencilOperation::IncrementClamp,
+        };
+        self.build_mask_pipeline(
+            device,
+            gradient_bgl,
+            format,
+            "aperture.quad.pipeline.mask_stamp",
+            face,
+        )
+    }
+
+    /// Mask-clear variant: stencil `Always` + `Replace`, drawn at
+    /// `stencil_reference = 0` to reset a stamped chain. One draw of
+    /// the chain's *outermost* quad suffices — inner stamps only ever
+    /// incremented inside the outer's SDF, so every nonzero stencil
+    /// pixel lies under it.
+    pub(crate) fn build_mask_clear(
+        &self,
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+    ) -> wgpu::RenderPipeline {
+        let face = wgpu::StencilFaceState {
             compare: wgpu::CompareFunction::Always,
             fail_op: wgpu::StencilOperation::Keep,
             depth_fail_op: wgpu::StencilOperation::Keep,
             pass_op: wgpu::StencilOperation::Replace,
         };
+        self.build_mask_pipeline(
+            device,
+            gradient_bgl,
+            format,
+            "aperture.quad.pipeline.mask_clear",
+            face,
+        )
+    }
+
+    fn build_mask_pipeline(
+        &self,
+        device: &wgpu::Device,
+        gradient_bgl: &wgpu::BindGroupLayout,
+        format: wgpu::TextureFormat,
+        label: &'static str,
+        face: wgpu::StencilFaceState,
+    ) -> wgpu::RenderPipeline {
+        let layout = build_pipeline_layout(device, "aperture.quad.pl.mask", &[Some(gradient_bgl)]);
+        let instance = Some(quad_instance_layout());
         build_pipeline(
             device,
             PipelineRecipe {
-                label: "aperture.quad.pipeline.mask",
-                shader,
+                label,
+                shader: &self.shader,
                 layout: &layout,
                 vertex_buffers: std::slice::from_ref(&instance),
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
@@ -162,8 +208,8 @@ impl QuadPipeline {
                     depth_write_enabled: Some(false),
                     depth_compare: Some(wgpu::CompareFunction::Always),
                     stencil: wgpu::StencilState {
-                        front: mask_face,
-                        back: mask_face,
+                        front: face,
+                        back: face,
                         read_mask: 0xff,
                         write_mask: 0xff,
                     },
@@ -257,7 +303,7 @@ impl QuadPipeline {
         use_stencil: bool,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
-        debug_assert!(
+        assert!(
             self.last_clear.is_some(),
             "bind_clear without upload_clear this frame: the schedule's \
              PreClear emit and submit's upload_clear guard have decorrelated"
@@ -270,24 +316,14 @@ impl QuadPipeline {
         pass.set_vertex_buffer(0, self.clear_buffer.slice(..));
     }
 
-    /// Build the per-group mask-index map for the schedule and upload
-    /// one mask quad per rounded-clip group in `groups`. Caller must
-    /// have run [`Self::ensure_stencil`] earlier this frame. After
-    /// this call, `self.mask_indices` parallels `groups`: `Some(j)`
-    /// at index `i` says "group `i`'s mask is mask quad `j`."
+    /// Build the per-group / per-text-batch mask-index maps for the
+    /// schedule ([`build_mask_indices`]) and upload the deduped mask
+    /// quads. After this call, `self.mask_indices.groups` parallels
+    /// `buffer.groups` and `.batches` parallels `buffer.text_batches`,
+    /// each entry the mask-quad span for that chain.
     #[profiling::function]
-    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, groups: &[DrawGroup]) {
-        self.mask_indices.clear();
-        self.mask_indices.resize(groups.len(), None);
-        self.masks.clear();
-        for (i, g) in groups.iter().enumerate() {
-            if g.scissor.is_some()
-                && let Some(r) = g.rounded_clip
-            {
-                self.mask_indices[i] = Some(self.masks.len() as u32);
-                self.masks.push(Self::mask_instance(r.mask_rect, r.corners));
-            }
-        }
+    pub(crate) fn stage_masks(&mut self, ctx: &mut GpuCtx<'_>, buffer: &RenderBuffer) {
+        build_mask_indices(buffer, &mut self.mask_indices, &mut self.masks);
         if self.masks.is_empty() {
             return;
         }
@@ -297,21 +333,22 @@ impl QuadPipeline {
         let buf = self.mask_buffer.get_or_insert_with(|| {
             DynamicBuffer::vertex::<Quad>(ctx.device, "aperture.quad.masks", 8)
         });
-        buf.upload(ctx, bytemuck::cast_slice(&self.masks), self.masks.len());
+        buf.upload_instances(ctx, &self.masks);
     }
 
-    /// Bind the mask-write pipeline + mask instance buffer. Caller sets
-    /// `stencil_reference` per draw (1 to write the mask, 0 to clear).
-    /// Group 0 is the shared gradient bind group; viewport rides
-    /// immediates, pre-pushed by the backend.
-    pub(crate) fn bind_mask_write<'a>(
+    /// Bind a mask pipeline (stamp or clear — the schedule picks) +
+    /// the mask instance buffer. Caller sets `stencil_reference` per
+    /// draw (the chain level for stamps, 0 for clears). Group 0 is the
+    /// shared gradient bind group; viewport rides immediates,
+    /// pre-pushed by the backend.
+    pub(crate) fn bind_mask<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,
-        mask_write: &'a wgpu::RenderPipeline,
+        mask_pipeline: &'a wgpu::RenderPipeline,
         gradient_bg: &'a wgpu::BindGroup,
     ) {
         let buf = self.mask_buffer.as_ref().expect("upload_masks first");
-        pass.set_pipeline(mask_write);
+        pass.set_pipeline(mask_pipeline);
         pass.set_bind_group(0, gradient_bg, &[]);
         pass.set_vertex_buffer(0, buf.buffer.slice(..));
     }
@@ -334,6 +371,77 @@ impl QuadPipeline {
             stroke_width: 0.0,
             ..Default::default()
         }
+    }
+}
+
+/// CPU output of [`build_mask_indices`], retained on [`QuadPipeline`]
+/// across frames so steady-state staging is alloc-free. Each entry is
+/// a chain of mask-quad indices — `start..start+len` into the mask
+/// upload buffer, outer→inner — so mask quad `start + k` stamps chain
+/// level `k`. Empty span = no rounded clip.
+#[derive(Debug, Default)]
+pub(crate) struct MaskIndices {
+    /// Parallels `RenderBuffer.groups`.
+    pub(crate) groups: Vec<Span>,
+    /// Parallels `RenderBuffer.text_batches` — the chain a drained
+    /// batch's text must stencil-test against (see
+    /// `TextBatch::rounded_clips`).
+    pub(crate) batches: Vec<Span>,
+}
+
+/// CPU half of [`QuadPipeline::stage_masks`]: fill the per-group and
+/// per-text-batch mask-index maps and the mask-quad instances. Split
+/// from the GPU upload so schedule tests drive the real index
+/// derivation without a device.
+///
+/// Consecutive groups carrying value-equal chains share one mask-quad
+/// run (common: a rect clip nested in a rounded ancestor inherits the
+/// ancestor's chain verbatim, and quad-budget flushes split groups
+/// without changing clip). The shared span is what lets the schedule
+/// elide the clear + re-stamp between them. Text batches reuse their
+/// `last_group`'s span — a batch's chain is that group's chain by
+/// composer construction (a chain change closes the batch).
+pub(crate) fn build_mask_indices(
+    buffer: &RenderBuffer,
+    mask_indices: &mut MaskIndices,
+    masks: &mut Vec<Quad>,
+) {
+    mask_indices.groups.clear();
+    mask_indices.batches.clear();
+    masks.clear();
+    let clips = &buffer.rounded_clips;
+    let mut prev_chain = Span::default();
+    let mut prev_masks = Span::default();
+    for g in &buffer.groups {
+        let chain = g.rounded_clips;
+        let mask_span = if g.scissor.is_some() && chain.len != 0 {
+            if clips[chain.range()] == clips[prev_chain.range()] {
+                prev_masks
+            } else {
+                let start = masks.len() as u32;
+                for rc in &clips[chain.range()] {
+                    masks.push(QuadPipeline::mask_instance(rc.mask_rect, rc.corners));
+                }
+                Span::new(start, chain.len)
+            }
+        } else {
+            Span::default()
+        };
+        prev_chain = if mask_span.len != 0 {
+            chain
+        } else {
+            Span::default()
+        };
+        prev_masks = mask_span;
+        mask_indices.groups.push(mask_span);
+    }
+    for b in &buffer.text_batches {
+        let g = b.last_group as usize;
+        assert!(
+            clips[b.rounded_clips.range()] == clips[buffer.groups[g].rounded_clips.range()],
+            "text batch chain decorrelated from its last_group's chain"
+        );
+        mask_indices.batches.push(mask_indices.groups[g]);
     }
 }
 

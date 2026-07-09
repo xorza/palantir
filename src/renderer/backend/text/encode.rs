@@ -11,7 +11,10 @@
 //! - **Cache miss**: walks cosmic `LayoutRun`s, touches/inserts atlas
 //!   slots, emits to `out`, and populates the cache entry with the
 //!   origin-relative templates so the next frame at the same `(key,
-//!   scale, bins, color)` lands on the fast path.
+//!   scale, bins, color)` lands on the fast path. Runs whose lines
+//!   were y-culled against `bounds` are *not* cached — the key omits
+//!   bounds, so a truncated template would replay wrong after a
+//!   scroll.
 //!
 //! Atlas eviction reuses slot rectangles for new glyphs; any cached
 //! entry holding the old uv would point at the wrong image. The
@@ -25,13 +28,15 @@ use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::render_buffer::TextRun;
 use crate::text::TextCacheKey;
-use cosmic_text::{Buffer, CacheKey, FontSystem, SubpixelBin, SwashCache, SwashContent};
+use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
+use std::cell::Cell;
 
-use crate::renderer::backend::text::atlas::{GlyphAtlas, GlyphSlot};
+use crate::renderer::backend::text::atlas::GlyphAtlas;
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
 
 /// One text run resolved to a cosmic buffer + placement.
+#[derive(Debug)]
 pub(crate) struct ResolvedRun<'a> {
     pub(crate) buffer: &'a Buffer,
     pub(crate) origin: glam::Vec2,
@@ -53,7 +58,7 @@ pub(crate) struct ResolvedRun<'a> {
 /// ever added, fold a colour-span fingerprint into this key *first*, or
 /// the cache will serve a stale run's baked colours. The `debug_assert`
 /// in `encode_batch`'s glyph loop is the tripwire for that invariant.
-#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
     pub(crate) text: TextCacheKey,
     /// `(scale * 65536).round() as u32`. 1/65536 px is below cosmic's
@@ -69,7 +74,7 @@ pub(crate) struct EncodedKey {
 /// `encode_key_for`'s named result. Carries the cache identity plus
 /// the integer-pixel origin (the fractional component is folded into
 /// `EncodedKey::bins`).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedRunKey {
     pub(crate) key: EncodedKey,
     pub(crate) origin_x: i32,
@@ -79,7 +84,7 @@ pub(crate) struct EncodedRunKey {
 /// One cached glyph: origin-relative position + slot's atlas uv +
 /// final post-blend color (per-glyph cosmic override resolved against
 /// the run's area color at cache-insertion time).
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedGlyph {
     pub(crate) rel_x: i32,
     pub(crate) rel_y: i32,
@@ -88,7 +93,7 @@ pub(crate) struct EncodedGlyph {
     pub(crate) color: u32,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedEntry {
     /// Slice into `EncodedCache.arena` holding this run's glyph
     /// templates.
@@ -105,25 +110,27 @@ pub(crate) struct EncodedEntry {
 /// run's glyphs, with each `EncodedEntry` pointing at its span.
 /// After warmup this is alloc-free — the arena/map/scratch all retain
 /// capacity across frames.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct EncodedCache {
     pub(crate) map: FxHashMap<EncodedKey, EncodedEntry>,
     /// Append-only arena. Replaced runs leave dead spans behind;
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
     pub(crate) arena: Vec<EncodedGlyph>,
-    /// Per-glyph atlas `CacheKey`, parallel to `arena` (same spans).
+    /// Per-glyph atlas slab index, parallel to `arena` (same spans).
     /// A cache hit emits `arena` straight out without walking cosmic,
     /// so the atlas slots backing the run would never get their LRU
     /// `last_use` bumped — `evict_one` could then reclaim a slot still
     /// referenced this frame and overwrite it with a different glyph.
-    /// On hit we walk this slice and re-touch each slot so liveness
-    /// tracks actual use.
-    pub(crate) keys: Vec<CacheKey>,
+    /// On hit we store the current frame through each index — an
+    /// indexed write, no map probe per glyph. The entry's `eviction_at`
+    /// latch is what keeps these indices honest: only `evict_one` ever
+    /// reassigns an allocated slot's index, and it bumps the count.
+    pub(crate) slots: Vec<u32>,
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
     pub(crate) scratch: Vec<EncodedGlyph>,
-    pub(crate) scratch_keys: Vec<CacheKey>,
+    pub(crate) scratch_slots: Vec<u32>,
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -145,16 +152,16 @@ impl EncodedCache {
             return;
         }
         self.scratch.clear();
-        self.scratch_keys.clear();
+        self.scratch_slots.clear();
         for entry in self.map.values_mut() {
             let new_start = self.scratch.len() as u32;
             let r = entry.span.range();
             self.scratch.extend_from_slice(&self.arena[r.clone()]);
-            self.scratch_keys.extend_from_slice(&self.keys[r]);
+            self.scratch_slots.extend_from_slice(&self.slots[r]);
             entry.span = Span::new(new_start, entry.span.len);
         }
         std::mem::swap(&mut self.arena, &mut self.scratch);
-        std::mem::swap(&mut self.keys, &mut self.scratch_keys);
+        std::mem::swap(&mut self.slots, &mut self.scratch_slots);
     }
 }
 
@@ -210,11 +217,9 @@ pub(crate) fn try_emit_cached(
     // Refresh LRU on every slot this run rides so `evict_one` can't
     // reclaim a slot we're still drawing this frame. The eviction_at
     // check above guarantees no slot was evicted since insert, so every
-    // key is still present.
-    for k in &cache.keys[span.range()] {
-        if let Some(slot) = atlas.cache.get_mut(k) {
-            slot.last_use = current_frame;
-        }
+    // recorded index still holds the same glyph.
+    for &idx in &cache.slots[span.range()] {
+        atlas.slots[idx as usize].last_use = current_frame;
     }
     true
 }
@@ -222,6 +227,7 @@ pub(crate) fn try_emit_cached(
 /// Stable dependencies for the slow walk in `encode_batch`. Bundles
 /// the six refs that would otherwise drag every helper into an
 /// 8-arg signature.
+#[derive(Debug)]
 pub(crate) struct EncodeCtx<'a> {
     pub(crate) device: &'a wgpu::Device,
     pub(crate) font_system: &'a mut FontSystem,
@@ -248,12 +254,29 @@ pub(crate) fn encode_batch<'a>(
         let bounds_top = area.bounds.y as f32;
         let bounds_bot = (area.bounds.y + area.bounds.h) as f32;
 
-        // Cheap y-range pre-cull (runs are y-sorted).
+        // Cheap y-range pre-cull (runs are y-sorted). `culled` records
+        // whether any line was dropped: a truncated encode must not
+        // become a cache template (`EncodedKey` carries no bounds, so
+        // integer-pixel scrolling replays the same key with lines
+        // newly in view — they'd stay blank forever).
+        let culled = Cell::new(false);
         let runs_iter = area
             .buffer
             .layout_runs()
-            .skip_while(move |run| (run.line_top + run.line_height) * scale + origin.y < bounds_top)
-            .take_while(move |run| run.line_top * scale + origin.y <= bounds_bot);
+            .skip_while(|run| {
+                let skip = (run.line_top + run.line_height) * scale + origin.y < bounds_top;
+                if skip {
+                    culled.set(true);
+                }
+                skip
+            })
+            .take_while(|run| {
+                let take = run.line_top * scale + origin.y <= bounds_bot;
+                if !take {
+                    culled.set(true);
+                }
+                take
+            });
 
         // Build a fresh cache entry as a side effect of the slow
         // walk. We push templates straight onto `cache.arena`; if an
@@ -285,8 +308,8 @@ pub(crate) fn encode_batch<'a>(
                     None => area_color,
                 };
 
-                let slot = match ctx.atlas.touch(&physical.cache_key) {
-                    Some(s) => s,
+                let idx = match ctx.atlas.touch(&physical.cache_key) {
+                    Some(i) => i,
                     None => match rasterize_and_insert(
                         ctx.device,
                         ctx.font_system,
@@ -294,10 +317,11 @@ pub(crate) fn encode_batch<'a>(
                         ctx.atlas,
                         physical.cache_key,
                     ) {
-                        Some(s) => s,
+                        Some(i) => i,
                         None => continue, // genuine atlas-full at GPU max
                     },
                 };
+                let slot = ctx.atlas.slots[idx as usize];
 
                 if slot.alloc.is_none() {
                     continue; // zero-area glyph
@@ -321,13 +345,16 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
-                ctx.cache.keys.push(physical.cache_key);
+                ctx.cache.slots.push(idx);
             }
         }
 
-        // Only cache if no eviction happened mid-walk. Pass 1 already
-        // filtered invalid keys; valid-key here is a precondition.
-        if ctx.atlas.eviction_count == eviction_at_start {
+        // Only cache full encodes with no mid-walk eviction. Pass 1
+        // already filtered invalid keys; valid-key here is a
+        // precondition. Partially visible runs re-encode each frame;
+        // the reverse (a cached full template replayed under narrower
+        // bounds) is safe — the batch scissor is the real clip.
+        if ctx.atlas.eviction_count == eviction_at_start && !culled.get() {
             let span = Span::new(pending_start, ctx.cache.arena.len() as u32 - pending_start);
             ctx.cache.map.insert(
                 run_key.key,
@@ -338,9 +365,10 @@ pub(crate) fn encode_batch<'a>(
                 },
             );
         } else {
-            // Roll back the partial entry — its uv coords are stale.
+            // Roll back the partial entry — truncated by the cull, or
+            // its uv coords are stale after an eviction.
             ctx.cache.arena.truncate(pending_start as usize);
-            ctx.cache.keys.truncate(pending_start as usize);
+            ctx.cache.slots.truncate(pending_start as usize);
         }
     }
 }
@@ -354,13 +382,14 @@ pub(crate) fn pack_uv(u: u16, v: u16, kind: ContentType) -> u32 {
 }
 
 /// Cache miss path: ask swash for the bitmap, push into the atlas.
+/// Returns the new slot's slab index.
 fn rasterize_and_insert(
     device: &wgpu::Device,
     font_system: &mut FontSystem,
     swash_cache: &mut SwashCache,
     atlas: &mut GlyphAtlas,
     key: cosmic_text::CacheKey,
-) -> Option<GlyphSlot> {
+) -> Option<u32> {
     let image = swash_cache.get_image_uncached(font_system, key)?;
     let content = match image.content {
         SwashContent::Color => ContentType::Color,

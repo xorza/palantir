@@ -9,6 +9,7 @@ use crate::renderer::texture_id::TextureId;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 /// Pure output of `compose`: physical-px instances grouped by scissor region,
@@ -18,6 +19,7 @@ use std::time::Duration;
 /// its allocations across frames so steady-state composing is alloc-free for
 /// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
+#[derive(Debug)]
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
@@ -28,8 +30,8 @@ pub(crate) struct RenderBuffer {
     /// adjacent groups when paint-order is preserved (no occluding
     /// quad/mesh, no rounded-clip change) — collapsing many small
     /// draw calls into one. Each batch's `texts` span is contiguous
-    /// in `RenderBuffer.texts` by composer construction. `DrawGroup`
-    /// carries a `text_batch` index pointing here.
+    /// in `RenderBuffer.texts` by composer construction; batches anchor
+    /// to groups via `TextBatch.last_group`.
     pub(crate) text_batches: Vec<TextBatch>,
     /// One entry per *batch* of mesh draws. Currently one `MeshBatch`
     /// per group that emitted meshes (mesh batches don't span scissor
@@ -62,6 +64,14 @@ pub(crate) struct RenderBuffer {
     /// non-indexed instanced draw.
     pub(crate) curves: Vec<CurveInstance>,
     pub(crate) curve_batches: Vec<CurveBatch>,
+    /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`
+    /// and `TextBatch.rounded_clips` are spans into it, each an
+    /// outer→inner chain of the rounded masks active for that group /
+    /// batch (nested rounded clips stack — the stencil path stamps one
+    /// mask per chain entry). The composer pushes one chain per rounded
+    /// `PushClip` (ancestors copied so every chain is contiguous);
+    /// value-equal chains from separate pushes dedup at mask staging.
+    pub(crate) rounded_clips: Vec<RoundedClip>,
     /// `true` iff at least one group carries a rounded clip — set by the
     /// composer when a `PushClip` carries a non-zero radius. Backend
     /// reads this to decide whether to walk the stencil-mask path;
@@ -81,11 +91,21 @@ pub(crate) struct RenderBuffer {
     /// The backend diffs it against each `GpuView`'s last paint to derive
     /// `GpuFrameCtx::dt`.
     pub(crate) time: Duration,
+    /// Stable submitter identity, minted once at construction (one
+    /// `RenderBuffer` per `Frontend`, i.e. per window) and never reset by
+    /// `start_frame`. The shared backend's `ImagePipeline::paint_gpu_views`
+    /// scopes `GpuView`-target eviction to it, so window A's submit can't
+    /// free window B's targets.
+    pub(crate) owner: u64,
 }
 
 impl Default for RenderBuffer {
     fn default() -> Self {
+        // Global (not per-anything) so two windows' buffers can never
+        // collide, whatever host constructed them.
+        static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
         Self {
+            owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
             quads: Vec::new(),
             texts: Vec::new(),
             meshes: MeshScene::default(),
@@ -97,6 +117,7 @@ impl Default for RenderBuffer {
             image_batches: Vec::new(),
             curves: Vec::new(),
             curve_batches: Vec::new(),
+            rounded_clips: Vec::new(),
             has_rounded_clip: false,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -124,6 +145,7 @@ impl RenderBuffer {
         self.image_batches.clear();
         self.curves.clear();
         self.curve_batches.clear();
+        self.rounded_clips.clear();
         self.has_rounded_clip = false;
         self.viewport_phys = display.physical;
         self.viewport_phys_f = display.physical.as_vec2();
@@ -137,18 +159,18 @@ impl RenderBuffer {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct DrawGroup {
     pub(crate) scissor: Option<URect>,
-    /// When set, the active clip is a rounded scissor. `scissor` is the
-    /// rasterizer scissor (already clamped to viewport / ancestor
-    /// scissors), while `rounded_clip` carries the **unclamped**
-    /// physical-px mask rect + per-corner radii used by the stencil-
-    /// mask SDF. Keeping the mask rect unclamped is what prevents
-    /// rounded corners from "sliding inward" into the visible region
-    /// when the clipped node partially leaves the viewport — the SDF
-    /// must always know the rect's true geometry; the scissor handles
-    /// off-screen pixel rejection. `None` = plain scissor.
-    pub(crate) rounded_clip: Option<RoundedClip>,
+    /// Outer→inner chain of rounded masks active for this group — a
+    /// span into [`RenderBuffer::rounded_clips`]; empty = plain scissor.
+    /// `scissor` is the rasterizer scissor (already clamped to viewport
+    /// / ancestor scissors), while each chain entry carries the
+    /// **unclamped** physical-px mask rect + per-corner radii used by
+    /// the stencil-mask SDF. Keeping the mask rects unclamped is what
+    /// prevents rounded corners from "sliding inward" into the visible
+    /// region when the clipped node partially leaves the viewport — the
+    /// SDF must always know the rect's true geometry; the scissor
+    /// handles off-screen pixel rejection.
+    pub(crate) rounded_clips: Span,
     pub(crate) quads: Span,
-    pub(crate) texts: Span,
 }
 
 /// A coalesced batch of text runs sharing one text-backend `prepare` /
@@ -176,6 +198,14 @@ pub(crate) struct TextBatch {
     /// shader does no per-fragment bounds test, so the GPU scissor
     /// is the only x-axis clip.
     pub(crate) scissor: URect,
+    /// The rounded-mask chain every run in this batch was recorded
+    /// under — a span into [`RenderBuffer::rounded_clips`], value-equal
+    /// to `groups[last_group].rounded_clips` (a chain change closes the
+    /// batch, so a batch never mixes masks). The schedule needs it when
+    /// a batch drains past damage-skipped groups: the text must
+    /// stencil-test against *this* chain, not whatever mask happens to
+    /// be stamped at the drain point.
+    pub(crate) rounded_clips: Span,
 }
 
 /// A batch of mesh draws emitted together. `meshes` is a contiguous
@@ -220,7 +250,7 @@ pub(crate) struct RoundedClip {
 /// verbatim to the instance buffer (read as a contiguous
 /// `&[MeshInstance]` via `rows.instance()` — same memory layout as
 /// the previous parallel-`Vec` form).
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct MeshScene {
     pub(crate) rows: Soa<MeshDrawRow>,
 }
@@ -235,7 +265,7 @@ pub(crate) struct MeshScene {
 /// separately in [`RenderBuffer::frame_targets`] (the composer reads the
 /// `DrawImage.target` link), but the row itself composites exactly like an
 /// image: same `id` in the shared texture cache, same draw.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct ImageScene {
     pub(crate) rows: Soa<ImageDrawRow>,
 }
@@ -349,8 +379,11 @@ pub struct TextRun {
     /// Top-left of the run's bounding box, physical px.
     pub(crate) origin: Vec2,
     /// Bounds for clipping (physical px) — the parent rect after transform &
-    /// snap. Glyphs outside are clipped by the backend even if the scissor
-    /// rect is wider.
+    /// snap. The backend only y-culls whole lines against this (keeps
+    /// off-screen lines out of the glyph atlas); the actual pixel clip is
+    /// the batch GPU scissor ([`TextBatch::scissor`], the union of the
+    /// batch's bounds), which the composer's strict-bounds batching rule
+    /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,
     pub(crate) color: ColorU8,
     /// Per-run scale factor on top of the global DPI scale, sourced from
@@ -383,6 +416,16 @@ pub(crate) struct CurveBatch {
     pub(crate) instances: Span,
     pub(crate) last_group: u32,
 }
+
+/// Chord-subdivisions per curve sub-instance. The shader expands one
+/// instance into this many quads (= 2× this many triangles = 6× this
+/// many indices). Has to stay in lockstep with the constant of the
+/// same name in `curve.wgsl` (the curve pipeline stamps this value
+/// into the shader source at module creation). Lives here, next to
+/// [`CurveInstance`], because it's part of the composer↔backend wire
+/// contract: the composer's sub-instance math and the backend's
+/// per-instance vertex count both derive from it.
+pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 
 /// Per-curve-sub-instance GPU state, uploaded to a
 /// `step_mode: Instance` vertex buffer. The shader evaluates the cubic

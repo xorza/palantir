@@ -50,6 +50,7 @@ pub struct ImageHandle {
 /// whole lifecycle: when the last `ImageHandle` clone goes away, push the
 /// id onto the shared drop queue so the backend frees the GPU texture on
 /// its next drain.
+#[derive(Debug)]
 struct ImageToken {
     id: TextureId,
     size: glam::U16Vec2,
@@ -100,7 +101,7 @@ impl std::fmt::Debug for ImageHandle {
 /// their GPU textures). Clone is cheap — the inner state is `Rc`-shared.
 /// `WindowRenderer` constructs one and hands clones to `Ui` (for registration) and
 /// the wgpu backend (for upload + release).
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,
     /// Shared id source — also drawn from by each `GpuView` target so the two
@@ -108,7 +109,7 @@ pub struct ImageRegistry {
     ids: TextureIdSource,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct Inner {
     /// Newly registered images awaiting their one GPU upload. Owns the
     /// bytes until the backend drains them; the `Image` is dropped right
@@ -212,6 +213,14 @@ mod tests {
         assert_eq!(uploaded, 2);
         reg.drain_pending(|_, _| uploaded += 1);
         assert_eq!(uploaded, 2, "drain consumes pending");
+    }
+
+    /// A 0×0 image is a logic error caught at construction — before it
+    /// can reach `register` and blow up a frame later in the GPU upload.
+    #[test]
+    #[should_panic(expected = "image dimensions must be non-zero")]
+    fn zero_sized_image_panics_at_construction() {
+        let _ = img(0, 0);
     }
 
     #[test]

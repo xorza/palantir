@@ -67,6 +67,7 @@ fn pipeline_stats_flags() -> wgpu::PipelineStatisticsTypes {
         | wgpu::PipelineStatisticsTypes::COMPUTE_SHADER_INVOCATIONS
 }
 
+#[derive(Debug)]
 struct Slot {
     timestamps_buffer: wgpu::Buffer,
     /// Number of valid timestamps written this frame in
@@ -87,6 +88,7 @@ struct Slot {
 /// it can't mutate `GpuTimings` directly — these cells let `mark()`
 /// bump the timestamp index and append to `segment_kinds` through a
 /// shared reference.
+#[derive(Debug)]
 struct Inner {
     /// Next free index in the timestamp query set. Set to 0 at pass
     /// open. `mark()` writes here on a kind change, then bumps.
@@ -102,13 +104,16 @@ struct Inner {
     segment_kinds: RefCell<Vec<BatchKind>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct GpuTimings {
     /// `MAX_TIMESTAMPS` slots in per-batch mode, 2 in basic mode.
     timestamp_query_set: wgpu::QuerySet,
     /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is available. False
     /// → only pass begin / end timestamps (via descriptor), no
-    /// midpoint writes.
-    inside_passes: bool,
+    /// midpoint writes. Drives whether the caller invokes
+    /// [`Self::pass_begin`] / [`Self::mark`] / [`Self::pass_end`]
+    /// (yes) or relies on the descriptor's begin/end (no).
+    pub(crate) inside_passes: bool,
     /// `Some` when `PIPELINE_STATISTICS_QUERY` is available.
     stats_query_set: Option<wgpu::QuerySet>,
     /// GPU-visible resolve target for the timestamp query set.
@@ -221,19 +226,11 @@ impl GpuTimings {
         })
     }
 
-    /// Whether `TIMESTAMP_QUERY_INSIDE_PASSES` is on. Drives whether
-    /// the caller invokes [`Self::pass_begin`] / [`Self::mark`] /
-    /// [`Self::pass_end`] (yes) or relies on the descriptor's begin/end
-    /// (no).
-    pub(crate) fn inside_passes(&self) -> bool {
-        self.inside_passes
-    }
-
     /// Reset per-frame state, then write the pass-begin timestamp.
     /// Per-batch mode only. Called immediately after
     /// `begin_render_pass`.
     pub(crate) fn pass_begin(&self, pass: &mut wgpu::RenderPass<'_>) {
-        debug_assert!(self.inside_passes);
+        assert!(self.inside_passes);
         self.inner.next_index.set(0);
         self.inner.current_kind.set(None);
         self.inner.segment_kinds.borrow_mut().clear();
@@ -275,7 +272,7 @@ impl GpuTimings {
     /// Per-batch mode only. Called immediately before the pass is
     /// dropped.
     pub(crate) fn pass_end(&self, pass: &mut wgpu::RenderPass<'_>) {
-        debug_assert!(self.inside_passes);
+        assert!(self.inside_passes);
         let idx = self.inner.next_index.get();
         pass.write_timestamp(&self.timestamp_query_set, idx);
         let final_kind = self.inner.current_kind.get().unwrap_or(BatchKind::Setup);
@@ -397,31 +394,58 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
         .slice(..)
         .get_mapped_range()
         .expect("map timestamps range");
-    let count = slot.timestamps_count as usize;
-    // Always: pass duration = last - first.
+    publish_timestamps(
+        &ts_range,
+        slot.timestamps_count as usize,
+        &slot.segment_kinds,
+        period_ns,
+        sink,
+    );
+    drop(ts_range);
+    slot.timestamps_buffer.unmap();
+
+    if let Some(stats_buf) = &slot.stats_buffer {
+        let s_range = stats_buf
+            .slice(..)
+            .get_mapped_range()
+            .expect("map stats range");
+        publish_stats(&s_range, sink);
+        drop(s_range);
+        stats_buf.unmap();
+    }
+}
+
+/// Parse `count` resolved timestamps and publish pass + per-kind
+/// durations into `sink`. Split from [`consume_slot`] so the publish
+/// rules are testable without wgpu buffers.
+fn publish_timestamps(
+    ts: &[u8],
+    count: usize,
+    segment_kinds: &[BatchKind],
+    period_ns: f32,
+    sink: &GpuPassStats,
+) {
+    // Always: pass duration = last - first. Clear the per-kind table
+    // on *every* measured frame, not only ones with midpoint marks —
+    // a begin/end-only frame (blank window in per-batch mode) must
+    // not leave the previous frame's per-kind values published.
     if count >= 2 {
-        let first = u64::from_le_bytes(ts_range[..8].try_into().unwrap());
+        let first = u64::from_le_bytes(ts[..8].try_into().unwrap());
         let last_off = (count - 1) * 8;
-        let last = u64::from_le_bytes(ts_range[last_off..last_off + 8].try_into().unwrap());
+        let last = u64::from_le_bytes(ts[last_off..last_off + 8].try_into().unwrap());
         let delta_ns = (last.saturating_sub(first) as f64 * period_ns as f64) as u64;
         sink.record_pass_ns(delta_ns);
-    }
-    // Per-batch attribution when we collected midpoint marks. Clear
-    // the kind table first so categories that didn't run this frame
-    // surface as `None` rather than stale prior-frame values.
-    if count >= 3 {
         sink.clear_kinds();
+    }
+    // Per-batch attribution when we collected midpoint marks.
+    if count >= 3 {
         let mut per_kind_ns = [0u64; <BatchKind as strum::EnumCount>::COUNT];
         for i in 0..count - 1 {
             let t0_off = i * 8;
             let t1_off = (i + 1) * 8;
-            let t0 = u64::from_le_bytes(ts_range[t0_off..t0_off + 8].try_into().unwrap());
-            let t1 = u64::from_le_bytes(ts_range[t1_off..t1_off + 8].try_into().unwrap());
-            let kind = slot
-                .segment_kinds
-                .get(i)
-                .copied()
-                .unwrap_or(BatchKind::Setup);
+            let t0 = u64::from_le_bytes(ts[t0_off..t0_off + 8].try_into().unwrap());
+            let t1 = u64::from_le_bytes(ts[t1_off..t1_off + 8].try_into().unwrap());
+            let kind = segment_kinds.get(i).copied().unwrap_or(BatchKind::Setup);
             let seg_ns = (t1.saturating_sub(t0) as f64 * period_ns as f64) as u64;
             per_kind_ns[kind.idx()] = per_kind_ns[kind.idx()].saturating_add(seg_ns);
         }
@@ -432,29 +456,81 @@ fn consume_slot(slot: &mut Slot, period_ns: f32, sink: &GpuPassStats) {
             sink.record_kind_ns(kind, per_kind_ns[kind.idx()]);
         }
     }
-    drop(ts_range);
-    slot.timestamps_buffer.unmap();
+}
 
-    if let Some(stats_buf) = &slot.stats_buffer {
-        let s_range = stats_buf
-            .slice(..)
-            .get_mapped_range()
-            .expect("map stats range");
-        let mut values = [0u64; STATS_FIELD_COUNT];
-        for (i, v) in values.iter_mut().enumerate() {
-            let off = i * 8;
-            *v = u64::from_le_bytes(s_range[off..off + 8].try_into().unwrap());
+/// Parse the resolved pipeline-statistics counters and publish them.
+/// Field order matches `pipeline_stats_flags` — the mapping lives
+/// here, next to the flag declaration that defines it.
+fn publish_stats(bytes: &[u8], sink: &GpuPassStats) {
+    let mut values = [0u64; STATS_FIELD_COUNT];
+    for (i, v) in values.iter_mut().enumerate() {
+        let off = i * 8;
+        *v = u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+    }
+    sink.record_pipeline_stats(PipelineStats {
+        vertex_shader_invocations: values[0],
+        clipper_invocations: values[1],
+        clipper_primitives_out: values[2],
+        fragment_shader_invocations: values[3],
+        compute_shader_invocations: values[4],
+    });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn ts_bytes(ticks: &[u64]) -> Vec<u8> {
+        ticks.iter().flat_map(|t| t.to_le_bytes()).collect()
+    }
+
+    #[test]
+    fn blank_measured_frame_clears_stale_per_kind_stats() {
+        let sink = GpuPassStats::default();
+
+        // Frame 1 (per-batch): timestamps [1000, 3000, 6000] ticks at
+        // 1 ns/tick, segments [Quads, Text]:
+        //   pass  = 6000 - 1000 = 5000 ns
+        //   quads = 3000 - 1000 = 2000 ns
+        //   text  = 6000 - 3000 = 3000 ns
+        publish_timestamps(
+            &ts_bytes(&[1000, 3000, 6000]),
+            3,
+            &[BatchKind::Quads, BatchKind::Text],
+            1.0,
+            &sink,
+        );
+        assert_eq!(sink.last_pass_ms(), Some(0.005));
+        assert_eq!(sink.last_kind_ms(BatchKind::Quads), Some(0.002));
+        assert_eq!(sink.last_kind_ms(BatchKind::Text), Some(0.003));
+        // Kinds without a segment still publish, as exactly zero.
+        assert_eq!(sink.last_kind_ms(BatchKind::Mesh), Some(0.0));
+
+        // Frame 2: begin/end only (count == 2 — a truly blank window
+        // in per-batch mode). Pass time refreshes to 14000 - 10000 =
+        // 4000 ns; every per-kind slot clears to None instead of
+        // keeping frame 1's values.
+        publish_timestamps(&ts_bytes(&[10_000, 14_000]), 2, &[], 1.0, &sink);
+        assert_eq!(sink.last_pass_ms(), Some(0.004));
+        for kind in BatchKind::iter() {
+            assert_eq!(
+                sink.last_kind_ms(kind),
+                None,
+                "{} stale after blank measured frame",
+                kind.label(),
+            );
         }
-        drop(s_range);
-        stats_buf.unmap();
-        // Field order matches `pipeline_stats_flags` — the mapping lives
-        // here, next to the flag declaration that defines it.
-        sink.record_pipeline_stats(PipelineStats {
-            vertex_shader_invocations: values[0],
-            clipper_invocations: values[1],
-            clipper_primitives_out: values[2],
-            fragment_shader_invocations: values[3],
-            compute_shader_invocations: values[4],
-        });
+    }
+
+    #[test]
+    fn stats_publish_in_flag_declaration_order() {
+        let sink = GpuPassStats::default();
+        publish_stats(&ts_bytes(&[10, 20, 30, 40, 0]), &sink);
+        let s = sink.last_pipeline_stats().expect("published");
+        assert_eq!(s.vertex_shader_invocations, 10);
+        assert_eq!(s.clipper_invocations, 20);
+        assert_eq!(s.clipper_primitives_out, 30);
+        assert_eq!(s.fragment_shader_invocations, 40);
+        assert_eq!(s.compute_shader_invocations, 0);
     }
 }

@@ -11,6 +11,7 @@
 
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 
+#[derive(Debug)]
 pub(crate) struct DynamicBuffer {
     pub(crate) buffer: wgpu::Buffer,
     capacity: usize,
@@ -74,10 +75,30 @@ impl DynamicBuffer {
         }
     }
 
-    /// Common case: grow if needed, write `bytes` to offset 0.
-    /// `bytes.len()` must equal `item_count * self.item_size`.
+    /// Grow if needed, write `bytes` to offset 0. On a grow frame the
+    /// new buffer is created `mapped_at_creation: true` and the bytes
+    /// are memcpy'd straight into the mapped range — no belt staging
+    /// copy, no `copy_buffer_to_buffer` recorded. `bytes.len()` must
+    /// equal `item_count * self.item_size`.
     pub(crate) fn upload(&mut self, ctx: &mut GpuCtx<'_>, bytes: &[u8], item_count: usize) {
-        self.upload_tail(ctx, bytes, item_count, 0);
+        // Release `assert!`: a byte/count mismatch silently writes
+        // partial data to the GPU buffer — a logic bug we want caught in
+        // release, and the check is one multiply + compare.
+        assert_eq!(
+            bytes.len(),
+            item_count * self.item_size,
+            "DynamicBuffer::upload byte/item-count mismatch — would write partial data",
+        );
+        if self.grow_mapped(ctx.device, item_count) {
+            self.buffer
+                .slice(..bytes.len() as u64)
+                .get_mapped_range_mut()
+                .expect("map mapped-at-creation range")
+                .copy_from_slice(bytes);
+            self.buffer.unmap();
+            return;
+        }
+        ctx.write(&self.buffer, 0, bytes);
     }
 
     /// Upload a slice of `Pod` instances to offset 0 (no-op when empty).
@@ -89,46 +110,6 @@ impl DynamicBuffer {
             return;
         }
         self.upload(ctx, bytemuck::cast_slice(items), items.len());
-    }
-
-    /// Tail write: items `start_item..item_count` are new; earlier
-    /// items' bytes are already on the GPU, so only the tail slice is
-    /// belt-written, at its byte offset. On a grow frame the new buffer
-    /// is empty (and `mapped_at_creation: true`), so the whole of
-    /// `bytes` is memcpy'd straight into the mapped range — dodging one
-    /// belt copy per grow. `bytes` is always the full item slice;
-    /// `bytes.len()` must equal `item_count * self.item_size`, and the
-    /// tail's byte offset must be 4-aligned (wgpu copy alignment).
-    pub(crate) fn upload_tail(
-        &mut self,
-        ctx: &mut GpuCtx<'_>,
-        bytes: &[u8],
-        item_count: usize,
-        start_item: usize,
-    ) {
-        // Release `assert!`: a byte/count mismatch silently writes
-        // partial data to the GPU buffer — a logic bug we want caught in
-        // release, and the check is one multiply + compare.
-        assert_eq!(
-            bytes.len(),
-            item_count * self.item_size,
-            "DynamicBuffer::upload byte/item-count mismatch — would write partial data",
-        );
-        assert!(start_item <= item_count);
-        if self.grow_mapped(ctx.device, item_count) {
-            // Buffer was just created mapped-at-creation; write
-            // directly into the mapped range and unmap. No belt
-            // staging copy, no `copy_buffer_to_buffer` recorded.
-            self.buffer
-                .slice(..bytes.len() as u64)
-                .get_mapped_range_mut()
-                .expect("map mapped-at-creation range")
-                .copy_from_slice(bytes);
-            self.buffer.unmap();
-            return;
-        }
-        let offset = start_item * self.item_size;
-        ctx.write(&self.buffer, offset as u64, &bytes[offset..]);
     }
 
     /// Grow to fit `needed_len` items with the new buffer

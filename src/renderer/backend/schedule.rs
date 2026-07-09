@@ -8,6 +8,7 @@
 
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
+use crate::renderer::backend::quad_pipeline::MaskIndices;
 use crate::renderer::render_buffer::{CurveBatch, ImageBatch, MeshBatch, RenderBuffer, TextBatch};
 
 /// One conceptual step of the per-frame render schedule. Variants
@@ -25,15 +26,23 @@ pub(crate) enum RenderStep {
     /// Emitted both for per-group narrowing and for text-scissor
     /// expansion mid-group.
     SetScissor(URect),
-    /// Set the stencil reference value (stencil-path frames only).
-    /// `1` for masked-region writes, `0` for non-rounded groups and
-    /// the post-draw mask clear.
+    /// Set the stencil reference value (stencil-path frames only):
+    /// the chain depth for content draws (`Equal(depth)` passes only
+    /// inside every stamped mask), level `k` before stamping mask
+    /// level `k`, and `0` before a mask clear (`Replace` writes the
+    /// reference). Elided when the pass already holds the value.
     SetStencilRef(u32),
-    /// Bind the mask-write pipeline + draw the mask quad at this
-    /// index. Used both for the pre-draw mask stamp (at ref `1`) and
-    /// the post-draw mask clear (at ref `0`) — same GPU op, different
-    /// surrounding stencil refs.
-    MaskQuad(u32),
+    /// Bind the mask-stamp pipeline (`Equal` + `IncrementClamp`) +
+    /// draw the mask quad at this index: writes `ref + 1` where the
+    /// SDF passes and the stencil already equals the reference — one
+    /// nesting level per draw, so a chain stamps outer→inner with the
+    /// reference stepping 0, 1, ….
+    MaskStamp(u32),
+    /// Bind the mask-clear pipeline (`Always` + `Replace`, at ref 0) +
+    /// draw the mask quad at this index. One draw of a chain's
+    /// *outermost* quad resets the whole chain — inner stamps only
+    /// ever incremented inside the outer's SDF.
+    MaskClear(u32),
     /// Bind the quad pipeline (stencil-test variant when stencil is
     /// active, plain otherwise) + draw the group's quad range.
     Quads { group: usize, range: Span },
@@ -66,9 +75,9 @@ pub(crate) enum RenderStep {
 /// Walk `buffer.groups` and emit one [`RenderStep`] at a time via
 /// `emit`. Pure logic — no GPU calls.
 ///
-/// `mask_indices` parallels `buffer.groups`; index `i`'s `Some(j)`
-/// says group `i`'s rounded-clip mask is mask quad `j` in the upload
-/// buffer. Ignored when `use_stencil` is `false`.
+/// `masks` holds the per-group and per-text-batch mask-quad chains
+/// (see [`MaskIndices`]), built by `QuadPipeline::stage_masks`.
+/// Ignored when `use_stencil` is `false`.
 ///
 /// Per-frame ordering invariants pinned by the emitted sequence:
 ///
@@ -77,16 +86,27 @@ pub(crate) enum RenderStep {
 ///    any group draws. AA-fringe drift would otherwise accumulate.
 /// 2. Each group narrows the scissor (`SetScissor(effective)`) before
 ///    issuing its own draws.
-/// 3. Stencil-path groups bracket their draws with mask write at
-///    `stencil_ref = 1` and mask clear at `stencil_ref = 0`, so each
-///    group sees a clean stencil regardless of clip ordering — except
-///    when consecutive groups share the same mask, where the prior
-///    group's tail clear and the new group's prologue write cancel
-///    out and both are elided. The pass-final stencil is dropped
-///    (`StoreOp::Discard`), so leaving a mask stamped at end of run
-///    is correctness-neutral.
+/// 3. Stencil-path groups establish their mask chain before their
+///    draws: each chain level stamps at `stencil_ref = level`
+///    (`Equal` + `IncrementClamp`, so level `k` writes `k + 1` only
+///    inside its ancestors), then content draws at
+///    `stencil_ref = depth`. A stale chain clears with ONE draw of
+///    its outermost mask quad at ref 0, replayed under the
+///    *stamp-time* scissor before the next `SetScissor` — a clear
+///    under the next scissor would miss stamped pixels wherever the
+///    two scissors differ. Groups sharing the still-stamped chain
+///    (with a scissor inside the stamp's) elide the clear + re-stamp
+///    pair. A walk never ends with a chain stamped: a tail clear runs
+///    after the last group, because the pass clears the stencil once
+///    (not per damage rect) and AA padding can make nominally-disjoint
+///    rects' scissors overlap, so residue would leak into the next
+///    rect's walk.
 /// 4. Text always renders *after* its group's quads so a child quad
-///    declared after a label correctly occludes that label.
+///    declared after a label correctly occludes that label. A batch
+///    drained past damage-skipped groups first establishes *its own*
+///    chain (same clear / stamp / elision rules as a group), so its
+///    text can't stencil-test against a foreign mask; the group that
+///    follows re-establishes its own state.
 /// 5. Groups whose effective scissor is empty (or doesn't intersect
 ///    `damage_scissor`) emit no steps at all.
 ///
@@ -94,7 +114,7 @@ pub(crate) enum RenderStep {
 pub(crate) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    mask_indices: &[Option<u32>],
+    masks: &MaskIndices,
     use_stencil: bool,
     mut emit: impl FnMut(RenderStep),
 ) {
@@ -116,22 +136,16 @@ pub(crate) fn for_each_step(
     // damage-skipped group must still render — earlier groups in the
     // batch may sit inside the damage rect, and dropping the whole
     // batch would silently erase their text. So before each rendered
-    // group's quads, drain any batches whose `last_group < i`: emit
+    // group's setup, drain any batches whose `last_group < i`: emit
     // them now (paint-safe — the composer's overlap rule guarantees
     // no quad in `(last_group, i)` overlapped them, and any of those
     // skipped groups' quads don't paint this pass). A trailing drain
     // after the loop catches batches anchored in tail-skipped groups.
-    // Stencil limitation: under rounded clip the drained batch's mask
-    // may differ from the active mask at the drain point — the text
-    // will stencil-clip against the wrong mask. Accepted: rare combo.
+    // Each drained batch establishes its own mask chain, so drained
+    // text never stencil-tests against whatever chain the walk left
+    // stamped.
     let mut cursors = ScheduleCursors::default();
-
-    // `Some(mi)` means the stencil currently has mask `mi` stamped
-    // (ref=1 inside the SDF, 0 outside). `None` means stencil is
-    // clean and ref=0. Updated only when a group actually emits;
-    // groups skipped for zero area / no damage intersect leave it
-    // alone, so dedup spans across them.
-    let mut active_mask: Option<u32> = None;
+    let mut stencil = StencilTracker::default();
 
     for (i, g) in buffer.groups.iter().enumerate() {
         // Silently drop mesh/image/curve batches that anchored in
@@ -155,76 +169,151 @@ pub(crate) fn for_each_step(
         // Drain batches stuck behind earlier damage-skipped groups
         // BEFORE this group's own setup, so the next quad/meshes
         // emitted (in this group) can paint over the drained text.
-        drain_text_batches(buffer, damage_scissor, i, &mut cursors.text, &mut emit);
-        emit(RenderStep::SetScissor(effective));
+        // Drained first so a batch sharing the still-stamped chain
+        // elides its stamp; the group establish below then clears /
+        // restamps as its own chain requires.
+        drain_text_batches(
+            buffer,
+            damage_scissor,
+            i,
+            &mut cursors.text,
+            masks,
+            use_stencil,
+            &mut stencil,
+            &mut emit,
+        );
 
         if use_stencil {
-            let mask_idx = mask_indices[i];
-            match (active_mask, mask_idx) {
-                // Same mask still stamped from a prior group: skip
-                // both its tail clear and this prologue write. Ref
-                // is still 1 from that write.
-                (Some(prev), Some(curr)) if prev == curr => {}
-                // Stencil dirty from a prior mask: clear it. If this
-                // group has its own mask, stamp that next.
-                (Some(prev), _) => {
-                    emit(RenderStep::SetStencilRef(0));
-                    emit(RenderStep::MaskQuad(prev));
-                    if let Some(curr) = mask_idx {
-                        emit(RenderStep::SetStencilRef(1));
-                        emit(RenderStep::MaskQuad(curr));
-                    }
-                }
-                (None, Some(curr)) => {
-                    emit(RenderStep::SetStencilRef(1));
-                    emit(RenderStep::MaskQuad(curr));
-                }
-                (None, None) => {
-                    emit(RenderStep::SetStencilRef(0));
-                }
+            stencil.establish(masks.groups[i], effective, &mut emit);
+            emit_group_body(
+                buffer,
+                damage_scissor,
+                i,
+                effective,
+                masks,
+                use_stencil,
+                &mut cursors,
+                &mut stencil,
+                &mut emit,
+            );
+        } else {
+            emit(RenderStep::SetScissor(effective));
+            if g.quads.len != 0
+                || pending_at(&buffer.text_batches, cursors.text, i)
+                || pending_at(&buffer.mesh_batches, cursors.mesh, i)
+                || pending_at(&buffer.image_batches, cursors.image, i)
+                || pending_at(&buffer.curve_batches, cursors.curve, i)
+            {
+                emit_group_body(
+                    buffer,
+                    damage_scissor,
+                    i,
+                    effective,
+                    masks,
+                    use_stencil,
+                    &mut cursors,
+                    &mut stencil,
+                    &mut emit,
+                );
             }
-            emit_group_body(
-                buffer,
-                damage_scissor,
-                i,
-                effective,
-                g.quads,
-                &mut cursors,
-                &mut emit,
-            );
-            active_mask = mask_idx;
-        } else if g.quads.len != 0
-            || pending_at(&buffer.text_batches, cursors.text, i)
-            || pending_at(&buffer.mesh_batches, cursors.mesh, i)
-            || pending_at(&buffer.image_batches, cursors.image, i)
-            || pending_at(&buffer.curve_batches, cursors.curve, i)
-        {
-            emit_group_body(
-                buffer,
-                damage_scissor,
-                i,
-                effective,
-                g.quads,
-                &mut cursors,
-                &mut emit,
-            );
         }
     }
-    // Trailing drain — batches anchored in tail-skipped groups.
+    // Trailing drain — batches anchored in tail-skipped groups. Runs
+    // BEFORE the tail clear so a batch whose chain is still stamped
+    // elides, and a foreign one establishes its own.
     drain_text_batches(
         buffer,
         damage_scissor,
         usize::MAX,
         &mut cursors.text,
+        masks,
+        use_stencil,
+        &mut stencil,
         &mut emit,
     );
+    // Tail clear: never let a stamped chain survive the walk. The pass
+    // clears the stencil once, not per damage rect, and AA padding can
+    // make nominally-disjoint rects' scissors overlap — residue here
+    // would be read by the next rect's walk.
+    stencil.clear_active(&mut emit);
+}
+
+/// A stamped stencil chain: the mask quads stamped (outer→inner — the
+/// stencil holds `k + 1` inside chain level `k`) plus the scissor
+/// active when it was stamped. The clear must replay under that same
+/// scissor — a clear under any later scissor misses stamped pixels
+/// wherever the two differ.
+#[derive(Clone, Copy, Debug)]
+struct ActiveMask {
+    masks: Span,
+    scissor: URect,
+}
+
+/// Stencil bookkeeping for one schedule walk: the stamped chain (if
+/// any) plus the stencil reference last emitted. A walk always exits
+/// clean (no chain stamped, ref 0), so consecutive per-damage-rect
+/// walks within one pass — which clears the stencil once — each start
+/// consistent with the true stencil contents.
+#[derive(Debug, Default)]
+struct StencilTracker {
+    active: Option<ActiveMask>,
+    cur_ref: u32,
+}
+
+impl StencilTracker {
+    fn set_ref(&mut self, v: u32, emit: &mut dyn FnMut(RenderStep)) {
+        if self.cur_ref != v {
+            emit(RenderStep::SetStencilRef(v));
+            self.cur_ref = v;
+        }
+    }
+
+    /// Clear the stamped chain (if any) under its own stamp-time
+    /// scissor: one draw of the outermost mask quad at ref 0.
+    fn clear_active(&mut self, emit: &mut dyn FnMut(RenderStep)) {
+        if let Some(prev) = self.active.take() {
+            emit(RenderStep::SetScissor(prev.scissor));
+            self.set_ref(0, emit);
+            emit(RenderStep::MaskClear(prev.masks.start));
+        }
+    }
+
+    /// Bring the stencil to "`chain` stamped under `scissor`, ref =
+    /// depth" and narrow the pass scissor to `scissor`. Elides the
+    /// clear + re-stamp when the same chain is already stamped and its
+    /// stamp scissor covers `scissor` — a wider scissor exposes pixels
+    /// the stamp never wrote, which would wrongly fail `Equal`.
+    fn establish(&mut self, chain: Span, scissor: URect, emit: &mut dyn FnMut(RenderStep)) {
+        let keep = chain.len != 0
+            && self.active.is_some_and(|prev| {
+                prev.masks == chain && prev.scissor.intersect(scissor) == Some(scissor)
+            });
+        if keep {
+            emit(RenderStep::SetScissor(scissor));
+            self.set_ref(chain.len, emit);
+            return;
+        }
+        self.clear_active(emit);
+        emit(RenderStep::SetScissor(scissor));
+        for level in 0..chain.len {
+            self.set_ref(level, emit);
+            emit(RenderStep::MaskStamp(chain.start + level));
+        }
+        self.set_ref(chain.len, emit);
+        if chain.len != 0 {
+            self.active = Some(ActiveMask {
+                masks: chain,
+                scissor,
+            });
+        }
+    }
 }
 
 /// Per-kind walk cursors for [`for_each_step`]. Each field is the index
 /// of the next unconsumed batch of that kind; the cursors only advance
 /// (batches are emitted in `last_group` order), so the whole walk is
 /// linear in the batch count.
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct ScheduleCursors {
     text: usize,
     mesh: usize,
@@ -275,20 +364,19 @@ fn pending_at<B: PerGroupBatch>(batches: &[B], cursor: usize, group: usize) -> b
     cursor < batches.len() && batches[cursor].last_group() == group
 }
 
-/// Drain every batch anchored to group `group`, re-narrowing the scissor
-/// to `effective` before each (the text drain may have widened it) and
-/// emitting `step(idx)` for the batch's render step. Shared by the
-/// mesh / image / curve drains so their per-group emit shape can't drift.
+/// Drain every batch anchored to group `group`, emitting `step(idx)`
+/// for the batch's render step. The caller has already narrowed the
+/// scissor (and stencil state) back to the group's own. Shared by the
+/// mesh / image / curve drains so their per-group emit shape can't
+/// drift.
 fn drain_group_batches<B: PerGroupBatch>(
     batches: &[B],
     cursor: &mut usize,
     group: usize,
-    effective: URect,
     mut step: impl FnMut(usize) -> RenderStep,
     emit: &mut dyn FnMut(RenderStep),
 ) {
     while pending_at(batches, *cursor, group) {
-        emit(RenderStep::SetScissor(effective));
         emit(step(*cursor));
         *cursor += 1;
     }
@@ -298,15 +386,22 @@ fn drain_group_batches<B: PerGroupBatch>(
 /// with its own bounds-union scissor (intersected with the damage
 /// region) so the text backend's missing per-fragment x-clip doesn't
 /// leak glyphs past a clipped owner's scissor (e.g. into a scrollbar
-/// gutter). `target = i` drains stuck batches before group `i`'s emits;
-/// `target = i + 1` drains the in-flight group's own batches after its
-/// quads; `target = usize::MAX` drains tail batches anchored in skipped
-/// groups.
+/// gutter). On the stencil path each batch also establishes its own
+/// mask chain first — same clear / stamp / elision rules as a group —
+/// so text drained past damage-skipped groups never stencil-tests
+/// against a foreign mask. `target = i` drains stuck batches before
+/// group `i`'s emits; `target = i + 1` drains the in-flight group's
+/// own batches after its quads; `target = usize::MAX` drains tail
+/// batches anchored in skipped groups.
+#[allow(clippy::too_many_arguments)]
 fn drain_text_batches(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
     target: usize,
     cursor: &mut usize,
+    masks: &MaskIndices,
+    use_stencil: bool,
+    stencil: &mut StencilTracker,
     emit: &mut dyn FnMut(RenderStep),
 ) {
     while *cursor < buffer.text_batches.len() && buffer.text_batches[*cursor].last_group() < target
@@ -319,7 +414,11 @@ fn drain_text_batches(
             None => buffer.text_batches[*cursor].scissor,
         };
         if s.w != 0 && s.h != 0 {
-            emit(RenderStep::SetScissor(s));
+            if use_stencil {
+                stencil.establish(masks.batches[*cursor], s, emit);
+            } else {
+                emit(RenderStep::SetScissor(s));
+            }
             emit(RenderStep::Text { batch: *cursor });
         }
         *cursor += 1;
@@ -329,31 +428,55 @@ fn drain_text_batches(
 /// The draws every non-skipped group emits, identical under both the
 /// stencil and non-stencil paths: the group's quads, then its text
 /// batches (drained after the quads so a child quad occludes a label),
-/// then its mesh / image / curve batches (each restoring the group's own
-/// scissor in case the text drain widened it). The stencil path wraps
-/// this with the mask bracket; the non-stencil path gates it on the group
-/// having any content. Shared so the two can't drift.
+/// then its mesh / image / curve batches — after restoring the group's
+/// own scissor + stencil state, since the text drain may have widened
+/// the scissor or restamped a different chain. The stencil path wraps
+/// this with the chain establish; the non-stencil path gates it on the
+/// group having any content. Shared so the two can't drift.
+#[allow(clippy::too_many_arguments)]
 fn emit_group_body(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
     i: usize,
     effective: URect,
-    quads: Span,
+    masks: &MaskIndices,
+    use_stencil: bool,
     cursors: &mut ScheduleCursors,
+    stencil: &mut StencilTracker,
     emit: &mut dyn FnMut(RenderStep),
 ) {
+    let quads = buffer.groups[i].quads;
     if quads.len != 0 {
         emit(RenderStep::Quads {
             group: i,
             range: quads,
         });
     }
-    drain_text_batches(buffer, damage_scissor, i + 1, &mut cursors.text, emit);
+    drain_text_batches(
+        buffer,
+        damage_scissor,
+        i + 1,
+        &mut cursors.text,
+        masks,
+        use_stencil,
+        stencil,
+        emit,
+    );
+    if !(pending_at(&buffer.mesh_batches, cursors.mesh, i)
+        || pending_at(&buffer.image_batches, cursors.image, i)
+        || pending_at(&buffer.curve_batches, cursors.curve, i))
+    {
+        return;
+    }
+    if use_stencil {
+        stencil.establish(masks.groups[i], effective, emit);
+    } else {
+        emit(RenderStep::SetScissor(effective));
+    }
     drain_group_batches(
         &buffer.mesh_batches,
         &mut cursors.mesh,
         i,
-        effective,
         |batch| RenderStep::MeshBatch { batch },
         emit,
     );
@@ -361,7 +484,6 @@ fn emit_group_body(
         &buffer.image_batches,
         &mut cursors.image,
         i,
-        effective,
         |batch| RenderStep::ImageBatch { batch },
         emit,
     );
@@ -369,7 +491,6 @@ fn emit_group_body(
         &buffer.curve_batches,
         &mut cursors.curve,
         i,
-        effective,
         |batch| RenderStep::CurveBatch { batch },
         emit,
     );
