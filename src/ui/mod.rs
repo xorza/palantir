@@ -1278,6 +1278,20 @@ impl Ui {
         self.input.focused
     }
 
+    /// True when keyboard focus sits on `ancestor` or any widget
+    /// recorded inside its subtree — per the most recent cascade run,
+    /// i.e. one frame of lag, the same timing as [`Self::response_for`].
+    /// `false` when nothing is focused or `ancestor` wasn't recorded.
+    /// Layers are separate trees, so focus on a popup never counts as
+    /// within the popup's anchor. Lets a caller that skips recording
+    /// off-screen subtrees keep the one holding an in-progress edit
+    /// alive without enumerating every focusable widget it contains.
+    pub fn focus_within(&self, ancestor: WidgetId) -> bool {
+        self.input
+            .focused
+            .is_some_and(|f| self.cascades.is_within(f, ancestor))
+    }
+
     /// Active `Display` (physical surface size + scale factor). Read
     /// by example/demo code that wants to inject synthetic input
     /// coordinates without threading window dimensions through itself.
