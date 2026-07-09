@@ -9,7 +9,7 @@
 
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
-use crate::renderer::backend::pipeline_utils::texture_sampler_bgl;
+use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
 use crate::renderer::gradient_atlas::GradientAtlas;
 
 /// Side of the gradient LUT atlas texture (square: 256 × 256). Must
@@ -37,6 +37,7 @@ const _: () = assert!(
 /// Gradient LUT atlas texture + sampler + bind group, shared by the
 /// quad and curve pipelines. Format-independent: survives a swapchain
 /// format change untouched (only the pipelines carry the color target).
+#[derive(Debug)]
 pub(crate) struct GradientResources {
     /// LUT atlas texture. 256 cols × 256 rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
@@ -91,50 +92,47 @@ impl GradientResources {
             ..Default::default()
         });
 
-        let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("aperture.gradient.bg"),
-            layout: &bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&sampler),
-                },
-            ],
-        });
+        let bg = texture_bind_group(device, &bgl, &sampler, &view, "aperture.gradient.bg");
 
         Self { texture, bgl, bg }
     }
 
     /// Sync the gradient LUT atlas from CPU to GPU if anything changed.
     /// Idle frames (no new gradients) hit the early `None` return in
-    /// `flush_with` and do nothing. Dirty frames upload the entire
-    /// 512 KB atlas in a single `write_texture` — see the dirty-tracking
-    /// note in `GradientCpuAtlas` for why per-row uploads aren't worth
-    /// the API overhead. Called from `WgpuBackend::submit` before the
-    /// render pass starts.
+    /// `flush_with` and do nothing. Dirty frames upload the atlas's dirty
+    /// row span in a single `write_texture`, sized to the range and
+    /// offset via `origin.y` — one call keeps the fixed API cost of the
+    /// old whole-atlas upload while an animated gradient re-baking one
+    /// row moves 2 KB per frame instead of 512 KB (see the dirty-range
+    /// note in `GradientCpuAtlas`). Called from `WgpuBackend::submit`
+    /// before the render pass starts.
     #[profiling::function]
     pub(crate) fn upload(&self, ctx: &GpuCtx<'_>, atlas: &GradientAtlas) {
-        atlas.flush_with(|bytes| {
+        atlas.flush_with(|rows| {
+            let row_pitch = GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES;
+            // Whole rows by the `FlushedRows` contract, so this divides
+            // exactly.
+            let height = rows.bytes.len() as u32 / row_pitch;
             ctx.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.texture,
                     mip_level: 0,
-                    origin: wgpu::Origin3d::ZERO,
+                    origin: wgpu::Origin3d {
+                        x: 0,
+                        y: rows.first_row,
+                        z: 0,
+                    },
                     aspect: wgpu::TextureAspect::All,
                 },
-                bytes,
+                rows.bytes,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES),
-                    rows_per_image: Some(GRADIENT_ATLAS_SIDE),
+                    bytes_per_row: Some(row_pitch),
+                    rows_per_image: Some(height),
                 },
                 wgpu::Extent3d {
                     width: GRADIENT_ATLAS_SIDE,
-                    height: GRADIENT_ATLAS_SIDE,
+                    height,
                     depth_or_array_layers: 1,
                 },
             );

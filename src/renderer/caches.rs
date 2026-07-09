@@ -11,7 +11,7 @@ use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::texture_id::TextureIdSource;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub(crate) struct RenderCaches {
     /// Image cache. Authoring code stages bytes once via
     /// [`crate::Ui::register_image`] and references the returned handle

@@ -89,7 +89,8 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
         return vec4<f32>(in.color.rgb * a, a);
     }
     // Color emoji: sRGB texture decodes to linear straight RGBA on
-    // sample. Premultiply at output.
+    // sample. Premultiply at output; the run alpha modulates the whole
+    // premultiplied result so faded text fades its emoji too.
     let s = textureSampleLevel(color_atlas, atlas_sampler, in.uv, 0.0);
-    return vec4<f32>(s.rgb * s.a, s.a);
+    return vec4<f32>(s.rgb * s.a, s.a) * in.color.a;
 }

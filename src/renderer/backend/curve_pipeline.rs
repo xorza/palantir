@@ -1,7 +1,7 @@
 //! GPU side of native bezier-curve strokes. One `draw` per scissor
 //! group covers every `CurveInstance` in the group's `CurveBatch` —
 //! the vertex shader subdivides each instance into
-//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE)
+//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::SEGMENTS_PER_INSTANCE)
 //! chords (96 vertices per instance, no index buffer) and offsets the
 //! strip perpendicular to the tangent for stroking + AA.
 //!
@@ -15,8 +15,7 @@
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::frontend::composer::SEGMENTS_PER_INSTANCE;
-use crate::renderer::render_buffer::CurveInstance;
+use crate::renderer::render_buffer::{CurveInstance, SEGMENTS_PER_INSTANCE};
 use crate::shape::LineCap;
 
 /// Vertex count per instance — every instance is a 16-segment strip,
@@ -33,11 +32,12 @@ const _: () = {
     assert!(LineCap::Round as u8 == 2);
 };
 
+#[derive(Debug)]
 pub(crate) struct CurvePipeline {
     instance_buffer: DynamicBuffer,
-    /// Curve shader module — format-independent; `FormatPipelines` reads
-    /// it to build this format's pipelines.
-    pub(crate) shader: wgpu::ShaderModule,
+    /// Curve shader module — format-independent; [`Self::build_variants`]
+    /// reads it to build each format's pipelines.
+    shader: wgpu::ShaderModule,
 }
 
 impl CurvePipeline {
@@ -72,8 +72,8 @@ impl CurvePipeline {
     /// `GradientResources`) so the layout matches; the instance buffer
     /// is format-independent. Called by `FormatPipelines` per format.
     pub(crate) fn build_variants(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
         gradient_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
@@ -85,7 +85,7 @@ impl CurvePipeline {
                 label: "aperture.curve.pipeline",
                 stencil_label: "aperture.curve.pipeline.stencil_test",
                 layout_label: "aperture.curve.pl",
-                shader,
+                shader: &self.shader,
                 bind_group_layouts: &[Some(gradient_bgl)],
                 vertex_buffers: &[Some(curve_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,

@@ -11,6 +11,7 @@ use std::ops::Deref;
 /// Newtype owning a `wgpu::Queue`. Construct via `Queue::new` from a
 /// `wgpu::Queue` handed in by the host; pass `&Queue` to pipelines
 /// instead of `&wgpu::Queue`.
+#[derive(Debug)]
 pub struct Queue(wgpu::Queue);
 
 impl Queue {

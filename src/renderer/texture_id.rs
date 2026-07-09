@@ -30,7 +30,7 @@ pub(crate) struct TextureId(pub(crate) u64);
 /// single texture cache. `WindowRenderer`/`RenderCaches` build one and clone
 /// it into the registry + every window's `Ui`; cloning shares the counter.
 /// Never hands out `TextureId(0)` (the render path's "no texture" value).
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct TextureIdSource(Rc<Cell<u64>>);
 
 impl TextureIdSource {

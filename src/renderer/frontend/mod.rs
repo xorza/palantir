@@ -36,6 +36,7 @@ use crate::ui::frame_report::RenderPlan;
 /// Owned by [`WindowRenderer`](crate::window_renderer::WindowRenderer) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned
 /// `&RenderBuffer` straight to the backend.
+#[derive(Debug)]
 pub struct Frontend {
     pub(crate) cmds: RenderCmdBuffer,
     pub(crate) composer: Composer,

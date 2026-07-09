@@ -30,12 +30,12 @@ use strum::{EnumCount, EnumIter, IntoStaticStr};
 pub enum BatchKind {
     /// Setup work between the pass beginning and the first drawing
     /// step (uniform binds, scissor sets, stencil-ref before the first
-    /// `MaskQuad`). Useful as a sanity baseline — should be near 0.
+    /// mask quad). Useful as a sanity baseline — should be near 0.
     Setup = 0,
     /// `RenderStep::PreClear` — the per-rect clear-color quad emitted
     /// at the start of each Partial pass.
     PreClear = 1,
-    /// `RenderStep::MaskQuad` — stencil mask write/clear quads.
+    /// `RenderStep::MaskStamp` / `MaskClear` — stencil mask quads.
     Mask = 2,
     /// `RenderStep::Quads` — the main quad pipeline.
     Quads = 3,
@@ -74,7 +74,7 @@ pub struct PipelineStats {
     pub compute_shader_invocations: u64,
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Debug, Default)]
 struct Inner {
     pass_ns: Option<u64>,
     kind_ns: [Option<u64>; <BatchKind as strum::EnumCount>::COUNT],
@@ -85,7 +85,7 @@ struct Inner {
 /// holder sees the latest sample published by `GpuTimings`. Pre-first-
 /// readback (or on adapters that don't advertise `TIMESTAMP_QUERY`)
 /// all readers return `None`.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct GpuPassStats {
     inner: Rc<RefCell<Inner>>,
 }

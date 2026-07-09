@@ -102,15 +102,16 @@ pub struct TextBackend {
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
 
-    /// Text shader module — format-independent; `FormatPipelines` reads
-    /// it to build this format's pipelines.
-    pub(crate) shader: wgpu::ShaderModule,
+    /// Text shader module — format-independent; [`Self::build_variants`]
+    /// reads it to build each format's pipelines.
+    shader: wgpu::ShaderModule,
 
     /// Group-0 layout (atlas textures + sampler). Format-independent;
-    /// `FormatPipelines` reads it to build this format's text pipelines.
-    /// The pipelines themselves live in `FormatPipelines`, keyed by
-    /// swapchain format, and are passed into [`Self::render_batch`].
-    pub(crate) atlas_bgl: wgpu::BindGroupLayout,
+    /// [`Self::build_variants`] composes each format's pipeline layout
+    /// against it. The pipelines themselves live in `FormatPipelines`,
+    /// keyed by swapchain format, and are passed into
+    /// [`Self::render_batch`].
+    atlas_bgl: wgpu::BindGroupLayout,
     atlas_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
@@ -120,11 +121,12 @@ pub struct TextBackend {
     /// flushing.
     params: Params,
 
-    instances: Vec<GlyphInstance>,
+    /// Non-empty exactly when some batch prepared glyphs this frame —
+    /// the backend gates `post_record` on it.
+    pub(crate) instances: Vec<GlyphInstance>,
     vbuf: DynamicBuffer,
 
     ranges: Vec<Option<Range<u32>>>,
-    pub(crate) prepared_anything: bool,
 
     encoded_cache: EncodedCache,
     /// Misses found in `prepare_batch`'s pass 1. Each entry pins the
@@ -134,10 +136,22 @@ pub struct TextBackend {
     misses: Vec<MissEntry>,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct MissEntry {
     run_idx: u32,
     run_key: EncodedRunKey,
+}
+
+// Manual: `TextShaper` (whose `ShaperInner` holds `CosmicMeasure`)
+// isn't `Debug`.
+impl std::fmt::Debug for TextBackend {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TextBackend")
+            .field("atlas", &self.atlas)
+            .field("params", &self.params)
+            .field("instances", &self.instances.len())
+            .finish_non_exhaustive()
+    }
 }
 
 impl TextBackend {
@@ -201,7 +215,6 @@ impl TextBackend {
             instances: Vec::new(),
             vbuf,
             ranges: Vec::new(),
-            prepared_anything: false,
             encoded_cache: EncodedCache::default(),
             misses: Vec::new(),
         }
@@ -213,9 +226,8 @@ impl TextBackend {
     /// change. Called by `FormatPipelines` per format; matches the
     /// `build_variants` shape of the quad / mesh / image / curve pipelines.
     pub(crate) fn build_variants(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
-        atlas_bgl: &wgpu::BindGroupLayout,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Group 0 = atlas textures + sampler. Viewport + atlas-size
@@ -226,8 +238,8 @@ impl TextBackend {
                 label: "aperture.text.pipeline",
                 stencil_label: "aperture.text.pipeline.stencil_test",
                 layout_label: "aperture.text.pl",
-                shader,
-                bind_group_layouts: &[Some(atlas_bgl)],
+                shader: &self.shader,
+                bind_group_layouts: &[Some(&self.atlas_bgl)],
                 vertex_buffers: &[Some(glyph_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleStrip,
             },
@@ -337,19 +349,17 @@ impl TextBackend {
             self.ranges.resize(batch_idx + 1, None);
         }
         self.ranges[batch_idx] = Some(start..end);
+    }
 
-        if end > start {
-            self.prepared_anything = true;
-            // Tail upload: this batch's just-appended slice. Earlier
-            // batches' bytes are already on the GPU (a grow re-uploads
-            // everything through the mapped range).
-            self.vbuf.upload_tail(
-                ctx,
-                bytemuck::cast_slice(&self.instances),
-                self.instances.len(),
-                start as usize,
-            );
-        }
+    /// Upload this frame's accumulated glyph instances in one belt
+    /// write. Called once per frame, after every `prepare_batch` and
+    /// before any pass draws. Deferring to a single write replaces N
+    /// per-batch belt suballocations + copy commands for disjoint
+    /// tails of the same Vec, and a mid-frame grow's full re-upload
+    /// happens at most once; batch `ranges` index into the shared
+    /// buffer, so per-batch draws are unaffected.
+    pub(crate) fn flush_instances(&mut self, ctx: &mut GpuCtx<'_>) {
+        self.vbuf.upload_instances(ctx, &self.instances);
     }
 
     /// Drain glyph-atlas uploads accumulated by `prepare_batch` into
@@ -394,7 +404,6 @@ impl TextBackend {
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
         self.ranges.fill(None);
-        self.prepared_anything = false;
     }
 }
 
@@ -501,6 +510,7 @@ pub mod test_support {
     /// pipeline it would otherwise reach for in `FormatPipelines`. Lets
     /// the atlas bench drive prepare → flush → draw without the full
     /// `WgpuBackend` / `FormatPipelines` machinery.
+    #[derive(Debug)]
     pub struct BenchText {
         backend: TextBackend,
         pipelines: StencilVariant,
@@ -512,8 +522,7 @@ pub mod test_support {
         /// target.
         pub fn new(device: &wgpu::Device, format: wgpu::TextureFormat, shaper: TextShaper) -> Self {
             let backend = TextBackend::new(device, shaper);
-            let pipelines =
-                TextBackend::build_variants(device, &backend.shader, &backend.atlas_bgl, format);
+            let pipelines = backend.build_variants(device, format);
             Self { backend, pipelines }
         }
 
@@ -523,6 +532,7 @@ pub mod test_support {
         }
 
         pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
+            self.backend.flush_instances(ctx);
             self.backend.flush_atlas_uploads(ctx);
         }
 
@@ -616,9 +626,10 @@ mod tests {
     }
 }
 
-/// GPU regression coverage for the encoded-cache liveness fix. Gated
-/// on `internals` (not bare `test`) so the default headless `cargo
-/// test` stays GPU-free, matching the visual / atlas-bench gating.
+/// GPU regression coverage for the text backend caches (encoded-cache
+/// liveness + clipping, atlas empty-entry sweep). Gated on `internals`
+/// (not bare `test`) so the default headless `cargo test` stays
+/// GPU-free, matching the visual / atlas-bench gating.
 #[cfg(feature = "internals")]
 #[cfg(test)]
 mod gpu_regression {
@@ -630,12 +641,19 @@ mod gpu_regression {
     use pollster::FutureExt;
 
     use crate::primitives::color::ColorU8;
+    use crate::primitives::urect::URect;
     use crate::renderer::backend::text::test_support::make_run;
     use crate::renderer::render_buffer::TextRun;
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
-    fn device_queue() -> (wgpu::Device, Queue) {
+    #[derive(Debug)]
+    struct TestGpu {
+        device: wgpu::Device,
+        queue: Queue,
+    }
+
+    fn device_queue() -> TestGpu {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
         let adapter = instance
             .request_adapter(&wgpu::RequestAdapterOptions {
@@ -659,7 +677,10 @@ mod gpu_regression {
             })
             .block_on()
             .expect("request device");
-        (device, Queue::new(queue))
+        TestGpu {
+            device,
+            queue: Queue::new(queue),
+        }
     }
 
     fn run_one_frame(
@@ -675,6 +696,7 @@ mod gpu_regression {
         {
             let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, scale, 0, runs);
+            backend.flush_instances(&mut ctx);
             backend.flush_atlas_uploads(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
@@ -696,7 +718,7 @@ mod gpu_regression {
     /// with a different glyph — garbled text.
     #[test]
     fn cached_run_keeps_its_atlas_slots_live() {
-        let (device, queue) = device_queue();
+        let TestGpu { device, queue } = device_queue();
         let shaper = TextShaper::with_bundled_fonts();
         let mut backend = TextBackend::new(&device, shaper.clone());
 
@@ -731,18 +753,272 @@ mod gpu_regression {
             .atlas
             .cache
             .values()
-            .map(|s| s.last_use)
+            .map(|&i| backend.atlas.slots[i as usize].last_use)
             .filter(|&lu| lu != cf)
             .collect();
         assert!(
             stale.is_empty(),
             "cache-hit frame left slots stale: last_use {stale:?} != current_frame {cf}",
         );
+        // The refresh must have gone through the entry's *recorded*
+        // slab indices — the exact path the hot loop writes.
+        for entry in backend.encoded_cache.map.values() {
+            for &idx in &backend.encoded_cache.slots[entry.span.range()] {
+                assert_eq!(
+                    backend.atlas.slots[idx as usize].last_use, cf,
+                    "recorded slab index {idx} not refreshed on hit",
+                );
+            }
+        }
         // The second frame was a pure hit — nothing should have been
         // re-rasterized or evicted.
         assert_eq!(
             backend.atlas.eviction_count, evictions_after_warmup,
             "a pure cache-hit frame must not evict",
         );
+
+        // Frame 3, after a (simulated) eviction: the count mismatch
+        // must reject the entry and force a full re-encode — the old
+        // span goes dead in the arena and the rebuilt entry latches
+        // the new eviction count.
+        let arena_after_hit = backend.encoded_cache.arena.len();
+        backend.post_record();
+        backend.atlas.eviction_count += 1;
+        run_one_frame(&device, &queue, &mut backend, 2.0, &runs);
+        assert_eq!(
+            backend.encoded_cache.arena.len(),
+            2 * arena_after_hit,
+            "eviction must invalidate the entry and re-encode (old span left dead)",
+        );
+        assert_eq!(backend.encoded_cache.map.len(), 1);
+        let entry = backend.encoded_cache.map.values().next().unwrap();
+        assert_eq!(
+            entry.eviction_at, backend.atlas.eviction_count,
+            "rebuilt entry must latch the bumped eviction count",
+        );
+    }
+
+    /// Two batches prepared in one frame ride a single deferred vbuf
+    /// write (`flush_instances` after all `prepare_batch` calls). The
+    /// per-batch `ranges` must partition the shared instance vec and
+    /// each batch's glyphs must keep their own color/placement — same
+    /// text at a different origin/color pins this glyph-by-glyph: same
+    /// atlas uv + dim, x identical, y shifted by exactly the origin
+    /// delta (40 px, integer so subpixel bins match), colors distinct.
+    #[test]
+    fn deferred_upload_keeps_batches_distinct() {
+        let TestGpu { device, queue } = device_queue();
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut backend = TextBackend::new(&device, shaper.clone());
+
+        let color_a = ColorU8::rgba(240, 240, 240, 255);
+        let color_b = ColorU8::rgba(200, 100, 50, 255);
+        let run_a = make_run(
+            &shaper,
+            "File",
+            14.0,
+            16.8,
+            Vec2::new(20.0, 20.0),
+            PHYSICAL,
+            1.0,
+            color_a,
+        );
+        let run_b = make_run(
+            &shaper,
+            "File",
+            14.0,
+            16.8,
+            Vec2::new(20.0, 60.0),
+            PHYSICAL,
+            1.0,
+            color_b,
+        );
+
+        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        {
+            let mut ctx = GpuCtx::new(&device, &queue, &mut belt, &mut encoder);
+            backend.prepare_batch(&mut ctx, 1.0, 0, std::slice::from_ref(&run_a));
+            backend.prepare_batch(&mut ctx, 1.0, 1, std::slice::from_ref(&run_b));
+            backend.flush_instances(&mut ctx);
+            backend.flush_atlas_uploads(&mut ctx);
+        }
+        belt.finish_and_recall_on_submit(&encoder);
+        queue.submit([encoder.finish()]);
+
+        // Same text → same glyph count n per batch; ranges partition
+        // the vec as [0..n] + [n..2n].
+        let n = backend.instances.len() / 2;
+        assert!(n > 0, "'File' must emit glyphs");
+        assert_eq!(backend.ranges[0], Some(0..n as u32));
+        assert_eq!(backend.ranges[1], Some(n as u32..2 * n as u32));
+
+        let a: u32 = bytemuck::cast(color_a);
+        let b: u32 = bytemuck::cast(color_b);
+        for (ga, gb) in backend.instances[..n]
+            .iter()
+            .zip(&backend.instances[n..2 * n])
+        {
+            assert_eq!(ga.color, a);
+            assert_eq!(gb.color, b);
+            // Identical glyph, identical atlas slot, shifted 40 px down.
+            assert_eq!(gb.uv_and_kind, ga.uv_and_kind);
+            assert_eq!(gb.dim, ga.dim);
+            assert_eq!(gb.pos, [ga.pos[0], ga.pos[1] + 40]);
+        }
+        backend.post_record();
+    }
+
+    /// A run whose lines are partially y-culled by its bounds must not
+    /// populate the encoded cache: `EncodedKey` omits bounds, so after
+    /// integer-pixel scrolling the same key would replay the truncated
+    /// template and newly revealed lines would stay blank forever.
+    #[test]
+    fn partially_culled_run_is_not_cached() {
+        let TestGpu { device, queue } = device_queue();
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut backend = TextBackend::new(&device, shaper.clone());
+
+        // Three 3-glyph lines at line_height 16 px, origin (0, 0):
+        // line tops sit at 0 / 16 / 32.
+        let mut run = make_run(
+            &shaper,
+            "abc\ndef\nxyz",
+            14.0,
+            16.0,
+            Vec2::ZERO,
+            PHYSICAL,
+            1.0,
+            ColorU8::rgba(240, 240, 240, 255),
+        );
+        // Clip to the first line: the pre-cull keeps lines with
+        // line_top <= bounds_bot, so h = 10 keeps line 0 (top 0) and
+        // drops lines 1-2 (tops 16, 32).
+        run.bounds = URect::new(0, 0, PHYSICAL.x, 10);
+
+        // Frame 1: clipped encode → 1 line * 3 glyphs = 3 instances,
+        // and no cache entry.
+        run_one_frame(
+            &device,
+            &queue,
+            &mut backend,
+            1.0,
+            std::slice::from_ref(&run),
+        );
+        assert_eq!(
+            backend.instances.len(),
+            3,
+            "only line 0's 3 glyphs survive the cull"
+        );
+        assert!(
+            backend.encoded_cache.map.is_empty(),
+            "a culled encode must not become a cache template",
+        );
+        backend.post_record();
+
+        // Frame 2, same clipped run: still a miss, re-encodes to the
+        // same 3 instances, still nothing cached.
+        run_one_frame(
+            &device,
+            &queue,
+            &mut backend,
+            1.0,
+            std::slice::from_ref(&run),
+        );
+        assert_eq!(backend.instances.len(), 3);
+        assert!(backend.encoded_cache.map.is_empty());
+        backend.post_record();
+
+        // Frame 3, unclipped: 3 lines * 3 glyphs = 9 instances, and
+        // the full encode is cached (same key as the clipped frames —
+        // that's exactly why the clipped ones must not insert).
+        run.bounds = URect::new(0, 0, PHYSICAL.x, PHYSICAL.y);
+        run_one_frame(
+            &device,
+            &queue,
+            &mut backend,
+            1.0,
+            std::slice::from_ref(&run),
+        );
+        assert_eq!(backend.instances.len(), 9);
+        assert_eq!(backend.encoded_cache.map.len(), 1);
+        assert_eq!(backend.encoded_cache.arena.len(), 9);
+        backend.post_record();
+
+        // Frame 4 replays the cached template: same 9 instances with
+        // no re-encode (the arena didn't grow).
+        run_one_frame(
+            &device,
+            &queue,
+            &mut backend,
+            1.0,
+            std::slice::from_ref(&run),
+        );
+        assert_eq!(backend.instances.len(), 9);
+        assert_eq!(backend.encoded_cache.map.len(), 1);
+        assert_eq!(
+            backend.encoded_cache.arena.len(),
+            9,
+            "a hit must not re-encode"
+        );
+    }
+
+    /// A zero-area glyph entry (whitespace) swept by the periodic
+    /// empty-entry sweep must re-insert cleanly through `insert_empty`
+    /// on next use.
+    #[test]
+    fn swept_empty_glyph_reinserts() {
+        let TestGpu { device, queue } = device_queue();
+        let shaper = TextShaper::with_bundled_fonts();
+        let mut backend = TextBackend::new(&device, shaper.clone());
+
+        let runs = [make_run(
+            &shaper,
+            "a b",
+            14.0,
+            16.0,
+            Vec2::new(2.0, 2.0),
+            PHYSICAL,
+            1.0,
+            ColorU8::rgba(240, 240, 240, 255),
+        )];
+        let empties = |b: &TextBackend| {
+            b.atlas
+                .cache
+                .values()
+                .filter(|&&i| b.atlas.slots[i as usize].alloc.is_none())
+                .count()
+        };
+
+        run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
+        assert_eq!(
+            empties(&backend),
+            1,
+            "the space rasterizes to one zero-area entry"
+        );
+
+        // The space's last_use is frame 1. The sweep at frame 512 keeps
+        // it (cutoff 512 - 512 = 0 <= 1); the one at frame 1024 drops
+        // it (cutoff 512 > 1). Advance idle frames to there.
+        while backend.atlas.current_frame < 1024 {
+            backend.post_record();
+        }
+        assert_eq!(
+            empties(&backend),
+            0,
+            "stale empty entry swept at frame 1024"
+        );
+
+        // Re-encoding the same run re-inserts the empty entry (the
+        // encoded cache was itself swept after 120 idle frames, so this
+        // is a full walk through rasterize_and_insert → insert_empty).
+        run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
+        assert_eq!(
+            empties(&backend),
+            1,
+            "swept empty glyph re-inserts on next use"
+        );
+        backend.post_record();
     }
 }

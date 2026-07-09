@@ -139,19 +139,6 @@ impl Color {
         }
     }
 
-    /// Scale all four channels by `mul`. Premultiplied-correct fade:
-    /// scaling RGB and A by the same factor moves a premultiplied
-    /// color along the line toward transparent. Stroke tessellation
-    /// uses this for the hairline (<1 phys px) alpha fade.
-    pub const fn scale_premultiplied(self, mul: f32) -> Self {
-        Self {
-            r: self.r * mul,
-            g: self.g * mul,
-            b: self.b * mul,
-            a: self.a * mul,
-        }
-    }
-
     /// Per-channel midpoint of two colors.
     pub const fn midpoint(self, other: Self) -> Self {
         Self {

@@ -89,7 +89,7 @@ fn stress(ui: &mut Ui) {
     // 5000-vertex grid of triangles. Exercises the alloc-free claim
     // and the index buffer growth path. The grid renders as a teal
     // wash since every vertex shares the same color.
-    const SIDE: u16 = 50; // 50x50 verts = 2500; pair-triangles = ~5000 verts after duplication.
+    const SIDE: u32 = 50; // 50x50 verts = 2500; pair-triangles = ~5000 verts after duplication.
     let teal = Color::rgb(0.2, 0.7, 0.7);
     let mut m = Mesh::with_capacity((SIDE as usize).pow(2), (SIDE as usize - 1).pow(2) * 6);
     let step = 2.0_f32;

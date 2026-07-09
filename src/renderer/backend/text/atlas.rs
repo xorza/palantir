@@ -13,7 +13,14 @@ use crate::renderer::backend::text::ContentType;
 const INITIAL_ATLAS_SIZE: u32 = 1024;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
-#[derive(Clone, Copy)]
+/// Sweep cadence (frames) for stale zero-area entries (`alloc: None`).
+/// `evict_one` skips them (nothing to deallocate), so every whitespace
+/// glyph at every scale rung would otherwise accumulate forever and
+/// bloat its linear scan. 512 ≈ 8 s at 60 fps — far outside any
+/// flicker, and rare enough that the O(map) retain amortizes to noise.
+const EMPTY_SWEEP_INTERVAL: u64 = 512;
+
+#[derive(Clone, Copy, Debug)]
 pub(crate) struct GlyphSlot {
     pub(crate) x: u16,
     pub(crate) y: u16,
@@ -45,14 +52,26 @@ pub(crate) struct Side {
 /// Old texture + its size (= square edge length, == old.width ==
 /// old.height) preserved across the grow point. Consumed by
 /// `flush_pending_uploads`.
+#[derive(Debug)]
 pub(crate) struct PendingGrow {
     pub(crate) old_texture: wgpu::Texture,
     pub(crate) old_size: u32,
 }
 
+#[derive(Debug)]
 pub(crate) struct GlyphAtlas {
     pub(crate) sides: [Side; 2],
-    pub(crate) cache: FxHashMap<CacheKey, GlyphSlot>,
+    /// Dense slot slab; `cache` maps each key to an index into it.
+    /// Encoded-run caches record these indices so their hot-path LRU
+    /// refresh is an indexed store instead of a map probe per glyph —
+    /// safe because every recorded index is validated against
+    /// `eviction_count` before use, and only `evict_one` (which bumps
+    /// it) ever reassigns an *allocated* slot's index.
+    pub(crate) slots: Vec<GlyphSlot>,
+    pub(crate) cache: FxHashMap<CacheKey, u32>,
+    /// Slab indices freed by `evict_one` / the empty sweep, reused by
+    /// the next `store`.
+    free: Vec<u32>,
     pub(crate) current_frame: u64,
     /// Bumped every time `evict_one` reuses a slot. Encoded-glyph
     /// caches keyed on slot positions latch this on insert and
@@ -76,7 +95,7 @@ pub(crate) struct GlyphAtlas {
     staging_cap: u64,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 struct PendingCopy {
     side: u8,
     origin_x: u32,
@@ -112,7 +131,9 @@ impl GlyphAtlas {
 
         Self {
             sides,
+            slots: Vec::new(),
             cache: FxHashMap::default(),
+            free: Vec::new(),
             current_frame: 1,
             eviction_count: 0,
             max_texture_dimension_2d: max,
@@ -137,11 +158,12 @@ impl GlyphAtlas {
         self.sides[ContentType::Color as usize].size
     }
 
-    /// Cache-hit fast path.
-    pub(crate) fn touch(&mut self, key: &CacheKey) -> Option<GlyphSlot> {
-        let slot = self.cache.get_mut(key)?;
-        slot.last_use = self.current_frame;
-        Some(*slot)
+    /// Cache-hit fast path: bump the slot's LRU stamp and return its
+    /// slab index (read the slot itself via `self.slots[idx]`).
+    pub(crate) fn touch(&mut self, key: &CacheKey) -> Option<u32> {
+        let &idx = self.cache.get(key)?;
+        self.slots[idx as usize].last_use = self.current_frame;
+        Some(idx)
     }
 
     /// Insert a freshly-rasterized glyph. Queues the pixel data into
@@ -149,7 +171,8 @@ impl GlyphAtlas {
     /// [`Self::flush_pending_uploads`] before the text pass) so all
     /// glyph uploads land in one encoder/submit instead of N separate
     /// `queue.write_texture` calls. Grows if full; returns `None`
-    /// only at GPU-max and still doesn't fit.
+    /// only at GPU-max and still doesn't fit. On success returns the
+    /// new slot's slab index.
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn insert(
         &mut self,
@@ -161,7 +184,7 @@ impl GlyphAtlas {
         left: i16,
         top: i16,
         pixels: &[u8],
-    ) -> Option<GlyphSlot> {
+    ) -> Option<u32> {
         let alloc = self.allocate(device, content, width, height)?;
         self.enqueue_upload(
             content,
@@ -183,8 +206,27 @@ impl GlyphAtlas {
             alloc: Some(alloc.id),
             last_use: self.current_frame,
         };
-        self.cache.insert(key, slot);
-        Some(slot)
+        Some(self.store(key, slot))
+    }
+
+    /// Park `slot` in the slab (reusing a freed index when available)
+    /// and map `key` to it.
+    fn store(&mut self, key: CacheKey, slot: GlyphSlot) -> u32 {
+        let idx = match self.free.pop() {
+            Some(i) => {
+                self.slots[i as usize] = slot;
+                i
+            }
+            None => {
+                self.slots.push(slot);
+                (self.slots.len() - 1) as u32
+            }
+        };
+        let prev = self.cache.insert(key, idx);
+        // A double-insert would leak the previous slab slot; callers
+        // only insert after a failed `touch`, so the key must be new.
+        assert!(prev.is_none(), "glyph inserted over a live cache entry");
+        idx
     }
 
     /// Append one glyph's pixel data to the pending-upload staging
@@ -204,13 +246,11 @@ impl GlyphAtlas {
     ) {
         let bpp = self.sides[content as usize].bpp;
         let unpadded = width * bpp;
-        let bytes_per_row =
-            unpadded.div_ceil(COPY_BYTES_PER_ROW_ALIGNMENT) * COPY_BYTES_PER_ROW_ALIGNMENT;
+        let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
         // Start each glyph at a 256-aligned offset so the buffer-offset
         // alignment requirement holds for every PendingCopy.
         let start = self.pending_staging.len() as u64;
-        let aligned_start = start.div_ceil(COPY_BYTES_PER_ROW_ALIGNMENT as u64)
-            * COPY_BYTES_PER_ROW_ALIGNMENT as u64;
+        let aligned_start = start.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as u64);
         if aligned_start > start {
             self.pending_staging.resize(aligned_start as usize, 0);
         }
@@ -322,14 +362,15 @@ impl GlyphAtlas {
     }
 
     /// Insert a zero-area glyph entry (no atlas slot, no upload).
-    /// Subsequent lookups still hit the cache and skip swash.
+    /// Subsequent lookups still hit the cache and skip swash. Returns
+    /// the entry's slab index.
     pub(crate) fn insert_empty(
         &mut self,
         key: CacheKey,
         content: ContentType,
         left: i16,
         top: i16,
-    ) -> GlyphSlot {
+    ) -> u32 {
         let slot = GlyphSlot {
             x: 0,
             y: 0,
@@ -341,13 +382,19 @@ impl GlyphAtlas {
             alloc: None,
             last_use: self.current_frame,
         };
-        self.cache.insert(key, slot);
-        slot
+        self.store(key, slot)
     }
 
-    /// Frame teardown: advance the LRU frame counter.
+    /// Frame teardown: advance the LRU frame counter and periodically
+    /// sweep stale zero-area entries.
     pub(crate) fn end_frame(&mut self) {
         self.current_frame += 1;
+        sweep_stale_empties(
+            &mut self.cache,
+            &self.slots,
+            &mut self.free,
+            self.current_frame,
+        );
     }
 
     /// Allocate a slot in the right packer, evicting then growing as
@@ -378,21 +425,22 @@ impl GlyphAtlas {
     /// the tens-to-low-hundreds. Profiling the worst case (`text_atlas/
     /// zoom_cold` — a fresh scale rung every frame, so eviction fires for
     /// nearly every glyph) put this below 0.3 % of frame: invisible next
-    /// to the per-glyph atlas `get_mut` LRU refresh and the GPU submit.
+    /// to the per-glyph LRU refresh and the GPU submit.
     /// An O(1) intrusive LRU would only pay off for a
     /// many-thousand-unique-glyph workload (zooming a full CJK document,
     /// say); not worth the complexity until such a workload exists.
     fn evict_one(&mut self, target: ContentType) -> bool {
         let cf = self.current_frame;
-        let Some(key) = self.cache.iter().find_map(|(k, s)| {
-            (s.content == target && s.last_use < cf && s.alloc.is_some()).then_some(*k)
+        let Some((key, idx)) = self.cache.iter().find_map(|(k, &i)| {
+            let s = &self.slots[i as usize];
+            (s.content == target && s.last_use < cf && s.alloc.is_some()).then_some((*k, i))
         }) else {
             return false;
         };
-        let slot = self.cache.remove(&key).unwrap();
-        if let Some(id) = slot.alloc {
-            self.sides[target as usize].packer.deallocate(id);
-        }
+        self.cache.remove(&key);
+        let id = self.slots[idx as usize].alloc.take().unwrap();
+        self.sides[target as usize].packer.deallocate(id);
+        self.free.push(idx);
         self.eviction_count += 1;
         true
     }
@@ -432,6 +480,18 @@ impl GlyphAtlas {
     }
 }
 
+// Manual: etagere's `BucketedAtlasAllocator` isn't `Debug`.
+impl std::fmt::Debug for Side {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Side")
+            .field("size", &self.size)
+            .field("format", &self.format)
+            .field("bpp", &self.bpp)
+            .field("label", &self.label)
+            .finish_non_exhaustive()
+    }
+}
+
 impl Side {
     fn new(
         device: &wgpu::Device,
@@ -453,6 +513,33 @@ impl Side {
             pending_grow: None,
         }
     }
+}
+
+/// Drop zero-area entries (`alloc: None`) not used within the last
+/// [`EMPTY_SWEEP_INTERVAL`] frames, returning their slab indices to
+/// `free`. Runs only on interval frames so steady-state `end_frame`
+/// stays O(1). Allocated entries are `evict_one`'s job; a swept empty
+/// re-inserts via `insert_empty` on next use. No `eviction_count`
+/// bump: empty slots carry no uv coords and encoded-run caches never
+/// record them, so no encoded-cache entry can go stale.
+fn sweep_stale_empties(
+    cache: &mut FxHashMap<CacheKey, u32>,
+    slots: &[GlyphSlot],
+    free: &mut Vec<u32>,
+    current_frame: u64,
+) {
+    if !current_frame.is_multiple_of(EMPTY_SWEEP_INTERVAL) {
+        return;
+    }
+    let cutoff = current_frame - EMPTY_SWEEP_INTERVAL;
+    cache.retain(|_, idx| {
+        let s = &slots[*idx as usize];
+        let keep = s.alloc.is_some() || s.last_use >= cutoff;
+        if !keep {
+            free.push(*idx);
+        }
+        keep
+    });
 }
 
 fn make_texture(
@@ -477,4 +564,69 @@ fn make_texture(
             | wgpu::TextureUsages::COPY_SRC,
         view_formats: &[],
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cosmic_text::{CacheKeyFlags, SubpixelBin, fontdb};
+
+    fn key(glyph_id: u16) -> CacheKey {
+        CacheKey {
+            font_id: fontdb::ID::dummy(),
+            glyph_id,
+            font_size_bits: 14.0_f32.to_bits(),
+            x_bin: SubpixelBin::Zero,
+            y_bin: SubpixelBin::Zero,
+            font_weight: fontdb::Weight::NORMAL,
+            flags: CacheKeyFlags::empty(),
+        }
+    }
+
+    fn slot(alloc: Option<AllocId>, last_use: u64) -> GlyphSlot {
+        GlyphSlot {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+            left: 0,
+            top: 0,
+            content: ContentType::Mask,
+            alloc,
+            last_use,
+        }
+    }
+
+    #[test]
+    fn empty_sweep_drops_only_stale_unallocated_entries() {
+        // Sweep at frame 1024 uses cutoff 1024 - 512 = 512: empties
+        // with last_use < 512 go, everything else stays.
+        let slots = vec![
+            slot(None, 1),                          // stale empty -> swept
+            slot(None, 512),                        // empty exactly at cutoff -> kept
+            slot(None, 1024),                       // fresh empty -> kept
+            slot(Some(AllocId::deserialize(0)), 1), // stale but allocated -> kept
+        ];
+        let mut cache = FxHashMap::default();
+        for i in 0..slots.len() as u32 {
+            cache.insert(key(i as u16 + 1), i);
+        }
+        let mut free = Vec::new();
+
+        // Off-interval frame: no-op even though key(1) is already stale.
+        sweep_stale_empties(&mut cache, &slots, &mut free, 1023);
+        assert_eq!(cache.len(), 4);
+        assert!(free.is_empty());
+
+        sweep_stale_empties(&mut cache, &slots, &mut free, 1024);
+        assert!(!cache.contains_key(&key(1)), "stale empty must be swept");
+        assert!(cache.contains_key(&key(2)), "last_use == cutoff survives");
+        assert!(cache.contains_key(&key(3)), "fresh empty survives");
+        assert!(
+            cache.contains_key(&key(4)),
+            "allocated entry is never swept"
+        );
+        // The swept entry's slab slot is handed back for reuse.
+        assert_eq!(free, vec![0]);
+    }
 }

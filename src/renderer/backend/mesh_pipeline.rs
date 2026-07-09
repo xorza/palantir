@@ -5,7 +5,7 @@
 //! per-draw state lives in a parallel instance buffer.
 //!
 //! **No `mesh_mask.wgsl`.** Rounded-clip masks are quad-shaped and
-//! always stamped by [`QuadPipeline`]'s `mask_write` variant
+//! always stamped by [`QuadPipeline`]'s mask stamp/clear variants
 //! (`quad.wgsl::fs_mask`). Mesh only builds a stencil-*test* variant —
 //! it reads the mask but never writes one. Same shape for
 //! [`crate::renderer::backend::image_pipeline::ImagePipeline`].
@@ -16,16 +16,14 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::render_buffer::MeshInstance;
 
+#[derive(Debug)]
 pub(crate) struct MeshPipeline {
     vertex_buffer: DynamicBuffer,
     index_buffer: DynamicBuffer,
     instance_buffer: DynamicBuffer,
-    /// Mesh shader module — format-independent; `FormatPipelines` reads it
-    /// to build this format's pipelines.
-    pub(crate) shader: wgpu::ShaderModule,
-    /// Retained scratch for the odd-length index pad-to-even path; one
-    /// upload instead of two belt writes. Capacity retained across frames.
-    index_scratch: Vec<u16>,
+    /// Mesh shader module — format-independent; [`Self::build_variants`]
+    /// reads it to build each format's pipelines.
+    shader: wgpu::ShaderModule,
 }
 
 impl MeshPipeline {
@@ -40,7 +38,7 @@ impl MeshPipeline {
 
         let vertex_buffer =
             DynamicBuffer::vertex::<MeshVertex>(device, "aperture.mesh.vertices", 256);
-        let index_buffer = DynamicBuffer::index::<u16>(device, "aperture.mesh.indices", 1024);
+        let index_buffer = DynamicBuffer::index::<u32>(device, "aperture.mesh.indices", 1024);
         let instance_buffer =
             DynamicBuffer::vertex::<MeshInstance>(device, "aperture.mesh.instances", 64);
 
@@ -49,7 +47,6 @@ impl MeshPipeline {
             index_buffer,
             instance_buffer,
             shader,
-            index_scratch: Vec::new(),
         }
     }
 
@@ -58,8 +55,8 @@ impl MeshPipeline {
     /// instance buffers are reused. Called by `FormatPipelines` per
     /// format.
     pub(crate) fn build_variants(
+        &self,
         device: &wgpu::Device,
-        shader: &wgpu::ShaderModule,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
         // Mesh shader uses no bind groups — only the shared immediate
@@ -70,7 +67,7 @@ impl MeshPipeline {
                 label: "aperture.mesh.pipeline",
                 stencil_label: "aperture.mesh.pipeline.stencil_test",
                 layout_label: "aperture.mesh.pl",
-                shader,
+                shader: &self.shader,
                 bind_group_layouts: &[],
                 vertex_buffers: &[Some(mesh_vertex_layout()), Some(mesh_instance_layout())],
                 topology: wgpu::PrimitiveTopology::TriangleList,
@@ -84,34 +81,19 @@ impl MeshPipeline {
         &mut self,
         ctx: &mut GpuCtx<'_>,
         vertices: &[MeshVertex],
-        indices: &[u16],
+        indices: &[u32],
         instances: &[MeshInstance],
     ) {
+        // Joint guard: a frame missing any of the three slices can't
+        // draw a mesh, so skip all uploads rather than land partial
+        // buffers.
         if vertices.is_empty() || indices.is_empty() || instances.is_empty() {
             return;
         }
 
-        self.instance_buffer
-            .upload(ctx, bytemuck::cast_slice(instances), instances.len());
-        self.vertex_buffer
-            .upload(ctx, bytemuck::cast_slice(vertices), vertices.len());
-
-        // The index buffer's binding stride is 2 bytes (u16). wgpu
-        // requires copy size to be a multiple of 4 (COPY_BUFFER_ALIGNMENT),
-        // so pad the upload to an even count when the index list is
-        // odd-length: copy into a retained scratch with a trailing 0 and
-        // do a single upload.
-        let padded = (indices.len() + 1) & !1;
-        if indices.len() == padded {
-            self.index_buffer
-                .upload(ctx, bytemuck::cast_slice(indices), padded);
-        } else {
-            self.index_scratch.clear();
-            self.index_scratch.extend_from_slice(indices);
-            self.index_scratch.push(0);
-            self.index_buffer
-                .upload(ctx, bytemuck::cast_slice(&self.index_scratch), padded);
-        }
+        self.instance_buffer.upload_instances(ctx, instances);
+        self.vertex_buffer.upload_instances(ctx, vertices);
+        self.index_buffer.upload_instances(ctx, indices);
     }
 
     /// Bind once per pass, before iterating `meshes` and issuing
@@ -130,7 +112,7 @@ impl MeshPipeline {
         pass.set_vertex_buffer(1, self.instance_buffer.buffer.slice(..));
         pass.set_index_buffer(
             self.index_buffer.buffer.slice(..),
-            wgpu::IndexFormat::Uint16,
+            wgpu::IndexFormat::Uint32,
         );
     }
 
