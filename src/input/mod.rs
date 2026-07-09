@@ -41,6 +41,12 @@ pub(crate) struct Capture {
     /// `drag_latched` `false → true`. Cleared by `post_record` / release
     /// / eviction.
     pub(crate) frame_drag_started: Option<WidgetId>,
+    /// One-frame edge: the widget whose latched drag ended on this
+    /// button's release. The release destroys the drag itself
+    /// (`clear_press`), so this is the only way a widget can observe
+    /// "my drag finished" — commit-on-release gestures key off it.
+    /// Cleared by `post_record`, like `frame_click`.
+    pub(crate) frame_drag_stopped: Option<WidgetId>,
     /// One-frame edge: widget that this button's press+release latched
     /// onto when the release landed on the same id and no drag was
     /// latched. Cleared by `post_record`.
@@ -570,6 +576,11 @@ impl InputState {
                 let drag_suppressed_click = cap.drag_latched;
                 let captured = cap.active.take();
                 cap.clear_press();
+                // A latched drag ending is its own edge — the release just
+                // destroyed the drag state, so widgets can't infer it.
+                if drag_suppressed_click {
+                    cap.frame_drag_stopped = captured;
+                }
                 if let Some(a) = captured {
                     let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
                     if hit == Some(a) && !drag_suppressed_click {
@@ -697,6 +708,7 @@ impl InputState {
             cap.frame_click = None;
             cap.frame_double_click = None;
             cap.frame_drag_started = None;
+            cap.frame_drag_stopped = None;
         }
         self.had_input_since_last_frame = false;
         self.repaint_requested_since_last_frame = false;
@@ -865,7 +877,10 @@ impl InputState {
             && self.scroll_target.is_none()
             && self.pinch_target.is_none()
             && self.captures.iter().all(|c| {
-                c.active.is_none() && c.frame_click.is_none() && c.frame_double_click.is_none()
+                c.active.is_none()
+                    && c.frame_click.is_none()
+                    && c.frame_double_click.is_none()
+                    && c.frame_drag_stopped.is_none()
             })
     }
 
@@ -917,6 +932,8 @@ impl InputState {
         let secondary_clicked = right.frame_click == Some(id);
         let focused = self.focused == Some(id);
         let drag = self.active_drag(id);
+        let drag_stopped =
+            PointerButton::all().find(|b| self.capture(*b).frame_drag_stopped == Some(id));
         let double_click =
             PointerButton::all().find(|b| self.capture(*b).frame_double_click == Some(id));
 
@@ -941,6 +958,7 @@ impl InputState {
             disabled,
             focused,
             drag,
+            drag_stopped,
             double_click,
             scroll_pixels,
             scroll_lines,
