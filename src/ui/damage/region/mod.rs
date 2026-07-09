@@ -237,6 +237,7 @@ impl DamageRegion {
     }
 }
 
+#[cfg(any(test, feature = "internals"))]
 impl DamageRegion {
     /// Fold `rects` in order through [`Self::add`] with the default
     /// pass-budget. Unsealed (`coverage` stays `0.0`) like every

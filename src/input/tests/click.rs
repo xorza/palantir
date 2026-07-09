@@ -431,8 +431,10 @@ fn left_and_right_click_are_independent() {
 #[test]
 fn drain_per_frame_queues_clears_action_latch() {
     use crate::input::InputState;
-    let mut input = InputState::default();
-    input.frame_had_action = true;
+    let mut input = InputState {
+        frame_had_action: true,
+        ..Default::default()
+    };
     input.drain_per_frame_queues();
     assert!(!input.take_action_flag());
 }
