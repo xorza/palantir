@@ -82,6 +82,13 @@ pub(crate) struct Composer {
     /// ([`Self::text_grid`] tracks only the open one). Filled from each
     /// closing batch in [`Self::close_batch`]; cleared in [`Self::flush`]
     /// at the group boundary (closed batches have rendered by then).
+    /// [`Self::close_batch_flush`] skips the fill when the close is
+    /// immediately followed by a flush. A grid (not a span+union list):
+    /// a full-tree repaint closes several batches mid-group and then
+    /// tests hundreds of quads against them — measured, the union-hit
+    /// linear scan of a span list regressed `frame/cached_cpu` ~60%
+    /// where the grid absorbs the same false positives in a few tile
+    /// loads.
     closed_text_grid: TextRectGrid,
     /// Per-group kind-tagged AABBs of draws that paint above both quads
     /// and text under the kind-reorder (mesh, image, curve; polylines
@@ -271,10 +278,24 @@ impl Composer {
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
     /// change, mesh/polyline append, or a strict-bounds mismatch. The
-    /// text-overlap grid is NOT cleared here (it's group-scoped, cleared
-    /// in `flush`) so a later quad still flushes for text in an
-    /// already-closed batch that shares this group.
+    /// batch's rects also land in [`Self::closed_text_grid`]
+    /// (group-scoped, cleared in `flush`) so a later quad still flushes
+    /// for text in an already-closed batch that shares this group.
     fn close_batch(&mut self, out: &mut RenderBuffer) {
+        self.close_batch_impl(out, true);
+    }
+
+    /// [`Self::close_batch`] + [`Self::flush`] fused. The close's copy
+    /// into `closed_text_grid` exists solely for later quads *in the
+    /// same group*; a flush on the next line ends the group and clears
+    /// that grid, so the per-rect copy is dead work — skip it. Use at
+    /// every site that unconditionally flushes right after closing.
+    fn close_batch_flush(&mut self, out: &mut RenderBuffer) {
+        self.close_batch_impl(out, false);
+        self.flush(out);
+    }
+
+    fn close_batch_impl(&mut self, out: &mut RenderBuffer, carry_to_closed_grid: bool) {
         let Some(b) = self.open_batch.take() else {
             return;
         };
@@ -283,8 +304,10 @@ impl Composer {
         // so a later quad sharing the group still flushes for them (they
         // drain at `last_group` = this group, *after* the group's quads).
         // Then reset the open-batch grid for the next batch.
-        for ti in b.texts_start..texts_end {
-            self.closed_text_grid.push(out.texts[ti as usize].bounds);
+        if carry_to_closed_grid {
+            for ti in b.texts_start..texts_end {
+                self.closed_text_grid.push(out.texts[ti as usize].bounds);
+            }
         }
         self.text_grid.clear();
         // Invariants the schedule cursor relies on: batches are pushed
@@ -408,8 +431,8 @@ impl Composer {
     /// batches already closed in this group ([`Self::closed_text_grid`]);
     /// an open-batch hit additionally closes the batch so its text can't
     /// coalesce forward and re-cover this quad. Both checks go straight to
-    /// the tiled grid — `any_overlap` early-exits on an empty grid, so no
-    /// separate union pre-reject is needed.
+    /// the tiled grid — `any_overlap` pre-rejects on its internal union
+    /// AABB, so no caller-side pre-reject is needed.
     fn quad_forces_flush(&mut self, overlap: URect, out: &mut RenderBuffer) {
         // Text painted in (or scheduled after) this group sits in two
         // places: the open batch (`text_grid`, spans groups with its
@@ -424,8 +447,7 @@ impl Composer {
         // hit needs no close — that text's batch is already finalized at
         // this group; flushing alone puts the quad in the next group.
         if self.text_grid.any_overlap(overlap) {
-            self.close_batch(out);
-            self.flush(out);
+            self.close_batch_flush(out);
         } else if self.closed_text_grid.any_overlap(overlap)
             || self.any_higher_kind_overlap(overlap)
         {
@@ -440,15 +462,19 @@ impl Composer {
     /// transitions.
     fn set_clip(&mut self, scissor: Option<URect>, chain: Span, out: &mut RenderBuffer) {
         let chain_changed = !chains_equal(out, chain, self.current_chain);
-        if chain_changed {
-            // The stencil mask stack is tied to the active chain;
-            // batched text under the wrong masks would either over- or
-            // under-clip. Close before the group transition (while
-            // `current_chain` still names the batch's chain).
-            self.close_batch(out);
-        }
         if scissor != self.current_scissor || chain_changed {
-            self.flush(out);
+            if chain_changed {
+                // The stencil mask stack is tied to the active chain;
+                // batched text under the wrong masks would either over-
+                // or under-clip. Close before the group transition
+                // (while `current_chain` still names the batch's
+                // chain). Fused with the flush — a chain change always
+                // flushes, so the closed-grid copy would be cleared
+                // immediately.
+                self.close_batch_flush(out);
+            } else {
+                self.flush(out);
+            }
             self.current_scissor = scissor;
             self.current_chain = chain;
         }
@@ -1087,8 +1113,7 @@ impl Composer {
                 }
             }
         }
-        self.close_batch(out);
-        self.flush(out);
+        self.close_batch_flush(out);
     }
 }
 
