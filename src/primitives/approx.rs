@@ -26,7 +26,7 @@ pub(crate) const fn approx_zero(c: f32) -> bool {
 /// drift apart — and so visually identical inputs (e.g. an angle of
 /// `1e-8` vs `0.0`) share a cache row.
 #[inline]
-pub(crate) fn canon_bits(f: f32) -> u32 {
+pub(crate) const fn canon_bits(f: f32) -> u32 {
     if f.is_nan() {
         f32::NAN.to_bits()
     } else if approx_zero(f) {

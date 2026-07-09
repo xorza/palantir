@@ -153,7 +153,7 @@ impl Corners {
     /// place — see that fn for the IEEE 754 rationale and NaN
     /// semantics.
     #[inline]
-    pub fn approx_zero(&self) -> bool {
+    pub const fn approx_zero(&self) -> bool {
         use crate::primitives::approx::noop_f16_bits;
         let [tl, tr, br, bl] = self.0.0;
         noop_f16_bits(tl) && noop_f16_bits(tr) && noop_f16_bits(br) && noop_f16_bits(bl)

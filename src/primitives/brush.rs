@@ -113,7 +113,7 @@ impl Stop {
     /// Decode the stored quantized position back to a 0..1 f32 for
     /// consumers (atlas bake, axis calc) that interpolate in float.
     #[inline]
-    pub fn offset(self) -> f32 {
+    pub const fn offset(self) -> f32 {
         self.offset_u8 as f32 / 255.0
     }
 }

@@ -74,8 +74,13 @@ pub struct Mesh {
 
 impl Mesh {
     #[inline]
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self {
+            vertices: Vec::new(),
+            indices: Vec::new(),
+            cached_hash: Cell::new(None),
+            cached_bbox: Cell::new(None),
+        }
     }
 
     #[inline]
