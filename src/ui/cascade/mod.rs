@@ -145,7 +145,7 @@ struct Frame {
 ///
 /// ## Columnar split
 ///
-/// The per-node data is deliberately divided three ways, driven by
+/// The per-node data is deliberately divided four ways, driven by
 /// who reads what together:
 ///
 /// - [`Self::cascade_inputs`] is the only datum on the per-node hot
@@ -154,6 +154,9 @@ struct Frame {
 ///   descend arms. At 8 B/node the encoder's per-frame walk and
 ///   damage's scan stay cache-dense.
 /// - [`Self::subtree_paint_rects`] is read only by the encoder cull.
+/// - [`Self::subtree_ends`] is read only by [`Cascades::is_within`]
+///   ancestry lookups — sparse random access, never a walk, so it
+///   must not fatten the walked columns.
 /// - [`Self::paint_arena`] holds per-paint-row data (chrome + per-shape
 ///   [`Paint`]s plus the `node_spans` index). Read only on damage's
 ///   per-shape legs (vacant insert, hash mismatch, paint-anim lookup),
