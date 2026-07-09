@@ -61,6 +61,11 @@ pub(crate) struct TextRectGrid {
     /// All rects inserted into the current batch, in insertion order.
     /// `tiles` stores indices into this vec.
     rects: Vec<URect>,
+    /// Union AABB of every rect in `rects`. O(1) pre-reject for
+    /// [`Self::any_overlap`]: a query outside the union can't hit any
+    /// rect, so the tile walk (scattered 32-byte bucket loads from a
+    /// grid too big for L1) is skipped entirely. Zero-sized = empty.
+    union: URect,
 }
 
 impl TextRectGrid {
@@ -101,6 +106,7 @@ impl TextRectGrid {
         }
         self.touched.clear();
         self.rects.clear();
+        self.union = URect::default();
     }
 
     /// Register `r`. No-op for zero-area input (degenerate text rects
@@ -121,6 +127,7 @@ impl TextRectGrid {
         );
         let idx = self.rects.len() as u16;
         self.rects.push(r);
+        self.union = self.union.union(r);
         let max_x = self.cols - 1;
         let max_y = self.rows - 1;
         let cx0 = (r.x / TILE_SIZE).min(max_x);
@@ -149,7 +156,9 @@ impl TextRectGrid {
     /// rects each (avg total: ~4-8 intersect tests vs ~120 for the
     /// old flat scan).
     pub(crate) fn any_overlap(&self, q: URect) -> bool {
-        if q.w == 0 || q.h == 0 || self.rects.is_empty() {
+        // The union check subsumes the empty-grid case (an empty grid's
+        // zero-sized union intersects nothing).
+        if q.w == 0 || q.h == 0 || self.union.intersect(q).is_none() {
             return false;
         }
         let max_x = self.cols - 1;
