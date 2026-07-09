@@ -436,14 +436,10 @@ impl CascadesEngine {
 fn finalize_frame(stack: &mut [Frame], subtree_paint_rects: &mut [Rect], popped: Frame) {
     subtree_paint_rects[popped.node_idx] = popped.subtree_paint_rect;
     if let Some(parent) = stack.last_mut() {
-        // `union_nonempty`: a subtree that paints nothing carries the
-        // `Rect::ZERO` seed, and plain `union` would anchor every
-        // ancestor's rollup at the origin — one layout-only spacer in
-        // an offscreen subtree would defeat the encoder's cull for the
-        // whole chain.
-        parent.subtree_paint_rect = parent
-            .subtree_paint_rect
-            .union_nonempty(popped.subtree_paint_rect);
+        // A subtree that paints nothing carries the `Rect::ZERO` seed;
+        // `union` treats it as identity, so it can't anchor the
+        // ancestor rollup at the origin.
+        parent.subtree_paint_rect = parent.subtree_paint_rect.union(popped.subtree_paint_rect);
     }
 }
 
@@ -583,13 +579,12 @@ fn run_tree(
         if subtree_end == i + 1 {
             // Leaf: no descendants, so no frame — its
             // `subtree_paint_rects` slot already holds the seed pushed
-            // above; fold the seed straight into the parent
-            // accumulator (`union_nonempty`: a non-painting leaf's
-            // `Rect::ZERO` seed must not drag the rollup to the
-            // origin). Skips a per-leaf Frame push/pop and the 32 B
+            // above; fold the seed straight into the parent accumulator
+            // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
+            // identity). Skips a per-leaf Frame push/pop and the 32 B
             // prefix-hash work leaves could never hand to a child.
             if let Some(parent) = stack.last_mut() {
-                parent.subtree_paint_rect = parent.subtree_paint_rect.union_nonempty(subtree_seed);
+                parent.subtree_paint_rect = parent.subtree_paint_rect.union(subtree_seed);
             }
         } else {
             stack.push(Frame {
