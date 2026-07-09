@@ -16,12 +16,12 @@ pub struct Span {
 
 impl Span {
     #[inline]
-    pub(crate) fn new(start: u32, len: u32) -> Self {
+    pub(crate) const fn new(start: u32, len: u32) -> Self {
         Self { start, len }
     }
 
     #[inline]
-    pub(crate) fn range(self) -> Range<usize> {
+    pub(crate) const fn range(self) -> Range<usize> {
         self.start as usize..(self.start + self.len) as usize
     }
 

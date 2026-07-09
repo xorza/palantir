@@ -49,7 +49,7 @@ impl Shadow {
     };
 
     #[inline]
-    pub fn is_noop(&self) -> bool {
+    pub const fn is_noop(&self) -> bool {
         self.color.is_noop()
     }
 }

@@ -367,7 +367,7 @@ impl ColorF16 {
     /// the shared `noop_f16_bits` bit-trick (mask sign, compare against
     /// `EPS` bits) so no f16→f32 conversion is needed.
     #[inline]
-    pub fn is_noop(self) -> bool {
+    pub const fn is_noop(self) -> bool {
         use crate::primitives::approx::noop_f16_bits;
         noop_f16_bits(self.0.0[3])
     }
@@ -378,7 +378,7 @@ impl ColorF16 {
     /// composer to flag solid-fill quads as occlusion-pruning
     /// candidates.
     #[inline]
-    pub fn is_opaque(self) -> bool {
+    pub const fn is_opaque(self) -> bool {
         use crate::primitives::approx::opaque_f16_bits;
         opaque_f16_bits(self.0.0[3])
     }
