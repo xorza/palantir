@@ -178,50 +178,30 @@ impl Rect {
         }
     }
 
-    /// Smallest axis-aligned rect enclosing both `self` and `other`. Used by
-    /// damage-rect computation to union prev+curr rects of dirty nodes.
-    /// A zero-sized rect at the origin (the `Default`) acts as the identity
-    /// for accumulation: `Rect::ZERO.union(r) == r` only when `r`'s min is
-    /// `(0,0)` — callers should fold over `Option<Rect>` (or use
-    /// [`Self::union_nonempty`] where `Rect::ZERO` is the "paints
-    /// nothing" sentinel) to avoid biasing toward the origin.
+    /// Smallest axis-aligned rect enclosing both `self` and `other`. A
+    /// paint-empty operand (any axis ≤ EPS, NaN included — see
+    /// [`Self::is_paint_empty`]) acts as the identity, so callers can
+    /// fold a `Rect::ZERO`-seeded accumulator without a special
+    /// first-element branch and a non-painting extent can never drag a
+    /// rollup's min to the origin. Same contract as
+    /// [`crate::primitives::urect::URect::union`]. Fold over
+    /// `Option<Rect>` only when "no rects at all" must stay
+    /// distinguishable from "some rects".
     pub const fn union(&self, other: Self) -> Self {
-        let min_x = if self.min.x < other.min.x {
-            self.min.x
-        } else {
-            other.min.x
-        };
-        let min_y = if self.min.y < other.min.y {
-            self.min.y
-        } else {
-            other.min.y
-        };
-        let a_max_x = self.min.x + self.size.w;
-        let b_max_x = other.min.x + other.size.w;
-        let max_x = if a_max_x > b_max_x { a_max_x } else { b_max_x };
-        let a_max_y = self.min.y + self.size.h;
-        let b_max_y = other.min.y + other.size.h;
-        let max_y = if a_max_y > b_max_y { a_max_y } else { b_max_y };
-        Self {
-            min: Vec2::new(min_x, min_y),
-            size: Size::new(max_x - min_x, max_y - min_y),
-        }
-    }
-
-    /// [`Self::union`] with paint-empty rects as identity elements:
-    /// folding a `Rect::ZERO`-seeded extent (a non-painting or
-    /// invisible node) through plain `union` drags the accumulator's
-    /// min to the origin, anchoring every ancestor rollup at `(0,0)`
-    /// and defeating downstream culls for content offscreen toward
-    /// positive coordinates. Returns the other operand when one side
-    /// paints nothing; both empty returns `self`.
-    pub fn union_nonempty(self, other: Self) -> Self {
         if self.is_paint_empty() {
-            other
-        } else if other.is_paint_empty() {
-            self
-        } else {
-            self.union(other)
+            return other;
+        }
+        if other.is_paint_empty() {
+            return *self;
+        }
+        // `f32::min`/`max` rather than `Vec2::min`/`max` only because
+        // glam's aren't `const fn`.
+        let (a, b) = (self.max(), other.max());
+        let min = Vec2::new(self.min.x.min(other.min.x), self.min.y.min(other.min.y));
+        let max = Vec2::new(a.x.max(b.x), a.y.max(b.y));
+        Self {
+            min,
+            size: Size::new(max.x - min.x, max.y - min.y),
         }
     }
 
