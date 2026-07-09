@@ -183,6 +183,16 @@ macro_rules! response_accessors {
         pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
             self.resolved_state().drag_delta_by(button)
         }
+        /// One-frame edge: a latched drag on this widget ended this
+        /// frame (any button). The drag state is already gone — commit
+        /// a value stashed during the drag on this edge.
+        pub fn drag_stopped(&self) -> bool {
+            self.resolved_state().drag_stopped()
+        }
+        /// One-frame edge for `button`-drag specifically.
+        pub fn drag_stopped_by(&self, button: PointerButton) -> bool {
+            self.resolved_state().drag_stopped_by(button)
+        }
         /// Pixel-precise scroll delta this frame, in logical pixels —
         /// the touchpad / precision-wheel source (winit
         /// `MouseScrollDelta::PixelDelta`). Routes only to widgets with

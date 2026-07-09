@@ -1112,6 +1112,7 @@ fn default_context_menu(
 /// computed *inside* `show()`. Callers read commit/focus state from here instead
 /// of re-polling `ui` for focus and key presses, which is both terser and
 /// authoritative (the editor knows what it did with the input this frame).
+#[derive(Debug)]
 pub struct TextEditResponse<'a> {
     /// The widget's pointer/click/hover [`Response`]. Also reachable through
     /// `Deref`, so `resp.clicked()` resolves here; use the field when you need

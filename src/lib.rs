@@ -134,7 +134,7 @@ pub use widgets::button::Button;
 pub use widgets::checkbox::Checkbox;
 pub use widgets::combo_box::ComboBox;
 pub use widgets::context_menu::{ContextMenu, ContextMenuResponse, MenuItem};
-pub use widgets::drag_value::{DragNum, DragValue};
+pub use widgets::drag_value::{DragNum, DragValue, DragValueResponse};
 pub use widgets::frame::Frame;
 pub use widgets::gpu_view::GpuView;
 pub use widgets::grid::Grid;

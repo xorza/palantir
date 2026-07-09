@@ -164,12 +164,79 @@ fn drag_delta_none_when_pointer_left_surface() {
     ui.run_at_acked(s, build_clickable);
     ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(90.0, 40.0)));
     ui.on_input(InputEvent::PointerLeft);
 
-    assert_eq!(
-        resp(&mut ui, s, build_clickable, id()).drag_delta_by(PointerButton::Left),
-        None,
+    // Off-surface, the drag is unobservable — but it has NOT stopped:
+    // the capture stays latched, so no stop edge may fire here. A
+    // commit-on-release gesture must not commit on a mid-drag
+    // window-exit (it would split one scrub into two undo entries).
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert_eq!(r.drag_delta_by(PointerButton::Left), None);
+    assert!(
+        !r.drag_stopped(),
+        "pointer-left is not a release; the stop edge must wait for it",
     );
+
+    // Re-enter with the button still held: the same drag resumes
+    // (no new start edge), and the real release fires the stop edge.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 40.0)));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert_eq!(
+        r.drag_delta_by(PointerButton::Left),
+        Some(Vec2::new(60.0, 0.0))
+    );
+    assert!(!r.drag_started(), "re-entry resumes, not re-latches");
+
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(r.drag_stopped_by(PointerButton::Left));
+}
+
+#[test]
+fn drag_stopped_edge_fires_once_on_release() {
+    let mut ui = Ui::for_test();
+    let s = UVec2::new(200, 200);
+    ui.run_at_acked(s, build_draggable);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(30.0, 30.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 30.0)));
+
+    // Mid-drag: no stop edge, drag observable.
+    let r = resp(&mut ui, s, build_draggable, id());
+    assert!(r.dragged_by(PointerButton::Middle) && !r.drag_stopped());
+
+    // Release frame: the drag itself is gone, only the edge remains,
+    // and it carries the button.
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Middle));
+    let r = resp(&mut ui, s, build_draggable, id());
+    assert!(!r.dragged(), "release destroys the drag state");
+    assert!(r.drag_stopped() && r.drag_stopped_by(PointerButton::Middle));
+    assert!(
+        !r.drag_stopped_by(PointerButton::Left),
+        "edge is button-filtered",
+    );
+
+    // One-frame edge: gone the next frame.
+    let r = resp(&mut ui, s, build_draggable, id());
+    assert!(!r.drag_stopped());
+}
+
+#[test]
+fn sub_threshold_release_fires_click_not_drag_stopped() {
+    // A press+release without crossing DRAG_THRESHOLD is a click; no
+    // drag ever latched, so no stop edge may fire.
+    let mut ui = Ui::for_test();
+    let s = UVec2::new(200, 200);
+    ui.run_at_acked(s, build_clickable);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(51.0, 50.0)));
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+
+    let r = resp(&mut ui, s, build_clickable, id());
+    assert!(r.clicked, "sub-threshold press+release is a click");
+    assert!(!r.drag_stopped(), "no drag latched, no stop edge");
 }
 
 #[test]

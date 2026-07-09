@@ -91,6 +91,14 @@ pub struct ResponseState {
     /// through [`Self::drag_delta`] / [`Self::drag_started`] /
     /// [`Self::dragged_by`] etc. rather than reading this field.
     pub drag: Option<DragState>,
+    /// One-frame edge: the button whose latched drag on this widget
+    /// ended this frame (release). The drag itself is already gone —
+    /// [`Self::drag`] is `None` and [`Self::drag_delta`] can't report
+    /// the final travel — so commit-on-release gestures stash their
+    /// running value and key the commit off this edge. `None` outside
+    /// that frame. Callers use [`Self::drag_stopped`] /
+    /// [`Self::drag_stopped_by`] rather than reading this field.
+    pub drag_stopped: Option<PointerButton>,
     /// One-frame edge: the button that just fired a double-click on
     /// this widget (two clicks on the same id within
     /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]). `None` outside
@@ -146,6 +154,7 @@ impl Default for ResponseState {
             disabled: false,
             focused: false,
             drag: None,
+            drag_stopped: None,
             double_click: None,
             scroll_pixels: Vec2::ZERO,
             scroll_lines: Vec2::ZERO,
@@ -197,6 +206,21 @@ impl ResponseState {
     #[inline]
     pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
         self.drag.filter(|d| d.button == button).map(|d| d.delta)
+    }
+
+    /// One-frame edge: a latched drag on this widget ended this frame
+    /// (any button). The drag state is already gone by now — stash the
+    /// running value during the drag and commit it on this edge.
+    #[inline]
+    pub fn drag_stopped(&self) -> bool {
+        self.drag_stopped.is_some()
+    }
+
+    /// One-frame edge filtered by button. `drag_stopped_by(Left)` is
+    /// the standard "scrub finished, commit" gesture.
+    #[inline]
+    pub fn drag_stopped_by(&self, button: PointerButton) -> bool {
+        self.drag_stopped == Some(button)
     }
 
     /// One-frame edge: any pointer button double-clicked this widget
