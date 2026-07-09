@@ -207,11 +207,21 @@ fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) ->
                 TextWrap::SingleLine => m.size.w,
                 // `Wrap` can break inside a word at the glyph level, so its
                 // min-content is effectively zero; a truncating run likewise
-                // shrinks to nothing. In both cases the box width wins and
-                // the run reflows/cuts to it.
-                TextWrap::Wrap | TextWrap::Truncate | TextWrap::Ellipsis => 0.0,
+                // shrinks to nothing. `Scroll` never reshapes, but its owner
+                // clips + scrolls the overflow, so the box is free to shrink
+                // below the text. In every case the box width wins and the run
+                // reflows / cuts / scrolls to it.
+                TextWrap::Wrap | TextWrap::Truncate | TextWrap::Ellipsis | TextWrap::Scroll => 0.0,
             },
-            (Axis::X, LenReq::MaxContent) => m.size.w,
+            // `Scroll` text is scroll content, not layout content: it drives no
+            // box width on either axis (matching the zero-width `leaf_content_size`
+            // report), so a size-to-content parent doesn't reserve the buffer's
+            // natural width for it. The field's width comes from its own sizing /
+            // `min_size`. Every other mode wants its full unbroken line.
+            (Axis::X, LenReq::MaxContent) => match ts.wrap {
+                TextWrap::Scroll => 0.0,
+                _ => m.size.w,
+            },
             (Axis::Y, _) => m.size.h,
         };
         acc = acc.max(v);

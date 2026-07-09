@@ -809,9 +809,9 @@ impl LayoutEngine {
         let fit = match ts.wrap {
             TextWrap::Wrap | TextWrap::WrapWithOverflow => LineFit::Wrap,
             TextWrap::Ellipsis => LineFit::Ellipsis,
-            // `Overflow` never reaches the bounded branch (excluded below);
-            // `Clip` is harmless as its fallthrough value.
-            TextWrap::Truncate | TextWrap::SingleLine => LineFit::Clip,
+            // `SingleLine`/`Scroll` never reach the bounded branch (excluded
+            // below); `Clip` is harmless as their fallthrough value.
+            TextWrap::Truncate | TextWrap::SingleLine | TextWrap::Scroll => LineFit::Clip,
         };
         let single_line = matches!(ts.wrap, TextWrap::Truncate | TextWrap::Ellipsis);
         let bounded = matches!(
@@ -857,7 +857,19 @@ impl LayoutEngine {
             measured: result.size,
             key: result.key,
         });
-        result.size
+        // A `Scroll` run (single-line editable field) clips + scrolls its own
+        // overflow, so its text is scroll content, not layout content: it
+        // imposes no width demand on the box. Report zero content width (the
+        // height still floors the row) while the shaped buffer above keeps its
+        // true measured size for the encoder. Without this the box's `desired`
+        // width equals the buffer's natural width, and the WPF Stretch arrange
+        // floor (`stack::arrange` freezes each Fill child at its desired size)
+        // pins a Fill/Fixed field to its text and refuses to shrink. A Hug
+        // field's width comes from its own `min_size.w` reservation instead.
+        match ts.wrap {
+            TextWrap::Scroll => Size::new(0.0, result.size.h),
+            _ => result.size,
+        }
     }
 }
 

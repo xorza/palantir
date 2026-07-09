@@ -957,9 +957,12 @@ impl<'a> TextEdit<'a> {
                     wrap: if ctx.multiline {
                         TextWrap::WrapWithOverflow
                     } else {
-                        // Editable single line: overflow + own horizontal
-                        // scroll, never elide the buffer.
-                        TextWrap::SingleLine
+                        // Editable single line: the editor clips (`ClipMode::Rect`)
+                        // and runs its own horizontal scroll, so `Scroll` reports
+                        // zero min-content — a Fill/Hug field shrinks below its text
+                        // instead of freezing at the buffer's natural width — while
+                        // still shaping the whole buffer unbounded for caret/scroll.
+                        TextWrap::Scroll
                     },
                     // Pass the user's `text_align` so the layout
                     // pipeline's `shape_wrap` builds a `TextCacheKey`

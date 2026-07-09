@@ -363,10 +363,20 @@ pub enum TextWrap {
     /// **Default.** Single line shaped once at unbounded width and never
     /// reshaped, so it overflows a too-narrow slot rather than truncating.
     /// Min-content equals the full line width, so a Hug track won't shrink
-    /// below it — keeps labels, editable buffers, and horizontally-scrolled
-    /// text at their natural width, *meant* to run past the viewport.
+    /// below it — keeps labels at their natural width, *meant* to run past
+    /// the viewport. For a field that clips + scrolls its own overflow use
+    /// [`TextWrap::Scroll`], whose min-content is zero.
     #[default]
     SingleLine,
+    /// Single line shaped once at unbounded width and never reshaped, exactly
+    /// like [`TextWrap::SingleLine`], but with **zero** min-content: the owner
+    /// is expected to clip the overflow (`ClipMode::Rect`) and scroll it into
+    /// view, so a Hug/Fill box may shrink below the text rather than reserving
+    /// its full width. For editable single-line fields and any widget that
+    /// manages its own horizontal scroll. Unlike [`TextWrap::Truncate`] the run
+    /// is never cut at shape time, so the owner can scroll to any offset over
+    /// the full buffer.
+    Scroll,
     /// Single line, hard-truncated to the committed width with
     /// no trailing marker — glyphs past the box edge are simply dropped.
     /// Min-content is zero (the run can shrink to nothing), so a bounded
@@ -376,7 +386,7 @@ pub enum TextWrap {
     /// bites once a parent commits a narrower width.
     Truncate,
     /// Single line, truncated to the committed width with a trailing `…`.
-    /// Identical to [`TextWrap::SingleLine`] (min-content zero, clipped to the
+    /// Identical to [`TextWrap::Truncate`] (min-content zero, clipped to the
     /// slot) except the cut is marked with an ellipsis. For labels where the
     /// elision should be visible — paths, names in fixed-width chrome.
     Ellipsis,

@@ -67,3 +67,69 @@ fn empty_editor_width_is_stable_across_focus() {
         "focus must not change desired width; unfocused={w_unfocused} focused={w_focused}",
     );
 }
+
+const LONG: &str = "the quick brown fox jumps over the lazy dog";
+
+/// Build one `container_w`-wide `Fixed` hstack holding a single-line
+/// editor sized `editor_w` on the main axis. Two frames so the layout
+/// cache stabilises, matching `frame` above.
+fn sized_editor(ui: &mut Ui, buf: &mut String, container_w: f32, editor_w: Sizing) -> NodeId {
+    let mut node: Option<NodeId> = None;
+    let mut record = |ui: &mut Ui| {
+        Panel::hstack()
+            .auto_id()
+            .size((Sizing::Fixed(container_w), Sizing::Fixed(40.0)))
+            .show(ui, |ui| {
+                node = Some(
+                    TextEdit::new(buf)
+                        .id(WidgetId::from_hash("editor"))
+                        .size((editor_w, Sizing::Fixed(40.0)))
+                        .show(ui)
+                        .node(),
+                );
+            });
+    };
+    ui.run_at_acked(UVec2::new(2100, 200), &mut record);
+    ui.run_at_acked(UVec2::new(2100, 200), &mut record);
+    node.unwrap()
+}
+
+/// A `Fill`-width single-line editor must shrink *below* its own text
+/// content when its container is narrower than the text, and stretch to
+/// exactly fill a container wider than the text. The editor clips
+/// (`ClipMode::Rect`) and scrolls, so its recorded text uses
+/// `TextWrap::Scroll` — zero min-content — and the Fill floor is the
+/// editor's padding, not the buffer's natural width. Before this fix
+/// `TextWrap::SingleLine` reported the full text width as min-content, so
+/// the Fill floor froze at the text width: the field refused to get
+/// smaller than its content and overflowed any narrower container.
+///
+/// A `Hug`-width editor still hugs its buffer (its own `min_size.w`
+/// reservation floors it) — checked here as the natural-width baseline.
+#[test]
+fn fill_width_editor_shrinks_below_text_content() {
+    const NARROW_W: f32 = 120.0;
+    let mut ui = Ui::for_test();
+
+    // Natural text width: a Hug editor in a wide container hugs its buffer.
+    let mut buf = LONG.to_string();
+    let hug = sized_editor(&mut ui, &mut buf, 2000.0, Sizing::Hug);
+    let text_w = ui.layout[Layer::Main].rect[hug.idx()].size.w;
+    assert!(
+        text_w > NARROW_W,
+        "fixture requires the text ({text_w}) to be wider than the narrow container ({NARROW_W})",
+    );
+
+    // Fill editor in a narrow container shrinks to fill it, well below the text.
+    let mut buf = LONG.to_string();
+    let fill = sized_editor(&mut ui, &mut buf, NARROW_W, Sizing::FILL);
+    let fill_w = ui.layout[Layer::Main].rect[fill.idx()].size.w;
+    assert!(
+        (fill_w - NARROW_W).abs() < 0.5,
+        "sole Fill child must stretch to its {NARROW_W}px container, got {fill_w}",
+    );
+    assert!(
+        fill_w < text_w,
+        "Fill editor ({fill_w}) must be narrower than its text content ({text_w})",
+    );
+}

@@ -883,9 +883,9 @@ struct WrapReuse {
 }
 
 /// How a width-bounded text run handles overflow. Maps from the public
-/// [`crate::shape::TextWrap`] (minus `Overflow`, which never reaches the
-/// bounded path). Threaded through `shape_wrap` → `dispatch` and folded
-/// into the shape cache key.
+/// [`crate::shape::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
+/// the unbounded path). Threaded through `shape_wrap` → `dispatch` and
+/// folded into the shape cache key.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LineFit {
     /// Multi-line reflow at the target width.
