@@ -21,6 +21,7 @@ impl Rect {
         size: Size::ZERO,
     };
 
+    #[inline]
     pub const fn new(x: f32, y: f32, w: f32, h: f32) -> Self {
         Self {
             min: Vec2::new(x, y),
@@ -28,15 +29,18 @@ impl Rect {
         }
     }
 
+    #[inline]
     pub const fn max(&self) -> Vec2 {
         Vec2::new(self.min.x + self.size.w, self.min.y + self.size.h)
     }
+    #[inline]
     pub const fn center(&self) -> Vec2 {
         Vec2::new(
             self.min.x + self.size.w * 0.5,
             self.min.y + self.size.h * 0.5,
         )
     }
+    #[inline]
     pub const fn area(&self) -> f32 {
         self.size.w * self.size.h
     }
@@ -59,6 +63,7 @@ impl Rect {
         self.size.is_paint_empty()
     }
 
+    #[inline]
     pub const fn contains(&self, p: Vec2) -> bool {
         let mx = self.max();
         p.x >= self.min.x && p.y >= self.min.y && p.x < mx.x && p.y < mx.y
@@ -68,6 +73,7 @@ impl Rect {
     /// edges counts (so `r.contains_rect(r)` is `true`). Used by the
     /// damage-region merge policy to drop rects already covered by a
     /// bigger one.
+    #[inline]
     pub const fn contains_rect(&self, other: Self) -> bool {
         let self_max = self.max();
         let other_max = other.max();
@@ -84,7 +90,7 @@ impl Rect {
     /// without clamping — callers needing the size clamp should use
     /// `deflated_by` instead.
     #[inline]
-    pub fn inflated(&self, amount: f32) -> Self {
+    pub const fn inflated(&self, amount: f32) -> Self {
         Self {
             min: Vec2::new(self.min.x - amount, self.min.y - amount),
             size: Size::new(self.size.w + 2.0 * amount, self.size.h + 2.0 * amount),
@@ -131,17 +137,19 @@ impl Rect {
     #[inline]
     pub fn deflated_by(&self, s: Spacing) -> Self {
         let [l, t, r, b] = s.as_array();
-        let w = self.size.w - (l + r);
-        let h = self.size.h - (t + b);
         Self {
             min: Vec2::new(self.min.x + l, self.min.y + t),
-            size: Size::new(if w < 0.0 { 0.0 } else { w }, if h < 0.0 { 0.0 } else { h }),
+            size: Size::new(
+                (self.size.w - (l + r)).max(0.0),
+                (self.size.h - (t + b)).max(0.0),
+            ),
         }
     }
 
     /// True if `self` and `other` overlap on both axes (strict — touching
     /// edges don't count). Used by the encoder's damage-rect filter to
     /// decide whether a node's paint commands can be skipped.
+    #[inline]
     pub const fn intersects(&self, other: Self) -> bool {
         let a_max = self.max();
         let b_max = other.max();
@@ -153,28 +161,14 @@ impl Rect {
 
     /// Axis-aligned intersection. Returns a zero-size rect if the inputs
     /// don't overlap (either dimension goes negative).
+    #[inline]
     pub const fn intersect(&self, other: Self) -> Self {
-        let min_x = if self.min.x > other.min.x {
-            self.min.x
-        } else {
-            other.min.x
-        };
-        let min_y = if self.min.y > other.min.y {
-            self.min.y
-        } else {
-            other.min.y
-        };
-        let a_max_x = self.min.x + self.size.w;
-        let b_max_x = other.min.x + other.size.w;
-        let max_x = if a_max_x < b_max_x { a_max_x } else { b_max_x };
-        let a_max_y = self.min.y + self.size.h;
-        let b_max_y = other.min.y + other.size.h;
-        let max_y = if a_max_y < b_max_y { a_max_y } else { b_max_y };
-        let w = max_x - min_x;
-        let h = max_y - min_y;
+        let (a, b) = (self.max(), other.max());
+        let min = Vec2::new(self.min.x.max(other.min.x), self.min.y.max(other.min.y));
+        let max = Vec2::new(a.x.min(b.x), a.y.min(b.y));
         Self {
-            min: Vec2::new(min_x, min_y),
-            size: Size::new(if w < 0.0 { 0.0 } else { w }, if h < 0.0 { 0.0 } else { h }),
+            min,
+            size: Size::new((max.x - min.x).max(0.0), (max.y - min.y).max(0.0)),
         }
     }
 
@@ -187,6 +181,7 @@ impl Rect {
     /// [`crate::primitives::urect::URect::union`]. Fold over
     /// `Option<Rect>` only when "no rects at all" must stay
     /// distinguishable from "some rects".
+    #[inline]
     pub const fn union(&self, other: Self) -> Self {
         if self.is_paint_empty() {
             return other;
@@ -209,20 +204,19 @@ impl Rect {
     /// the logical→physical-px boundary inside the renderer; snapping derives
     /// width/height from rounded edges (not from `size * scale`) to avoid
     /// creeping width drift across rows of identical rects.
-    pub fn scaled_by(&self, scale: f32, snap: bool) -> Self {
-        let mut left = self.min.x * scale;
-        let mut top = self.min.y * scale;
-        let mut right = (self.min.x + self.size.w) * scale;
-        let mut bottom = (self.min.y + self.size.h) * scale;
+    #[inline]
+    pub const fn scaled_by(&self, scale: f32, snap: bool) -> Self {
+        // Scalar lanes because glam's `Vec2` ops aren't `const fn`.
+        let m = self.max();
+        let mut min = Vec2::new(self.min.x * scale, self.min.y * scale);
+        let mut max = Vec2::new(m.x * scale, m.y * scale);
         if snap {
-            left = left.round();
-            top = top.round();
-            right = right.round();
-            bottom = bottom.round();
+            min = Vec2::new(min.x.round(), min.y.round());
+            max = Vec2::new(max.x.round(), max.y.round());
         }
         Self {
-            min: Vec2::new(left, top),
-            size: Size::new((right - left).max(0.0), (bottom - top).max(0.0)),
+            min,
+            size: Size::new((max.x - min.x).max(0.0), (max.y - min.y).max(0.0)),
         }
     }
 }
