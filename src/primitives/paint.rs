@@ -73,6 +73,20 @@ impl FillKind {
     /// usual `stroke_color` / `stroke_width` fields.
     pub(crate) const TRIANGLE: Self = Self(6);
 
+    /// Bit 16: fragment fast path. Set by the composer on a solid,
+    /// sharp, stroke-less quad whose physical rect is pixel-aligned —
+    /// every rasterized fragment is then interior (SDF coverage exactly
+    /// 1.0), so the shader returns the premultiplied fill directly and
+    /// skips the SDF + composite path, bitwise-identically. Kept in
+    /// lockstep with `FILL_FLAG_FAST` in `quad.wgsl`.
+    const FAST_BIT: u32 = 1 << 16;
+
+    /// Tag this kind with the fragment fast-path bit (see [`Self::FAST_BIT`]).
+    #[inline]
+    pub(crate) const fn with_fast(self) -> Self {
+        Self(self.0 | Self::FAST_BIT)
+    }
+
     /// True iff this `FillKind` marks a shadow draw. Shadow blur
     /// extends visually past the stored rect, so shadows are never
     /// safe to drop in the occlusion-prune sweep — checked at

@@ -503,8 +503,10 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     let q = &out.quads[0];
     assert_eq!(
         q.fill_kind,
-        crate::primitives::paint::FillKind::SOLID,
-        "solid quad must carry kind=solid",
+        // Sharp + stroke-less + pixel-aligned, so the solid kind also
+        // carries the fragment fast-path bit.
+        crate::primitives::paint::FillKind::SOLID.with_fast(),
+        "solid quad must carry kind=solid (+fast)",
     );
     assert_eq!(
         q.fill_lut_row,
@@ -2279,4 +2281,120 @@ fn clear_fold_resets_across_frames() {
     composer.compose(&uncovered, &mut arena, display, &mut out);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
+}
+
+/// Fragment fast-path flag: solid + sharp + stroke-less + pixel-aligned
+/// quads carry `FillKind::FAST_BIT`; any disqualifier (fractional rect,
+/// corners, stroke, gradient) leaves the kind plain. Alignment is
+/// checked on the *physical* rect, so a fractional logical rect at a
+/// DPR that lands it on integers still qualifies — and translucency
+/// does NOT disqualify (the skip is coverage-based, not opacity-based).
+#[test]
+fn quad_fast_path_flag_cases() {
+    use crate::forest::shapes::record::LoweredGradient;
+    use crate::primitives::brush::{FillAxis, Spread};
+    use crate::primitives::paint::{FillKind, LutRow};
+
+    let solid = |c: Color| BrushSource::Solid(c.into());
+    let opaque = Color::rgb(0.5, 0.5, 0.5);
+
+    // (case, rect, corners, stroke, brush, dpr, expect_fast)
+    let gradient = BrushSource::Gradient(LoweredGradient {
+        axis: FillAxis::ZERO,
+        row: LutRow::FALLBACK,
+        kind: FillKind::linear(Spread::Pad),
+    });
+    let cases: &[(&str, Rect, Corners, Stroke, BrushSource, f32, bool)] = &[
+        (
+            "aligned sharp strokeless solid",
+            rect(10.0, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            solid(opaque),
+            1.0,
+            true,
+        ),
+        (
+            "translucent still qualifies",
+            rect(10.0, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            solid(Color::rgba(0.5, 0.5, 0.5, 0.5)),
+            1.0,
+            true,
+        ),
+        (
+            "fractional logical rect aligned at DPR 2",
+            rect(10.5, 10.5, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            solid(opaque),
+            2.0,
+            true,
+        ),
+        (
+            "fractional rect disqualifies",
+            rect(10.25, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            solid(opaque),
+            1.0,
+            false,
+        ),
+        (
+            "fractional size disqualifies",
+            rect(10.0, 10.0, 20.5, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            solid(opaque),
+            1.0,
+            false,
+        ),
+        (
+            "corners disqualify",
+            rect(10.0, 10.0, 20.0, 20.0),
+            Corners::all(4.0),
+            Stroke::ZERO,
+            solid(opaque),
+            1.0,
+            false,
+        ),
+        (
+            "stroke disqualifies",
+            rect(10.0, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::solid(Color::WHITE, 1.0),
+            solid(opaque),
+            1.0,
+            false,
+        ),
+        (
+            "gradient disqualifies",
+            rect(10.0, 10.0, 20.0, 20.0),
+            Corners::ZERO,
+            Stroke::ZERO,
+            gradient,
+            1.0,
+            false,
+        ),
+    ];
+
+    for (name, r, corners, stroke, brush, dpr, expect_fast) in cases {
+        let buf = run(
+            |b, _arena| b.draw_rect(*r, *corners, *brush, stroke.clone().into()),
+            &params(*dpr, UVec2::new(400, 400)),
+        );
+        assert_eq!(buf.quads.len(), 1, "{name}: quad emitted");
+        let got = buf.quads[0].fill_kind;
+        let plain = match brush {
+            BrushSource::Solid(_) => FillKind::SOLID,
+            BrushSource::Gradient(g) => g.kind,
+        };
+        let want = if *expect_fast {
+            plain.with_fast()
+        } else {
+            plain
+        };
+        assert_eq!(got, want, "{name}: fill_kind");
+    }
 }

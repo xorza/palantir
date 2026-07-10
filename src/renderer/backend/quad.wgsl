@@ -39,6 +39,12 @@ const BRUSH_KIND_SOLID:        u32 = 0u;
 const BRUSH_KIND_LINEAR:       u32 = 1u;
 const BRUSH_KIND_RADIAL:       u32 = 2u;
 const BRUSH_KIND_CONIC:        u32 = 3u;
+// Bit 16 of fill_kind: fragment fast path. The composer sets it on a
+// solid, sharp, stroke-less quad whose rect is pixel-aligned — every
+// rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
+// returns the premultiplied fill directly. Kept in lockstep with
+// `FillKind::FAST_BIT` on the CPU side.
+const FILL_FLAG_FAST: u32 = 0x10000u;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
@@ -295,6 +301,12 @@ fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32
 
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
+    // Uniform per instance (`fill_kind` is flat), so whole wavefronts
+    // inside one quad take a single side of this branch.
+    if ((in.fill_kind & FILL_FLAG_FAST) != 0u) {
+        let a = in.fill.a;
+        return vec4<f32>(in.fill.rgb * a, a);
+    }
     let kind = in.fill_kind & 0xFFu;
     if (kind == BRUSH_KIND_SHADOW_DROP) {
         // Paint bbox covers (source + offset).inflated(3σ + spread).
