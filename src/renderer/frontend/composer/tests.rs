@@ -492,10 +492,12 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     );
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
+    // 200×200 viewport: an opaque solid sharp quad covering the whole
+    // viewport would fold into the clear instead of emitting a quad.
     composer.compose(
         &buffer,
         &mut FrameArenaInner::default(),
-        params(1.0, UVec2::new(100, 100)),
+        params(1.0, UVec2::new(200, 200)),
         &mut out,
     );
     let q = &out.quads[0];
@@ -2081,4 +2083,200 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
         tlg < qg,
         "closed-batch text (last_group={tlg}) must paint before the overlapping quad (group={qg})",
     );
+}
+
+/// Root-background fold: the frame's bottom-most draw, when it is an
+/// opaque solid sharp unclipped quad covering the whole viewport,
+/// becomes `RenderBuffer::clear_override` instead of a quad — and any
+/// disqualifier (corners, stroke, translucency, gradient, partial
+/// coverage, prior draw, active clip) leaves it as an ordinary quad.
+#[test]
+fn clear_fold_absorbs_root_background_and_rejects_non_qualifying() {
+    use crate::forest::shapes::record::LoweredGradient;
+    use crate::primitives::brush::{FillAxis, Spread};
+    use crate::primitives::color::ColorF16;
+    use crate::primitives::paint::{FillKind, LutRow};
+
+    let vp = UVec2::new(200, 200);
+    let bg = Color::rgb(0.14, 0.16, 0.22);
+    // The override rides a ColorF16 lane; expected value is the f16
+    // round-trip of the input, not the input itself.
+    let folded = ColorF16::from(bg).unpack();
+
+    // (case, builder, expected quad count, expected override)
+    type Build = fn(&mut RenderCmdBuffer);
+    let cases: &[(&str, Build, usize, Option<Color>)] = &[
+        (
+            "qualifying root folds, later quad stays",
+            |b| {
+                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+                draw(b, rect(10.0, 10.0, 20.0, 20.0));
+            },
+            1,
+            Some(Color::rgb(1.0, 1.0, 1.0)),
+        ),
+        (
+            "rounded corners disqualify",
+            |b| {
+                b.draw_rect(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::all(4.0),
+                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                    Stroke::ZERO.into(),
+                );
+            },
+            1,
+            None,
+        ),
+        (
+            "stroke disqualifies",
+            |b| {
+                b.draw_rect(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::default(),
+                    BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                    Stroke::solid(Color::WHITE, 2.0).into(),
+                );
+            },
+            1,
+            None,
+        ),
+        (
+            "translucent fill disqualifies",
+            |b| {
+                b.draw_rect(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::default(),
+                    BrushSource::Solid(Color::rgba(1.0, 1.0, 1.0, 0.5).into()),
+                    Stroke::ZERO.into(),
+                );
+            },
+            1,
+            None,
+        ),
+        (
+            "gradient fill disqualifies",
+            |b| {
+                b.draw_rect(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::default(),
+                    BrushSource::Gradient(LoweredGradient {
+                        axis: FillAxis::ZERO,
+                        row: LutRow::FALLBACK,
+                        kind: FillKind::linear(Spread::Pad),
+                    }),
+                    Stroke::ZERO.into(),
+                );
+            },
+            1,
+            None,
+        ),
+        (
+            "one pixel short of coverage disqualifies",
+            |b| draw(b, rect(0.0, 0.0, 200.0, 199.0)),
+            1,
+            None,
+        ),
+        (
+            "prior quad disqualifies (record order is paint order)",
+            |b| {
+                // Straddles the viewport edge so the occlusion pruner
+                // can't drop it under the later cover — the case must
+                // show BOTH quads surviving with no fold.
+                draw(b, rect(-10.0, -10.0, 20.0, 20.0));
+                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+            },
+            2,
+            None,
+        ),
+        (
+            "prior text disqualifies",
+            |b| {
+                text(b, rect(10.0, 10.0, 50.0, 20.0));
+                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+            },
+            1,
+            None,
+        ),
+        (
+            "active clip disqualifies",
+            |b| {
+                b.push_clip(rect(0.0, 0.0, 150.0, 150.0));
+                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+                b.pop_clip();
+            },
+            1,
+            None,
+        ),
+        (
+            "second qualifying cover re-folds over the first",
+            |b| {
+                draw(b, rect(0.0, 0.0, 200.0, 200.0));
+                b.draw_rect(
+                    rect(0.0, 0.0, 200.0, 200.0),
+                    Corners::default(),
+                    BrushSource::Solid(Color::rgb(0.14, 0.16, 0.22).into()),
+                    Stroke::ZERO.into(),
+                );
+            },
+            0,
+            Some(Color::rgb(0.14, 0.16, 0.22)),
+        ),
+    ];
+
+    for (name, build, want_quads, want_override) in cases {
+        let buf = run(|b, _arena| build(b), &params(1.0, vp));
+        assert_eq!(
+            buf.quads.len(),
+            *want_quads,
+            "{name}: quad count after fold decision",
+        );
+        let want = want_override.map(|c| ColorF16::from(c).unpack());
+        assert_eq!(buf.clear_override, want, "{name}: clear_override");
+    }
+
+    // Coverage in physical px: a logical half-viewport rect at DPR 2
+    // covers the full physical viewport and folds.
+    let buf = run(
+        |b, _arena| {
+            b.draw_rect(
+                rect(0.0, 0.0, 100.0, 100.0),
+                Corners::default(),
+                BrushSource::Solid(bg.into()),
+                Stroke::ZERO.into(),
+            );
+        },
+        &params(2.0, vp),
+    );
+    assert_eq!(buf.quads.len(), 0, "DPR-2 cover folds");
+    assert_eq!(buf.clear_override, Some(folded), "DPR-2 override color");
+}
+
+/// `clear_override` is per-frame state: a fold one frame must not leak
+/// into the next frame's buffer when the cover disappears, and a
+/// steady-state cover re-folds every frame.
+#[test]
+fn clear_fold_resets_across_frames() {
+    let display = params(1.0, UVec2::new(200, 200));
+    let mut composer = Composer::default();
+    let mut out = RenderBuffer::default();
+    let mut arena = FrameArenaInner::default();
+
+    let mut covered = RenderCmdBuffer::default();
+    draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
+    draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
+
+    composer.compose(&covered, &mut arena, display, &mut out);
+    assert!(out.clear_override.is_some(), "frame 1 folds");
+    assert_eq!(out.quads.len(), 1);
+
+    composer.compose(&covered, &mut arena, display, &mut out);
+    assert!(out.clear_override.is_some(), "steady state re-folds");
+    assert_eq!(out.quads.len(), 1);
+
+    let mut uncovered = RenderCmdBuffer::default();
+    draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
+    composer.compose(&uncovered, &mut arena, display, &mut out);
+    assert_eq!(out.clear_override, None, "no cover, no override");
+    assert_eq!(out.quads.len(), 1);
 }
