@@ -728,6 +728,7 @@ impl DamageEngine {
             let subtree_end = tree.records.subtree_end();
             let layer_paints = &layer_cascades.paint_arena.rows;
             let layer_node_paints = &layer_cascades.paint_arena.node_spans;
+            let subtree_extents = layer_cascades.subtree_paint_rects.as_slice();
             parent_stack.clear();
             let mut i = 0;
             while i < n {
@@ -795,6 +796,30 @@ impl DamageEngine {
                             *subtree_skips_out += 1;
                         }
                         span
+                    }
+                    // Tier 1.5 — moved/reshaped subtree. Authoring is
+                    // identical (`subtree_hash` matches ⇒ same widgets,
+                    // same rows, same row hashes by induction) but
+                    // `cascade_input` changed: ancestor state
+                    // (transform/clip/visibility/disabled) or this
+                    // node's own arranged rect moved — a scroll tick, a
+                    // pan, a sibling-shift. Only the rows' *screens*
+                    // differ, so damage is exactly "everything the
+                    // subtree painted before ∪ everything it paints
+                    // now" — two extent rects instead of the per-row
+                    // hash-matcher's 2-rects-per-row flood (which made
+                    // `collapse_from` + the matcher ~18% of a scrolling
+                    // frame). Snapshots still need their screens +
+                    // `cascade_input` refreshed for next frame's
+                    // baseline; that bulk refresh happens after the
+                    // match (it needs free access to `prev_map`, which
+                    // the `Entry` borrow holds here) — see the
+                    // `MOVED_SUBTREE` block below.
+                    Entry::Occupied(e)
+                        if e.get().subtree_hash == curr_subtree_hash
+                            && e.get().parent_key == parent_key =>
+                    {
+                        MOVED_SUBTREE
                     }
                     // Tier 2 — node's own authoring + cascade state
                     // unchanged but `subtree_hash` differs, so a descendant
@@ -891,6 +916,54 @@ impl DamageEngine {
                         dirty_out.push(NodeId(i as u32));
                         1
                     }
+                };
+                // Tier 1.5 body — runs outside the match so it can
+                // freely probe `prev_map` for every subtree node (the
+                // `Entry` above held the map borrow). Pushes the two
+                // extent rects, then refreshes each descendant's
+                // snapshot in place: same-count row copy (equal
+                // `subtree_hash` pins the row count — `copy_from_slice`
+                // length-asserts it) plus the new `cascade_input`.
+                // `hash`/`subtree_hash`/`parent_key` are unchanged by
+                // the same induction, and `paint_span` is reused, so no
+                // arena append/orphan churn.
+                let advance = if advance == MOVED_SUBTREE {
+                    let end = subtree_end[i].end() as usize;
+                    let mut prev_extent: Option<Rect> = None;
+                    for j in i..end {
+                        let span = layer_node_paints[j];
+                        if span.len == 0 {
+                            continue;
+                        }
+                        // No entry ⇒ the node was skipped by the
+                        // Vacant-arm off-surface filter last visit; it
+                        // painted nothing then, and its current pixels
+                        // are inside the curr-extent push.
+                        let Some(snap) = prev_map.get_mut(&widget_ids[j]) else {
+                            continue;
+                        };
+                        if let Some(u) = union_screens(&arena.snaps[snap.paint_span.range()]) {
+                            prev_extent = Some(prev_extent.map_or(u, |a| a.union(u)));
+                        }
+                        arena.snaps[snap.paint_span.range()]
+                            .copy_from_slice(&layer_paints[span.range()]);
+                        snap.cascade_input = cascade_inputs[j];
+                        #[cfg(any(test, feature = "internals"))]
+                        dirty_out.push(NodeId(j as u32));
+                    }
+                    if let Some(u) = prev_extent {
+                        raw_rects.push(u);
+                    }
+                    // Rolled-up curr extent from the cascade — already
+                    // `Rect::ZERO`-seeded for invisible subtrees, so a
+                    // hide transition damages only the prev pixels.
+                    let curr_extent = subtree_extents[i];
+                    if !curr_extent.is_paint_empty() {
+                        raw_rects.push(curr_extent);
+                    }
+                    end - i
+                } else {
+                    advance
                 };
                 // Descending into children (advance == 1 on a
                 // container) opens a parent frame; subtree-skips jump
@@ -1027,6 +1100,13 @@ fn union_screens(paints: &[Paint]) -> Option<Rect> {
 /// prev span (moved / added / content-changed — the content diff
 /// damages those over their full rects).
 const ROW_UNMATCHED: u32 = u32::MAX;
+
+/// `advance` sentinel returned by the diff's tier-1.5 match arm
+/// (moved/reshaped subtree). The refresh body runs *after* the match —
+/// it needs `prev_map` access the `Entry` borrow forbids — and this
+/// value routes to it. Real advances are bounded by the tree size, so
+/// the sentinel can't collide.
+const MOVED_SUBTREE: usize = usize::MAX;
 
 /// Sort key for the content-keyed matcher: hash-major (so one sorted
 /// order serves both the exact pass and the hash-only move pass),

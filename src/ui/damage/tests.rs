@@ -1472,6 +1472,206 @@ fn self_transform_shift_damages_direct_shapes() {
     );
 }
 
+/// Pin the moved-subtree tier (tier 1.5): a transformed parent over an
+/// authoring-identical subtree damages exactly `prev extent ∪ curr
+/// extent`, and — the load-bearing part — the bulk snapshot refresh
+/// leaves next frame's baseline intact:
+///
+/// - a second tick's damage is anchored at the *refreshed* positions
+///   (if the refresh forgot to copy the rows' screens, damage would
+///   still cover the original position);
+/// - a still frame after the motion is a clean `Skip` (refreshed
+///   `cascade_input` lets tier 1 skip at the subtree root).
+#[test]
+fn moved_subtree_damages_extents_and_refreshes_snapshots() {
+    let mut ui = Ui::for_test();
+    let build = |dx: f32, ui: &mut Ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("outer"))
+                .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("inner"))
+                        .show(ui, |ui| {
+                            for key in ["a", "b"] {
+                                Frame::new()
+                                    .id(WidgetId::from_hash(key))
+                                    .size(40.0)
+                                    .background(Background {
+                                        fill: BLUE.into(),
+                                        ..Default::default()
+                                    })
+                                    .show(ui);
+                            }
+                        });
+                });
+        });
+    };
+
+    build(0.0, &mut ui);
+
+    // Tick 1: dx 0 → 30. "outer"'s own transform rides its node_hash
+    // (panel extras), so outer takes the changed-paints arm (child
+    // marker matches exactly — no damage); "inner"'s authoring is
+    // untouched but its cascade prefix moved → tier 1.5. Subtree
+    // extent = both 40×40 frames side by side: prev (0,0,80,40),
+    // curr (30,0,80,40) — intersecting, so the region merges them
+    // into one bbox.
+    build(30.0, &mut ui);
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    assert_eq!(
+        rects,
+        vec![Rect::new(0.0, 0.0, 110.0, 40.0)],
+        "tick 1: prev ∪ curr subtree extents",
+    );
+
+    // Tick 2: dx 30 → 60. Damage must anchor at the tick-1 position —
+    // its left edge is 30, not 0 — proving the tier refreshed the
+    // rows' screens, not just `cascade_input`.
+    build(60.0, &mut ui);
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    assert_eq!(
+        rects,
+        vec![Rect::new(30.0, 0.0, 110.0, 40.0)],
+        "tick 2: damage anchored at the refreshed (tick-1) extent",
+    );
+
+    // Still frame: identical dx → tier 1 skips at the root, no dirty
+    // nodes, clean Skip. Fails loudly if the bulk refresh corrupted
+    // any snapshot field.
+    build(60.0, &mut ui);
+    assert!(
+        ui.damage_engine.dirty.is_empty(),
+        "still frame after motion must not dirty any node",
+    );
+    assert_eq!(
+        Damage::new(ui.damage_region()),
+        Damage::Skip,
+        "still frame after motion",
+    );
+}
+
+/// Sister pin: a *content* change under a constant transform must not
+/// take the moved-subtree tier (`subtree_hash` differs) — the per-row
+/// diff still produces leaf-tight damage, not the subtree extent.
+#[test]
+fn content_change_under_constant_transform_stays_row_tight() {
+    let mut ui = Ui::for_test();
+    let build = |fill: Color, ui: &mut Ui| {
+        ui.run_at_acked(UVec2::new(400, 400), |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("outer"))
+                .transform(TranslateScale::from_translation(Vec2::new(30.0, 0.0)))
+                .show(ui, |ui| {
+                    Panel::hstack()
+                        .id(WidgetId::from_hash("inner"))
+                        .show(ui, |ui| {
+                            Frame::new()
+                                .id(WidgetId::from_hash("a"))
+                                .size(40.0)
+                                .background(Background {
+                                    fill: fill.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                            Frame::new()
+                                .id(WidgetId::from_hash("b"))
+                                .size(40.0)
+                                .background(Background {
+                                    fill: BLUE.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                        });
+                });
+        });
+    };
+    build(BLUE, &mut ui);
+    build(RED, &mut ui);
+    // Only "a" changed; damage is its screen rect (layout 0..40 + the
+    // 30 px transform), NOT the whole inner extent (which would reach
+    // x = 110 and cover the untouched "b").
+    let rects: Vec<Rect> = ui.damage_region().iter_rects().collect();
+    assert_eq!(
+        rects,
+        vec![Rect::new(30.0, 0.0, 40.0, 40.0)],
+        "fill flip under constant transform damages only the leaf",
+    );
+}
+
+/// Soundness pin for the tier's entry-less leg: a node skipped by the
+/// Vacant-arm off-surface filter (no `prev` snapshot) that scrolls
+/// *into* view under tier 1.5 is covered by the curr-extent push, a
+/// following still frame is a clean Skip (tier 1 at the subtree root —
+/// the node legitimately stays entry-less), and a later content change
+/// on it still lands damage via the Vacant insert arm.
+#[test]
+fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
+    let mut ui = Ui::for_test();
+    // Surface is 200×200 (test DISPLAY). Three 100-wide frames: "c"
+    // starts at x = 200 — exactly off-surface (edge-touching rects
+    // don't intersect), so its Vacant visit skips the snapshot insert.
+    let build = |dx: f32, c_fill: Color, ui: &mut Ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("outer"))
+            .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
+            .show(ui, |ui| {
+                Panel::hstack()
+                    .id(WidgetId::from_hash("inner"))
+                    .show(ui, |ui| {
+                        for (key, fill) in [("a", BLUE), ("b", BLUE), ("c", c_fill)] {
+                            Frame::new()
+                                .id(WidgetId::from_hash(key))
+                                .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                                .background(Background {
+                                    fill: fill.into(),
+                                    ..Default::default()
+                                })
+                                .show(ui);
+                        }
+                    });
+            });
+    };
+    frame(&mut ui, |ui| build(0.0, RED, ui));
+
+    // Scroll left: "c" enters at (100..200). Tier 1.5 fires at
+    // "inner"; "c" has no snapshot (off-surface skip last frame) but
+    // the curr-extent push covers its pixels.
+    let damage = frame(&mut ui, |ui| build(-100.0, RED, ui));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial, got {damage:?}");
+    };
+    let covers_c = region
+        .iter_rects()
+        .any(|r| r.min.x <= 100.5 && r.max().x >= 200.0 - 0.5 && r.max().y >= 40.0 - 0.5);
+    assert!(
+        covers_c,
+        "curr-extent push must cover the newly revealed node. region = {:?}",
+        region.iter_rects().collect::<Vec<_>>(),
+    );
+
+    // Still frame: "c" is visible but entry-less — tier 1 skips at
+    // the root and nothing is damaged, which is correct (no pixels
+    // changed; they were painted by the scroll frame).
+    let damage = frame(&mut ui, |ui| build(-100.0, RED, ui));
+    assert_eq!(damage, Damage::Skip, "still frame with entry-less node");
+
+    // Content change on the entry-less node: subtree hashes flip up
+    // the chain, the walk descends, and "c" takes the Vacant insert
+    // arm — its full rect is damage.
+    let damage = frame(&mut ui, |ui| build(-100.0, BLUE, ui));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial, got {damage:?}");
+    };
+    let rects: Vec<Rect> = region.iter_rects().collect();
+    assert_eq!(
+        rects,
+        vec![Rect::new(100.0, 0.0, 100.0, 40.0)],
+        "content change on an entry-less node damages its rect",
+    );
+}
+
 // --- DamageEngine::filter heuristic ---------------------------------------------
 
 const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
