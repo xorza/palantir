@@ -3,6 +3,7 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::primitives::color::ColorF16;
+use crate::primitives::paint::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
@@ -280,6 +281,10 @@ impl QuadPipeline {
             corners: Corners::default(),
             stroke_color: ColorF16::TRANSPARENT,
             stroke_width: 0.0,
+            // Solid, sharp, stroke-less, integer-origin (`viewport` is
+            // the ceil'd physical size): qualifies for the fragment
+            // fast path.
+            fill_kind: FillKind::SOLID.with_fast(),
             ..Default::default()
         };
         ctx.write(&self.clear_buffer, 0, bytemuck::bytes_of(&q));

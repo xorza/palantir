@@ -669,13 +669,36 @@ impl Composer {
                     let world_radius = p.corners.scaled_by(current_transform.scale);
                     let phys_radius = world_radius.scaled_by(scale);
                     let stroke_width_phys = p.stroke_width * current_transform.scale * scale;
+                    // Fragment fast path: a solid, sharp, stroke-less
+                    // quad whose physical rect is pixel-aligned
+                    // rasterizes only interior fragments (SDF coverage
+                    // exactly 1.0) — flag the instance so the shader
+                    // returns the premultiplied fill directly, skipping
+                    // the SDF + composite path. Alignment is exact, not
+                    // approx: exactness is what makes the skip
+                    // bitwise-identical (host pixel snapping yields
+                    // exact integers when active; unsnapped fractional
+                    // rects keep the full SDF for edge AA).
+                    let pmax = phys_rect.max();
+                    let fast = p.fill_kind == FillKind::SOLID
+                        && noop_f32(stroke_width_phys)
+                        && phys_radius.approx_zero()
+                        && phys_rect.min.x == phys_rect.min.x.round()
+                        && phys_rect.min.y == phys_rect.min.y.round()
+                        && pmax.x == pmax.x.round()
+                        && pmax.y == pmax.y.round();
+                    let fill_kind = if fast {
+                        p.fill_kind.with_fast()
+                    } else {
+                        p.fill_kind
+                    };
                     out.quads.push(Quad {
                         rect: phys_rect,
                         fill: p.fill,
                         corners: phys_radius,
                         stroke_color: p.stroke_color,
                         stroke_width: stroke_width_phys,
-                        fill_kind: p.fill_kind,
+                        fill_kind,
                         fill_lut_row: p.fill_lut_row,
                         fill_axis: p.fill_axis,
                     });
