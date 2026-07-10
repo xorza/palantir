@@ -1327,6 +1327,21 @@ impl Ui {
             .is_some_and(|f| self.cascades.is_within(f, ancestor))
     }
 
+    /// True when the pointer's hover target is `ancestor` or any widget
+    /// recorded inside its subtree — the hover sibling of
+    /// [`Self::focus_within`], same cascade timing and layer caveats.
+    /// Prefer this over testing `Self::pointer_pos` against a rect for
+    /// "is the pointer on me" styling: it's occlusion-aware (a panel
+    /// stacked on top wins the pointer), and because it's a pure
+    /// function of the hover *target*, its value can only change when
+    /// the target changes — which is exactly when a repaint is already
+    /// scheduled, so no `MOVE` subscription is needed to stay fresh.
+    pub fn hover_within(&self, ancestor: WidgetId) -> bool {
+        self.input
+            .hovered
+            .is_some_and(|h| self.cascades.is_within(h, ancestor))
+    }
+
     /// Active `Display` (physical surface size + scale factor). Read
     /// by example/demo code that wants to inject synthetic input
     /// coordinates without threading window dimensions through itself.
