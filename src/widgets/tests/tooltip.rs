@@ -157,6 +157,72 @@ fn delay_gates_visibility() {
     );
 }
 
+/// The bubble records with `Sense::empty()`, so a visible tooltip must
+/// never become the hover target: after it appears, moving the pointer
+/// off the trigger clears the trigger's hover and hides the bubble.
+#[test]
+fn hover_clears_after_tooltip_visible() {
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(SURFACE, 1.0);
+
+    let mut captured: Option<WidgetId> = None;
+    let frame_at = |ui: &mut Ui, secs: f32, captured: &mut Option<WidgetId>| {
+        ui.frame(
+            FrameStamp::new(display, Duration::from_secs_f32(secs)),
+            |ui| {
+                Panel::vstack()
+                    .id(WidgetId::from_hash("root"))
+                    .size((Sizing::FILL, Sizing::FILL))
+                    .show(ui, |ui| {
+                        let r = Button::new()
+                            .id(WidgetId::from_hash("trig"))
+                            .label("hi")
+                            .show(ui)
+                            .snapshot();
+                        *captured = Some(r.widget_id());
+                        Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                    });
+            },
+        );
+    };
+
+    frame_at(&mut ui, 0.0, &mut captured);
+    let trigger_id = captured.expect("button id");
+    let state_id = trigger_id.with("tooltip");
+    let trigger_rect = ui.response_for(trigger_id).rect.expect("button rect");
+    let trigger_pos =
+        trigger_rect.min + Vec2::new(trigger_rect.size.w * 0.5, trigger_rect.size.h * 0.5);
+
+    let mut t = 0.0_f32;
+    for _ in 0..10 {
+        t += 0.1;
+        ui.on_input(InputEvent::PointerMoved(trigger_pos));
+        frame_at(&mut ui, t, &mut captured);
+    }
+    let state = ui
+        .try_state::<TooltipState>(state_id)
+        .copied()
+        .unwrap_or_default();
+    assert!(
+        state.visible,
+        "precondition: tooltip visible while hovering"
+    );
+
+    // Move the pointer far away from both trigger and bubble.
+    let away = Vec2::new(350.0, 250.0);
+    ui.on_input(InputEvent::PointerMoved(away));
+    t += 0.1;
+    frame_at(&mut ui, t, &mut captured);
+
+    let hovered = ui.response_for(trigger_id).hovered;
+    let state = ui
+        .try_state::<TooltipState>(state_id)
+        .copied()
+        .unwrap_or_default();
+    assert!(!hovered, "trigger must not be hovered after move-away");
+    assert!(!state.visible, "tooltip must hide after move-away");
+}
+
 /// A tooltip attached to a trigger *inside* a popup body must record
 /// into the `Tooltip` layer without tripping the layer-nesting assert:
 /// `Tooltip::show` raises `Ui::layer(Tooltip)` while the active scope is
