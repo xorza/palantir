@@ -413,7 +413,12 @@ impl WgpuBackend {
         plan: RenderPlan,
         debug_overlay: DebugOverlayConfig,
     ) {
-        let clear = plan.clear;
+        // The composer may have folded a viewport-covering root
+        // background quad into the clear (see
+        // `RenderBuffer::clear_override`); it replaces the plan's clear
+        // for both the Full-pass `LoadOp::Clear` and the Partial
+        // pre-clear quad.
+        let clear = buffer.clear_override.unwrap_or(plan.clear);
         let use_stencil = stencil_view.is_some();
         tracing::trace!(
             quads = buffer.quads.len(),

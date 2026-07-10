@@ -119,6 +119,14 @@ pub(crate) struct Composer {
     /// rounded clip stays a no-op).
     current_scissor: Option<URect>,
     current_chain: Span,
+    /// True until the first draw command emits scene content this
+    /// frame — the window in which a viewport-covering root background
+    /// may still fold into the pass clear (see the `DrawRect` arm).
+    /// Cleared at the compose-loop tail after any [`CmdKind::is_draw`]
+    /// command; cull / noop paths `continue` past the clear, so draws
+    /// that emit nothing keep the window open (a later cover hides
+    /// nothing, so folding stays correct).
+    nothing_drawn: bool,
     /// `*_start` cursors marking where the open group's per-kind slices
     /// begin in `out`. [`Self::flush`] closes each slice and advances
     /// the matching cursor.
@@ -532,6 +540,7 @@ impl Composer {
         self.higher_kind_rects.clear();
         self.current_scissor = None;
         self.current_chain = Span::default();
+        self.nothing_drawn = true;
         self.cursors = GroupCursors::default();
         self.open_batch = None;
         self.occlusion.clear();
@@ -621,6 +630,33 @@ impl Composer {
                     // emitted quad share this rect (the cull needs the
                     // scaled bounds anyway, so a culled draw costs the same).
                     let phys_rect = world_rect.scaled_by(scale, snap);
+                    // Root-background fold: while nothing has been drawn
+                    // yet, an opaque solid sharp unclipped quad covering
+                    // the whole viewport paints exactly what
+                    // `LoadOp::Clear(fill)` would — every covered pixel
+                    // is deep inside the SDF (coverage exactly 1.0), so
+                    // the outputs are bit-identical. Record it as the
+                    // pass clear instead of a quad: a full-viewport
+                    // background is the single largest fragment load in
+                    // a full repaint, and the clear is effectively free.
+                    // A later qualifying quad may re-fold (it fully
+                    // hides the previous override); the first real draw
+                    // ends eligibility via the emptiness checks.
+                    if self.nothing_drawn
+                        && self.current_scissor.is_none()
+                        && self.current_chain.len == 0
+                        && p.fill_kind == FillKind::SOLID
+                        && p.fill.is_opaque()
+                        && noop_f32(p.stroke_width)
+                        && p.corners.approx_zero()
+                        && phys_rect.min.x <= EPS
+                        && phys_rect.min.y <= EPS
+                        && phys_rect.max().x >= out.viewport_phys_f.x - EPS
+                        && phys_rect.max().y >= out.viewport_phys_f.y - EPS
+                    {
+                        out.clear_override = Some(p.fill.unpack());
+                        continue;
+                    }
                     let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
                     // Clip-cull: skip emitting the quad when it sits
                     // entirely outside the active scissor. The GPU
@@ -1135,6 +1171,12 @@ impl Composer {
                     });
                     self.text_grid.push(bounds);
                 }
+            }
+            // Any draw command that reached the loop tail emitted scene
+            // content — the clear fold's eligibility window closes. Cull
+            // / noop / folded paths `continue` above and never get here.
+            if kind.is_draw() {
+                self.nothing_drawn = false;
             }
         }
         self.close_batch(out);

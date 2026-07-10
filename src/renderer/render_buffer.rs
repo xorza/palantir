@@ -2,7 +2,7 @@ use crate::display::Display;
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::span::Span;
-use crate::primitives::{color::ColorU8, corners::Corners, rect::Rect, urect::URect};
+use crate::primitives::{color::Color, color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::quad::Quad;
 use crate::renderer::texture_id::TextureId;
@@ -77,6 +77,13 @@ pub(crate) struct RenderBuffer {
     /// reads this to decide whether to walk the stencil-mask path;
     /// saves a linear scan over `groups` at submit time.
     pub(crate) has_rounded_clip: bool,
+    /// Root-background fold: when the frame's bottom-most draw is an
+    /// opaque solid sharp quad covering the whole viewport under no
+    /// clip, the composer drops the quad and records its fill here.
+    /// The backend clears (or pre-clears, on partial frames) to this
+    /// color instead of the plan's — pixel-identical output, minus the
+    /// full-surface fragment load of the biggest quad in the frame.
+    pub(crate) clear_override: Option<Color>,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
     /// when a group has no clip.
     pub(crate) viewport_phys: UVec2,
@@ -119,6 +126,7 @@ impl Default for RenderBuffer {
             curve_batches: Vec::new(),
             rounded_clips: Vec::new(),
             has_rounded_clip: false,
+            clear_override: None,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
             scale: 1.0,
@@ -147,6 +155,7 @@ impl RenderBuffer {
         self.curve_batches.clear();
         self.rounded_clips.clear();
         self.has_rounded_clip = false;
+        self.clear_override = None;
         self.viewport_phys = display.physical;
         self.viewport_phys_f = display.physical.as_vec2();
         self.scale = display.scale_factor;
