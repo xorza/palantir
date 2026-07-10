@@ -232,9 +232,17 @@ impl<T: Animatable> AnimMapTyped<T> {
         // detection still runs (the `target != row.target` compare
         // below) so a caller changing the target unfreezes the row
         // immediately.
+        //
+        // Returns the caller's `target` instead of `row.current.clone()`:
+        // every site that sets `settled` also snaps `current = target`,
+        // so the three values are equal here and reusing the
+        // already-owned `target` skips a per-widget-per-frame clone
+        // (~200 B for `AnimatedLook`). debug-only assert — the compare
+        // is exactly the cost this path exists to avoid.
         if row.settled && row.target == target {
+            debug_assert!(row.current == target, "settled row must sit at its target");
             return TickResult {
-                current: row.current.clone(),
+                current: target,
                 settled: true,
             };
         }
