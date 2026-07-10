@@ -123,6 +123,37 @@ fn move_without_subscriber_does_not_log() {
     assert!(ui.pointer_events().is_empty());
 }
 
+/// Reading `Ui::pointer_pos` during record auto-asserts `MOVE`: record
+/// output derived from the raw pointer may change on any move, so moves
+/// must wake even over an inert surface. A pass that stops reading
+/// drops the wake like any other lapsed subscription — the staleness
+/// this pins: a pointer-proximity highlight painted from `pointer_pos`
+/// must not freeze on screen when the hover target stops changing.
+#[test]
+fn pointer_pos_read_asserts_move_subscription() {
+    fn empty_reads_pointer(ui: &mut Ui) {
+        empty(ui);
+        let _ = ui.pointer_pos();
+    }
+
+    let mut ui = Ui::for_test();
+    ui.run_at_acked(UVec2::new(200, 200), empty_reads_pointer);
+    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
+    assert!(
+        delta.requests_repaint,
+        "a record pass that read pointer_pos must wake on moves"
+    );
+
+    // Next pass doesn't read → subscription lapses with the rest of
+    // the per-pass set.
+    ui.run_at_acked(UVec2::new(200, 200), empty);
+    let delta = ui.on_input(InputEvent::PointerMoved(Vec2::new(60.0, 50.0)));
+    assert!(
+        !delta.requests_repaint,
+        "no read this pass → moves over an inert surface skip again"
+    );
+}
+
 #[test]
 fn key_chord_subscriber_wakes_only_exact_chord() {
     let mut ui = Ui::for_test();

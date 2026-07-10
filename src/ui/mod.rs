@@ -1341,7 +1341,19 @@ impl Ui {
 
     /// Current pointer position in logical pixels (surface space), or
     /// `None` if the pointer has left the surface.
-    pub fn pointer_pos(&self) -> Option<glam::Vec2> {
+    ///
+    /// `&mut` because reading it auto-asserts a [`PointerSense::MOVE`]
+    /// subscription: output derived from the raw pointer may change on
+    /// any move, so moves must keep triggering repaints even when the
+    /// hover target doesn't change — otherwise pointer-derived paint
+    /// (e.g. a proximity highlight) goes stale on screen until an
+    /// unrelated event forces a frame. Like every subscription, it
+    /// lapses as soon as a record pass stops reading. Note the same
+    /// hazard exists for `ResponseState::pointer_local`, which can't
+    /// observe reads — paint derived from it should read this getter
+    /// instead.
+    pub fn pointer_pos(&mut self) -> Option<glam::Vec2> {
+        self.subscribe_pointer(PointerSense::MOVE);
         self.input.pointer_pos
     }
 
