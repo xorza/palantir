@@ -101,7 +101,7 @@ impl DamageRegion {
     /// Empty region with the merge predicate's pass-budget set
     /// explicitly (in extra-overdraw pixels). Pass `0.0` for
     /// strict-overlap-only merging.
-    pub(crate) fn with_budget(budget_px: f32) -> Self {
+    fn with_budget(budget_px: f32) -> Self {
         Self {
             rects: ArrayVec::new(),
             budget_px,
