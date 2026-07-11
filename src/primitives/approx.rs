@@ -5,8 +5,7 @@
 /// than this are invisible to the user.
 pub(crate) const EPS: f32 = 1.0e-4;
 
-/// True if `c` is within `EPS` of zero. Const-friendly via plain
-/// comparisons (`f32::abs` is not const-stable).
+/// True if `c` is within `EPS` of zero.
 ///
 /// Was previously a trait (`ApproxF32`) with `approx_zero` + `approx_eq`
 /// impls for `f32`/`Vec2`/`Size`, but only `f32::approx_zero` ever had a
@@ -15,7 +14,7 @@ pub(crate) const EPS: f32 = 1.0e-4;
 /// (trait method `const` requires nightly).
 #[inline]
 pub(crate) const fn approx_zero(c: f32) -> bool {
-    c >= -EPS && c <= EPS
+    c.abs() <= EPS
 }
 
 /// Canonicalize an `f32` so equal-up-to-`EPS` values hash identically:
@@ -89,4 +88,25 @@ pub(crate) const fn vec2_approx_eq(a: glam::Vec2, b: glam::Vec2) -> bool {
     let dx = a.x - b.x;
     let dy = a.y - b.y;
     dx * dx + dy * dy <= EPS * EPS
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn approx_zero_handles_boundary_sign_and_nan() {
+        let cases: &[(&str, f32, bool)] = &[
+            ("exact_zero", 0.0, true),
+            ("neg_zero", -0.0, true),
+            ("at_eps", EPS, true),
+            ("at_neg_eps", -EPS, true),
+            ("just_above_eps", EPS * 1.1, false),
+            ("just_below_neg_eps", -EPS * 1.1, false),
+            ("nan", f32::NAN, false),
+        ];
+        for (label, v, want) in cases {
+            assert_eq!(approx_zero(*v), *want, "case: {label}");
+        }
+    }
 }
