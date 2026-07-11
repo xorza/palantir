@@ -202,54 +202,11 @@ impl Geo {
     }
 }
 
-/// Resolved geometry for an interior join, combining the
-/// sharp-vs-smooth classification with the line-join policy.
-/// `Dual` carries the two segment normals (sharp joins, or smooth
-/// joins under Bevel/Round); `Single` carries the miter bisector
-/// and extension factor (smooth join under Miter).
-enum InteriorJoin {
-    Dual {
-        normal_prev: Vec2,
-        normal_next: Vec2,
-    },
-    Single {
-        bisector: Vec2,
-        ext: f32,
-    },
-}
-
-#[inline]
-fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -> InteriorJoin {
-    let sum = normal_prev + normal_next;
-    let len_sq = sum.length_squared();
-    if len_sq < ANTIPARALLEL_EPS_SQ {
-        return InteriorJoin::Dual {
-            normal_prev,
-            normal_next,
-        };
-    }
-    let bisector = sum / len_sq.sqrt();
-    let cos_half = bisector.dot(normal_prev);
-    let sharp = cos_half < 1.0 / MITER_LIMIT;
-    let dual = sharp || !matches!(join, LineJoin::Miter);
-    if dual {
-        InteriorJoin::Dual {
-            normal_prev,
-            normal_next,
-        }
-    } else {
-        InteriorJoin::Single {
-            bisector,
-            ext: 1.0 / cos_half,
-        }
-    }
-}
-
-/// The inner (concave-side) miter point of a dual join, where the two
+/// The inner (concave-side) miter point of a dual join — where the two
 /// segments' inner offset edges cross. Both cross-sections terminate their
-/// concave half here so the strips meet cleanly on the inside of the bend —
-/// no self-overlap, hence no translucent double-blend ("spoke"). The convex
-/// half keeps its own perpendicular offset + join chrome.
+/// concave half here so the strips meet cleanly on the inside of the bend
+/// (no self-overlap → no translucent double-blend "spoke"); the convex half
+/// keeps its own perpendicular offset + join chrome.
 #[derive(Clone, Copy, Debug)]
 struct ConcaveMiter {
     /// Core (full-α) miter vertex.
@@ -261,28 +218,61 @@ struct ConcaveMiter {
     concave_plus: bool,
 }
 
-/// Resolve the concave miter for a dual join. `None` at an antiparallel
-/// (180°) fold, where the bisector — and thus the miter — is undefined; the
-/// caller falls back to full-width cross-sections + a concave notch fill.
+/// Resolved geometry for an interior join. `Dual` emits two cross-sections +
+/// convex chrome and carries the concave meeting point (`miter` — `None` only
+/// at a 180° fold, where it's undefined and the caller falls back to
+/// full-width cross-sections + a notch fill). `Single` merges both segments
+/// onto one miter cross-section (a smooth join under Miter).
+enum InteriorJoin {
+    Dual {
+        normal_prev: Vec2,
+        normal_next: Vec2,
+        miter: Option<ConcaveMiter>,
+    },
+    Single {
+        bisector: Vec2,
+        ext: f32,
+    },
+}
+
+/// Classify the join at `p` and, for the dual case, resolve its concave miter
+/// in the same pass — `sum` / bisector / `cos_half` are computed once.
 #[inline]
-fn concave_miter(p: Vec2, normal_prev: Vec2, normal_next: Vec2, geo: &Geo) -> Option<ConcaveMiter> {
+fn resolve_interior_join(p: Vec2, normal_prev: Vec2, normal_next: Vec2, geo: &Geo) -> InteriorJoin {
     let sum = normal_prev + normal_next;
     let len_sq = sum.length_squared();
     if len_sq < ANTIPARALLEL_EPS_SQ {
-        return None;
+        // 180° fold: bisector (and thus the miter) is undefined; always dual.
+        return InteriorJoin::Dual {
+            normal_prev,
+            normal_next,
+            miter: None,
+        };
     }
     let bisector = sum / len_sq.sqrt();
     let cos_half = bisector.dot(normal_prev);
-    // Clamp to the same miter limit as the convex corner so a sharp bend's
-    // inner spike stays bounded instead of shooting to infinity.
-    let ext = (1.0 / cos_half).min(MITER_LIMIT);
-    let concave_plus = normal_prev.perp_dot(normal_next) > 0.0;
-    let concave_bisector = if concave_plus { bisector } else { -bisector };
-    Some(ConcaveMiter {
-        inner: p + concave_bisector * (geo.inner_offset * ext),
-        outer: p + concave_bisector * (geo.outer_offset * ext),
-        concave_plus,
-    })
+    let sharp = cos_half < 1.0 / MITER_LIMIT;
+    if sharp || !matches!(geo.join, LineJoin::Miter) {
+        // Concave miter, clamped to the miter limit so a sharp bend's inner
+        // spike stays bounded rather than shooting to infinity.
+        let ext = (1.0 / cos_half).min(MITER_LIMIT);
+        let concave_plus = normal_prev.perp_dot(normal_next) > 0.0;
+        let concave_bisector = if concave_plus { bisector } else { -bisector };
+        InteriorJoin::Dual {
+            normal_prev,
+            normal_next,
+            miter: Some(ConcaveMiter {
+                inner: p + concave_bisector * (geo.inner_offset * ext),
+                outer: p + concave_bisector * (geo.outer_offset * ext),
+                concave_plus,
+            }),
+        }
+    } else {
+        InteriorJoin::Single {
+            bisector,
+            ext: 1.0 / cos_half,
+        }
+    }
 }
 
 /// Unified emit walker for all three color modes. Iterates kept
@@ -348,34 +338,33 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
                     e.push_round_cap(points[i], tangent_of(np), trailing_color);
                 }
             }
-            (Some(np), Some(nn)) => match resolve_interior_join(np, nn, e.geo.join) {
+            (Some(np), Some(nn)) => match resolve_interior_join(points[i], np, nn, &e.geo) {
                 InteriorJoin::Dual {
                     normal_prev,
                     normal_next,
+                    miter,
                 } => {
                     let chrome_color = trailing_color.midpoint(leading_color);
-                    // Trailing cross-section + strip in from the previous block,
-                    // then the leading cross-section; the leading block starts the
-                    // next segment's strip. `concave_miter` = None only at a 180°
-                    // fold, which keeps full-width cross-sections + a notch fill.
-                    let miter = concave_miter(points[i], normal_prev, normal_next, &e.geo);
-                    match miter {
-                        Some(m) => {
-                            e.push_join_cross_section(points[i], normal_prev, &m, trailing_color)
-                        }
-                        None => e.push_cross_section(points[i], normal_prev, 1.0, trailing_color),
-                    }
+                    // Two cross-sections at P (concave halves pulled to the
+                    // shared miter, or full-width at a 180° fold), the leading
+                    // one starting the next strip, then the convex chrome.
+                    e.push_dual_cross_section(
+                        points[i],
+                        normal_prev,
+                        miter.as_ref(),
+                        trailing_color,
+                    );
                     e.push_strip_indices(prev_block_offset, current_offset);
                     let leading_offset = e.cursor();
-                    match miter {
-                        Some(m) => {
-                            e.push_join_cross_section(points[i], normal_next, &m, leading_color)
-                        }
-                        None => e.push_cross_section(points[i], normal_next, 1.0, leading_color),
-                    }
-                    // Convex chrome closes on the concave miter point `apex`
-                    // (or the corner itself at an antiparallel fold, which has
-                    // no finite miter — the round join then caps the U-turn).
+                    e.push_dual_cross_section(
+                        points[i],
+                        normal_next,
+                        miter.as_ref(),
+                        leading_color,
+                    );
+                    // Chrome closes on the concave miter, or the corner itself
+                    // at an antiparallel fold (which also gets a notch fill —
+                    // the round join caps the U-turn).
                     let apex = miter.map_or(points[i], |m| m.inner);
                     match e.geo.join {
                         LineJoin::Round => e.push_round_join(
@@ -395,7 +384,6 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
                         ),
                     }
                     if miter.is_none() {
-                        // Full-width strips leave a concave notch; close it.
                         e.push_concave_fill(
                             points[i],
                             current_offset,
@@ -407,23 +395,18 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
                     }
                     prev_block_offset = leading_offset;
                 }
-                InteriorJoin::Single { bisector, ext } if trailing_color == leading_color => {
-                    // Same color + smooth miter ⇒ one cross-section
-                    // serves both segments. For Single/PerPoint this
-                    // branch always fires (trailing == leading).
+                InteriorJoin::Single { bisector, ext } => {
+                    // Smooth miter: one cross-section serves both segments
+                    // (Single / PerPoint always). A PerSegment colour boundary
+                    // needs a second, same-direction cross-section so the
+                    // colours don't bleed across the join.
                     e.push_cross_section(points[i], bisector, ext, trailing_color);
                     e.push_strip_indices(prev_block_offset, current_offset);
                     prev_block_offset = current_offset;
-                }
-                InteriorJoin::Single { bisector, ext } => {
-                    // Smooth miter with a color boundary (PerSegment
-                    // at a color change). Two cross-sections at the
-                    // same direction with different colors.
-                    e.push_cross_section(points[i], bisector, ext, trailing_color);
-                    e.push_strip_indices(prev_block_offset, current_offset);
-                    let leading_offset = e.cursor();
-                    e.push_cross_section(points[i], bisector, ext, leading_color);
-                    prev_block_offset = leading_offset;
+                    if trailing_color != leading_color {
+                        prev_block_offset = e.cursor();
+                        e.push_cross_section(points[i], bisector, ext, leading_color);
+                    }
                 }
             },
             (None, None) => unreachable!("guarded by early return"),
@@ -490,6 +473,22 @@ impl<'a> Emitter<'a> {
         self.indices.extend_from_slice(&[
             a, a1, b1, a, b1, b, a1, a2, b2, a1, b2, b1, a2, a3, b3, a2, b3, b2,
         ]);
+    }
+
+    /// One dual-join cross-section: a concave-miter block when the join has a
+    /// finite miter, else a full-width symmetric block (the antiparallel fold).
+    #[inline]
+    fn push_dual_cross_section(
+        &mut self,
+        p: Vec2,
+        normal: Vec2,
+        miter: Option<&ConcaveMiter>,
+        inner_color: Color,
+    ) {
+        match miter {
+            Some(m) => self.push_join_cross_section(p, normal, m, inner_color),
+            None => self.push_cross_section(p, normal, 1.0, inner_color),
+        }
     }
 
     /// A join cross-section whose **concave** half is pulled to the shared
