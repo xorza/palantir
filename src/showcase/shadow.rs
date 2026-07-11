@@ -1,11 +1,42 @@
-//! Drop-shadow showcase. Each cell drops one (or more) shadows under
-//! a rounded card via direct `Shape::Shadow` pushes, then paints the
-//! card on top. Exercises the full encode → compose → shader path
-//! including the per-corner SDF, the σ → 0 sharp fallback, and
-//! multi-shadow stacking via record order.
+//! Drop-shadow showcase. The first two rows drop shadows under a
+//! rounded card via direct `Shape::Shadow` pushes, then paint the card
+//! on top — exercising the per-corner SDF, the σ → 0 sharp fallback,
+//! and multi-shadow stacking via record order. The last row attaches
+//! the shadow to widget chrome (`Background { shadow }`), which routes
+//! through the encoder's chrome branch — painted *before* the rect
+//! fill, so it composes correctly under semi-transparent fills.
+//! Light cell surfaces because black-on-dark shadows don't read.
 
+use crate::showcase::support;
+use crate::showcase::support::{cell_row, demo_cell_light};
 use aperture::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 use glam::Vec2;
+
+pub fn build(ui: &mut Ui) {
+    support::page(ui, |ui| {
+        cell_row(ui, "row1", |ui| {
+            demo_cell_light(ui, "soft — elevation 2", soft);
+            demo_cell_light(ui, "elevated — offset 12, blur 20", elevated);
+            demo_cell_light(ui, "tight — button rest state", tight);
+            demo_cell_light(ui, "sharp — σ→0 fallback", sharp);
+        });
+        cell_row(ui, "row2", |ui| {
+            demo_cell_light(ui, "glow — colored, zero offset", glow);
+            demo_cell_light(ui, "inset — pressed feel", inset);
+            demo_cell_light(ui, "stacked — CSS box-shadow a, b, c", stacked);
+        });
+        cell_row(ui, "row3", |ui| {
+            demo_cell_light(ui, "chrome — soft", |ui| chrome_card(ui, chrome_soft()));
+            demo_cell_light(ui, "chrome — elevated", |ui| {
+                chrome_card(ui, chrome_elevated());
+            });
+            demo_cell_light(ui, "chrome — inset", |ui| chrome_card(ui, chrome_inset()));
+            demo_cell_light(ui, "chrome — translucent fill", |ui| {
+                chrome_card(ui, chrome_translucent());
+            });
+        });
+    });
+}
 
 fn shadow_shape(s: Shadow) -> Shape<'static> {
     Shape::Shadow {
@@ -13,58 +44,6 @@ fn shadow_shape(s: Shadow) -> Shape<'static> {
         corners: corners(),
         shadow: s,
     }
-}
-
-pub fn build(ui: &mut Ui) {
-    Panel::vstack()
-        .auto_id()
-        .gap(16.0)
-        .padding(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Panel::hstack()
-                .id_salt("row1")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "soft", soft);
-                    cell(ui, "elevated", elevated);
-                    cell(ui, "tight", tight);
-                });
-            Panel::hstack()
-                .id_salt("row2")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "sharp", sharp);
-                    cell(ui, "glow", glow);
-                    cell(ui, "inset", inset);
-                    cell(ui, "stacked", stacked);
-                });
-            // Chrome-attached shadows: `Background { shadow: Shadow {...} }`
-            // routes through the encoder's chrome branch — paints
-            // before the rect fill, so it composes correctly under
-            // semi-transparent fills. Compare with row 1's
-            // `Shape::Shadow` route (paints over fill via shape walk).
-            Panel::hstack()
-                .id_salt("row3-chrome")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    chrome_cell(ui, "chrome-soft", chrome_soft());
-                    chrome_cell(ui, "chrome-elevated", chrome_elevated());
-                    chrome_cell(ui, "chrome-inset", chrome_inset());
-                    chrome_cell(ui, "chrome-translucent", chrome_translucent());
-                });
-        });
-}
-
-fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
-    Panel::zstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::FILL))
-        .padding(24.0)
-        .show(ui, paint);
 }
 
 fn card_rect() -> Rect {
@@ -157,13 +136,39 @@ fn inset(ui: &mut Ui) {
     }));
 }
 
-/// One chrome-cell: a centered card sized to roughly match `card_rect`,
-/// painted via `Background` (fill + radius + shadow) instead of
-/// shape pushes. Demonstrates the option-1 path: shadow emitted by
-/// the encoder before the chrome rect.
-fn chrome_cell(ui: &mut Ui, id: &'static str, bg: Background) {
+/// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
+/// order, the deepest first; composer batches them onto one draw.
+fn stacked(ui: &mut Ui) {
+    ui.add_shape(shadow_shape(Shadow {
+        color: Color::rgba(0.0, 0.0, 0.0, 0.18),
+        offset: Vec2::new(0.0, 24.0),
+        blur: 32.0,
+        spread: 0.0,
+        inset: false,
+    }));
+    ui.add_shape(shadow_shape(Shadow {
+        color: Color::rgba(0.0, 0.0, 0.0, 0.22),
+        offset: Vec2::new(0.0, 8.0),
+        blur: 10.0,
+        spread: 0.0,
+        inset: false,
+    }));
+    ui.add_shape(shadow_shape(Shadow {
+        color: Color::rgba(0.0, 0.0, 0.0, 0.30),
+        offset: Vec2::new(0.0, 1.0),
+        blur: 2.0,
+        spread: 0.0,
+        inset: false,
+    }));
+    card_fill(ui);
+}
+
+/// A centered card painted via `Background` (fill + radius + shadow)
+/// instead of shape pushes — the encoder emits the shadow before the
+/// chrome rect.
+fn chrome_card(ui: &mut Ui, bg: Background) {
     Panel::zstack()
-        .id_salt(id)
+        .auto_id()
         .size((Sizing::FILL, Sizing::FILL))
         .padding(24.0)
         .show(ui, |ui| {
@@ -236,31 +241,4 @@ fn chrome_translucent() -> Background {
             inset: false,
         },
     }
-}
-
-/// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
-/// order, the deepest first; composer batches them onto one draw.
-fn stacked(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.18),
-        offset: Vec2::new(0.0, 24.0),
-        blur: 32.0,
-        spread: 0.0,
-        inset: false,
-    }));
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.22),
-        offset: Vec2::new(0.0, 8.0),
-        blur: 10.0,
-        spread: 0.0,
-        inset: false,
-    }));
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.30),
-        offset: Vec2::new(0.0, 1.0),
-        blur: 2.0,
-        spread: 0.0,
-        inset: false,
-    }));
-    card_fill(ui);
 }

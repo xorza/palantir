@@ -8,11 +8,8 @@ use std::rc::Rc;
 mod showcase;
 use showcase::app_state::{self, AppState};
 use showcase::{
-    alignment, animations, bezier, buttons, checkbox, clip, context_menu, cube, dialogs, disabled,
-    drag, exit_confirm, gap, gradients, grid, id_collisions, image, justify, lines, mesh, pan_zoom,
-    pan_zoom_auto, panels, popup, progress, radio, rect_demo, scroll, shadow, sizing, slider,
-    spacing, splitter, switch, text, text_edit, text_zorder, tooltips, transform, triangle,
-    visibility, wrap,
+    animations, clip, controls, cube, debug, dialogs, drag, gradients, image, layout, lines,
+    overlays, pan_zoom, panels, scroll, shadow, shapes, text, text_edit,
 };
 
 /// Token for the bootstrap window (the showcase itself).
@@ -42,51 +39,26 @@ const APP_STATE_LABEL: &str = "app state";
 const CUBE_LABEL: &str = "cube";
 
 const SHOWCASES: &[(&str, ShowcaseFn)] = &[
+    ("controls", controls::build),
     ("text", text::build),
-    ("text layouts", text::build_layouts),
     ("text edit", text_edit::build),
-    ("text edit align", text_edit::build_align),
-    ("z-order", text_zorder::build),
-    ("panels", panels::build),
-    ("scroll", scroll::build),
-    ("pan+zoom", pan_zoom::build),
-    (pan_zoom_auto::NAME, pan_zoom_auto::build),
-    ("wrap", wrap::build),
-    ("grid", grid::build),
-    ("sizing", sizing::build),
-    ("alignment", alignment::build),
-    ("justify", justify::build),
-    ("clip", clip::build),
-    ("transform", transform::build),
-    ("visibility", visibility::build),
-    ("disabled", disabled::build),
-    ("gap", gap::build),
-    ("spacing", spacing::build),
-    ("buttons", buttons::build),
-    ("checkbox", checkbox::build),
-    ("radio", radio::build),
-    ("progress", progress::build),
-    ("switch", switch::build),
-    ("slider", slider::build),
-    ("splitter", splitter::build),
-    ("combo + modal", dialogs::build),
-    ("popup", popup::build),
-    ("tooltips", tooltips::build),
-    ("context menu", context_menu::build),
-    ("exit confirm", exit_confirm::build),
+    ("layout", layout::build),
+    ("panels & grid", panels::build),
+    ("clip & transform", clip::build),
+    ("scroll & split", scroll::build),
+    ("pan + zoom", pan_zoom::build),
+    ("overlays", overlays::build),
+    ("dialogs", dialogs::build),
     ("animations", animations::build),
-    (APP_STATE_LABEL, |_ui| {}),
-    (CUBE_LABEL, |_ui| {}),
-    ("mesh", mesh::build),
-    ("image", image::build),
-    ("lines", lines::build),
-    ("bezier", bezier::build),
-    ("triangle", triangle::build),
     ("drag", drag::build),
     ("gradients", gradients::build),
-    ("shadow", shadow::build),
-    ("id collisions", id_collisions::build),
-    ("rect demo", rect_demo::build),
+    ("shadows", shadow::build),
+    ("lines & curves", lines::build),
+    ("shapes", shapes::build),
+    ("image", image::build),
+    (CUBE_LABEL, |_ui| {}),
+    (APP_STATE_LABEL, |_ui| {}),
+    ("debug", debug::build),
 ];
 
 fn main() {
@@ -215,8 +187,8 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
         });
 
     // Catch the window's close request: with "unsaved changes" toggled on
-    // (the `exit confirm` tab), veto it and prompt instead of quitting.
-    exit_confirm::intercept(ui, MAIN_WINDOW);
+    // (the `dialogs` tab), veto it and prompt instead of quitting.
+    dialogs::intercept(ui, MAIN_WINDOW);
 }
 
 /// Build a one-off ButtonTheme that highlights the active toolbar

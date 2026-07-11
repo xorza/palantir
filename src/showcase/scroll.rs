@@ -1,85 +1,116 @@
-use crate::showcase::swatch::{on_swatch_text, swatch_bg};
-use aperture::{Color, Configure, Panel, Scroll, Sizing, Text, TextStyle, Ui};
+//! Scroll viewports hosted inside splitter panes — both widgets doing
+//! real work in one layout. The outer horizontal splitter holds a
+//! vertical scroll list; its right half splits again vertically into a
+//! horizontal scroll strip and a two-axis scroll grid. Drag the bars
+//! (double-click recenters), hover a pane and wheel / two-finger pan.
 
-pub fn build(ui: &mut Ui) {
-    Panel::vstack()
-        .auto_id()
-        .gap(8.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Text::new(
-                "Scroll — hover a card and pan with the wheel / two-finger scroll. \
-                 Cards are vertical · horizontal · two-axis.",
-            )
-            .auto_id()
-            .style(TextStyle::default().with_font_size(13.0))
-            .show(ui);
+use crate::showcase::support;
+use crate::showcase::support::{caption_style, on_swatch_text, panel_bg, swatch_bg};
+use aperture::{Color, Configure, Panel, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId};
 
-            Panel::hstack()
-                .auto_id()
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    card(ui, "v-card", "vertical", |ui| {
-                        Scroll::vertical()
-                            .id_salt("rows-scroll")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .gap(4.0)
-                            .show(ui, |ui| {
-                                for i in 0..40 {
-                                    row(ui, "v", i);
-                                }
-                            });
-                    });
-
-                    card(ui, "h-card", "horizontal", |ui| {
-                        Scroll::horizontal()
-                            .id_salt("cols-scroll")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .gap(4.0)
-                            .show(ui, |ui| {
-                                for i in 0..40 {
-                                    col(ui, i);
-                                }
-                            });
-                    });
-
-                    card(ui, "xy-card", "two-axis", |ui| {
-                        Scroll::both()
-                            .id_salt("grid-scroll")
-                            .size((Sizing::FILL, Sizing::FILL))
-                            .show(ui, |ui| {
-                                grid(ui);
-                            });
-                    });
-                });
-        });
+#[derive(Debug)]
+struct State {
+    h: f32,
+    v: f32,
 }
 
-fn card(ui: &mut Ui, key: &'static str, label: &'static str, body: impl FnOnce(&mut Ui)) {
+impl Default for State {
+    fn default() -> Self {
+        Self { h: 0.45, v: 0.5 }
+    }
+}
+
+pub fn build(ui: &mut Ui) {
+    let state_id = WidgetId::from_hash("showcase::scroll::state");
+    let s = ui.state_mut::<State>(state_id);
+    let mut h = s.h;
+    let mut v = s.v;
+
+    support::page(ui, |ui| {
+        support::header(
+            ui,
+            "Scroll viewports inside splitter panes — drag the bars (double-click \
+             recenters); hover a pane and wheel / two-finger scroll.",
+        );
+
+        Splitter::horizontal(&mut h)
+            .id_salt("split-h")
+            .min_pane(120.0)
+            .show(ui, |ui, half| match half {
+                SplitHalf::First => pane(ui, "vertical", |ui| {
+                    Scroll::vertical()
+                        .id_salt("rows-scroll")
+                        .size((Sizing::FILL, Sizing::FILL))
+                        .gap(4.0)
+                        .show(ui, |ui| {
+                            for i in 0..40 {
+                                row(ui, i);
+                            }
+                        });
+                }),
+                SplitHalf::Second => {
+                    Splitter::vertical(&mut v)
+                        .id_salt("split-v")
+                        .min_pane(100.0)
+                        .show(ui, |ui, half| match half {
+                            SplitHalf::First => pane(ui, "horizontal", |ui| {
+                                Scroll::horizontal()
+                                    .id_salt("cols-scroll")
+                                    .size((Sizing::FILL, Sizing::FILL))
+                                    .gap(4.0)
+                                    .show(ui, |ui| {
+                                        for i in 0..40 {
+                                            col(ui, i);
+                                        }
+                                    });
+                            }),
+                            SplitHalf::Second => pane(ui, "two-axis", |ui| {
+                                Scroll::both()
+                                    .id_salt("grid-scroll")
+                                    .size((Sizing::FILL, Sizing::FILL))
+                                    .show(ui, grid);
+                            }),
+                        });
+                }
+            });
+
+        let readout = ui.fmt(format_args!("split fractions: h = {h:.2}   v = {v:.2}"));
+        Text::new(readout)
+            .id_salt("readout")
+            .style(caption_style())
+            .show(ui);
+    });
+
+    let s = ui.state_mut::<State>(state_id);
+    s.h = h;
+    s.v = v;
+}
+
+fn pane(ui: &mut Ui, label: &'static str, body: impl FnOnce(&mut Ui)) {
     Panel::vstack()
-        .id_salt(key)
+        .id_salt((label, "pane"))
         .size((Sizing::FILL, Sizing::FILL))
         .padding(8.0)
         .gap(6.0)
+        .background(panel_bg())
         .show(ui, |ui| {
             Text::new(label)
-                .id_salt((key, "title"))
-                .style(TextStyle::default().with_font_size(12.0))
+                .id_salt((label, "title"))
+                .style(caption_style())
                 .show(ui);
             body(ui);
         });
 }
 
-fn row(ui: &mut Ui, ns: &'static str, i: u32) {
+fn row(ui: &mut Ui, i: u32) {
     Panel::hstack()
-        .id_salt((ns, "scroll-row", i))
+        .id_salt(("scroll-row", i))
         .size((Sizing::FILL, Sizing::Fixed(28.0)))
         .padding((10.0, 6.0))
         .background(swatch_bg(gradient_color(i)))
         .show(ui, |ui| {
             Text::new(format!("row {i:02}"))
-                .id_salt((ns, "scroll-row-label", i))
+                .id_salt(("scroll-row-label", i))
                 .style(on_swatch_text())
                 .show(ui);
         });
@@ -87,13 +118,13 @@ fn row(ui: &mut Ui, ns: &'static str, i: u32) {
 
 fn col(ui: &mut Ui, i: u32) {
     Panel::vstack()
-        .id_salt(("h", "scroll-col", i))
+        .id_salt(("scroll-col", i))
         .size((Sizing::Fixed(60.0), Sizing::FILL))
         .padding((6.0, 10.0))
         .background(swatch_bg(gradient_color(i)))
         .show(ui, |ui| {
             Text::new(format!("col {i:02}"))
-                .id_salt(("h", "scroll-col-label", i))
+                .id_salt(("scroll-col-label", i))
                 .style(on_swatch_text())
                 .show(ui);
         });

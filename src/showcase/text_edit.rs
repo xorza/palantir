@@ -1,24 +1,20 @@
-use aperture::TextWrap;
+//! TextEdit — editable text leaves. Single-line fields with focus
+//! policy, a right-aligned multi-line editor, and a 3×3 grid covering
+//! every `(HAlign, VAlign)` combination.
+//!
+//! Buffer storage: stashed in `Ui::state_mut::<String>` under
+//! non-widget ids, so buffers survive across showcase tab switches.
+//! The widget takes `&mut String`, so we `mem::take` out of the state
+//! map for the body and put it back at the end — two moves of a small
+//! `String` per buffer.
+
+use crate::showcase::support;
+use crate::showcase::support::{row, section};
 use aperture::{
     Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
     WidgetId,
 };
 
-/// Two TextEdits + a Button + an echo line.
-///
-/// What this exercises by hand:
-/// - Click into either field → the focused border tint fades in.
-/// - Type → characters land at the caret. Arrow keys / Home / End / Backspace
-///   / Delete navigate. Escape clears focus.
-/// - Click the Button. Default policy is `ClearOnMiss` so focus drops and
-///   subsequent keys aren't routed to the editor — the toggle below flips to
-///   `PreserveOnMiss` if you want to demonstrate sticky focus instead.
-/// - Click another field → the original loses focus, new one takes over.
-///
-/// Buffer storage: stashed in `Ui::state_mut::<String>` under a non-widget id,
-/// so it survives across showcase tab switches. The widget itself takes
-/// `&mut String`, so we `mem::take` out of the state map for the body and put
-/// it back at the end. Two moves of a small `String` — fine.
 pub fn build(ui: &mut Ui) {
     let buf_a_id = WidgetId::from_hash("textedit_showcase__buffer_a");
     let buf_b_id = WidgetId::from_hash("textedit_showcase__buffer_b");
@@ -31,28 +27,20 @@ pub fn build(ui: &mut Ui) {
     let policy = *ui.state_mut::<FocusPolicy>(policy_id);
     ui.set_focus_policy(policy);
 
-    Panel::vstack()
-        .auto_id()
-        .padding(20.0)
-        .gap(12.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Text::new("TextEdit — single-line editable text leaf.")
-                .auto_id()
-                .show(ui);
-            Text::new(
-                "Click to focus, type to insert, arrows / Home / End / Backspace / Delete \
-                 navigate, Escape blurs.",
-            )
-            .auto_id()
-            .text_wrap(TextWrap::WrapWithOverflow)
-            .show(ui);
+    support::page(ui, |ui| {
+        support::header(
+            ui,
+            "TextEdit — click to focus, type to insert; arrows / Home / End / \
+             Backspace / Delete navigate, Escape blurs.",
+        );
 
-            Panel::hstack()
-                .id_salt("editors")
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::Hug))
-                .show(ui, |ui| {
+        section(
+            ui,
+            "single",
+            "single-line — default focus policy is ClearOnMiss (a click elsewhere drops focus); \
+             toggle to PreserveOnMiss for sticky focus",
+            |ui| {
+                row(ui, "editors", |ui| {
                     TextEdit::new(&mut buf_a)
                         .id_salt("editor_a")
                         .placeholder("first field")
@@ -66,12 +54,7 @@ pub fn build(ui: &mut Ui) {
                         .min_size((180.0, 32.0))
                         .show(ui);
                 });
-
-            Panel::hstack()
-                .id_salt("controls")
-                .gap(12.0)
-                .size((Sizing::FILL, Sizing::Hug))
-                .show(ui, |ui| {
+                row(ui, "controls", |ui| {
                     let label = match policy {
                         FocusPolicy::ClearOnMiss => "policy: ClearOnMiss",
                         FocusPolicy::PreserveOnMiss => "policy: PreserveOnMiss",
@@ -100,44 +83,50 @@ pub fn build(ui: &mut Ui) {
                         buf_b.clear();
                     }
                 });
+                Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a))
+                    .auto_id()
+                    .show(ui);
+                Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
+                    .auto_id()
+                    .show(ui);
+            },
+        );
 
-            Text::new(format!("buffer A ({:>2} bytes): {}", buf_a.len(), buf_a))
-                .auto_id()
-                .show(ui);
-            Text::new(format!("buffer B ({:>2} bytes): {}", buf_b.len(), buf_b))
-                .auto_id()
-                .show(ui);
+        section(
+            ui,
+            "multiline",
+            "multi-line, right-aligned — Enter inserts \\n, Up/Down navigate visual lines, \
+             selection spans newlines, paste preserves multi-line clipboard",
+            |ui| {
+                TextEdit::new(&mut buf_ml)
+                    .id_salt("editor_ml")
+                    .multiline(true)
+                    .text_align(Align::RIGHT)
+                    .align(Align::RIGHT)
+                    .placeholder("paste a paragraph here")
+                    .size((Sizing::FILL, Sizing::Fixed(110.0)))
+                    .min_size((180.0, 80.0))
+                    .show(ui);
+            },
+        );
 
-            Text::new(
-                "Multi-line: Enter inserts \\n, Up/Down navigate visual lines, \
-                 selection spans newlines, paste preserves multi-line clipboard.",
-            )
-            .text_align(Align::RIGHT)
-            .align(Align::RIGHT)
-            .auto_id()
-            .text_wrap(TextWrap::WrapWithOverflow)
-            .show(ui);
-            TextEdit::new(&mut buf_ml)
-                .id_salt("editor_ml")
-                .multiline(true)
-                .text_align(Align::RIGHT)
-                .align(Align::RIGHT)
-                .placeholder("paste a paragraph here")
-                .size((Sizing::FILL, Sizing::Fixed(160.0)))
-                .min_size((180.0, 80.0))
-                .show(ui);
-        });
+        // Editors are taller than their text line so the vertical
+        // placement is obvious; the caret tracks the glyphs regardless
+        // of where the text sits inside the rect.
+        section(
+            ui,
+            "align",
+            "alignment — one editor per (HAlign, VAlign) combination",
+            align_grid,
+        );
+    });
 
     *ui.state_mut::<String>(buf_a_id) = buf_a;
     *ui.state_mut::<String>(buf_b_id) = buf_b;
     *ui.state_mut::<String>(buf_ml_id) = buf_ml;
 }
 
-/// 3×3 grid of single-line TextEdits, one per `(HAlign, VAlign)`
-/// combination. Editors are wider than the natural label width and
-/// twice the line height so the vertical placement is obvious; each
-/// row's buffer survives across tab switches via `Ui::state_mut`.
-pub fn build_align(ui: &mut Ui) {
+fn align_grid(ui: &mut Ui) {
     const ROWS: [(VAlign, &str); 3] = [
         (VAlign::Top, "top"),
         (VAlign::Center, "center"),
@@ -150,51 +139,33 @@ pub fn build_align(ui: &mut Ui) {
     ];
 
     Panel::vstack()
-        .auto_id()
-        .padding(20.0)
-        .gap(12.0)
-        .size((Sizing::FILL, Sizing::FILL))
+        .id_salt("align-grid")
+        .gap(8.0)
+        .size((Sizing::FILL, Sizing::Hug))
         .show(ui, |ui| {
-            Text::new("TextEdit — 9 single-line editors, one per align combination.")
-                .auto_id()
-                .show(ui);
-            Text::new(
-                "Each editor is taller than its text line so the vertical alignment shows. \
-                 Click any field to focus; the caret tracks the glyphs regardless of where \
-                 the text sits inside the rect.",
-            )
-            .auto_id()
-            .text_wrap(TextWrap::WrapWithOverflow)
-            .show(ui);
-
-            Panel::vstack()
-                .gap(8.0)
-                .size((Sizing::FILL, Sizing::Hug))
-                .show(ui, |ui| {
-                    for (v, vname) in ROWS {
-                        Panel::hstack()
-                            .id_salt(vname)
-                            .gap(8.0)
-                            .size((Sizing::FILL, Sizing::Hug))
-                            .show(ui, |ui| {
-                                for (h, hname) in COLS {
-                                    let key = format!("textedit_align__{vname}_{hname}");
-                                    let buf_id = WidgetId::from_hash(key.as_str());
-                                    let mut buf = std::mem::take(ui.state_mut::<String>(buf_id));
-                                    if buf.is_empty() {
-                                        buf = format!("{vname}-{hname}");
-                                    }
-                                    TextEdit::new(&mut buf)
-                                        .id_salt(key.as_str())
-                                        .text_align(Align::new(h, v))
-                                        .placeholder(format!("{vname} / {hname}"))
-                                        .size((Sizing::FILL, Sizing::Fixed(60.0)))
-                                        .min_size((140.0, 60.0))
-                                        .show(ui);
-                                    *ui.state_mut::<String>(buf_id) = buf;
-                                }
-                            });
-                    }
-                });
+            for (v, vname) in ROWS {
+                Panel::hstack()
+                    .id_salt(vname)
+                    .gap(8.0)
+                    .size((Sizing::FILL, Sizing::Hug))
+                    .show(ui, |ui| {
+                        for (h, hname) in COLS {
+                            let key = format!("textedit_align__{vname}_{hname}");
+                            let buf_id = WidgetId::from_hash(key.as_str());
+                            let mut buf = std::mem::take(ui.state_mut::<String>(buf_id));
+                            if buf.is_empty() {
+                                buf = format!("{vname}-{hname}");
+                            }
+                            TextEdit::new(&mut buf)
+                                .id_salt(key.as_str())
+                                .text_align(Align::new(h, v))
+                                .placeholder(format!("{vname} / {hname}"))
+                                .size((Sizing::FILL, Sizing::Fixed(56.0)))
+                                .min_size((140.0, 56.0))
+                                .show(ui);
+                            *ui.state_mut::<String>(buf_id) = buf;
+                        }
+                    });
+            }
         });
 }
