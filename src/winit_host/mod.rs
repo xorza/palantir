@@ -8,7 +8,7 @@
 //! The caller-supplied app implements the [`App`] trait
 //! (`frame(&mut self, win: WindowToken, ui: &mut Ui)`, run once per
 //! redraw *per window*). The app is built by a closure handed to
-//! [`WinitHost::new`], invoked once the first window's `Ui` +
+//! [`WinitHostBuilder::build`], invoked once the first window's `Ui` +
 //! [`HostHandle`] are ready (before the first frame) — so startup wiring
 //! (theme tweaks, restoring persisted state, stashing the handle) happens
 //! there.
@@ -35,11 +35,13 @@
 //! impl aperture::App for MyApp {
 //!     fn frame(&mut self, _win: WindowToken, ui: &mut Ui) { /* build ui */ }
 //! }
-//! WinitHost::new(WindowToken(0), WinitHostConfig::new("title"), |ui, _handle| {
-//!     ui.theme.button.anim = Some(AnimSpec::SPRING);
-//!     MyApp
-//! })
-//! .run();
+//! WinitHost::builder(WindowToken(0))
+//!     .title("title")
+//!     .build(|ui, _handle| {
+//!         ui.theme.button.anim = Some(AnimSpec::SPRING);
+//!         MyApp
+//!     })
+//!     .run();
 //! ```
 
 pub(crate) mod config;
@@ -47,6 +49,7 @@ pub(crate) mod gpu;
 pub(crate) mod handle;
 
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -69,12 +72,12 @@ use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
 use crate::winit_host::handle::{HostHandle, MainTask, UserEvent};
 
 /// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
-/// exist — handed to [`WinitHost::new`] and invoked on the first
+/// exist — handed to [`WinitHostBuilder::build`] and invoked on the first
 /// `resumed`.
 type AppBuilder<T> = Box<dyn FnOnce(&mut Ui, HostHandle<T>) -> T>;
 
 /// The caller-supplied app. `WinitHost` builds it via the closure passed
-/// to [`WinitHost::new`] once the first window's `Ui` and [`HostHandle`]
+/// to [`WinitHostBuilder::build`] once the first window's `Ui` and [`HostHandle`]
 /// exist (after device + surface are up, before the first frame), then
 /// calls [`App::frame`] once per redraw, per window — `win` names which.
 pub trait App {
@@ -130,8 +133,8 @@ fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
     }
 }
 
-/// What [`WinitHost::new`] stashes for the first `resumed`: the bootstrap
-/// window's token + config and the caller's app builder. Consumed whole —
+/// What [`WinitHostBuilder::build`] stashes for the first `resumed`: the
+/// bootstrap window's token + config and the caller's app builder. Consumed —
 /// winit hands out `&ActiveEventLoop` only inside callbacks, so window +
 /// GPU + app construction all wait here until then.
 struct Bootstrap<T: 'static> {
@@ -181,21 +184,70 @@ pub struct WinitHost<T: 'static> {
     proxy: EventLoopProxy<UserEvent<T>>,
 }
 
-impl<T> WinitHost<T>
+/// Builder for [`WinitHost`] — see [`WinitHost::builder`]. The bootstrap
+/// window's `first_token` comes from that constructor; the startup tunables
+/// (the first window's [`WindowConfig`] plus the app-global GPU knobs)
+/// default and are set here. The app builder closure is the terminal argument
+/// to [`Self::build`].
+pub struct WinitHostBuilder<T> {
+    first_token: WindowToken,
+    config: WinitHostConfig,
+    // T is fixed only by `build`'s closure — carried as a phantom so
+    // `WinitHost::builder(token)` can infer it from the chained `.build(...)`.
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> WinitHostBuilder<T>
 where
     T: App + 'static,
 {
-    /// `build` constructs the app once the first window's `Ui` +
-    /// [`HostHandle`] are ready (after device + surface are up, before
-    /// the first frame) — do startup wiring (theme tweaks, restoring
-    /// persisted state, stashing the handle) inside it. It runs on the
-    /// first `resumed`, not here. `first_token` is the [`WindowToken`]
-    /// the bootstrap window is addressed by.
-    pub fn new(
-        first_token: WindowToken,
-        config: WinitHostConfig,
-        build: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static,
-    ) -> Self {
+    /// Replace the whole [`WinitHostConfig`] at once — convenient when the
+    /// caller already has one; the granular setters below then override
+    /// individual fields.
+    pub fn config(mut self, config: WinitHostConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// The bootstrap window's full [`WindowConfig`] (title, size, min-size,
+    /// position, maximized, icon).
+    pub fn window(mut self, window: WindowConfig) -> Self {
+        self.config.window = window;
+        self
+    }
+
+    /// The bootstrap window's title — shorthand over [`Self::window`].
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.config.window.title = title.into();
+        self
+    }
+
+    /// Swapchain present mode for every window's surface. Default `AutoVsync`.
+    pub fn present_mode(mut self, mode: wgpu::PresentMode) -> Self {
+        self.config.present_mode = mode;
+        self
+    }
+
+    /// Adapter power preference, selecting the shared adapter at startup.
+    /// Default `LowPower`.
+    pub fn power_preference(mut self, pref: wgpu::PowerPreference) -> Self {
+        self.config.power_preference = pref;
+        self
+    }
+
+    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
+    /// queries). Default `false` — the per-frame readback is non-trivial.
+    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+        self.config.collect_gpu_stats = collect;
+        self
+    }
+
+    /// Finish building. `build` constructs the app once the first window's
+    /// `Ui` + [`HostHandle`] are ready (after device + surface are up, before
+    /// the first frame) — do startup wiring (theme tweaks, restoring persisted
+    /// state, stashing the handle) inside it; it runs on the first `resumed`,
+    /// not here. Drive the returned host with [`WinitHost::run`].
+    pub fn build(self, build: impl FnOnce(&mut Ui, HostHandle<T>) -> T + 'static) -> WinitHost<T> {
         // EventLoop is built up front so `handle()` can hand out a proxy
         // before `run()` is called — that's the whole point of letting
         // threads spawn knowing where to send their pokes.
@@ -212,10 +264,10 @@ where
         }
         let event_loop = event_loop_builder.build().expect("event loop");
         let proxy = event_loop.create_proxy();
-        Self {
+        WinitHost {
             bootstrap: Some(Bootstrap {
-                token: first_token,
-                config,
+                token: self.first_token,
+                config: self.config,
                 build: Box::new(build),
             }),
             running: None,
@@ -223,6 +275,23 @@ where
             windows: HashMap::new(),
             event_loop: Some(event_loop),
             proxy,
+        }
+    }
+}
+
+impl<T> WinitHost<T>
+where
+    T: App + 'static,
+{
+    /// Start building a winit-driven host whose bootstrap window is addressed
+    /// by `first_token`. The remaining startup tunables default (see
+    /// [`WinitHostConfig`]) and are set on the returned [`WinitHostBuilder`];
+    /// the app builder closure is supplied to [`WinitHostBuilder::build`].
+    pub fn builder(first_token: WindowToken) -> WinitHostBuilder<T> {
+        WinitHostBuilder {
+            first_token,
+            config: WinitHostConfig::default(),
+            _marker: PhantomData,
         }
     }
 

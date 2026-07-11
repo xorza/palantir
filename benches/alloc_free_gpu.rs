@@ -99,16 +99,15 @@ fn main() {
     };
 
     let g = gpu();
-    let mut host = OffscreenHost::new(
+    // Defaults: no GPU stats, and the backbuffer+copy path (target_persists =
+    // false) so the per-frame alloc floor this bench pins is unaffected by the
+    // direct-present fast path.
+    let mut host = OffscreenHost::builder(
         g.device.clone(),
         g.queue.clone(),
         aperture::TextShaper::with_bundled_fonts(),
-        false,
-        // Stay on the backbuffer+copy path so the per-frame alloc floor this
-        // bench pins is unaffected by the direct-present fast path.
-        false,
-        Box::new(aperture::RealtimeClock::new()),
-    );
+    )
+    .build();
     let mut state = FormState::default();
 
     let target = g.device.create_texture(&wgpu::TextureDescriptor {

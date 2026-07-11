@@ -12,7 +12,7 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 
-use crate::clock::Clock;
+use crate::clock::{Clock, RealtimeClock};
 use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
@@ -28,46 +28,94 @@ pub struct OffscreenHost {
     window: WindowRenderer,
 }
 
-impl OffscreenHost {
-    /// `target_persists` declares whether the caller reuses one render target
-    /// across frames (enabling the direct-to-target / skip-noop fast paths) or
-    /// supplies a fresh texture each `frame_offscreen` call (screenshots, the
-    /// visual harness — every frame must fill the whole target via
-    /// backbuffer+copy).
-    ///
-    /// `clock` is the per-frame time source: [`RealtimeClock`](crate::clock::RealtimeClock)
-    /// for wall-clock renders (screenshots, benches),
-    /// [`FixedClock`](crate::clock::FixedClock) for reproducible ones (golden
-    /// tests, thumbnails) — animations then sample a fixed phase every frame.
-    pub fn new(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        shaper: TextShaper,
-        collect_gpu_stats: bool,
-        target_persists: bool,
-        clock: Box<dyn Clock>,
-    ) -> Self {
+/// Builder for [`OffscreenHost`] — see [`OffscreenHost::builder`]. The
+/// required GPU/text resources come from that constructor; the rest start at
+/// the general screenshot defaults.
+pub struct OffscreenHostBuilder {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    shaper: TextShaper,
+    collect_gpu_stats: bool,
+    target_persists: bool,
+    clock: Box<dyn Clock>,
+}
+
+impl OffscreenHostBuilder {
+    /// Opt into GPU instrumentation (timestamp + pipeline-statistics
+    /// queries). Default `false` — the per-frame readback is non-trivial.
+    pub fn collect_gpu_stats(mut self, collect: bool) -> Self {
+        self.collect_gpu_stats = collect;
+        self
+    }
+
+    /// Declare that the caller reuses one render target across frames,
+    /// enabling the direct-to-target / skip-noop fast paths. Default `false`:
+    /// a fresh texture each `frame_offscreen` (screenshots, the visual
+    /// harness) must be fully filled via backbuffer+copy.
+    pub fn target_persists(mut self, persists: bool) -> Self {
+        self.target_persists = persists;
+        self
+    }
+
+    /// Per-frame time source. Default a wall-clock
+    /// [`RealtimeClock`](crate::clock::RealtimeClock); a
+    /// [`FixedClock`](crate::clock::FixedClock) makes the render reproducible
+    /// (golden tests, thumbnails) — animations sample a fixed phase.
+    pub fn clock(mut self, clock: Box<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    pub fn build(self) -> OffscreenHost {
         // The shared context outlives this call only as the clones in the
         // backend + window's `Ui`/`Frontend` (Rc-backed handles, including
         // the shared host state); the offscreen path never opens a second
         // window. The render target's format (per `frame_offscreen` call)
         // drives the lazy per-format pipeline build.
-        let ctx = HostContext::new(shaper);
-        let gpu = WgpuBackend::new(device, queue, &ctx, WgpuBackendConfig { collect_gpu_stats });
+        let ctx = HostContext::new(self.shaper);
+        let gpu = WgpuBackend::new(
+            self.device,
+            self.queue,
+            &ctx,
+            WgpuBackendConfig {
+                collect_gpu_stats: self.collect_gpu_stats,
+            },
+        );
         // A reused target can take the direct-present path (full repaints go
         // straight in, small partials ride the backbuffer, skip frames keep its
         // last render); a fresh target each call must be fully filled via
         // backbuffer+copy.
-        let strategy = if target_persists {
+        let strategy = if self.target_persists {
             PresentStrategy::DirectAdaptive
         } else {
             PresentStrategy::BackbufferCopy
         };
         let window = WindowRenderer::builder(&ctx, gpu.max_texture_dim())
             .strategy(strategy)
-            .clock(clock)
+            .clock(self.clock)
             .build();
-        Self { gpu, window }
+        OffscreenHost { gpu, window }
+    }
+}
+
+impl OffscreenHost {
+    /// Start building an offscreen host. `device` / `queue` / `shaper` are
+    /// the GPU + text resources; the rest default to the general screenshot
+    /// case (no GPU stats, a fresh target each frame, the wall clock) and are
+    /// tuned via [`OffscreenHostBuilder`].
+    pub fn builder(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        shaper: TextShaper,
+    ) -> OffscreenHostBuilder {
+        OffscreenHostBuilder {
+            device,
+            queue,
+            shaper,
+            collect_gpu_stats: false,
+            target_persists: false,
+            clock: Box::new(RealtimeClock::new()),
+        }
     }
 
     /// Mutable access to the window's `Ui` for building scenes.

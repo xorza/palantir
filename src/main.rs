@@ -1,6 +1,6 @@
 use aperture::{
     AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shortcut, Sizing,
-    Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
+    Ui, WindowConfig, WindowToken, WinitHost,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -69,12 +69,10 @@ fn main() {
         )
         .init();
 
-    WinitHost::new(
-        MAIN_WINDOW,
-        WinitHostConfig::new("aperture showcase"),
-        State::new,
-    )
-    .run();
+    WinitHost::builder(MAIN_WINDOW)
+        .title("aperture showcase")
+        .build(State::new)
+        .run();
 }
 
 impl State {
