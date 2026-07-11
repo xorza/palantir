@@ -4,7 +4,7 @@ use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
-use crate::primitives::image::ImageFit;
+use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::paint::FillKind;
 use crate::primitives::paint::LutRow;
 use crate::primitives::rect::Rect;
@@ -361,6 +361,7 @@ pub(crate) enum ShapeRecord {
         /// them with no registry borrow.
         size: glam::U16Vec2,
         fit: ImageFit,
+        filter: ImageFilter,
     } = 5,
     /// Native GPU bezier curve. Four control points (quadratic curves
     /// promote to cubic at lowering — `p1 = p0 + 2/3(c - p0)`,
@@ -700,22 +701,33 @@ mod tests {
     }
 
     #[test]
-    fn shape_image_hash_distinguishes_handle_and_tint() {
-        let make = |id: TextureId, tint: Color| ShapeRecord::Image {
+    fn shape_image_hash_distinguishes_handle_tint_and_filter() {
+        let make = |id: TextureId, tint: Color, filter: ImageFilter| ShapeRecord::Image {
             local_rect: None,
             tint: ColorF16::from(tint),
             id,
             size: glam::U16Vec2::new(64, 64),
             fit: ImageFit::Fill,
+            filter,
         };
-        let baseline = compute_record_hash(&make(TextureId(0xa), Color::WHITE));
+        let baseline =
+            compute_record_hash(&make(TextureId(0xa), Color::WHITE, ImageFilter::Linear));
         assert_ne!(
             baseline,
-            compute_record_hash(&make(TextureId(0xb), Color::WHITE))
+            compute_record_hash(&make(TextureId(0xb), Color::WHITE, ImageFilter::Linear))
         );
         assert_ne!(
             baseline,
-            compute_record_hash(&make(TextureId(0xa), Color::rgba(1.0, 0.0, 0.0, 1.0)))
+            compute_record_hash(&make(
+                TextureId(0xa),
+                Color::rgba(1.0, 0.0, 0.0, 1.0),
+                ImageFilter::Linear
+            ))
+        );
+        // A filter flip must repaint: nearest vs linear sample differently.
+        assert_ne!(
+            baseline,
+            compute_record_hash(&make(TextureId(0xa), Color::WHITE, ImageFilter::Nearest))
         );
     }
 }

@@ -16,6 +16,10 @@ var<immediate> imm: Immediates;
 @group(0) @binding(0) var tex:     texture_2d<f32>;
 @group(0) @binding(1) var tex_smp: sampler;
 
+// Bits of `flags` — must match `IMG_FLAG_*` in `render_buffer.rs`.
+const FLAG_TILED:   u32 = 1u;
+const FLAG_NEAREST: u32 = 2u;
+
 struct VsIn {
     // Per-instance.
     @location(0) rect_min:  vec2<f32>,
@@ -23,14 +27,14 @@ struct VsIn {
     @location(2) uv_min:    vec2<f32>,
     @location(3) uv_size:   vec2<f32>,
     @location(4) tint:      vec4<f32>,
-    @location(5) tiled:     u32,
+    @location(5) flags:     u32,
 };
 
 struct VsOut {
     @builtin(position) clip: vec4<f32>,
     @location(0)        uv:   vec2<f32>,
     @location(1) @interpolate(flat) tint: vec4<f32>,
-    @location(2) @interpolate(flat) tiled: u32,
+    @location(2) @interpolate(flat) flags: u32,
 };
 
 @vertex
@@ -52,7 +56,7 @@ fn vs(@builtin(vertex_index) vi: u32, in: VsIn) -> VsOut {
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
     out.uv   = in.uv_min + c * in.uv_size;
     out.tint = in.tint;
-    out.tiled = in.tiled;
+    out.flags = in.flags;
     return out;
 }
 
@@ -64,8 +68,16 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     // fits keep UVs in [0,1] and sample directly — `fract(1.0)=0.0`
     // would wrap a Cover crop's far edge, so it must stay gated.
     var uv = in.uv;
-    if (in.tiled != 0u) {
+    if ((in.flags & FLAG_TILED) != 0u) {
         uv = fract(in.uv);
+    }
+    // `ImageFilter::Nearest`: snap the UV to the texel center, which
+    // lands the bilinear weights exactly on one texel — nearest
+    // sampling without a second sampler / bind group. Single mip, so
+    // the snapped UV's garbage derivatives can't pick a wrong level.
+    if ((in.flags & FLAG_NEAREST) != 0u) {
+        let dims = vec2<f32>(textureDimensions(tex));
+        uv = (floor(uv * dims) + vec2<f32>(0.5)) / dims;
     }
     // sRGB-format texture decodes to linear on read; tint is linear
     // straight-alpha. Multiply, then premultiply for the blend.

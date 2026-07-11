@@ -1,10 +1,11 @@
 //! Image drawing: fit modes against a 64×64 checkerboard, tint / alpha
-//! variations on a gradient source, and tiled repeat (UV wrapped with
-//! `fract` in-shader).
+//! variations on a gradient source, tiled repeat (UV wrapped with
+//! `fract` in-shader), and linear vs nearest sampling on an upscaled
+//! micro-sprite.
 
 use crate::showcase::support;
 use crate::showcase::support::{cell_row, demo_cell};
-use aperture::{Color, Image, ImageFit, ImageHandle, Shape, Ui};
+use aperture::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use glam::Vec2;
 use std::cell::RefCell;
 
@@ -41,24 +42,55 @@ fn gradient() -> Image {
     Image::from_rgba8(W, H, pixels)
 }
 
+/// 4×4 primary-color sprite — small enough that any cell-sized draw is
+/// a heavy upscale, making the linear-vs-nearest difference obvious.
+fn sprite() -> Image {
+    let px: [[u8; 4]; 16] = [
+        [230, 60, 60, 255],
+        [230, 200, 60, 255],
+        [60, 200, 90, 255],
+        [60, 120, 230, 255],
+        [230, 120, 60, 255],
+        [240, 240, 240, 255],
+        [30, 30, 30, 255],
+        [140, 60, 200, 255],
+        [60, 200, 200, 255],
+        [30, 30, 30, 255],
+        [240, 240, 240, 255],
+        [200, 60, 140, 255],
+        [120, 200, 60, 255],
+        [60, 60, 120, 255],
+        [200, 200, 120, 255],
+        [120, 30, 30, 255],
+    ];
+    Image::from_rgba8(4, 4, px.into_iter().flatten().collect())
+}
+
 thread_local! {
     /// The demo images are permanent content, so register them once and
     /// hold the owning [`ImageHandle`]s here for the life of the process
     /// — the GPU textures live as long as these handles do. (A real app
     /// would store handles in its own state, dropping them to free VRAM.)
-    static IMAGES: RefCell<Option<(ImageHandle, ImageHandle)>> = const { RefCell::new(None) };
+    static IMAGES: RefCell<Option<(ImageHandle, ImageHandle, ImageHandle)>> =
+        const { RefCell::new(None) };
 }
 
 /// Clone out this frame's handles, registering on first call.
-fn handles(ui: &Ui) -> (ImageHandle, ImageHandle) {
+fn handles(ui: &Ui) -> (ImageHandle, ImageHandle, ImageHandle) {
     IMAGES.with_borrow_mut(|slot| {
-        slot.get_or_insert_with(|| (ui.register_image(checker()), ui.register_image(gradient())))
-            .clone()
+        slot.get_or_insert_with(|| {
+            (
+                ui.register_image(checker()),
+                ui.register_image(gradient()),
+                ui.register_image(sprite()),
+            )
+        })
+        .clone()
     })
 }
 
 pub fn build(ui: &mut Ui) {
-    let (checker, gradient) = handles(ui);
+    let (checker, gradient, sprite) = handles(ui);
     support::page(ui, |ui| {
         cell_row(ui, "fits", |ui| {
             demo_cell(ui, "fit — Fill", |ui| {
@@ -111,6 +143,14 @@ pub fn build(ui: &mut Ui) {
                 image(ui, &gradient, fit, Color::WHITE);
             });
         });
+        cell_row(ui, "filters (4×4 sprite upscaled)", |ui| {
+            demo_cell(ui, "filter — Linear", |ui| {
+                filtered_image(ui, &sprite, ImageFilter::Linear);
+            });
+            demo_cell(ui, "filter — Nearest", |ui| {
+                filtered_image(ui, &sprite, ImageFilter::Nearest);
+            });
+        });
     });
 }
 
@@ -119,6 +159,17 @@ fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
         handle: handle.clone(),
         local_rect: None,
         fit,
+        filter: ImageFilter::Linear,
         tint,
+    });
+}
+
+fn filtered_image(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
+    ui.add_shape(Shape::Image {
+        handle: handle.clone(),
+        local_rect: None,
+        fit: ImageFit::Fill,
+        filter,
+        tint: Color::WHITE,
     });
 }

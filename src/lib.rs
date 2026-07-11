@@ -96,7 +96,7 @@ pub use primitives::brush::{
 pub use primitives::color::Color;
 pub use primitives::color::ColorU8;
 pub use primitives::corners::Corners;
-pub use primitives::image::{Image, ImageFit};
+pub use primitives::image::{Image, ImageFilter, ImageFit};
 pub use primitives::interned_str::InternedStr;
 pub use primitives::mesh::{Mesh, MeshVertex};
 pub use primitives::rect::Rect;

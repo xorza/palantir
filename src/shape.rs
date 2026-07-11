@@ -1,5 +1,5 @@
 use crate::layout::types::align::Align;
-use crate::primitives::image::ImageFit;
+use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::mesh::Mesh;
 use crate::primitives::{
     approx::{noop_f32, vec2_approx_eq},
@@ -144,7 +144,9 @@ pub enum Shape<'a> {
     /// `Some(r)` paints `r` at owner-relative coords (`r.min = (0, 0)`
     /// is the owner's top-left). `fit` (default `Fill`) controls how
     /// the image's intrinsic size maps onto that rect — see
-    /// [`ImageFit`]. `tint` multiplies the sampled pixel in linear-RGB
+    /// [`ImageFit`]. `filter` picks the sampling between texels —
+    /// bilinear (default) or hard-edged nearest, see [`ImageFilter`].
+    /// `tint` multiplies the sampled pixel in linear-RGB
     /// premultiplied space; `Color::WHITE` is "no tint." `handle` is the
     /// RAII [`ImageHandle`] from [`crate::Ui::register_image`]; hold it to
     /// keep the GPU texture resident (the bytes upload once, then free)
@@ -153,6 +155,7 @@ pub enum Shape<'a> {
         handle: ImageHandle,
         local_rect: Option<Rect>,
         fit: ImageFit,
+        filter: ImageFilter,
         tint: Color,
     },
     /// Gaussian-blurred rounded rectangle — drop shadow or inner

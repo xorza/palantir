@@ -121,6 +121,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             id,
             size,
             fit,
+            filter,
         } => {
             match local_rect {
                 None => h.write_u8(0),
@@ -132,10 +133,12 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             tint.hash(&mut h);
             // Hash the registration `id` + intrinsic `size` (packed
             // `x | y`), then fold in the fit (incl. `Tile`'s UV transform,
-            // which changes every pan/zoom frame and must repaint).
+            // which changes every pan/zoom frame and must repaint) and
+            // the sampling filter.
             h.write_u64(id.0);
             h.write_u64((size.x as u64) | ((size.y as u64) << 16));
             hash_fit(fit, &mut h);
+            h.write_u8(*filter as u8);
         }
         // `content_hash` summarizes p0..p3 + width + cap + (solid)
         // inline colour. Brush variant folded in separately so curves

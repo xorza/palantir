@@ -350,9 +350,11 @@ pub(crate) struct DrawImagePayload {
     /// texture cache; `TextureId(0)` (the `Zeroable` default) is "no
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
-    /// `1` for `ImageFit::Tile` — the shader wraps UVs with `fract`.
-    /// `0` (the common case, including a `GpuView`) samples the UV directly.
-    pub(crate) tiled: u32,
+    /// `IMG_FLAG_*` bits (tile wrap, nearest sampling), forwarded
+    /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::ImageInstance).
+    /// `0` (the common case, including a `GpuView`) samples the UV
+    /// directly with the bilinear sampler.
+    pub(crate) flags: u32,
     /// An `Option<u32>` `GpuView` link, packed into this `Pod` field (`Option`
     /// itself isn't `Pod`) as the `+1` niche: `0` = ordinary image (so the
     /// `Zeroable` default reads as `None`), `n > 0` = a `GpuView` whose
@@ -373,7 +375,7 @@ impl DrawImagePayload {
         uv_size: glam::Vec2,
         tint: ColorF16,
         handle: TextureId,
-        tiled: u32,
+        flags: u32,
     ) -> Self {
         Self {
             rect,
@@ -381,7 +383,7 @@ impl DrawImagePayload {
             uv_size,
             tint,
             handle,
-            tiled,
+            flags,
             target: 0,
             ..bytemuck::Zeroable::zeroed()
         }
@@ -399,7 +401,7 @@ impl DrawImagePayload {
             uv_size: glam::Vec2::ONE,
             tint: ColorF16::from(Color::WHITE),
             handle,
-            tiled: 0,
+            flags: 0,
             target: paint_index + 1,
             ..bytemuck::Zeroable::zeroed()
         }
