@@ -2,7 +2,6 @@ use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
@@ -71,12 +70,8 @@ impl Default for ContextMenuTheme {
     fn default() -> Self {
         let m = palette::TEXT_MUTED;
         let edge = m.with_alpha(0.22);
-        let panel = Background {
-            fill: palette::ELEM.into(),
-            stroke: Stroke::solid(edge, 1.0),
-            corners: Corners::all(6.0),
-            shadow: Shadow::NONE,
-        };
+        let panel = Background::rounded(palette::ELEM, Corners::all(6.0))
+            .with_stroke(Stroke::solid(edge, 1.0));
         let separator = m.with_alpha(0.18);
         Self {
             panel,
@@ -97,12 +92,7 @@ impl Default for MenuItemTheme {
         // no visible pressed state (the click auto-closes the menu),
         // so the bar's louder `ELEM_ACTIVE` pressed slot doesn't have
         // a counterpart here.
-        let hover_bg = Background {
-            fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::ZERO,
-            corners: Corners::all(4.0),
-            shadow: Shadow::NONE,
-        };
+        let hover_bg = Background::rounded(palette::ELEM_HOVER, Corners::all(4.0));
         Self {
             normal: WidgetLook::default(),
             hovered: WidgetLook {
