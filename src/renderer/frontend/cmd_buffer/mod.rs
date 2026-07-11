@@ -164,19 +164,6 @@ pub(crate) enum CmdKind {
     DrawTriangle,
 }
 
-impl CmdKind {
-    /// Draw commands emit scene content; clip / transform commands only
-    /// mutate composer state. Inverted match so a future kind defaults
-    /// to "draw" — conservatively ending the composer's clear-fold
-    /// eligibility window rather than silently extending it.
-    pub(crate) fn is_draw(self) -> bool {
-        !matches!(
-            self,
-            CmdKind::PushClip | CmdKind::PopClip | CmdKind::PushTransform | CmdKind::PopTransform
-        )
-    }
-}
-
 /// Scissor clip payload. `corners` is all-zero for plain rect clips
 /// and non-zero for rounded-mask clips — the composer decides which
 /// path to take by inspecting it.

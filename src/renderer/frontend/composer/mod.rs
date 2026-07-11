@@ -119,14 +119,6 @@ pub(crate) struct Composer {
     /// rounded clip stays a no-op).
     current_scissor: Option<URect>,
     current_chain: Span,
-    /// True until the first draw command emits scene content this
-    /// frame — the window in which a viewport-covering root background
-    /// may still fold into the pass clear (see the `DrawRect` arm).
-    /// Cleared at the compose-loop tail after any [`CmdKind::is_draw`]
-    /// command; cull / noop paths `continue` past the clear, so draws
-    /// that emit nothing keep the window open (a later cover hides
-    /// nothing, so folding stays correct).
-    nothing_drawn: bool,
     /// `*_start` cursors marking where the open group's per-kind slices
     /// begin in `out`. [`Self::flush`] closes each slice and advances
     /// the matching cursor.
@@ -540,7 +532,6 @@ impl Composer {
         self.higher_kind_rects.clear();
         self.current_scissor = None;
         self.current_chain = Span::default();
-        self.nothing_drawn = true;
         self.cursors = GroupCursors::default();
         self.open_batch = None;
         self.occlusion.clear();
@@ -630,20 +621,24 @@ impl Composer {
                     // emitted quad share this rect (the cull needs the
                     // scaled bounds anyway, so a culled draw costs the same).
                     let phys_rect = world_rect.scaled_by(scale, snap);
-                    // Root-background fold: while nothing has been drawn
-                    // yet, an opaque solid sharp unclipped quad covering
-                    // the whole viewport paints exactly what
+                    // Clear fold: an opaque solid sharp unclipped quad
+                    // covering the whole viewport paints exactly what
                     // `LoadOp::Clear(fill)` would — every covered pixel
                     // is deep inside the SDF (coverage exactly 1.0), so
-                    // the outputs are bit-identical. Record it as the
-                    // pass clear instead of a quad: a full-viewport
-                    // background is the single largest fragment load in
-                    // a full repaint, and the clear is effectively free.
-                    // A later qualifying quad may re-fold (it fully
-                    // hides the previous override); the first real draw
-                    // ends eligibility via the emptiness checks.
-                    if self.nothing_drawn
-                        && self.current_scissor.is_none()
+                    // the outputs are bit-identical. And being opaque
+                    // over every pixel, it hides *everything painted
+                    // before it*. So: discard the whole scene composed
+                    // so far and record the fill as the pass clear —
+                    // the frame effectively starts at the last such
+                    // cover. The root window background is the common
+                    // case (cover at position 0, nothing to discard); a
+                    // fullscreen page/panel painted over an underlay
+                    // drops the entire hidden underlay too. The active
+                    // clip must be empty: a scissored cover only hides
+                    // its scissor, and an empty scissor state also
+                    // guarantees no group in flight references
+                    // `rounded_clips` state that `discard` wipes.
+                    if self.current_scissor.is_none()
                         && self.current_chain.len == 0
                         && p.fill_kind == FillKind::SOLID
                         && p.fill.is_opaque()
@@ -654,6 +649,7 @@ impl Composer {
                         && phys_rect.max().x >= out.viewport_phys_f.x - EPS
                         && phys_rect.max().y >= out.viewport_phys_f.y - EPS
                     {
+                        self.discard_composed(out);
                         out.clear_override = Some(p.fill.unpack());
                         continue;
                     }
@@ -1195,15 +1191,27 @@ impl Composer {
                     self.text_grid.push(bounds);
                 }
             }
-            // Any draw command that reached the loop tail emitted scene
-            // content — the clear fold's eligibility window closes. Cull
-            // / noop / folded paths `continue` above and never get here.
-            if kind.is_draw() {
-                self.nothing_drawn = false;
-            }
         }
         self.close_batch(out);
         self.flush(out);
+    }
+
+    /// Clear-fold discard: a fullscreen opaque cover proved everything
+    /// composed so far invisible — drop the scene output and every piece of
+    /// scratch that describes it. The *walk* state survives: `clip_stack` /
+    /// `current_scissor` / `current_chain` are empty by the fold's
+    /// precondition, and `transform_stack` + the caller's running transform
+    /// stay untouched (the cover may sit under an active transform whose
+    /// pops are still ahead in the stream).
+    fn discard_composed(&mut self, out: &mut RenderBuffer) {
+        out.discard_scene();
+        self.text_grid.start_frame(out.viewport_phys);
+        self.closed_text_grid.start_frame(out.viewport_phys);
+        self.closed_pending.clear();
+        self.higher_kind_rects.clear();
+        self.cursors = GroupCursors::default();
+        self.open_batch = None;
+        self.occlusion.clear();
     }
 }
 

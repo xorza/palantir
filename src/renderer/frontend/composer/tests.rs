@@ -2087,13 +2087,14 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
     );
 }
 
-/// Root-background fold: the frame's bottom-most draw, when it is an
-/// opaque solid sharp unclipped quad covering the whole viewport,
-/// becomes `RenderBuffer::clear_override` instead of a quad — and any
-/// disqualifier (corners, stroke, translucency, gradient, partial
-/// coverage, prior draw, active clip) leaves it as an ordinary quad.
+/// Clear fold: an opaque solid sharp unclipped quad covering the whole
+/// viewport becomes `RenderBuffer::clear_override` instead of a quad, and
+/// **discards everything composed before it** (a cover hides it all) —
+/// while any disqualifier (corners, stroke, translucency, gradient,
+/// partial coverage, active clip) leaves it as an ordinary quad over the
+/// prior scene.
 #[test]
-fn clear_fold_absorbs_root_background_and_rejects_non_qualifying() {
+fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::color::ColorF16;
@@ -2180,25 +2181,16 @@ fn clear_fold_absorbs_root_background_and_rejects_non_qualifying() {
             None,
         ),
         (
-            "prior quad disqualifies (record order is paint order)",
+            "prior quad is discarded under a later cover",
             |b| {
-                // Straddles the viewport edge so the occlusion pruner
-                // can't drop it under the later cover — the case must
-                // show BOTH quads surviving with no fold.
+                // Straddles the viewport edge so it isn't the per-group
+                // occlusion pruner doing the work — the fold's discard
+                // must drop it.
                 draw(b, rect(-10.0, -10.0, 20.0, 20.0));
                 draw(b, rect(0.0, 0.0, 200.0, 200.0));
             },
-            2,
-            None,
-        ),
-        (
-            "prior text disqualifies",
-            |b| {
-                text(b, rect(10.0, 10.0, 50.0, 20.0));
-                draw(b, rect(0.0, 0.0, 200.0, 200.0));
-            },
-            1,
-            None,
+            0,
+            Some(Color::rgb(1.0, 1.0, 1.0)),
         ),
         (
             "active clip disqualifies",
@@ -2252,6 +2244,53 @@ fn clear_fold_absorbs_root_background_and_rejects_non_qualifying() {
     );
     assert_eq!(buf.quads.len(), 0, "DPR-2 cover folds");
     assert_eq!(buf.clear_override, Some(folded), "DPR-2 override color");
+}
+
+/// A mid-stream cover discards the whole hidden underlay — text runs,
+/// clipped groups and their batches — not just quads; content recorded
+/// after the cover composes normally, and a transform in flight when the
+/// cover lands survives the discard (its pops are still ahead).
+#[test]
+fn clear_fold_discards_hidden_underlay_mid_stream() {
+    use crate::primitives::color::ColorF16;
+
+    let vp = UVec2::new(200, 200);
+
+    let buf = run(
+        |b, _arena| {
+            // Hidden underlay: a text run and a quad inside a clipped group.
+            text(b, rect(10.0, 10.0, 50.0, 20.0));
+            b.push_clip(rect(0.0, 0.0, 150.0, 150.0));
+            draw(b, rect(10.0, 10.0, 20.0, 20.0));
+            b.pop_clip();
+            // The cover lands under an active 2x transform: its world rect
+            // (0,0)-(200,200) covers the viewport, so it folds — and the
+            // transform must keep applying to the survivor below.
+            b.push_transform(TranslateScale {
+                translation: Vec2::ZERO,
+                scale: 2.0,
+            });
+            draw(b, rect(0.0, 0.0, 100.0, 100.0));
+            draw(b, rect(5.0, 5.0, 10.0, 10.0));
+            b.pop_transform();
+            text(b, rect(30.0, 30.0, 40.0, 10.0));
+        },
+        &params(1.0, vp),
+    );
+
+    let folded = ColorF16::from(Color::rgb(1.0, 1.0, 1.0)).unpack();
+    assert_eq!(buf.clear_override, Some(folded), "the cover folds");
+    // Underlay gone: only the post-cover quad + text survive, in one
+    // unscissored group (the pre-cover clipped group was discarded).
+    assert_eq!(buf.quads.len(), 1, "underlay quads discarded");
+    assert_eq!(
+        buf.quads[0].rect,
+        rect(10.0, 10.0, 20.0, 20.0),
+        "survivor keeps the in-flight 2x transform",
+    );
+    assert_eq!(buf.texts.len(), 1, "underlay text discarded");
+    assert_eq!(buf.groups.len(), 1);
+    assert!(buf.groups[0].scissor.is_none());
 }
 
 /// `clear_override` is per-frame state: a fold one frame must not leak
