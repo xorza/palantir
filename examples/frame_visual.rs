@@ -29,12 +29,9 @@ impl App for FrameVisual {
 }
 
 fn main() {
-    let window = WindowConfig {
-        title: String::from("aperture — frame bench (visual)"),
-        inner_size: Some(UVec2::new(1280, 800)),
-        min_inner_size: Some(UVec2::new(640, 480)),
-        ..WindowConfig::default()
-    };
+    let window = WindowConfig::new("aperture — frame bench (visual)")
+        .inner_size(UVec2::new(1280, 800))
+        .min_inner_size(UVec2::new(640, 480));
     WinitHost::builder(WindowToken(0))
         .window(window)
         .build(FrameVisual::new)

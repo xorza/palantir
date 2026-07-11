@@ -27,28 +27,28 @@ pub struct WindowToken(pub u64);
 /// — the same integer-extent vocabulary as [`Display`](crate::Display).
 #[derive(Clone, Debug, Default)]
 pub struct WindowConfig {
-    pub title: String,
+    pub(crate) title: String,
     /// Initial inner size in logical pixels. `None` lets the platform
     /// pick.
-    pub inner_size: Option<UVec2>,
+    pub(crate) inner_size: Option<UVec2>,
     /// Minimum inner size in logical pixels. `None` = no floor.
-    pub min_inner_size: Option<UVec2>,
+    pub(crate) min_inner_size: Option<UVec2>,
     /// Initial outer position in **physical** pixels (top-left of the
     /// window frame). `None` lets the platform place it. Physical, not
     /// logical, because a saved position is only unambiguous across
     /// mixed-DPI monitors in device pixels. The host drops it at creation
     /// if it no longer lands on any connected monitor, so a window saved
     /// on a since-disconnected display doesn't reopen off-screen.
-    pub position: Option<IVec2>,
+    pub(crate) position: Option<IVec2>,
     /// Start maximized. Restored alongside `inner_size` — winit applies
     /// the maximized state and holds `inner_size` as the size to return to
     /// when the user un-maximizes.
-    pub maximized: bool,
+    pub(crate) maximized: bool,
     /// Title-bar / taskbar icon. `None` = platform default. Honored on
     /// Windows and Linux (X11/Wayland); **macOS ignores per-window icons**
     /// (its Dock icon comes from the `.app` bundle's `.icns`, set at
     /// packaging time). Backend-agnostic raw pixels — see [`WindowIcon`].
-    pub icon: Option<WindowIcon>,
+    pub(crate) icon: Option<WindowIcon>,
 }
 
 /// A window icon as straight-alpha **RGBA8** pixels: row-major, top row
@@ -92,23 +92,59 @@ impl WindowIcon {
 #[derive(Clone, Copy, Debug, Default)]
 pub struct WindowGeometry {
     /// Inner (content) size in logical pixels — DPI-independent, so it
-    /// round-trips through [`WindowConfig::inner_size`] unchanged across
+    /// round-trips through [`WindowConfig::inner_size()`] unchanged across
     /// monitors of different scale.
     pub inner_size: UVec2,
     /// Outer position in physical pixels, or `None` when the platform
     /// doesn't report it (Wayland clients can't know their absolute
-    /// position). Feeds [`WindowConfig::position`] on restore.
+    /// position). Feeds [`WindowConfig::position()`] on restore.
     pub outer_position: Option<IVec2>,
     /// Whether the window is currently maximized.
     pub maximized: bool,
 }
 
 impl WindowConfig {
+    /// A config for a window titled `title`; every other option defaults
+    /// (platform-picked size/position, not maximized, default icon). Chain
+    /// the setters below to override.
     pub fn new(title: impl Into<String>) -> Self {
         Self {
             title: title.into(),
             ..Self::default()
         }
+    }
+
+    /// Initial inner size in logical pixels (`.x` = width, `.y` = height).
+    pub fn inner_size(mut self, size: UVec2) -> Self {
+        self.inner_size = Some(size);
+        self
+    }
+
+    /// Minimum inner size in logical pixels — the window can't shrink below
+    /// it.
+    pub fn min_inner_size(mut self, size: UVec2) -> Self {
+        self.min_inner_size = Some(size);
+        self
+    }
+
+    /// Initial outer position in physical pixels (top-left of the frame).
+    /// Dropped at creation if it no longer lands on any connected monitor.
+    pub fn position(mut self, position: IVec2) -> Self {
+        self.position = Some(position);
+        self
+    }
+
+    /// Start the window maximized (holding [`Self::inner_size`] as the
+    /// un-maximize size).
+    pub fn maximized(mut self, maximized: bool) -> Self {
+        self.maximized = maximized;
+        self
+    }
+
+    /// Title-bar / taskbar icon (ignored on macOS — see [`WindowIcon`]).
+    pub fn icon(mut self, icon: WindowIcon) -> Self {
+        self.icon = Some(icon);
+        self
     }
 }
 
