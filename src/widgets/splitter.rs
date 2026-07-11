@@ -142,9 +142,13 @@ impl<'a> Splitter<'a> {
 
         let horizontal = self.horizontal;
         ui.node(id, self.element, None, |ui| {
-            pane(ui, id.with("first"), horizontal, Sizing::Fill(ratio), |ui| {
-                body(ui, SplitHalf::First)
-            });
+            pane(
+                ui,
+                id.with("first"),
+                horizontal,
+                Sizing::Fill(ratio),
+                |ui| body(ui, SplitHalf::First),
+            );
 
             let mut el = Element::new(LayoutMode::ZStack);
             el.salt = Salt::Verbatim(divider_id);

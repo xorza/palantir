@@ -37,9 +37,7 @@ pub fn build(ui: &mut Ui) {
                             .id_salt(("sp", "v"))
                             .show(ui, |ui, half| match half {
                                 SplitHalf::First => pane(ui, "top-left", Color::hex(0x2b3440)),
-                                SplitHalf::Second => {
-                                    pane(ui, "bottom-left", Color::hex(0x34404e))
-                                }
+                                SplitHalf::Second => pane(ui, "bottom-left", Color::hex(0x34404e)),
                             });
                     }
                     SplitHalf::Second => pane(ui, "right", Color::hex(0x3d3346)),
