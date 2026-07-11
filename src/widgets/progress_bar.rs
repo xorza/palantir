@@ -45,14 +45,8 @@ impl ProgressBar {
 
         let mut element = self.element;
         element.size = (Sizing::FILL, Sizing::Fixed(height)).into();
-        let track = Background {
-            corners: radius,
-            ..Background::fill(theme.track)
-        };
-        let fill_bg = Background {
-            corners: radius,
-            ..Background::fill(theme.fill)
-        };
+        let track = Background::rounded(theme.track, radius);
+        let fill_bg = Background::rounded(theme.fill, radius);
 
         let id = ui.widget_id(&element);
         ui.node(id, element, Some(&track), |ui| {

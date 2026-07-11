@@ -3,7 +3,6 @@ use crate::input::sense::Sense;
 use crate::layout::types::align::{Align, VAlign};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -89,9 +88,9 @@ impl<'a> Slider<'a> {
         let fraction = value_to_fraction(*self.value, self.min, self.max);
 
         let pill = Corners::all(rail_h * 0.5);
-        let fill_bg = solid(fill_color, pill);
-        let rail_bg = solid(rail_color, pill);
-        let knob_bg = solid(knob_color, Corners::all(knob * 0.5));
+        let fill_bg = Background::rounded(fill_color, pill);
+        let rail_bg = Background::rounded(rail_color, pill);
+        let knob_bg = Background::rounded(knob_color, Corners::all(knob * 0.5));
 
         let mut element = self.element;
         element.size = (Sizing::FILL, Sizing::Fixed(knob)).into();
@@ -121,13 +120,6 @@ impl<'a> Slider<'a> {
 impl Configure for Slider<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
-    }
-}
-
-fn solid(fill: Color, corners: Corners) -> Background {
-    Background {
-        corners,
-        ..Background::fill(fill)
     }
 }
 

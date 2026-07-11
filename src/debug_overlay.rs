@@ -75,10 +75,7 @@ pub(crate) fn record_frame_stats(ui: &mut Ui) {
         font_size_px: 12.0,
         ..ui.theme.text
     };
-    let chrome = Background {
-        fill: Color::linear_rgba(0.0, 0.0, 0.0, 0.75).into(),
-        ..Default::default()
-    };
+    let chrome = Background::fill(Color::linear_rgba(0.0, 0.0, 0.0, 0.75));
     ui.layer(Layer::Debug, glam::Vec2::ZERO, None, |ui| {
         Panel::hstack()
             .size((Sizing::FILL, Sizing::Hug))

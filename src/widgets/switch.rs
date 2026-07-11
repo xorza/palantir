@@ -95,10 +95,7 @@ impl<'a> ToggleSwitch<'a> {
         let knob_id = id.with("knob");
         let target_x = if on { geom.on_x } else { geom.off_x };
         let knob_x = ui.animate(knob_id, "x", target_x, anim);
-        let knob_bg = Background {
-            corners: Corners::all(geom.knob * 0.5),
-            ..Background::fill(knob_color)
-        };
+        let knob_bg = Background::rounded(knob_color, Corners::all(geom.knob * 0.5));
 
         let mut element = self.element;
         element.gaps.set_gap(row_gap);
