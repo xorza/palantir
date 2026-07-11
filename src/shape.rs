@@ -30,6 +30,26 @@ pub enum Shape<'a> {
         fill: Brush,
         stroke: Stroke,
     },
+    /// Inverse of [`Shape::RoundedRect`]: a rect with a rounded window
+    /// punched through it. The `fill` paints *outside* the rounded
+    /// boundary — the corner wedges, out to the rect edge — the
+    /// `stroke` keeps the same inner-edge annulus a `RoundedRect`
+    /// stroke occupies, and the window interior is transparent.
+    ///
+    /// Cheap stand-in for rounded-corner clipping: draw content as a
+    /// plain unclipped rect, then paint this on top with the
+    /// surrounding background as `fill` — the corners mask to the
+    /// background and the stroke draws the border over the content
+    /// edge, visually identical to a stroked `RoundedRect` under
+    /// `ClipMode::Rounded` but without the stencil-mask pass. The rect
+    /// edge itself is a hard cut (no outward AA); the fill is meant to
+    /// blend into a matching backdrop.
+    WindowedRect {
+        local_rect: Option<Rect>,
+        corners: Corners,
+        fill: Brush,
+        stroke: Stroke,
+    },
     /// Filled/stroked triangle with optional corner rounding, drawn as an
     /// analytic SDF on the shared quad pipeline (a sibling of `RoundedRect` —
     /// no tessellation, crisp AA at any zoom, rounded corners = `SDF - radius`).
@@ -424,6 +444,12 @@ impl Shape<'_> {
     pub fn is_noop(&self) -> bool {
         match self {
             Shape::RoundedRect {
+                local_rect,
+                fill,
+                stroke,
+                ..
+            }
+            | Shape::WindowedRect {
                 local_rect,
                 fill,
                 stroke,

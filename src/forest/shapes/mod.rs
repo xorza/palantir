@@ -90,6 +90,21 @@ impl Shapes {
                     fill_grad_hash: lowered.hash,
                 }
             }
+            Shape::WindowedRect {
+                local_rect,
+                corners,
+                fill,
+                stroke,
+            } => {
+                let lowered = arena.lower_brush(fill, atlas);
+                ShapeRecord::WindowedRect {
+                    local_rect,
+                    corners,
+                    fill: lowered.brush,
+                    stroke: ShapeStroke::from(stroke),
+                    fill_grad_hash: lowered.hash,
+                }
+            }
             Shape::Triangle {
                 a,
                 b,

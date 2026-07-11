@@ -81,10 +81,30 @@ impl FillKind {
     /// lockstep with `FILL_FLAG_FAST` in `quad.wgsl`.
     const FAST_BIT: u32 = 1 << 16;
 
+    /// Bit 17: windowed rect — the fill coverage is inverted, painting
+    /// the region *outside* the rounded boundary (the corner wedges out
+    /// to the quad edge) while the interior stays transparent; the
+    /// stroke keeps its usual inner-edge annulus. Set at
+    /// `draw_rect_window` time so it rides the payload into the `Quad`
+    /// untouched. Kept in lockstep with `FILL_FLAG_WINDOW` in
+    /// `quad.wgsl`. Load-bearing side effect: the composer's
+    /// opaque-cover checks (clear fold, fast path, occlusion prune) all
+    /// compare `fill_kind == FillKind::SOLID` *exactly*, so this bit
+    /// disqualifies windowed quads from being treated as opaque covers
+    /// — their interior is a hole.
+    const WINDOW_BIT: u32 = 1 << 17;
+
     /// Tag this kind with the fragment fast-path bit (see [`Self::FAST_BIT`]).
     #[inline]
     pub(crate) const fn with_fast(self) -> Self {
         Self(self.0 | Self::FAST_BIT)
+    }
+
+    /// Tag this kind with the inverted-fill window bit (see
+    /// [`Self::WINDOW_BIT`]).
+    #[inline]
+    pub(crate) const fn with_window(self) -> Self {
+        Self(self.0 | Self::WINDOW_BIT)
     }
 
     /// True iff this `FillKind` marks a shadow draw. Shadow blur

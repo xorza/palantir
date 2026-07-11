@@ -520,6 +520,45 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     );
 }
 
+/// A windowed rect must never fold into the pass clear, take the
+/// fragment fast path, or occlude quads beneath it — its interior is
+/// a hole. All three opaque-cover optimizations compare
+/// `fill_kind == FillKind::SOLID` exactly; the window bit breaks that
+/// equality by design. Deliberate worst case: full-viewport, opaque,
+/// solid, sharp-cornered, pixel-aligned at scale 1 — without the
+/// window bit this exact draw would trigger all three.
+#[test]
+fn windowed_rect_is_not_an_opaque_cover() {
+    use crate::primitives::paint::FillKind;
+    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    let buf = run(
+        |b, _| {
+            draw(b, rect(10.0, 10.0, 50.0, 50.0));
+            b.draw_rect_window(
+                rect(0.0, 0.0, 200.0, 200.0),
+                Corners::default(),
+                BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
+                Stroke::ZERO.into(),
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(
+        buf.clear_override.is_none(),
+        "windowed cover must not clear-fold",
+    );
+    assert_eq!(
+        buf.quads.len(),
+        2,
+        "under-quad survives beneath a windowed cover",
+    );
+    assert_eq!(
+        buf.quads[1].fill_kind,
+        FillKind::SOLID.with_window(),
+        "window bit rides through to the Quad; fast bit absent",
+    );
+}
+
 /// `Brush::Linear` panel: lowering registers the gradient with the
 /// atlas (returns a non-zero row), packs the row + axis + kind into
 /// the cmd-buffer payload; composer pipes the row straight through

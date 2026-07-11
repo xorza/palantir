@@ -226,6 +226,17 @@ fn emit_one_shape(
             let src = shape_brush_source(ctx.gradients, *fill);
             out.draw_rect(r, *corners, src, *stroke);
         }
+        ShapeRecord::WindowedRect {
+            local_rect,
+            corners,
+            fill,
+            stroke,
+            ..
+        } => {
+            let r = resolve_local_rect(owner_rect, *local_rect);
+            let src = shape_brush_source(ctx.gradients, *fill);
+            out.draw_rect_window(r, *corners, src, *stroke);
+        }
         ShapeRecord::Text {
             local_origin,
             color,
