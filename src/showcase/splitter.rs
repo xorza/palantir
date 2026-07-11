@@ -1,4 +1,6 @@
-use aperture::{Background, Color, Configure, Panel, Sizing, Splitter, Text, Ui, WidgetId};
+use aperture::{
+    Background, Color, Configure, Panel, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId,
+};
 
 struct State {
     h: f32,
@@ -29,17 +31,19 @@ pub fn build(ui: &mut Ui) {
             Splitter::horizontal(&mut h)
                 .id_salt(("sp", "h"))
                 .min_pane(80.0)
-                .show(
-                    ui,
-                    |ui| {
-                        Splitter::vertical(&mut v).id_salt(("sp", "v")).show(
-                            ui,
-                            |ui| pane(ui, "top-left", Color::hex(0x2b3440)),
-                            |ui| pane(ui, "bottom-left", Color::hex(0x34404e)),
-                        );
-                    },
-                    |ui| pane(ui, "right", Color::hex(0x3d3346)),
-                );
+                .show(ui, |ui, half| match half {
+                    SplitHalf::First => {
+                        Splitter::vertical(&mut v)
+                            .id_salt(("sp", "v"))
+                            .show(ui, |ui, half| match half {
+                                SplitHalf::First => pane(ui, "top-left", Color::hex(0x2b3440)),
+                                SplitHalf::Second => {
+                                    pane(ui, "bottom-left", Color::hex(0x34404e))
+                                }
+                            });
+                    }
+                    SplitHalf::Second => pane(ui, "right", Color::hex(0x3d3346)),
+                });
             let readout = ui.fmt(format_args!("h = {h:.2}   v = {v:.2}"));
             Text::new(readout).id_salt(("sp", "readout")).show(ui);
         });
