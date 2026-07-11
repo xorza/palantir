@@ -112,6 +112,32 @@ impl WindowConfig {
     }
 }
 
+/// The mouse cursor a widget wants shown this frame, requested through
+/// [`Ui::set_cursor`](crate::Ui::set_cursor). Backend-agnostic subset of
+/// the platform cursors (the winit mapping lives in the host); grows
+/// variants as widgets need them.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CursorIcon {
+    /// The platform arrow — what every frame resets to.
+    #[default]
+    Default,
+    /// Clickable affordance (hand).
+    Pointer,
+    /// Text caret (I-beam).
+    Text,
+    /// Open hand: a grabbable surface.
+    Grab,
+    /// Closed hand: a grab in progress.
+    Grabbing,
+    Move,
+    Crosshair,
+    /// Horizontal resize (a vertical divider).
+    EwResize,
+    /// Vertical resize (a horizontal divider).
+    NsResize,
+    NotAllowed,
+}
+
 /// A window-open request enqueued by
 /// [`Ui::open_window`](crate::Ui::open_window), drained by
 /// [`WinitHost`](crate::WinitHost) in `about_to_wait` once it holds
