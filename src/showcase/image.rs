@@ -1,4 +1,10 @@
-use aperture::{Color, Configure, Image, ImageFit, ImageHandle, Panel, Shape, Sizing, Ui};
+//! Image drawing: fit modes against a 64×64 checkerboard, tint / alpha
+//! variations on a gradient source, and tiled repeat (UV wrapped with
+//! `fract` in-shader).
+
+use crate::showcase::support;
+use crate::showcase::support::{cell_row, demo_cell};
+use aperture::{Color, Image, ImageFit, ImageHandle, Shape, Ui};
 use glam::Vec2;
 use std::cell::RefCell;
 
@@ -53,75 +59,59 @@ fn handles(ui: &Ui) -> (ImageHandle, ImageHandle) {
 
 pub fn build(ui: &mut Ui) {
     let (checker, gradient) = handles(ui);
-    Panel::vstack()
-        .auto_id()
-        .gap(16.0)
-        .padding(24.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            // Row 1: fit modes against a 64×64 source.
-            Panel::hstack()
-                .id_salt("fits")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    fit_cell(ui, "Fill", &checker, ImageFit::Fill);
-                    fit_cell(ui, "Contain", &checker, ImageFit::Contain);
-                    fit_cell(ui, "Cover", &checker, ImageFit::Cover);
-                    fit_cell(ui, "None", &checker, ImageFit::None);
-                });
-            // Row 2: tint variations on the gradient.
-            Panel::hstack()
-                .id_salt("tints")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "no tint", |ui| {
-                        image(ui, &gradient, ImageFit::Fill, Color::WHITE);
-                    });
-                    cell(ui, "red tint", |ui| {
-                        image(
-                            ui,
-                            &gradient,
-                            ImageFit::Fill,
-                            Color::rgba(1.0, 0.3, 0.3, 1.0),
-                        );
-                    });
-                    cell(ui, "half alpha", |ui| {
-                        image(
-                            ui,
-                            &gradient,
-                            ImageFit::Fill,
-                            Color::rgba(1.0, 1.0, 1.0, 0.5),
-                        );
-                    });
-                });
-            // Row 3: tiled repeat (UV wrapped with `fract` in-shader).
-            Panel::hstack()
-                .id_salt("tiles")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "tile 3×3", |ui| {
-                        let fit = ImageFit::Tile {
-                            offset: Vec2::ZERO,
-                            scale: Vec2::splat(3.0),
-                        };
-                        image(ui, &checker, fit, Color::WHITE);
-                    });
-                    cell(ui, "tile 2×4 + offset", |ui| {
-                        let fit = ImageFit::Tile {
-                            offset: Vec2::new(0.25, 0.0),
-                            scale: Vec2::new(2.0, 4.0),
-                        };
-                        image(ui, &gradient, fit, Color::WHITE);
-                    });
-                });
+    support::page(ui, |ui| {
+        cell_row(ui, "fits", |ui| {
+            demo_cell(ui, "fit — Fill", |ui| {
+                image(ui, &checker, ImageFit::Fill, Color::WHITE);
+            });
+            demo_cell(ui, "fit — Contain", |ui| {
+                image(ui, &checker, ImageFit::Contain, Color::WHITE);
+            });
+            demo_cell(ui, "fit — Cover", |ui| {
+                image(ui, &checker, ImageFit::Cover, Color::WHITE);
+            });
+            demo_cell(ui, "fit — None", |ui| {
+                image(ui, &checker, ImageFit::None, Color::WHITE);
+            });
         });
-}
-
-fn fit_cell(ui: &mut Ui, label: &'static str, handle: &ImageHandle, fit: ImageFit) {
-    cell(ui, label, |ui| image(ui, handle, fit, Color::WHITE));
+        cell_row(ui, "tints", |ui| {
+            demo_cell(ui, "no tint", |ui| {
+                image(ui, &gradient, ImageFit::Fill, Color::WHITE);
+            });
+            demo_cell(ui, "red tint", |ui| {
+                image(
+                    ui,
+                    &gradient,
+                    ImageFit::Fill,
+                    Color::rgba(1.0, 0.3, 0.3, 1.0),
+                );
+            });
+            demo_cell(ui, "half alpha", |ui| {
+                image(
+                    ui,
+                    &gradient,
+                    ImageFit::Fill,
+                    Color::rgba(1.0, 1.0, 1.0, 0.5),
+                );
+            });
+        });
+        cell_row(ui, "tiles", |ui| {
+            demo_cell(ui, "tile 3×3", |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::ZERO,
+                    scale: Vec2::splat(3.0),
+                };
+                image(ui, &checker, fit, Color::WHITE);
+            });
+            demo_cell(ui, "tile 2×4 + offset", |ui| {
+                let fit = ImageFit::Tile {
+                    offset: Vec2::new(0.25, 0.0),
+                    scale: Vec2::new(2.0, 4.0),
+                };
+                image(ui, &gradient, fit, Color::WHITE);
+            });
+        });
+    });
 }
 
 fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
@@ -131,12 +121,4 @@ fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
         fit,
         tint,
     });
-}
-
-fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
-    Panel::zstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::FILL))
-        .padding(8.0)
-        .show(ui, paint);
 }

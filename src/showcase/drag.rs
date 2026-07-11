@@ -1,6 +1,6 @@
+use crate::showcase::support;
 use aperture::{
-    Background, Color, Configure, Corners, Frame, Panel, Sense, Shadow, Sizing, Stroke, Ui,
-    WidgetId,
+    Background, Color, Configure, Corners, Frame, Panel, Sense, Sizing, Stroke, Ui, WidgetId,
 };
 use glam::Vec2;
 
@@ -11,30 +11,34 @@ use glam::Vec2;
 /// any overlap.
 pub fn build(ui: &mut Ui) {
     let cards = [
-        ("card.a", Vec2::new(40.0, 40.0), Color::hex(0x4d8eff)),
-        ("card.b", Vec2::new(220.0, 120.0), Color::hex(0xff7a4d)),
-        ("card.c", Vec2::new(120.0, 260.0), Color::hex(0x4dffa1)),
+        ("card.a", Vec2::new(40.0, 40.0), support::A),
+        ("card.b", Vec2::new(220.0, 120.0), support::B),
+        ("card.c", Vec2::new(120.0, 260.0), support::D),
     ];
 
     let dragging_idx = cards
         .iter()
         .position(|(k, _, _)| ui.state_mut::<CardState>(WidgetId::from_hash(*k)).dragging);
 
-    Panel::canvas()
-        .id_salt("drag.canvas")
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            for (i, (key, initial, accent)) in cards.iter().enumerate() {
-                if Some(i) == dragging_idx {
-                    continue;
+    support::page(ui, |ui| {
+        support::header(ui, "Drag — grab a card; the active card paints on top.");
+        Panel::canvas()
+            .id_salt("drag.canvas")
+            .size((Sizing::FILL, Sizing::FILL))
+            .background(support::panel_bg())
+            .show(ui, |ui| {
+                for (i, (key, initial, accent)) in cards.iter().enumerate() {
+                    if Some(i) == dragging_idx {
+                        continue;
+                    }
+                    card(ui, key, *initial, *accent);
                 }
-                card(ui, key, *initial, *accent);
-            }
-            if let Some(i) = dragging_idx {
-                let (key, initial, accent) = cards[i];
-                card(ui, key, initial, accent);
-            }
-        });
+                if let Some(i) = dragging_idx {
+                    let (key, initial, accent) = cards[i];
+                    card(ui, key, initial, accent);
+                }
+            });
+    });
 }
 
 const CARD_W: f32 = 140.0;
@@ -69,7 +73,7 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
             fill: accent.into(),
             stroke: Stroke::solid(Color::hex(0x202020), 1.0),
             corners: Corners::all(6.0),
-            shadow: Shadow::NONE,
+            ..Default::default()
         })
         .show(ui)
         .snapshot();

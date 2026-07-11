@@ -239,7 +239,7 @@ primitives ─► forest ─► layout ─► renderer ─► ui ─► widgets 
 6. **Two `debug_overlay.rs`** — top-level (`DebugOverlayConfig`, the Ui-facing config) vs `renderer/backend/debug_overlay.rs` (`DebugOverlay`, the GPU resource). Each is correctly placed; the shared filename across layers is mildly confusing when grepping.
 
 ### Caveats about this map
-- Counts exclude `#[cfg(test)]` modules (heuristic brace-tracking) and the whole `showcase/` demo (42 files / ~4.7k loc of example content, not architecture).
+- Counts exclude `#[cfg(test)]` modules (heuristic brace-tracking) and the whole `showcase/` demo (22 files / ~4.7k loc of example content, not architecture).
 - `type` aliases that are trait-impl associated types (`Item`/`Output`/`IntoIter`/`Target`) are filtered out — they're not real type definitions.
 - `GridArena` lives on the tree (`forest/tree/`) despite its layout-sounding name — intentional per the design (per-tree grid storage), flagged only as a grep heads-up.
 

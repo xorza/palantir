@@ -1,52 +1,33 @@
-use aperture::{
-    Color, Configure, Corners, LineCap, LineJoin, Panel, PolylineColors, Rect, Shape, Sizing,
-    Stroke, Ui,
-};
+//! Line and curve strokes: widths down to sub-pixel hairlines, joins,
+//! caps, per-point / per-segment polyline colors, and cubic /
+//! quadratic béziers with solid and gradient brushes. Every cell paints
+//! raw `Shape`s via `ui.add_shape` into a captioned demo surface.
+
+use crate::showcase::support;
+use crate::showcase::support::{cell_row, demo_cell};
+use aperture::{Brush, Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
 
 pub fn build(ui: &mut Ui) {
-    Panel::vstack()
-        .auto_id()
-        .gap(16.0)
-        .padding(16.0)
-        .size((Sizing::FILL, Sizing::FILL))
-        .show(ui, |ui| {
-            Panel::hstack()
-                .id_salt("row1")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "widths", widths);
-                    cell(ui, "hairlines", hairlines);
-                    cell(ui, "gradient", gradient);
-                });
-            Panel::hstack()
-                .id_salt("row2")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "per_segment", per_segment);
-                    cell(ui, "joins", joins);
-                    cell(ui, "caps", caps);
-                });
-            Panel::hstack()
-                .id_salt("row3")
-                .gap(16.0)
-                .size((Sizing::FILL, Sizing::FILL))
-                .show(ui, |ui| {
-                    cell(ui, "translucent_solid", translucent_solid);
-                    cell(ui, "translucent_per_point", translucent_per_point);
-                    cell(ui, "translucent_quarter", translucent_quarter);
-                });
+    support::page(ui, |ui| {
+        cell_row(ui, "row1", |ui| {
+            demo_cell(ui, "widths 1–8 px", widths);
+            demo_cell(ui, "hairlines 0.1–1 px", hairlines);
+            demo_cell(ui, "joins — Miter / Bevel / Round", joins);
+            demo_cell(ui, "caps — Butt / Square / Round", caps);
         });
-}
-
-fn cell(ui: &mut Ui, id: &'static str, paint: impl Fn(&mut Ui)) {
-    Panel::zstack()
-        .id_salt(id)
-        .size((Sizing::FILL, Sizing::FILL))
-        .padding(8.0)
-        .show(ui, paint);
+        cell_row(ui, "row2", |ui| {
+            demo_cell(ui, "per-point colors", gradient);
+            demo_cell(ui, "per-segment colors", per_segment);
+            demo_cell(ui, "cubic bézier", cubic);
+            demo_cell(ui, "quadratic bézier", quadratic);
+        });
+        cell_row(ui, "row3", |ui| {
+            demo_cell(ui, "gradient cubic (along t)", gradient_cubic);
+            demo_cell(ui, "gradient multi-stop", gradient_multistop);
+            demo_cell(ui, "curve caps — Butt / Square / Round", curve_caps);
+        });
+    });
 }
 
 fn widths(ui: &mut Ui) {
@@ -79,28 +60,6 @@ fn hairlines(ui: &mut Ui) {
     }
 }
 
-fn gradient(ui: &mut Ui) {
-    let pts = [
-        Vec2::new(10.0, 10.0),
-        Vec2::new(40.0, 110.0),
-        Vec2::new(70.0, 30.0),
-        Vec2::new(110.0, 110.0),
-    ];
-    let cols = [
-        Color::rgb(1.0, 0.2, 0.2),
-        Color::rgb(1.0, 0.85, 0.2),
-        Color::rgb(0.2, 1.0, 0.4),
-        Color::rgb(0.2, 0.6, 1.0),
-    ];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::PerPoint(&cols),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
-}
-
 fn joins(ui: &mut Ui) {
     // Same 90° corner painted three times to highlight join styles
     // at a non-clamp angle (where Miter actually mitres rather
@@ -128,10 +87,10 @@ fn joins(ui: &mut Ui) {
 }
 
 fn caps(ui: &mut Ui) {
-    // Three lines, one per cap style: Butt, Square, Round. All
-    // share the same endpoints; the marker rules at the ends make
-    // the difference visible — Butt stops at the marker, Square
-    // extends by half-width past it, Round adds a half-disc.
+    // Three lines, one per cap style. All share the same endpoints; the
+    // marker rules at the ends make the difference visible — Butt stops
+    // at the marker, Square extends by half-width past it, Round adds a
+    // half-disc.
     let red = Color::rgb(1.0, 0.4, 0.4);
     let green = Color::rgb(0.4, 1.0, 0.4);
     let blue = Color::rgb(0.4, 0.6, 1.0);
@@ -164,74 +123,23 @@ fn caps(ui: &mut Ui) {
     }
 }
 
-/// Paint an opaque magenta backdrop so the next translucent draw
-/// composites against a known non-black, non-white colour — making
-/// the premultiplied-alpha bug obvious.
-///
-/// Backdrop = magenta `(1, 0, 1)`, translucent draw = green
-/// `(0, 1, 0)` at α=0.5. Correct blend (premultiplied source):
-/// `(0, 0.5, 0) + magenta * 0.5 = (0.5, 0.5, 0.5)` → mid grey.
-/// Mesh path's current bug (straight-alpha source into premul
-/// blend): `(0, 1, 0) + magenta * 0.5 = (0.5, 1, 0.5)` → bright
-/// green. See `docs/review-wgsl-shaders.md` A1.
-fn backdrop(ui: &mut Ui) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
-        corners: Corners::ZERO,
-        fill: Color::rgb(1.0, 0.0, 1.0).into(),
-        stroke: Stroke::ZERO,
-    });
-}
-
-/// Repro: solid translucent polyline. Expected mid-grey diagonal;
-/// renders bright-green under the current mesh.wgsl bug.
-fn translucent_solid(ui: &mut Ui) {
-    backdrop(ui);
-    let translucent_green = Color::rgba(0.0, 1.0, 0.0, 0.5);
-    let pts = [Vec2::new(10.0, 20.0), Vec2::new(110.0, 100.0)];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::Single(translucent_green),
-        width: 16.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
-}
-
-/// Repro: per-point translucent. Same expected mid-grey; bug shows
-/// as bright vertex colours.
-fn translucent_per_point(ui: &mut Ui) {
-    backdrop(ui);
+fn gradient(ui: &mut Ui) {
     let pts = [
-        Vec2::new(10.0, 20.0),
-        Vec2::new(60.0, 100.0),
-        Vec2::new(110.0, 20.0),
+        Vec2::new(10.0, 10.0),
+        Vec2::new(40.0, 110.0),
+        Vec2::new(70.0, 30.0),
+        Vec2::new(110.0, 110.0),
     ];
     let cols = [
-        Color::rgba(1.0, 1.0, 0.0, 0.5),
-        Color::rgba(0.0, 1.0, 1.0, 0.5),
-        Color::rgba(1.0, 0.0, 1.0, 0.5),
+        Color::rgb(1.0, 0.2, 0.2),
+        Color::rgb(1.0, 0.85, 0.2),
+        Color::rgb(0.2, 1.0, 0.4),
+        Color::rgb(0.2, 0.6, 1.0),
     ];
     ui.add_shape(Shape::Polyline {
         points: &pts,
         colors: PolylineColors::PerPoint(&cols),
-        width: 14.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
-}
-
-/// Repro: α=0.25 — bug grows linearly with `(1 - a)`, so a lower
-/// alpha makes the over-bright effect even more obvious.
-/// Expected: tint slightly toward green of the magenta backdrop.
-/// Buggy: nearly opaque green.
-fn translucent_quarter(ui: &mut Ui) {
-    backdrop(ui);
-    let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.25)),
-        width: 24.0,
+        width: 4.0,
         cap: LineCap::Butt,
         join: LineJoin::Miter,
     });
@@ -262,4 +170,96 @@ fn per_segment(ui: &mut Ui) {
         cap: LineCap::Butt,
         join: LineJoin::Miter,
     });
+}
+
+const P0: Vec2 = Vec2::new(10.0, 100.0);
+const P1: Vec2 = Vec2::new(35.0, 10.0);
+const P2: Vec2 = Vec2::new(85.0, 10.0);
+const P3: Vec2 = Vec2::new(110.0, 100.0);
+
+const Q0: Vec2 = Vec2::new(10.0, 100.0);
+const Q1: Vec2 = Vec2::new(60.0, 5.0);
+const Q2: Vec2 = Vec2::new(110.0, 100.0);
+
+fn cubic(ui: &mut Ui) {
+    ui.add_shape(Shape::CubicBezier {
+        p0: P0,
+        p1: P1,
+        p2: P2,
+        p3: P3,
+        width: 4.0,
+        brush: Color::rgb(0.2, 0.9, 1.0).into(),
+        cap: LineCap::Butt,
+    });
+}
+
+fn quadratic(ui: &mut Ui) {
+    ui.add_shape(Shape::QuadraticBezier {
+        p0: Q0,
+        p1: Q1,
+        p2: Q2,
+        width: 4.0,
+        brush: Color::rgb(0.4, 1.0, 0.5).into(),
+        cap: LineCap::Butt,
+    });
+}
+
+fn gradient_cubic(ui: &mut Ui) {
+    // Two-stop gradient along the curve's t parameter (p0 → p3). The
+    // `angle` field of LinearGradient is unused on curves.
+    let brush = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        Color::rgb(1.0, 0.2, 0.4),
+        Color::rgb(0.2, 0.6, 1.0),
+    ));
+    ui.add_shape(Shape::CubicBezier {
+        p0: P0,
+        p1: P1,
+        p2: P2,
+        p3: P3,
+        width: 8.0,
+        brush,
+        cap: LineCap::Round,
+    });
+}
+
+fn gradient_multistop(ui: &mut Ui) {
+    // Three-stop rainbow gradient. Same atlas + bake path as
+    // RoundedRect linear fills.
+    let brush = Brush::Linear(LinearGradient::new(
+        0.0,
+        [
+            Stop::new(0.0, Color::rgb(1.0, 0.2, 0.2)),
+            Stop::new(0.5, Color::rgb(1.0, 0.9, 0.2)),
+            Stop::new(1.0, Color::rgb(0.2, 0.6, 1.0)),
+        ],
+    ));
+    ui.add_shape(Shape::QuadraticBezier {
+        p0: Q0,
+        p1: Q1,
+        p2: Q2,
+        width: 10.0,
+        brush,
+        cap: LineCap::Round,
+    });
+}
+
+fn curve_caps(ui: &mut Ui) {
+    // Three identical curves, one per cap kind — the endpoint shape
+    // is the only visual delta. Mirrors `curve_caps_match_golden`.
+    for (i, cap) in [LineCap::Butt, LineCap::Square, LineCap::Round]
+        .iter()
+        .enumerate()
+    {
+        let dy = i as f32 * 35.0;
+        ui.add_shape(Shape::CubicBezier {
+            p0: Vec2::new(10.0, 25.0 + dy),
+            p1: Vec2::new(35.0, 5.0 + dy),
+            p2: Vec2::new(85.0, 45.0 + dy),
+            p3: Vec2::new(110.0, 25.0 + dy),
+            width: 8.0,
+            brush: Color::rgb(1.0, 0.85, 0.2).into(),
+            cap: *cap,
+        });
+    }
 }
