@@ -145,9 +145,12 @@ pub struct TextShaper {
 pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
-    /// Total `measure` calls dispatched (cache misses). Cache hits
-    /// don't increment. Read by tests pinning reshape-skip behaviour
-    /// via [`test_support::measure_calls`].
+    /// Total shaping dispatches: reuse-cache misses in
+    /// `shape_unbounded` / `shape_wrap`, plus every bypass
+    /// [`TextShaper::measure`] call — which may still hit the cosmic
+    /// buffer cache, so this counts dispatches, not reshapes. Reuse-
+    /// cache hits don't increment. Read by tests pinning reshape-skip
+    /// behaviour via [`test_support::measure_calls`].
     pub(crate) measure_calls: u64,
     /// Cross-frame cache of shaping output keyed by
     /// `(WidgetId, within-node text-shape ordinal)`, validity-checked
@@ -273,11 +276,15 @@ impl TextShaper {
     /// cuts to one line with a trailing `…`. Hits when the same target +
     /// halign + mode was used last frame; otherwise dispatches and refreshes
     /// the entry. Must be preceded by [`Self::shape_unbounded`] on the same
-    /// `(wid, ordinal)` so the parent entry exists.
+    /// `(wid, ordinal)` this frame so the parent entry exists and is fresh —
+    /// checked against `hash`, the same authoring hash the unbounded call
+    /// validated the entry with.
+    #[allow(clippy::too_many_arguments)]
     pub(crate) fn shape_wrap(
         &self,
         wid: WidgetId,
         ordinal: u16,
+        hash: NodeHash,
         text: &str,
         params: ShapeParams,
         target_q: u32,
@@ -292,6 +299,10 @@ impl TextShaper {
                 "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
             ),
         };
+        assert!(
+            entry.get().hash == hash,
+            "shape_wrap on a stale entry — shape_unbounded must run first with the current hash",
+        );
         if let Some(w) = entry.get().wrap
             && w.target_q == target_q
             && w.halign == halign
