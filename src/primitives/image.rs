@@ -40,6 +40,19 @@ pub enum ImageFit {
     },
 }
 
+/// How texels are interpolated when an image paints at a size other
+/// than its intrinsic one. `Linear` (the default) is bilinear
+/// smoothing; `Nearest` keeps hard texel edges — pixel-art upscales,
+/// checkerboards, pixel peeping. Implemented as a UV texel-center
+/// snap in the image shader, so both filters share one sampler and
+/// one bind group per texture.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ImageFilter {
+    #[default]
+    Linear,
+    Nearest,
+}
+
 /// Decoded pixel buffer. Straight (non-premultiplied) sRGB RGBA8 — the
 /// backend uses a `Rgba8UnormSrgb` texture so the sampler decodes to
 /// linear on read, and the shader premultiplies. Dropped right after the

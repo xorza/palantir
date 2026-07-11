@@ -178,6 +178,7 @@ fn image_scene(ui: &mut aperture::Ui) {
                 handle,
                 local_rect: None,
                 fit: ImageFit::Fill,
+                filter: aperture::ImageFilter::Linear,
                 tint: Color::WHITE,
             });
         });

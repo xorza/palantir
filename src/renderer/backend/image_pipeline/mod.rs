@@ -70,6 +70,9 @@ impl ImagePipeline {
 
         let image_bgl = texture_sampler_bgl(device, "aperture.image.tex.bgl");
 
+        // The one image sampler — always bilinear. `ImageFilter::Nearest`
+        // is a shader-side UV texel-center snap (see `image.wgsl`), so
+        // filter choice never multiplies samplers or bind groups.
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
             label: Some("aperture.image.sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
@@ -378,7 +381,7 @@ const IMAGE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 6] = wgpu::vertex_attr_array
     // on the CPU; shader multiplies by the sampled texel and premultiplies
     // at write.
     4 => Unorm8x4,  // tint
-    5 => Uint32,    // tiled (1 = fract-wrap UV)
+    5 => Uint32,    // flags (IMG_FLAG_* bits: tile wrap, nearest)
 ];
 
 // Compile-time guard: attribute offsets must match the `ImageInstance`
@@ -392,7 +395,7 @@ const _: () = {
     assert!(IMAGE_INSTANCE_ATTRS[2].offset == offset_of!(ImageInstance, uv_min) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[3].offset == offset_of!(ImageInstance, uv_size) as u64);
     assert!(IMAGE_INSTANCE_ATTRS[4].offset == offset_of!(ImageInstance, tint) as u64);
-    assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, tiled) as u64);
+    assert!(IMAGE_INSTANCE_ATTRS[5].offset == offset_of!(ImageInstance, flags) as u64);
 };
 
 fn instance_layout() -> wgpu::VertexBufferLayout<'static> {

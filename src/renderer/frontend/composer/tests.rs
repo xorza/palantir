@@ -1231,14 +1231,15 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
     );
 }
 
-/// The composer forwards `tiled` verbatim and keeps each draw's UV as-is
+/// The composer forwards `flags` verbatim and keeps each draw's UV as-is
 /// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
 #[test]
-fn compose_forwards_tiled_flag_and_repeat_uv() {
+fn compose_forwards_flags_and_repeat_uv() {
     use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
     let buf = run(
         |b, _arena| {
-            // Non-tiled draw: flag stays 0.
+            // Plain draw: flags stay 0.
             b.draw_image(DrawImagePayload::image(
                 rect(0.0, 0.0, 50.0, 50.0),
                 glam::Vec2::ZERO,
@@ -1247,24 +1248,34 @@ fn compose_forwards_tiled_flag_and_repeat_uv() {
                 TextureId(1),
                 0,
             ));
-            // Tiled draw: UV size > 1 (3×2 repeats) + flag 1.
+            // Tiled draw: UV size > 1 (3×2 repeats) + tiled bit.
             b.draw_image(DrawImagePayload::image(
                 rect(0.0, 0.0, 50.0, 50.0),
                 glam::Vec2::ZERO,
                 glam::Vec2::new(3.0, 2.0),
                 Color::WHITE.into(),
                 TextureId(2),
-                1,
+                IMG_FLAG_TILED,
+            ));
+            // Nearest-filtered draw: the nearest bit rides through alone.
+            b.draw_image(DrawImagePayload::image(
+                rect(0.0, 0.0, 50.0, 50.0),
+                glam::Vec2::ZERO,
+                glam::Vec2::ONE,
+                Color::WHITE.into(),
+                TextureId(3),
+                IMG_FLAG_NEAREST,
             ));
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.rows.instance()[0].tiled, 0);
-    assert_eq!(buf.images.rows.instance()[1].tiled, 1);
+    assert_eq!(buf.images.rows.instance()[0].flags, 0);
+    assert_eq!(buf.images.rows.instance()[1].flags, IMG_FLAG_TILED);
     assert_eq!(
         buf.images.rows.instance()[1].uv_size,
         glam::Vec2::new(3.0, 2.0)
     );
+    assert_eq!(buf.images.rows.instance()[2].flags, IMG_FLAG_NEAREST);
 }
 
 #[test]

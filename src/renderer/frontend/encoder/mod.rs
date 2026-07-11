@@ -12,7 +12,7 @@ use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
-use crate::primitives::image::ImageFit;
+use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::paint::FillKind;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
@@ -22,6 +22,7 @@ use crate::renderer::frontend::cmd_buffer::{
     GpuFillFields, RenderCmdBuffer,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
+use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::ui::Ui;
 use crate::ui::damage::region::DamageRegion;
@@ -405,6 +406,7 @@ fn emit_one_shape(
             id,
             size,
             fit,
+            filter,
         } => {
             let base = resolve_local_rect(owner_rect, *local_rect);
             // Dims baked into the record — no registry borrow.
@@ -415,13 +417,15 @@ fn emit_one_shape(
                 uv_min,
                 uv_size,
             } = resolve_fit(base, size.as_uvec2(), *fit);
+            let mut flags = 0;
+            if matches!(*fit, ImageFit::Tile { .. }) {
+                flags |= IMG_FLAG_TILED;
+            }
+            if *filter == ImageFilter::Nearest {
+                flags |= IMG_FLAG_NEAREST;
+            }
             out.draw_image(DrawImagePayload::image(
-                rect,
-                uv_min,
-                uv_size,
-                *tint,
-                *id,
-                u32::from(matches!(*fit, ImageFit::Tile { .. })),
+                rect, uv_min, uv_size, *tint, *id, flags,
             ));
         }
         ShapeRecord::GpuView { epoch: _ } => {

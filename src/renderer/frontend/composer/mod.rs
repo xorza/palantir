@@ -904,7 +904,7 @@ impl Composer {
                             uv_min: p.uv_min,
                             uv_size: p.uv_size,
                             tint: p.tint.into(),
-                            tiled: p.tiled,
+                            flags: p.flags,
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
