@@ -18,14 +18,16 @@ fn split_id() -> WidgetId {
     WidgetId::from_hash("split")
 }
 
-/// One frame: a 406×100 horizontal splitter at the surface origin.
-/// Default theme thickness is 6, so the free span is 400 — divider
-/// center at x = ratio · 400 + 3.
+/// One frame: a 401×100 horizontal splitter at the surface origin.
+/// Default theme reserves the 1 px rule, so the free span is 400 —
+/// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
+/// straddling it. The bar is placed from *last* frame's extent, so
+/// tests run two warm-up frames before interacting.
 fn frame_with(ui: &mut Ui, ratio: &mut f32) {
     ui.run_at_acked(SURFACE, |ui| {
         Splitter::horizontal(ratio)
             .id(split_id())
-            .size((Sizing::Fixed(406.0), Sizing::Fixed(100.0)))
+            .size((Sizing::Fixed(401.0), Sizing::Fixed(100.0)))
             .min_pane(50.0)
             .show(ui, |_, _| {});
     });
@@ -36,15 +38,17 @@ fn divider_drag_maps_pointer_to_ratio_and_relayouts() {
     let mut ui = Ui::for_test();
     let mut ratio = 0.5;
     frame_with(&mut ui, &mut ratio);
+    frame_with(&mut ui, &mut ratio);
 
-    // ratio 0.5 → first pane [0, 200), divider [200, 206). Press its
-    // center and drag 100 px right: pointer 303 → first = 300 → 0.75.
-    ui.press_at(Vec2::new(203.0, 50.0));
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(303.0, 50.0)));
+    // ratio 0.5 → first pane [0, 200), rule [200, 201), grab bar
+    // [197.5, 203.5). Press the seam center and drag 100 px right:
+    // pointer 300.5 → first = 300 → 0.75.
+    ui.press_at(Vec2::new(200.5, 50.0));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(300.5, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert!(
         (ratio - 0.75).abs() < 1e-6,
-        "pointer 303 over span 400 → 0.75, got {ratio}"
+        "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
 
     // The next frame arranges the panes from the new ratio: first pane
@@ -83,17 +87,18 @@ fn divider_requests_the_resize_cursor() {
     let mut ui = Ui::for_test();
     let mut ratio = 0.5;
     frame_with(&mut ui, &mut ratio);
+    frame_with(&mut ui, &mut ratio);
     assert_eq!(ui.cursor, CursorIcon::Default, "idle frame keeps the arrow");
 
-    // Hovering the divider ([200, 206) at ratio 0.5) requests the
+    // Hovering the grab bar ([197.5, 203.5) at ratio 0.5) requests the
     // horizontal-resize cursor.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(203.0, 50.0)));
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(200.5, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert_eq!(ui.cursor, CursorIcon::EwResize, "hover shows resize");
 
     // Mid-drag the pointer leaves the thin bar; the cursor must hold
     // until release (drag-first, since `hovered` is capture-gated).
-    ui.press_at(Vec2::new(203.0, 50.0));
+    ui.press_at(Vec2::new(200.5, 50.0));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(320.0, 50.0)));
     frame_with(&mut ui, &mut ratio);
     assert_eq!(ui.cursor, CursorIcon::EwResize, "drag holds resize off-bar");
@@ -112,13 +117,14 @@ fn divider_requests_the_resize_cursor() {
         ui.run_at_acked(SURFACE, |ui| {
             Splitter::vertical(ratio)
                 .id(split_id())
-                .size((Sizing::Fixed(100.0), Sizing::Fixed(206.0)))
+                .size((Sizing::Fixed(100.0), Sizing::Fixed(201.0)))
                 .show(ui, |_, _| {});
         });
     };
     frame(&mut ui, &mut ratio);
-    // Free span 200 at ratio 0.5 → divider rows [100, 106).
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 103.0)));
+    frame(&mut ui, &mut ratio);
+    // Free span 200 at ratio 0.5 → grab bar rows [97.5, 103.5).
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 100.5)));
     frame(&mut ui, &mut ratio);
     assert_eq!(
         ui.cursor,

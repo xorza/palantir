@@ -3,12 +3,12 @@ use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use crate::window::CursorIcon;
+use glam::Vec2;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]
@@ -20,6 +20,11 @@ use crate::window::CursorIcon;
 /// the divider recenters to `0.5`. Panes clip their content so an
 /// oversized body can't bleed across the divider mid-resize. Visuals
 /// come from [`crate::SplitterTheme`] (theme slot `splitter`).
+///
+/// Layout reserves only the visible `rule_thickness` seam between the
+/// panes — the wide grab target is an *overlay* bar straddling the seam
+/// (sash-style), so no backdrop stripe ever shows through at rest and
+/// the hover/drag fill paints over the pane edges it covers.
 ///
 /// [`Splitter::show`] records both panes through one `FnMut` body called
 /// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
@@ -56,12 +61,12 @@ impl<'a> Splitter<'a> {
 
     #[track_caller]
     fn axis(ratio: &'a mut f32, horizontal: bool) -> Self {
-        let mut element = Element::new(if horizontal {
-            LayoutMode::HStack
-        } else {
-            LayoutMode::VStack
-        });
+        // Canvas root: the split stack fills it, and the overlay bar is
+        // placed at an explicit position on top. Clipped so the bar's
+        // overhang at a ratio stop can't paint or hit outside the widget.
+        let mut element = Element::new(LayoutMode::Canvas);
         element.size = (Sizing::FILL, Sizing::FILL).into();
+        element.flags.set_clip(ClipMode::Rect);
         Self {
             element,
             ratio,
@@ -121,7 +126,7 @@ impl<'a> Splitter<'a> {
                 } else {
                     (local.y, rect.size.h)
                 };
-                ratio = pointer_to_ratio(pos, extent, thickness, self.min_pane);
+                ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
             }
             if divider.double_clicked() {
                 ratio = 0.5;
@@ -148,45 +153,75 @@ impl<'a> Splitter<'a> {
             });
         }
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
-        // Center the resting rule by padding the bar down to its breadth.
-        let pad = ((thickness - rule_thickness) * 0.5).max(0.0);
         let rule_bg = Background::fill(rule_color);
+
+        // The seam's center, from last frame's arranged extent — the
+        // overlay bar trails a container resize by one frame (the same
+        // lag the drag mapping rides); at rest the bar paints nothing,
+        // so the lag can't be seen. First frame: no rect yet, the bar
+        // lands off-origin and corrects itself next frame.
+        let extent = state
+            .rect
+            .map(|r| if self.horizontal { r.size.w } else { r.size.h })
+            .unwrap_or(0.0);
+        let seam = ratio * (extent - rule_thickness).max(0.0) + rule_thickness * 0.5;
 
         let horizontal = self.horizontal;
         ui.node(id, self.element, None, |ui| {
-            pane(
-                ui,
-                id.with("first"),
-                horizontal,
-                Sizing::Fill(ratio),
-                |ui| body(ui, SplitHalf::First),
-            );
-
-            let mut el = Element::new(LayoutMode::ZStack);
-            el.salt = Salt::Verbatim(divider_id);
-            el.flags.set_sense(Sense::DRAG);
-            if horizontal {
-                el.size = (Sizing::Fixed(thickness), Sizing::FILL).into();
-                el.padding = Spacing::new(pad, 0.0, pad, 0.0);
+            // The split stack: panes touching a Fixed(rule) seam —
+            // layout reserves only the visible rule, so no backdrop
+            // stripe shows between the panes.
+            let stack_id = id.with("stack");
+            let mut stack = Element::new(if horizontal {
+                LayoutMode::HStack
             } else {
-                el.size = (Sizing::FILL, Sizing::Fixed(thickness)).into();
-                el.padding = Spacing::new(0.0, pad, 0.0, pad);
-            }
-            ui.node(divider_id, el, Some(&bar_bg), |ui| {
-                let rule_id = divider_id.with("rule");
+                LayoutMode::VStack
+            });
+            stack.salt = Salt::Verbatim(stack_id);
+            stack.size = (Sizing::FILL, Sizing::FILL).into();
+            ui.node(stack_id, stack, None, |ui| {
+                pane(
+                    ui,
+                    id.with("first"),
+                    horizontal,
+                    Sizing::Fill(ratio),
+                    |ui| body(ui, SplitHalf::First),
+                );
+
+                let rule_id = id.with("rule");
                 let mut rule = Element::new(LayoutMode::Leaf);
                 rule.salt = Salt::Verbatim(rule_id);
-                rule.size = (Sizing::FILL, Sizing::FILL).into();
+                rule.size = if horizontal {
+                    (Sizing::Fixed(rule_thickness), Sizing::FILL)
+                } else {
+                    (Sizing::FILL, Sizing::Fixed(rule_thickness))
+                }
+                .into();
                 ui.node(rule_id, rule, Some(&rule_bg), |_| {});
+
+                pane(
+                    ui,
+                    id.with("second"),
+                    horizontal,
+                    Sizing::Fill(1.0 - ratio),
+                    |ui| body(ui, SplitHalf::Second),
+                );
             });
 
-            pane(
-                ui,
-                id.with("second"),
-                horizontal,
-                Sizing::Fill(1.0 - ratio),
-                |ui| body(ui, SplitHalf::Second),
-            );
+            // The grab target: an overlay bar straddling the seam,
+            // recorded after the stack so it paints (hover/drag fill)
+            // and hit-tests above the pane edges it covers.
+            let mut bar = Element::new(LayoutMode::Leaf);
+            bar.salt = Salt::Verbatim(divider_id);
+            bar.flags.set_sense(Sense::DRAG);
+            if horizontal {
+                bar.size = (Sizing::Fixed(thickness), Sizing::FILL).into();
+                bar.position = Vec2::new(seam - thickness * 0.5, 0.0);
+            } else {
+                bar.size = (Sizing::FILL, Sizing::Fixed(thickness)).into();
+                bar.position = Vec2::new(0.0, seam - thickness * 0.5);
+            }
+            ui.node(divider_id, bar, Some(&bar_bg), |_| {});
         });
 
         Response::eager(id, ui, raw)
@@ -224,12 +259,13 @@ fn sanitize_ratio(r: f32) -> f32 {
 }
 
 /// Map a container-local pointer coordinate on the split axis to the
-/// first pane's share of the free space (`extent − thickness`). The
-/// divider center follows the pointer; `min_pane` floors both panes,
-/// collapsing to a centered clamp when the free space can't fit two
-/// floors. Degenerate extents pin to `0.5`.
-fn pointer_to_ratio(pos: f32, extent: f32, thickness: f32, min_pane: f32) -> f32 {
-    let span = extent - thickness;
+/// first pane's share of the free space (`extent − reserved`, where
+/// `reserved` is the seam the rule occupies in layout). The seam center
+/// follows the pointer; `min_pane` floors both panes, collapsing to a
+/// centered clamp when the free space can't fit two floors. Degenerate
+/// extents pin to `0.5`.
+fn pointer_to_ratio(pos: f32, extent: f32, reserved: f32, min_pane: f32) -> f32 {
+    let span = extent - reserved;
     if span <= f32::EPSILON {
         return 0.5;
     }
@@ -237,7 +273,7 @@ fn pointer_to_ratio(pos: f32, extent: f32, thickness: f32, min_pane: f32) -> f32
     // even when `2 * min_pane > span`.
     let lo = min_pane.min(span * 0.5);
     let hi = (span - min_pane).max(span * 0.5);
-    (pos - thickness * 0.5).clamp(lo, hi) / span
+    (pos - reserved * 0.5).clamp(lo, hi) / span
 }
 
 #[cfg(test)]
@@ -246,10 +282,10 @@ mod tests {
 
     #[test]
     fn pointer_to_ratio_maps_center_edges_and_floors() {
-        // extent 406, thickness 6 → span 400; divider center at
+        // extent 406, reserved 6 → span 400; seam center at
         // pointer, so pointer 203 → first = 200 → ratio 0.5.
         let cases = [
-            // (pos, extent, thickness, min_pane, want)
+            // (pos, extent, reserved, min_pane, want)
             (203.0, 406.0, 6.0, 0.0, 0.5),
             (3.0, 406.0, 6.0, 0.0, 0.0),   // at the left stop
             (403.0, 406.0, 6.0, 0.0, 1.0), // at the right stop
