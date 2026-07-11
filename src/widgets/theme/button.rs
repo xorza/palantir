@@ -4,7 +4,6 @@ use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
@@ -61,21 +60,12 @@ impl Default for ButtonTheme {
         // Resting state at ELEM_HOVER tier; soft TEXT_MUTED-alpha edge (palette BORDER is invisible).
         let m = palette::TEXT_MUTED;
         let edge = m.with_alpha(0.18);
-        let bg = |fill: Color| -> Option<Background> {
-            Some(Background {
-                fill: fill.into(),
-                stroke: Stroke::solid(edge, 1.0),
-                corners: Corners::all(4.0),
-                shadow: Shadow::NONE,
-            })
+        let bg = |fill: Color| {
+            Some(Background::rounded(fill, Corners::all(4.0)).with_stroke(Stroke::solid(edge, 1.0)))
         };
         // Pressed = hovered fill + focused stroke (palette has no further fill tier).
-        let pressed_bg = Background {
-            fill: palette::ELEM_ACTIVE.into(),
-            stroke: Stroke::solid(palette::BORDER_FOCUSED, 1.0),
-            corners: Corners::all(4.0),
-            shadow: Shadow::NONE,
-        };
+        let pressed_bg = Background::rounded(palette::ELEM_ACTIVE, Corners::all(4.0))
+            .with_stroke(Stroke::solid(palette::BORDER_FOCUSED, 1.0));
         Self {
             normal: WidgetLook {
                 background: bg(palette::ELEM_HOVER),
@@ -111,12 +101,7 @@ impl ButtonTheme {
     /// `ContextMenu` and is themed via `theme.context_menu.item`.
     pub fn menu_button() -> Self {
         let flat = |fill: Brush| WidgetLook {
-            background: Some(Background {
-                fill,
-                stroke: Stroke::ZERO,
-                corners: Corners::all(4.0),
-                shadow: Shadow::NONE,
-            }),
+            background: Some(Background::rounded(fill, Corners::all(4.0))),
             text: None,
         };
         Self {

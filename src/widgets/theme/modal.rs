@@ -1,7 +1,6 @@
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
@@ -27,12 +26,8 @@ pub struct ModalTheme {
 
 impl Default for ModalTheme {
     fn default() -> Self {
-        let card = Background {
-            fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::solid(palette::TEXT_MUTED.with_alpha(0.25), 1.0),
-            corners: Corners::all(12.0),
-            shadow: Shadow::NONE,
-        };
+        let card = Background::rounded(palette::ELEM_HOVER, Corners::all(12.0))
+            .with_stroke(Stroke::solid(palette::TEXT_MUTED.with_alpha(0.25), 1.0));
         Self {
             card,
             // Straight-alpha linear black at 50% — a dim scrim. Black is

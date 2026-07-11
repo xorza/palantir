@@ -40,18 +40,15 @@ impl Default for TooltipTheme {
     fn default() -> Self {
         let m = palette::TEXT_MUTED;
         let edge = m.with_alpha(0.22);
-        let panel = Background {
-            fill: palette::ELEM.into(),
-            stroke: Stroke::solid(edge, 1.0),
-            corners: Corners::all(4.0),
-            shadow: Shadow {
+        let panel = Background::rounded(palette::ELEM, Corners::all(4.0))
+            .with_stroke(Stroke::solid(edge, 1.0))
+            .with_shadow(Shadow {
                 color: Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
                 offset: glam::Vec2::new(2.0, 2.0),
                 blur: 5.0,
                 spread: 0.0,
                 inset: false,
-            },
-        };
+            });
         Self {
             panel,
             text: TextStyle::default().with_font_size(13.0),

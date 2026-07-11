@@ -3,7 +3,6 @@ use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
@@ -85,24 +84,12 @@ impl Default for TextEditTheme {
         // lands. Picking 1.5 px gives focused its emphasis without
         // the layout shift.
         let stroke_w = 1.5;
-        let normal_bg = Background {
-            fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::solid(edge, stroke_w),
-            corners: radius,
-            shadow: Shadow::NONE,
-        };
-        let focused_bg = Background {
-            fill: palette::ELEM_HOVER.into(),
-            stroke: Stroke::solid(palette::BORDER_FOCUSED, stroke_w),
-            corners: radius,
-            shadow: Shadow::NONE,
-        };
-        let disabled_bg = Background {
-            fill: palette::ELEM.into(),
-            stroke: Stroke::solid(edge, stroke_w),
-            corners: radius,
-            shadow: Shadow::NONE,
-        };
+        let normal_bg = Background::rounded(palette::ELEM_HOVER, radius)
+            .with_stroke(Stroke::solid(edge, stroke_w));
+        let focused_bg = Background::rounded(palette::ELEM_HOVER, radius)
+            .with_stroke(Stroke::solid(palette::BORDER_FOCUSED, stroke_w));
+        let disabled_bg =
+            Background::rounded(palette::ELEM, radius).with_stroke(Stroke::solid(edge, stroke_w));
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
         let acc = palette::ACCENT;

@@ -88,4 +88,18 @@ impl Background {
             shadow: Shadow::NONE,
         }
     }
+
+    /// Set the border stroke, keeping fill/corners/shadow — the chaining
+    /// sibling of [`Self::fill`] / [`Self::rounded`], which start strokeless.
+    pub fn with_stroke(mut self, stroke: Stroke) -> Self {
+        self.stroke = stroke;
+        self
+    }
+
+    /// Set the drop/inset shadow, keeping fill/corners/stroke. Chains after
+    /// [`Self::fill`] / [`Self::rounded`], which start shadowless.
+    pub fn with_shadow(mut self, shadow: Shadow) -> Self {
+        self.shadow = shadow;
+        self
+    }
 }

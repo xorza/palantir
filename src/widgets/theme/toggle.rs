@@ -3,7 +3,6 @@ use crate::input::response::ResponseState;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
@@ -84,13 +83,8 @@ impl ToggleTheme {
     fn built(corner: f32, box_size: f32, indicator_inset: f32, indicator: Color) -> Self {
         let radius = Corners::all(corner);
         let edge = palette::TEXT_MUTED.with_alpha(0.35);
-        let bg = |fill: Color, stroke: Stroke| -> Option<Background> {
-            Some(Background {
-                fill: fill.into(),
-                stroke,
-                corners: radius,
-                shadow: Shadow::NONE,
-            })
+        let bg = |fill: Color, stroke: Stroke| {
+            Some(Background::rounded(fill, radius).with_stroke(stroke))
         };
         let disabled_text = Some(TextStyle::default().with_color(palette::TEXT_DISABLED));
         let unchecked = StatefulLook {
