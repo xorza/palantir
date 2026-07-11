@@ -89,11 +89,11 @@ fn first_frame_marks_every_painting_node_dirty() {
         .count();
     assert_eq!(ui.damage_engine.dirty.len(), painting);
     // First frame is `force_full`, so `compute` short-circuits to
-    // `Damage::Full` after the structural diff and skips the
-    // collapse — `region` stays empty by design. Check the pre-
-    // collapse `raw_rects` buffer to confirm every painting node
-    // actually pushed its rect.
-    assert!(!ui.damage_engine.raw_rects.is_empty());
+    // `Damage::Full` after the structural diff — and the Vacant arm
+    // skips its raw-rect pushes (the region would be discarded), so
+    // the buffer stays empty and its retained capacity never balloons
+    // to whole-tree size on the first frame or a resize storm.
+    assert!(ui.damage_engine.raw_rects.is_empty());
 }
 
 /// Pin: re-recording identical authoring → zero dirty nodes,
@@ -2568,15 +2568,60 @@ fn node_snapshot_decomposition_matches_cascade() {
         );
     }
 
-    // Vacant pushes one rect per paint row (chrome + each shape).
+    // The force-full first frame skips the Vacant pushes (its region
+    // is discarded) — the buffer stays empty.
+    assert!(ui.damage_engine.raw_rects.is_empty());
+
+    // A widget added on an *incremental* frame hits the same Vacant
+    // arm with the pushes live: one rect per paint row (chrome + each
+    // shape). The unchanged "multi" subtree-skips and contributes
+    // nothing, so the buffer holds exactly the newcomer's rows.
+    let two_lines = |ui: &mut Ui| {
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(0.0, 0.0),
+            b: Vec2::new(10.0, 10.0),
+            width: 1.0,
+            brush: Color::rgb(1.0, 0.0, 0.0).into(),
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+        });
+        ui.add_shape(Shape::Line {
+            a: Vec2::new(20.0, 20.0),
+            b: Vec2::new(30.0, 30.0),
+            width: 1.0,
+            brush: Color::rgb(0.0, 1.0, 0.0).into(),
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+        });
+    };
+    frame(&mut ui, |ui| {
+        Panel::hstack()
+            .id(WidgetId::from_hash("multi"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| two_lines(ui));
+        Panel::hstack()
+            .id(WidgetId::from_hash("multi2"))
+            .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
+            .background(Background {
+                fill: BLUE.into(),
+                ..Default::default()
+            })
+            .show(ui, |ui| two_lines(ui));
+    });
+    let snap2 = ui.damage_engine.prev[&WidgetId::from_hash("multi2")];
+    let snap2_paints = &ui.damage_engine.arena.snaps[snap2.paint_span.range()];
     assert_eq!(
         ui.damage_engine.raw_rects.len(),
         3,
-        "Vacant insert pushes one rect per paint row",
+        "incremental Vacant insert pushes one rect per paint row",
     );
-    assert_eq!(ui.damage_engine.raw_rects[0], snap_paints[0].screen);
-    assert_eq!(ui.damage_engine.raw_rects[1], snap_paints[1].screen);
-    assert_eq!(ui.damage_engine.raw_rects[2], snap_paints[2].screen);
+    assert_eq!(ui.damage_engine.raw_rects[0], snap2_paints[0].screen);
+    assert_eq!(ui.damage_engine.raw_rects[1], snap2_paints[1].screen);
+    assert_eq!(ui.damage_engine.raw_rects[2], snap2_paints[2].screen);
 }
 
 /// Slice 4 headline: a multi-shape owner whose shapes are spatially

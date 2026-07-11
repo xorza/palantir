@@ -771,7 +771,15 @@ impl DamageEngine {
                     }
                     Entry::Vacant(e) => {
                         let paint_span = arena.append(curr_paints_slice);
-                        push_screens(raw_rects, curr_paints_slice);
+                        // On a force-full frame every node lands in this
+                        // arm (the map was invalidated at entry) and the
+                        // early return below discards the region — skip
+                        // the pushes so a resize storm does no rect work
+                        // and `raw_rects`' retained capacity tracks real
+                        // incremental frames, not the whole tree.
+                        if !force_full {
+                            push_screens(raw_rects, curr_paints_slice);
+                        }
                         e.insert(make_snapshot(paint_span));
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(i as u32));
