@@ -61,8 +61,8 @@ impl OffscreenHostBuilder {
     /// [`RealtimeClock`](crate::clock::RealtimeClock); a
     /// [`FixedClock`](crate::clock::FixedClock) makes the render reproducible
     /// (golden tests, thumbnails) — animations sample a fixed phase.
-    pub fn clock(mut self, clock: Box<dyn Clock>) -> Self {
-        self.clock = clock;
+    pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
+        self.clock = Box::new(clock);
         self
     }
 
