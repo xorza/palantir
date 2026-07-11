@@ -62,7 +62,7 @@ use crate::input::InputEvent;
 use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::window::{PendingWindow, WindowConfig, WindowToken};
+use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowToken};
 use crate::window_renderer::{FramePresent, FrameTarget, PresentStrategy, WindowRenderer};
 use crate::winit_host::config::WinitHostConfig;
 use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
@@ -108,6 +108,26 @@ struct WindowState {
     /// deferral is what lets an app show a "save changes?" prompt instead
     /// of the window vanishing on the click.
     close_requested: bool,
+    /// The cursor last applied to the OS window, so `draw` only calls
+    /// `Window::set_cursor` when the frame's request actually changed.
+    cursor: CursorIcon,
+}
+
+/// Map the backend-agnostic cursor vocabulary onto winit's.
+fn winit_cursor(cursor: CursorIcon) -> winit::window::CursorIcon {
+    use winit::window::CursorIcon as W;
+    match cursor {
+        CursorIcon::Default => W::Default,
+        CursorIcon::Pointer => W::Pointer,
+        CursorIcon::Text => W::Text,
+        CursorIcon::Grab => W::Grab,
+        CursorIcon::Grabbing => W::Grabbing,
+        CursorIcon::Move => W::Move,
+        CursorIcon::Crosshair => W::Crosshair,
+        CursorIcon::EwResize => W::EwResize,
+        CursorIcon::NsResize => W::NsResize,
+        CursorIcon::NotAllowed => W::NotAllowed,
+    }
 }
 
 /// What [`WinitHost::new`] stashes for the first `resumed`: the bootstrap
@@ -276,6 +296,14 @@ where
             |ui| run.app.frame(token, ui),
             || window.pre_present_notify(),
         );
+        // Apply the frame's cursor request, only on change — the request
+        // is sticky across PaintOnly frames (see `Ui::cursor`), so this
+        // stays quiet while the pointer rests on a widget.
+        let cursor = win.renderer.ui.cursor;
+        if cursor != win.cursor {
+            win.window.set_cursor(winit_cursor(cursor));
+            win.cursor = cursor;
+        }
         // Resolve the close request now the app has had its say. Unless
         // vetoed, route it through the same `pending_closes` path an
         // explicit `Ui::close_window` uses, so `drain_window_requests`
@@ -339,6 +367,7 @@ where
                 scale_factor,
                 next: FramePresent::Immediate,
                 close_requested: false,
+                cursor: CursorIcon::default(),
             },
         );
     }

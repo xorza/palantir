@@ -48,7 +48,7 @@ use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
 use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
-use crate::window::{PendingWindow, WindowConfig, WindowGeometry, WindowToken};
+use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowGeometry, WindowToken};
 use glam::{IVec2, UVec2};
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
@@ -196,6 +196,13 @@ pub struct Ui {
     /// before each draw. The other window-manager fact
     /// [`Self::window_geometry`] carries.
     pub(crate) window_maximized: bool,
+    /// The mouse cursor widgets requested this frame via
+    /// [`Self::set_cursor`] (last writer wins, matching record z-order).
+    /// Reset to [`CursorIcon::Default`] at the top of each record pass —
+    /// *not* per frame, so PaintOnly frames (no record) retain the last
+    /// recorded request and the host's change-detection sees no flicker.
+    /// Applied by the host after the frame; inert in headless contexts.
+    pub(crate) cursor: CursorIcon,
 }
 
 impl std::fmt::Debug for Ui {
@@ -281,6 +288,7 @@ impl Ui {
             close_vetoed: false,
             window_position: None,
             window_maximized: false,
+            cursor: CursorIcon::default(),
         }
     }
 
@@ -566,6 +574,11 @@ impl Ui {
             // needs `BUTTONS` to still be set when the next click
             // outside lands.
             self.input.subs.clear();
+            // Like the subscription set, the cursor request is
+            // re-asserted by whoever still wants it this pass; reset
+            // here (not per frame) so PaintOnly frames keep the last
+            // recorded cursor instead of flickering back to the arrow.
+            self.cursor = CursorIcon::default();
             // Snapshot whether any widget interaction is possible this
             // frame; `response_for` skips its per-button capture scans for
             // every widget when none is (the common idle frame).
@@ -857,6 +870,17 @@ impl Ui {
     /// pair with [`Self::request_repaint`] to keep the host awake.
     pub fn now(&self) -> Duration {
         self.time
+    }
+
+    /// Request the mouse cursor shown for this window. Per record pass,
+    /// last writer wins — record order is z-order, so the topmost
+    /// interested widget's request lands. Reset to
+    /// [`CursorIcon::Default`] at the top of every record pass; a widget
+    /// that still wants a non-default cursor re-requests it each frame
+    /// (typically off its hover/drag response). The host applies it
+    /// after the frame, only on change; ignored in headless contexts.
+    pub fn set_cursor(&mut self, cursor: CursorIcon) {
+        self.cursor = cursor;
     }
 
     /// Ask the host to schedule another frame after this one. Cleared

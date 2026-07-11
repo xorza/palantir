@@ -8,6 +8,7 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
+use crate::window::CursorIcon;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]
@@ -135,6 +136,17 @@ impl<'a> Splitter<'a> {
         } else {
             None
         };
+        // Resize cursor while the divider is hot. Keyed off `dragged`
+        // first: mid-drag the pointer routinely leaves the thin bar
+        // (`hovered` is also capture-gated), and the cursor must hold
+        // until release.
+        if bar_fill.is_some() {
+            ui.set_cursor(if self.horizontal {
+                CursorIcon::EwResize
+            } else {
+                CursorIcon::NsResize
+            });
+        }
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
         // Center the resting rule by padding the bar down to its breadth.
         let pad = ((thickness - rule_thickness) * 0.5).max(0.0);
