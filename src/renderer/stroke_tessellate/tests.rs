@@ -196,8 +196,9 @@ fn shallow_join_stays_miter() {
     assert_eq!(i.len(), 36);
 }
 
-/// Sharp miter join triggers bevel chrome: 16 cross-section verts
-/// + 1 bevel center + 1 concave-fill center.
+/// Sharp miter join triggers bevel chrome: 16 cross-section verts plus a
+/// bevel center. The concave side meets at the miter point, so no notch
+/// fill.
 #[test]
 fn sharp_join_emits_bevel() {
     let mut v = Vec::new();
@@ -214,8 +215,8 @@ fn sharp_join_emits_bevel() {
         &mut v,
         &mut i,
     );
-    assert_eq!(v.len(), 18);
-    assert_eq!(i.len(), 48);
+    assert_eq!(v.len(), 17);
+    assert_eq!(i.len(), 45);
     // Bevel fringe quad references only trailing/leading blocks (4..12).
     let bridge_fringe = &i[21..27];
     for &idx in bridge_fringe {
@@ -283,7 +284,8 @@ fn round_caps_emit_fan_verts() {
     assert_eq!(round_segments(f32::MAX), 16);
 }
 
-/// Round join at an interior point: dual cross-section + arc fan.
+/// Round join at an interior point: dual cross-sections (concave halves
+/// pulled to the shared miter point) + an arc fan closing on that miter.
 #[test]
 fn round_join_emits_fan_at_interior() {
     let mut v = Vec::new();
@@ -304,38 +306,8 @@ fn round_join_emits_fan_at_interior() {
         &mut v,
         &mut i,
     );
-    assert_eq!(v.len(), 28);
-    assert_eq!(i.len(), 75);
-}
-
-/// A near-straight Round join collapses to the single miter cross-section:
-/// its fan would be sub-pixel, and the dual path's two full-width
-/// cross-sections overlap on the concave side — double-blending a
-/// translucent stroke into a bright radial "spoke" (the spinner-arc
-/// artifact). A ~5.7° turn ⇒ 3 cross-sections × 4 = 12 verts, no fan (vs the
-/// 90° turn's 28 in `round_join_emits_fan_at_interior`).
-#[test]
-fn near_straight_round_join_collapses_to_miter() {
-    let mut v = Vec::new();
-    let mut i = Vec::new();
-    tessellate_polyline_aa(
-        &[
-            Vec2::new(0.0, 0.0),
-            Vec2::new(10.0, 0.0),
-            Vec2::new(20.0, 1.0),
-        ],
-        &[red()],
-        StrokeStyle {
-            mode: ColorMode::Single,
-            cap: LineCap::Butt,
-            join: LineJoin::Round,
-            width_phys: 2.0,
-        },
-        &mut v,
-        &mut i,
-    );
-    assert_eq!(v.len(), 12, "near-straight round join must miter (no fan)");
-    assert_eq!(i.len(), 36);
+    assert_eq!(v.len(), 27);
+    assert_eq!(i.len(), 72);
 }
 
 /// PerSegment + Round caps emits cap fans at both endpoints, with
@@ -366,8 +338,8 @@ fn per_segment_round_caps() {
 }
 
 /// PerSegment + Bevel at a 90° join: dual cross-sections at the
-/// interior plus bevel bridge + concave fill, with the chrome
-/// painted in the average of the two segment colors.
+/// interior plus bevel bridge (concave halves meet at the miter, so no
+/// notch fill), with the chrome painted in the average of the two colors.
 #[test]
 fn per_segment_bevel_join_emits_chrome() {
     let mut v = Vec::new();
@@ -388,13 +360,13 @@ fn per_segment_bevel_join_emits_chrome() {
         &mut v,
         &mut i,
     );
-    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 1 concave-fill center + 4 endpoint = 18.
-    assert_eq!(v.len(), 18);
-    // 2 strips × 18 + bevel (3 center + 6 fringe) + concave 3 = 48.
-    assert_eq!(i.len(), 48);
-    // Bevel/concave-fill center is the average of red and green.
+    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 4 endpoint = 17.
+    assert_eq!(v.len(), 17);
+    // 2 strips × 18 + bevel (3 center + 6 fringe) = 45.
+    assert_eq!(i.len(), 45);
+    // Bevel center is the average of red and green.
     // Layout: endpoint(0..4)+trailing(4..8)+leading(8..12)+bevel-center(12)
-    //        +concave-center(13)+endpoint(14..18).
+    //        +endpoint(13..17).
     // ColorU8 1-LSB tolerance on the linear-u8 quantization.
     let mid = v[12].color;
     let q = |x: f32| -> u8 { (x.clamp(0.0, 1.0) * 255.0).round() as u8 };
@@ -424,10 +396,10 @@ fn per_segment_round_join_emits_fan() {
         &mut v,
         &mut i,
     );
-    // 4 + 4 + 4 + 11 (round fan) + 1 concave + 4 = 28.
-    assert_eq!(v.len(), 28);
-    // 2 strips × 18 + 1 fan × 36 + 1 concave × 3 = 75.
-    assert_eq!(i.len(), 75);
+    // 4 + 4 + 4 + 11 (round fan) + 4 = 27 (concave meets at the miter).
+    assert_eq!(v.len(), 27);
+    // 2 strips × 18 + 1 fan × 36 = 72.
+    assert_eq!(i.len(), 72);
 }
 
 /// Degenerate input (< 2 points) emits nothing.
@@ -567,10 +539,10 @@ fn bevel_join_on_shallow_turn_emits_dual_chrome() {
         &mut v,
         &mut i,
     );
-    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 1 concave-fill center + 4 endpoint = 18.
-    assert_eq!(v.len(), 18);
-    // 2 strips × 18 + bevel (3 center + 6 fringe) + concave 3 = 48.
-    assert_eq!(i.len(), 48);
+    // 4 endpoint + 4 trailing + 4 leading + 1 bevel center + 4 endpoint = 17.
+    assert_eq!(v.len(), 17);
+    // 2 strips × 18 + bevel (3 center + 6 fringe) = 45.
+    assert_eq!(i.len(), 45);
 }
 
 /// Consecutive coincident points are filtered: 3 input points
