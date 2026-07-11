@@ -77,11 +77,12 @@ pub(crate) struct RenderBuffer {
     /// reads this to decide whether to walk the stencil-mask path;
     /// saves a linear scan over `groups` at submit time.
     pub(crate) has_rounded_clip: bool,
-    /// Root-background fold: when the frame's bottom-most draw is an
-    /// opaque solid sharp quad covering the whole viewport under no
-    /// clip, the composer drops the quad and records its fill here.
-    /// The backend clears (or pre-clears, on partial frames) to this
-    /// color instead of the plan's — pixel-identical output, minus the
+    /// Clear fold: when an unclipped opaque solid sharp quad covers the
+    /// whole viewport, the composer discards everything composed before it
+    /// (fully hidden), drops the quad, and records its fill here — the
+    /// frame effectively starts at the last such cover. The backend clears
+    /// (or pre-clears, on partial frames) to this color instead of the
+    /// plan's — pixel-identical output, minus the hidden underlay and the
     /// full-surface fragment load of the biggest quad in the frame.
     pub(crate) clear_override: Option<Color>,
     /// Physical-px viewport, ceil'd. Backends use this as the default scissor
@@ -142,6 +143,22 @@ impl RenderBuffer {
     /// beside the fields, so adding a column forces choosing its reset
     /// in the same edit instead of in the composer's preamble.
     pub(crate) fn start_frame(&mut self, display: Display) {
+        self.discard_scene();
+        self.clear_override = None;
+        self.viewport_phys = display.physical;
+        self.viewport_phys_f = display.physical.as_vec2();
+        self.scale = display.scale_factor;
+        // Not derivable from `display`; `Frontend::build` stamps the real
+        // value after compose.
+        self.time = Duration::ZERO;
+    }
+
+    /// Drop every scene column (capacity retained), leaving the per-frame
+    /// stamps (`clear_override`, viewport, scale, time) untouched. Shared by
+    /// [`Self::start_frame`] and the composer's clear fold, which discards
+    /// everything composed so far when a fullscreen opaque cover proves it
+    /// invisible — a new scene column added here resets on both paths at once.
+    pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();
         self.meshes.rows.clear();
@@ -155,13 +172,6 @@ impl RenderBuffer {
         self.curve_batches.clear();
         self.rounded_clips.clear();
         self.has_rounded_clip = false;
-        self.clear_override = None;
-        self.viewport_phys = display.physical;
-        self.viewport_phys_f = display.physical.as_vec2();
-        self.scale = display.scale_factor;
-        // Not derivable from `display`; `Frontend::build` stamps the real
-        // value after compose.
-        self.time = Duration::ZERO;
     }
 }
 
