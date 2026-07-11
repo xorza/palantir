@@ -91,15 +91,54 @@ impl Background {
 
     /// Set the border stroke, keeping fill/corners/shadow — the chaining
     /// sibling of [`Self::fill`] / [`Self::rounded`], which start strokeless.
-    pub fn with_stroke(mut self, stroke: Stroke) -> Self {
+    pub const fn with_stroke(mut self, stroke: Stroke) -> Self {
         self.stroke = stroke;
         self
     }
 
     /// Set the drop/inset shadow, keeping fill/corners/stroke. Chains after
     /// [`Self::fill`] / [`Self::rounded`], which start shadowless.
-    pub fn with_shadow(mut self, shadow: Shadow) -> Self {
+    pub const fn with_shadow(mut self, shadow: Shadow) -> Self {
         self.shadow = shadow;
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // `with_stroke`/`with_shadow` chained in a const context. If either
+    // regresses to non-const, this fails to compile.
+    const _CONST_BUILDER: Background = Background {
+        fill: Brush::TRANSPARENT,
+        stroke: Stroke::ZERO,
+        corners: Corners::ZERO,
+        shadow: Shadow::NONE,
+    }
+    .with_stroke(Stroke::ZERO)
+    .with_shadow(Shadow::NONE);
+
+    #[test]
+    fn with_stroke_and_with_shadow_set_the_named_field_only() {
+        let base = Background::rounded(crate::primitives::color::Color::WHITE, Corners::all(4.0));
+        let stroke = Stroke::solid(crate::primitives::color::Color::BLACK, 2.0);
+        let shadow = Shadow::drop(
+            crate::primitives::color::Color::BLACK,
+            glam::Vec2::ZERO,
+            4.0,
+        );
+
+        let with_stroke = base.clone().with_stroke(stroke.clone());
+        assert_eq!(with_stroke.stroke, stroke);
+        assert_eq!(with_stroke.fill, base.fill);
+        assert_eq!(with_stroke.corners, base.corners);
+        assert_eq!(with_stroke.shadow, base.shadow);
+
+        let with_shadow = base.clone().with_shadow(shadow);
+        assert_eq!(with_shadow.shadow.blur, 4.0);
+        assert_eq!(with_shadow.fill, base.fill);
+        assert_eq!(with_shadow.stroke, base.stroke);
+        assert_eq!(with_shadow.corners, base.corners);
     }
 }

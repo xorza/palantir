@@ -89,14 +89,14 @@ impl Size {
 
     pub const fn min(self, other: Self) -> Self {
         Self {
-            w: if self.w < other.w { self.w } else { other.w },
-            h: if self.h < other.h { self.h } else { other.h },
+            w: self.w.min(other.w),
+            h: self.h.min(other.h),
         }
     }
     pub const fn max(self, other: Self) -> Self {
         Self {
-            w: if self.w > other.w { self.w } else { other.w },
-            h: if self.h > other.h { self.h } else { other.h },
+            w: self.w.max(other.w),
+            h: self.h.max(other.h),
         }
     }
 }
@@ -114,5 +114,29 @@ impl<W: Num, H: Num> From<(W, H)> for Size {
             w: w.as_f32(),
             h: h.as_f32(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::primitives::size::Size;
+
+    #[test]
+    fn min_and_max_are_per_axis() {
+        let a = Size::new(1.0, 8.0);
+        let b = Size::new(4.0, 2.0);
+        assert_eq!(a.min(b), Size::new(1.0, 2.0));
+        assert_eq!(a.max(b), Size::new(4.0, 8.0));
+    }
+
+    #[test]
+    fn min_and_max_ignore_nan_operand() {
+        let nan = Size::new(f32::NAN, f32::NAN);
+        let real = Size::new(3.0, 5.0);
+        // `f32::min`/`max` ignore NaN when the other operand is a real
+        // number — matches every other f32-pair reduction in the crate
+        // (e.g. `Rect::union`/`intersect`).
+        assert_eq!(real.min(nan), real);
+        assert_eq!(real.max(nan), real);
     }
 }

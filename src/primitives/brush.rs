@@ -412,14 +412,14 @@ macro_rules! gradient_common {
         impl $t {
             /// Override how the gradient repeats outside the 0..1
             /// parametric range. Builder-style.
-            pub fn with_spread(mut self, spread: Spread) -> Self {
+            pub const fn with_spread(mut self, spread: Spread) -> Self {
                 self.spread = spread;
                 self
             }
 
             /// Override the colour space interpolation runs in.
             /// Builder-style.
-            pub fn with_interp(mut self, interp: Interp) -> Self {
+            pub const fn with_interp(mut self, interp: Interp) -> Self {
                 self.interp = interp;
                 self
             }
@@ -694,6 +694,17 @@ mod tests {
         assert_eq!(g.spread, Spread::Pad);
         assert_eq!(g.interp, Interp::Oklab);
         assert!(!g.is_noop());
+
+        // `with_spread`/`with_interp` (shared via `gradient_common!`)
+        // override only the named field, leaving stops/angle untouched.
+        let overridden = g
+            .clone()
+            .with_spread(Spread::Repeat)
+            .with_interp(Interp::Linear);
+        assert_eq!(overridden.spread, Spread::Repeat);
+        assert_eq!(overridden.interp, Interp::Linear);
+        assert_eq!(overridden.stops, g.stops);
+        assert_eq!(overridden.angle, g.angle);
     }
 
     #[test]

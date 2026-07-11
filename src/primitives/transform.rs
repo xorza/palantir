@@ -23,18 +23,18 @@ impl TranslateScale {
 
     /// True when this transform won't visibly move/scale descendants.
     /// Two-stage check:
-    /// - Fast path: 12-byte equality with `IDENTITY` — a single
-    ///   `memcmp` on the `#[repr(C)] Pod` layout, faster than three
-    ///   f32 `feq` instructions.
+    /// - Fast path: bitwise equality with `IDENTITY` via `to_bits`,
+    ///   faster than three f32 `feq` instructions.
     /// - Approx fallback (only when the fast path misses): treats
     ///   sub-`EPS` numerical drift as identity. Catches transforms
     ///   that animation/lerping produced bit-different from
     ///   `IDENTITY` but visually indistinguishable.
     #[inline]
-    pub fn is_noop(&self) -> bool {
-        let s: [u32; 3] = bytemuck::cast(*self);
-        let id: [u32; 3] = bytemuck::cast(Self::IDENTITY);
-        if s == id {
+    pub const fn is_noop(&self) -> bool {
+        if self.translation.x.to_bits() == Self::IDENTITY.translation.x.to_bits()
+            && self.translation.y.to_bits() == Self::IDENTITY.translation.y.to_bits()
+            && self.scale.to_bits() == Self::IDENTITY.scale.to_bits()
+        {
             return true;
         }
         approx_zero(self.translation.x)
@@ -161,5 +161,38 @@ impl TranslateScale {
 impl Default for TranslateScale {
     fn default() -> Self {
         Self::IDENTITY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::primitives::approx::EPS;
+
+    #[test]
+    fn identity_is_noop_via_fast_path() {
+        assert!(TranslateScale::IDENTITY.is_noop());
+        assert!(TranslateScale::new(Vec2::ZERO, 1.0).is_noop());
+    }
+
+    #[test]
+    fn negative_zero_translation_is_noop_via_fallback() {
+        // `-0.0.to_bits() != 0.0.to_bits()`, so this misses the bitwise
+        // fast path and must fall through to `approx_zero`.
+        let t = TranslateScale::new(Vec2::new(-0.0, -0.0), 1.0);
+        assert_ne!(t.translation.x.to_bits(), 0.0f32.to_bits());
+        assert!(t.is_noop());
+    }
+
+    #[test]
+    fn sub_eps_drift_is_noop_via_fallback() {
+        let t = TranslateScale::new(Vec2::splat(EPS * 0.5), 1.0 + EPS * 0.5);
+        assert!(t.is_noop());
+    }
+
+    #[test]
+    fn visible_translation_or_scale_is_not_noop() {
+        assert!(!TranslateScale::from_translation(Vec2::new(1.0, 0.0)).is_noop());
+        assert!(!TranslateScale::from_scale(1.5).is_noop());
     }
 }
