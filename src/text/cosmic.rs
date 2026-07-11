@@ -1,15 +1,18 @@
-//! Real text shaping via [`cosmic_text`]. Caches one `Buffer` per
-//! `(text, font_size, max_width)` triple so steady-state measurement is
-//! `HashMap` lookup only — no reshape, no allocation. The cache is
-//! bounded: [`CosmicMeasure::end_frame_evict`] drops the
-//! least-recently-shaped buffers each frame (keeping every buffer a live
-//! layout entry still references), so a continuous resize drag — every
-//! width unique, a fresh entry per run per frame — stays bounded instead
-//! of growing without limit.
+//! Real text shaping via [`cosmic_text`]. Caches one shaped `Buffer`
+//! per [`TextCacheKey`] — every input that affects shaping (text hash,
+//! font size, wrap width, line height, family, weight, halign, fit) —
+//! so steady-state measurement is `HashMap` lookup only: no reshape,
+//! no allocation. The cache is bounded:
+//! [`CosmicMeasure::end_frame_evict`] drops the least-recently-shaped
+//! buffers each frame (keeping every buffer a live layout entry still
+//! references), so a continuous resize drag — every width unique, a
+//! fresh entry per run per frame — stays bounded instead of growing
+//! without limit.
 //!
-//! The renderer (`WgpuBackend`) downcasts the trait object to this concrete
-//! type to reach the cached `Buffer`s and the `FontSystem` for its
-//! text prepare/append path.
+//! The render side reaches the cached `Buffer`s and the `FontSystem`
+//! through [`CosmicMeasure::split_for_render`] (via
+//! `TextShaper::with_render_split`) — a disjoint borrow, not a trait
+//! object; `text/mod.rs` documents why there's no `TextMeasure` trait.
 //!
 //! Hash collisions are theoretically possible (we key on a 64-bit hash of the
 //! text rather than storing the full string), but at typical UI scales the
@@ -81,15 +84,17 @@ fn key_for(text: &str, params: ShapeParams, fit: LineFit) -> TextCacheKey {
     if text_hash == 0 {
         text_hash = 1;
     }
-    // Cosmic only applies per-line align when `max_width_px` is
-    // `Some`. Without a wrap target every halign collapses to the
-    // same shaped buffer, so fold `halign_q` to `Auto`'s discriminant
-    // (0) on that path — single-line callers don't pay an N-way
+    // Halign discriminates the key only when it feeds shaping: a
+    // finite wrap width under the `Wrap` fit, where cosmic bakes
+    // per-line offsets into the buffer. Unbounded shapes and the
+    // truncated single-line fits (`Clip`/`Ellipsis` shape with
+    // alignment `None` — the encoder owns placement) produce
+    // identical buffers for every halign, so fold `halign_q` to
+    // `Auto`'s discriminant (0) there — callers don't pay an N-way
     // cache split for identical glyph positions.
-    let halign_q = if max_width_px.is_some() {
-        halign as u8
-    } else {
-        HAlign::Auto as u8
+    let halign_q = match (max_width_px, fit) {
+        (Some(_), LineFit::Wrap) => halign as u8,
+        _ => HAlign::Auto as u8,
     };
     TextCacheKey::new(
         text_hash,
@@ -181,6 +186,13 @@ pub struct CosmicMeasure {
     /// the per-truncation ellipsis reshape into a map lookup (one shape
     /// per distinct size+family+weight, ever).
     ellipsis_cache: FxHashMap<(u32, u8, u8), f32>,
+    /// Retained scratch for the truncated string
+    /// [`Self::measure_truncated`] builds on a miss (cut prefix +
+    /// optional `…`). Misses are the hot case — a continuous width drag
+    /// mints a fresh quantized target per label per frame — so building
+    /// into a retained buffer keeps that path free of `String` allocs,
+    /// same rationale as `probe_buffer`.
+    truncate_scratch: String,
 }
 
 impl CosmicMeasure {
@@ -206,6 +218,7 @@ impl CosmicMeasure {
             // `new_empty` needs no `FontSystem`, only a non-zero line height.
             probe_buffer: Buffer::new_empty(Metrics::new(16.0, 16.0)),
             ellipsis_cache: FxHashMap::default(),
+            truncate_scratch: String::new(),
         }
     }
 
@@ -213,10 +226,7 @@ impl CosmicMeasure {
     /// were never measured this `CosmicMeasure` instance — including
     /// [`TextCacheKey::INVALID`].
     pub(crate) fn buffer_for(&self, key: TextCacheKey) -> Option<&Buffer> {
-        if key.is_invalid() {
-            return None;
-        }
-        self.cache.get(&key).map(|e| &e.buffer)
+        BufferLookup { cache: &self.cache }.get(key)
     }
 
     /// Split borrow: `font_system` + `lookup`. Glyphon's `prepare` needs
@@ -261,7 +271,7 @@ impl Default for CosmicMeasure {
 
 impl CosmicMeasure {
     #[profiling::function]
-    pub fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
+    pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
         let ShapeParams {
             font_size_px,
             line_height_px,
@@ -329,7 +339,7 @@ impl CosmicMeasure {
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
     /// to nothing.
-    pub fn measure_truncated(
+    pub(crate) fn measure_truncated(
         &mut self,
         text: &str,
         params: ShapeParams,
@@ -378,7 +388,7 @@ impl CosmicMeasure {
         let multiline = self.probe_buffer.layout_runs().count() > 1;
 
         let truncated = if line_w <= w && !multiline {
-            None
+            false
         } else {
             // Reserve the ellipsis width only when we'll append one; a plain
             // clip cuts flush to the full available width.
@@ -396,12 +406,12 @@ impl CosmicMeasure {
                     cut = g.end;
                 }
             }
-            let prefix = text[..cut].trim_end();
-            Some(if with_ellipsis {
-                format!("{prefix}…")
-            } else {
-                prefix.to_string()
-            })
+            self.truncate_scratch.clear();
+            self.truncate_scratch.push_str(text[..cut].trim_end());
+            if with_ellipsis {
+                self.truncate_scratch.push('…');
+            }
+            true
         };
 
         // Shape unbounded on one line: the cut already fit it to `w`, and the
@@ -410,12 +420,12 @@ impl CosmicMeasure {
         // label toward the box width.
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_size(None, None);
-        buffer.set_text(
-            truncated.as_deref().unwrap_or(text),
-            &attrs,
-            Shaping::Advanced,
-            None,
-        );
+        let shaped_text = if truncated {
+            self.truncate_scratch.as_str()
+        } else {
+            text
+        };
+        buffer.set_text(shaped_text, &attrs, Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
         let measured = shaped_extent(&buffer).size;

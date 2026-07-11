@@ -350,6 +350,7 @@ fn shape_wrap_panics_without_prime() {
     m.shape_wrap(
         wid,
         0,
+        NodeHash(1),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -912,6 +913,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     m.shape_wrap(
         wid,
         0,
+        hash,
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -930,6 +932,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     m.shape_wrap(
         wid,
         0,
+        hash,
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -951,6 +954,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     m.shape_wrap(
         wid,
         0,
+        hash,
         "hi",
         ShapeParams {
             font_size_px: 16.0,

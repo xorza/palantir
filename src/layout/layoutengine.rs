@@ -837,6 +837,7 @@ impl LayoutEngine {
             text.shape_wrap(
                 wid,
                 ordinal,
+                curr_hash,
                 ts.text,
                 ShapeParams {
                     font_size_px: ts.font_size_px,
