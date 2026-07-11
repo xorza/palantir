@@ -77,4 +77,15 @@ impl Background {
             shadow: Shadow::NONE,
         }
     }
+
+    /// Solid fill with rounded corners — no stroke, no shadow. The
+    /// corner sibling of [`Self::fill`].
+    pub fn rounded<I: Into<Brush>>(brush: I, corners: Corners) -> Self {
+        Self {
+            fill: brush.into(),
+            stroke: Stroke::ZERO,
+            corners,
+            shadow: Shadow::NONE,
+        }
+    }
 }
