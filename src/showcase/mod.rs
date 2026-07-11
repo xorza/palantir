@@ -32,6 +32,7 @@ pub mod shadow;
 pub mod sizing;
 pub mod slider;
 pub mod spacing;
+pub mod splitter;
 pub mod swatch;
 pub mod switch;
 pub mod text;

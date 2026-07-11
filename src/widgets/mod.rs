@@ -15,6 +15,7 @@ pub(crate) mod scroll;
 pub(crate) mod separator;
 pub(crate) mod slider;
 pub(crate) mod spinner;
+pub(crate) mod splitter;
 pub(crate) mod switch;
 pub(crate) mod text;
 pub(crate) mod text_edit;

@@ -6,6 +6,7 @@ pub(crate) mod palette;
 pub(crate) mod progress_bar;
 pub(crate) mod scrollbar;
 pub(crate) mod slider;
+pub(crate) mod splitter;
 pub(crate) mod text_edit;
 pub(crate) mod text_style;
 pub(crate) mod toggle;
@@ -22,6 +23,7 @@ use crate::widgets::theme::modal::ModalTheme;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::theme::slider::SliderTheme;
+use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
@@ -57,6 +59,7 @@ pub struct Theme {
     pub tooltip: TooltipTheme,
     pub progress_bar: ProgressBarTheme,
     pub slider: SliderTheme,
+    pub splitter: SplitterTheme,
     pub text: TextStyle,
     /// Window/swapchain clear color. Hosts pass to `WgpuBackend::submit`.
     pub window_clear: Color,
@@ -150,6 +153,7 @@ impl Default for Theme {
             tooltip: TooltipTheme::default(),
             progress_bar: ProgressBarTheme::default(),
             slider: SliderTheme::default(),
+            splitter: SplitterTheme::default(),
             text: TextStyle::default(),
             window_clear: palette::TERMINAL_BG,
             panel_background: None,

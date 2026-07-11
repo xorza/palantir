@@ -7,6 +7,7 @@ mod panel;
 mod popup;
 mod radio;
 mod scroll;
+mod splitter;
 mod tooltip;
 mod track_caller;
 mod visibility;
