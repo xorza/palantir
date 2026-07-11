@@ -206,19 +206,18 @@ pub(crate) fn try_emit_cached(
     let span = entry.span;
     let glyphs = &cache.arena[span.range()];
     out.reserve(glyphs.len());
-    for g in glyphs {
+    // One pass emits the instance and refreshes the backing slot's LRU
+    // stamp together, so `evict_one` can't reclaim a slot we're still
+    // drawing this frame. The eviction_at check above guarantees no
+    // recorded index was evicted since insert, so every slot still
+    // holds the same glyph.
+    for (g, &idx) in glyphs.iter().zip(&cache.slots[span.range()]) {
         out.push(GlyphInstance {
             pos: [g.rel_x + run_key.origin_x, g.rel_y + run_key.origin_y],
             dim: g.dim,
             uv_and_kind: g.uv_and_kind,
             color: g.color,
         });
-    }
-    // Refresh LRU on every slot this run rides so `evict_one` can't
-    // reclaim a slot we're still drawing this frame. The eviction_at
-    // check above guarantees no slot was evicted since insert, so every
-    // recorded index still holds the same glyph.
-    for &idx in &cache.slots[span.range()] {
         atlas.slots[idx as usize].last_use = current_frame;
     }
     true

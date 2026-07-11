@@ -546,11 +546,12 @@ impl WgpuBackend {
             }
 
             // Text prepare: per-batch glyph encoding. Routes its
-            // vertex/params/atlas-staging writes through the same
-            // ctx so every text-backend write lands as
+            // vertex/atlas-staging writes through the same ctx so
+            // every text-backend write lands as
             // `copy_buffer_to_buffer` on the main encoder. Viewport
-            // size is read by the text shader from the shared
-            // `@group(0)` uniform — no per-frame push from here.
+            // and atlas-size params ride the shared immediate region,
+            // pushed per batch by `TextBackend::render_batch` — no
+            // per-frame sync from here.
             {
                 profiling::scope!(
                     "text.prepare_batches",
@@ -560,20 +561,15 @@ impl WgpuBackend {
                     let runs = &buffer.texts[b.texts.range()];
                     self.text.prepare_batch(&mut ctx, buffer.scale, i, runs);
                 }
-                // (TextBackend flushes its params buffer inside
-                // prepare_batch whenever resolution or atlas sizes
-                // change — no second sync needed.)
             }
 
             // One deferred vbuf write covering every batch prepared
-            // above (see `TextBackend::flush_instances`), then drain
-            // glyph atlas uploads (atlas-grow blits + per-glyph
-            // copy_buffer_to_texture) into the same encoder so they
-            // share the main render submit. The staging side of those
-            // copies also routes through the belt — see
-            // `atlas::flush_pending_uploads`.
-            self.text.flush_instances(&mut ctx);
-            self.text.flush_atlas_uploads(&mut ctx);
+            // above, then the queued glyph-atlas uploads (grow blits +
+            // per-glyph copy_buffer_to_texture) on the same encoder so
+            // they share the main render submit. The staging side of
+            // those copies also routes through the belt — see
+            // `TextBackend::flush` / `atlas::flush_pending_uploads`.
+            self.text.flush(&mut ctx);
 
             overlay_count
         };

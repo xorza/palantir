@@ -13,8 +13,12 @@
 //! - **GPU-blit on atlas grow.** `copy_texture_to_texture` from old
 //!   to new; etagere preserves rects so the cache map stays intact —
 //!   no re-rasterization.
-//! - **Per-glyph `queue.write_texture` on cache miss.** wgpu batches
-//!   internally.
+//! - **Batched glyph uploads on cache miss.** Rasterized pixels queue
+//!   into a retained staging buffer and flush as one belt write + N
+//!   `copy_buffer_to_texture` commands on the main encoder, recorded
+//!   *after* any grow blit — encoder ordering is load-bearing
+//!   (`queue.write_texture` runs before all encoder commands in a
+//!   submit, so it could be clobbered by the blit).
 //! - **20-byte instances** (vs glyphon's 24). content_type packed
 //!   into uv high bit.
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
@@ -23,6 +27,7 @@
 pub(crate) mod atlas;
 pub(crate) mod encode;
 
+use crate::primitives::span::Span;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
@@ -31,7 +36,6 @@ use crate::renderer::render_buffer::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
-use std::ops::Range;
 
 use atlas::GlyphAtlas;
 use encode::{
@@ -115,10 +119,9 @@ pub struct TextBackend {
     atlas_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
-    /// Atlas-size params. Mutated by `prepare_batch` after atlas
-    /// grow, pushed per-pass via `RenderPass::set_immediates` in
-    /// `render_batch` — no uniform buffer, no bind group, no dirty
-    /// flushing.
+    /// Atlas-size params. Reassigned on every `prepare_batch`, pushed
+    /// per-pass via `RenderPass::set_immediates` in `render_batch` —
+    /// no uniform buffer, no bind group, no dirty tracking.
     params: Params,
 
     /// Non-empty exactly when some batch prepared glyphs this frame —
@@ -126,7 +129,8 @@ pub struct TextBackend {
     pub(crate) instances: Vec<GlyphInstance>,
     vbuf: DynamicBuffer,
 
-    ranges: Vec<Option<Range<u32>>>,
+    /// Per-batch slice of `instances`; empty span = nothing to draw.
+    ranges: Vec<Span>,
 
     encoded_cache: EncodedCache,
     /// Misses found in `prepare_batch`'s pass 1. Each entry pins the
@@ -339,35 +343,30 @@ impl TextBackend {
             self.atlas.bind_group_dirty = false;
         }
 
-        // Track atlas-size changes on `self.params`; `render_batch`
-        // pushes the value via `set_immediates` each draw — no
-        // buffer write, no bind-group rebind. Same `Params`-only
-        // dirty tracking; consumers see the freshest value.
+        // Reassign `self.params` unconditionally (it only changes when
+        // an atlas grew); `render_batch` pushes the value via
+        // `set_immediates` each draw — no buffer write, no bind-group
+        // rebind, no dirty tracking.
         self.params.atlas_px = glam::UVec2::new(self.atlas.color_size(), self.atlas.mask_size());
 
         if self.ranges.len() <= batch_idx {
-            self.ranges.resize(batch_idx + 1, None);
+            self.ranges.resize(batch_idx + 1, Span::default());
         }
-        self.ranges[batch_idx] = Some(start..end);
+        self.ranges[batch_idx] = Span::new(start, end - start);
     }
 
     /// Upload this frame's accumulated glyph instances in one belt
-    /// write. Called once per frame, after every `prepare_batch` and
-    /// before any pass draws. Deferring to a single write replaces N
-    /// per-batch belt suballocations + copy commands for disjoint
-    /// tails of the same Vec, and a mid-frame grow's full re-upload
-    /// happens at most once; batch `ranges` index into the shared
-    /// buffer, so per-batch draws are unaffected.
-    pub(crate) fn flush_instances(&mut self, ctx: &mut GpuCtx<'_>) {
+    /// write, then drain queued glyph-atlas uploads (grow blits +
+    /// per-glyph texture copies) onto the renderer's encoder. Called
+    /// once per frame, after every `prepare_batch` and before any pass
+    /// draws — so atlas uploads share the same submit as the text
+    /// draws that read from them. Deferring instances to a single
+    /// write replaces N per-batch belt suballocations + copy commands
+    /// for disjoint tails of the same Vec, and a mid-frame grow's full
+    /// re-upload happens at most once; batch `ranges` index into the
+    /// shared buffer, so per-batch draws are unaffected.
+    pub(crate) fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
         self.vbuf.upload_instances(ctx, &self.instances);
-    }
-
-    /// Drain glyph-atlas uploads accumulated by `prepare_batch` into
-    /// the renderer's encoder. Called once per frame, after all
-    /// `prepare_batch` calls and right after the renderer creates its
-    /// main command encoder — so atlas uploads share the same submit
-    /// as the text draws that read from them.
-    pub(crate) fn flush_atlas_uploads(&mut self, ctx: &mut GpuCtx<'_>) {
         self.atlas.flush_pending_uploads(ctx);
     }
 
@@ -379,10 +378,10 @@ impl TextBackend {
         use_stencil: bool,
         viewport: &ViewportPush,
     ) {
-        let Some(range) = self.ranges.get(batch_idx).cloned().flatten() else {
+        let Some(&span) = self.ranges.get(batch_idx) else {
             return;
         };
-        if range.is_empty() {
+        if span.len == 0 {
             return;
         }
         pass.set_pipeline(pipelines.select(use_stencil));
@@ -395,7 +394,7 @@ impl TextBackend {
         viewport.push_into(pass);
         self.params.push_into(pass);
         pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
-        pass.draw(0..4, range);
+        pass.draw(0..4, span.start..span.start + span.len);
     }
 
     pub(crate) fn post_record(&mut self) {
@@ -403,7 +402,7 @@ impl TextBackend {
         self.encoded_cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
-        self.ranges.fill(None);
+        self.ranges.fill(Span::default());
     }
 }
 
@@ -532,8 +531,7 @@ pub mod test_support {
         }
 
         pub fn flush(&mut self, ctx: &mut GpuCtx<'_>) {
-            self.backend.flush_instances(ctx);
-            self.backend.flush_atlas_uploads(ctx);
+            self.backend.flush(ctx);
         }
 
         pub fn draw<'a>(&'a self, pass: &mut wgpu::RenderPass<'a>) {
@@ -641,6 +639,7 @@ mod gpu_regression {
     use pollster::FutureExt;
 
     use crate::primitives::color::ColorU8;
+    use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::text::test_support::make_run;
     use crate::renderer::render_buffer::TextRun;
@@ -696,8 +695,7 @@ mod gpu_regression {
         {
             let mut ctx = GpuCtx::new(device, queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, scale, 0, runs);
-            backend.flush_instances(&mut ctx);
-            backend.flush_atlas_uploads(&mut ctx);
+            backend.flush(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
         queue.submit([encoder.finish()]);
@@ -799,7 +797,7 @@ mod gpu_regression {
     }
 
     /// Two batches prepared in one frame ride a single deferred vbuf
-    /// write (`flush_instances` after all `prepare_batch` calls). The
+    /// write (`TextBackend::flush` after all `prepare_batch` calls). The
     /// per-batch `ranges` must partition the shared instance vec and
     /// each batch's glyphs must keep their own color/placement — same
     /// text at a different origin/color pins this glyph-by-glyph: same
@@ -841,8 +839,7 @@ mod gpu_regression {
             let mut ctx = GpuCtx::new(&device, &queue, &mut belt, &mut encoder);
             backend.prepare_batch(&mut ctx, 1.0, 0, std::slice::from_ref(&run_a));
             backend.prepare_batch(&mut ctx, 1.0, 1, std::slice::from_ref(&run_b));
-            backend.flush_instances(&mut ctx);
-            backend.flush_atlas_uploads(&mut ctx);
+            backend.flush(&mut ctx);
         }
         belt.finish_and_recall_on_submit(&encoder);
         queue.submit([encoder.finish()]);
@@ -851,8 +848,8 @@ mod gpu_regression {
         // the vec as [0..n] + [n..2n].
         let n = backend.instances.len() / 2;
         assert!(n > 0, "'File' must emit glyphs");
-        assert_eq!(backend.ranges[0], Some(0..n as u32));
-        assert_eq!(backend.ranges[1], Some(n as u32..2 * n as u32));
+        assert_eq!(backend.ranges[0], Span::new(0, n as u32));
+        assert_eq!(backend.ranges[1], Span::new(n as u32, n as u32));
 
         let a: u32 = bytemuck::cast(color_a);
         let b: u32 = bytemuck::cast(color_b);

@@ -7,7 +7,7 @@
 //! text path (`encode_batch` + atlas uploads) totalled <10%. This
 //! bench skips all of that: a fixed slice of `TextRun`s, shaped once
 //! at construction, fed into `TextBackend::prepare` →
-//! `flush_atlas_uploads` → `render_batch` each iteration.
+//! `flush` → `render_batch` each iteration.
 //!
 //! Two motivating workloads:
 //!
@@ -29,7 +29,7 @@
 //!   1. begin command encoder
 //!   2. `prepare` (shape lookup + encode_batch into instance Vec +
 //!      potential atlas grow + vbuf upload + params reupload)
-//!   3. `flush_atlas_uploads` (drain pending glyph uploads into
+//!   3. `flush` (upload instances + drain pending glyph uploads into
 //!      encoder)
 //!   4. render pass: `render_batch` → submit → `poll(Wait)` so the
 //!      GPU work drains before the next iteration.
