@@ -1856,10 +1856,7 @@ fn fps_ema_reads_unclamped_frame_delta() {
 fn open_window_dedups_by_token_within_a_frame() {
     use crate::window::{WindowConfig, WindowToken};
     let mut ui = Ui::for_test();
-    let cfg = |title: &str| WindowConfig {
-        title: title.into(),
-        ..Default::default()
-    };
+    let cfg = WindowConfig::new;
     ui.open_window(WindowToken(7), cfg("first"));
     ui.open_window(WindowToken(7), cfg("second"));
     ui.open_window(WindowToken(8), cfg("other"));
