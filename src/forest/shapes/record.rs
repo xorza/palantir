@@ -416,6 +416,21 @@ pub(crate) enum ShapeRecord {
         stroke: ShapeStroke,
         bbox: Rect,
     } = 8,
+    /// Inverse-fill sibling of [`ShapeRecord::RoundedRect`]: same fields, same
+    /// positioning rules, but the fill paints the complement of the rounded
+    /// shape (the corner wedges out to the rect edge) while the interior stays
+    /// transparent; the stroke keeps its inner-edge annulus. Lowered from
+    /// [`crate::shape::Shape::WindowedRect`]; the encoder routes it to
+    /// `draw_rect_window`, which tags the payload's `FillKind` with the window
+    /// bit — downstream it rides the ordinary `DrawRect` path.
+    WindowedRect {
+        local_rect: Option<Rect>,
+        corners: Corners,
+        fill: ShapeBrush,
+        stroke: ShapeStroke,
+        /// See [`ShapeRecord::RoundedRect.fill_grad_hash`].
+        fill_grad_hash: u64,
+    } = 9,
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
     /// stable render-target [`TextureId`] + the app `paint` callback live in
     /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
@@ -511,12 +526,12 @@ impl ShapeRecord {
                     size: bbox.size,
                 }
             }
-            ShapeRecord::RoundedRect { local_rect, .. } | ShapeRecord::Image { local_rect, .. } => {
-                local_rect.unwrap_or(Rect {
-                    min: Vec2::ZERO,
-                    size: owner_size,
-                })
-            }
+            ShapeRecord::RoundedRect { local_rect, .. }
+            | ShapeRecord::WindowedRect { local_rect, .. }
+            | ShapeRecord::Image { local_rect, .. } => local_rect.unwrap_or(Rect {
+                min: Vec2::ZERO,
+                size: owner_size,
+            }),
             // Always paints the owner's full arranged rect.
             ShapeRecord::GpuView { .. } => Rect {
                 min: Vec2::ZERO,
@@ -546,6 +561,7 @@ impl ShapeRecord {
             ShapeRecord::Curve { .. } => 6,
             ShapeRecord::GpuView { .. } => 7,
             ShapeRecord::Triangle { .. } => 8,
+            ShapeRecord::WindowedRect { .. } => 9,
         }
     }
 }
@@ -670,6 +686,34 @@ mod tests {
                 size: hull.size,
             },
             "local_rect offsets the hull; the size is unchanged"
+        );
+    }
+
+    /// Same authoring fields, different shape kind: swapping a
+    /// `RoundedRect` for a `WindowedRect` inverts the painted region,
+    /// so a hash collision would make damage diff skip the repaint.
+    /// The tag byte written first in the hash schedule is the guard.
+    #[test]
+    fn windowed_rect_hash_differs_from_rounded_rect() {
+        let fill = ShapeBrush::Solid(ColorF16::from(Color::WHITE));
+        let stroke = ShapeStroke::from(Stroke::solid(Color::BLACK, 2.0));
+        let rounded = ShapeRecord::RoundedRect {
+            local_rect: None,
+            corners: Corners::all(8.0),
+            fill,
+            stroke,
+            fill_grad_hash: 0,
+        };
+        let windowed = ShapeRecord::WindowedRect {
+            local_rect: None,
+            corners: Corners::all(8.0),
+            fill,
+            stroke,
+            fill_grad_hash: 0,
+        };
+        assert_ne!(
+            compute_record_hash(&rounded),
+            compute_record_hash(&windowed)
         );
     }
 

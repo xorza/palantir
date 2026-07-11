@@ -45,6 +45,15 @@ const BRUSH_KIND_CONIC:        u32 = 3u;
 // returns the premultiplied fill directly. Kept in lockstep with
 // `FillKind::FAST_BIT` on the CPU side.
 const FILL_FLAG_FAST: u32 = 0x10000u;
+// Bit 17 of fill_kind: windowed rect — inverted fill coverage. The fill
+// paints *outside* the rounded boundary (the corner wedges, out to the
+// quad edge), the stroke keeps its usual inner-edge annulus, and the
+// window interior stays transparent. Cheap stand-in for rounded-corner
+// scissor clipping: draw content as plain rects, then paint this over
+// it with the surrounding background as `fill`. Only meaningful for the
+// rect path (kinds 0..3 — solid + gradients). Kept in lockstep with
+// `FillKind::WINDOW_BIT` on the CPU side.
+const FILL_FLAG_WINDOW: u32 = 0x20000u;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
@@ -299,6 +308,26 @@ fn composite(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32
     return vec4<f32>(fill.rgb * a, a);
 }
 
+// Inverted-fill counterpart of `composite` for `FILL_FLAG_WINDOW`: the
+// stroke covers the same inner-edge annulus, but the fill paints the
+// complement of the rounded shape (`1 - outer_aa`) — the corner wedges
+// out to the quad edge — and the window interior is transparent. The
+// three coverages (fill, stroke, window) partition each pixel exactly,
+// so fill + stroke sum additively in premultiplied space with no seam,
+// same rationale as `composite`. The quad edge itself is a hard cut
+// (no outward AA): the shape is a mask laid exactly over content of
+// the same extent, so its outer boundary is never a visible edge.
+fn composite_window(d: f32, fill: vec4<f32>, stroke_color: vec4<f32>, stroke_width: f32) -> vec4<f32> {
+    let outer_aa = clamp(0.5 - d, 0.0, 1.0);
+    let fill_a = (1.0 - outer_aa) * fill.a;
+    if (stroke_width > 0.0) {
+        let inner_aa = clamp(0.5 - (d + stroke_width), 0.0, 1.0);
+        let stroke_a = (outer_aa - inner_aa) * stroke_color.a;
+        return vec4<f32>(stroke_color.rgb * stroke_a + fill.rgb * fill_a, stroke_a + fill_a);
+    }
+    return vec4<f32>(fill.rgb * fill_a, fill_a);
+}
+
 @fragment
 fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     // Uniform per instance (`fill_kind` is flat), so whole wavefronts
@@ -369,6 +398,9 @@ fn fs(in: VertexOut) -> @location(0) vec4<f32> {
     }
 
     let d = sdf_rounded_rect(in.local, in.size, in.radius);
+    if ((in.fill_kind & FILL_FLAG_WINDOW) != 0u) {
+        return composite_window(d, eval_fill(in), in.stroke_color, in.stroke_width);
+    }
     return composite(d, eval_fill(in), in.stroke_color, in.stroke_width);
 }
 

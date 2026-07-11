@@ -567,6 +567,35 @@ impl RenderCmdBuffer {
         fill: BrushSource,
         stroke: ShapeStroke,
     ) {
+        self.draw_rect_impl(rect, corners, fill, stroke, false);
+    }
+
+    /// Windowed-rect sibling of [`Self::draw_rect`]: same payload, but
+    /// the `FillKind` carries the window bit so the shader inverts the
+    /// fill coverage (fill outside the rounded boundary, transparent
+    /// window inside the stroke). The bit also keeps the composer's
+    /// opaque-cover checks (`fill_kind == FillKind::SOLID`) from
+    /// treating the quad as an occluder — its interior is a hole.
+    #[inline]
+    pub(crate) fn draw_rect_window(
+        &mut self,
+        rect: Rect,
+        corners: Corners,
+        fill: BrushSource,
+        stroke: ShapeStroke,
+    ) {
+        self.draw_rect_impl(rect, corners, fill, stroke, true);
+    }
+
+    #[inline]
+    fn draw_rect_impl(
+        &mut self,
+        rect: Rect,
+        corners: Corners,
+        fill: BrushSource,
+        stroke: ShapeStroke,
+        window: bool,
+    ) {
         if rect.is_paint_empty() || (fill.is_noop() && stroke.is_noop()) {
             return;
         }
@@ -578,6 +607,11 @@ impl RenderCmdBuffer {
             lut_row: fill_lut_row,
             axis: fill_axis,
         } = fill.to_gpu_fields();
+        let fill_kind = if window {
+            fill_kind.with_window()
+        } else {
+            fill_kind
+        };
 
         let (stroke_color, stroke_width) = if stroke.is_noop() {
             (ColorF16::TRANSPARENT, 0.0)

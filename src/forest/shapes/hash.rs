@@ -21,7 +21,16 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
     let mut h = Hasher::new();
     h.write_u8(record.tag());
     match record {
+        // WindowedRect shares the field schedule — the tag byte written
+        // above keeps the two from colliding.
         ShapeRecord::RoundedRect {
+            local_rect,
+            corners,
+            fill,
+            stroke,
+            fill_grad_hash,
+        }
+        | ShapeRecord::WindowedRect {
             local_rect,
             corners,
             fill,

@@ -119,6 +119,44 @@ fn add_shape_rounded_rect_linear_gradient_matches_golden() {
     );
 }
 
+/// Pin the `Shape::WindowedRect` inverted-fill path end-to-end: bright
+/// gradient content drawn as a plain unclipped rect, the windowed rect
+/// over it filling the corner wedges with the scene background and
+/// stroking the boundary — the cheap stand-in for rounded-corner
+/// clipping. The golden must read as a rounded-clipped gradient card;
+/// gradient corners bleeding past the stroke means the fill inversion
+/// or the wedge coverage broke.
+#[test]
+fn windowed_rect_masks_corners_matches_golden() {
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(220, 140), 1.0, DARK_BG, |ui| {
+        Panel::vstack()
+            .auto_id()
+            .padding(20.0)
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                let card = Rect::new(0.0, 0.0, 180.0, 100.0);
+                ui.add_shape(Shape::RoundedRect {
+                    local_rect: Some(card),
+                    corners: Corners::ZERO,
+                    fill: Brush::Linear(LinearGradient::two_stop(
+                        0.0,
+                        ColorU8::hex(0xff5e44),
+                        ColorU8::hex(0xfacc15),
+                    )),
+                    stroke: Stroke::ZERO,
+                });
+                ui.add_shape(Shape::WindowedRect {
+                    local_rect: Some(card),
+                    corners: Corners::all(20.0),
+                    fill: DARK_BG.into(),
+                    stroke: Stroke::solid(Color::rgb(0.65, 0.80, 1.00), 2.0),
+                });
+            });
+    });
+    assert_matches_golden("windowed_rect_masks_corners", &img, Tolerance::default());
+}
+
 /// Render the showcase's gradients tab as a single golden so the
 /// six demo cells are pinned end-to-end: two-stop horizontal /
 /// vertical / 45°, three-stop, three spread modes stacked, three

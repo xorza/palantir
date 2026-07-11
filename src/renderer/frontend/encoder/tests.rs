@@ -8,6 +8,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::ColorF16;
+use crate::primitives::paint::FillKind;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -142,6 +143,12 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 fill: Color::rgb(1.0, 0.0, 0.0).into(),
                 stroke: Stroke::ZERO,
             });
+            ui.add_shape(Shape::WindowedRect {
+                local_rect: None,
+                corners: Corners::all(6.0),
+                fill: Color::rgb(0.0, 1.0, 0.0).into(),
+                stroke: Stroke::ZERO,
+            });
             ui.add_shape(Shape::Line {
                 a: Vec2::new(0.0, 0.0),
                 b: Vec2::new(20.0, 0.0),
@@ -174,12 +181,21 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         });
     });
     let cmds = ui.encode_cmds();
-    let draws = cmds
+    let rect_kinds: Vec<_> = cmds
         .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect))
-        .count();
-    assert!(draws >= 1, "RoundedRect must emit a DrawRect, got {draws}");
+        .enumerate()
+        .filter(|(_, k)| matches!(k, CmdKind::DrawRect))
+        .map(|(idx, _)| cmds.read::<DrawRectPayload>(cmds.starts[idx]).fill_kind)
+        .collect();
+    assert!(
+        rect_kinds.contains(&FillKind::SOLID),
+        "RoundedRect must emit a plain DrawRect, got kinds {rect_kinds:?}",
+    );
+    assert!(
+        rect_kinds.contains(&FillKind::SOLID.with_window()),
+        "WindowedRect must emit a window-tagged DrawRect, got kinds {rect_kinds:?}",
+    );
     let polylines = cmds
         .kinds
         .iter()
