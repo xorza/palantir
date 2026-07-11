@@ -80,13 +80,9 @@ impl Spinner {
             let pts = arc_points(size, width);
             let cols = comet_colors(color);
             ui.add_shape_animated(
-                Shape::Polyline {
-                    points: &pts,
-                    colors: PolylineColors::PerPoint(&cols),
-                    width,
-                    cap: LineCap::Round,
-                    join: LineJoin::Round,
-                },
+                Shape::polyline(&pts, PolylineColors::PerPoint(&cols), width)
+                    .cap(LineCap::Round)
+                    .join(LineJoin::Round),
                 PaintAnim::Spin {
                     speed: SPEED,
                     started_at: Duration::ZERO,

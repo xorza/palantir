@@ -12,7 +12,6 @@ use crate::primitives::approx::noop_f32;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
 use crate::text::{CursorPos, FontFamily, FontWeight, ShapeParams, TextShaper};
@@ -910,15 +909,13 @@ impl<'a> TextEdit<'a> {
                 let dx = pad_l + offset.x - scroll.x;
                 let dy = pad_t + offset.y - scroll.y;
                 for r in rects {
-                    ui.add_shape(Shape::RoundedRect {
-                        local_rect: Some(Rect {
+                    ui.add_shape(
+                        Shape::rect(Rect {
                             min: r.min + glam::Vec2::new(dx, dy),
                             size: r.size,
-                        }),
-                        corners: Default::default(),
-                        fill: sel_color.into(),
-                        stroke: Stroke::ZERO,
-                    });
+                        })
+                        .fill(sel_color),
+                    );
                 }
             }
 
@@ -993,12 +990,7 @@ impl<'a> TextEdit<'a> {
                     theme.caret_width,
                     caret_pos.line_height,
                 );
-                let shape = Shape::RoundedRect {
-                    local_rect: Some(caret_rect),
-                    corners: Default::default(),
-                    fill: theme.caret.into(),
-                    stroke: Stroke::ZERO,
-                };
+                let shape = Shape::rect(caret_rect).fill(theme.caret);
                 match caret_anim {
                     Some(anim) => ui.add_shape_animated(shape, anim),
                     None => ui.add_shape(shape),

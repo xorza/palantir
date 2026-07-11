@@ -199,6 +199,248 @@ pub enum Shape<'a> {
     },
 }
 
+impl<'a> Shape<'a> {
+    /// A rounded rectangle painting `rect` (owner-relative). Starts
+    /// transparent-filled, strokeless, sharp-cornered — chain
+    /// [`Self::fill`] / [`Self::stroke`] / [`Self::corners`].
+    pub fn rect(rect: Rect) -> Self {
+        Shape::RoundedRect {
+            local_rect: Some(rect),
+            corners: Corners::ZERO,
+            fill: Brush::TRANSPARENT,
+            stroke: Stroke::ZERO,
+        }
+    }
+
+    /// A [`Shape::WindowedRect`] over `rect` — the inverse-mask sibling of
+    /// [`Self::rect`], same chainable fill/stroke/corners.
+    pub fn windowed_rect(rect: Rect) -> Self {
+        Shape::WindowedRect {
+            local_rect: Some(rect),
+            corners: Corners::ZERO,
+            fill: Brush::TRANSPARENT,
+            stroke: Stroke::ZERO,
+        }
+    }
+
+    /// A triangle with corners `a`/`b`/`c` (owner-local). Starts sharp
+    /// (radius 0), transparent-filled, strokeless — chain [`Self::fill`] /
+    /// [`Self::stroke`] / [`Self::radius`].
+    pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> Self {
+        Shape::Triangle {
+            a,
+            b,
+            c,
+            radius: 0.0,
+            fill: Brush::TRANSPARENT,
+            stroke: Stroke::ZERO,
+        }
+    }
+
+    /// A `width`-thick straight line from `a` to `b` (`Butt` cap, `Miter`
+    /// join). Starts transparent — chain [`Self::brush`] / [`Self::cap`].
+    pub fn line(a: Vec2, b: Vec2, width: f32) -> Self {
+        Shape::Line {
+            a,
+            b,
+            width,
+            brush: Brush::TRANSPARENT,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+        }
+    }
+
+    /// A stroked polyline through `points`, coloured by `colors` (`Butt`
+    /// cap, `Miter` join). Chain [`Self::cap`] / [`Self::join`].
+    pub fn polyline(points: &'a [Vec2], colors: PolylineColors<'a>, width: f32) -> Self {
+        Shape::Polyline {
+            points,
+            colors,
+            width,
+            cap: LineCap::Butt,
+            join: LineJoin::Miter,
+        }
+    }
+
+    /// A stroked cubic Bézier through control points `p0..=p3` (`Butt`
+    /// cap). Starts transparent — chain [`Self::brush`] / [`Self::cap`].
+    pub fn cubic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2, width: f32) -> Self {
+        Shape::CubicBezier {
+            p0,
+            p1,
+            p2,
+            p3,
+            width,
+            brush: Brush::TRANSPARENT,
+            cap: LineCap::Butt,
+        }
+    }
+
+    /// A stroked quadratic Bézier through `p0`/`p1`/`p2`. See
+    /// [`Self::cubic_bezier`].
+    pub fn quadratic_bezier(p0: Vec2, p1: Vec2, p2: Vec2, width: f32) -> Self {
+        Shape::QuadraticBezier {
+            p0,
+            p1,
+            p2,
+            width,
+            brush: Brush::TRANSPARENT,
+            cap: LineCap::Butt,
+        }
+    }
+
+    /// A `shadow` of the owner's full rect. Chain [`Self::at`] to shadow a
+    /// specific owner-relative rect and [`Self::corners`] to round it.
+    pub fn shadow(shadow: Shadow) -> Self {
+        Shape::Shadow {
+            local_rect: None,
+            corners: Corners::ZERO,
+            shadow,
+        }
+    }
+
+    /// A textured rect from `handle` painting the owner's full rect at the
+    /// default fit/filter, untinted. Chain [`Self::at`] / [`Self::fit`] /
+    /// [`Self::filter`] / [`Self::tint`].
+    pub fn image(handle: ImageHandle) -> Self {
+        Shape::Image {
+            handle,
+            local_rect: None,
+            fit: ImageFit::default(),
+            filter: ImageFilter::default(),
+            tint: Color::WHITE,
+        }
+    }
+
+    /// A colored triangle `mesh` painting the owner's full rect, untinted.
+    /// Chain [`Self::at`] to place it in an owner-relative rect.
+    pub fn mesh(mesh: &'a Mesh) -> Self {
+        Shape::Mesh {
+            mesh,
+            local_rect: None,
+            tint: Color::WHITE.into(),
+        }
+    }
+
+    /// Set the fill brush — [`Shape::RoundedRect`] / [`Shape::WindowedRect`]
+    /// / [`Shape::Triangle`].
+    pub fn fill(mut self, brush: impl Into<Brush>) -> Self {
+        match &mut self {
+            Shape::RoundedRect { fill, .. }
+            | Shape::WindowedRect { fill, .. }
+            | Shape::Triangle { fill, .. } => *fill = brush.into(),
+            _ => panic!("Shape::fill() applies only to RoundedRect / WindowedRect / Triangle"),
+        }
+        self
+    }
+
+    /// Set the border stroke — RoundedRect / WindowedRect / Triangle.
+    pub fn stroke(mut self, stroke: Stroke) -> Self {
+        match &mut self {
+            Shape::RoundedRect { stroke: s, .. }
+            | Shape::WindowedRect { stroke: s, .. }
+            | Shape::Triangle { stroke: s, .. } => *s = stroke,
+            _ => panic!("Shape::stroke() applies only to RoundedRect / WindowedRect / Triangle"),
+        }
+        self
+    }
+
+    /// Set the corner radii — RoundedRect / WindowedRect / Shadow.
+    pub fn corners(mut self, corners: Corners) -> Self {
+        match &mut self {
+            Shape::RoundedRect { corners: c, .. }
+            | Shape::WindowedRect { corners: c, .. }
+            | Shape::Shadow { corners: c, .. } => *c = corners,
+            _ => panic!("Shape::corners() applies only to RoundedRect / WindowedRect / Shadow"),
+        }
+        self
+    }
+
+    /// Set a [`Shape::Triangle`]'s uniform corner radius.
+    pub fn radius(mut self, radius: f32) -> Self {
+        match &mut self {
+            Shape::Triangle { radius: r, .. } => *r = radius,
+            _ => panic!("Shape::radius() applies only to Triangle"),
+        }
+        self
+    }
+
+    /// Paint into the owner-relative `rect` instead of the owner's full
+    /// rect — RoundedRect / WindowedRect / Mesh / Image / Shadow.
+    pub fn at(mut self, rect: Rect) -> Self {
+        match &mut self {
+            Shape::RoundedRect { local_rect, .. }
+            | Shape::WindowedRect { local_rect, .. }
+            | Shape::Mesh { local_rect, .. }
+            | Shape::Image { local_rect, .. }
+            | Shape::Shadow { local_rect, .. } => *local_rect = Some(rect),
+            _ => panic!("Shape::at() applies only to rect / mesh / image / shadow shapes"),
+        }
+        self
+    }
+
+    /// Set the stroke brush — [`Shape::Line`] / [`Shape::CubicBezier`] /
+    /// [`Shape::QuadraticBezier`].
+    pub fn brush(mut self, brush: impl Into<Brush>) -> Self {
+        match &mut self {
+            Shape::Line { brush: b, .. }
+            | Shape::CubicBezier { brush: b, .. }
+            | Shape::QuadraticBezier { brush: b, .. } => *b = brush.into(),
+            _ => panic!("Shape::brush() applies only to Line / CubicBezier / QuadraticBezier"),
+        }
+        self
+    }
+
+    /// Set the endpoint cap — Line / Polyline / CubicBezier /
+    /// QuadraticBezier.
+    pub fn cap(mut self, cap: LineCap) -> Self {
+        match &mut self {
+            Shape::Line { cap: c, .. }
+            | Shape::Polyline { cap: c, .. }
+            | Shape::CubicBezier { cap: c, .. }
+            | Shape::QuadraticBezier { cap: c, .. } => *c = cap,
+            _ => panic!("Shape::cap() applies only to Line / Polyline / Bézier shapes"),
+        }
+        self
+    }
+
+    /// Set the interior join — [`Shape::Line`] / [`Shape::Polyline`].
+    pub fn join(mut self, join: LineJoin) -> Self {
+        match &mut self {
+            Shape::Line { join: j, .. } | Shape::Polyline { join: j, .. } => *j = join,
+            _ => panic!("Shape::join() applies only to Line / Polyline"),
+        }
+        self
+    }
+
+    /// Set a [`Shape::Image`]'s fit mode.
+    pub fn fit(mut self, fit: ImageFit) -> Self {
+        match &mut self {
+            Shape::Image { fit: f, .. } => *f = fit,
+            _ => panic!("Shape::fit() applies only to Image"),
+        }
+        self
+    }
+
+    /// Set a [`Shape::Image`]'s sampling filter.
+    pub fn filter(mut self, filter: ImageFilter) -> Self {
+        match &mut self {
+            Shape::Image { filter: f, .. } => *f = filter,
+            _ => panic!("Shape::filter() applies only to Image"),
+        }
+        self
+    }
+
+    /// Set a [`Shape::Image`]'s multiply tint (`Color::WHITE` = untinted).
+    pub fn tint(mut self, tint: Color) -> Self {
+        match &mut self {
+            Shape::Image { tint: t, .. } => *t = tint,
+            _ => panic!("Shape::tint() applies only to Image"),
+        }
+        self
+    }
+}
+
 /// Color source for [`Shape::Polyline`]. Length constraints
 /// enforced by hard `assert!` at `add_shape` — a mismatch is a
 /// caller bug.

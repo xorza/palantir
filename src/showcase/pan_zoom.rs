@@ -356,13 +356,11 @@ fn canvas_polylines(ui: &mut Ui) {
                     0.85 - line as f32 * 0.08,
                     0.4 + (1 + line) as f32 * 0.07,
                 );
-                ui.add_shape(Shape::Polyline {
-                    points: &pts,
-                    colors: PolylineColors::Single(c),
-                    width: 1.5,
-                    cap: LineCap::Round,
-                    join: LineJoin::Round,
-                });
+                ui.add_shape(
+                    Shape::polyline(&pts, PolylineColors::Single(c), 1.5)
+                        .cap(LineCap::Round)
+                        .join(LineJoin::Round),
+                );
             }
         });
 }

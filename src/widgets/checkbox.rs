@@ -78,13 +78,11 @@ impl<'a> Checkbox<'a> {
             |ui, box_size| {
                 if checked {
                     let pts = check_pts(box_size);
-                    ui.add_shape(Shape::Polyline {
-                        points: &pts,
-                        colors: PolylineColors::Single(indicator),
-                        width: indicator_stroke,
-                        cap: LineCap::Round,
-                        join: LineJoin::Round,
-                    });
+                    ui.add_shape(
+                        Shape::polyline(&pts, PolylineColors::Single(indicator), indicator_stroke)
+                            .cap(LineCap::Round)
+                            .join(LineJoin::Round),
+                    );
                 }
             },
         )
