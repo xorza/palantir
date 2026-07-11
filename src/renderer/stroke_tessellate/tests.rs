@@ -308,6 +308,36 @@ fn round_join_emits_fan_at_interior() {
     assert_eq!(i.len(), 75);
 }
 
+/// A near-straight Round join collapses to the single miter cross-section:
+/// its fan would be sub-pixel, and the dual path's two full-width
+/// cross-sections overlap on the concave side — double-blending a
+/// translucent stroke into a bright radial "spoke" (the spinner-arc
+/// artifact). A ~5.7° turn ⇒ 3 cross-sections × 4 = 12 verts, no fan (vs the
+/// 90° turn's 28 in `round_join_emits_fan_at_interior`).
+#[test]
+fn near_straight_round_join_collapses_to_miter() {
+    let mut v = Vec::new();
+    let mut i = Vec::new();
+    tessellate_polyline_aa(
+        &[
+            Vec2::new(0.0, 0.0),
+            Vec2::new(10.0, 0.0),
+            Vec2::new(20.0, 1.0),
+        ],
+        &[red()],
+        StrokeStyle {
+            mode: ColorMode::Single,
+            cap: LineCap::Butt,
+            join: LineJoin::Round,
+            width_phys: 2.0,
+        },
+        &mut v,
+        &mut i,
+    );
+    assert_eq!(v.len(), 12, "near-straight round join must miter (no fan)");
+    assert_eq!(i.len(), 36);
+}
+
 /// PerSegment + Round caps emits cap fans at both endpoints, with
 /// the cap painted in the adjacent segment's color.
 #[test]
