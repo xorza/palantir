@@ -45,8 +45,10 @@ pub enum ImageFit {
 /// smoothing; `Nearest` keeps hard texel edges — pixel-art upscales,
 /// checkerboards, pixel peeping. Implemented as a UV texel-center
 /// snap in the image shader, so both filters share one sampler and
-/// one bind group per texture.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+/// one bind group per texture. Serde (lowercase) so hosts can persist
+/// a filter choice in their config files.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum ImageFilter {
     #[default]
     Linear,
