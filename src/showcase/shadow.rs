@@ -65,101 +65,79 @@ fn card_fill(ui: &mut Ui) {
 
 /// Standard soft drop shadow — Material Design "elevation 2".
 fn soft(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.20),
-        offset: Vec2::new(0.0, 4.0),
-        blur: 8.0,
-        spread: 0.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.20),
+        Vec2::new(0.0, 4.0),
+        8.0,
+    )));
     card_fill(ui);
 }
 
 /// Heavier drop, larger blur — "elevation 8" look.
 fn elevated(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.28),
-        offset: Vec2::new(0.0, 12.0),
-        blur: 20.0,
-        spread: 0.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.28),
+        Vec2::new(0.0, 12.0),
+        20.0,
+    )));
     card_fill(ui);
 }
 
 /// Tight, dense shadow hugging the shape — UI button rest state.
 fn tight(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.35),
-        offset: Vec2::new(0.0, 1.0),
-        blur: 2.0,
-        spread: 0.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.35),
+        Vec2::new(0.0, 1.0),
+        2.0,
+    )));
     card_fill(ui);
 }
 
 /// σ = 0 — sharp drop. Should match the rounded-rect SDF exactly,
 /// shifted by `offset`. Pins the degenerate-blur code path visually.
 fn sharp(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 1.0),
-        offset: Vec2::new(6.0, 6.0),
-        blur: 2.0,
-        spread: 0.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 1.0),
+        Vec2::new(6.0, 6.0),
+        2.0,
+    )));
     card_fill(ui);
 }
 
 /// Coloured glow, zero offset — bloom feel.
 fn glow(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.4, 0.6, 1.0, 0.6),
-        offset: Vec2::ZERO,
-        blur: 18.0,
-        spread: 2.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(
+        Shadow::drop(Color::rgba(0.4, 0.6, 1.0, 0.6), Vec2::ZERO, 18.0).with_spread(2.0),
+    ));
     card_fill(ui);
 }
 
 /// Inset shadow — interior darkening, pressed-button feel.
 fn inset(ui: &mut Ui) {
     card_fill(ui);
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.45),
-        offset: Vec2::new(0.0, 3.0),
-        blur: 8.0,
-        spread: 0.0,
-        inset: true,
-    }));
+    ui.add_shape(shadow_shape(
+        Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset(),
+    ));
 }
 
 /// Multi-shadow stack — CSS `box-shadow: a, b, c`. Pushed in record
 /// order, the deepest first; composer batches them onto one draw.
 fn stacked(ui: &mut Ui) {
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.18),
-        offset: Vec2::new(0.0, 24.0),
-        blur: 32.0,
-        spread: 0.0,
-        inset: false,
-    }));
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.22),
-        offset: Vec2::new(0.0, 8.0),
-        blur: 10.0,
-        spread: 0.0,
-        inset: false,
-    }));
-    ui.add_shape(shadow_shape(Shadow {
-        color: Color::rgba(0.0, 0.0, 0.0, 0.30),
-        offset: Vec2::new(0.0, 1.0),
-        blur: 2.0,
-        spread: 0.0,
-        inset: false,
-    }));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.18),
+        Vec2::new(0.0, 24.0),
+        32.0,
+    )));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.22),
+        Vec2::new(0.0, 8.0),
+        10.0,
+    )));
+    ui.add_shape(shadow_shape(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.30),
+        Vec2::new(0.0, 1.0),
+        2.0,
+    )));
     card_fill(ui);
 }
 
@@ -181,64 +159,32 @@ fn chrome_card(ui: &mut Ui, bg: Background) {
 }
 
 fn chrome_soft() -> Background {
-    Background {
-        fill: Color::rgb(0.95, 0.95, 0.97).into(),
-        stroke: Default::default(),
-        corners: Corners::all(12.0),
-        shadow: Shadow {
-            color: Color::rgba(0.0, 0.0, 0.0, 0.20),
-            offset: Vec2::new(0.0, 4.0),
-            blur: 8.0,
-            spread: 0.0,
-            inset: false,
-        },
-    }
+    Background::rounded(Color::rgb(0.95, 0.95, 0.97), Corners::all(12.0)).with_shadow(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.20),
+        Vec2::new(0.0, 4.0),
+        8.0,
+    ))
 }
 
 fn chrome_elevated() -> Background {
-    Background {
-        fill: Color::rgb(0.95, 0.95, 0.97).into(),
-        stroke: Default::default(),
-        corners: Corners::all(12.0),
-        shadow: Shadow {
-            color: Color::rgba(0.0, 0.0, 0.0, 0.28),
-            offset: Vec2::new(0.0, 12.0),
-            blur: 20.0,
-            spread: 0.0,
-            inset: false,
-        },
-    }
+    Background::rounded(Color::rgb(0.95, 0.95, 0.97), Corners::all(12.0)).with_shadow(Shadow::drop(
+        Color::rgba(0.0, 0.0, 0.0, 0.28),
+        Vec2::new(0.0, 12.0),
+        20.0,
+    ))
 }
 
 fn chrome_inset() -> Background {
-    Background {
-        fill: Color::rgb(0.95, 0.95, 0.97).into(),
-        stroke: Default::default(),
-        corners: Corners::all(12.0),
-        shadow: Shadow {
-            color: Color::rgba(0.0, 0.0, 0.0, 0.45),
-            offset: Vec2::new(0.0, 3.0),
-            blur: 8.0,
-            spread: 0.0,
-            inset: true,
-        },
-    }
+    Background::rounded(Color::rgb(0.95, 0.95, 0.97), Corners::all(12.0)).with_shadow(
+        Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.45), Vec2::new(0.0, 3.0), 8.0).inset(),
+    )
 }
 
 /// Semi-transparent chrome fill: the shadow paints UNDER the fill,
 /// so the halo doesn't bleed through. This is the case the
 /// shape-buffer-lowering route gets wrong; encoder-path is correct.
 fn chrome_translucent() -> Background {
-    Background {
-        fill: Color::rgba(0.95, 0.95, 0.97, 0.4).into(),
-        stroke: Default::default(),
-        corners: Corners::all(12.0),
-        shadow: Shadow {
-            color: Color::rgba(0.0, 0.0, 0.0, 0.5),
-            offset: Vec2::new(0.0, 6.0),
-            blur: 12.0,
-            spread: 0.0,
-            inset: false,
-        },
-    }
+    Background::rounded(Color::rgba(0.95, 0.95, 0.97, 0.4), Corners::all(12.0)).with_shadow(
+        Shadow::drop(Color::rgba(0.0, 0.0, 0.0, 0.5), Vec2::new(0.0, 6.0), 12.0),
+    )
 }

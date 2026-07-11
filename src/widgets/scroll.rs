@@ -8,10 +8,8 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
@@ -221,12 +219,7 @@ fn push_bar_nodes(
     track.position = plan.track_rect.min;
     track.flags.set_sense(Sense::CLICK);
     if !theme.track.is_noop() {
-        let chrome = Background {
-            fill: theme.track.into(),
-            stroke: Stroke::ZERO,
-            corners: radius,
-            shadow: Shadow::NONE,
-        };
+        let chrome = Background::rounded(theme.track, radius);
         ui.node(track_id, track, Some(&chrome), |_| {});
     } else {
         ui.node(track_id, track, None, |_| {});
@@ -248,12 +241,7 @@ fn push_bar_nodes(
         .into();
     thumb.position = plan.thumb_rect.min;
     thumb.flags.set_sense(Sense::DRAG);
-    let chrome = Background {
-        fill: fill.into(),
-        stroke: Stroke::ZERO,
-        corners: radius,
-        shadow: Shadow::NONE,
-    };
+    let chrome = Background::rounded(fill, radius);
     ui.node(thumb_id, thumb, Some(&chrome), |_| {});
 }
 

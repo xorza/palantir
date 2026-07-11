@@ -5,10 +5,7 @@ use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::corners::Corners;
-use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
-use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
@@ -245,12 +242,7 @@ impl MenuItem {
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
         element.align = Align::h(HAlign::Stretch);
         element.margin = Spacing::xy(0.0, 4.0);
-        let chrome = Background {
-            fill: ui.theme.context_menu.separator.into(),
-            stroke: Stroke::ZERO,
-            corners: Corners::ZERO,
-            shadow: Shadow::NONE,
-        };
+        let chrome = Background::fill(ui.theme.context_menu.separator);
         let id = ui.widget_id(&element);
         ui.node(id, element, Some(&chrome), |_| {});
         // Decorative separator: response is almost always discarded.

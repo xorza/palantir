@@ -1,6 +1,6 @@
 use aperture::{
-    AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shadow, Shortcut,
-    Sizing, Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
+    AnimSpec, App, Background, Button, Color, Configure, HostHandle, Key, Panel, Shortcut, Sizing,
+    Ui, WindowConfig, WindowToken, WinitHost, WinitHostConfig,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -168,12 +168,10 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                 .auto_id()
                 .size((Sizing::FILL, Sizing::FILL))
                 .padding(16.0)
-                .background(Background {
-                    fill: Color::hex(0x343434).into(),
-                    stroke: aperture::Stroke::solid(Color::hex(0x363636), 1.0),
-                    corners: aperture::Corners::all(8.0),
-                    shadow: Shadow::NONE,
-                })
+                .background(
+                    Background::rounded(Color::hex(0x343434), aperture::Corners::all(8.0))
+                        .with_stroke(aperture::Stroke::solid(Color::hex(0x363636), 1.0)),
+                )
                 .show(ui, |ui| {
                     let (label, build_fn) = SHOWCASES[state.active];
                     if label == APP_STATE_LABEL {

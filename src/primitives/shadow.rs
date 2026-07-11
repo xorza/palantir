@@ -48,6 +48,33 @@ impl Shadow {
         inset: false,
     };
 
+    /// A drop shadow: `color`, Gaussian-blurred by `blur` (σ, logical px)
+    /// and shifted by `offset`, painting outside the shape with no spread.
+    /// Chain [`Self::with_spread`] / [`Self::inset`] for the variations.
+    pub const fn drop(color: Color, offset: Vec2, blur: f32) -> Self {
+        Self {
+            color,
+            offset,
+            blur,
+            spread: 0.0,
+            inset: false,
+        }
+    }
+
+    /// Inflate (positive) or deflate (negative) the source rect by `spread`
+    /// logical px before blurring.
+    pub const fn with_spread(mut self, spread: f32) -> Self {
+        self.spread = spread;
+        self
+    }
+
+    /// Paint inside the shape boundary (interior/pressed feel) instead of
+    /// outside it.
+    pub const fn inset(mut self) -> Self {
+        self.inset = true;
+        self
+    }
+
     #[inline]
     pub const fn is_noop(&self) -> bool {
         self.color.is_noop()

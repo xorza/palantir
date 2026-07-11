@@ -42,13 +42,11 @@ impl Default for TooltipTheme {
         let edge = m.with_alpha(0.22);
         let panel = Background::rounded(palette::ELEM, Corners::all(4.0))
             .with_stroke(Stroke::solid(edge, 1.0))
-            .with_shadow(Shadow {
-                color: Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
-                offset: glam::Vec2::new(2.0, 2.0),
-                blur: 5.0,
-                spread: 0.0,
-                inset: false,
-            });
+            .with_shadow(Shadow::drop(
+                Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
+                glam::Vec2::new(2.0, 2.0),
+                5.0,
+            ));
         Self {
             panel,
             text: TextStyle::default().with_font_size(13.0),
