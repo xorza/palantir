@@ -80,7 +80,7 @@ impl Harness {
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
         let host = OffscreenHost::builder(g.device.clone(), g.queue.clone(), shaper)
-            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .clock(FixedClock::new(Duration::ZERO))
             .build();
 
         Self {
