@@ -10,6 +10,14 @@ pub(crate) const HALF_FRINGE: f32 = 0.5;
 pub(crate) const MITER_LIMIT: f32 = 4.0;
 const MIN_ROUND_FAN_SEGS: u32 = 4;
 const MAX_ROUND_FAN_SEGS: u32 = 16;
+/// `cos(half-turn-angle)` above which a Round/Bevel interior join is treated
+/// as a smooth miter. At this shallow a turn the fan/bevel chrome is
+/// sub-pixel, while the dual path's two full-width cross-sections overlap on
+/// the concave side — double-blending a translucent stroke into a bright
+/// radial "spoke" (the artifact on the spinner arc). The single miter
+/// cross-section is overlap-free and visually identical here. ~0.985 ≈ a 20°
+/// turn.
+const NEARLY_STRAIGHT_COS: f32 = 0.985;
 /// Threshold on `(normal_prev + normal_next).length_squared()`
 /// below which the two normals count as antiparallel (180° fold).
 const ANTIPARALLEL_EPS_SQ: f32 = 1e-6;
@@ -229,7 +237,11 @@ fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -
     let bisector = sum / len_sq.sqrt();
     let cos_half = bisector.dot(normal_prev);
     let sharp = cos_half < 1.0 / MITER_LIMIT;
-    let dual = sharp || !matches!(join, LineJoin::Miter);
+    // A near-straight Round/Bevel join collapses to the single miter
+    // cross-section: its chrome is sub-pixel here, and the dual path would
+    // otherwise overlap on the concave side (a translucent stroke's spoke).
+    let smooth = cos_half > NEARLY_STRAIGHT_COS;
+    let dual = sharp || (!matches!(join, LineJoin::Miter) && !smooth);
     if dual {
         InteriorJoin::Dual {
             normal_prev,
