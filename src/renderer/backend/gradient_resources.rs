@@ -10,27 +10,26 @@
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
-use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::gradient_atlas::{ATLAS_ROWS, GradientAtlas, LUT_ROW_TEXELS};
 
-/// Side of the gradient LUT atlas texture (square: 256 × 256). Must
-/// equal `ATLAS_ROWS_F` in `quad.wgsl` — the shader divides the row
-/// index by this constant to compute the sample `v` coord.
-const GRADIENT_ATLAS_SIDE: u32 = 256;
+// The shader divides the row index by its hardcoded `ATLAS_ROWS_F` to
+// compute the sample `v` coord — keep it in sync with the CPU atlas.
 const _: () = assert!(
-    GRADIENT_ATLAS_SIDE == 256,
+    ATLAS_ROWS == 256,
     "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
 );
-/// Bytes per atlas texel: `Rgba16Float` = 4 × f16 = 8 bytes. Derived
-/// from the CPU-side `ColorF16` row store (`gradient_atlas::LutRowTexels`)
-/// so the GPU upload row-pitch can't silently drift from the texel type
-/// the bake writes.
-const GRADIENT_ATLAS_TEXEL_BYTES: u32 = size_of::<ColorF16>() as u32;
+
+/// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
+/// Derived from the CPU-side `ColorF16` row store
+/// (`gradient_atlas::LutRowTexels`) so the GPU upload row-pitch can't
+/// silently drift from the texel type the bake writes.
+const ROW_PITCH: u32 = (LUT_ROW_TEXELS * size_of::<ColorF16>()) as u32;
 // `write_texture`'s `bytes_per_row` must be a multiple of
 // `COPY_BYTES_PER_ROW_ALIGNMENT` (256). Guard the row pitch independently
 // of the shader assert above so relaxing one can't silently break the
 // upload alignment.
 const _: () = assert!(
-    (GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES).is_multiple_of(256),
+    ROW_PITCH.is_multiple_of(256),
     "gradient atlas row pitch must be a multiple of COPY_BYTES_PER_ROW_ALIGNMENT (256)"
 );
 
@@ -65,8 +64,8 @@ impl GradientResources {
         let texture = device.create_texture(&wgpu::TextureDescriptor {
             label: Some("aperture.gradient_atlas"),
             size: wgpu::Extent3d {
-                width: GRADIENT_ATLAS_SIDE,
-                height: GRADIENT_ATLAS_SIDE,
+                width: LUT_ROW_TEXELS as u32,
+                height: ATLAS_ROWS,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
@@ -109,10 +108,9 @@ impl GradientResources {
     #[profiling::function]
     pub(crate) fn upload(&self, ctx: &GpuCtx<'_>, atlas: &GradientAtlas) {
         atlas.flush_with(|rows| {
-            let row_pitch = GRADIENT_ATLAS_SIDE * GRADIENT_ATLAS_TEXEL_BYTES;
             // Whole rows by the `FlushedRows` contract, so this divides
             // exactly.
-            let height = rows.bytes.len() as u32 / row_pitch;
+            let height = rows.bytes.len() as u32 / ROW_PITCH;
             ctx.queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
                     texture: &self.texture,
@@ -127,11 +125,11 @@ impl GradientResources {
                 rows.bytes,
                 wgpu::TexelCopyBufferLayout {
                     offset: 0,
-                    bytes_per_row: Some(row_pitch),
+                    bytes_per_row: Some(ROW_PITCH),
                     rows_per_image: Some(height),
                 },
                 wgpu::Extent3d {
-                    width: GRADIENT_ATLAS_SIDE,
+                    width: LUT_ROW_TEXELS as u32,
                     height,
                     depth_or_array_layers: 1,
                 },

@@ -42,7 +42,7 @@ use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
 use crate::primitives::paint::LutRow;
-use std::cell::{Cell, RefCell};
+use std::cell::RefCell;
 use std::hash::Hasher;
 use std::rc::Rc;
 
@@ -231,10 +231,7 @@ pub(crate) struct GradientCpuAtlas {
     /// so epoch-scoping eviction to "not registered since the last flush"
     /// is safe under cross-window interleaving (cross-frame eviction is
     /// harmless — the evictee re-bakes on its next register).
-    ///
-    /// `Cell` because `flush` bumps it but is called through `&self` —
-    /// same reason as `dirty`.
-    epoch: Cell<u64>,
+    epoch: u64,
     /// Contiguous row range changed since the last `flush`, widened on
     /// every bake; `None` when clean. The flush uploads `first..=last`
     /// in ONE `write_texture` (fixed API cost per call still dominates,
@@ -242,11 +239,7 @@ pub(crate) struct GradientCpuAtlas {
     /// re-baking one row uploads 2 KB per frame, not the whole 512 KB
     /// atlas. Scattered dirty rows upload the min..=max span; that only
     /// approaches 512 KB when most of the atlas actually changed.
-    ///
-    /// `Cell` because `flush` clears it on upload but is called
-    /// through `&self` — lets the backend take `&RenderBuffer`
-    /// instead of `&mut RenderBuffer` for the entire submit path.
-    dirty: Cell<Option<DirtyRows>>,
+    dirty: Option<DirtyRows>,
 }
 
 /// Inclusive dirty row span for the next upload — see
@@ -275,8 +268,8 @@ impl Default for GradientCpuAtlas {
             last_used: [0; ATLAS_ROWS as usize],
             row_epoch: [0; ATLAS_ROWS as usize],
             clock: 0,
-            epoch: Cell::new(0),
-            dirty: Cell::new(None),
+            epoch: 0,
+            dirty: None,
         };
         atlas.init_row_zero_magenta();
         atlas
@@ -328,7 +321,7 @@ impl GradientCpuAtlas {
                     // a draw payload, so it must not be evicted before
                     // the upload.
                     self.last_used[row as usize] = self.clock;
-                    self.row_epoch[row as usize] = self.epoch.get();
+                    self.row_epoch[row as usize] = self.epoch;
                     return LutRow(row);
                 }
                 None => return self.claim_row(row, content_hash, stops, interp),
@@ -349,14 +342,14 @@ impl GradientCpuAtlas {
         bake_stops(stops, interp, &mut self.baked[row as usize]);
         self.rows[row as usize] = Some(content_hash);
         self.last_used[row as usize] = self.clock;
-        self.row_epoch[row as usize] = self.epoch.get();
+        self.row_epoch[row as usize] = self.epoch;
         self.mark_row_dirty(row);
         LutRow(row)
     }
 
     /// Widen the pending dirty row range to include `row`.
-    fn mark_row_dirty(&self, row: u32) {
-        let widened = match self.dirty.get() {
+    fn mark_row_dirty(&mut self, row: u32) {
+        self.dirty = Some(match self.dirty {
             None => DirtyRows {
                 first: row,
                 last: row,
@@ -365,8 +358,7 @@ impl GradientCpuAtlas {
                 first: d.first.min(row),
                 last: d.last.max(row),
             },
-        };
-        self.dirty.set(Some(widened));
+        });
     }
 
     /// Scan rows 1..ATLAS_ROWS for the smallest `last_used` stamp among
@@ -381,7 +373,7 @@ impl GradientCpuAtlas {
     /// any of them silently paints wrong colors — crash on the logic
     /// error instead.
     fn lru_victim(&self) -> u32 {
-        let epoch = self.epoch.get();
+        let epoch = self.epoch;
         // 0 doubles as "no evictable row": row 0 is never a candidate.
         let mut best_row: u32 = 0;
         let mut best_stamp = u64::MAX;
@@ -413,8 +405,8 @@ impl GradientCpuAtlas {
     /// Also bumps the registration epoch: `flush` is the per-submit
     /// boundary, and rows registered since the previous flush are
     /// eviction-exempt until after this one (see [`Self::lru_victim`]).
-    pub(crate) fn flush(&self) -> Option<FlushedRows<'_>> {
-        self.epoch.set(self.epoch.get().wrapping_add(1));
+    pub(crate) fn flush(&mut self) -> Option<FlushedRows<'_>> {
+        self.epoch = self.epoch.wrapping_add(1);
         let dirty = self.dirty.take()?;
         let rows = &self.baked[dirty.first as usize..=dirty.last as usize];
         Some(FlushedRows {
@@ -448,7 +440,7 @@ impl GradientAtlas {
     /// `queue.write_texture` inside the closure.
     #[inline]
     pub(crate) fn flush_with<R>(&self, f: impl FnOnce(FlushedRows<'_>) -> R) -> Option<R> {
-        let atlas = self.inner.borrow();
+        let mut atlas = self.inner.borrow_mut();
         atlas.flush().map(f)
     }
 }
@@ -778,10 +770,7 @@ mod tests {
         let g = distinct_grad(0.1);
         let row = atlas.register_stops(&g.stops, g.interp);
         assert_real_row(row);
-        assert!(
-            atlas.dirty.get().is_some(),
-            "register must mark atlas dirty"
-        );
+        assert!(atlas.dirty.is_some(), "register must mark atlas dirty");
     }
 
     /// Same gradient registered twice returns the same row and does
@@ -797,7 +786,7 @@ mod tests {
         let r2 = atlas.register_stops(&g.stops, g.interp);
         assert_eq!(r1, r2);
         assert!(
-            atlas.dirty.get().is_none(),
+            atlas.dirty.is_none(),
             "re-registering existing content must not dirty",
         );
     }
@@ -811,7 +800,7 @@ mod tests {
         let ra = register_for(&mut atlas, distinct_grad(0.1));
         let rb = register_for(&mut atlas, distinct_grad(0.2));
         assert_ne!(ra, rb);
-        assert!(atlas.dirty.get().is_some());
+        assert!(atlas.dirty.is_some());
     }
 
     /// Linear-probe collision handling: if two gradients hash to the
@@ -997,7 +986,7 @@ mod tests {
     /// then stays clean.
     #[test]
     fn freshly_constructed_atlas_flushes_magenta_once() {
-        let atlas = GradientCpuAtlas::default();
+        let mut atlas = GradientCpuAtlas::default();
         {
             let first = atlas.flush().expect("first flush carries magenta init");
             assert_eq!(first.first_row, 0);

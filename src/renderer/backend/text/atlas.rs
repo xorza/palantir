@@ -8,9 +8,14 @@ use wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::text::ContentType;
 
-/// Initial atlas side length. Bumped from glyphon's 256 to skip the
-/// 256→512→1024 grow chain on first frame with non-trivial text.
-const INITIAL_ATLAS_SIZE: u32 = 1024;
+/// Initial mask-atlas side length. Bumped from glyphon's 256 to skip
+/// the 256→512→1024 grow chain on first frame with non-trivial text.
+const INITIAL_MASK_ATLAS_SIZE: u32 = 1024;
+/// Initial color-atlas side length. Color glyphs (emoji) are rare in
+/// UI text: 256² RGBA is 256 KB and holds dozens at UI sizes, where
+/// matching the mask side's 1024² would pin 4 MB of GPU memory most
+/// sessions never touch. Grows on demand through the same blit path.
+const INITIAL_COLOR_ATLAS_SIZE: u32 = 256;
 const ATLAS_GROWTH_FACTOR: u32 = 2;
 
 /// Sweep cadence (frames) for stale zero-area entries (`alloc: None`).
@@ -109,20 +114,19 @@ struct PendingCopy {
 impl GlyphAtlas {
     pub(crate) fn new(device: &wgpu::Device) -> Self {
         let max = device.limits().max_texture_dimension_2d;
-        let size = INITIAL_ATLAS_SIZE.min(max);
 
         // Order matches `ContentType as usize`: [Mask, Color].
         let sides = [
             Side::new(
                 device,
-                size,
+                INITIAL_MASK_ATLAS_SIZE.min(max),
                 wgpu::TextureFormat::R8Unorm,
                 1,
                 "aperture text mask atlas",
             ),
             Side::new(
                 device,
-                size,
+                INITIAL_COLOR_ATLAS_SIZE.min(max),
                 wgpu::TextureFormat::Rgba8UnormSrgb,
                 4,
                 "aperture text color atlas",
@@ -247,15 +251,13 @@ impl GlyphAtlas {
         let bpp = self.sides[content as usize].bpp;
         let unpadded = width * bpp;
         let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
-        // Start each glyph at a 256-aligned offset so the buffer-offset
-        // alignment requirement holds for every PendingCopy.
-        let start = self.pending_staging.len() as u64;
-        let aligned_start = start.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as u64);
-        if aligned_start > start {
-            self.pending_staging.resize(aligned_start as usize, 0);
-        }
-        let region_bytes = bytes_per_row as usize * height as usize;
+        // Every queued region is `bytes_per_row × height` with
+        // `bytes_per_row` a multiple of 256, so the append offset is
+        // 256-aligned by construction — the buffer-offset and row-pitch
+        // alignment requirements hold for every PendingCopy.
         let region_start = self.pending_staging.len();
+        assert!(region_start.is_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize));
+        let region_bytes = bytes_per_row as usize * height as usize;
         self.pending_staging.resize(region_start + region_bytes, 0);
         for row in 0..height as usize {
             let src = &pixels[row * unpadded as usize..(row + 1) * unpadded as usize];
@@ -269,7 +271,7 @@ impl GlyphAtlas {
             width,
             height,
             bytes_per_row,
-            staging_offset: aligned_start,
+            staging_offset: region_start as u64,
         });
     }
 
