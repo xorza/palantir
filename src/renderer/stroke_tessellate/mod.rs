@@ -10,14 +10,6 @@ pub(crate) const HALF_FRINGE: f32 = 0.5;
 pub(crate) const MITER_LIMIT: f32 = 4.0;
 const MIN_ROUND_FAN_SEGS: u32 = 4;
 const MAX_ROUND_FAN_SEGS: u32 = 16;
-/// `cos(half-turn-angle)` above which a Round/Bevel interior join is treated
-/// as a smooth miter. At this shallow a turn the fan/bevel chrome is
-/// sub-pixel, while the dual path's two full-width cross-sections overlap on
-/// the concave side — double-blending a translucent stroke into a bright
-/// radial "spoke" (the artifact on the spinner arc). The single miter
-/// cross-section is overlap-free and visually identical here. ~0.985 ≈ a 20°
-/// turn.
-const NEARLY_STRAIGHT_COS: f32 = 0.985;
 /// Threshold on `(normal_prev + normal_next).length_squared()`
 /// below which the two normals count as antiparallel (180° fold).
 const ANTIPARALLEL_EPS_SQ: f32 = 1e-6;
@@ -92,7 +84,9 @@ pub(crate) fn tessellate_polyline_aa(
     if noop_f32(style.width_phys) {
         return;
     }
-    assert!(matches_mode(points.len(), colors.len(), style.mode));
+    // The color-len contract is validated one call upstream at
+    // `Ui::add_shape` (`PolylineColors::assert_matches`); re-check only in debug.
+    debug_assert!(matches_mode(points.len(), colors.len(), style.mode));
     // Worst case per kept point: 2 cross-sections (8 verts) + a round
     // fan at a cap/join (≤ MAX_ROUND_FAN_SEGS * 2 + 1 verts). Reserve
     // once so push paths skip Vec growth.
@@ -237,11 +231,7 @@ fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -
     let bisector = sum / len_sq.sqrt();
     let cos_half = bisector.dot(normal_prev);
     let sharp = cos_half < 1.0 / MITER_LIMIT;
-    // A near-straight Round/Bevel join collapses to the single miter
-    // cross-section: its chrome is sub-pixel here, and the dual path would
-    // otherwise overlap on the concave side (a translucent stroke's spoke).
-    let smooth = cos_half > NEARLY_STRAIGHT_COS;
-    let dual = sharp || (!matches!(join, LineJoin::Miter) && !smooth);
+    let dual = sharp || !matches!(join, LineJoin::Miter);
     if dual {
         InteriorJoin::Dual {
             normal_prev,
@@ -253,6 +243,46 @@ fn resolve_interior_join(normal_prev: Vec2, normal_next: Vec2, join: LineJoin) -
             ext: 1.0 / cos_half,
         }
     }
+}
+
+/// The inner (concave-side) miter point of a dual join, where the two
+/// segments' inner offset edges cross. Both cross-sections terminate their
+/// concave half here so the strips meet cleanly on the inside of the bend —
+/// no self-overlap, hence no translucent double-blend ("spoke"). The convex
+/// half keeps its own perpendicular offset + join chrome.
+#[derive(Clone, Copy, Debug)]
+struct ConcaveMiter {
+    /// Core (full-α) miter vertex.
+    inner: Vec2,
+    /// Fringe (α=0) miter vertex, one `HALF_FRINGE`-worth further out.
+    outer: Vec2,
+    /// True when the concave side is `+normal` (a CCW turn), so the join
+    /// cross-section places the miter on verts 0/1 rather than 2/3.
+    concave_plus: bool,
+}
+
+/// Resolve the concave miter for a dual join. `None` at an antiparallel
+/// (180°) fold, where the bisector — and thus the miter — is undefined; the
+/// caller falls back to full-width cross-sections + a concave notch fill.
+#[inline]
+fn concave_miter(p: Vec2, normal_prev: Vec2, normal_next: Vec2, geo: &Geo) -> Option<ConcaveMiter> {
+    let sum = normal_prev + normal_next;
+    let len_sq = sum.length_squared();
+    if len_sq < ANTIPARALLEL_EPS_SQ {
+        return None;
+    }
+    let bisector = sum / len_sq.sqrt();
+    let cos_half = bisector.dot(normal_prev);
+    // Clamp to the same miter limit as the convex corner so a sharp bend's
+    // inner spike stays bounded instead of shooting to infinity.
+    let ext = (1.0 / cos_half).min(MITER_LIMIT);
+    let concave_plus = normal_prev.perp_dot(normal_next) > 0.0;
+    let concave_bisector = if concave_plus { bisector } else { -bisector };
+    Some(ConcaveMiter {
+        inner: p + concave_bisector * (geo.inner_offset * ext),
+        outer: p + concave_bisector * (geo.outer_offset * ext),
+        concave_plus,
+    })
 }
 
 /// Unified emit walker for all three color modes. Iterates kept
@@ -323,18 +353,58 @@ fn emit_polyline(points: &[Vec2], plan: ColorPlan, e: &mut Emitter) {
                     normal_prev,
                     normal_next,
                 } => {
-                    e.push_cross_section(points[i], normal_prev, 1.0, trailing_color);
+                    let chrome_color = trailing_color.midpoint(leading_color);
+                    // Trailing cross-section + strip in from the previous block,
+                    // then the leading cross-section; the leading block starts the
+                    // next segment's strip. `concave_miter` = None only at a 180°
+                    // fold, which keeps full-width cross-sections + a notch fill.
+                    let miter = concave_miter(points[i], normal_prev, normal_next, &e.geo);
+                    match miter {
+                        Some(m) => {
+                            e.push_join_cross_section(points[i], normal_prev, &m, trailing_color)
+                        }
+                        None => e.push_cross_section(points[i], normal_prev, 1.0, trailing_color),
+                    }
                     e.push_strip_indices(prev_block_offset, current_offset);
                     let leading_offset = e.cursor();
-                    e.push_cross_section(points[i], normal_next, 1.0, leading_color);
-                    e.push_join_chrome(
-                        points[i],
-                        current_offset,
-                        leading_offset,
-                        normal_prev,
-                        normal_next,
-                        trailing_color.midpoint(leading_color),
-                    );
+                    match miter {
+                        Some(m) => {
+                            e.push_join_cross_section(points[i], normal_next, &m, leading_color)
+                        }
+                        None => e.push_cross_section(points[i], normal_next, 1.0, leading_color),
+                    }
+                    // Convex chrome closes on the concave miter point `apex`
+                    // (or the corner itself at an antiparallel fold, which has
+                    // no finite miter — the round join then caps the U-turn).
+                    let apex = miter.map_or(points[i], |m| m.inner);
+                    match e.geo.join {
+                        LineJoin::Round => e.push_round_join(
+                            points[i],
+                            apex,
+                            normal_prev,
+                            normal_next,
+                            chrome_color,
+                        ),
+                        LineJoin::Bevel | LineJoin::Miter => e.push_bevel_bridge(
+                            apex,
+                            current_offset,
+                            leading_offset,
+                            normal_prev,
+                            normal_next,
+                            chrome_color,
+                        ),
+                    }
+                    if miter.is_none() {
+                        // Full-width strips leave a concave notch; close it.
+                        e.push_concave_fill(
+                            points[i],
+                            current_offset,
+                            leading_offset,
+                            normal_prev,
+                            normal_next,
+                            chrome_color,
+                        );
+                    }
                     prev_block_offset = leading_offset;
                 }
                 InteriorJoin::Single { bisector, ext } if trailing_color == leading_color => {
@@ -422,37 +492,41 @@ impl<'a> Emitter<'a> {
         ]);
     }
 
-    /// Dispatch to bevel / round chrome plus the concave-side notch
-    /// fill — the shared join-geometry helper for [`emit_polyline`]'s
-    /// interior-join arms.
-    fn push_join_chrome(
+    /// A join cross-section whose **concave** half is pulled to the shared
+    /// miter point `m` (so adjacent strips meet there without overlapping),
+    /// while the **convex** half keeps its own perpendicular offset (fed to
+    /// the join chrome). Vert order stays `[+outer, +inner, -inner, -outer]`
+    /// along `normal` so [`Self::push_strip_indices`] and the chrome helpers
+    /// address it exactly like a full-width block.
+    #[inline]
+    fn push_join_cross_section(
         &mut self,
-        center: Vec2,
-        trailing_block: u32,
-        leading_block: u32,
-        normal_prev: Vec2,
-        normal_next: Vec2,
+        p: Vec2,
+        normal: Vec2,
+        m: &ConcaveMiter,
         inner_color: Color,
     ) {
-        match self.geo.join {
-            LineJoin::Round => self.push_round_join(center, normal_prev, normal_next, inner_color),
-            LineJoin::Bevel | LineJoin::Miter => self.push_bevel_bridge(
-                center,
-                trailing_block,
-                leading_block,
-                normal_prev,
-                normal_next,
-                inner_color,
-            ),
-        }
-        self.push_concave_fill(
-            center,
-            trailing_block,
-            leading_block,
-            normal_prev,
-            normal_next,
-            inner_color,
-        );
+        let outer = normal * self.geo.outer_offset;
+        let inner = normal * self.geo.inner_offset;
+        let fringe = inner_color.with_alpha(0.0);
+        let block = if m.concave_plus {
+            // Concave on `+normal`: verts 0/1 are the miter, 2/3 the convex offset.
+            [
+                MeshVertex::new(m.outer, fringe),
+                MeshVertex::new(m.inner, inner_color),
+                MeshVertex::new(p - inner, inner_color),
+                MeshVertex::new(p - outer, fringe),
+            ]
+        } else {
+            // Concave on `-normal`: verts 2/3 are the miter, 0/1 the convex offset.
+            [
+                MeshVertex::new(p + outer, fringe),
+                MeshVertex::new(p + inner, inner_color),
+                MeshVertex::new(m.inner, inner_color),
+                MeshVertex::new(m.outer, fringe),
+            ]
+        };
+        self.verts.extend_from_slice(&block);
     }
 
     /// Bridge the convex-side gap at a beveled join. The cross
@@ -464,7 +538,7 @@ impl<'a> Emitter<'a> {
     /// the convex side.
     fn push_bevel_bridge(
         &mut self,
-        center: Vec2,
+        apex: Vec2,
         trailing_block: u32,
         leading_block: u32,
         normal_prev: Vec2,
@@ -477,11 +551,12 @@ impl<'a> Emitter<'a> {
         let t_outer = trailing_block + outer_off;
         let l_inner = leading_block + inner_off;
         let l_outer = leading_block + outer_off;
-        // Center vert closes the wedge between corner point P and
-        // the bridge's inner edge — without it the strip end-edges
-        // leave a pinhole at P.
+        // `apex` (the concave miter point `M`, or the corner `P` at an
+        // antiparallel fold) closes the wedge between the inside of the bend
+        // and the bridge's convex inner edge — without it the strips leave an
+        // uncovered sliver from `M` in to the corner.
         let center_idx = self.cursor();
-        self.push_vert(center, inner_color);
+        self.push_vert(apex, inner_color);
         self.indices
             .extend_from_slice(&[center_idx, t_inner, l_inner]);
         self.indices
@@ -515,17 +590,27 @@ impl<'a> Emitter<'a> {
     }
 
     /// Round-cap fan: half-disc centered at `center`, opening
-    /// toward `outward`.
+    /// toward `outward`. Apex and arc share `center`.
     fn push_round_cap(&mut self, center: Vec2, outward: Vec2, inner_color: Color) {
         let n = round_segments(self.geo.inner_offset);
-        self.push_round_fan(center, outward, std::f32::consts::FRAC_PI_2, n, inner_color);
+        self.push_round_fan(
+            center,
+            center,
+            outward,
+            std::f32::consts::FRAC_PI_2,
+            n,
+            inner_color,
+        );
     }
 
-    /// Round join: arc fan filling the convex-side wedge between
-    /// the two segments.
+    /// Round join: arc fan filling the convex-side wedge. The arc curves
+    /// around `arc_center` (the corner `P`); the fan closes to `apex` — the
+    /// concave miter point `M`, so the wedge from the inner miter out to the
+    /// convex arc is covered in one fan with no gap and no overlap.
     fn push_round_join(
         &mut self,
-        center: Vec2,
+        arc_center: Vec2,
+        apex: Vec2,
         normal_prev: Vec2,
         normal_next: Vec2,
         inner_color: Color,
@@ -551,16 +636,18 @@ impl<'a> Emitter<'a> {
             (bisector, cos_full.acos() * 0.5)
         };
         let n = round_segments(self.geo.inner_offset);
-        self.push_round_fan(center, bisector, half_angle, n, inner_color);
+        self.push_round_fan(apex, arc_center, bisector, half_angle, n, inner_color);
     }
 
-    /// Emit an arc fan centered at `center`, opening toward
-    /// `center_dir`, sweeping `±half_angle`. Pushes 1 center vert
-    /// plus 2·(`segments`+1) arc verts (alternating inner / outer
-    /// fringe).
+    /// Emit an arc fan: the arc curves around `arc_center` opening toward
+    /// `center_dir` (± `half_angle`), and every arc slice closes back to the
+    /// single `apex` vertex. Caps pass `apex == arc_center`; joins pass the
+    /// concave miter point as `apex`. Pushes 1 apex vert plus
+    /// 2·(`segments`+1) arc verts (alternating inner / outer fringe).
     fn push_round_fan(
         &mut self,
-        center: Vec2,
+        apex: Vec2,
+        arc_center: Vec2,
         center_dir: Vec2,
         half_angle: f32,
         segments: u32,
@@ -570,7 +657,7 @@ impl<'a> Emitter<'a> {
         let step = 2.0 * half_angle / n as f32;
         let perp = Vec2::new(-center_dir.y, center_dir.x);
         let base = self.cursor();
-        self.push_vert(center, inner_color);
+        self.push_vert(apex, inner_color);
         // Rotation-matrix recursion: start at angle = -half_angle and
         // advance by `step` per iteration with two multiplies + a sub
         // instead of an `sin_cos` call per sample. Drift over ≤ 16
@@ -584,8 +671,8 @@ impl<'a> Emitter<'a> {
         for _ in 0..=n {
             let dir = c * center_dir + s * perp;
             self.verts.extend_from_slice(&[
-                MeshVertex::new(center + dir * inner_off, inner_color),
-                MeshVertex::new(center + dir * outer_off, fringe_color),
+                MeshVertex::new(arc_center + dir * inner_off, inner_color),
+                MeshVertex::new(arc_center + dir * outer_off, fringe_color),
             ]);
             let c_next = c * cos_step - s * sin_step;
             let s_next = s * cos_step + c * sin_step;
