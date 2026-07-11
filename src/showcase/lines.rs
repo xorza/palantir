@@ -34,14 +34,7 @@ fn widths(ui: &mut Ui) {
     let cyan = Color::rgb(0.2, 0.9, 1.0);
     for (i, w) in [1.0_f32, 2.0, 3.0, 5.0, 8.0].iter().enumerate() {
         let y = 12.0 + i as f32 * 20.0;
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, y),
-            b: Vec2::new(110.0, y),
-            width: *w,
-            brush: cyan.into(),
-            cap: LineCap::Butt,
-            join: LineJoin::Miter,
-        });
+        ui.add_shape(Shape::line(Vec2::new(10.0, y), Vec2::new(110.0, y), *w).brush(cyan));
     }
 }
 
@@ -49,14 +42,7 @@ fn hairlines(ui: &mut Ui) {
     let white = Color::rgb(1.0, 1.0, 1.0);
     for (i, w) in [0.1_f32, 0.25, 0.5, 0.75, 1.0].iter().enumerate() {
         let y = 12.0 + i as f32 * 20.0;
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(10.0, y),
-            b: Vec2::new(110.0, y),
-            width: *w,
-            brush: white.into(),
-            cap: LineCap::Butt,
-            join: LineJoin::Miter,
-        });
+        ui.add_shape(Shape::line(Vec2::new(10.0, y), Vec2::new(110.0, y), *w).brush(white));
     }
 }
 
@@ -76,13 +62,7 @@ fn joins(ui: &mut Ui) {
             Vec2::new(60.0, y),
             Vec2::new(105.0, y + 25.0),
         ];
-        ui.add_shape(Shape::Polyline {
-            points: &pts,
-            colors: PolylineColors::Single(cyan),
-            width: 5.0,
-            cap: LineCap::Butt,
-            join,
-        });
+        ui.add_shape(Shape::polyline(&pts, PolylineColors::Single(cyan), 5.0).join(join));
     }
 }
 
@@ -97,14 +77,9 @@ fn caps(ui: &mut Ui) {
     let marker = Color::rgb(1.0, 1.0, 1.0);
     for y in [25.0_f32, 60.0, 95.0] {
         for x in [30.0_f32, 90.0] {
-            ui.add_shape(Shape::Line {
-                a: Vec2::new(x, y - 12.0),
-                b: Vec2::new(x, y + 12.0),
-                width: 1.0,
-                brush: marker.into(),
-                cap: LineCap::Butt,
-                join: LineJoin::Miter,
-            });
+            ui.add_shape(
+                Shape::line(Vec2::new(x, y - 12.0), Vec2::new(x, y + 12.0), 1.0).brush(marker),
+            );
         }
     }
     for (y, color, cap) in [
@@ -112,14 +87,11 @@ fn caps(ui: &mut Ui) {
         (60.0, green, LineCap::Square),
         (95.0, blue, LineCap::Round),
     ] {
-        ui.add_shape(Shape::Line {
-            a: Vec2::new(30.0, y),
-            b: Vec2::new(90.0, y),
-            width: 8.0,
-            brush: color.into(),
-            cap,
-            join: LineJoin::Miter,
-        });
+        ui.add_shape(
+            Shape::line(Vec2::new(30.0, y), Vec2::new(90.0, y), 8.0)
+                .brush(color)
+                .cap(cap),
+        );
     }
 }
 
@@ -136,13 +108,7 @@ fn gradient(ui: &mut Ui) {
         Color::rgb(0.2, 1.0, 0.4),
         Color::rgb(0.2, 0.6, 1.0),
     ];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::PerPoint(&cols),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 4.0));
 }
 
 fn per_segment(ui: &mut Ui) {
@@ -163,13 +129,11 @@ fn per_segment(ui: &mut Ui) {
         Color::rgb(0.7, 0.3, 1.0),
         Color::rgb(1.0, 0.5, 0.8),
     ];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::PerSegment(&cols),
-        width: 4.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    ui.add_shape(Shape::polyline(
+        &pts,
+        PolylineColors::PerSegment(&cols),
+        4.0,
+    ));
 }
 
 const P0: Vec2 = Vec2::new(10.0, 100.0);
@@ -182,26 +146,11 @@ const Q1: Vec2 = Vec2::new(60.0, 5.0);
 const Q2: Vec2 = Vec2::new(110.0, 100.0);
 
 fn cubic(ui: &mut Ui) {
-    ui.add_shape(Shape::CubicBezier {
-        p0: P0,
-        p1: P1,
-        p2: P2,
-        p3: P3,
-        width: 4.0,
-        brush: Color::rgb(0.2, 0.9, 1.0).into(),
-        cap: LineCap::Butt,
-    });
+    ui.add_shape(Shape::cubic_bezier(P0, P1, P2, P3, 4.0).brush(Color::rgb(0.2, 0.9, 1.0)));
 }
 
 fn quadratic(ui: &mut Ui) {
-    ui.add_shape(Shape::QuadraticBezier {
-        p0: Q0,
-        p1: Q1,
-        p2: Q2,
-        width: 4.0,
-        brush: Color::rgb(0.4, 1.0, 0.5).into(),
-        cap: LineCap::Butt,
-    });
+    ui.add_shape(Shape::quadratic_bezier(Q0, Q1, Q2, 4.0).brush(Color::rgb(0.4, 1.0, 0.5)));
 }
 
 fn gradient_cubic(ui: &mut Ui) {
@@ -212,15 +161,11 @@ fn gradient_cubic(ui: &mut Ui) {
         Color::rgb(1.0, 0.2, 0.4),
         Color::rgb(0.2, 0.6, 1.0),
     ));
-    ui.add_shape(Shape::CubicBezier {
-        p0: P0,
-        p1: P1,
-        p2: P2,
-        p3: P3,
-        width: 8.0,
-        brush,
-        cap: LineCap::Round,
-    });
+    ui.add_shape(
+        Shape::cubic_bezier(P0, P1, P2, P3, 8.0)
+            .brush(brush)
+            .cap(LineCap::Round),
+    );
 }
 
 fn gradient_multistop(ui: &mut Ui) {
@@ -234,14 +179,11 @@ fn gradient_multistop(ui: &mut Ui) {
             Stop::new(1.0, Color::rgb(0.2, 0.6, 1.0)),
         ],
     ));
-    ui.add_shape(Shape::QuadraticBezier {
-        p0: Q0,
-        p1: Q1,
-        p2: Q2,
-        width: 10.0,
-        brush,
-        cap: LineCap::Round,
-    });
+    ui.add_shape(
+        Shape::quadratic_bezier(Q0, Q1, Q2, 10.0)
+            .brush(brush)
+            .cap(LineCap::Round),
+    );
 }
 
 fn curve_caps(ui: &mut Ui) {
@@ -252,14 +194,16 @@ fn curve_caps(ui: &mut Ui) {
         .enumerate()
     {
         let dy = i as f32 * 35.0;
-        ui.add_shape(Shape::CubicBezier {
-            p0: Vec2::new(10.0, 25.0 + dy),
-            p1: Vec2::new(35.0, 5.0 + dy),
-            p2: Vec2::new(85.0, 45.0 + dy),
-            p3: Vec2::new(110.0, 25.0 + dy),
-            width: 8.0,
-            brush: Color::rgb(1.0, 0.85, 0.2).into(),
-            cap: *cap,
-        });
+        ui.add_shape(
+            Shape::cubic_bezier(
+                Vec2::new(10.0, 25.0 + dy),
+                Vec2::new(35.0, 5.0 + dy),
+                Vec2::new(85.0, 45.0 + dy),
+                Vec2::new(110.0, 25.0 + dy),
+                8.0,
+            )
+            .brush(Color::rgb(1.0, 0.85, 0.2))
+            .cap(*cap),
+        );
     }
 }

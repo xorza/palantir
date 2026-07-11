@@ -39,11 +39,7 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn shadow_shape(s: Shadow) -> Shape<'static> {
-    Shape::Shadow {
-        local_rect: Some(card_rect()),
-        corners: corners(),
-        shadow: s,
-    }
+    Shape::shadow(s).at(card_rect()).corners(corners())
 }
 
 fn card_rect() -> Rect {
@@ -55,12 +51,11 @@ fn corners() -> Corners {
 }
 
 fn card_fill(ui: &mut Ui) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(card_rect()),
-        corners: corners(),
-        fill: Color::rgb(0.95, 0.95, 0.97).into(),
-        stroke: Default::default(),
-    });
+    ui.add_shape(
+        Shape::rect(card_rect())
+            .fill(Color::rgb(0.95, 0.95, 0.97))
+            .corners(corners()),
+    );
 }
 
 /// Standard soft drop shadow — Material Design "elevation 2".

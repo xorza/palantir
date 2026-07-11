@@ -93,13 +93,11 @@ impl<'a> ComboBox<'a> {
             arrow.size = (Sizing::Fixed(ARROW_W), Sizing::Fixed(ARROW_H)).into();
             ui.node(arrow_id, arrow, None, |ui| {
                 let pts = chevron_pts();
-                ui.add_shape(Shape::Polyline {
-                    points: &pts,
-                    colors: PolylineColors::Single(arrow_color),
-                    width: 1.5,
-                    cap: LineCap::Round,
-                    join: LineJoin::Round,
-                });
+                ui.add_shape(
+                    Shape::polyline(&pts, PolylineColors::Single(arrow_color), 1.5)
+                        .cap(LineCap::Round)
+                        .join(LineJoin::Round),
+                );
             });
         });
 

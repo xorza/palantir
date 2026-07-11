@@ -39,50 +39,35 @@ const C: Vec2 = Vec2::new(105.0, 100.0);
 /// Sharp-cornered solid fill — the aliased case a `Mesh::filled_triangle`
 /// would give, now with crisp SDF coverage AA.
 fn sharp(ui: &mut Ui) {
-    ui.add_shape(Shape::Triangle {
-        a: A,
-        b: B,
-        c: C,
-        radius: 0.0,
-        fill: Color::rgb(0.2, 0.9, 1.0).into(),
-        stroke: Stroke::ZERO,
-    });
+    ui.add_shape(Shape::triangle(A, B, C).fill(Color::rgb(0.2, 0.9, 1.0)));
 }
 
 /// Rounded corners — `SDF - radius`, no extra geometry.
 fn rounded(ui: &mut Ui) {
-    ui.add_shape(Shape::Triangle {
-        a: A,
-        b: B,
-        c: C,
-        radius: 12.0,
-        fill: Color::rgb(0.4, 1.0, 0.5).into(),
-        stroke: Stroke::ZERO,
-    });
+    ui.add_shape(
+        Shape::triangle(A, B, C)
+            .fill(Color::rgb(0.4, 1.0, 0.5))
+            .radius(12.0),
+    );
 }
 
 /// Fill + inner-edge stroke, rounded.
 fn stroked(ui: &mut Ui) {
-    ui.add_shape(Shape::Triangle {
-        a: A,
-        b: B,
-        c: C,
-        radius: 10.0,
-        fill: Color::rgb(0.2, 0.5, 1.0).into(),
-        stroke: Stroke::solid(Color::WHITE, 3.0),
-    });
+    ui.add_shape(
+        Shape::triangle(A, B, C)
+            .fill(Color::rgb(0.2, 0.5, 1.0))
+            .stroke(Stroke::solid(Color::WHITE, 3.0))
+            .radius(10.0),
+    );
 }
 
 /// Stroke only (transparent fill) — a rounded triangular outline.
 fn outline(ui: &mut Ui) {
-    ui.add_shape(Shape::Triangle {
-        a: A,
-        b: B,
-        c: C,
-        radius: 8.0,
-        fill: Color::TRANSPARENT.into(),
-        stroke: Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0),
-    });
+    ui.add_shape(
+        Shape::triangle(A, B, C)
+            .stroke(Stroke::solid(Color::rgb(1.0, 0.85, 0.2), 3.0))
+            .radius(8.0),
+    );
 }
 
 /// A play-triangle (▶) at three corner radii — the toolbar-glyph use case,
@@ -90,14 +75,15 @@ fn outline(ui: &mut Ui) {
 fn radii(ui: &mut Ui) {
     for (i, r) in [0.0_f32, 4.0, 10.0].iter().enumerate() {
         let dx = i as f32 * 40.0;
-        ui.add_shape(Shape::Triangle {
-            a: Vec2::new(10.0 + dx, 20.0),
-            b: Vec2::new(10.0 + dx, 60.0),
-            c: Vec2::new(38.0 + dx, 40.0),
-            radius: *r,
-            fill: Color::rgb(1.0, 0.6, 0.3).into(),
-            stroke: Stroke::ZERO,
-        });
+        ui.add_shape(
+            Shape::triangle(
+                Vec2::new(10.0 + dx, 20.0),
+                Vec2::new(10.0 + dx, 60.0),
+                Vec2::new(38.0 + dx, 40.0),
+            )
+            .fill(Color::rgb(1.0, 0.6, 0.3))
+            .radius(*r),
+        );
     }
 }
 
@@ -144,11 +130,7 @@ fn mesh_triangle(ui: &mut Ui) {
     let b = m.vertex(Vec2::new(110.0, 100.0), red);
     let c = m.vertex(Vec2::new(10.0, 100.0), red);
     m.triangle(a, b, c);
-    ui.add_shape(Shape::Mesh {
-        mesh: &m,
-        local_rect: None,
-        tint: Color::WHITE.into(),
-    });
+    ui.add_shape(Shape::mesh(&m));
 }
 
 fn polygon_star(ui: &mut Ui) {
@@ -176,11 +158,7 @@ fn polygon_star(ui: &mut Ui) {
         prev = next;
     }
     m.triangle(centroid, prev, first);
-    ui.add_shape(Shape::Mesh {
-        mesh: &m,
-        local_rect: None,
-        tint: Color::WHITE.into(),
-    });
+    ui.add_shape(Shape::mesh(&m));
 }
 
 fn gradient_quad(ui: &mut Ui) {
@@ -192,12 +170,8 @@ fn gradient_quad(ui: &mut Ui) {
     let bl = m.vertex(Vec2::new(10.0, 110.0), Color::rgb(1.0, 1.0, 0.0));
     m.triangle(tl, tr, br);
     m.triangle(tl, br, bl);
-    ui.add_shape(Shape::Mesh {
-        mesh: &m,
-        local_rect: None,
-        // White tint — pass-through, exercises the tint multiply path.
-        tint: Color::rgb(1.0, 1.0, 1.0).into(),
-    });
+    // White tint — pass-through, exercises the tint multiply path.
+    ui.add_shape(Shape::mesh(&m));
 }
 
 fn stress(ui: &mut Ui) {
@@ -223,9 +197,5 @@ fn stress(ui: &mut Ui) {
             m.triangle(a, d, c);
         }
     }
-    ui.add_shape(Shape::Mesh {
-        mesh: &m,
-        local_rect: None,
-        tint: Color::WHITE.into(),
-    });
+    ui.add_shape(Shape::mesh(&m));
 }

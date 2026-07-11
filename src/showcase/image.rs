@@ -155,21 +155,18 @@ pub fn build(ui: &mut Ui) {
 }
 
 fn image(ui: &mut Ui, handle: &ImageHandle, fit: ImageFit, tint: Color) {
-    ui.add_shape(Shape::Image {
-        handle: handle.clone(),
-        local_rect: None,
-        fit,
-        filter: ImageFilter::Linear,
-        tint,
-    });
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(fit)
+            .filter(ImageFilter::Linear)
+            .tint(tint),
+    );
 }
 
 fn filtered_image(ui: &mut Ui, handle: &ImageHandle, filter: ImageFilter) {
-    ui.add_shape(Shape::Image {
-        handle: handle.clone(),
-        local_rect: None,
-        fit: ImageFit::Fill,
-        filter,
-        tint: Color::WHITE,
-    });
+    ui.add_shape(
+        Shape::image(handle.clone())
+            .fit(ImageFit::Fill)
+            .filter(filter),
+    );
 }

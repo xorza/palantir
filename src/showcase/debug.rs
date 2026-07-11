@@ -18,8 +18,8 @@
 use crate::showcase::support;
 use crate::showcase::support::{captioned_cell, demo_cell, section, swatch_bg};
 use aperture::{
-    Align, Background, Button, Color, Configure, Corners, Frame, LineCap, LineJoin, Panel,
-    PolylineColors, Rect, Shape, Sizing, Stroke, Text, TextStyle, Ui,
+    Align, Background, Button, Color, Configure, Corners, Frame, Panel, PolylineColors, Rect,
+    Shape, Sizing, Stroke, Text, TextStyle, Ui,
 };
 use glam::Vec2;
 
@@ -183,12 +183,7 @@ fn chrome_concentricity(ui: &mut Ui) {
 /// Straight-alpha source into premul blend would give
 /// `(0, 1, 0) + magenta * 0.5 = (0.5, 1, 0.5)` → bright green.
 fn backdrop(ui: &mut Ui) {
-    ui.add_shape(Shape::RoundedRect {
-        local_rect: Some(Rect::new(0.0, 0.0, 120.0, 120.0)),
-        corners: Corners::ZERO,
-        fill: Color::rgb(1.0, 0.0, 1.0).into(),
-        stroke: Stroke::ZERO,
-    });
+    ui.add_shape(Shape::rect(Rect::new(0.0, 0.0, 120.0, 120.0)).fill(Color::rgb(1.0, 0.0, 1.0)));
 }
 
 /// Solid translucent polyline. Expected mid-grey diagonal.
@@ -196,13 +191,11 @@ fn translucent_solid(ui: &mut Ui) {
     backdrop(ui);
     let translucent_green = Color::rgba(0.0, 1.0, 0.0, 0.5);
     let pts = [Vec2::new(10.0, 20.0), Vec2::new(110.0, 100.0)];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::Single(translucent_green),
-        width: 16.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    ui.add_shape(Shape::polyline(
+        &pts,
+        PolylineColors::Single(translucent_green),
+        16.0,
+    ));
 }
 
 /// Per-point translucent. Same expected muted mixes; the bug shows
@@ -219,13 +212,7 @@ fn translucent_per_point(ui: &mut Ui) {
         Color::rgba(0.0, 1.0, 1.0, 0.5),
         Color::rgba(1.0, 0.0, 1.0, 0.5),
     ];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::PerPoint(&cols),
-        width: 14.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    ui.add_shape(Shape::polyline(&pts, PolylineColors::PerPoint(&cols), 14.0));
 }
 
 /// α=0.25 — the bug grows linearly with `(1 - a)`, so a lower alpha
@@ -234,11 +221,9 @@ fn translucent_per_point(ui: &mut Ui) {
 fn translucent_quarter(ui: &mut Ui) {
     backdrop(ui);
     let pts = [Vec2::new(10.0, 60.0), Vec2::new(110.0, 60.0)];
-    ui.add_shape(Shape::Polyline {
-        points: &pts,
-        colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.25)),
-        width: 24.0,
-        cap: LineCap::Butt,
-        join: LineJoin::Miter,
-    });
+    ui.add_shape(Shape::polyline(
+        &pts,
+        PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.25)),
+        24.0,
+    ));
 }

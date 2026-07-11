@@ -146,13 +146,11 @@ fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
 }
 
 fn paint_bar(ui: &mut Ui, points: &[Vec2]) {
-    ui.add_shape(Shape::Polyline {
-        points,
-        colors: PolylineColors::Single(Color::WHITE),
-        width: 2.0,
-        cap: LineCap::Round,
-        join: LineJoin::Round,
-    });
+    ui.add_shape(
+        Shape::polyline(points, PolylineColors::Single(Color::WHITE), 2.0)
+            .cap(LineCap::Round)
+            .join(LineJoin::Round),
+    );
 }
 
 // ── demo app ──────────────────────────────────────────────────────────
