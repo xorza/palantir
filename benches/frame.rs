@@ -158,6 +158,7 @@ fn bench_host(g: &Gpu) -> OffscreenHost {
         true,
         // Bench arms reuse their target(s) across iters → direct-present path.
         true,
+        Box::new(aperture::RealtimeClock::new()),
     )
 }
 

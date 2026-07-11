@@ -19,6 +19,7 @@ extern crate self as aperture;
 // tests as `aperture::foo::bar::test_support::*`. Items inside that
 // aren't `pub` remain unreachable to external consumers.
 pub mod animation;
+pub mod clock;
 pub(crate) mod common;
 pub(crate) mod context;
 pub(crate) mod debug_overlay;
@@ -70,6 +71,7 @@ pub use animation::{AnimSlot, AnimSpec};
 // the trait in the type namespace — `use aperture::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use aperture_anim_derive::Animatable;
+pub use clock::{Clock, FixedClock, RealtimeClock};
 pub use debug_overlay::DebugOverlayConfig;
 pub use display::Display;
 pub use forest::Layer;
