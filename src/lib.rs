@@ -147,7 +147,7 @@ pub use widgets::scroll::{BarMode, Scroll, ZoomConfig, ZoomModifier, ZoomPivot};
 pub use widgets::separator::Separator;
 pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
-pub use widgets::splitter::{SplitContent, Splitter};
+pub use widgets::splitter::{SplitHalf, Splitter};
 pub use widgets::switch::ToggleSwitch;
 pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};

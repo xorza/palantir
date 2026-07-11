@@ -26,7 +26,7 @@ fn frame_with(ui: &mut Ui, ratio: &mut f32) {
             .id(split_id())
             .size((Sizing::Fixed(406.0), Sizing::Fixed(100.0)))
             .min_pane(50.0)
-            .show(ui, |_| {}, |_| {});
+            .show(ui, |_, _| {});
     });
 }
 

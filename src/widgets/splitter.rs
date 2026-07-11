@@ -7,7 +7,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
-use crate::widgets::{InnerResponse, Response, WidgetEntry, enter_widget};
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]
@@ -19,6 +19,10 @@ use crate::widgets::{InnerResponse, Response, WidgetEntry, enter_widget};
 /// the divider recenters to `0.5`. Panes clip their content so an
 /// oversized body can't bleed across the divider mid-resize. Visuals
 /// come from [`crate::SplitterTheme`] (theme slot `splitter`).
+///
+/// [`Splitter::show`] records both panes through one `FnMut` body called
+/// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
+/// a recursive pane tree can capture its state mutably once.
 pub struct Splitter<'a> {
     element: Element,
     ratio: &'a mut f32,
@@ -27,12 +31,11 @@ pub struct Splitter<'a> {
     style: Option<SplitterTheme>,
 }
 
-/// The two body closures' returns, carried on the
-/// [`InnerResponse`] from [`Splitter::show`].
-#[derive(Debug)]
-pub struct SplitContent<A, B> {
-    pub first: A,
-    pub second: B,
+/// Which pane [`Splitter::show`]'s body is currently recording.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SplitHalf {
+    First,
+    Second,
 }
 
 impl<'a> Splitter<'a> {
@@ -81,12 +84,11 @@ impl<'a> Splitter<'a> {
         self
     }
 
-    pub fn show<'u, A, B>(
+    pub fn show<'u>(
         self,
         ui: &'u mut Ui,
-        first: impl FnOnce(&mut Ui) -> A,
-        second: impl FnOnce(&mut Ui) -> B,
-    ) -> InnerResponse<'u, SplitContent<A, B>> {
+        mut body: impl FnMut(&mut Ui, SplitHalf),
+    ) -> Response<'u> {
         let WidgetEntry {
             id,
             raw,
@@ -139,8 +141,10 @@ impl<'a> Splitter<'a> {
         let rule_bg = Background::fill(rule_color);
 
         let horizontal = self.horizontal;
-        let inner = ui.node(id, self.element, None, |ui| {
-            let first = pane(ui, id.with("first"), horizontal, Sizing::Fill(ratio), first);
+        ui.node(id, self.element, None, |ui| {
+            pane(ui, id.with("first"), horizontal, Sizing::Fill(ratio), |ui| {
+                body(ui, SplitHalf::First)
+            });
 
             let mut el = Element::new(LayoutMode::ZStack);
             el.salt = Salt::Verbatim(divider_id);
@@ -160,20 +164,16 @@ impl<'a> Splitter<'a> {
                 ui.node(rule_id, rule, Some(&rule_bg), |_| {});
             });
 
-            let second = pane(
+            pane(
                 ui,
                 id.with("second"),
                 horizontal,
                 Sizing::Fill(1.0 - ratio),
-                second,
+                |ui| body(ui, SplitHalf::Second),
             );
-            SplitContent { first, second }
         });
 
-        InnerResponse {
-            response: Response::eager(id, ui, raw),
-            inner,
-        }
+        Response::eager(id, ui, raw)
     }
 }
 
@@ -185,13 +185,7 @@ impl Configure for Splitter<'_> {
 
 /// One pane: a clipped ZStack sized `main` on the split axis, filling
 /// the cross axis.
-fn pane<R>(
-    ui: &mut Ui,
-    id: WidgetId,
-    horizontal: bool,
-    main: Sizing,
-    body: impl FnOnce(&mut Ui) -> R,
-) -> R {
+fn pane(ui: &mut Ui, id: WidgetId, horizontal: bool, main: Sizing, body: impl FnOnce(&mut Ui)) {
     let mut el = Element::new(LayoutMode::ZStack);
     el.salt = Salt::Verbatim(id);
     el.size = if horizontal {
