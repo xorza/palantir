@@ -107,6 +107,7 @@ fn main() {
         // Stay on the backbuffer+copy path so the per-frame alloc floor this
         // bench pins is unaffected by the direct-present fast path.
         false,
+        Box::new(aperture::RealtimeClock::new()),
     );
     let mut state = FormState::default();
 

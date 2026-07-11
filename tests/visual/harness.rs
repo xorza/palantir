@@ -4,10 +4,11 @@
 use std::sync::OnceLock;
 
 use aperture::offscreen_host::OffscreenHost;
-use aperture::{Color, DebugOverlayConfig, TextShaper, Ui};
+use aperture::{Color, DebugOverlayConfig, FixedClock, TextShaper, Ui};
 use glam::UVec2;
 use image::RgbaImage;
 use pollster::FutureExt;
+use std::time::Duration;
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const COPY_ALIGN: u32 = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
@@ -74,7 +75,18 @@ impl Harness {
         let shaper = COSMIC.with(|c| c.clone());
         // Fresh target texture per render() → must fill the whole target each
         // frame, so stay on the backbuffer+copy path (target_persists = false).
-        let host = OffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, false, false);
+        // A fixed clock makes goldens reproducible: any animated widget (the
+        // spinner's paint-time spin, caret blink, springs) samples a fixed
+        // phase every run instead of a wall-clock-jittered one — the spinner
+        // renders at exactly angle 0, its documented "phase 0" state.
+        let host = OffscreenHost::new(
+            g.device.clone(),
+            g.queue.clone(),
+            shaper,
+            false,
+            false,
+            Box::new(FixedClock::new(Duration::ZERO)),
+        );
 
         Self {
             device: g.device.clone(),

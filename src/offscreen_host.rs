@@ -12,6 +12,7 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 
+use crate::clock::Clock;
 use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
@@ -33,12 +34,18 @@ impl OffscreenHost {
     /// supplies a fresh texture each `frame_offscreen` call (screenshots, the
     /// visual harness — every frame must fill the whole target via
     /// backbuffer+copy).
+    ///
+    /// `clock` is the per-frame time source: [`RealtimeClock`](crate::clock::RealtimeClock)
+    /// for wall-clock renders (screenshots, benches),
+    /// [`FixedClock`](crate::clock::FixedClock) for reproducible ones (golden
+    /// tests, thumbnails) — animations then sample a fixed phase every frame.
     pub fn new(
         device: wgpu::Device,
         queue: wgpu::Queue,
         shaper: TextShaper,
         collect_gpu_stats: bool,
         target_persists: bool,
+        clock: Box<dyn Clock>,
     ) -> Self {
         // The shared context outlives this call only as the clones in the
         // backend + window's `Ui`/`Frontend` (Rc-backed handles, including
@@ -56,7 +63,10 @@ impl OffscreenHost {
         } else {
             PresentStrategy::BackbufferCopy
         };
-        let window = WindowRenderer::new(&ctx, gpu.max_texture_dim(), strategy);
+        let window = WindowRenderer::builder(&ctx, gpu.max_texture_dim())
+            .strategy(strategy)
+            .clock(clock)
+            .build();
         Self { gpu, window }
     }
 

@@ -22,6 +22,7 @@
 
 use std::time::Instant;
 
+use crate::clock::{Clock, RealtimeClock};
 use crate::context::HostContext;
 use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
 use crate::renderer::frontend::Frontend;
@@ -60,9 +61,11 @@ pub struct WindowRenderer {
     stencil: Option<Stencil>,
     /// How this window's frames reach the target — see [`PresentStrategy`].
     strategy: PresentStrategy,
-    /// Monotonic clock anchor — `start.elapsed()` feeds `Ui::frame`
-    /// each call so the host doesn't have to thread a clock through.
-    start: Instant,
+    /// Per-frame time source — `clock.now()` feeds `Ui::frame` each call.
+    /// Injected at construction ([`RealtimeClock`](crate::clock::RealtimeClock)
+    /// for on-screen windows, [`FixedClock`](crate::clock::FixedClock) for a
+    /// reproducible offscreen render) so the pipeline doesn't branch on it.
+    clock: Box<dyn Clock>,
     /// When true, `frame()` short-circuits to `Idle` without running
     /// `cpu_frame`. Every per-frame Ui flag (damage, repaint_requested,
     /// animation driver state) is naturally preserved because nothing
@@ -197,28 +200,69 @@ fn present_mode(
     }
 }
 
-impl WindowRenderer {
-    /// Build a per-window renderer from the shared [`HostContext`]: its
-    /// `Ui` + `Frontend` clone the context's shaper / frame arena / caches /
-    /// GPU-stats handle, and the `Ui` shares the context's app-global host
-    /// state (live-window set + debug overlay) so all windows agree.
-    /// `max_texture_dim` is the device's `max_texture_dimension_2d` (fixed for
-    /// its lifetime), handed to the `Frontend` to cap `GpuView` target sizes —
-    /// the only GPU fact the CPU pipeline needs. Owns nothing on the GPU but
-    /// its backbuffer, created lazily on the first submit.
-    pub(crate) fn new(ctx: &HostContext, max_texture_dim: u32, strategy: PresentStrategy) -> Self {
-        Self {
-            ui: Ui::new(ctx),
-            frontend: Frontend::new(ctx.frame_arena.clone(), max_texture_dim),
+/// Builder for [`WindowRenderer`] — see [`WindowRenderer::builder`]. The
+/// required inputs (`ctx`, `max_texture_dim`) come from that constructor;
+/// `strategy` and `clock` start at the on-screen-window defaults.
+pub(crate) struct WindowRendererBuilder<'a> {
+    ctx: &'a HostContext,
+    max_texture_dim: u32,
+    strategy: PresentStrategy,
+    clock: Box<dyn Clock>,
+}
+
+impl WindowRendererBuilder<'_> {
+    /// Present strategy. Default [`PresentStrategy::DirectAdaptive`]; the
+    /// offscreen host sets [`PresentStrategy::BackbufferCopy`] when it hands a
+    /// fresh target each frame.
+    pub(crate) fn strategy(mut self, strategy: PresentStrategy) -> Self {
+        self.strategy = strategy;
+        self
+    }
+
+    /// Per-frame time source. Default a wall-clock [`RealtimeClock`]; a
+    /// [`FixedClock`](crate::clock::FixedClock) makes an offscreen render
+    /// reproducible.
+    pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    pub(crate) fn build(self) -> WindowRenderer {
+        WindowRenderer {
+            ui: Ui::new(self.ctx),
+            frontend: Frontend::new(self.ctx.frame_arena.clone(), self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
             stencil: None,
-            strategy,
-            start: Instant::now(),
+            strategy: self.strategy,
+            clock: self.clock,
             occluded: false,
             occluded_at: None,
             configured: None,
             last_format: None,
+        }
+    }
+}
+
+impl WindowRenderer {
+    /// Start building a per-window renderer from the shared [`HostContext`]:
+    /// its `Ui` + `Frontend` clone the context's shaper / frame arena /
+    /// caches / GPU-stats handle, and the `Ui` shares the context's
+    /// app-global host state (live-window set + debug overlay) so all windows
+    /// agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
+    /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
+    /// target sizes — the only GPU fact the CPU pipeline needs.
+    ///
+    /// Defaults suit an on-screen window: [`PresentStrategy::DirectAdaptive`]
+    /// and a wall-clock [`RealtimeClock`]. Override either via
+    /// [`WindowRendererBuilder::strategy`] / [`WindowRendererBuilder::clock`]
+    /// before [`WindowRendererBuilder::build`] (the offscreen host does both).
+    pub(crate) fn builder(ctx: &HostContext, max_texture_dim: u32) -> WindowRendererBuilder<'_> {
+        WindowRendererBuilder {
+            ctx,
+            max_texture_dim,
+            strategy: PresentStrategy::DirectAdaptive,
+            clock: Box::new(RealtimeClock::new()),
         }
     }
 
@@ -231,7 +275,7 @@ impl WindowRenderer {
             (false, true) => self.occluded_at = Some(Instant::now()),
             (true, false) => {
                 if let Some(t) = self.occluded_at.take() {
-                    self.start += t.elapsed();
+                    self.clock.skip(t.elapsed());
                 }
             }
             _ => {}
@@ -364,7 +408,7 @@ impl WindowRenderer {
         // cycle — the same Rc the frontend + shared backend hold.
         let report = self
             .ui
-            .frame(FrameStamp::new(display, self.start.elapsed()), record);
+            .frame(FrameStamp::new(display, self.clock.now()), record);
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets, all reading the now-frozen
         // `Ui` immutably. Skip frames build nothing. The `present_mode` here is
@@ -506,8 +550,8 @@ impl WindowRenderer {
 
         if repaint {
             FramePresent::Immediate
-        } else if let Some(deadline) = report.repaint_after {
-            FramePresent::At(self.start + deadline)
+        } else if let Some(at) = report.repaint_after.and_then(|d| self.clock.deadline(d)) {
+            FramePresent::At(at)
         } else {
             FramePresent::Idle
         }
