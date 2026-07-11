@@ -151,15 +151,15 @@ fn gpu() -> &'static Gpu {
 /// the shared bench device with GPU instrumentation on. Every bench arm
 /// wants the same shape — bundled fonts, `collect_gpu_stats: true`.
 fn bench_host(g: &Gpu) -> OffscreenHost {
-    OffscreenHost::new(
+    OffscreenHost::builder(
         g.device.clone(),
         g.queue.clone(),
         aperture::TextShaper::with_bundled_fonts(),
-        true,
-        // Bench arms reuse their target(s) across iters → direct-present path.
-        true,
-        Box::new(aperture::RealtimeClock::new()),
     )
+    .collect_gpu_stats(true)
+    // Bench arms reuse their target(s) across iters → direct-present path.
+    .target_persists(true)
+    .build()
 }
 
 fn make_target(device: &wgpu::Device, size: glam::UVec2, label: &str) -> wgpu::Texture {

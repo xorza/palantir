@@ -8,7 +8,7 @@ use glam::{IVec2, UVec2};
 
 /// Caller-chosen opaque identity for a window. Supplied at
 /// [`Ui::open_window`](crate::Ui::open_window) (and
-/// [`WinitHost::new`](crate::WinitHost::new) for the first window),
+/// [`WinitHost::builder`](crate::WinitHost::builder) for the first window),
 /// handed back to [`App::frame`](crate::App::frame) each paint, and used
 /// to address a window in [`Ui::close_window`](crate::Ui::close_window) /
 /// [`HostHandle::request_repaint`](crate::HostHandle::request_repaint).

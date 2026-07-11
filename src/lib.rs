@@ -172,7 +172,7 @@ pub use widgets::{InnerResponse, Response, ResponseSnapshot};
 pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowIcon, WindowToken};
 pub use winit_host::config::WinitHostConfig;
 pub use winit_host::handle::{HostHandle, UserEvent};
-pub use winit_host::{App, WinitHost};
+pub use winit_host::{App, WinitHost, WinitHostBuilder};
 
 #[cfg(test)]
 mod hot_struct_sizes {

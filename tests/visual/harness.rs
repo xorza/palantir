@@ -79,14 +79,9 @@ impl Harness {
         // spinner's paint-time spin, caret blink, springs) samples a fixed
         // phase every run instead of a wall-clock-jittered one — the spinner
         // renders at exactly angle 0, its documented "phase 0" state.
-        let host = OffscreenHost::new(
-            g.device.clone(),
-            g.queue.clone(),
-            shaper,
-            false,
-            false,
-            Box::new(FixedClock::new(Duration::ZERO)),
-        );
+        let host = OffscreenHost::builder(g.device.clone(), g.queue.clone(), shaper)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
 
         Self {
             device: g.device.clone(),
