@@ -122,7 +122,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("default")
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("Default 0.5 s delay before this appears.")
                     .show(ui);
 
@@ -131,7 +131,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("instant")
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("No delay — fires the frame the pointer arrives.")
                     .delay(0.0)
                     .show(ui);
@@ -141,7 +141,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("slow (1.5 s)")
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("Held for 1.5 s before showing.")
                     .delay(1.5)
                     .show(ui);
@@ -151,7 +151,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("long text")
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text(
                         "Tooltips wrap to the configured max width — the default \
                          is 280 logical pixels. Long bodies stack into multiple \
@@ -165,7 +165,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .label("narrow")
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("Override max width to force tighter wrap on a single tooltip.")
                     .max_size((140.0, f32::INFINITY))
                     .show(ui);
@@ -178,7 +178,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .disabled(true)
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("This text is suppressed by the default skip-on-disabled rule.")
                     .show(ui);
 
@@ -188,7 +188,7 @@ fn tooltip_section(ui: &mut Ui) {
                     .disabled(true)
                     .show(ui)
                     .snapshot();
-                Tooltip::for_(&r)
+                Tooltip::on(&r)
                     .text("Opt-in via .show_when_disabled(true) for 'why is this disabled' hints.")
                     .show_when_disabled(true)
                     .show(ui);
@@ -199,7 +199,7 @@ fn tooltip_section(ui: &mut Ui) {
                         .label(format!("item {}", i + 1))
                         .show(ui)
                         .snapshot();
-                    Tooltip::for_(&r)
+                    Tooltip::on(&r)
                         .text(match i {
                             0 => "Hover, then move to the next item within ~1 s.",
                             1 => "See how the next bubble appears instantly?",

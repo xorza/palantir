@@ -119,10 +119,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                             .label(label)
                             .show(ui)
                             .snapshot();
-                        Tooltip::for_(&btn)
-                            .text("Header action")
-                            .delay(0.0)
-                            .show(ui);
+                        Tooltip::on(&btn).text("Header action").delay(0.0).show(ui);
                     }
                 });
 

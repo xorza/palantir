@@ -71,7 +71,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
 ///
 /// ```ignore
 /// let r = Button::new().label("Save").show(ui);
-/// Tooltip::for_(&r).text("Persist changes (Ctrl+S)").show(ui);
+/// Tooltip::on(&r).text("Persist changes (Ctrl+S)").show(ui);
 /// ```
 ///
 /// Tooltips are pointer-driven only and skip recording on disabled
@@ -93,7 +93,7 @@ impl<'r> Tooltip<'r> {
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before recording the tooltip body.
     #[track_caller]
-    pub fn for_(snapshot: &'r ResponseSnapshot) -> Self {
+    pub fn on(snapshot: &'r ResponseSnapshot) -> Self {
         let mut element = Element::new(LayoutMode::VStack);
         // Bubble must never claim hover — would shadow its own trigger.
         element.flags.set_sense(Sense::empty());
