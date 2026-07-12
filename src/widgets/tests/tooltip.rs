@@ -97,7 +97,7 @@ fn delay_gates_visibility() {
                             .show(ui)
                             .snapshot();
                         *captured = Some(r.widget_id());
-                        Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                        Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                     });
             },
         );
@@ -180,7 +180,7 @@ fn hover_clears_after_tooltip_visible() {
                             .show(ui)
                             .snapshot();
                         *captured = Some(r.widget_id());
-                        Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                        Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                     });
             },
         );
@@ -258,7 +258,7 @@ fn tooltip_inside_popup_records_without_panic() {
                                     .show(ui)
                                     .snapshot();
                                 *captured = Some(r.widget_id());
-                                Tooltip::for_(&r).text("tip").delay(0.3).show(ui);
+                                Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                             });
                     });
             },
