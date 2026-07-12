@@ -229,7 +229,6 @@ impl Tree {
         let n = self.records.len();
         let layouts = self.records.layout();
         let attrs = self.records.attrs();
-        let ends = self.records.subtree_end();
         // Per-shape hashes are canonical — populated by `Shapes::add`
         // at lowering time. compute_hashes just folds them into the
         // owner's node hasher in record order.
@@ -290,13 +289,23 @@ impl Tree {
             // miss and a no-damage re-diff of the parent's rows —
             // accepted, since re-keys are rare and almost always ride
             // a structural change that invalidates those anyway.
-            let subtree_end = ends[i].end();
+            //
+            // The subtree hasher rides the same walk: each child's
+            // already-finalized `subtree[child]` (reverse pre-order —
+            // children were visited earlier) folds in as it's yielded,
+            // and `node_hash` is appended after `finish` below —
+            // children-then-self, one traversal instead of a second
+            // child-hop loop.
+            let mut sh = Hasher::new();
+            let mut has_children = false;
             for item in TreeItems::new(&self.records, &self.shapes.records, NodeId(i as u32)) {
                 match item {
                     TreeItem::ShapeRecord(idx, _) => h.write_u64(shape_hashes[idx as usize].0),
                     TreeItem::Child(c) => {
                         h.write_u8(0xFF);
                         h.write_u64(widget_ids[c.id.idx()].0);
+                        sh.write_u64(subtree_out[c.id.idx()].0);
+                        has_children = true;
                     }
                 }
             }
@@ -307,17 +316,15 @@ impl Tree {
             let node_hash = h.finish();
             node_out[i] = NodeHash(node_hash);
 
-            // Subtree hash: seeded from `node_hash` (which now already
-            // includes own transform) and each direct child's
-            // already-computed `subtree[child]`.
-            let mut sh = Hasher::new();
-            sh.write_u64(node_hash);
-            let mut next = (i as u32) + 1;
-            while next < subtree_end {
-                sh.write_u64(subtree_out[next as usize].0);
-                next = ends[next as usize].end();
-            }
-            subtree_out[i] = NodeHash(sh.finish());
+            // Childless subtree = the node alone, so `node_hash` IS the
+            // rollup — skip the second hasher round-trip (most nodes).
+            // Inner nodes fold children (streamed above) then self.
+            subtree_out[i] = if has_children {
+                sh.write_u64(node_hash);
+                NodeHash(sh.finish())
+            } else {
+                NodeHash(node_hash)
+            };
         }
     }
 
