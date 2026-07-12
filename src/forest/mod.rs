@@ -222,20 +222,30 @@ impl Forest {
         if let EndpointOutcome::ExplicitCollision { first, second } =
             self.ids.record_endpoint(widget_id, endpoint)
         {
-            tracing::error!(
-                first_layer = ?first.layer,
-                first_node = ?first.node,
-                second_layer = ?second.layer,
-                second_node = ?second.node,
-                "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
-            );
-            self.collisions.push(CollisionRecord { first, second });
+            self.report_explicit_collision(first, second);
         }
         // Disjoint borrow: `trees` and `scratch` are separate fields
         // on `Forest`, so both can be mutably borrowed at the same call.
         let tree = &mut self.trees[layer];
         let scratch = &mut self.scratch[layer];
         tree.open_node(scratch, node, widget_id, element, chrome);
+    }
+
+    /// Outlined from [`Self::open_node`]: the `tracing::error!` expansion
+    /// reserves stack slots in whatever function it inlines into, taxing
+    /// every open with a bigger frame for a path that fires only on a
+    /// caller bug.
+    #[cold]
+    #[inline(never)]
+    fn report_explicit_collision(&mut self, first: Endpoint, second: Endpoint) {
+        tracing::error!(
+            first_layer = ?first.layer,
+            first_node = ?first.node,
+            second_layer = ?second.layer,
+            second_node = ?second.node,
+            "explicit WidgetId collision — disambiguated; per-widget state will not survive between the colliding call sites",
+        );
+        self.collisions.push(CollisionRecord { first, second });
     }
 
     pub(crate) fn close_node(&mut self) {
