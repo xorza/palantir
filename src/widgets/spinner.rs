@@ -1,8 +1,9 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::layout::types::sizing::Sizing;
+use crate::primitives::brush::{Brush, LinearGradient};
 use crate::primitives::color::Color;
-use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
+use crate::shape::{LineCap, Shape};
 use crate::ui::Ui;
 use crate::widgets::Response;
 use crate::widgets::theme::palette;
@@ -10,9 +11,6 @@ use glam::Vec2;
 use std::f32::consts::PI;
 use std::time::Duration;
 
-/// Number of samples along the arc. Enough that the round-capped
-/// polyline reads as a smooth curve at typical sizes.
-const SAMPLES: usize = 24;
 /// Arc length in radians — a 3/4 sweep leaves a visible gap so the
 /// rotation is legible.
 const SWEEP: f32 = 1.5 * PI;
@@ -24,11 +22,14 @@ const SPEED: f32 = 4.5;
 /// its own continuous repaint while recorded, so it spins whenever it's
 /// on screen and costs nothing when it isn't.
 ///
-/// The recorded arc geometry is **identical every frame** (sampled at
-/// phase 0), so its `subtree_hash` is stable and measure/cascade skip the
-/// spinner's subtree; the live rotation is a paint-time [`PaintAnim::Spin`]
-/// sampled from the frame clock and applied when the composer lays down
-/// the stroke — not baked into the points.
+/// The recorded [`Shape::Arc`] is **identical every frame** (phase 0),
+/// so its `subtree_hash` is stable and measure/cascade skip the
+/// spinner's subtree; the live rotation is a paint-time
+/// [`PaintAnim::Spin`] sampled from the frame clock — the composer
+/// shifts the arc's angles when it emits the GPU instances, no
+/// geometry is rebuilt. The arc renders natively on the GPU (exact
+/// circle, adaptive subdivision), so it stays smooth at any size and
+/// DPI; the comet fade is a linear gradient sampled along the sweep.
 pub struct Spinner {
     element: Element,
     size: f32,
@@ -74,15 +75,14 @@ impl Spinner {
 
         let id = ui.widget_id(&self.element);
         ui.node(id, self.element, None, |ui| {
-            // Static arc (phase 0) + a paint-time spin: the geometry is
-            // identical every frame, so the spinner's subtree stays
-            // cache-stable and only the encode re-rotates it.
-            let pts = arc_points(size, width);
-            let cols = comet_colors(color);
+            // Static arc (phase 0) + a paint-time spin: the recorded
+            // shape is identical every frame, so the spinner's subtree
+            // stays cache-stable and only the composer re-spins it.
+            let ArcGeometry { center, radius } = arc_geometry(size, width);
             ui.add_shape_animated(
-                Shape::polyline(&pts, PolylineColors::PerPoint(&cols), width)
-                    .cap(LineCap::Round)
-                    .join(LineJoin::Round),
+                Shape::arc(center, radius, 0.0, SWEEP, width)
+                    .brush(Brush::Linear(comet_brush(color)))
+                    .cap(LineCap::Round),
                 PaintAnim::Spin {
                     speed: SPEED,
                     started_at: Duration::ZERO,
@@ -101,116 +101,73 @@ impl Configure for Spinner {
     }
 }
 
-/// Sample the arc into node-local points on a circle inset by half the
-/// stroke width (so the round caps stay inside the box). The arc starts
-/// at angle 0 and sweeps [`SWEEP`] radians; the live rotation is applied
-/// at paint time by [`PaintAnim::Spin`], not baked into the points.
-fn arc_points(size: f32, width: f32) -> [Vec2; SAMPLES] {
-    let center = size * 0.5;
-    let radius = (size - width).max(0.0) * 0.5;
-    let mut pts = [Vec2::ZERO; SAMPLES];
-    for (i, p) in pts.iter_mut().enumerate() {
-        let f = i as f32 / (SAMPLES - 1) as f32;
-        let a = f * SWEEP;
-        *p = Vec2::new(center + radius * a.cos(), center + radius * a.sin());
-    }
-    pts
+/// Node-local circle the arc traces.
+#[derive(Debug, PartialEq)]
+struct ArcGeometry {
+    center: Vec2,
+    radius: f32,
 }
 
-/// Per-point colors for the comet trail: the tail (first point) is fully
-/// transparent and the head (last point) is the full color, scaling the
-/// base alpha linearly so a translucent base stays translucent.
-fn comet_colors(base: Color) -> [Color; SAMPLES] {
-    let mut cols = [base; SAMPLES];
-    for (i, c) in cols.iter_mut().enumerate() {
-        let f = i as f32 / (SAMPLES - 1) as f32;
-        *c = base.with_alpha(base.a * f);
+/// Inset the trace circle by half the stroke width so the stroke (and
+/// its round caps, which reach `width/2` past the centerline) stays
+/// inside the widget box.
+fn arc_geometry(size: f32, width: f32) -> ArcGeometry {
+    ArcGeometry {
+        center: Vec2::splat(size * 0.5),
+        radius: (size - width).max(0.0) * 0.5,
     }
-    cols
+}
+
+/// Comet-trail gradient along the sweep: fully transparent at the tail
+/// (t = 0, the arc's start angle), the full color at the head (t = 1).
+/// Scaling from the base alpha keeps a translucent base translucent.
+/// The gradient's `angle` is ignored on stroke shapes — the arc
+/// carries its own 1-D parameter.
+fn comet_brush(base: Color) -> LinearGradient {
+    LinearGradient::two_stop(0.0, base.with_alpha(0.0), base)
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::primitives::color::Color;
-    use crate::widgets::spinner::{SAMPLES, SWEEP, arc_points, comet_colors};
+    use crate::primitives::color::{Color, ColorU8};
+    use crate::widgets::spinner::{ArcGeometry, SWEEP, arc_geometry, comet_brush};
+    use glam::Vec2;
 
-    /// Every sampled point sits on the inset circle, the arc starts at
-    /// angle 0, and spans exactly `SWEEP` from first to last sample. The
-    /// live rotation is a paint-time spin, so the recorded geometry is
-    /// phase-independent (cache-stable).
+    /// The trace circle insets by half the stroke width (round caps
+    /// reach `width/2` past the centerline, so this keeps the painted
+    /// stroke inside the box), and degenerate sizes clamp at zero.
     #[test]
-    fn arc_points_lie_on_circle_and_span_sweep() {
-        let size = 24.0;
-        let width = 2.0;
-        let pts = arc_points(size, width);
-        let center = size * 0.5;
-        let radius = (size - width) * 0.5; // 11.0
-
-        for p in &pts {
-            let d = ((p.x - center).powi(2) + (p.y - center).powi(2)).sqrt();
-            assert!(
-                (d - radius).abs() < 1e-4,
-                "point off circle: d={d} r={radius}"
-            );
-        }
-
-        // First sample sits at angle 0, last at SWEEP.
-        let ang = |p: glam::Vec2| (p.y - center).atan2(p.x - center);
-        let first = ang(pts[0]);
-        assert!(first.abs() < 1e-4, "first angle {first} != 0");
-
-        let last = pts[SAMPLES - 1];
-        let expected = point_on_circle(center, radius, SWEEP);
-        assert!(
-            (last.x - expected.x).abs() < 1e-3 && (last.y - expected.y).abs() < 1e-3,
-            "last point {last:?} != swept endpoint {expected:?}",
+    fn arc_geometry_insets_by_half_width() {
+        assert_eq!(
+            arc_geometry(24.0, 2.0),
+            ArcGeometry {
+                center: Vec2::splat(12.0),
+                radius: 11.0,
+            }
         );
+        // width ≥ size: radius clamps to 0 instead of going negative.
+        assert_eq!(arc_geometry(4.0, 8.0).radius, 0.0);
+        // The recorded sweep leaves a visible gap (not a full circle).
+        const { assert!(SWEEP < std::f32::consts::TAU) };
     }
 
-    fn point_on_circle(center: f32, radius: f32, a: f32) -> glam::Vec2 {
-        glam::Vec2::new(center + radius * a.cos(), center + radius * a.sin())
-    }
-
-    /// Migration contract: the composer spins the static (phase-0) arc
-    /// about the node centre, and that must land every point exactly
-    /// where the old per-frame `arc_points(phase = θ)` did — otherwise
-    /// the spinner would look different than before. Models the
-    /// composer's rotation (`rotor.rotate(q - pivot) + pivot`, pivot =
-    /// node centre) and checks it against the analytic phase-θ arc.
+    /// Comet trail: tail transparent, head the full color, rgb equal on
+    /// both stops (only alpha fades). A translucent base scales — the
+    /// head must carry the base alpha, not opaque 1.0.
     #[test]
-    fn paint_spin_reproduces_old_phase_geometry() {
-        let size = 48.0;
-        let width = 5.0;
-        let theta = 0.9_f32;
-        let center = glam::Vec2::splat(size * 0.5);
-        let radius = (size - width) * 0.5;
-        let rotor = glam::Vec2::from_angle(theta);
-        let static_pts = arc_points(size, width);
-        for (i, &q) in static_pts.iter().enumerate() {
-            let spun = rotor.rotate(q - center) + center;
-            let f = i as f32 / (SAMPLES - 1) as f32;
-            let a = theta + f * SWEEP;
-            let old = center + glam::Vec2::new(radius * a.cos(), radius * a.sin());
-            assert!(
-                (spun - old).length() < 1e-4,
-                "point {i}: spun {spun:?} != old phase geometry {old:?}",
-            );
-        }
-    }
-
-    /// Comet trail: tail transparent, head full, monotonically rising.
-    #[test]
-    fn comet_colors_fade_tail_to_head() {
-        let base = Color::rgb(0.6, 0.8, 1.0); // opaque
-        let cols = comet_colors(base);
-        assert!((cols[0].a - 0.0).abs() < 1e-6, "tail not transparent");
-        assert!((cols[SAMPLES - 1].a - 1.0).abs() < 1e-6, "head not opaque");
-        for w in cols.windows(2) {
-            assert!(w[1].a >= w[0].a, "alpha must rise tail→head");
-        }
+    fn comet_brush_fades_tail_to_head() {
+        let base = Color::rgb(0.6, 0.8, 1.0).with_alpha(0.5);
+        let g = comet_brush(base);
+        assert_eq!(g.stops.len(), 2);
+        let tail = g.stops[0];
+        let head = g.stops[1];
+        assert_eq!(tail.offset(), 0.0);
+        assert_eq!(head.offset(), 1.0);
+        assert_eq!(tail.color.a, 0);
+        assert_eq!(head.color, ColorU8::from(base));
         // RGB is untouched — only alpha varies along the trail.
-        assert_eq!(cols[SAMPLES - 1].r, base.r);
-        assert_eq!(cols[SAMPLES - 1].g, base.g);
-        assert_eq!(cols[SAMPLES - 1].b, base.b);
+        assert_eq!(tail.color.r, head.color.r);
+        assert_eq!(tail.color.g, head.color.g);
+        assert_eq!(tail.color.b, head.color.b);
     }
 }

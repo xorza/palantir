@@ -967,8 +967,41 @@ fn toggle_switch_states_matches_golden() {
     assert_matches_golden("toggle_switch_states", &img, Tolerance::default());
 }
 
+/// Pin: `Shape::Arc` renders natively on the GPU curve pipeline. A
+/// full ±2π circle closes seamlessly under Butt caps (no seam pixel
+/// at angle 0); a 3/4-sweep gradient arc fades along its sweep and
+/// terminates in a round head cap. Regressions in the arc basis
+/// (angle mixing, tangent sign, cap SDF) show as gaps or flat ends.
+#[test]
+fn arc_shapes_match_golden() {
+    use std::f32::consts::{FRAC_PI_2, PI};
+    let mut h = Harness::new();
+    let img = h.render(UVec2::new(180, 140), 1.0, DARK_BG, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                ui.add_shape(
+                    Shape::circle(Vec2::new(45.0, 70.0), 30.0, 4.0)
+                        .brush(Color::rgb(0.2, 0.9, 1.0)),
+                );
+                let comet = Brush::Linear(LinearGradient::two_stop(
+                    0.0,
+                    Color::rgb(1.0, 0.85, 0.2).with_alpha(0.0),
+                    Color::rgb(1.0, 0.85, 0.2),
+                ));
+                ui.add_shape(
+                    Shape::arc(Vec2::new(130.0, 70.0), 30.0, -FRAC_PI_2, 1.5 * PI, 8.0)
+                        .brush(comet)
+                        .cap(LineCap::Round),
+                );
+            });
+    });
+    assert_matches_golden("arc_shapes", &img, Tolerance::default());
+}
+
 /// Spinner at t=0 (phase 0): the comet arc renders as a round-capped
-/// polyline with a per-point alpha fade from tail to head.
+/// GPU arc whose gradient fades from transparent tail to full head.
 #[test]
 fn spinner_matches_golden() {
     let mut h = Harness::new();

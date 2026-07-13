@@ -1,7 +1,8 @@
 //! Line and curve strokes: widths down to sub-pixel hairlines, joins,
-//! caps, per-point / per-segment polyline colors, and cubic /
-//! quadratic béziers with solid and gradient brushes. Every cell paints
-//! raw `Shape`s via `ui.add_shape` into a captioned demo surface.
+//! caps, per-point / per-segment polyline colors, cubic / quadratic
+//! béziers, and circular arcs with solid and gradient brushes. Every
+//! cell paints raw `Shape`s via `ui.add_shape` into a captioned demo
+//! surface.
 
 use crate::showcase::support;
 use crate::showcase::support::{cell_row, demo_cell};
@@ -26,6 +27,7 @@ pub fn build(ui: &mut Ui) {
             demo_cell(ui, "gradient cubic (along t)", gradient_cubic);
             demo_cell(ui, "gradient multi-stop", gradient_multistop);
             demo_cell(ui, "curve caps — Butt / Square / Round", curve_caps);
+            demo_cell(ui, "arcs & circles", arcs);
         });
     });
 }
@@ -183,6 +185,35 @@ fn gradient_multistop(ui: &mut Ui) {
         Shape::quadratic_bezier(Q0, Q1, Q2, 10.0)
             .brush(brush)
             .cap(LineCap::Round),
+    );
+}
+
+fn arcs(ui: &mut Ui) {
+    use std::f32::consts::{FRAC_PI_2, PI, TAU};
+    // Full circle: a ±2π sweep closes seamlessly under Butt caps.
+    ui.add_shape(Shape::circle(Vec2::new(35.0, 35.0), 25.0, 3.0).brush(Color::rgb(0.2, 0.9, 1.0)));
+    // 3/4 sweep with a gradient along the arc (the spinner's comet
+    // shape) — transparent tail to full head, round caps.
+    let comet = Brush::Linear(LinearGradient::two_stop(
+        0.0,
+        Color::rgb(1.0, 0.85, 0.2).with_alpha(0.0),
+        Color::rgb(1.0, 0.85, 0.2),
+    ));
+    ui.add_shape(
+        Shape::arc(Vec2::new(85.0, 35.0), 25.0, -FRAC_PI_2, 1.5 * PI, 6.0)
+            .brush(comet)
+            .cap(LineCap::Round),
+    );
+    // Gauge-style bottom arc: half sweep, fat stroke, round caps.
+    ui.add_shape(
+        Shape::arc(Vec2::new(60.0, 125.0), 40.0, PI, PI, 10.0)
+            .brush(Color::rgb(0.4, 1.0, 0.5))
+            .cap(LineCap::Round),
+    );
+    // Thin negative-sweep quarter overlaying the gauge's track.
+    ui.add_shape(
+        Shape::arc(Vec2::new(60.0, 125.0), 28.0, 0.0, -TAU * 0.25, 2.0)
+            .brush(Color::rgb(1.0, 0.4, 0.4)),
     );
 }
 

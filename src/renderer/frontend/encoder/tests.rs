@@ -1160,6 +1160,67 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     assert!(!Rect::new(0.0, 0.0, 80.0, 40.0).contains(p_rot));
 }
 
+/// Same rotation-safety contract for the GPU-arc path: a spun
+/// `Shape::Arc` ships the rotation-invariant square centred on the
+/// owner-box centre plus the sampled rotation, while the geometry
+/// lanes stay owner-local and unrotated — the composer applies the
+/// spin at compose time (center about `bbox.center()`, angles by
+/// `rotation`), so both ends of the pivot contract meet here.
+#[test]
+fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
+    use crate::display::Display;
+    use crate::forest::tree::paint_anims::PaintAnim;
+    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
+    use crate::shape::Shape;
+    use crate::ui::frame::FrameStamp;
+    use std::f32::consts::PI;
+    use std::time::Duration;
+
+    let mut ui = Ui::for_test();
+    let display = Display::from_physical(UVec2::new(200, 200), 1.0);
+    // 1 s in at 1 rad/s → sampled rotation = 1 rad ≠ 0.
+    ui.frame(FrameStamp::new(display, Duration::from_secs(1)), |ui| {
+        Panel::hstack().auto_id().show(ui, |ui| {
+            Panel::zstack()
+                .id(WidgetId::from_hash("arc_spin_owner"))
+                .size((Sizing::Fixed(80.0), Sizing::Fixed(40.0)))
+                .show(ui, |ui| {
+                    ui.add_shape_animated(
+                        Shape::arc(Vec2::new(50.0, 20.0), 10.0, 0.0, PI, 2.0).brush(Color::WHITE),
+                        PaintAnim::Spin {
+                            speed: 1.0,
+                            started_at: Duration::ZERO,
+                        },
+                    );
+                });
+        });
+    });
+    let cmds = ui.encode_cmds();
+    let p = (0..cmds.kinds.len())
+        .find_map(|i| match cmds.kinds[i] {
+            CmdKind::DrawArc => Some(cmds.read::<DrawArcPayload>(cmds.starts[i])),
+            _ => None,
+        })
+        .expect("spun arc must emit a DrawArc");
+    assert!(p.rotation != 0.0, "spin must sample a non-zero rotation");
+    // Geometry rides owner-local and unrotated.
+    assert_eq!(p.center, Vec2::new(50.0, 20.0));
+    assert_eq!((p.a0, p.a1), (0.0, PI));
+
+    // Lowered arc bbox: trace spans (40,20)..(60,30) (endpoints + the
+    // π/2 crossing), padded by width/2 + fringe = 1.5 on every side →
+    // (38.5, 18.5)..(61.5, 31.5). Swept square about the owner centre
+    // c = (40, 20): half-extent = |(21.5, 11.5)|.
+    let c = Vec2::new(40.0, 20.0);
+    let r = (21.5_f32 * 21.5 + 11.5 * 11.5).sqrt();
+    let eps = 1e-3;
+    assert!((p.bbox.min.x - (c.x - r)).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.min.y - (c.y - r)).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.size.w - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.size.h - 2.0 * r).abs() < eps, "bbox {:?}", p.bbox);
+    assert!((p.bbox.center() - c).length() < eps);
+}
+
 /// `Panel::transform` applies to the panel's body — both direct
 /// shapes (recorded via `ui.add_shape`) and child subtrees. Pins the
 /// "shapes inside the panel's transform" contract; the inverse case

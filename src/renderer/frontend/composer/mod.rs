@@ -10,15 +10,15 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
 use crate::renderer::frontend::cmd_buffer::{
-    CmdKind, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
-    RenderCmdBuffer,
+    CmdKind, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
+    DrawPolylinePayload, DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload,
+    PushClipPayload, RenderCmdBuffer,
 };
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    CurveBatch, CurveInstance, DrawGroup, ImageBatch, ImageDrawRow, ImageInstance, MeshBatch,
-    MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer, RenderTargetDraw, RoundedClip,
-    SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CurveBatch, CurveInstance, DrawGroup, ImageBatch,
+    ImageDrawRow, ImageInstance, MeshBatch, MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer,
+    RenderTargetDraw, RoundedClip, SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
 };
 use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
 use glam::{UVec2, Vec2};
@@ -954,51 +954,115 @@ impl Composer {
                     // owner-local (cross-frame stable). No pixel
                     // snapping — snapping control points would warp
                     // the curve shape; AA fringe lives in the shader.
-                    let xform = |q: Vec2| current_transform.apply_point(q + p.origin) * scale;
-                    let p0 = xform(p.p0);
-                    let p1 = xform(p.p1);
-                    let p2 = xform(p.p2);
-                    let p3 = xform(p.p3);
+                    // Paint-time spin rotates the control points about
+                    // the payload-bbox centre first (the encoder's
+                    // pivot contract, see `spin_bbox`) — exact for a
+                    // bezier by affine invariance.
+                    let mut ctrl = [p.p0, p.p1, p.p2, p.p3];
+                    if p.rotation != 0.0 {
+                        let pivot = p.bbox.center();
+                        let rotor = Vec2::from_angle(p.rotation);
+                        for q in &mut ctrl {
+                            *q = rotor.rotate(*q - pivot) + pivot;
+                        }
+                    }
+                    let [p0, p1, p2, p3] =
+                        ctrl.map(|q| current_transform.apply_point(q + p.origin) * scale);
                     // Adaptive sub-instance count from post-transform
                     // control-polygon length. Polygon length bounds
                     // arc length from above — slight overshoot, but
                     // never undershoots → no faceting from too-coarse
-                    // sampling. Shader bakes `SEGMENTS_PER_INSTANCE`
-                    // chord-subdivisions per instance; aim for ~1.5 px
-                    // chord per segment so AA fringe (0.5 px) fully
-                    // covers any sub-pixel kink.
-                    let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
-                    let target_chord_px = 1.5_f32;
-                    let total_segments = (l / target_chord_px).ceil().max(1.0) as u32;
-                    let n = total_segments
-                        .div_ceil(SEGMENTS_PER_INSTANCE)
-                        .clamp(1, MAX_SUB_INSTANCES);
-                    let color: ColorU8 = p.color.into();
-                    let fill_kind = p.fill_kind;
-                    let fill_lut_row = p.fill_lut_row;
-                    let inv_n = 1.0 / n as f32;
-                    for i in 0..n {
-                        let t0 = i as f32 * inv_n;
-                        let t1 = if i + 1 == n {
-                            1.0
-                        } else {
-                            (i + 1) as f32 * inv_n
-                        };
-                        out.curves.push(CurveInstance {
+                    // sampling. Near-straight cubics (`Shape::Line`
+                    // lowers as one; graph wires often relax to one)
+                    // short-circuit to a single instance: every chord
+                    // of a flat curve lies on the segment, so the 16
+                    // baked chords render it exactly at any length.
+                    let n = if cubic_is_flat(p0, p1, p2, p3) {
+                        1
+                    } else {
+                        let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
+                        sub_instance_count(l)
+                    };
+                    push_sub_instances(
+                        out,
+                        n,
+                        CurveInstance {
                             p0,
                             p1,
                             p2,
                             p3,
-                            t0,
-                            t1,
                             width: width_phys,
-                            color,
+                            color: p.color.into(),
                             cap: p.cap,
-                            fill_kind,
-                            fill_lut_row,
+                            fill_kind: p.fill_kind,
+                            fill_lut_row: p.fill_lut_row,
+                            kind: CURVE_KIND_CUBIC,
                             ..bytemuck::Zeroable::zeroed()
-                        });
+                        },
+                    );
+                    self.higher_kind_rects.push(HigherKindRect {
+                        kind: HigherKind::Curve,
+                        rect: bbox_scissor,
+                    });
+                }
+                CmdKind::DrawArc => {
+                    let p: DrawArcPayload = cmds.read(start);
+                    let width_phys = p.width * current_transform.scale * scale;
+                    let bbox_scissor = stroke_bbox_scissor(
+                        current_transform,
+                        p.bbox,
+                        p.origin,
+                        width_phys,
+                        scale,
+                        viewport_phys,
+                    );
+                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
+                        continue;
                     }
+                    // Paint-time spin: rotate the center about the
+                    // payload-bbox centre (the encoder guarantees
+                    // `bbox.center()` is the owner-box pivot when
+                    // `rotation != 0`, same contract as DrawPolyline)
+                    // and shift both angles — exact for a circle, no
+                    // control-point rotation needed.
+                    let mut center = p.center;
+                    let mut a0 = p.a0;
+                    let mut a1 = p.a1;
+                    if p.rotation != 0.0 {
+                        let pivot = p.bbox.center();
+                        center = Vec2::from_angle(p.rotation).rotate(center - pivot) + pivot;
+                        a0 += p.rotation;
+                        a1 += p.rotation;
+                    }
+                    // The transform stack is translate + uniform scale
+                    // (no rotation/skew — see `TranslateScale`), so a
+                    // circle maps to a circle: transform the center,
+                    // scale the radius. Angles pass through untouched.
+                    let center_phys = current_transform.apply_point(center + p.origin) * scale;
+                    let radius_phys = p.radius * current_transform.scale * scale;
+                    // Adaptive sub-instance count from the *exact* arc
+                    // length `r·|sweep|` — no control-polygon overshoot.
+                    // Same ~1.5 px chord target as the cubic path; at
+                    // that density the chord sagitta is `≈ c²/(8r)` ≤
+                    // 0.3 px even at r = 1, buried under the AA fringe.
+                    let n = sub_instance_count(radius_phys * (a1 - a0).abs());
+                    push_sub_instances(
+                        out,
+                        n,
+                        CurveInstance {
+                            p0: center_phys,
+                            p1: Vec2::new(radius_phys, 0.0),
+                            p2: Vec2::new(a0, a1),
+                            p3: Vec2::ZERO,
+                            width: width_phys,
+                            color: p.color.into(),
+                            cap: p.cap,
+                            fill_kind: p.fill_kind,
+                            fill_lut_row: p.fill_lut_row,
+                            kind: CURVE_KIND_ARC,
+                            ..bytemuck::Zeroable::zeroed()
+                        },
+                    );
                     self.higher_kind_rects.push(HigherKindRect {
                         kind: HigherKind::Curve,
                         rect: bbox_scissor,
@@ -1221,6 +1285,67 @@ impl Composer {
 /// any realistic UI workload. Cap is a sanity belt — far above the
 /// 1–4 sub-instance steady state.
 const MAX_SUB_INSTANCES: u32 = 256;
+
+/// Target chord length for GPU-stroke subdivision, physical px. The
+/// shader bakes `SEGMENTS_PER_INSTANCE` chords per instance; the
+/// composer sizes the instance count so each chord lands near this
+/// length — short enough that the 0.5 px AA fringe fully covers any
+/// sub-pixel kink between chords. Shared by the cubic (control-polygon
+/// length bound) and arc (exact `r·|sweep|` length) paths.
+const TARGET_CHORD_PX: f32 = 1.5;
+
+/// Sub-instance count for a GPU stroke of on-screen length `len_px`:
+/// enough `SEGMENTS_PER_INSTANCE`-chord instances that each chord
+/// lands near [`TARGET_CHORD_PX`], clamped to [`MAX_SUB_INSTANCES`].
+#[inline]
+fn sub_instance_count(len_px: f32) -> u32 {
+    let total_segments = (len_px / TARGET_CHORD_PX).ceil().max(1.0) as u32;
+    total_segments
+        .div_ceil(SEGMENTS_PER_INSTANCE)
+        .clamp(1, MAX_SUB_INSTANCES)
+}
+
+/// Tile `t ∈ [0, 1]` into `n` contiguous ranges (the last ending at
+/// exactly `1.0`, so the shader's trailing-cap test fires) and push
+/// one instance per range; `proto` supplies every other lane.
+fn push_sub_instances(out: &mut RenderBuffer, n: u32, proto: CurveInstance) {
+    let inv_n = 1.0 / n as f32;
+    for i in 0..n {
+        let t1 = if i + 1 == n {
+            1.0
+        } else {
+            (i + 1) as f32 * inv_n
+        };
+        out.curves.push(CurveInstance {
+            t0: i as f32 * inv_n,
+            t1,
+            ..proto
+        });
+    }
+}
+
+/// Max perpendicular distance (physical px) of a cubic's inner control
+/// points from the chord line for the curve to count as flat. The
+/// curve deviates at most `3/4 · max(d1, d2)` from the chord, so at
+/// this threshold it sits within ~0.075 px of a straight line —
+/// invisible under the 0.5 px AA fringe at any chord density.
+const FLAT_EPS_PX: f32 = 0.1;
+
+/// True when the cubic's trace is visually indistinguishable from the
+/// straight segment `p0 → p3` (see [`FLAT_EPS_PX`]). Both inner CPs
+/// must sit within the threshold of the *infinite* chord line; a
+/// degenerate chord (closed curve) is never flat.
+#[inline]
+fn cubic_is_flat(p0: Vec2, p1: Vec2, p2: Vec2, p3: Vec2) -> bool {
+    let chord = p3 - p0;
+    let len = chord.length();
+    if len <= FLAT_EPS_PX {
+        return false;
+    }
+    let d1 = chord.perp_dot(p1 - p0).abs();
+    let d2 = chord.perp_dot(p2 - p0).abs();
+    d1.max(d2) <= FLAT_EPS_PX * len
+}
 
 /// Additive step on the text-scale ladder. Same step in *scale units*
 /// across the range, so the step in *percent of current size* shrinks

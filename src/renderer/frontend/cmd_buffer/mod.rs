@@ -155,6 +155,13 @@ pub(crate) enum CmdKind {
     /// `RenderBuffer.curves`. A single `draw` per scissor group covers
     /// every instance in the group's `CurveBatch`.
     DrawCurve,
+    /// Native GPU circular arc. Payload: [`DrawArcPayload`]. Same
+    /// batching as `DrawCurve` — the composer transforms center/radius
+    /// to physical-px, derives the sub-instance count from the exact
+    /// arc length (`radius · |sweep|`), and appends `CurveInstance`s
+    /// with `kind = CURVE_KIND_ARC` into the same `RenderBuffer.curves`
+    /// stream.
+    DrawArc,
     /// Rounded-triangle SDF. Payload: [`DrawTrianglePayload`]. The composer
     /// transforms the three owner-local corner points to physical px, derives
     /// the covering AABB, and emits one `Quad` with `FillKind::TRIANGLE` —
@@ -433,12 +440,19 @@ impl DrawImagePayload {
 /// resulting `CurveInstance`(s) onto `RenderBuffer.curves`. `bbox` is
 /// the owner-local stroked-AABB (already inflated by `width/2 + AA
 /// fringe` at lowering) used for clip culling and paint-order overlap.
+/// `rotation` is the paint-time spin angle sampled from
+/// `PaintAnim::Spin` — non-zero only when the encoder replaced `bbox`
+/// with the rotation-invariant square whose centre is the spin pivot
+/// (same contract as `DrawPolylinePayload`); the composer rotates the
+/// control points about that pivot, which is exact for a bezier
+/// (affine invariance).
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct DrawCurvePayload {
     pub(crate) bbox: Rect,
     pub(crate) origin: glam::Vec2,
+    pub(crate) rotation: f32,
     pub(crate) p0: glam::Vec2,
     pub(crate) p1: glam::Vec2,
     pub(crate) p2: glam::Vec2,
@@ -498,6 +512,47 @@ impl DrawCurvePayload {
     #[inline]
     pub(crate) fn is_noop(&self) -> bool {
         if noop_f32(self.width) {
+            return true;
+        }
+        self.fill_kind == FillKind::SOLID && self.color.is_noop()
+    }
+}
+
+/// Native GPU circular-arc payload — the exact-circle sibling of
+/// [`DrawCurvePayload`]. `center` is owner-local (composer adds
+/// `origin` + the active transform before scaling to physical px);
+/// `a0`/`a1` are start/end angles in radians (screen convention,
+/// `a1 < a0` for a negative sweep). `rotation` is the paint-time spin
+/// angle sampled from `PaintAnim::Spin` — non-zero only when the
+/// encoder replaced `bbox` with the rotation-invariant square whose
+/// centre is the spin pivot (same contract as `DrawPolylinePayload`).
+#[padding_struct::padding_struct]
+#[repr(C)]
+#[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
+pub(crate) struct DrawArcPayload {
+    pub(crate) bbox: Rect,
+    pub(crate) origin: glam::Vec2,
+    pub(crate) center: glam::Vec2,
+    pub(crate) radius: f32,
+    pub(crate) a0: f32,
+    pub(crate) a1: f32,
+    pub(crate) rotation: f32,
+    /// Solid stroke colour; zeroed for gradients (see
+    /// [`DrawCurvePayload::color`]).
+    pub(crate) color: ColorF16,
+    pub(crate) width: f32,
+    /// Cap kind packed as `u32` — see [`DrawCurvePayload::cap`].
+    pub(crate) cap: u32,
+    pub(crate) fill_kind: FillKind,
+    pub(crate) fill_lut_row: LutRow,
+}
+
+impl DrawArcPayload {
+    /// Same predicate as [`DrawCurvePayload::is_noop`], plus a
+    /// degenerate radius (nothing to trace).
+    #[inline]
+    pub(crate) fn is_noop(&self) -> bool {
+        if noop_f32(self.width) || noop_f32(self.radius) {
             return true;
         }
         self.fill_kind == FillKind::SOLID && self.color.is_noop()
@@ -704,6 +759,18 @@ impl RenderCmdBuffer {
             return;
         }
         self.record_start(CmdKind::DrawCurve);
+        write_pod(&mut self.data, payload);
+    }
+
+    /// Record a `DrawArc` cmd. Composer transforms center/radius to
+    /// physical-px and pushes `kind = ARC` entries onto
+    /// `RenderBuffer.curves` — arcs batch with the beziers, one GPU
+    /// draw per scissor group.
+    pub(crate) fn draw_arc(&mut self, payload: DrawArcPayload) {
+        if payload.is_noop() {
+            return;
+        }
+        self.record_start(CmdKind::DrawArc);
         write_pod(&mut self.data, payload);
     }
 
