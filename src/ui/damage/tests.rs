@@ -1412,7 +1412,7 @@ fn pan_with_invariant_clipped_paint_rect_stays_partial() {
 /// `Panel::transform` and direct shapes (bezier connections) shifts
 /// its own transform every pan frame. Under the `Panel::transform`
 /// contract those shapes paint *inside* the self-transform, so their
-/// tessellated pixels move — but `cascade_input` only tracks
+/// painted pixels move — but `cascade_input` only tracks
 /// ancestor state and stays put. The fix is at the source: own
 /// transform now folds into `node_hash`, so the diff's
 /// `e.get().hash == curr_node_hash` guard fails and the generic

@@ -258,7 +258,8 @@ pub(crate) enum ShapeRecord {
     /// axis-aligned bounds of `points` in owner-relative coords —
     /// the encoder translates it into cmd-buffer coords by adding
     /// the owner rect origin. `cap` and `join` are user-picked
-    /// stroke-style enums; tessellator branches on them.
+    /// stroke-style enums; the composer's segment / join-chrome
+    /// emission and the stroke shader consume them.
     Polyline {
         width: f32,
         color_mode: ColorMode,

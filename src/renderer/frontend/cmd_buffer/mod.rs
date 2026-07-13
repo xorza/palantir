@@ -29,8 +29,8 @@
 //! callers don't need to pre-check, and the encoder doesn't gate per
 //! branch. Upstream filters (`Shape::is_noop` at `Ui::add_shape`,
 //! whole-`Background::is_noop` at `Tree::open_node`) are performance
-//! optimizations that skip expensive lowering (text shaping, polyline
-//! tessellation) or sparse-column writes, not correctness gates.
+//! optimizations that skip expensive lowering (text shaping, payload
+//! staging) or sparse-column writes, not correctness gates.
 //!
 //! Exception: `draw_polyline` doesn't gate on colour. Its colors live
 //! in spans (`PerSegment` can mix one solid stop with N transparent),
@@ -136,11 +136,12 @@ pub(crate) enum CmdKind {
     /// `mesh_indices`, sliced by the payload's spans.
     DrawMesh,
     /// Stroked polyline paint cmd. Payload:
-    /// [`DrawPolylinePayload`]. Point arena lives in
-    /// [`RenderCmdBuffer::polyline_points`], sliced by the payload's
-    /// span. Composer transforms + DPI-scales the points, then
-    /// tessellates a fringe-AA stroke into `out.meshes.arena` —
-    /// final paint reuses the mesh pipeline.
+    /// [`DrawPolylinePayload`]. Point arena lives in the frame arena,
+    /// sliced by the payload's span. Composer transforms + DPI-scales
+    /// the points, then emits one `CurveInstance` per kept segment
+    /// plus one join-chrome instance per interior joint into
+    /// `RenderBuffer.curves` — polylines batch and draw with every
+    /// other stroke on the GPU curve pipeline.
     DrawPolyline,
     /// Textured rectangle paint cmd. Payload: [`DrawImagePayload`].
     /// The composer transforms `rect` into physical-px and routes to

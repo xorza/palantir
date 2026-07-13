@@ -1417,8 +1417,7 @@ impl Ui {
 /// helpers that operate on `Ui` live here as methods on `Ui` (or as
 /// free constructors), so a single `use crate::ui::test_support::*;`
 /// brings in the entire surface. Items that don't touch `Ui` (e.g.
-/// `TextShaper::*`, `tessellate_polyline_for_bench`) stay in their
-/// own modules.
+/// `TextShaper::*`) stay in their own modules.
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
