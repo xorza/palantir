@@ -9,11 +9,12 @@ use crate::widgets::text_edit::{
 /// motion sink is always `None`. Menu-intercept gating is exercised
 /// end-to-end via the integration tests instead.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
-    if dispatch_shortcut(text, state, kp, false, false, None) {
+    let mut edited = false;
+    if dispatch_shortcut(text, state, kp, false, false, None, &mut edited) {
         return false;
     }
     let mut vert = None;
-    crate::widgets::text_edit::apply_key(text, state, kp, false, None, &mut vert)
+    crate::widgets::text_edit::apply_key(text, state, kp, false, None, &mut vert, &mut edited)
 }
 use crate::Spacing;
 use crate::Ui;
