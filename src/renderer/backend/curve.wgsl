@@ -271,7 +271,14 @@ fn fs(in: VsOut) -> @location(0) vec4<f32> {
     if (in.cap_t > 0.0 && (in.flags & FLAG_ROUND_CAP) != 0u) {
         r = length(vec2<f32>(in.cap_t, dist));
     }
-    let coverage = clamp(in.half_w - r, 0.0, 1.0);
+    // Exact box-filter coverage of a `width`-wide band is a trapezoid
+    // whose plateau tops out at `min(width, 1)` — a sub-pixel stroke
+    // can never cover more of a pixel than its own width. Without the
+    // cap a hairline over-brightens up to ~2× near pixel centers and
+    // pulses as its alignment drifts; ≥ 1 px strokes are unaffected.
+    // `width = 2·(half_w - HALF_FRINGE)`, recovered from the varying.
+    let plateau = clamp(2.0 * in.half_w - 1.0, 0.0, 1.0);
+    let coverage = clamp(in.half_w - r, 0.0, plateau);
     var rgba = in.color;
     if ((in.flags & FLAG_LINEAR_FILL) != 0u) {
         // `curve_t` is in [0, 1] by construction and the sampler is
