@@ -117,8 +117,10 @@ impl TextChunk {
     pub const INLINE_CAP: usize = 15;
 
     /// Build a chunk from `s`. Returns `None` if `s` exceeds the inline
-    /// capacity. Callers translating from winit should split at
-    /// grapheme boundaries before calling — never split mid-codepoint.
+    /// capacity. Callers with longer text split at char boundaries
+    /// first (see `emit_text_chunks`) — never mid-codepoint. Grapheme
+    /// clusters may split across chunks; consumers re-assemble on
+    /// append.
     pub fn new(s: &str) -> Option<Self> {
         if s.len() > Self::INLINE_CAP {
             return None;

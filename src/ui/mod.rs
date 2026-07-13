@@ -715,7 +715,7 @@ impl Ui {
             self.gpu_views.retain(|wid, _| !removed.contains(wid));
         }
 
-        self.input.post_record(&self.cascades);
+        self.input.end_frame(&self.cascades);
     }
 }
 

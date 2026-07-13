@@ -294,7 +294,7 @@ impl MenuItem {
         // before the node records so we don't pay for the label
         // resolution on rows with no shortcut.
         let shortcut_fired = shortcut.is_some_and(|s| !disabled && ui.key_pressed(s));
-        let shortcut_label = shortcut.map(|s| s.label());
+        let shortcut_label = shortcut.map(|s| s.to_string());
 
         // Label + optional right-aligned shortcut hint as `Text` leaves;
         // the row's `SpaceBetween` pins them to opposite edges. Both

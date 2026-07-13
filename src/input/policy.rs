@@ -36,10 +36,11 @@ pub enum FocusPolicy {
     /// Pressing on a non-focusable widget or empty surface preserves
     /// the current focus. Friendlier for sketches and tooling UIs
     /// where every other widget is a Button — clicking a Button while
-    /// editing a field keeps the cursor in the field. Default.
+    /// editing a field keeps the cursor in the field.
     PreserveOnMiss,
     /// Pressing anywhere that isn't a focusable widget clears focus.
     /// Native-app convention on most platforms (click-outside-to-blur).
+    /// Default.
     #[default]
     ClearOnMiss,
 }
