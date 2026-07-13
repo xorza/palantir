@@ -1592,10 +1592,26 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     );
     assert!(!buf.curves.is_empty());
     let ci = &buf.curves[0];
-    assert!((ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4, "{:?}", ci.p0);
-    assert!((ci.p1 - Vec2::new(60.0, 70.0)).length() < 1e-4, "{:?}", ci.p1);
-    assert!((ci.p2 - Vec2::new(70.0, 60.0)).length() < 1e-4, "{:?}", ci.p2);
-    assert!((ci.p3 - Vec2::new(70.0, 50.0)).length() < 1e-4, "{:?}", ci.p3);
+    assert!(
+        (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
+        "{:?}",
+        ci.p0
+    );
+    assert!(
+        (ci.p1 - Vec2::new(60.0, 70.0)).length() < 1e-4,
+        "{:?}",
+        ci.p1
+    );
+    assert!(
+        (ci.p2 - Vec2::new(70.0, 60.0)).length() < 1e-4,
+        "{:?}",
+        ci.p2
+    );
+    assert!(
+        (ci.p3 - Vec2::new(70.0, 50.0)).length() < 1e-4,
+        "{:?}",
+        ci.p3
+    );
 }
 
 #[test]
@@ -1630,7 +1646,10 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
         &params(1.0, UVec2::new(300, 300)),
     );
     assert_eq!(buf.curve_batches.len(), 1, "arcs batch with cubics");
-    assert_eq!(buf.curve_batches[0].instances.len as usize, buf.curves.len());
+    assert_eq!(
+        buf.curve_batches[0].instances.len as usize,
+        buf.curves.len()
+    );
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
 }
