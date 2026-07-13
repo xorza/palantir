@@ -14,23 +14,16 @@
 extern crate self as aperture;
 
 pub mod animation;
-pub mod clock;
 pub(crate) mod common;
-pub(crate) mod context;
 pub(crate) mod debug_overlay;
 /// Per-output display state (physical size, DPR, pixel-snap, refresh) —
 /// cross-cutting host/render vocabulary, read by `ui`, the renderer, and
-/// `window_renderer`; not owned by any one subsystem.
+/// the host layer; not owned by any one subsystem.
 pub(crate) mod display;
 pub mod forest;
+pub mod host;
 pub mod input;
 pub mod layout;
-/// Headless render-to-texture host — the offscreen peer of [`WinitHost`].
-/// Renders a `Ui` to a caller-supplied `wgpu::Texture` instead of a
-/// swapchain (screenshots, thumbnails, server-side compositing); also backs
-/// the visual harness + GPU benches. Two cache-introspection methods
-/// (`has_format_pipelines` / `gpu_image_cache_len`) stay `internals`-gated.
-pub mod offscreen_host;
 pub mod primitives;
 pub mod renderer;
 pub(crate) mod shape;
@@ -38,8 +31,6 @@ pub mod text;
 pub mod ui;
 pub mod widgets;
 pub mod window;
-pub mod window_renderer;
-pub mod winit_host;
 
 /// GPU pass-timing + pipeline-statistics handles, refreshed each frame by
 /// the backend (timestamp-query + pipeline-statistics readback).
@@ -66,12 +57,22 @@ pub use animation::{AnimSlot, AnimSpec};
 // the trait in the type namespace — `use aperture::Animatable;` pulls
 // both, and `#[derive(Animatable)]` works alongside `T: Animatable`.
 pub use aperture_anim_derive::Animatable;
-pub use clock::{Clock, FixedClock, RealtimeClock};
 pub use debug_overlay::DebugOverlayConfig;
 pub use display::Display;
 pub use forest::Layer;
 pub use forest::element::{Configure, Element, LayoutMode};
 pub use forest::visibility::Visibility;
+pub use host::clock::{Clock, FixedClock, RealtimeClock};
+/// The headless render-to-texture host — the offscreen peer of
+/// [`WinitHost`]. Renders a `Ui` to a caller-supplied `wgpu::Texture`
+/// instead of a swapchain (screenshots, thumbnails, server-side
+/// compositing); also backs the visual harness + GPU benches.
+pub use host::offscreen::{OffscreenHost, OffscreenHostBuilder};
+pub use host::window_renderer::FramePresent;
+pub use host::window_renderer::WindowRenderer;
+pub use host::winit::config::WinitHostConfig;
+pub use host::winit::handle::{HostHandle, UserEvent};
+pub use host::winit::{App, WinitHost, WinitHostBuilder};
 pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
@@ -100,8 +101,6 @@ pub use primitives::rect::Rect;
 pub use primitives::shadow::Shadow;
 pub use primitives::size::Size;
 pub use primitives::spacing::Spacing;
-pub use window_renderer::FramePresent;
-pub use window_renderer::WindowRenderer;
 // Re-exported (not an aperture type) because it's the canonical integer
 // pixel-extent across the public surface — `Display.physical`,
 // `Display::from_physical`, and `WindowConfig`'s sizes all speak `UVec2`
@@ -165,9 +164,6 @@ pub use widgets::theme::widget_look::{AnimatedLook, StatefulLook, WidgetLook};
 pub use widgets::tooltip::Tooltip;
 pub use widgets::{InnerResponse, Response, ResponseSnapshot};
 pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowIcon, WindowToken};
-pub use winit_host::config::WinitHostConfig;
-pub use winit_host::handle::{HostHandle, UserEvent};
-pub use winit_host::{App, WinitHost, WinitHostBuilder};
 
 #[cfg(test)]
 mod hot_struct_sizes {

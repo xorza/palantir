@@ -3,7 +3,7 @@
 //! shaper, per-frame arena, CPU-side render caches, GPU-stats handle) plus
 //! the host state (live-window set + debug overlay). One per app, owned by
 //! the windowing host ([`WinitHost`](crate::WinitHost) /
-//! [`OffscreenHost`](crate::offscreen_host::OffscreenHost)).
+//! [`OffscreenHost`](crate::host::offscreen::OffscreenHost)).
 //!
 //! It's a passive bag, not a factory: the host builds one, hands it to
 //! `WgpuBackend::new` (which clones the render handles it needs) and to

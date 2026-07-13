@@ -60,16 +60,16 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Icon, Window, WindowId};
 
-use crate::context::HostContext;
+use crate::host::context::HostContext;
+use crate::host::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
+use crate::host::winit::config::WinitHostConfig;
+use crate::host::winit::gpu::{Gpu, GpuInit, WindowSurface};
+use crate::host::winit::handle::{HostHandle, MainTask, UserEvent};
 use crate::input::InputEvent;
 use crate::renderer::backend::WgpuBackend;
 use crate::text::TextShaper;
 use crate::ui::Ui;
 use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowToken};
-use crate::window_renderer::{FramePresent, FrameTarget, WindowRenderer};
-use crate::winit_host::config::WinitHostConfig;
-use crate::winit_host::gpu::{Gpu, GpuInit, WindowSurface};
-use crate::winit_host::handle::{HostHandle, MainTask, UserEvent};
 
 /// Builds the caller's app once the first window's `Ui` + [`HostHandle`]
 /// exist — handed to [`WinitHostBuilder::build`] and invoked on the first

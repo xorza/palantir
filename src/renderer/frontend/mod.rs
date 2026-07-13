@@ -13,7 +13,7 @@
 //! Output crosses into the backend as `&RenderBuffer` (defined one
 //! level up so it sits at the frontend↔backend contract line).
 //!
-//! [`WindowRenderer`]: crate::window_renderer::WindowRenderer
+//! [`WindowRenderer`]: crate::host::window_renderer::WindowRenderer
 
 pub(crate) mod cmd_buffer;
 pub(crate) mod composer;
@@ -33,7 +33,7 @@ use crate::ui::frame_report::RenderPlan;
 /// No GPU handles; gradient atlas state lives on `RenderCaches`,
 /// shared with the backend.
 ///
-/// Owned by [`WindowRenderer`](crate::window_renderer::WindowRenderer) alongside the backend; the
+/// Owned by [`WindowRenderer`](crate::host::window_renderer::WindowRenderer) alongside the backend; the
 /// host drives `Frontend::build` and hands the returned
 /// `&RenderBuffer` straight to the backend.
 #[derive(Debug)]

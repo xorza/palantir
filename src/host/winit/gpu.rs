@@ -8,9 +8,9 @@ use std::sync::Arc;
 use glam::UVec2;
 use winit::window::Window;
 
-use crate::context::HostContext;
+use crate::host::context::HostContext;
+use crate::host::winit::config::WinitHostConfig;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
-use crate::winit_host::config::WinitHostConfig;
 
 /// Shared GPU context — built once on the first `resumed` and retained
 /// for the host's lifetime so additional windows reuse one device/queue.

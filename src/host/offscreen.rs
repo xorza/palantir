@@ -12,14 +12,14 @@
 //! cache-introspection methods stay `internals`-gated: they call gated
 //! `WgpuBackend` helpers and exist only for the format-change test.
 
-use crate::clock::{Clock, RealtimeClock};
-use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
+use crate::host::clock::{Clock, RealtimeClock};
+use crate::host::context::HostContext;
+use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
 use crate::renderer::backend::gpu_pass_stats::GpuPassStats;
 use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
 use crate::text::TextShaper;
 use crate::ui::Ui;
-use crate::window_renderer::{PresentStrategy, WindowRenderer};
 
 /// One shared [`WgpuBackend`] + one [`WindowRenderer`], rendering to a
 /// texture instead of a surface. The offscreen analogue of `WinitHost`.
@@ -58,8 +58,8 @@ impl OffscreenHostBuilder {
     }
 
     /// Per-frame time source. Default a wall-clock
-    /// [`RealtimeClock`](crate::clock::RealtimeClock); a
-    /// [`FixedClock`](crate::clock::FixedClock) makes the render reproducible
+    /// [`RealtimeClock`](crate::host::clock::RealtimeClock); a
+    /// [`FixedClock`](crate::host::clock::FixedClock) makes the render reproducible
     /// (golden tests, thumbnails) — animations sample a fixed phase.
     pub fn clock(mut self, clock: impl Clock + 'static) -> Self {
         self.clock = Box::new(clock);
