@@ -16,11 +16,13 @@ use crate::renderer::frontend::cmd_buffer::{
 };
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CurveBatch, CurveInstance, DrawGroup, ImageBatch,
-    ImageDrawRow, ImageInstance, MeshBatch, MeshDraw, MeshDrawRow, MeshInstance, RenderBuffer,
-    RenderTargetDraw, RoundedClip, SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveBatch, CurveInstance, DrawGroup, ImageBatch,
+    ImageDrawRow, ImageInstance, MITER_LIMIT, MeshBatch, MeshDraw, MeshDrawRow, MeshInstance,
+    RenderBuffer, RenderTargetDraw, RoundedClip, SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
+    cap_lanes,
 };
-use crate::renderer::stroke_tessellate::{StrokeStyle, tessellate_polyline_aa};
+use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
 
 mod occlusion;
@@ -39,7 +41,8 @@ use text_grid::TextRectGrid;
 ///
 /// Render order *within* a group is fixed by the backend:
 /// **quads → text → meshes → images → curves**
-/// (`schedule::emit_group_body`; polylines tessellate to meshes). That
+/// (`schedule::emit_group_body`; polylines ride the curve tier as
+/// segment + join-chrome instances). That
 /// reorder is safe iff no overlapping pair of draws swaps its record
 /// order — two rules, both enforced by forcing a [`Self::flush`]:
 /// a *lower*-kind draw must not follow an overlapping higher-kind draw
@@ -49,7 +52,7 @@ use text_grid::TextRectGrid;
 /// image or curve). The checks use
 /// [`text_grid`](Self::text_grid) (per-batch text AABBs, spatially indexed)
 /// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group
-/// kind-tagged AABBs of mesh/image/curve/polyline draws).
+/// kind-tagged AABBs of mesh/image/curve draws).
 #[derive(Debug, Default)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
@@ -57,10 +60,13 @@ pub(crate) struct Composer {
     /// ride together so a `PopClip` restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
-    /// Scratch for `DrawPolyline`: transformed physical-px points
-    /// fed to the stroke tessellator. Cleared per cmd, capacity
+    /// Scratch for `DrawPolyline`: transformed physical-px points the
+    /// segment/join instance emission walks. Cleared per cmd, capacity
     /// reused — keeps steady-state alloc-free.
     polyline_scratch: Vec<Vec2>,
+    /// Scratch for `DrawPolyline`: indices into `polyline_scratch` of
+    /// the kept (non-coincident) points. Same lifecycle.
+    kept_scratch: Vec<u32>,
     /// Spatial index over the physical-px AABBs of the *open* text
     /// batch's runs (spans groups with its batch). A new quad overlapping
     /// any of these would paint *under* the merged batch text — closes
@@ -102,8 +108,8 @@ pub(crate) struct Composer {
     /// [`Self::flush`]. Capacity retained.
     closed_pending: Vec<PendingClosedBatch>,
     /// Per-group kind-tagged AABBs of draws that paint above both quads
-    /// and text under the kind-reorder (mesh, image, curve; polylines
-    /// lower to mesh). Used by three checks: a later quad overlapping
+    /// and text under the kind-reorder (mesh, image, curve — polylines
+    /// ride the curve tier). Used by three checks: a later quad overlapping
     /// one would be reordered *under* it (`quad_forces_flush`), text
     /// recorded after one would be reordered *above* it (`DrawText`),
     /// and a later higher-kind draw of an earlier-replaying kind would
@@ -153,7 +159,7 @@ struct ClipFrame {
 /// Above-text paint kinds, declared in the backend's intra-group replay
 /// order (`schedule::emit_group_body`: quads → text → **mesh batches →
 /// image batches → curve batches**), so `Ord` compares replay position.
-/// Polylines tessellate to meshes and enter as `Mesh`.
+/// Polylines enter as `Curve` (segment + join-chrome instances).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 enum HigherKind {
     Mesh,
@@ -298,7 +304,7 @@ impl Composer {
     /// Finalize the open text batch (if any): push a [`TextBatch`]
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
-    /// change, mesh/polyline append, or a strict-bounds mismatch. The
+    /// change, a higher-kind append, or a strict-bounds mismatch. The
     /// batch also lands on [`Self::closed_pending`] (group-scoped,
     /// cleared in `flush`) so a later quad still flushes for text in an
     /// already-closed batch that shares this group — the grid fill is
@@ -378,13 +384,15 @@ impl Composer {
     /// open — so the batch must close here for its text to emit first. Done
     /// only after the cull: a culled draw must not split the batch. Also
     /// flushes the group when the draw cross-kind-conflicts with an earlier
-    /// higher-kind draw (see [`Self::higher_kind_conflict`]). Returns
-    /// `false` when culled — the caller should `continue`.
+    /// higher-kind draw (see [`Self::higher_kind_conflict`]), and then
+    /// records the draw's own rect for the group's overlap tracking (after
+    /// the flush, so it isn't wiped with the previous group's rects).
+    /// Returns `false` when culled — the caller should `continue`.
     ///
-    /// Polyline doesn't use this: its close must wait until after
-    /// tessellation (an empty tessellation must not split the batch), so it
-    /// culls early via [`Self::cull_against_active_clip`] and replays the
-    /// close + conflict steps by hand.
+    /// Polyline calls this only after its kept-point walk proves the
+    /// stroke emits geometry (an all-coincident polyline must not split
+    /// the batch), gated behind an early
+    /// [`Self::cull_against_active_clip`].
     fn enter_higher_kind(
         &mut self,
         kind: HigherKind,
@@ -398,6 +406,10 @@ impl Composer {
         if self.higher_kind_conflict(kind, scissor) {
             self.flush(out);
         }
+        self.higher_kind_rects.push(HigherKindRect {
+            kind,
+            rect: scissor,
+        });
         true
     }
 
@@ -514,7 +526,7 @@ impl Composer {
     pub(crate) fn compose(
         &mut self,
         cmds: &RenderCmdBuffer,
-        arena: &mut FrameArenaInner,
+        arena: &FrameArenaInner,
         display: Display,
         out: &mut RenderBuffer,
     ) {
@@ -524,17 +536,11 @@ impl Composer {
 
         out.start_frame(display);
 
+        self.reset_group_scratch(viewport_phys);
         self.clip_stack.clear();
         self.transform_stack.clear();
-        self.text_grid.start_frame(viewport_phys);
-        self.closed_text_grid.start_frame(viewport_phys);
-        self.closed_pending.clear();
-        self.higher_kind_rects.clear();
         self.current_scissor = None;
         self.current_chain = Span::default();
-        self.cursors = GroupCursors::default();
-        self.open_batch = None;
-        self.occlusion.clear();
         let mut current_transform = TranslateScale::IDENTITY;
 
         for i in 0..cmds.kinds.len() {
@@ -874,10 +880,6 @@ impl Composer {
                             ..bytemuck::Zeroable::zeroed()
                         },
                     });
-                    self.higher_kind_rects.push(HigherKindRect {
-                        kind: HigherKind::Mesh,
-                        rect: mesh_urect,
-                    });
                 }
                 CmdKind::DrawImage => {
                     let p: DrawImagePayload = cmds.read(start);
@@ -923,11 +925,6 @@ impl Composer {
                             paint: cmds.gpu_view_paints[paint_index as usize].clone(),
                         });
                     }
-                    // Track for paint-order overlap with the other tiers.
-                    self.higher_kind_rects.push(HigherKindRect {
-                        kind: HigherKind::Image,
-                        rect: image_urect,
-                    });
                 }
                 CmdKind::DrawCurve => {
                     let p: DrawCurvePayload = cmds.read(start);
@@ -983,6 +980,7 @@ impl Composer {
                         let l = (p1 - p0).length() + (p2 - p1).length() + (p3 - p2).length();
                         sub_instance_count(l)
                     };
+                    let color: ColorU8 = p.color.into();
                     push_sub_instances(
                         out,
                         n,
@@ -992,18 +990,15 @@ impl Composer {
                             p2,
                             p3,
                             width: width_phys,
-                            color: p.color.into(),
-                            cap: p.cap,
+                            color,
+                            color1: color,
+                            cap: cap_lanes(p.cap, p.cap),
                             fill_kind: p.fill_kind,
                             fill_lut_row: p.fill_lut_row,
                             kind: CURVE_KIND_CUBIC,
                             ..bytemuck::Zeroable::zeroed()
                         },
                     );
-                    self.higher_kind_rects.push(HigherKindRect {
-                        kind: HigherKind::Curve,
-                        rect: bbox_scissor,
-                    });
                 }
                 CmdKind::DrawArc => {
                     let p: DrawArcPayload = cmds.read(start);
@@ -1046,6 +1041,7 @@ impl Composer {
                     // that density the chord sagitta is `≈ c²/(8r)` ≤
                     // 0.3 px even at r = 1, buried under the AA fringe.
                     let n = sub_instance_count(radius_phys * (a1 - a0).abs());
+                    let color: ColorU8 = p.color.into();
                     push_sub_instances(
                         out,
                         n,
@@ -1055,18 +1051,15 @@ impl Composer {
                             p2: Vec2::new(a0, a1),
                             p3: Vec2::ZERO,
                             width: width_phys,
-                            color: p.color.into(),
-                            cap: p.cap,
+                            color,
+                            color1: color,
+                            cap: cap_lanes(p.cap, p.cap),
                             fill_kind: p.fill_kind,
                             fill_lut_row: p.fill_lut_row,
                             kind: CURVE_KIND_ARC,
                             ..bytemuck::Zeroable::zeroed()
                         },
                     );
-                    self.higher_kind_rects.push(HigherKindRect {
-                        kind: HigherKind::Curve,
-                        rect: bbox_scissor,
-                    });
                 }
                 CmdKind::DrawPolyline => {
                     let p: DrawPolylinePayload = cmds.read(start);
@@ -1077,10 +1070,10 @@ impl Composer {
 
                     // Compute the inflated physical-px AABB once and
                     // reuse it for cull and overlap tracking. Inflating
-                    // by the tessellator's outer fringe means the cull
-                    // never trims a pixel the stroke would reach, and it
+                    // by the stroke's outer fringe means the cull never
+                    // trims a pixel the stroke would reach, and it
                     // short-circuits before transforming the full point
-                    // list — the win for long flattened curves.
+                    // list — the win for long dense point runs.
                     let bbox_scissor = stroke_bbox_scissor(
                         current_transform,
                         p.bbox,
@@ -1104,8 +1097,8 @@ impl Composer {
                     // origin is folded in here so points stay owner-
                     // local in the arena (cross-frame stable). No
                     // pixel-snap — snapping stroke verts shifts thin
-                    // lines off-axis. Hairline regime (<1 phys px)
-                    // handled inside the tessellator.
+                    // lines off-axis. Hairline regime (<1 phys px) is
+                    // the shader's trapezoid-plateau coverage.
                     self.polyline_scratch.clear();
                     if p.rotation == 0.0 {
                         self.polyline_scratch.extend(
@@ -1130,56 +1123,116 @@ impl Composer {
                         }));
                     }
 
-                    let phys_v_start = arena.meshes.vertices.len() as u32;
-                    let phys_i_start = arena.meshes.indices.len() as u32;
-                    tessellate_polyline_aa(
-                        &self.polyline_scratch,
-                        src_colors,
-                        StrokeStyle {
-                            mode,
-                            cap,
-                            join,
-                            width_phys,
-                        },
-                        &mut arena.meshes.vertices,
-                        &mut arena.meshes.indices,
-                    );
-                    let v_len = arena.meshes.vertices.len() as u32 - phys_v_start;
-                    let i_len = arena.meshes.indices.len() as u32 - phys_i_start;
-                    if v_len == 0 {
+                    // Keep only points beyond the coincidence threshold
+                    // from their predecessor — degenerate segments
+                    // contribute no geometry and their colors drop
+                    // with them.
+                    self.kept_scratch.clear();
+                    let mut prev: Option<Vec2> = None;
+                    for (i, &q) in self.polyline_scratch.iter().enumerate() {
+                        if prev
+                            .is_none_or(|p| (q - p).length_squared() > POLYLINE_COINCIDENT_EPS_SQ)
+                        {
+                            self.kept_scratch.push(i as u32);
+                            prev = Some(q);
+                        }
+                    }
+                    if self.kept_scratch.len() < 2 {
                         continue;
                     }
-                    // Polyline tessellates to a mesh — same paint-order
-                    // rules as DrawMesh: close any open text batch so its
-                    // text emits before this group's mesh, and flush on a
-                    // cross-kind conflict with an earlier image/curve.
                     // Only now that the polyline will actually emit
                     // geometry — an empty or culled polyline must not
                     // split the batch or the group.
-                    self.close_batch(out);
-                    if self.higher_kind_conflict(HigherKind::Mesh, bbox_scissor) {
-                        self.flush(out);
+                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
+                        continue;
                     }
-                    // Polyline points are pre-transformed to physical-px
-                    // on CPU (the tessellator needs phys-px width to pick
-                    // its AA fringe), so the shader's per-instance state
-                    // is identity. Tint is white — colors live per-vertex.
-                    out.meshes.rows.push(MeshDrawRow {
-                        draw: MeshDraw {
-                            vertices: (phys_v_start..phys_v_start + v_len).into(),
-                            indices: (phys_i_start..phys_i_start + i_len).into(),
-                        },
-                        instance: MeshInstance {
-                            translate: Vec2::ZERO,
-                            scale: 1.0,
-                            tint: ColorU8::WHITE,
+                    let pts = &self.polyline_scratch;
+                    let kept = &self.kept_scratch;
+                    let pt = |k: usize| pts[kept[k] as usize];
+                    // Segment color(s) for the kept segment `k → k+1`,
+                    // honoring the original indices (coincident skips
+                    // drop the degenerate segments' colors, mirroring
+                    // the old `ColorPlan` walker).
+                    let seg_colors = |k: usize| -> (ColorU8, ColorU8) {
+                        match mode {
+                            ColorMode::Single => (src_colors[0], src_colors[0]),
+                            ColorMode::PerPoint => (
+                                src_colors[kept[k] as usize],
+                                src_colors[kept[k + 1] as usize],
+                            ),
+                            ColorMode::PerSegment => {
+                                let c = src_colors[kept[k + 1] as usize - 1];
+                                (c, c)
+                            }
+                        }
+                    };
+                    let user_cap = cap as u32;
+                    let n_segs = kept.len() - 1;
+                    // Unit direction of kept segment `k`. Recomputed per
+                    // use (identical expression + inputs → bit-identical
+                    // floats), so adjacent segments' shared joint planes
+                    // come out as exact negations of the same sum and
+                    // the fragment clip partitions them exactly.
+                    let dir = |k: usize| (pt(k + 1) - pt(k)).normalize();
+                    for k in 0..n_segs {
+                        // Pre-oriented bisector clip planes for the
+                        // joint ends, riding the neighbor lanes ("keep"
+                        // is `dot(x - endpoint, n) <= 0` in the shader);
+                        // zero = cap end, no clip.
+                        let n_start = if k > 0 {
+                            -(dir(k - 1) + dir(k))
+                        } else {
+                            Vec2::ZERO
+                        };
+                        let n_end = if k + 1 < n_segs {
+                            dir(k) + dir(k + 1)
+                        } else {
+                            Vec2::ZERO
+                        };
+                        let butt = LineCap::Butt as u32;
+                        let start_cap = if k == 0 { user_cap } else { butt };
+                        let end_cap = if k + 1 == n_segs { user_cap } else { butt };
+                        let (color, color1) = seg_colors(k);
+                        out.curves.push(CurveInstance {
+                            p0: pt(k),
+                            p1: n_start,
+                            p2: n_end,
+                            p3: pt(k + 1),
+                            t0: 0.0,
+                            t1: 1.0,
+                            width: width_phys,
+                            color,
+                            color1,
+                            cap: cap_lanes(start_cap, end_cap),
+                            kind: CURVE_KIND_SEGMENT,
                             ..bytemuck::Zeroable::zeroed()
-                        },
-                    });
-                    self.higher_kind_rects.push(HigherKindRect {
-                        kind: HigherKind::Mesh,
-                        rect: bbox_scissor,
-                    });
+                        });
+                    }
+                    // One chrome instance per interior joint fills the
+                    // convex wedge between the two segment end faces.
+                    // The face-plane normals ride the neighbor lanes
+                    // pre-oriented for the shader's keep test
+                    // (`p1 = -d_a`, `p2 = d_b`). Chrome paints with the
+                    // average of the adjacent colors.
+                    for k in 1..n_segs {
+                        let d_a = dir(k - 1);
+                        let d_b = dir(k);
+                        let (_, ca) = seg_colors(k - 1);
+                        let (cb, _) = seg_colors(k);
+                        let color = ca.midpoint(cb);
+                        out.curves.push(CurveInstance {
+                            p0: pt(k),
+                            p1: -d_a,
+                            p2: d_b,
+                            t0: 0.0,
+                            t1: 1.0,
+                            width: width_phys,
+                            color,
+                            color1: color,
+                            kind: polyline_join_kind(d_a, d_b, join),
+                            ..bytemuck::Zeroable::zeroed()
+                        });
+                    }
                 }
                 CmdKind::DrawText => {
                     let t: DrawTextPayload = cmds.read(start);
@@ -1269,8 +1322,19 @@ impl Composer {
     /// pops are still ahead in the stream).
     fn discard_composed(&mut self, out: &mut RenderBuffer) {
         out.discard_scene();
-        self.text_grid.start_frame(out.viewport_phys);
-        self.closed_text_grid.start_frame(out.viewport_phys);
+        self.reset_group_scratch(out.viewport_phys);
+    }
+
+    /// Reset every piece of scratch that describes composed *scene*
+    /// output — group cursors, batch state, overlap tracking. Shared
+    /// by the per-compose prologue and the clear-fold
+    /// [`Self::discard_composed`], so a new scratch field added here
+    /// resets on both paths. Walk state (clip/transform stacks, the
+    /// active scissor + chain) is deliberately not touched — the
+    /// discard path must preserve it.
+    fn reset_group_scratch(&mut self, viewport_phys: UVec2) {
+        self.text_grid.start_frame(viewport_phys);
+        self.closed_text_grid.start_frame(viewport_phys);
         self.closed_pending.clear();
         self.higher_kind_rects.clear();
         self.cursors = GroupCursors::default();
@@ -1321,6 +1385,39 @@ fn push_sub_instances(out: &mut RenderBuffer, n: u32, proto: CurveInstance) {
             t1,
             ..proto
         });
+    }
+}
+
+/// Squared distance below which two consecutive transformed polyline
+/// points count as coincident and the latter is dropped — a
+/// zero-length segment has no direction (`normalize` would NaN the
+/// joint planes), so it must contribute no geometry, and its color
+/// drops with it.
+const POLYLINE_COINCIDENT_EPS_SQ: f32 = 1e-12;
+
+/// Chrome kind for the joint between two polyline segments with unit
+/// directions `d_a` (into the joint) and `d_b` (out of it). `Miter`
+/// downgrades to bevel past [`MITER_LIMIT`] — the SVG convention; an
+/// antiparallel fold (180°, bisector undefined) renders round — the
+/// only join whose shape is well-defined there.
+fn polyline_join_kind(d_a: Vec2, d_b: Vec2, join: LineJoin) -> u32 {
+    let sum = d_a + d_b;
+    let len_sq = sum.length_squared();
+    if len_sq < 1e-6 {
+        return CURVE_KIND_JOIN_ROUND;
+    }
+    match join {
+        LineJoin::Round => CURVE_KIND_JOIN_ROUND,
+        LineJoin::Bevel => CURVE_KIND_JOIN_BEVEL,
+        LineJoin::Miter => {
+            // |d_a + d_b| = 2·cos(half turn angle) for unit inputs.
+            let cos_half = 0.5 * len_sq.sqrt();
+            if cos_half < 1.0 / MITER_LIMIT {
+                CURVE_KIND_JOIN_BEVEL
+            } else {
+                CURVE_KIND_JOIN_MITER
+            }
+        }
     }
 }
 
@@ -1421,7 +1518,7 @@ fn chains_equal(out: &RenderBuffer, a: Span, b: Span) -> bool {
 
 /// Physical-px scissor for a stroked shape's owner-local `bbox`. Folds
 /// `origin` + the active transform into world space, inflates by the
-/// tessellator's outer AA-fringe (`max(width_phys/2, 0.5) + 0.5` phys
+/// stroke's outer AA-fringe (`max(width_phys/2, 0.5) + 0.5` phys
 /// px, expressed back in logical units), then clamps to the viewport.
 /// Shared by the curve and polyline paths so their cull / overlap bound
 /// can't drift. `snap = false` — snapping a stroke bbox would shift thin
