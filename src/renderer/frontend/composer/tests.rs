@@ -1521,6 +1521,52 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 }
 
 #[test]
+fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    // Same 800 px span: a straight cubic (CPs on the segment thirds —
+    // exactly what Shape::Line lowers to) must collapse to one
+    // instance; a genuinely curved one must subdivide (800 px polygon
+    // → ⌈⌈800/1.5⌉/16⌉ = 34 instances).
+    let straight = |b: &mut RenderCmdBuffer| {
+        b.draw_curve(DrawCurvePayload {
+            bbox: rect(0.0, 0.0, 800.0, 10.0),
+            origin: Vec2::ZERO,
+            p0: Vec2::new(0.0, 5.0),
+            p1: Vec2::new(800.0 / 3.0, 5.0),
+            p2: Vec2::new(1600.0 / 3.0, 5.0),
+            p3: Vec2::new(800.0, 5.0),
+            color: Color::WHITE.into(),
+            width: 2.0,
+            ..bytemuck::Zeroable::zeroed()
+        });
+    };
+    let curved = |b: &mut RenderCmdBuffer| {
+        b.draw_curve(DrawCurvePayload {
+            bbox: rect(0.0, 0.0, 800.0, 400.0),
+            origin: Vec2::ZERO,
+            p0: Vec2::new(0.0, 5.0),
+            p1: Vec2::new(266.0, 400.0),
+            p2: Vec2::new(533.0, 400.0),
+            p3: Vec2::new(800.0, 5.0),
+            color: Color::WHITE.into(),
+            width: 2.0,
+            ..bytemuck::Zeroable::zeroed()
+        });
+    };
+    let vp = params(1.0, UVec2::new(900, 900));
+    let flat_buf = run(|b, _| straight(b), &vp);
+    let curved_buf = run(|b, _| curved(b), &vp);
+    assert_eq!(flat_buf.curves.len(), 1, "flat fast-path: one instance");
+    assert_eq!(flat_buf.curves[0].t0, 0.0);
+    assert_eq!(flat_buf.curves[0].t1, 1.0);
+    assert!(
+        curved_buf.curves.len() > 10,
+        "curved cubic keeps adaptive density, got {}",
+        curved_buf.curves.len(),
+    );
+}
+
+#[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
     use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
     use std::f32::consts::FRAC_PI_2;
