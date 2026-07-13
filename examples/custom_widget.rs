@@ -70,10 +70,10 @@ impl<'a> Stepper<'a> {
         let plus_id = id.with("plus");
         let minus = ui.response_for(minus_id);
         let plus = ui.response_for(plus_id);
-        if minus.clicked && !minus.disabled {
+        if minus.left.clicked && !minus.disabled {
             *self.value = (*self.value - self.step).max(self.min);
         }
-        if plus.clicked && !plus.disabled {
+        if plus.left.clicked && !plus.disabled {
             *self.value = (*self.value + self.step).min(self.max);
         }
 
@@ -116,7 +116,7 @@ enum Glyph {
 /// `Ui::add_shape`. `id` is an explicit child id (`parent.with(...)`), so
 /// it goes straight to `node` — no `widget_id` round-trip needed.
 fn step_button(ui: &mut Ui, id: WidgetId, state: ResponseState, glyph: Glyph) {
-    let fill = if state.pressed {
+    let fill = if state.pressed() {
         Color::rgb_u8(0x3a, 0x3a, 0x52)
     } else if state.hovered {
         Color::rgb_u8(0x33, 0x33, 0x48)
