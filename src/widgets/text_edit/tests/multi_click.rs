@@ -1,8 +1,12 @@
 use crate::widgets::text_edit::tests::*;
 
 /// Double-click selects the word under the caret; triple-click
-/// selects the whole buffer. Pin the multi-click state machine in
-/// `handle_input` against the configured time/distance thresholds.
+/// selects the whole buffer. Pins `handle_input`'s dispatch on the
+/// input layer's `press_count` run (chained within
+/// `DOUBLE_CLICK_WINDOW`/`DOUBLE_CLICK_RADIUS`, classified with the
+/// event-time frame clock — hence the idle frame before the "pause"
+/// press below, standing in for the frames a real host runs between
+/// gestures).
 #[test]
 fn double_and_triple_click_select_word_and_all() {
     use crate::display::Display;
@@ -39,32 +43,37 @@ fn double_and_triple_click_select_word_and_all() {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut ui, 0.0, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.click_count, 1, "single click");
-    assert_eq!(st.caret, 3);
+    assert_eq!(st.caret, 3, "single click places the caret");
     assert_eq!(st.selection, None);
 
-    // Click 2 at same pos, well inside the window → click_count = 2,
+    // Click 2 at same pos, well inside the window → double press,
     // selects word at byte 3 → "hello".
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.click_count, 2, "double click");
-    assert_eq!(st.sel_range(), Some(0..5));
+    assert_eq!(st.sel_range(), Some(0..5), "double click selects word");
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut ui, 0.1, |ui| body(ui, &mut buf));
 
-    // Click 3 still inside the window → click_count = 3 → select all.
+    // Click 3 still inside the window → triple press → select all.
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     frame_at(&mut ui, 0.2, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.click_count, 3, "triple click");
-    assert_eq!(st.sel_range(), Some(0..buf.len()));
+    assert_eq!(
+        st.sel_range(),
+        Some(0..buf.len()),
+        "triple click selects all"
+    );
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     frame_at(&mut ui, 0.2, |ui| body(ui, &mut buf));
 
-    // Long pause then another click resets click_count to 1.
+    // Long pause (an idle frame advances the event clock, as a real
+    // host's frames would), then another click restarts the run:
+    // plain caret placement, no selection.
+    frame_at(&mut ui, 5.0, |ui| body(ui, &mut buf));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     frame_at(&mut ui, 5.0, |ui| body(ui, &mut buf));
     let st = ui.state_mut::<TextEditState>(ed_id).clone();
-    assert_eq!(st.click_count, 1, "pause resets multi-click");
+    assert_eq!(st.caret, 3, "pause resets the run to a single click");
+    assert_eq!(st.selection, None, "no selection after the reset press");
 }
