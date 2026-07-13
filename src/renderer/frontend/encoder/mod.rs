@@ -18,8 +18,8 @@ use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::viewport::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::{
-    BrushSource, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
-    GpuFillFields, RenderCmdBuffer,
+    BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
+    DrawPolylinePayload, GpuFillFields, RenderCmdBuffer,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
@@ -59,6 +59,32 @@ fn shape_brush_source(gradients: &[LoweredGradient], brush: ShapeBrush) -> Brush
     match brush {
         ShapeBrush::Solid(c) => BrushSource::Solid(c),
         ShapeBrush::Gradient(id) => BrushSource::Gradient(gradients[id as usize]),
+    }
+}
+
+/// Payload bbox for a possibly-spinning stroke shape. A spun shape
+/// sweeps a disc about the owner-box centre `c`, so when
+/// `rotation != 0` the lowered bbox (which already carries the stroke
+/// inflation) is replaced by the smallest square centred on `c` that
+/// contains it: half-extent = max distance from `c` to the bbox's
+/// corners. That bound is rotation-invariant about `c`, so the
+/// composer's cull and overlap tracking stay correct at every angle —
+/// and it keeps `bbox.center() == c`, the pivot contract the
+/// composer's Spin arms rotate about (points for `DrawPolyline`,
+/// control points for `DrawCurve`, center + angles for `DrawArc`).
+fn spin_bbox(owner_rect: Rect, bbox: Rect, rotation: f32) -> Rect {
+    if rotation == 0.0 {
+        return bbox;
+    }
+    let c = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
+    let d = (bbox.min - c).abs().max((bbox.max() - c).abs());
+    let r = d.length();
+    Rect {
+        min: c - glam::Vec2::splat(r),
+        size: Size {
+            w: 2.0 * r,
+            h: 2.0 * r,
+        },
     }
 }
 
@@ -292,30 +318,7 @@ fn emit_one_shape(
             // composer folds `origin` into the per-point transform
             // (no per-frame point copy any more).
             let rotation = paint_mod.rotation;
-            // A spun polyline sweeps a disc about the owner-box centre
-            // `c`. Replace the payload bbox with the smallest square
-            // centred on `c` containing the lowered bbox (which already
-            // carries the miter/cap/fringe stroke inflation): half-extent
-            // = max distance from `c` to the lowered bbox's corners.
-            // That bound is rotation-invariant about `c`, so the
-            // composer's cull and overlap tracking stay correct at every
-            // angle — and it keeps `bbox.center() == c`, the pivot the
-            // composer rotates each point about (see the Spin arm in
-            // `Composer::compose`).
-            let bbox = if rotation != 0.0 {
-                let c = glam::Vec2::new(owner_rect.size.w, owner_rect.size.h) * 0.5;
-                let d = (bbox.min - c).abs().max((bbox.max() - c).abs());
-                let r = d.length();
-                Rect {
-                    min: c - glam::Vec2::splat(r),
-                    size: Size {
-                        w: 2.0 * r,
-                        h: 2.0 * r,
-                    },
-                }
-            } else {
-                *bbox
-            };
+            let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_polyline(DrawPolylinePayload {
                 bbox,
                 origin: owner_rect.min,
@@ -380,13 +383,54 @@ fn emit_one_shape(
                 lut_row: fill_lut_row,
                 ..
             } = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            let rotation = paint_mod.rotation;
+            let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_curve(DrawCurvePayload {
-                bbox: *bbox,
+                bbox,
                 origin: owner_rect.min,
+                rotation,
                 p0: *p0,
                 p1: *p1,
                 p2: *p2,
                 p3: *p3,
+                color,
+                width: *width,
+                cap: *cap as u32,
+                fill_kind,
+                fill_lut_row,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        }
+        ShapeRecord::Arc {
+            center,
+            radius,
+            a0,
+            a1,
+            width,
+            fill,
+            fill_grad_hash: _,
+            cap,
+            bbox,
+            content_hash: _,
+        } => {
+            // Same owner-local convention as `Curve`; the composer
+            // resolves center/radius to physical px.
+            let GpuFillFields {
+                color,
+                kind: fill_kind,
+                lut_row: fill_lut_row,
+                ..
+            } = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            let rotation = paint_mod.rotation;
+            let bbox = spin_bbox(owner_rect, *bbox, rotation);
+            out.draw_arc(DrawArcPayload {
+                bbox,
+                origin: owner_rect.min,
+                center: *center,
+                radius: *radius,
+                a0: *a0,
+                a1: *a1,
+                rotation,
                 color,
                 width: *width,
                 cap: *cap as u32,

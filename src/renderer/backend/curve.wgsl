@@ -1,8 +1,15 @@
-// Native cubic-bezier stroke pipeline. One `draw(96, instance_count)`
-// per scissor group; each instance describes a sub-range of one curve
-// and the vertex shader expands it into 16 quads (192 indices via the
-// shared per-vertex `vertex_index`). No index buffer, no per-instance
-// CPU tessellation.
+// Native parametric stroke pipeline (cubic beziers + circular arcs).
+// One `draw(96, instance_count)` per scissor group; each instance
+// describes a sub-range of one stroke and the vertex shader expands it
+// into 16 quads (192 indices via the shared per-vertex `vertex_index`).
+// No index buffer, no per-instance CPU tessellation.
+//
+// Basis kinds. `kind` selects how the geometry lanes are read:
+// KIND_CUBIC evaluates the `p0..p3` cubic; KIND_ARC evaluates
+// `p0 + p1.x * (cos θ, sin θ)` with `θ = mix(p2.x, p2.y, t)` — an
+// exact circle (no flattening, no cubic-approximation error) whose
+// gradient `t` tracks the sweep linearly. The Rust-side tags are
+// pinned in `curve_pipeline.rs`.
 //
 // Lockstep contract: `SEGMENTS_PER_INSTANCE` here matches the const of
 // the same name in `renderer/render_buffer.rs` — the composer derives
@@ -46,6 +53,9 @@ const CAP_BUTT: u32 = 0u;
 const CAP_SQUARE: u32 = 1u;
 const CAP_ROUND: u32 = 2u;
 
+const KIND_CUBIC: u32 = 0u;
+const KIND_ARC: u32 = 1u;
+
 const BRUSH_KIND_SOLID:  u32 = 0u;
 const BRUSH_KIND_LINEAR: u32 = 1u;
 
@@ -69,6 +79,8 @@ struct VsIn {
     @location(7) cap: u32,
     @location(8) fill_kind: u32,
     @location(9) fill_lut_row: u32,
+    // Basis tag: KIND_CUBIC or KIND_ARC. Constant per instance.
+    @location(10) kind: u32,
 };
 
 struct VsOut {
@@ -121,6 +133,30 @@ fn cubic_pos_tan(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: 
     return out;
 }
 
+// Circular-arc position + tangent at `t`. Lanes: p0 = center,
+// p1.x = radius, p2 = (a0, a1). The tangent's magnitude is irrelevant
+// (normalized by the caller); its *sign* must follow the sweep
+// direction so cap extension points outward at both ends. `select`
+// instead of `sign()` — a degenerate a0 == a1 must not zero the
+// tangent (sign(0) == 0 would collapse the strip).
+fn arc_pos_tan(center: vec2<f32>, radius: f32, a0: f32, a1: f32, t: f32) -> PosTan {
+    let ang = mix(a0, a1, t);
+    let cs = vec2<f32>(cos(ang), sin(ang));
+    var out: PosTan;
+    out.pos = center + radius * cs;
+    let dir = select(-1.0, 1.0, a1 >= a0);
+    out.tan = dir * vec2<f32>(-cs.y, cs.x);
+    return out;
+}
+
+// Kind dispatch: evaluate the instance's parametric basis at `t`.
+fn stroke_pos_tan(in: VsIn, t: f32) -> PosTan {
+    if (in.kind == KIND_ARC) {
+        return arc_pos_tan(in.p0, in.p1.x, in.p2.x, in.p2.y, t);
+    }
+    return cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, t);
+}
+
 // (corner_t, side) lookup for the two-triangle quad. Replaces a 6-way
 // switch — branchless on every backend.
 const CORNERS = array<vec2<f32>, 6>(
@@ -144,12 +180,13 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let side = c.y;
     let local_t = (f32(seg) + t_off) * INV_N;
     let t = mix(in.t_range.x, in.t_range.y, local_t);
-    let pt = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, t);
+    let pt = stroke_pos_tan(in, t);
     let pos = pt.pos;
     var tan = pt.tan;
     let len_sq = dot(tan, tan);
     if (len_sq < 1.0e-8) {
-        // Degenerate tangent (coincident control points around `t`).
+        // Degenerate tangent — cubic with coincident control points
+        // around `t` (an arc's tangent is unit-length by construction).
         // Fall back to the chord p0→p3 so the strip doesn't collapse;
         // if that's also zero, project along +x.
         tan = in.p3 - in.p0;
@@ -186,14 +223,14 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
             cap_shift = -half_w;
             cap_t = half_w;
         } else if (is_first_cap_seg) {
-            let lead = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, in.t_range.x);
+            let lead = stroke_pos_tan(in, in.t_range.x);
             cap_t = -distance(pos, lead.pos);
         }
         if (is_trailing_edge) {
             cap_shift = half_w;
             cap_t = half_w;
         } else if (is_last_cap_seg) {
-            let trail = cubic_pos_tan(in.p0, in.p1, in.p2, in.p3, in.t_range.y);
+            let trail = stroke_pos_tan(in, in.t_range.y);
             cap_t = -distance(pos, trail.pos);
         }
     }

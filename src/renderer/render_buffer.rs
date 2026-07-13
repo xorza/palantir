@@ -455,15 +455,29 @@ pub(crate) struct CurveBatch {
 /// per-instance vertex count both derive from it.
 pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 
+/// Basis tags for [`CurveInstance::kind`]. Pinned against the
+/// `KIND_*` constants in `curve.wgsl` — bump together.
+pub(crate) const CURVE_KIND_CUBIC: u32 = 0;
+pub(crate) const CURVE_KIND_ARC: u32 = 1;
+
 /// Per-curve-sub-instance GPU state, uploaded to a
-/// `step_mode: Instance` vertex buffer. The shader evaluates the cubic
-/// at parameter `t = mix(t0, t1, segment / SEGMENTS_PER_INSTANCE)` for
+/// `step_mode: Instance` vertex buffer. The shader evaluates the
+/// stroke's parametric basis (picked by `kind`) at parameter
+/// `t = mix(t0, t1, segment / SEGMENTS_PER_INSTANCE)` for
 /// `segment ∈ [0, SEGMENTS_PER_INSTANCE]`, derives the tangent's
 /// perpendicular, and offsets by ±(width/2 + AA fringe) to build the
-/// stroked strip. All control points are pre-transformed to
+/// stroked strip. All geometry lanes are pre-transformed to
 /// physical-px; `width` is also physical px. Color is linear-RGBA
 /// straight-alpha (same convention as `MeshVertex.color`); the
 /// fragment shader premultiplies at output.
+///
+/// Lane meaning by `kind`:
+/// - [`CURVE_KIND_CUBIC`] — `p0..p3` are the cubic control points.
+/// - [`CURVE_KIND_ARC`] — `p0` = center, `p1.x` = radius,
+///   `p2 = (a0, a1)` start/end angle in radians (screen convention:
+///   0 = +x, y-down ⇒ increasing = clockwise); `p1.y`/`p3` unused.
+///   The angle at `t` is `mix(a0, a1, t)` — exact circle, no cubic
+///   approximation error, and gradient `t` tracks the sweep linearly.
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -495,4 +509,8 @@ pub(crate) struct CurveInstance {
     pub(crate) fill_kind: FillKind,
     /// Atlas row when `fill_kind` is a gradient, else ignored.
     pub(crate) fill_lut_row: LutRow,
+    /// Parametric basis tag — [`CURVE_KIND_CUBIC`] or
+    /// [`CURVE_KIND_ARC`]. Selects how the vertex shader interprets
+    /// the geometry lanes (see struct docs).
+    pub(crate) kind: u32,
 }

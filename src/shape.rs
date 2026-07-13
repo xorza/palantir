@@ -96,9 +96,10 @@ pub enum Shape<'a> {
     /// lowered to `ShapeRecord::Curve` at authoring time, batched per
     /// scissor group, expanded to a thickened triangle strip in the
     /// vertex shader. The composer derives an adaptive sub-instance
-    /// count from the post-transform control-polygon length. Solid
-    /// stroke only; no `join` (single-curve primitive — no interior
-    /// joins). `cap` ships `Butt`, `Square`, and `Round`.
+    /// count from the post-transform control-polygon length. `brush`
+    /// takes `Solid` or `Linear` (sampled along the curve parameter
+    /// `t`); no `join` (single-curve primitive — no interior joins).
+    /// `cap` ships `Butt`, `Square`, and `Round`.
     CubicBezier {
         p0: Vec2,
         p1: Vec2,
@@ -537,16 +538,15 @@ impl PolylineColors<'_> {
     }
 }
 
-/// Endpoint cap style for stroked [`Shape::Line`] / [`Shape::Polyline`].
-/// `#[repr(u8)]` with stable discriminants so cache keys don't
+/// Endpoint cap style for stroked shapes (Line / Polyline / béziers /
+/// Arc). `#[repr(u8)]` with stable discriminants so cache keys don't
 /// shift across reorderings; `pub` because it's user-facing.
 ///
 /// - `Butt` — no extension. The stroke ends exactly at the
 ///   endpoint. Default.
-/// - `Square` — extend by `width / 2` along the segment direction.
-///   The end face is flat and perpendicular to the segment.
-///
-/// `Round` is reserved for a follow-up (requires fan-tessellation).
+/// - `Square` — extend by `width / 2` along the local tangent.
+///   The end face is flat and perpendicular to the stroke.
+/// - `Round` — a `width / 2` half-disc past the endpoint.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LineCap {
@@ -590,7 +590,8 @@ impl LineCap {
 /// — matches the SVG convention: try a sharp miter corner, fall
 /// back to a bevel when the miter factor would exceed
 /// `MITER_LIMIT` (4.0). `Bevel` forces a flat corner at every
-/// join regardless of angle. `Round` is reserved for a follow-up.
+/// join regardless of angle; `Round` fills the corner with an arc
+/// fan.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum LineJoin {

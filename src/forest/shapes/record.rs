@@ -363,14 +363,15 @@ pub(crate) enum ShapeRecord {
         fit: ImageFit,
         filter: ImageFilter,
     } = 5,
-    /// Native GPU bezier curve. Four control points (quadratic curves
-    /// promote to cubic at lowering — `p1 = p0 + 2/3(c - p0)`,
-    /// `p2 = p2 + 2/3(c - p2)`). Stored owner-local; the composer adds
-    /// the owner origin + active transform at compose time and uploads
-    /// to a per-instance buffer. Solid stroke colour, butt caps, no
-    /// joins for v1 (single-segment primitive). `bbox` is the
-    /// owner-local stroked-AABB inflated by `width/2 + AA fringe` so
-    /// damage / clip cull match the painted extent.
+    /// Native GPU bezier curve. Four control points (quadratics
+    /// promote to cubic at lowering, lines degenerate to one — see
+    /// `lower_curve_inner`'s degree tags). Stored owner-local; the
+    /// composer adds the owner origin + active transform at compose
+    /// time and uploads to a per-instance buffer. No joins
+    /// (single-segment primitive); `fill` and `cap` are documented on
+    /// their fields. `bbox` is the owner-local stroked-AABB inflated
+    /// by `width/2 + cap + AA fringe` so damage / clip cull match the
+    /// painted extent.
     Curve {
         p0: Vec2,
         p1: Vec2,

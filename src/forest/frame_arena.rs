@@ -13,6 +13,7 @@ use crate::forest::rollups::NodeHash;
 use crate::forest::shapes::record::{
     ChromeRow, LoweredGradient, LoweredShadow, ShapeBrush, ShapeRecord, ShapeStroke,
 };
+use crate::primitives::arc::arc_bbox;
 use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
 use crate::primitives::brush::Brush;
@@ -237,8 +238,10 @@ impl FrameArena {
 
     /// Lower a (points, colors, width) authoring shape into a
     /// `ShapeRecord::Polyline`: copy points and colors into the arena,
-    /// compute the content hash. `Shape::Line` and `Shape::Polyline`
-    /// both route through this — one record path downstream.
+    /// compute the content hash. Only `Shape::Polyline` routes through
+    /// this — the CPU stroke tessellator is reserved for genuinely
+    /// multi-segment strokes with interior joins; every single-stroke
+    /// shape (`Line`/beziers/`Arc`) rides the GPU curve pipeline.
     pub(crate) fn lower_polyline(
         &self,
         points: &[Vec2],
@@ -291,6 +294,81 @@ impl FrameArena {
         lower_curve_inner([p0, cubic.c1, cubic.c2, p2], width, lowered, cap, 1)
     }
 
+    /// Lower a straight line as a degenerate cubic on the native GPU
+    /// stroke path. Inner control points sit on the segment's thirds,
+    /// so `B(t) = a + (b - a)·t` exactly — `t` (and thus a gradient
+    /// brush) runs linearly from `a` to `b`. The composer's flatness
+    /// fast-path keeps the collinear cubic a single GPU instance.
+    pub(crate) fn lower_line(
+        &self,
+        a: Vec2,
+        b: Vec2,
+        width: f32,
+        brush: Brush,
+        cap: LineCap,
+        atlas: &GradientAtlas,
+    ) -> ShapeRecord {
+        assert_curve_brush(&brush);
+        let lowered = self.0.borrow_mut().lower_brush_inner(&brush, atlas);
+        let third = (b - a) / 3.0;
+        lower_curve_inner([a, a + third, b - third, b], width, lowered, cap, 2)
+    }
+
+    /// Lower a circular arc into a [`ShapeRecord::Arc`]. Same native-GPU
+    /// stroke path as the béziers — no CPU flattening; the shader
+    /// evaluates the exact circle, so the record stores center/radius/
+    /// angles verbatim. `brush` follows the curve contract (`Solid` /
+    /// `Linear` sampled along the sweep; `Radial`/`Conic` rejected).
+    /// `|sweep| ≤ 2π` is hard-asserted: a longer sweep would repaint
+    /// pixels and double-blend a translucent stroke.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn lower_arc(
+        &self,
+        center: Vec2,
+        radius: f32,
+        start_angle: f32,
+        sweep: f32,
+        width: f32,
+        brush: Brush,
+        cap: LineCap,
+        atlas: &GradientAtlas,
+    ) -> ShapeRecord {
+        assert_curve_brush(&brush);
+        assert!(
+            sweep.abs() <= std::f32::consts::TAU + 1.0e-4,
+            "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
+        );
+        let lowered = self.0.borrow_mut().lower_brush_inner(&brush, atlas);
+        let a1 = start_angle + sweep;
+        let CurveBounds { lo, hi } = arc_bbox(center, radius, start_angle, a1);
+        let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
+        // `0xCA` prefix keeps arc content hashes disjoint from the
+        // bezier family's `0xCB00 | degree` tags.
+        let mut h = FxHasher::new();
+        h.write_u16(0xCA00);
+        h.write(bytemuck::bytes_of(&[
+            center.x,
+            center.y,
+            radius,
+            start_angle,
+            sweep,
+        ]));
+        h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(cap as u8));
+        let content_hash = h.finish();
+        ShapeRecord::Arc {
+            center,
+            radius,
+            a0: start_angle,
+            a1,
+            width,
+            fill: lowered.brush,
+            fill_grad_hash: lowered.hash,
+            cap,
+            bbox,
+            content_hash,
+        }
+    }
+
     /// Lower a triangle into a [`ShapeRecord::Triangle`]. Solid fill only —
     /// gradients can't ride the reused quad-instance lanes, so `fill` is
     /// `expect_solid`'d here (rejecting a gradient at the authoring boundary).
@@ -324,30 +402,43 @@ impl FrameArena {
     }
 }
 
-/// Bezier strokes accept `Brush::Solid` or `Brush::Linear`. Radial and
-/// conic gradients project onto a 2-D shape; there is no obvious
-/// projection onto a 1-D stroke (the chord and the curve's bounding
-/// rect are both poor proxies), so we reject at lowering rather than
-/// silently pick one. If a curve-friendly radial/conic interpretation
-/// shows up, lift this gate.
+/// GPU-stroked shapes (Line / beziers / Arc) accept `Brush::Solid` or
+/// `Brush::Linear`. Radial and conic gradients project onto a 2-D
+/// shape; there is no obvious projection onto a 1-D stroke (the chord
+/// and the curve's bounding rect are both poor proxies), so we reject
+/// at lowering rather than silently pick one. If a stroke-friendly
+/// radial/conic interpretation shows up, lift this gate.
 fn assert_curve_brush(brush: &Brush) {
     match brush {
         Brush::Solid(_) | Brush::Linear(_) => {}
         Brush::Radial(_) | Brush::Conic(_) => {
             panic!(
-                "Shape::CubicBezier/QuadraticBezier: only Brush::Solid and Brush::Linear are supported"
+                "stroked shapes (Line / beziers / Arc): only Brush::Solid and Brush::Linear are supported"
             )
         }
     }
 }
 
+/// Conservative bbox padding for a GPU-stroked shape: half-width, plus
+/// the cap extension (`Square`/`Round` reach `width/2` past each
+/// endpoint along the local tangent — direction varies, so the
+/// axis-aligned pad takes it on every side), plus the AA fringe.
+fn stroke_pad(width: f32, cap: LineCap) -> f32 {
+    let half = (width * 0.5).max(0.0);
+    let cap_extent = match cap {
+        LineCap::Butt => 0.0,
+        LineCap::Square | LineCap::Round => half,
+    };
+    half + cap_extent + HALF_FRINGE
+}
+
 /// Build a `ShapeRecord::Curve` from cubic control points. `degree_tag`
-/// is folded into the content hash so quadratic-derived and natively-
-/// cubic curves with bit-identical post-promotion CPs still hash
-/// distinctly (matches the old bezier-hash discipline). The brush
-/// variant (solid colour or gradient hash) is folded into the record
-/// hash separately by `ShapeRecord::Hash`, so this function's hash
-/// only covers geometry + cap.
+/// (0 = cubic, 1 = quadratic-derived, 2 = line-derived) is folded into
+/// the content hash so shapes with bit-identical post-promotion CPs
+/// still hash distinctly (matches the old bezier-hash discipline). The
+/// brush variant (solid colour or gradient hash) is folded into the
+/// record hash separately by `ShapeRecord::Hash`, so this function's
+/// hash only covers geometry + cap.
 fn lower_curve_inner(
     ctrl: [Vec2; 4],
     width: f32,
@@ -358,18 +449,7 @@ fn lower_curve_inner(
     let [p0, p1, p2, p3] = ctrl;
 
     let CurveBounds { lo, hi } = cubic_bezier_bbox(p0, p1, p2, p3);
-    let half = (width * 0.5).max(0.0);
-    // Round/Square caps extend the strip by `half_w` past each
-    // endpoint along the local tangent. Since the bbox is axis-
-    // aligned and the tangent direction varies, the conservative
-    // padding is `half_w` more on every side — matches the
-    // polyline path's `cap_extent` shape.
-    let cap_extent = match cap {
-        LineCap::Butt => 0.0,
-        LineCap::Square | LineCap::Round => half,
-    };
-    let pad = half + cap_extent + HALF_FRINGE;
-    let bbox = padded_bbox(lo, hi, pad);
+    let bbox = padded_bbox(lo, hi, stroke_pad(width, cap));
     let mut h = FxHasher::new();
     h.write_u16(0xCB00 | u16::from(degree_tag));
     h.write(bytemuck::bytes_of(&ctrl));
@@ -472,13 +552,11 @@ impl FrameArenaInner {
             }
         };
 
-        // Hash contract for polyline records: no variant tag. `Shape::Line`
-        // and a 2-point `Shape::Polyline { Single(color) }` lower
-        // byte-identically by design — sharing a hash is correct. Bezier
-        // records tag themselves with `0xCB` + degree (see
-        // `lower_curve_inner`) so curve-derived polylines can never
-        // collide with hand-authored ones that happen to share the same
-        // flattened bytes.
+        // Hash contract for polyline records: no variant tag needed —
+        // polylines are the only shape lowering into this record. The
+        // GPU-stroke records tag themselves (`0xCB` + degree for the
+        // bezier family, `0xCA` for arcs — see `lower_curve_inner` /
+        // `lower_arc`) and hash under their own record tag anyway.
         let mut h = FxHasher::new();
         h.write(bytemuck::cast_slice(points));
         h.write(bytemuck::cast_slice(color_slice));
