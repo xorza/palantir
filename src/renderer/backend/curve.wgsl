@@ -56,6 +56,12 @@ const CAP_ROUND: u32 = 2u;
 const KIND_CUBIC: u32 = 0u;
 const KIND_ARC: u32 = 1u;
 
+// `VsOut.flags` bits — the per-instance predicates the fragment
+// actually branches on, packed once in `vs` so they ride one flat
+// lane instead of three.
+const FLAG_ROUND_CAP: u32 = 1u;
+const FLAG_LINEAR_FILL: u32 = 2u;
+
 const BRUSH_KIND_SOLID:  u32 = 0u;
 const BRUSH_KIND_LINEAR: u32 = 1u;
 
@@ -94,21 +100,22 @@ struct VsOut {
     // Round/Square caps key on `> 0`; Butt never sees a positive value
     // because Butt doesn't extend.
     @location(1) cap_t: f32,
-    // Per-instance: constant across all 96 verts of an instance, so
-    // flat-interpolate to skip per-fragment varying evaluation.
+    // Strip half-extent: core half-width + AA fringe, physical px.
+    // Fringe is baked in once here so the fragment's coverage is just
+    // `clamp(half_w - r, 0, 1)`. Flat: constant per instance, like
+    // every lane below except `curve_t`.
     @location(2) @interpolate(flat) half_w: f32,
     @location(3) @interpolate(flat) color: vec4<f32>,
-    @location(4) @interpolate(flat) cap_kind: u32,
-    // Brush kind low byte (0 = solid, 1 = linear) — flat: constant
-    // per instance, fragment branches on it.
-    @location(5) @interpolate(flat) fill_kind: u32,
-    // Gradient LUT row, ignored when `fill_kind == 0`.
-    @location(6) @interpolate(flat) fill_lut_row: u32,
+    // `FLAG_*` bits (round cap / linear fill).
+    @location(4) @interpolate(flat) flags: u32,
+    // Gradient LUT row pre-resolved to the atlas `v` coordinate;
+    // ignored without `FLAG_LINEAR_FILL`.
+    @location(5) @interpolate(flat) lut_v: f32,
     // Per-vertex curve parameter `t` ∈ [0, 1] for LUT sampling. The
     // hardware lerps it across the strip cross-section, which is
     // correct: each strip cross-section corresponds to a single `t`,
     // so the lerp is constant along the cross-section.
-    @location(7) curve_t: f32,
+    @location(6) curve_t: f32,
 };
 
 struct PosTan { pos: vec2<f32>, tan: vec2<f32> };
@@ -130,6 +137,14 @@ fn cubic_pos_tan(p0: vec2<f32>, p1: vec2<f32>, p2: vec2<f32>, p3: vec2<f32>, t: 
     out.tan = (3.0 * uu) * (p1 - p0)
             + (6.0 * ut) * (p2 - p1)
             + (3.0 * tt) * (p3 - p2);
+    // Degenerate tangent (coincident control points around `t`): fall
+    // back to the chord p0→p3 so the strip doesn't collapse; a fully
+    // degenerate curve projects along +x. Arcs never need this — their
+    // tangent is unit-length by construction.
+    if (dot(out.tan, out.tan) < 1.0e-8) {
+        let chord = p3 - p0;
+        out.tan = select(vec2<f32>(1.0, 0.0), chord, dot(chord, chord) >= 1.0e-8);
+    }
     return out;
 }
 
@@ -182,25 +197,11 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let t = mix(in.t_range.x, in.t_range.y, local_t);
     let pt = stroke_pos_tan(in, t);
     let pos = pt.pos;
-    var tan = pt.tan;
-    let len_sq = dot(tan, tan);
-    if (len_sq < 1.0e-8) {
-        // Degenerate tangent — cubic with coincident control points
-        // around `t` (an arc's tangent is unit-length by construction).
-        // Fall back to the chord p0→p3 so the strip doesn't collapse;
-        // if that's also zero, project along +x.
-        tan = in.p3 - in.p0;
-        let l2 = dot(tan, tan);
-        if (l2 < 1.0e-8) {
-            tan = vec2<f32>(1.0, 0.0);
-        }
-    }
-    let tan_n = normalize(tan);
+    let tan_n = normalize(pt.tan);
     // Right-hand perpendicular (rotate +90°). Sign matches the cap
     // convention used by stroke_tessellate.
     let normal = vec2<f32>(-tan_n.y, tan_n.x);
-    let core_hw = max(in.width * 0.5, 0.0);
-    let half_w = core_hw + HALF_FRINGE;
+    let half_w = max(in.width * 0.5, 0.0) + HALF_FRINGE;
 
     // Cap extension. Only the leading edge of segment 0 of the first
     // sub-instance (and the trailing edge of the last segment of the
@@ -208,8 +209,6 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     let is_first_cap_seg = (seg == 0u) && (in.t_range.x < T_END_EPS);
     let is_last_cap_seg = (seg == SEGMENTS_PER_INSTANCE - 1u)
         && (in.t_range.y > 1.0 - T_END_EPS);
-    let is_leading_edge = is_first_cap_seg && (t_off == 0.0);
-    let is_trailing_edge = is_last_cap_seg && (t_off == 1.0);
     var cap_shift: f32 = 0.0;
     // `cap_t` must lerp to zero exactly at the endpoint cross-section,
     // so a cap segment's body edge carries -chord (not 0): the linear
@@ -219,19 +218,23 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     // visibly necking thin caps (~chord^2 / stroke width).
     var cap_t: f32 = 0.0;
     if (in.cap != CAP_BUTT) {
-        if (is_leading_edge) {
-            cap_shift = -half_w;
-            cap_t = half_w;
-        } else if (is_first_cap_seg) {
-            let lead = stroke_pos_tan(in, in.t_range.x);
-            cap_t = -distance(pos, lead.pos);
+        if (is_first_cap_seg) {
+            if (t_off == 0.0) {
+                cap_shift = -half_w;
+                cap_t = half_w;
+            } else {
+                let lead = stroke_pos_tan(in, in.t_range.x);
+                cap_t = -distance(pos, lead.pos);
+            }
         }
-        if (is_trailing_edge) {
-            cap_shift = half_w;
-            cap_t = half_w;
-        } else if (is_last_cap_seg) {
-            let trail = stroke_pos_tan(in, in.t_range.y);
-            cap_t = -distance(pos, trail.pos);
+        if (is_last_cap_seg) {
+            if (t_off == 1.0) {
+                cap_shift = half_w;
+                cap_t = half_w;
+            } else {
+                let trail = stroke_pos_tan(in, in.t_range.y);
+                cap_t = -distance(pos, trail.pos);
+            }
         }
     }
 
@@ -245,12 +248,12 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     var out: VsOut;
     out.clip = vec4<f32>(ndc, 0.0, 1.0);
     out.offset = offset;
-    out.half_w = core_hw;
+    out.half_w = half_w;
     out.color = in.color;
     out.cap_t = cap_t;
-    out.cap_kind = in.cap;
-    out.fill_kind = in.fill_kind;
-    out.fill_lut_row = in.fill_lut_row;
+    out.flags = u32(in.cap == CAP_ROUND)
+        | (u32((in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR) << 1u);
+    out.lut_v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
     out.curve_t = t;
     return out;
 }
@@ -258,27 +261,22 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
 @fragment
 fn fs(in: VsOut) -> @location(0) vec4<f32> {
     let dist = abs(in.offset);
-    var coverage: f32;
-    if (in.cap_t > 0.0 && in.cap_kind == CAP_ROUND) {
-        // Round cap: distance to the endpoint, not to the centerline.
-        // The endpoint cross-section is exactly cap_t == 0 (the vertex
-        // shader emits -chord at the cap segment's body edge so the
-        // lerp lands there); cap_t > 0 is the projected cap zone.
-        let r = sqrt(in.cap_t * in.cap_t + dist * dist);
-        coverage = clamp(in.half_w - r + HALF_FRINGE, 0.0, 1.0);
-    } else {
-        // Body (cap_t == 0) and Square cap (cap_t > 0, no rounding):
-        // standard cross-strip AA. Butt never sees cap_t > 0 because
-        // the vertex shader doesn't extend for Butt.
-        coverage = clamp(in.half_w - dist + HALF_FRINGE, 0.0, 1.0);
+    // Body (cap_t == 0) and Square cap (cap_t > 0, no rounding) use
+    // the cross-strip distance; a Round cap swaps in the distance to
+    // the endpoint. The endpoint cross-section is exactly cap_t == 0
+    // (the vertex shader emits -chord at the cap segment's body edge
+    // so the lerp lands there); cap_t > 0 is the projected cap zone,
+    // which Butt never sees because the vertex shader doesn't extend.
+    var r = dist;
+    if (in.cap_t > 0.0 && (in.flags & FLAG_ROUND_CAP) != 0u) {
+        r = length(vec2<f32>(in.cap_t, dist));
     }
-    var rgba: vec4<f32>;
-    if ((in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR) {
-        let t = clamp(in.curve_t, 0.0, 1.0);
-        let v = (f32(in.fill_lut_row) + 0.5) / ATLAS_ROWS_F;
-        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(t, v));
-    } else {
-        rgba = in.color;
+    let coverage = clamp(in.half_w - r, 0.0, 1.0);
+    var rgba = in.color;
+    if ((in.flags & FLAG_LINEAR_FILL) != 0u) {
+        // `curve_t` is in [0, 1] by construction and the sampler is
+        // clamp-to-edge, so no explicit clamp.
+        rgba = textureSample(gradient_tex, gradient_sampler, vec2<f32>(in.curve_t, in.lut_v));
     }
     let a = rgba.a * coverage;
     return vec4<f32>(rgba.rgb * a, a);
