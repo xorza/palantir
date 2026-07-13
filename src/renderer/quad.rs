@@ -94,41 +94,8 @@ pub(crate) struct Quad {
     pub(crate) fill_axis: FillAxis,
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::renderer::quad::Quad;
-    use std::mem::offset_of;
-
-    /// Pin: `Quad` is exactly 60 bytes — pos(8) + size(8) +
-    /// fill(8, packed 4xf16) + radius(8, packed 4xf16) +
-    /// stroke_color(8, packed 4xf16) + stroke_width(4) + fill_kind(4) +
-    /// fill_lut_row(4) + fill_axis(8, packed 4xf16). The
-    /// `vertex_attr_array` in the backend's `QuadPipeline::new` assumes
-    /// this exact layout via Rust's `repr(C)` field-order rules. A
-    /// reorder or an added field that shifts an attribute's offset would
-    /// break the shader binding silently — this test catches it.
-    #[test]
-    fn quad_struct_is_60_bytes_no_padding() {
-        assert_eq!(std::mem::size_of::<Quad>(), 60);
-    }
-
-    /// Pin every field offset against the `vertex_attr_array!` in
-    /// `quad_pipeline.rs` (attribute locations 0..=8). A reorder of
-    /// same-sized fields wouldn't change the struct size but would
-    /// silently mis-bind the shader; size alone can't catch it.
-    #[test]
-    fn quad_field_offsets_match_vertex_attr_array() {
-        assert_eq!(offset_of!(Quad, rect), 0, "loc 0 (pos) + loc 1 (size)");
-        assert_eq!(offset_of!(Quad, fill), 16, "loc 2 (fill, packed)");
-        assert_eq!(offset_of!(Quad, corners), 24, "loc 3 (radius, packed)");
-        assert_eq!(
-            offset_of!(Quad, stroke_color),
-            32,
-            "loc 4 (stroke.color, packed)"
-        );
-        assert_eq!(offset_of!(Quad, stroke_width), 40, "loc 5 (stroke.width)");
-        assert_eq!(offset_of!(Quad, fill_kind), 44, "loc 6 (fill_kind)");
-        assert_eq!(offset_of!(Quad, fill_lut_row), 48, "loc 7 (fill_lut_row)");
-        assert_eq!(offset_of!(Quad, fill_axis), 52, "loc 8 (fill_axis)");
-    }
-}
+// Layout guards live where the layout is consumed: the compile-time
+// `offset_of!` asserts beside `QUAD_INSTANCE_ATTRS` in
+// `backend/quad_pipeline.rs` pin every field against its vertex
+// attribute, and the `hot_struct_sizes_are_pinned` inventory in
+// `lib.rs` pins the 60/4 footprint.

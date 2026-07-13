@@ -187,13 +187,15 @@ mod hot_struct_sizes {
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;
+    use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
+    use crate::renderer::backend::text::GlyphInstance;
     use crate::renderer::frontend::cmd_buffer::{
-        DrawArcPayload, DrawCurvePayload, DrawMeshPayload, DrawPolylinePayload, DrawRectPayload,
-        DrawTextPayload, DrawTrianglePayload,
+        DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
+        DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
     };
     use crate::renderer::quad::Quad;
-    use crate::renderer::render_buffer::CurveInstance;
+    use crate::renderer::render_buffer::{CurveInstance, ImageInstance, MeshInstance, TextRun};
     use crate::text::TextCacheKey;
     use crate::ui::cascade::EntryRow;
     use crate::ui::cascade::Paint;
@@ -281,15 +283,23 @@ mod hot_struct_sizes {
         DamageRegion => "damage::DamageRegion": 140 / 4,
         NodeSnapshot => "damage::NodeSnapshot": 40 / 8,
         // Encoder↔composer wire payloads.
+        PushClipPayload => "cmd::PushClipPayload": 24 / 4,
         DrawRectPayload => "cmd::DrawRectPayload": 60 / 4,
+        DrawShadowPayload => "cmd::DrawShadowPayload": 44 / 4,
         DrawTextPayload => "cmd::DrawTextPayload": 48 / 8,
         DrawPolylinePayload => "cmd::DrawPolylinePayload": 52 / 4,
         DrawMeshPayload => "cmd::DrawMeshPayload": 48 / 4,
+        DrawImagePayload => "cmd::DrawImagePayload": 56 / 8,
         DrawTrianglePayload => "cmd::DrawTrianglePayload": 56 / 4,
         DrawCurvePayload => "cmd::DrawCurvePayload": 84 / 4,
         DrawArcPayload => "cmd::DrawArcPayload": 72 / 4,
-        // GPU instance types.
+        // GPU instance / vertex types.
         Quad => "renderer::Quad": 60 / 4,
         CurveInstance => "renderer::CurveInstance": 68 / 4,
+        MeshInstance => "renderer::MeshInstance": 16 / 4,
+        ImageInstance => "renderer::ImageInstance": 40 / 4,
+        MeshVertex => "primitives::MeshVertex": 12 / 4,
+        GlyphInstance => "text::GlyphInstance": 20 / 4,
+        TextRun => "renderer::TextRun": 56 / 8,
     }
 }
