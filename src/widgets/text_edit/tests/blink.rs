@@ -30,7 +30,7 @@ fn caret_blinks_on_and_off_while_focused() {
         // always present when focused; the encoder hides it via the
         // attached `PaintAnim`. "Painted" now means "rect present AND
         // its anim (if any) samples to visible at the current time".
-        let tree = ui.forest.tree(Layer::Main);
+        let tree = &ui.forest.trees[Layer::Main];
         let now = ui.time;
         TreeItems::new(&tree.records, &tree.shapes.records, leaf)
             .filter_map(|item| match item {

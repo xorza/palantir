@@ -46,7 +46,7 @@ fn zstack_layers_children_without_painting_background() {
         });
     });
     let z = zstack_node.unwrap();
-    assert!(ui.forest.tree(Layer::Main).shapes_of(z).next().is_none());
+    assert!(ui.forest.trees[Layer::Main].shapes_of(z).next().is_none());
 
     let zr = ui.layout[Layer::Main].rect[z.idx()];
     assert_eq!(zr.size.w, 120.0);

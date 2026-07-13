@@ -274,7 +274,7 @@ fn subtree_skip_preserves_descendant_rects() {
             });
     };
     run_frame(&mut ui, build);
-    let n = ui.forest.tree(Layer::Main).records.len();
+    let n = ui.forest.trees[Layer::Main].records.len();
     let layout1 = &ui.layout[Layer::Main];
     let rects1: Vec<_> = (0..n).map(|i| layout1.rect[i]).collect();
 

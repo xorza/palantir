@@ -10,7 +10,7 @@ use glam::UVec2;
 
 fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
     ui.forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .children(root)
         .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()

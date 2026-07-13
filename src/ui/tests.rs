@@ -205,7 +205,7 @@ fn collisions_do_not_record_into_debug_layer() {
         "collision should have been recorded",
     );
     assert_eq!(
-        ui.forest.tree(Layer::Debug).records.len(),
+        ui.forest.trees[Layer::Debug].records.len(),
         0,
         "encoder-direct overlay path must not record nodes into Layer::Debug",
     );
@@ -227,7 +227,7 @@ fn auto_id_collisions_disambiguate() {
         });
     });
     // Synthetic viewport root + 1 panel + 3 chips = 5 distinct ids, no panic.
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 5);
+    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 5);
 }
 
 /// Cascade runs in `post_record` (after each pass's measure+arrange),
@@ -308,7 +308,7 @@ fn empty_ui_drives_a_frame_safely() {
     assert!(buffer.groups.is_empty());
 
     // Synthetic viewport root: even an empty user record produces one node.
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 1);
+    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 1);
     assert!(ui.damage_engine.prev.is_empty());
     assert!(ui.damage_engine.dirty.is_empty());
     assert!(ui.damage_region().rects.is_empty());
@@ -325,7 +325,7 @@ fn empty_then_populated_frame() {
         Panel::hstack().auto_id().show(ui, |_| {});
     });
     // Synthetic viewport root + user Panel = 2 records.
-    assert_eq!(ui.forest.tree(Layer::Main).records.len(), 2);
+    assert_eq!(ui.forest.trees[Layer::Main].records.len(), 2);
     // The user Panel is rowless (no chrome, no shapes, no children) so
     // it gets no prev entry; the viewport root tracks it as a
     // child-marker row — one entry total.
@@ -397,7 +397,7 @@ fn prev_frame_captures_nodes_with_rows() {
     );
     assert_eq!(
         snap.hash,
-        ui.forest.tree(Layer::Main).rollups.node[frame_node.idx()],
+        ui.forest.trees[Layer::Main].rollups.node[frame_node.idx()],
     );
 }
 
@@ -857,7 +857,7 @@ fn frame_stats_overlay_records_partial_damage() {
     ui.frame_state.mark_submitted();
     assert_eq!(ui.fps_ema, 0.0);
     assert!(
-        !ui.forest.tree(Layer::Debug).records.is_empty(),
+        !ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must carry the frame_stats readout",
     );
 
@@ -899,7 +899,7 @@ fn frame_stats_overlay_records_partial_damage() {
             .show(ui);
     });
     assert!(
-        ui.forest.tree(Layer::Debug).records.is_empty(),
+        ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must clear once frame_stats is turned off",
     );
 }

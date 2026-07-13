@@ -212,7 +212,7 @@ fn node_spans_sized_to_node_count() {
         });
     });
     let layer = Layer::Main;
-    let nodes = ui.forest.tree(Layer::Main).records.len();
+    let nodes = ui.forest.trees[Layer::Main].records.len();
     assert_eq!(
         ui.cascades.layers[layer].paint_arena.node_spans.len(),
         nodes,

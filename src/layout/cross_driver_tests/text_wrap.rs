@@ -50,7 +50,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
 
     let shape = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .shapes_of(node)
         .next()
         .expect("text shape");
@@ -84,7 +84,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
 
     let wrap = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Text { wrap, .. } => Some(*wrap),
@@ -154,7 +154,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
     });
     let node = node.unwrap();
     let max_w = ui.layout_engine.intrinsic(
-        ui.forest.tree(Layer::Main),
+        &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MaxContent,
@@ -164,7 +164,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         },
     );
     let min_w = ui.layout_engine.intrinsic(
-        ui.forest.tree(Layer::Main),
+        &ui.forest.trees[Layer::Main],
         node,
         Axis::X,
         LenReq::MinContent,
@@ -174,7 +174,7 @@ fn intrinsic_query_on_wrapping_text_leaf_returns_sensible_values() {
         },
     );
     let max_h = ui.layout_engine.intrinsic(
-        ui.forest.tree(Layer::Main),
+        &ui.forest.trees[Layer::Main],
         node,
         Axis::Y,
         LenReq::MaxContent,
@@ -417,7 +417,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
     });
     let label_node = label_node.unwrap();
     let max_w = ui.layout_engine.intrinsic(
-        ui.forest.tree(Layer::Main),
+        &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MaxContent,
@@ -427,7 +427,7 @@ fn nonwrapping_text_minconent_equals_full_width() {
         },
     );
     let min_w = ui.layout_engine.intrinsic(
-        ui.forest.tree(Layer::Main),
+        &ui.forest.trees[Layer::Main],
         label_node,
         Axis::X,
         LenReq::MinContent,
@@ -490,7 +490,7 @@ fn two_hug_cols_label_cell_never_shrinks_below_label_full_width() {
     });
     let probe_label = probe_label.unwrap();
     let label_full = probe.layout_engine.intrinsic(
-        probe.forest.tree(Layer::Main),
+        &probe.forest.trees[Layer::Main],
         probe_label,
         Axis::X,
         LenReq::MaxContent,
@@ -564,7 +564,7 @@ fn two_hug_cols_default_label_hugs_full_width() {
         probe_label = Some(build(ui));
     });
     let label_full = probe.layout_engine.intrinsic(
-        probe.forest.tree(Layer::Main),
+        &probe.forest.trees[Layer::Main],
         probe_label.unwrap(),
         Axis::X,
         LenReq::MaxContent,

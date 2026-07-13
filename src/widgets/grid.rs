@@ -108,7 +108,7 @@ impl Grid {
 
     pub fn show<R>(self, ui: &mut Ui, body: impl FnOnce(&mut Ui) -> R) -> InnerResponse<'_, R> {
         let active_layer = ui.forest.current_layer();
-        let idx = ui.forest.tree_mut(active_layer).grid.push_def(self.def);
+        let idx = ui.forest.trees[active_layer].grid.push_def(self.def);
         let mut element = self.element;
         element.mode_payload = idx;
 

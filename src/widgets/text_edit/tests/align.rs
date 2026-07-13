@@ -88,7 +88,7 @@ fn warmup_then(
 fn shape_origins(ui: &Ui, node: NodeId) -> (Option<glam::Vec2>, Option<glam::Vec2>) {
     let mut text_origin = None;
     let mut caret_origin = None;
-    for s in ui.forest.tree(Layer::Main).shapes_of(node) {
+    for s in ui.forest.trees[Layer::Main].shapes_of(node) {
         match s {
             ShapeRecord::Text {
                 local_origin: Some(o),
@@ -327,7 +327,7 @@ fn selection_rects_offset_matches_text() {
     // first RoundedRect with a `local_rect` in the leaf's stream.
     let first_rounded = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::RoundedRect { local_rect, .. } => *local_rect,
@@ -668,7 +668,7 @@ mod per_line {
         // (a) `Shape::Text.align` reflects the user's text_align.
         let arena = ui.ctx.frame_arena.inner();
         let bytes = arena.fmt_scratch.as_str();
-        let tree = ui.forest.tree(Layer::Main);
+        let tree = &ui.forest.trees[Layer::Main];
         let shape_align = tree.shapes_of(node).find_map(|s| match s {
             ShapeRecord::Text { align, text, .. } => Some((*align, text.as_str(bytes).to_owned())),
             _ => None,

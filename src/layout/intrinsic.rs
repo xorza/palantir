@@ -273,7 +273,7 @@ mod tests {
 
         let child = ui
             .forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .children(root)
             .map(|c| c.id)
             .next()
@@ -309,7 +309,7 @@ mod tests {
 
         let child = ui
             .forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .children(root)
             .map(|c| c.id)
             .next()
@@ -321,7 +321,7 @@ mod tests {
 
         let arena = ui.ctx.frame_arena.inner();
         let v = ui.layout_engine.intrinsic(
-            ui.forest.tree(Layer::Main),
+            &ui.forest.trees[Layer::Main],
             child,
             Axis::X,
             LenReq::MinContent,
@@ -371,7 +371,7 @@ mod tests {
 
         let arena = ui.ctx.frame_arena.inner();
         let _ = ui.layout_engine.intrinsic(
-            ui.forest.tree(Layer::Main),
+            &ui.forest.trees[Layer::Main],
             root,
             Axis::X,
             LenReq::MaxContent,
@@ -386,7 +386,7 @@ mod tests {
             !ui.layout_engine.scratch.intrinsics[root.idx()][slot].is_nan(),
             "root slot must be cached"
         );
-        for c in ui.forest.tree(Layer::Main).children(root).map(|c| c.id) {
+        for c in ui.forest.trees[Layer::Main].children(root).map(|c| c.id) {
             assert!(
                 !ui.layout_engine.scratch.intrinsics[c.idx()][slot].is_nan(),
                 "child {} slot must be cached after parent query",

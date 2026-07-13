@@ -129,7 +129,7 @@ mod tests {
             });
         });
         let node = node.unwrap();
-        let tree = ui.forest.tree(Layer::Main);
+        let tree = &ui.forest.trees[Layer::Main];
         let mut shapes = tree.shapes_of(node);
         assert!(
             matches!(shapes.next(), Some(ShapeRecord::GpuView { .. })),
