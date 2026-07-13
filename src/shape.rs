@@ -505,9 +505,9 @@ pub enum PolylineColors<'a> {
     /// gradient along the stroke.
     PerPoint(&'a [Color]),
     /// One color per segment. `len()` must equal
-    /// `points.len() - 1`. Tessellator duplicates interior
-    /// cross-sections so each segment paints as a solid block —
-    /// no color bleed at joins.
+    /// `points.len() - 1`. Each segment renders as its own solid
+    /// block (join chrome blends the two neighbors) — no color
+    /// bleed at joins.
     PerSegment(&'a [Color]),
 }
 
