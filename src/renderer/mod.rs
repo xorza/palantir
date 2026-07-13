@@ -14,7 +14,7 @@
 //! `RenderCmdBuffer` itself, since pixel snap and scissor rects don't
 //! apply.
 //!
-//! Both halves are owned and driven from [`WindowRenderer`](crate::window_renderer::WindowRenderer),
+//! Both halves are owned and driven from [`WindowRenderer`](crate::host::window_renderer::WindowRenderer),
 //! the public top-level handle.
 pub mod backend;
 pub(crate) mod caches;

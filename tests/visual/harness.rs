@@ -3,7 +3,7 @@
 
 use std::sync::OnceLock;
 
-use aperture::offscreen_host::OffscreenHost;
+use aperture::host::offscreen::OffscreenHost;
 use aperture::{Color, DebugOverlayConfig, FixedClock, TextShaper, Ui};
 use glam::UVec2;
 use image::RgbaImage;

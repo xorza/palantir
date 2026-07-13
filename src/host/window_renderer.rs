@@ -22,8 +22,8 @@
 
 use std::time::Instant;
 
-use crate::clock::{Clock, RealtimeClock};
-use crate::context::HostContext;
+use crate::host::clock::{Clock, RealtimeClock};
+use crate::host::context::HostContext;
 use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
@@ -63,8 +63,8 @@ pub struct WindowRenderer {
     /// How this window's frames reach the target — see [`PresentStrategy`].
     strategy: PresentStrategy,
     /// Per-frame time source — `clock.now()` feeds `Ui::frame` each call.
-    /// Injected at construction ([`RealtimeClock`](crate::clock::RealtimeClock)
-    /// for on-screen windows, [`FixedClock`](crate::clock::FixedClock) for a
+    /// Injected at construction ([`RealtimeClock`](crate::host::clock::RealtimeClock)
+    /// for on-screen windows, [`FixedClock`](crate::host::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
     clock: Box<dyn Clock>,
     /// `Some(instant the window went occluded)` while occluded — `frame()`
@@ -232,7 +232,7 @@ impl WindowRendererBuilder<'_> {
     }
 
     /// Per-frame time source. Default a wall-clock [`RealtimeClock`]; a
-    /// [`FixedClock`](crate::clock::FixedClock) makes an offscreen render
+    /// [`FixedClock`](crate::host::clock::FixedClock) makes an offscreen render
     /// reproducible.
     pub(crate) fn clock(mut self, clock: Box<dyn Clock>) -> Self {
         self.clock = clock;

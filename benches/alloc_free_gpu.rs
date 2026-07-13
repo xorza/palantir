@@ -30,7 +30,7 @@ mod fixture;
 use std::sync::OnceLock;
 
 use aperture::Color;
-use aperture::offscreen_host::OffscreenHost;
+use aperture::host::offscreen::OffscreenHost;
 use fixture::{FormState, build_ui};
 use glam::UVec2;
 use pollster::FutureExt;

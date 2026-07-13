@@ -51,7 +51,7 @@
 #[path = "support/frame_fixture.rs"]
 mod fixture;
 
-use aperture::offscreen_host::OffscreenHost;
+use aperture::host::offscreen::OffscreenHost;
 use aperture::renderer::frontend::Frontend;
 use aperture::ui::frame_report::{RenderKind, RenderPlan};
 use aperture::{Color, Display, Ui};
