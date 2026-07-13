@@ -8,7 +8,7 @@ use crate::primitives::background::Background;
 use crate::primitives::brush::Brush;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
-use crate::shape::{LineCap, LineJoin, Shape};
+use crate::shape::{LineCap, Shape};
 use crate::text::TEXT_SCALE_STEP;
 use crate::ui::damage::region::DamageRegion;
 use crate::ui::damage::{Damage, DamageEngine};
