@@ -96,11 +96,10 @@ impl MeshPipeline {
         self.index_buffer.upload_instances(ctx, indices);
     }
 
-    /// Bind once per pass, before iterating `meshes` and issuing
-    /// `draw_range` per group entry. The shared viewport bind group
-    /// at slot 0 is set once per pass by `WgpuBackend::run_main_pass`
-    /// — switching pipelines doesn't invalidate it because all four
-    /// pipelines share the same `@group(0)` layout.
+    /// Bind pipeline + vertex/instance/index buffers, then issue one
+    /// [`Self::draw`] per mesh in the batch. Mesh binds no groups —
+    /// the viewport rides the shared immediate region, re-pushed by
+    /// the backend's `rebind!` after every pipeline switch.
     pub(crate) fn bind<'a>(
         &'a self,
         pass: &mut wgpu::RenderPass<'a>,

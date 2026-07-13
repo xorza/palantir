@@ -64,11 +64,12 @@ pub(crate) enum RenderStep {
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },
-    /// Bind the curve pipeline + issue a single indexed-instanced draw
-    /// covering every `CurveInstance` in the referenced batch. One
-    /// `CurveBatch { batch }` step → one bind → one `draw_indexed`.
-    /// This is the "one draw call per scissor group" the architecture
-    /// targets for native GPU curves.
+    /// Bind the stroke pipeline + issue a single non-indexed instanced
+    /// draw covering every `CurveInstance` in the referenced batch
+    /// (the vertex shader expands each instance's quads from
+    /// `vertex_index` — no index buffer). One `CurveBatch { batch }`
+    /// step → one bind → one `draw`. This is the "one draw call per
+    /// scissor group" the architecture targets for native GPU strokes.
     CurveBatch { batch: usize },
 }
 
@@ -183,8 +184,23 @@ pub(crate) fn for_each_step(
             &mut emit,
         );
 
-        if use_stencil {
-            stencil.establish(masks.groups[i], effective, &mut emit);
+        // A group can be content-less at walk time — its only text
+        // coalesced into a batch draining at a later group. Skip the
+        // scissor / chain establish entirely then: a scissor with no
+        // draws is a dead command, and on the stencil path the
+        // establish would stamp a whole mask chain for nothing (the
+        // next consumer establishes its own state regardless).
+        let has_content = g.quads.len != 0
+            || pending_at(&buffer.text_batches, cursors.text, i)
+            || pending_at(&buffer.mesh_batches, cursors.mesh, i)
+            || pending_at(&buffer.image_batches, cursors.image, i)
+            || pending_at(&buffer.curve_batches, cursors.curve, i);
+        if has_content {
+            if use_stencil {
+                stencil.establish(masks.groups[i], effective, &mut emit);
+            } else {
+                emit(RenderStep::SetScissor(effective));
+            }
             emit_group_body(
                 buffer,
                 damage_scissor,
@@ -196,26 +212,6 @@ pub(crate) fn for_each_step(
                 &mut stencil,
                 &mut emit,
             );
-        } else {
-            emit(RenderStep::SetScissor(effective));
-            if g.quads.len != 0
-                || pending_at(&buffer.text_batches, cursors.text, i)
-                || pending_at(&buffer.mesh_batches, cursors.mesh, i)
-                || pending_at(&buffer.image_batches, cursors.image, i)
-                || pending_at(&buffer.curve_batches, cursors.curve, i)
-            {
-                emit_group_body(
-                    buffer,
-                    damage_scissor,
-                    i,
-                    effective,
-                    masks,
-                    use_stencil,
-                    &mut cursors,
-                    &mut stencil,
-                    &mut emit,
-                );
-            }
         }
     }
     // Trailing drain — batches anchored in tail-skipped groups. Runs
