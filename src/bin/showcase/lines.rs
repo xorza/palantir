@@ -4,8 +4,8 @@
 //! cell paints raw `Shape`s via `ui.add_shape` into a captioned demo
 //! surface.
 
-use crate::showcase::support;
-use crate::showcase::support::{cell_row, demo_cell};
+use crate::support;
+use crate::support::{cell_row, demo_cell};
 use aperture::{Brush, Color, LineCap, LineJoin, LinearGradient, PolylineColors, Shape, Stop, Ui};
 use glam::Vec2;
 

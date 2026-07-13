@@ -9,7 +9,7 @@ use crate::forest::per_layer::PerLayer;
 use crate::forest::seen_ids::{Endpoint, EndpointOutcome, SeenIds};
 use crate::forest::tree::Tree;
 use crate::forest::tree::paint_anims::{PaintAnim, PaintAnimEntry};
-use crate::forest::tree::record::{Placement, RecordingScratch};
+use crate::forest::tree::recording::{Placement, RecordingScratch};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
@@ -42,7 +42,6 @@ pub(crate) struct Chrome<'a> {
 
 pub(crate) mod element;
 pub(crate) mod frame_arena;
-pub(crate) mod node;
 pub(crate) mod per_layer;
 pub(crate) mod rollups;
 pub(crate) mod seen_ids;

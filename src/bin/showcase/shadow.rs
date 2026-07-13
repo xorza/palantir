@@ -7,8 +7,8 @@
 //! fill, so it composes correctly under semi-transparent fills.
 //! Light cell surfaces because black-on-dark shadows don't read.
 
-use crate::showcase::support;
-use crate::showcase::support::{cell_row, demo_cell_light};
+use crate::support;
+use crate::support::{cell_row, demo_cell_light};
 use aperture::{Background, Color, Configure, Corners, Panel, Rect, Shadow, Shape, Sizing, Ui};
 use glam::Vec2;
 

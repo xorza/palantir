@@ -6,8 +6,8 @@
 //! ContextMenus attach to any sensed widget and auto-open on
 //! secondary-click at the pointer position.
 
-use crate::showcase::support;
-use crate::showcase::support::{row, section, surface_bg};
+use crate::support;
+use crate::support::{row, section, surface_bg};
 use aperture::{
     Align, Button, Configure, ContextMenu, Frame, Justify, Key, MenuItem, Mods, Panel, Popup, Rect,
     ResponseSnapshot, Sense, Shortcut, Sizing, Spacing, Text, Tooltip, Ui, WidgetId,

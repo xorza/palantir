@@ -26,7 +26,7 @@ use crate::input::shortcut::Shortcut;
 use crate::input::subscriptions::{KeyboardSense, PointerSense};
 use crate::input::{InputEvent, InputState};
 use crate::layout::Layout;
-use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::engine::LayoutEngine;
 use crate::layout::support::TextCtx;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::EPS;

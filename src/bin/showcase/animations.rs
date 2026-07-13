@@ -4,7 +4,7 @@
 //! fixture for `Ui::animate` end-to-end (target → tick → record →
 //! repaint loop).
 
-use crate::showcase::support;
+use crate::support;
 use aperture::{AnimSpec, Button, Configure, Easing, Frame, Panel, Sizing, Text, Ui, WidgetId};
 
 #[derive(Default)]

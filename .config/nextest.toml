@@ -1,6 +1,0 @@
-[test-groups]
-visual = { max-threads = 4 }
-
-[[profile.default.overrides]]
-filter = 'binary(visual)'
-test-group = 'visual'

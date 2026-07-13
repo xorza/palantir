@@ -3,7 +3,7 @@
 //! shader at `quad.wgsl` next to this file.
 
 use crate::primitives::color::ColorF16;
-use crate::primitives::paint::FillKind;
+use crate::primitives::fill_wire::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;

@@ -144,7 +144,7 @@ pub use widgets::separator::Separator;
 pub use widgets::slider::Slider;
 pub use widgets::spinner::Spinner;
 pub use widgets::splitter::{SplitHalf, Splitter};
-pub use widgets::switch::ToggleSwitch;
+pub use widgets::switch::Switch;
 pub use widgets::text::Text;
 pub use widgets::text_edit::{TextEdit, TextEditResponse};
 pub use widgets::theme::Theme;
@@ -169,12 +169,12 @@ pub use window::{CursorIcon, WindowConfig, WindowGeometry, WindowIcon, WindowTok
 mod hot_struct_sizes {
     use crate::forest::element::Element;
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
-    use crate::forest::node::NodeRecord;
     use crate::forest::rollups::ContentHash;
     use crate::forest::shapes::record::{
         ChromeRow, LoweredGradient, LoweredShadow, ShapeRecord, ShapeStroke,
     };
     use crate::forest::tree::ExtrasIdx;
+    use crate::forest::tree::node::NodeRecord;
     use crate::layout::ShapedText;
     use crate::primitives::background::Background;
     use crate::primitives::brush::Brush;

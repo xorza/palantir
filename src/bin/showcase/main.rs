@@ -5,12 +5,29 @@ use aperture::{
 use std::cell::RefCell;
 use std::rc::Rc;
 
-mod showcase;
-use showcase::app_state::{self, AppState};
-use showcase::{
-    animations, clip, controls, cube, debug, dialogs, drag, gradients, image, layout, lines,
-    overlays, pan_zoom, panels, scroll, shadow, shapes, text, text_edit,
-};
+mod animations;
+mod app_state;
+mod clip;
+mod controls;
+mod cube;
+mod debug;
+mod dialogs;
+mod drag;
+mod gradients;
+mod image;
+mod layout;
+mod lines;
+mod overlays;
+mod pan_zoom;
+mod panels;
+mod scroll;
+mod shadow;
+mod shapes;
+mod support;
+mod text;
+mod text_edit;
+
+use app_state::AppState;
 
 /// Token for the bootstrap window (the showcase itself).
 const MAIN_WINDOW: WindowToken = WindowToken(0);

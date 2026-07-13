@@ -2,7 +2,7 @@
 //! example. A synthetic but realistic UI tree exercising every public
 //! layout driver (HStack/VStack/ZStack/Canvas/Grid/WrapStack/Scroll),
 //! every public widget (Panel/Frame/Button/Text/Grid/Scroll/Checkbox/
-//! RadioButton/ToggleSwitch/Slider/DragValue/ComboBox/ProgressBar/
+//! RadioButton/Switch/Slider/DragValue/ComboBox/ProgressBar/
 //! Separator/TextEdit/Tooltip/Popup), every `Shape` variant
 //! (RoundedRect / Line / Polyline / CubicBezier / QuadraticBezier /
 //! Mesh / Text), every `Brush` variant (Solid / Linear / Radial /
@@ -18,7 +18,7 @@ use aperture::{
     Align, Background, Brush, Button, Checkbox, Color, ColorU8, ComboBox, Configure, ConicGradient,
     Corners, DragValue, Frame, Grid, Justify, LineCap, LineJoin, LinearGradient, Mesh, Panel,
     PolylineColors, Popup, ProgressBar, RadialGradient, RadioButton, Rect, Scroll, Separator,
-    Shadow, Shape, Sizing, Slider, Stop, Stroke, Text, TextEdit, TextStyle, TextWrap, ToggleSwitch,
+    Shadow, Shape, Sizing, Slider, Stop, Stroke, Switch, Text, TextEdit, TextStyle, TextWrap,
     Tooltip, Track, Ui,
 };
 
@@ -51,7 +51,7 @@ pub struct FormState {
     /// `parent_transform`) would meaningfully reduce cascade cost.
     pub scroll_offset: glam::Vec2,
     /// Backing values for the controls row (Slider / DragValue /
-    /// ComboBox / ToggleSwitch). Held constant across bench iterations —
+    /// ComboBox / Switch). Held constant across bench iterations —
     /// only `tick` mutates — so they never perturb the steady-state
     /// damage `Skip` / `Partial` invariants the arms assert; they widen
     /// widget coverage only. Seeded to mid-range values so the visual
@@ -218,7 +218,7 @@ pub fn build_ui(state: &mut FormState, scale: usize, ui: &mut Ui) {
                                         .child_align(Align::CENTER)
                                         .size((Sizing::FILL, Sizing::Hug))
                                         .show(ui, |ui| {
-                                            ToggleSwitch::new(&mut state.dark_mode)
+                                            Switch::new(&mut state.dark_mode)
                                                 .id_salt("dark-mode")
                                                 .label("dark mode")
                                                 .show(ui);

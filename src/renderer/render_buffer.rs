@@ -1,6 +1,6 @@
 use crate::display::Display;
-use crate::primitives::paint::FillKind;
-use crate::primitives::paint::LutRow;
+use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_wire::LutRow;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, color::ColorU8, corners::Corners, rect::Rect, urect::URect};
 use crate::renderer::gpu_view::GpuPaintRef;

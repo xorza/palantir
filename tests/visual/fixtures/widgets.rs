@@ -4,7 +4,7 @@
 use aperture::{
     Background, Brush, Button, Color, ColorU8, ComboBox, Configure, ConicGradient, Corners,
     DragValue, Frame, LineCap, LineJoin, LinearGradient, Modal, Panel, ProgressBar, RadialGradient,
-    Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Text, ToggleSwitch, ToggleTheme,
+    Rect, Shadow, Shape, Sizing, Slider, Spinner, Stroke, Switch, Text, ToggleTheme,
 };
 use glam::{UVec2, Vec2};
 use image::Rgba;
@@ -1002,7 +1002,7 @@ fn progress_bar_half_matches_golden() {
     assert_matches_golden("progress_bar_half", &img, Tolerance::default());
 }
 
-/// ToggleSwitch on + off with animation disabled: pins the knob at each
+/// Switch on + off with animation disabled: pins the knob at each
 /// rest position and exercises the `Canvas` track + absolutely-positioned
 /// knob path (the only widget that places a child via `.position`).
 #[test]
@@ -1019,12 +1019,12 @@ fn toggle_switch_states_matches_golden() {
             .gap(16.0)
             .size((Sizing::FILL, Sizing::FILL))
             .show(ui, |ui| {
-                ToggleSwitch::new(&mut on)
+                Switch::new(&mut on)
                     .id_salt("on")
                     .label("on")
                     .style(style.clone())
                     .show(ui);
-                ToggleSwitch::new(&mut off)
+                Switch::new(&mut off)
                     .id_salt("off")
                     .label("off")
                     .style(style.clone())

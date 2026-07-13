@@ -28,7 +28,7 @@ use crate::primitives::widget_id::WidgetId;
 use glam::Vec2;
 use rustc_hash::FxHashMap;
 
-use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::engine::LayoutEngine;
 use crate::layout::stack;
 use crate::layout::support::TextCtx;
 use crate::layout::zstack;

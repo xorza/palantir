@@ -7,8 +7,8 @@
 //! Below, `TranslateScale` transforms apply to whole subtrees —
 //! descendants paint translated / scaled, stroke widths included.
 
-use crate::showcase::support;
-use crate::showcase::support::{captioned_cell, demo_cell, swatch_bg};
+use crate::support;
+use crate::support::{captioned_cell, demo_cell, swatch_bg};
 use aperture::{
     Background, Color, Configure, Corners, Frame, Panel, Sizing, Stroke, TranslateScale, Ui,
 };

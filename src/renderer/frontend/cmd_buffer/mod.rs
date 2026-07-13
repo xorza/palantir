@@ -42,8 +42,8 @@
 use crate::forest::shapes::record::{LoweredGradient, ShapeStroke};
 use crate::primitives::approx::noop_f32;
 use crate::primitives::brush::FillAxis;
-use crate::primitives::paint::FillKind;
-use crate::primitives::paint::LutRow;
+use crate::primitives::fill_wire::FillKind;
+use crate::primitives::fill_wire::LutRow;
 use crate::primitives::{
     color::{Color, ColorF16},
     corners::Corners,

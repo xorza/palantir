@@ -17,7 +17,7 @@ const ROW: Color = Color::rgb(0.42, 0.55, 0.78);
 
 /// Override the default near-black thumb to a light translucent fill
 /// so it shows up against the dark fixture background. Mirrors what
-/// the showcase binary (`src/main.rs`) does.
+/// the showcase binary (`src/bin/showcase/main.rs`) does.
 fn light_thumb_theme(ui: &mut aperture::Ui) {
     ui.theme.scrollbar = ScrollbarTheme {
         thumb: Color::rgba(1.0, 1.0, 1.0, 0.55),

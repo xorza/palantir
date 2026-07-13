@@ -1,4 +1,4 @@
-use crate::showcase::support;
+use crate::support;
 use aperture::{
     Background, Color, Configure, Corners, Frame, Panel, Sense, Sizing, Stroke, Ui, WidgetId,
 };

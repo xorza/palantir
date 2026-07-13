@@ -41,12 +41,12 @@ mkdir -p tmp
 TRACE="tmp/metal-${TARGET}.trace"
 rm -rf "$TRACE"
 
-# The showcase lives in src/main.rs (the package binary); everything
+# The showcase lives in src/bin/showcase/; everything
 # else resolves as a cargo example.
 if [ "$TARGET" = "showcase" ]; then
     echo "==> Building showcase binary (release)"
-    BUILD_ARGS=(build --release --bin aperture)
-    BIN="target/release/aperture"
+    BUILD_ARGS=(build --release --bin showcase)
+    BIN="target/release/showcase"
 else
     echo "==> Building example '$TARGET' (release)"
     BUILD_ARGS=(build --release --example "$TARGET")
