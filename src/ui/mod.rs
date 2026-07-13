@@ -549,6 +549,13 @@ impl Ui {
             && self.prev_stamp.is_some()
             && !self.repaint_requested
             && !input_forces_record
+            // An OS close request is surfaced to the app only during
+            // record (`Ui::close_requested` + the `keep_open` veto), so
+            // a wants_close frame must take the Full path — PaintOnly
+            // would skip the record and the host would close the window
+            // with the veto unconsulted (a spinner's every-frame ANIM
+            // wake makes that deterministic, a caret blink a race).
+            && !self.wants_close
             && fired_reasons.is_anim_only();
         if paint_only {
             FramePlan::PaintOnly
@@ -819,8 +826,10 @@ impl Ui {
     /// frame and only moves forward. Read-only on purpose: the clock is
     /// host-driven, and a direct write would desync it from the wake
     /// queue. Use for time-driven animation that needs a continuous
-    /// clock rather than a tween toward a fixed target (e.g. `Spinner`);
-    /// pair with [`Self::request_repaint`] to keep the host awake.
+    /// clock rather than a tween toward a fixed target; pair with
+    /// [`Self::request_repaint`] to keep the host awake. (Shape-level
+    /// continuous motion like `Spinner`'s rides `PaintAnim` instead —
+    /// sampled at encode time, no record-time clock read.)
     pub fn now(&self) -> Duration {
         self.time
     }
