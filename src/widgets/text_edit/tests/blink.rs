@@ -56,7 +56,7 @@ fn caret_blinks_on_and_off_while_focused() {
             FrameStamp::new(display, Duration::from_secs_f32(now_secs)),
             |ui| f(ui),
         );
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
     }
 
     let mut ui = ui_at_no_cosmic(NARROW);
@@ -162,7 +162,7 @@ fn caret_anim_does_not_damage_between_quantum_boundaries() {
                 record(ui, buf);
             },
         );
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         report
     };
 
@@ -223,7 +223,7 @@ fn focus_gain_resets_blink_even_without_caret_change() {
         let r = ui.frame(FrameStamp::new(display, Duration::from_secs_f32(t)), |ui| {
             body(ui, buf)
         });
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         r
     };
 

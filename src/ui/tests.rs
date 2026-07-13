@@ -854,7 +854,7 @@ fn frame_stats_overlay_records_partial_damage() {
             .size(50.0)
             .show(ui);
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert_eq!(ui.fps_ema, 0.0);
     assert!(
         !ui.forest.trees[Layer::Debug].records.is_empty(),
@@ -871,7 +871,7 @@ fn frame_stats_overlay_records_partial_damage() {
             .size(50.0)
             .show(ui);
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert!(
         matches!(
             report.plan,
@@ -1107,7 +1107,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
 
@@ -1133,7 +1133,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Bug regression: PaintOnly skips post_record, but must still
     // re-fold the retained paint_anims so the *next* blink boundary
@@ -1193,7 +1193,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
     // Frame 1 at the blink boundary: only the anim wake fires →
@@ -1242,7 +1242,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
         body(ui, half);
         ui.request_repaint();
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert!(r0.repaint_requested);
 
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1292,7 +1292,7 @@ fn input_policy_routes_paint_only_gate() {
         let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
@@ -1324,7 +1324,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1344,7 +1344,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         ui.on_input(InputEvent::KeyDown {
@@ -1384,7 +1384,7 @@ fn cold_ui() -> Ui {
 fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(COLD, 1.0);
     let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), record);
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 }
 
 /// On a true first frame the user closure runs **twice** — once for the

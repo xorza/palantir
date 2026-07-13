@@ -36,7 +36,7 @@ const DISPLAY: Display = Display {
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
     let report = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), f);
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -797,7 +797,7 @@ fn popup_eater_does_not_force_full_repaint() {
 /// discarded pre-pass in `run_frame` (triggered by any pointer /
 /// key event via `frame_had_action`) calls `pre_record` →
 /// `reset_to_idle`, then never reaches `post_record`. Pass 2's
-/// `pre_record` then sees `frame_state == IDLE` and treats it as
+/// `pre_record` then sees `frame_submitted == false` and treats it as
 /// "host dropped the previous frame", invalidating prev_surface
 /// and forcing `Damage::Full`.
 #[test]
@@ -821,13 +821,13 @@ fn click_on_empty_bg_does_not_force_full() {
     };
     // Frame 0 (cold): expect Full. Submit.
     ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), build);
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     // Frame 1 (warm): nothing changed → Skip.
     let warm = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), build)
         .plan;
     assert!(warm.is_none(), "warm frame must Skip");
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Click on empty background (far from the 50×50 frame at origin).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
@@ -849,9 +849,9 @@ fn click_on_empty_bg_does_not_force_full() {
 }
 
 /// Regression: a `Skip` frame that the host bypasses (no
-/// `backend.submit` → no `mark_submitted`) must not force the next
-/// frame to `Full`. `post_record` marks `Skip` as submitted directly so
-/// the next `pre_record`'s auto-rewind doesn't kick in.
+/// `backend.submit` → `frame_submitted` never set) must not force the
+/// next frame to `Full`. `post_record` marks `Skip` as submitted
+/// directly so the next `pre_record`'s auto-rewind doesn't kick in.
 #[test]
 fn skip_frame_does_not_force_next_to_full() {
     let mut ui = Ui::for_test();
@@ -867,7 +867,7 @@ fn skip_frame_does_not_force_next_to_full() {
             ..
         })
     ));
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Identical content → Skip. WindowRenderer::render confirms submitted on
     // the skip path too (copies the backbuffer onto the swapchain);
@@ -878,7 +878,7 @@ fn skip_frame_does_not_force_next_to_full() {
         })
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Next frame: still no diff. Pre-fix this could regress to Full if
     // the skip wasn't acked — WindowRenderer::render owns that ack now.
@@ -895,7 +895,7 @@ fn skip_frame_does_not_force_next_to_full() {
 
 /// Regression: a host that early-returns on `skip_render` (the natural
 /// pattern — no swapchain acquire when there's nothing to paint, see
-/// `examples/showcase/main.rs`) never calls `mark_submitted`. Without
+/// `examples/showcase/main.rs`) never sets `frame_submitted`. Without
 /// `Ui::frame` self-acking skip frames, the next paint frame's
 /// `classify_frame` saw `frame_skipped = true` and escalated
 /// to `Full` — visible as a full-window red flash in the damage debug
@@ -915,7 +915,7 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
             ..
         })
     ));
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Identical content → Skip. WindowRenderer bypasses `render()` entirely and
     // never acks; `Ui::frame` must self-ack the skip.
@@ -925,7 +925,7 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
         })
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
-    // NOTE: deliberately no `mark_submitted` here.
+    // NOTE: deliberately no `frame_submitted = true` here.
 
     // Authoring change → expect `Partial`, not `Full`.
     let next = ui
@@ -1597,17 +1597,22 @@ fn content_change_under_constant_transform_stays_row_tight() {
 
 /// Soundness pin for the tier's entry-less leg: a node skipped by the
 /// Vacant-arm off-surface filter (no `prev` snapshot) that scrolls
-/// *into* view under tier 1.5 is covered by the curr-extent push, a
-/// following still frame is a clean Skip (tier 1 at the subtree root —
-/// the node legitimately stays entry-less), and a later content change
-/// on it still lands damage via the Vacant insert arm.
+/// *into* view under tier 1.5 is covered by the curr-extent push and
+/// gets its snapshot inserted in the same pass, a following still
+/// frame is a clean Skip (tier 1 at the subtree root), a second move
+/// clears its previous position (the inserted snapshot feeds the
+/// prev-extent fold), a content change on it lands its rect, and
+/// removing it while visible clears its pixels (the eviction tail
+/// finds the snapshot). The last two legs regress without the tier-1.5
+/// insert: the second move smears (old pixels stay) and the removal
+/// computes `Damage::Skip` outright.
 #[test]
 fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
     let mut ui = Ui::for_test();
     // Surface is 200×200 (test DISPLAY). Three 100-wide frames: "c"
     // starts at x = 200 — exactly off-surface (edge-touching rects
     // don't intersect), so its Vacant visit skips the snapshot insert.
-    let build = |dx: f32, c_fill: Color, ui: &mut Ui| {
+    let build = |dx: f32, c_fill: Option<Color>, ui: &mut Ui| {
         Panel::hstack()
             .id(WidgetId::from_hash("outer"))
             .transform(TranslateScale::from_translation(Vec2::new(dx, 0.0)))
@@ -1615,7 +1620,9 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                 Panel::hstack()
                     .id(WidgetId::from_hash("inner"))
                     .show(ui, |ui| {
-                        for (key, fill) in [("a", BLUE), ("b", BLUE), ("c", c_fill)] {
+                        let cells = [("a", Some(BLUE)), ("b", Some(BLUE)), ("c", c_fill)];
+                        for (key, fill) in cells {
+                            let Some(fill) = fill else { continue };
                             Frame::new()
                                 .id(WidgetId::from_hash(key))
                                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
@@ -1628,12 +1635,13 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
                     });
             });
     };
-    frame(&mut ui, |ui| build(0.0, RED, ui));
+    frame(&mut ui, |ui| build(0.0, Some(RED), ui));
 
     // Scroll left: "c" enters at (100..200). Tier 1.5 fires at
-    // "inner"; "c" has no snapshot (off-surface skip last frame) but
-    // the curr-extent push covers its pixels.
-    let damage = frame(&mut ui, |ui| build(-100.0, RED, ui));
+    // "inner"; "c" had no snapshot (off-surface skip last frame) — the
+    // curr-extent push covers its pixels and the insert leg snapshots
+    // it now that it's visible.
+    let damage = frame(&mut ui, |ui| build(-100.0, Some(RED), ui));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
@@ -1646,24 +1654,52 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         region.iter_rects().collect::<Vec<_>>(),
     );
 
-    // Still frame: "c" is visible but entry-less — tier 1 skips at
-    // the root and nothing is damaged, which is correct (no pixels
-    // changed; they were painted by the scroll frame).
-    let damage = frame(&mut ui, |ui| build(-100.0, RED, ui));
-    assert_eq!(damage, Damage::Skip, "still frame with entry-less node");
+    // Still frame: nothing changed — tier 1 skips at the root.
+    let damage = frame(&mut ui, |ui| build(-100.0, Some(RED), ui));
+    assert_eq!(damage, Damage::Skip, "still frame after the move");
 
-    // Content change on the entry-less node: subtree hashes flip up
-    // the chain, the walk descends, and "c" takes the Vacant insert
-    // arm — its full rect is damage.
-    let damage = frame(&mut ui, |ui| build(-100.0, BLUE, ui));
+    // Second move: "c" shifts to (0..100). Its just-inserted snapshot
+    // joins the prev-extent fold, so its old pixels at (100..200)
+    // repaint alongside the new position.
+    let damage = frame(&mut ui, |ui| build(-200.0, Some(RED), ui));
+    let Damage::Partial(region) = damage else {
+        panic!("expected Partial, got {damage:?}");
+    };
+    for (label, probe) in [
+        ("old", Rect::new(150.0, 0.0, 10.0, 40.0)),
+        ("new", Rect::new(50.0, 0.0, 10.0, 40.0)),
+    ] {
+        assert!(
+            region.any_intersects(probe),
+            "second move must damage c's {label} position; region = {:?}",
+            region.iter_rects().collect::<Vec<_>>(),
+        );
+    }
+
+    // Content change on "c" (now snapshotted, at 0..100): the walk
+    // descends and the changed-paints arm damages its rect.
+    let damage = frame(&mut ui, |ui| build(-200.0, Some(BLUE), ui));
     let Damage::Partial(region) = damage else {
         panic!("expected Partial, got {damage:?}");
     };
     let rects: Vec<Rect> = region.iter_rects().collect();
     assert_eq!(
         rects,
-        vec![Rect::new(100.0, 0.0, 100.0, 40.0)],
-        "content change on an entry-less node damages its rect",
+        vec![Rect::new(0.0, 0.0, 100.0, 40.0)],
+        "content change on the revealed node damages its rect",
+    );
+
+    // Remove "c" while visible: the eviction tail finds the inserted
+    // snapshot and clears its pixels.
+    let damage = frame(&mut ui, |ui| build(-200.0, None, ui));
+    let covers_removed = match damage {
+        Damage::Full => true,
+        Damage::Partial(region) => region.any_intersects(Rect::new(50.0, 0.0, 10.0, 40.0)),
+        Damage::Skip => false,
+    };
+    assert!(
+        covers_removed,
+        "removing the revealed node must damage its pixels; got {damage:?}",
     );
 }
 
@@ -1841,13 +1877,13 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} f1"
         );
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         let f2 = ui
             .frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
             .plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
 
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = ui
@@ -1863,7 +1899,7 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} display change"
         );
-        ui.frame_state.mark_submitted();
+        ui.frame_submitted = true;
         assert!(
             !ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
@@ -1937,9 +1973,9 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     };
 
     ui.frame(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     ui.frame(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -1994,7 +2030,7 @@ fn stable_surface_does_not_short_circuit() {
     ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
         build(ui, BLUE)
     });
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
     let warm = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             build(ui, BLUE)
@@ -2002,7 +2038,7 @@ fn stable_surface_does_not_short_circuit() {
         .plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
-    ui.frame_state.mark_submitted();
+    ui.frame_submitted = true;
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that

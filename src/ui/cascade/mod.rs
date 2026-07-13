@@ -8,6 +8,7 @@
 //! take `&Cascades` as their single frozen-state handle.
 
 use crate::common::hash::Hasher;
+use crate::display::Display;
 use crate::forest::Forest;
 
 use crate::forest::per_layer::PerLayer;
@@ -17,6 +18,7 @@ use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_p
 use crate::forest::tree::iter::{TreeItem, TreeItems};
 use crate::forest::tree::{NodeId, Tree};
 use crate::input::sense::Sense;
+use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
@@ -420,9 +422,9 @@ impl CascadesEngine {
     /// Walk every tree in paint order; produce one `Cascade` row per
     /// node in each tree's slot, and append a global hit entry per
     /// node. Reads the layout pass's output, writes into `cascades`.
-    /// Anchor offset for each layer is read from the layer's own
-    /// `RootSlot.placement.anchor` — no parent transform plumbing is needed
-    /// because trees never share NodeId space.
+    /// Root placement (`RootSlot.placement`) is already baked into the
+    /// arranged rects by the layout pass, so no parent-transform
+    /// plumbing is needed here — trees never share NodeId space.
     #[profiling::function]
     pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout, cascades: &mut Cascades) {
         let total: usize = forest.trees.0.iter().map(|t| t.records.len()).sum();
@@ -466,6 +468,75 @@ impl CascadesEngine {
         // replaces N per-widget hashmap inserts.
         cascades.by_id.clone_from(&forest.ids.curr);
     }
+}
+
+/// Fingerprint of everything [`CascadesEngine::run`] reads, cheaply.
+/// Equal fingerprints across two frames ⇒ identical cascade output, so
+/// `Ui::post_record` skips the run and reuses last frame's `Cascades`
+/// (O5 stage 0 — full-frame skip, gated on `Ui::prev_cascade_fp`).
+/// Folds:
+/// - the exact surface (a sub-quantum resize can hit the measure
+///   cache yet still re-arrange, so the *exact* rect must be here);
+/// - every root's `subtree_hash`, which already captures all cascade
+///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
+///   (`attrs`), visibility, shapes, chrome;
+/// - scroll `offset`/`zoom`, the one cross-frame arrange input that
+///   lives in `LayoutEngine.scroll_states`, not in `subtree_hash`.
+///
+/// Lives here, beside the walk it mirrors, on purpose: the skip is
+/// only sound while this enumeration covers every input `run_tree`
+/// (and the arrange pass feeding it) consumes. Adding a cascade input
+/// without folding it here silently reuses stale cascades — keep the
+/// two in one review's field of view.
+pub(crate) fn cascade_fingerprint(
+    forest: &Forest,
+    scroll_states: &ScrollStates,
+    display: Display,
+) -> u64 {
+    let mut h = Hasher::new();
+    h.write_u32(display.physical.x);
+    h.write_u32(display.physical.y);
+    h.write_u32(display.scale_factor.to_bits());
+    for (layer, tree) in forest.iter_paint_order() {
+        // Layer discriminant: an identical root subtree migrating
+        // between side layers (Popup → Tooltip) must not alias, or
+        // the skip reuses per-layer columns sized for the old
+        // assignment and the damage pass indexes them out of
+        // bounds.
+        h.write_u8(layer as u8);
+        for slot in &tree.roots {
+            // The root's own id reaches no other hash —
+            // `compute_hashes` folds only child ids into parents,
+            // and a root has no parent — so a re-keyed root with
+            // identical content would otherwise reuse cascades
+            // whose `by_id` still maps the dead old id.
+            h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
+            h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
+            // Layer placement (anchor + measure cap) rides on
+            // `RootSlot`, outside every node hash, yet it feeds
+            // arrange. Fold it so a popup's pass-B flip/clamp —
+            // which changes only the anchor while the body content
+            // is identical — re-runs the cascade instead of reusing
+            // pass A's pre-flip screen rects (else the popup paints
+            // at the raw anchor until an unrelated content change
+            // forces a recompute).
+            h.pod(&slot.placement.anchor);
+            match slot.placement.size {
+                Some(s) => h.pod(&s),
+                None => h.write_u32(u32::MAX),
+            }
+        }
+    }
+    // XOR fold so map iteration order doesn't matter.
+    let mut scroll_fold = 0u64;
+    for (wid, st) in scroll_states.iter() {
+        let mut sh = Hasher::new();
+        sh.write_u64(wid.0);
+        sh.pod(&st.offset);
+        sh.write_u32(st.zoom.to_bits());
+        scroll_fold ^= sh.finish();
+    }
+    h.finish() ^ scroll_fold
 }
 
 /// Finalize one stack frame: write the rolled-up

@@ -23,6 +23,14 @@
 //! evicts the entry in the same diff loop; the prev rects contribute
 //! (clear those pixels), the curr rect doesn't.
 //!
+//! The Vacant arm additionally skips *childless* nodes whose rows are
+//! entirely off-surface — a zoomed-out canvas must not populate the map
+//! with thousands of never-visible snapshots. That skip is repaid in
+//! the moved-subtree arm (tier 1.5): the frame a move puts such a
+//! node's rows on-surface, its snapshot is inserted there, restoring
+//! the induction the prev-extent fold and the removed-widget eviction
+//! tail rely on — every node painting *visible* pixels has an entry.
+//!
 //! **Paint order.** Child markers put the shape/child interleave into
 //! each node's row span, and `compute_hashes` folds child identity
 //! into `node_hash` — so a pure z-order change (raising a node, a
@@ -762,11 +770,13 @@ impl DamageEngine {
                     // stored per node. A node with children always inserts
                     // — its child-marker rows track paint order, and its
                     // children can paint on-surface (canvas overhang) even
-                    // when its own rows don't.
+                    // when its own rows don't. The off-surface half of the
+                    // skip is repaid by tier 1.5's insert leg the frame a
+                    // move puts the rows on-surface (see the module doc's
+                    // row-invariant note).
                     Entry::Vacant(_)
                         if subtree_end[i].end() as usize == i + 1
-                            && !union_screens(curr_paints_slice)
-                                .is_some_and(|u| u.intersects(surface)) =>
+                            && !paints_on_surface(curr_paints_slice, surface) =>
                     {
                         1
                     }
@@ -935,31 +945,87 @@ impl DamageEngine {
                 // length-asserts it) plus the new `cascade_input`.
                 // `hash`/`subtree_hash`/`parent_key` are unchanged by
                 // the same induction, and `paint_span` is reused, so no
-                // arena append/orphan churn.
+                // arena append/orphan churn. Entry-less nodes (skipped
+                // by the Vacant-arm off-surface filter back when they
+                // painted nothing visible) get their snapshot inserted
+                // the moment a move puts their rows on-surface —
+                // without that, the node's pixels stay invisible to
+                // later prev-extent folds and to the removed-widget
+                // eviction tail (stale pixels on the next move /
+                // removal — the second-move and removal legs of
+                // `offscreen_node_scrolling_into_view_is_covered_and_stays_sound`
+                // pin this).
                 let advance = if advance == MOVED_SUBTREE {
                     let end = subtree_end[i].end() as usize;
                     let mut prev_extent: Option<Rect> = None;
+                    // Mini parent stack over the jump so inserted
+                    // snapshots carry the same `parent_key` the
+                    // per-node walk would have stamped. Rides the tail
+                    // of the outer `parent_stack`; truncated below.
+                    let jump_base = parent_stack.len();
                     for j in i..end {
+                        while parent_stack.len() > jump_base
+                            && parent_stack.last().is_some_and(|f| j as u32 >= f.end)
+                        {
+                            parent_stack.pop();
+                        }
+                        // At `j == i` the stack top is still `i`'s own
+                        // parent (or empty at a root), so this reads
+                        // the outer `parent_key` — one expression
+                        // serves the whole range.
+                        let j_parent_key = parent_stack.last().map_or(parent_key, |f| f.key);
+                        let j_end = subtree_end[j].end();
+                        if j_end as usize > j + 1 {
+                            parent_stack.push(ParentFrame {
+                                end: j_end,
+                                key: widget_ids[j].0,
+                            });
+                        }
                         let span = layer_node_paints[j];
                         if span.len == 0 {
                             continue;
                         }
-                        // No entry ⇒ the node was skipped by the
-                        // Vacant-arm off-surface filter last visit; it
-                        // painted nothing then, and its current pixels
-                        // are inside the curr-extent push.
-                        let Some(snap) = prev_map.get_mut(&widget_ids[j]) else {
-                            continue;
-                        };
-                        if let Some(u) = union_screens(&arena.snaps[snap.paint_span.range()]) {
-                            prev_extent = Some(prev_extent.map_or(u, |a| a.union(u)));
+                        match prev_map.get_mut(&widget_ids[j]) {
+                            Some(snap) => {
+                                if let Some(u) =
+                                    union_screens(&arena.snaps[snap.paint_span.range()])
+                                {
+                                    prev_extent = Some(prev_extent.map_or(u, |a| a.union(u)));
+                                }
+                                arena.snaps[snap.paint_span.range()]
+                                    .copy_from_slice(&layer_paints[span.range()]);
+                                snap.cascade_input = cascade_inputs[j];
+                            }
+                            // Off-surface at its last per-node visit ⇒
+                            // it painted nothing, so there are no prev
+                            // pixels to fold; its current pixels are
+                            // inside the curr-extent push either way.
+                            // Insert the snapshot the Vacant arm would
+                            // have once the rows land on-surface, so
+                            // the node is tracked from its first
+                            // visible frame.
+                            None => {
+                                let curr = &layer_paints[span.range()];
+                                if !paints_on_surface(curr, surface) {
+                                    continue;
+                                }
+                                let paint_span = arena.append(curr);
+                                prev_map.insert(
+                                    widget_ids[j],
+                                    NodeSnapshot {
+                                        paint_span,
+                                        hash: node_hashes[j],
+                                        subtree_hash: subtree_hashes[j],
+                                        cascade_input: cascade_inputs[j],
+                                        parent_key: j_parent_key,
+                                    },
+                                );
+                            }
                         }
-                        arena.snaps[snap.paint_span.range()]
-                            .copy_from_slice(&layer_paints[span.range()]);
-                        snap.cascade_input = cascade_inputs[j];
                         #[cfg(any(test, feature = "internals"))]
                         dirty_out.push(NodeId(j as u32));
                     }
+                    parent_stack.truncate(jump_base);
                     if let Some(u) = prev_extent {
                         raw_rects.push(u);
                     }
@@ -1103,6 +1169,16 @@ fn union_screens(paints: &[Paint]) -> Option<Rect> {
         .map(|p| p.screen)
         .filter(|s| !s.is_paint_empty())
         .reduce(|acc, s| acc.union(s))
+}
+
+/// True when any of the node's paint rows produces visible pixels on
+/// `surface`. One predicate, two coupled sites: the Vacant arm skips
+/// the snapshot insert for a childless node where this is false, and
+/// tier 1.5's insert leg repays that skip the frame it turns true —
+/// they must agree or painting-but-untracked nodes reappear.
+#[inline]
+fn paints_on_surface(paints: &[Paint], surface: Rect) -> bool {
+    union_screens(paints).is_some_and(|u| u.intersects(surface))
 }
 
 /// `matched_pos` sentinel for a curr row with no exact match in the
@@ -1263,35 +1339,19 @@ fn extend_predamaged(
             if e.anim.next_wake(prev) > now {
                 continue;
             }
-            // Map the shape to its paint slot inside the owner's
-            // `node_span`. Chrome (when present) sits at row 0, then
-            // one row per `TreeItems` item — direct shapes and child
-            // markers alike, in the same stream `compute_paint_rect`
-            // emitted from — so the row index is the shape's position
-            // in that stream. `shape_idx - shape_span.start` would be
-            // wrong here: the span covers the whole subtree, so a
-            // shape-bearing child recorded before the animated shape
-            // (Scroll's bars-after-child pattern) would shift the
-            // arithmetic onto a different row.
-            let node = NodeId(e.node_idx);
-            let ordinal = tree
-                .tree_items(node)
-                .position(
-                    |item| matches!(item, TreeItem::ShapeRecord(idx, _) if idx == e.shape_idx),
-                )
-                .expect("paint-anim shape_idx is a direct shape of its owner")
-                as u32;
-            let chrome_offset = u32::from(tree.chrome(node).is_some());
             let node_span = node_spans[e.node_idx as usize];
-            let want = chrome_offset + ordinal;
-            // `compute_paint_rect` emits one row per direct shape for
-            // every node (invisible included), so the slot must exist.
+            // `e.row` was captured from the recording counter
+            // (`OpenFrame::paint_rows`), and `compute_paint_rect` emits
+            // one row per chrome/shape/child in the same record order,
+            // so the slot must exist — a miss means the cascade emit
+            // and the recording counter drifted apart.
             assert!(
-                want < node_span.len,
-                "paint-anim row {want} out of the owner's {} paint rows",
+                e.row < node_span.len,
+                "paint-anim row {} out of the owner's {} paint rows",
+                e.row,
                 node_span.len,
             );
-            out.push(paints[(node_span.start + want) as usize].screen);
+            out.push(paints[(node_span.start + e.row) as usize].screen);
         }
     }
 }
