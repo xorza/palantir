@@ -15,7 +15,6 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::viewport::damage_cull_margin;
-use crate::text::text_in_rect;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
     DrawPolylinePayload, RenderCmdBuffer,
@@ -23,6 +22,7 @@ use crate::renderer::frontend::cmd_buffer::{
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
+use crate::text::text_in_rect;
 use crate::ui::Ui;
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::damage::region::DamageRegion;
