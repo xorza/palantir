@@ -713,8 +713,9 @@ pub trait Configure: Sized {
         self
     }
     /// Span `(row_span, col_span)` inside a `Grid` parent. Default `(1, 1)`.
-    /// Spans are clamped at layout time to the grid's bounds. Ignored outside
-    /// a Grid parent.
+    /// Cell + span are validated against the parent's grid def at record
+    /// time — an out-of-range placement panics (`Tree::check_grid_cell`).
+    /// Ignored outside a Grid parent.
     fn grid_span(mut self, (rs, cs): (u16, u16)) -> Self {
         let g = &mut self.element_mut().grid;
         g.row_span = rs.max(1);
@@ -725,6 +726,9 @@ pub trait Configure: Sized {
     /// HStack/VStack and the within-line direction of WrapHStack/
     /// WrapVStack. Grid has its own `gap_xy` and ignores this field.
     fn gap(mut self, g: f32) -> Self {
+        // Debug-only, matching `size` / `min_size` — builder setters
+        // run per widget per frame.
+        debug_assert!(g >= 0.0, "gap must be non-negative, got {g}");
         self.element_mut().gaps.set_gap(g);
         self
     }
@@ -734,6 +738,7 @@ pub trait Configure: Sized {
     /// every other layout mode. Pair with `.gap(...)` for the within-
     /// line spacing.
     fn line_gap(mut self, g: f32) -> Self {
+        debug_assert!(g >= 0.0, "line_gap must be non-negative, got {g}");
         self.element_mut().gaps.set_line_gap(g);
         self
     }
