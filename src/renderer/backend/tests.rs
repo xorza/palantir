@@ -984,7 +984,6 @@ fn buf_with_batches(groups: Vec<DrawGroup>, text_batches: Vec<TextBatch>) -> Ren
     RenderBuffer {
         quads: vec![dummy_quad(); 4],
         texts: vec![dummy_text(); 4],
-        meshes: MeshScene::default(),
         groups,
         text_batches,
         viewport_phys: UVec2::new(100, 100),
