@@ -1289,14 +1289,14 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .filter(|c| c.kind == CURVE_KIND_SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2, "duplicate point contributes no segment");
-    assert_eq!((segs[0].color, segs[0].color1), (red8, green8));
-    assert_eq!((segs[1].color, segs[1].color1), (green8, blue8));
+    assert_eq!((segs[0].color0, segs[0].color1), (red8, green8));
+    assert_eq!((segs[1].color0, segs[1].color1), (green8, blue8));
     let join = buf
         .curves
         .iter()
         .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
         .unwrap();
-    assert_eq!(join.color, green8, "PerPoint chrome = the joint color");
+    assert_eq!(join.color0, green8, "PerPoint chrome = the joint color");
 
     // PerSegment: solid lanes per segment; the skipped middle point
     // drops the degenerate segment's color (index 1), so the kept
@@ -1322,15 +1322,15 @@ fn compose_polyline_color_modes_and_coincident_skip() {
         .filter(|c| c.kind == CURVE_KIND_SEGMENT)
         .collect();
     assert_eq!(segs.len(), 2);
-    assert_eq!((segs[0].color, segs[0].color1), (red8, red8));
-    assert_eq!((segs[1].color, segs[1].color1), (blue8, blue8));
+    assert_eq!((segs[0].color0, segs[0].color1), (red8, red8));
+    assert_eq!((segs[1].color0, segs[1].color1), (blue8, blue8));
     let join = buf
         .curves
         .iter()
         .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
         .unwrap();
     assert_eq!(
-        join.color,
+        join.color0,
         red8.midpoint(blue8),
         "PerSegment chrome = midpoint of adjacent segment colors",
     );

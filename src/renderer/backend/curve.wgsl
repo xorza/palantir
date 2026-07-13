@@ -114,7 +114,7 @@ struct VsIn {
     // parent curve this instance covers in [0, 1].
     @location(4) t_range: vec2<f32>,
     @location(5) width: f32,
-    @location(6) color: vec4<f32>,
+    @location(6) color0: vec4<f32>,
     @location(7) color1: vec4<f32>,
     @location(8) cap: u32,
     @location(9) fill_kind: u32,
@@ -138,7 +138,7 @@ struct VsOut {
     // Fringe is baked in once here so the fragment's coverage is just
     // `clamp(half_w - r, 0, plateau)`.
     @location(2) @interpolate(flat) half_w: f32,
-    // Stroke colour, lerped `color → color1` along `t` for strips
+    // Stroke colour, lerped `color0 → color1` along `t` for strips
     // (constant when both lanes are equal).
     @location(3) color: vec4<f32>,
     // `FLAG_*` bits (+ join metric in bits 4..6).
@@ -264,7 +264,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
     out.curve_t = 0.0;
     out.jv0 = vec4<f32>(0.0);
     out.jv1 = vec4<f32>(0.0);
-    out.color = in.color;
+    out.color = in.color0;
     var flags = u32((in.fill_kind & 0xFFu) == BRUSH_KIND_LINEAR) << 1u;
     var phys: vec2<f32>;
 
@@ -344,7 +344,7 @@ fn vs(in: VsIn, @builtin(vertex_index) vid: u32) -> VsOut {
         out.offset = offset;
         out.cap_t = cap_t;
         out.curve_t = t;
-        out.color = mix(in.color, in.color1, t);
+        out.color = mix(in.color0, in.color1, t);
 
         if (in.kind == KIND_SEGMENT
             && (any(in.p1 != vec2<f32>(0.0)) || any(in.p2 != vec2<f32>(0.0)))) {

@@ -23,7 +23,14 @@ use std::time::Duration;
 pub(crate) struct RenderBuffer {
     pub(crate) quads: Vec<Quad>,
     pub(crate) texts: Vec<TextRun>,
-    pub(crate) meshes: MeshScene,
+    /// Scene-wide mesh rows, SoA-stored. The underlying vertex/index
+    /// bytes live in the frame's
+    /// [`FrameArena::meshes`](crate::forest::frame_arena::FrameArena::meshes);
+    /// each row's `draw` field carries spans into that arena, and the
+    /// `instance` field carries the Pod GPU state the backend uploads
+    /// verbatim (read as a contiguous `&[MeshInstance]` via
+    /// `meshes.instance()`).
+    pub(crate) meshes: Soa<MeshDrawRow>,
     pub(crate) groups: Vec<DrawGroup>,
     /// One entry per *batch* of text runs that share a single text-backend
     /// `prepare`/`render` call. The composer coalesces text across
@@ -39,9 +46,16 @@ pub(crate) struct RenderBuffer {
     /// backend treat meshes structurally like text — drained via the
     /// same cursor-walking pattern as `text_batches`.
     pub(crate) mesh_batches: Vec<MeshBatch>,
-    /// Image draws + per-instance state. Structurally mirrors
-    /// [`MeshScene`]; per-frame cleared in `compose`.
-    pub(crate) images: ImageScene,
+    /// Scene-wide image rows, SoA-stored; structurally mirrors
+    /// [`Self::meshes`]. The backend binds a per-handle texture and
+    /// issues one draw per row (no shared vertex/index buffers — every
+    /// quad is implicit four-corner from the shader's `vertex_index`).
+    /// A `GpuView` is just another image row here — the scene carries
+    /// no render-target concept; its off-screen target is listed
+    /// separately in [`Self::frame_targets`], but the row composites
+    /// exactly like an image: same `id` in the shared texture cache,
+    /// same draw.
+    pub(crate) images: Soa<ImageDrawRow>,
     /// `GpuView` off-screen targets to paint this frame — one per composited
     /// `GpuView` image row. The composer fills this directly from the
     /// `DrawImage.target` link (resolving the physical size + the app `paint`
@@ -54,14 +68,14 @@ pub(crate) struct RenderBuffer {
     /// these in lockstep with `groups` via a cursor — same pattern as
     /// `text_batches` / `mesh_batches`.
     pub(crate) image_batches: Vec<ImageBatch>,
-    /// Native GPU curve instances + per-scissor-group batches. One
-    /// `CurveBatch` per group that emitted curves; the schedule walks
+    /// Native GPU stroke instances + per-scissor-group batches. One
+    /// `CurveBatch` per group that emitted strokes; the schedule walks
     /// them in lockstep with `mesh_batches` / `image_batches` via a
-    /// cursor. Each instance is a sub-range `[t0, t1]` of one cubic
-    /// bezier — adaptive count: long / fast-curving inputs emit
-    /// multiple instances at lowering time, smooth ones emit a single
-    /// instance. The pipeline draws all instances in a batch with one
-    /// non-indexed instanced draw.
+    /// cursor. Each instance is one [`CurveInstance`] basis kind —
+    /// a `[t0, t1]` sub-range of a cubic/arc (adaptive count from
+    /// on-screen length), a polyline segment, or joint chrome. The
+    /// pipeline draws all instances in a batch with one non-indexed
+    /// instanced draw.
     pub(crate) curves: Vec<CurveInstance>,
     pub(crate) curve_batches: Vec<CurveBatch>,
     /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`
@@ -72,11 +86,6 @@ pub(crate) struct RenderBuffer {
     /// `PushClip` (ancestors copied so every chain is contiguous);
     /// value-equal chains from separate pushes dedup at mask staging.
     pub(crate) rounded_clips: Vec<RoundedClip>,
-    /// `true` iff at least one group carries a rounded clip — set by the
-    /// composer when a `PushClip` carries a non-zero radius. Backend
-    /// reads this to decide whether to walk the stencil-mask path;
-    /// saves a linear scan over `groups` at submit time.
-    pub(crate) has_rounded_clip: bool,
     /// Clear fold: when an unclipped opaque solid sharp quad covers the
     /// whole viewport, the composer discards everything composed before it
     /// (fully hidden), drops the quad, and records its fill here — the
@@ -116,17 +125,16 @@ impl Default for RenderBuffer {
             owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
             quads: Vec::new(),
             texts: Vec::new(),
-            meshes: MeshScene::default(),
+            meshes: Soa::default(),
             groups: Vec::new(),
             text_batches: Vec::new(),
             mesh_batches: Vec::new(),
-            images: ImageScene::default(),
+            images: Soa::default(),
             frame_targets: Vec::new(),
             image_batches: Vec::new(),
             curves: Vec::new(),
             curve_batches: Vec::new(),
             rounded_clips: Vec::new(),
-            has_rounded_clip: false,
             clear_override: None,
             viewport_phys: UVec2::ZERO,
             viewport_phys_f: Vec2::ZERO,
@@ -161,8 +169,8 @@ impl RenderBuffer {
     pub(crate) fn discard_scene(&mut self) {
         self.quads.clear();
         self.texts.clear();
-        self.meshes.rows.clear();
-        self.images.rows.clear();
+        self.meshes.clear();
+        self.images.clear();
         self.frame_targets.clear();
         self.groups.clear();
         self.text_batches.clear();
@@ -171,7 +179,6 @@ impl RenderBuffer {
         self.curves.clear();
         self.curve_batches.clear();
         self.rounded_clips.clear();
-        self.has_rounded_clip = false;
     }
 }
 
@@ -228,7 +235,7 @@ pub(crate) struct TextBatch {
 }
 
 /// A batch of mesh draws emitted together. `meshes` is a contiguous
-/// range into `MeshScene.draws` (and parallel `instances`); `last_group`
+/// row range into [`RenderBuffer::meshes`]; `last_group`
 /// is the group whose iteration drains this batch in the schedule —
 /// mirrors `TextBatch.last_group`. Today's structural Phase 2 produces
 /// one batch per group with meshes, so schedule iterates them via a
@@ -240,7 +247,7 @@ pub(crate) struct MeshBatch {
 }
 
 /// A batch of image draws emitted together. `images` is a contiguous
-/// range into `ImageScene.draws` (and parallel `instances`);
+/// row range into [`RenderBuffer::images`];
 /// `last_group` is the group whose iteration drains this batch in the
 /// schedule — mirrors `MeshBatch`. Phase 5 emits one batch per group
 /// with images; later slices can coalesce by texture handle.
@@ -259,34 +266,6 @@ pub(crate) struct ImageBatch {
 pub(crate) struct RoundedClip {
     pub(crate) mask_rect: Rect,
     pub(crate) corners: Corners,
-}
-
-/// Scene-wide mesh pool, SoA-stored as `Soa<MeshDrawRow>`. The
-/// underlying vertex/index bytes live in the frame's
-/// [`FrameArena::meshes`](crate::forest::frame_arena::FrameArena::meshes);
-/// each row's `draw` field carries spans into that arena, and the
-/// `instance` field carries the Pod GPU state the backend uploads
-/// verbatim to the instance buffer (read as a contiguous
-/// `&[MeshInstance]` via `rows.instance()` — same memory layout as
-/// the previous parallel-`Vec` form).
-#[derive(Debug, Default)]
-pub(crate) struct MeshScene {
-    pub(crate) rows: Soa<MeshDrawRow>,
-}
-
-/// Scene-wide image pool, SoA-stored as `Soa<ImageDrawRow>`. The
-/// backend binds a per-handle texture and issues one draw per row
-/// (no shared vertex/index buffers — every quad is implicit
-/// four-corner from the shader's `vertex_index`).
-///
-/// A `GpuView` is just another image row here — the scene carries no
-/// render-target concept. A `GpuView`'s off-screen target is listed
-/// separately in [`RenderBuffer::frame_targets`] (the composer reads the
-/// `DrawImage.target` link), but the row itself composites exactly like an
-/// image: same `id` in the shared texture cache, same draw.
-#[derive(Debug, Default)]
-pub(crate) struct ImageScene {
-    pub(crate) rows: Soa<ImageDrawRow>,
 }
 
 /// One `GpuView` off-screen target to paint this frame (see
@@ -433,8 +412,8 @@ impl std::hash::Hash for TextRun {
     }
 }
 
-/// A batch of curve sub-instances emitted together. `instances` is a
-/// contiguous range into [`CurveScene::instances`]; `last_group` is the
+/// A batch of stroke instances emitted together. `instances` is a
+/// contiguous range into [`RenderBuffer::curves`]; `last_group` is the
 /// group whose iteration drains this batch in the schedule — mirrors
 /// `MeshBatch.last_group` / `ImageBatch.last_group`. One batch per
 /// scissor group with curves (no cross-group spanning — curves must
@@ -455,19 +434,41 @@ pub(crate) struct CurveBatch {
 /// per-instance vertex count both derive from it.
 pub(crate) const SEGMENTS_PER_INSTANCE: u32 = 16;
 
+/// Half-width of the antialiasing fringe every stroke adds beyond its
+/// core half-width, physical px. Part of the CPU↔shader contract:
+/// bbox inflation at shape lowering and the coverage math in
+/// `curve.wgsl` (`HALF_FRINGE` there) both bake this value — bump
+/// together.
+pub(crate) const HALF_FRINGE: f32 = 0.5;
+
+/// SVG-convention miter limit: a Miter join whose extension factor
+/// `1/cos(half turn angle)` would exceed this renders as a bevel
+/// instead (the composer downgrades the chrome kind). Pinned against
+/// the const of the same name in `curve.wgsl`, which uses it to bound
+/// the miter billboard extent.
+pub(crate) const MITER_LIMIT: f32 = 4.0;
+
 /// Basis tags for [`CurveInstance::kind`]. Pinned against the
 /// `KIND_*` constants in `curve.wgsl` — bump together.
 pub(crate) const CURVE_KIND_CUBIC: u32 = 0;
 pub(crate) const CURVE_KIND_ARC: u32 = 1;
+/// Straight polyline segment with bisector-clipped joint ends.
+pub(crate) const CURVE_KIND_SEGMENT: u32 = 2;
+/// Joint chrome billboards — the three `LineJoin` looks. Contiguous
+/// values: the shader derives the fragment metric as
+/// `kind - CURVE_KIND_JOIN_ROUND`.
+pub(crate) const CURVE_KIND_JOIN_ROUND: u32 = 3;
+pub(crate) const CURVE_KIND_JOIN_BEVEL: u32 = 4;
+pub(crate) const CURVE_KIND_JOIN_MITER: u32 = 5;
 
 /// Per-curve-sub-instance GPU state, uploaded to a
-/// `step_mode: Instance` vertex buffer. The shader evaluates the
-/// stroke's parametric basis (picked by `kind`) at parameter
-/// `t = mix(t0, t1, segment / SEGMENTS_PER_INSTANCE)` for
-/// `segment ∈ [0, SEGMENTS_PER_INSTANCE]`, derives the tangent's
+/// `step_mode: Instance` vertex buffer. For the strip kinds the
+/// shader evaluates the stroke's parametric basis (picked by `kind`)
+/// at parameter `t = mix(t0, t1, segment / SEGMENTS_PER_INSTANCE)`
+/// for `segment ∈ [0, SEGMENTS_PER_INSTANCE]`, derives the tangent's
 /// perpendicular, and offsets by ±(width/2 + AA fringe) to build the
 /// stroked strip. All geometry lanes are pre-transformed to
-/// physical-px; `width` is also physical px. Color is linear-RGBA
+/// physical-px; `width` is also physical px. Colors are linear-RGBA
 /// straight-alpha (same convention as `MeshVertex.color`); the
 /// fragment shader premultiplies at output.
 ///
@@ -478,6 +479,22 @@ pub(crate) const CURVE_KIND_ARC: u32 = 1;
 ///   0 = +x, y-down ⇒ increasing = clockwise); `p1.y`/`p3` unused.
 ///   The angle at `t` is `mix(a0, a1, t)` — exact circle, no cubic
 ///   approximation error, and gradient `t` tracks the sweep linearly.
+/// - [`CURVE_KIND_SEGMENT`] — `p0`/`p3` are the segment endpoints;
+///   `p1`/`p2` carry the pre-oriented bisector clip-plane normals
+///   for the start/end joint (zero = cap end, no clip; "keep" is
+///   `dot(x - endpoint, n) <= 0`). Joint ends are butt-faced and
+///   fragment-clipped at those planes — the composer hands adjacent
+///   segments exact negations of the same sum, so strips partition
+///   their concave overlap exactly (no double blend on translucent
+///   strokes), and the convex wedge is filled by a join-chrome
+///   instance.
+/// - `CURVE_KIND_JOIN_*` — `p0` = joint point; `p1 = -d_a`,
+///   `p2 = d_b` (unit segment directions into/out of the joint,
+///   pre-oriented as the face-plane keep normals). Expands to one
+///   billboard quad; the fragment fills the wedge between the two
+///   segment end faces with an exact per-kind metric (round: radial;
+///   bevel: radial ∧ bevel half-plane; miter: max of the two
+///   centerline distances).
 #[padding_struct::padding_struct]
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, bytemuck::Pod, bytemuck::Zeroable)]
@@ -493,13 +510,19 @@ pub(crate) struct CurveInstance {
     pub(crate) t0: f32,
     pub(crate) t1: f32,
     pub(crate) width: f32,
-    /// Solid stroke colour. Zeroed when `fill_kind != 0`; the shader
-    /// samples the LUT row instead.
-    pub(crate) color: ColorU8,
-    /// Cap kind tag — 0 = Butt, 1 = Square, 2 = Round. Only the
-    /// leading sub-instance (`t0 ≈ 0`) and trailing sub-instance
-    /// (`t1 ≈ 1`) actually extend their geometry; interior
-    /// sub-instances see this lane and skip cap extension.
+    /// Stroke colour at `t = 0`. Zeroed when `fill_kind != 0`; the
+    /// shader samples the LUT row instead.
+    pub(crate) color0: ColorU8,
+    /// Stroke colour at `t = 1` — the shader lerps `color0 → color1`
+    /// along `t` (straight-alpha, like `PolylineColors::PerPoint`).
+    /// Equal to `color0` for single-colour strokes.
+    pub(crate) color1: ColorU8,
+    /// Cap kind per end, packed: bits 0..8 = start cap, 8..16 = end
+    /// cap (0 = Butt, 1 = Square, 2 = Round). Only the leading
+    /// sub-instance (`t0 ≈ 0`) and trailing sub-instance (`t1 ≈ 1`)
+    /// actually extend their geometry; interior sub-instances see
+    /// this lane and skip cap extension. Polyline segments carry the
+    /// user cap on true ends and Butt on joint ends.
     pub(crate) cap: u32,
     /// Brush kind tag. Low byte 0 = solid, 1 = linear. Spread mode
     /// would ride in bits 8..16 like the quad pipeline, but a curve's
@@ -509,8 +532,14 @@ pub(crate) struct CurveInstance {
     pub(crate) fill_kind: FillKind,
     /// Atlas row when `fill_kind` is a gradient, else ignored.
     pub(crate) fill_lut_row: LutRow,
-    /// Parametric basis tag — [`CURVE_KIND_CUBIC`] or
-    /// [`CURVE_KIND_ARC`]. Selects how the vertex shader interprets
-    /// the geometry lanes (see struct docs).
+    /// Basis tag — one of the `CURVE_KIND_*` constants. Selects how
+    /// the vertex shader interprets the geometry lanes (see struct
+    /// docs).
     pub(crate) kind: u32,
+}
+
+/// Pack per-end cap kinds into the [`CurveInstance::cap`] lane.
+#[inline]
+pub(crate) fn cap_lanes(start: u32, end: u32) -> u32 {
+    start | (end << 8)
 }
