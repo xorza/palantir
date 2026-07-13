@@ -50,7 +50,7 @@ fn run(
     build(&mut buffer, &mut arena);
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    composer.compose(&buffer, &mut arena, *display, &mut out);
+    composer.compose(&buffer, &arena, *display, &mut out);
     out
 }
 
@@ -496,7 +496,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
     // viewport would fold into the clear instead of emitting a quad.
     composer.compose(
         &buffer,
-        &mut FrameArenaInner::default(),
+        &FrameArenaInner::default(),
         params(1.0, UVec2::new(200, 200)),
         &mut out,
     );
@@ -592,7 +592,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     let mut out = RenderBuffer::default();
     composer.compose(
         &buffer,
-        &mut FrameArenaInner::default(),
+        &FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -633,7 +633,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     let mut out = RenderBuffer::default();
     composer.compose(
         &buffer,
-        &mut FrameArenaInner::default(),
+        &FrameArenaInner::default(),
         params(1.0, UVec2::new(100, 100)),
         &mut out,
     );
@@ -1370,7 +1370,7 @@ fn compose_spins_polyline_about_bbox_center() {
         let mut out = RenderBuffer::default();
         composer.compose(
             &buffer,
-            &mut arena,
+            &arena,
             params(1.0, UVec2::new(200, 200)),
             &mut out,
         );
@@ -2516,7 +2516,7 @@ fn prune_steady_state_across_repeated_compose_calls() {
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         let mut out = RenderBuffer::default();
-        composer.compose(&buffer, &mut FrameArenaInner::default(), display, &mut out);
+        composer.compose(&buffer, &FrameArenaInner::default(), display, &mut out);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
 }
@@ -2813,17 +2813,17 @@ fn clear_fold_resets_across_frames() {
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
     draw(&mut covered, rect(10.0, 10.0, 20.0, 20.0));
 
-    composer.compose(&covered, &mut arena, display, &mut out);
+    composer.compose(&covered, &arena, display, &mut out);
     assert!(out.clear_override.is_some(), "frame 1 folds");
     assert_eq!(out.quads.len(), 1);
 
-    composer.compose(&covered, &mut arena, display, &mut out);
+    composer.compose(&covered, &arena, display, &mut out);
     assert!(out.clear_override.is_some(), "steady state re-folds");
     assert_eq!(out.quads.len(), 1);
 
     let mut uncovered = RenderCmdBuffer::default();
     draw(&mut uncovered, rect(10.0, 10.0, 20.0, 20.0));
-    composer.compose(&uncovered, &mut arena, display, &mut out);
+    composer.compose(&uncovered, &arena, display, &mut out);
     assert_eq!(out.clear_override, None, "no cover, no override");
     assert_eq!(out.quads.len(), 1);
 }
