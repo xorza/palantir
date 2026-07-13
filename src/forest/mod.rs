@@ -191,21 +191,16 @@ impl Forest {
         }
     }
 
-    /// Minimum `next_wake` across every layer's paint anims, or
-    /// `Duration::MAX` when nothing wants a wake. Called from
-    /// `Ui::frame` after both record and paint-only paths so the
-    /// next anim boundary is queued regardless of which path ran.
-    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Duration {
-        let mut min_wake = Duration::MAX;
-        for tree in &self.trees {
-            for entry in &tree.paint_anims.entries {
-                let w = entry.anim.next_wake(now);
-                if w < min_wake {
-                    min_wake = w;
-                }
-            }
-        }
-        min_wake
+    /// Minimum `next_wake` across every layer's paint anims, or `None`
+    /// when nothing wants a wake. Called from `Ui::frame` after both
+    /// record and paint-only paths so the next anim boundary is queued
+    /// regardless of which path ran.
+    pub(crate) fn min_paint_anim_wake(&self, now: Duration) -> Option<Duration> {
+        (&self.trees)
+            .into_iter()
+            .flat_map(|tree| &tree.paint_anims.entries)
+            .map(|entry| entry.anim.next_wake(now))
+            .min()
     }
 
     /// Open a node whose id has already been resolved + disambiguated
@@ -400,11 +395,23 @@ impl Forest {
     }
 
     /// Recording-only scratch for the active layer. Read by
-    /// `Ui::widget_id` (parent lookup) and the disabled
-    /// cascade at record time.
+    /// [`Self::current_parent_id`] and the disabled cascade at record
+    /// time.
     #[inline]
     pub(crate) fn current_scratch(&self) -> &RecordingScratch {
         &self.scratch[self.current_layer()]
+    }
+
+    /// `WidgetId` of the innermost open node in the active layer — the
+    /// parent context auto/salted ids resolve against (`Ui::widget_id`)
+    /// — or `None` at the top of a layer with no node open yet.
+    #[inline]
+    pub(crate) fn current_parent_id(&self) -> Option<WidgetId> {
+        let tree = self.current_tree();
+        self.current_scratch()
+            .open_frames
+            .last()
+            .map(|f| tree.records.widget_id()[f.node.idx()])
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing

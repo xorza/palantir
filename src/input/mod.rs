@@ -281,11 +281,11 @@ pub(crate) struct InputState {
     /// Frame-snapshot of "no widget can hold any non-default interaction
     /// state this frame" — no pointer on the surface, no routed
     /// scroll/pinch target, no live button capture or click/double-click
-    /// edge. Filled once per record pass by [`crate::Ui::record_pass`]
-    /// from [`Self::compute_frame_quiescent`];
+    /// edge. Filled once per record pass via
+    /// [`Self::snapshot_frame_quiescent`];
     /// read in [`Self::response_for`] to default the whole interaction
     /// half out for every widget instead of re-deriving it per call.
-    /// `focused` is excluded on purpose (see `compute_frame_quiescent`),
+    /// `focused` is excluded on purpose (see `snapshot_frame_quiescent`),
     /// so the fast path still reads it live.
     pub(crate) frame_quiescent: bool,
     /// Unified keyboard event stream this frame:
@@ -868,18 +868,18 @@ impl InputState {
         None
     }
 
-    /// `true` when no widget can hold any non-default interaction state
-    /// this frame: no pointer on the surface, no routed scroll/pinch
-    /// target, and no live button capture or per-frame click/double-click
-    /// edge. Snapshotted once per record pass into
-    /// [`Self::frame_quiescent`] so [`Self::response_for`] can default
-    /// the interaction half out for every widget at once.
+    /// Snapshot into [`Self::frame_quiescent`] whether any widget can
+    /// hold non-default interaction state this frame: no pointer on the
+    /// surface, no routed scroll/pinch target, and no live button
+    /// capture or per-frame click/double-click edge. Taken once per
+    /// record pass so [`Self::response_for`] can default the interaction
+    /// half out for every widget at once.
     ///
     /// `focused` is deliberately *not* part of this: [`crate::Ui::request_focus`]
     /// can set it mid-record, after the snapshot is taken, so
     /// `response_for` always reads it live — even on the fast path.
-    pub(crate) fn compute_frame_quiescent(&self) -> bool {
-        self.pointer_pos.is_none()
+    pub(crate) fn snapshot_frame_quiescent(&mut self) {
+        self.frame_quiescent = self.pointer_pos.is_none()
             && self.hovered.is_none()
             && self.scroll_target.is_none()
             && self.pinch_target.is_none()
@@ -888,7 +888,7 @@ impl InputState {
                     && c.frame_click.is_none()
                     && c.frame_double_click.is_none()
                     && c.frame_drag_stopped.is_none()
-            })
+            });
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {

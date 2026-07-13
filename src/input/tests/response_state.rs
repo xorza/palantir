@@ -85,23 +85,24 @@ fn disabled_false_when_chain_clean() {
 /// fast path: every pointer/capture-derived signal flips it false, but
 /// `focused` deliberately does not (it can be set mid-record).
 #[test]
-fn compute_frame_quiescent_predicate() {
+fn frame_quiescent_predicate() {
+    // Fresh state, one mutation, snapshot — returns the sealed flag.
+    let quiescent = |mutate: &dyn Fn(&mut InputState)| {
+        let mut s = InputState::new();
+        mutate(&mut s);
+        s.snapshot_frame_quiescent();
+        s.frame_quiescent
+    };
     assert!(
-        InputState::new().compute_frame_quiescent(),
+        quiescent(&|_| {}),
         "a fresh input state (no pointer, no captures) is quiescent",
     );
 
     let id = WidgetId::from_hash("w");
     // Each pointer / routing / capture signal independently breaks
-    // quiescence. `broken` starts from a fresh (quiescent) state, applies
-    // one mutation, and asserts the predicate flips false.
+    // quiescence.
     let broken = |label: &str, mutate: &dyn Fn(&mut InputState)| {
-        let mut s = InputState::new();
-        mutate(&mut s);
-        assert!(
-            !s.compute_frame_quiescent(),
-            "{label} must break quiescence",
-        );
+        assert!(!quiescent(mutate), "{label} must break quiescence");
     };
     broken("pointer_pos", &|s| s.pointer_pos = Some(Vec2::ZERO));
     broken("hovered", &|s| s.hovered = Some(id));
@@ -119,10 +120,8 @@ fn compute_frame_quiescent_predicate() {
 
     // `focused` is excluded: a focused widget on an otherwise idle frame
     // stays quiescent so the fast path still applies.
-    let mut focused_only = InputState::new();
-    focused_only.focused = Some(id);
     assert!(
-        focused_only.compute_frame_quiescent(),
+        quiescent(&|s| s.focused = Some(id)),
         "focus alone must NOT break quiescence (read live on the fast path)",
     );
 }

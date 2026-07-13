@@ -117,13 +117,12 @@ pub struct Ui {
     pub(crate) frame_id: u64,
     /// WindowRenderer-supplied monotonic timestamp for this frame.
     pub(crate) time: Duration,
-    /// Time + display from the previous successful frame, or `None`
-    /// before the first frame and after
-    /// [`DamageEngine::invalidate_prev`] rewinds the snapshot.
-    /// Drives `classify_frame` (surface-change detection)
+    /// Time + display from the previous frame, or `None` before the
+    /// first frame. Drives `classify_frame` (surface-change detection)
     /// and the paint-anim damage gate
-    /// (`anim.next_wake(prev.time) <= now`). Updated at the bottom
-    /// of `frame` on every path.
+    /// (`anim.next_wake(prev.time) <= now` — a gate the damage engine
+    /// never consults on force-full frames, so no reset is needed
+    /// there). Updated at the bottom of `frame` on every path.
     pub(crate) prev_stamp: Option<FrameStamp>,
     /// Fingerprint of last frame's cascade inputs (all roots'
     /// `subtree_hash` + exact surface + scroll offsets/zoom). When this
@@ -322,13 +321,6 @@ impl Ui {
 
         self.repaint_requested = false;
         self.relayout_requested = false;
-
-        // The damage snapshot itself is cleared inside
-        // `DamageEngine::compute` when it receives `force_full` — the
-        // pairing is owned by the engine, not spread across callers.
-        if let FramePlan::FullRecord { force_full: true } = plan {
-            self.prev_stamp = None;
-        }
         self.display = stamp.display;
 
         // Pending until the renderer (`WindowRenderer::render_to_texture`)
@@ -458,8 +450,7 @@ impl Ui {
         // gives the next quantum boundary — without this, PaintOnly
         // drains the queued ANIM wake without replacing it and the
         // caret freezes until input forces a FullRecord.
-        let min_wake = self.forest.min_paint_anim_wake(self.time);
-        if min_wake != Duration::MAX {
+        if let Some(min_wake) = self.forest.min_paint_anim_wake(self.time) {
             self.schedule_wake(min_wake, WakeReasons::ANIM);
         }
 
@@ -592,7 +583,7 @@ impl Ui {
             // Snapshot whether any widget interaction is possible this
             // frame; `response_for` skips its per-button capture scans for
             // every widget when none is (the common idle frame).
-            self.input.frame_quiescent = self.input.compute_frame_quiescent();
+            self.input.snapshot_frame_quiescent();
         }
         // Synthetic viewport root for Layer::Main. Without this, the
         // first user-recorded node becomes the root and the layout
@@ -629,23 +620,17 @@ impl Ui {
     /// anim and a widget asked for as `REAL | ANIM`, which forces the
     /// Full path (correct — the widget needs record).
     fn schedule_wake(&mut self, deadline: Duration, reasons: WakeReasons) {
-        let pos = match self
-            .repaint_wakes
-            .binary_search_by_key(&deadline, |w| w.deadline)
-        {
-            Ok(i) => {
-                self.repaint_wakes[i].reasons = self.repaint_wakes[i].reasons.merge(reasons);
-                return;
-            }
-            Err(pos) => pos,
-        };
         let coalesce = coalesce_dt_for_refresh(self.display.refresh_millihertz);
         let near = |existing: Duration| existing.abs_diff(deadline) < coalesce;
+        let pos = self
+            .repaint_wakes
+            .partition_point(|w| w.deadline < deadline);
         // Coalesce to the later of (existing, requested) — collapse
         // bursts into a single wake at the back of the window to avoid
-        // unnecessary host wakes. pos-1 is earlier than deadline
-        // (overwrite with ours, but keep merged reasons); pos is later
-        // (keep its deadline, merge our reasons in).
+        // unnecessary host wakes. pos is at-or-later than deadline (keep
+        // its deadline, merge our reasons in — `coalesce` is never zero,
+        // so an exact match lands here too); pos-1 is earlier (overwrite
+        // with ours, but keep merged reasons).
         if pos < self.repaint_wakes.len() && near(self.repaint_wakes[pos].deadline) {
             self.repaint_wakes[pos].reasons = self.repaint_wakes[pos].reasons.merge(reasons);
             return;
@@ -1153,13 +1138,7 @@ impl Ui {
     #[inline]
     pub fn widget_id(&mut self, element: &Element) -> WidgetId {
         let salt = element.salt;
-        let scratch = self.forest.current_scratch();
-        let tree = self.forest.current_tree();
-        let parent = scratch
-            .open_frames
-            .last()
-            .map(|f| tree.records.widget_id()[f.node.idx()]);
-        let raw_id = salt.resolve(parent);
+        let raw_id = salt.resolve(self.forest.current_parent_id());
         self.forest.ids.resolve(raw_id, salt.is_explicit())
     }
 
