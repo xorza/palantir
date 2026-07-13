@@ -85,3 +85,41 @@ impl Configure for Separator {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::Ui;
+    use crate::forest::Layer;
+    use crate::forest::element::Configure;
+    use crate::layout::types::sizing::Sizing;
+    use crate::widgets::panel::Panel;
+    use crate::widgets::separator::Separator;
+    use glam::UVec2;
+
+    /// Explicit `.size(...)` replaces the Hug+Stretch/thickness default
+    /// entirely (the `Sizes::default()` sentinel), and an untouched
+    /// horizontal rule still stretches across the 400-wide FILL column
+    /// at the theme thickness of 1.
+    #[test]
+    fn explicit_size_overrides_stretch_default() {
+        let mut ui = Ui::for_test();
+        let (mut sized, mut default) = (None, None);
+        ui.run_at(UVec2::new(400, 300), |ui| {
+            let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+            col.show(ui, |ui| {
+                sized = Some(
+                    Separator::horizontal()
+                        .size((Sizing::Fixed(50.0), Sizing::Fixed(3.0)))
+                        .show(ui)
+                        .node(),
+                );
+                default = Some(Separator::horizontal().show(ui).node());
+            });
+        });
+        let rects = &ui.layout[Layer::Main].rect;
+        let s = rects[sized.unwrap().idx()];
+        assert_eq!((s.size.w, s.size.h), (50.0, 3.0), "explicit size");
+        let d = rects[default.unwrap().idx()];
+        assert_eq!((d.size.w, d.size.h), (400.0, 1.0), "untouched default");
+    }
+}

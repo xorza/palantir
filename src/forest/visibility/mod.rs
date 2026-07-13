@@ -24,3 +24,6 @@ impl Visibility {
         matches!(self, Visibility::Collapsed)
     }
 }
+
+#[cfg(test)]
+mod tests;

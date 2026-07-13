@@ -181,9 +181,45 @@ fn clamp_range(value: f32, min: f32, max: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    use crate::Ui;
+    use crate::forest::Layer;
+    use crate::forest::element::Configure;
+    use crate::layout::types::sizing::Sizing;
+    use crate::widgets::panel::Panel;
     use crate::widgets::slider::{
-        clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step, value_to_fraction,
+        Slider, clamp_range, fraction_to_value, pointer_to_fraction, snap_to_step,
+        value_to_fraction,
     };
+    use glam::UVec2;
+
+    /// Explicit `.size(...)` wins over the widget's `Fill × knob_size`
+    /// default (the `Sizes::default()` "caller didn't set a size"
+    /// sentinel), and an untouched slider still gets that default
+    /// (400-wide FILL column → 400 × knob_size 18) — the sentinel
+    /// changes behavior in both directions.
+    #[test]
+    fn explicit_size_overrides_fill_default() {
+        let mut ui = Ui::for_test();
+        let mut v = 0.5_f32;
+        let (mut sized, mut default) = (None, None);
+        ui.run_at(UVec2::new(400, 300), |ui| {
+            let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+            col.show(ui, |ui| {
+                sized = Some(
+                    Slider::new(&mut v, 0.0..=1.0)
+                        .size((Sizing::Fixed(120.0), Sizing::Fixed(30.0)))
+                        .show(ui)
+                        .node(),
+                );
+                default = Some(Slider::new(&mut v, 0.0..=1.0).show(ui).node());
+            });
+        });
+        let rects = &ui.layout[Layer::Main].rect;
+        let s = rects[sized.unwrap().idx()];
+        assert_eq!((s.size.w, s.size.h), (120.0, 30.0), "explicit size");
+        let d = rects[default.unwrap().idx()];
+        assert_eq!((d.size.w, d.size.h), (400.0, 18.0), "untouched default");
+    }
 
     #[test]
     fn value_to_fraction_maps_and_clamps() {

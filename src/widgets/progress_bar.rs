@@ -95,7 +95,40 @@ fn fill_weights(fraction: f32) -> WeightSplit {
 
 #[cfg(test)]
 mod tests {
-    use crate::widgets::progress_bar::fill_weights;
+    use crate::Ui;
+    use crate::forest::Layer;
+    use crate::forest::element::Configure;
+    use crate::layout::types::sizing::Sizing;
+    use crate::widgets::panel::Panel;
+    use crate::widgets::progress_bar::{ProgressBar, fill_weights};
+    use glam::UVec2;
+
+    /// Explicit `.size(...)` wins over the widget's `Fill ×
+    /// theme.height` default (the `Sizes::default()` sentinel), and an
+    /// untouched bar still gets that default (400-wide FILL column →
+    /// 400 × theme height 6).
+    #[test]
+    fn explicit_size_overrides_fill_default() {
+        let mut ui = Ui::for_test();
+        let (mut sized, mut default) = (None, None);
+        ui.run_at(UVec2::new(400, 300), |ui| {
+            let col = Panel::vstack().auto_id().size((Sizing::FILL, Sizing::FILL));
+            col.show(ui, |ui| {
+                sized = Some(
+                    ProgressBar::new(0.3)
+                        .size((Sizing::Fixed(80.0), Sizing::Fixed(10.0)))
+                        .show(ui)
+                        .node(),
+                );
+                default = Some(ProgressBar::new(0.3).show(ui).node());
+            });
+        });
+        let rects = &ui.layout[Layer::Main].rect;
+        let s = rects[sized.unwrap().idx()];
+        assert_eq!((s.size.w, s.size.h), (80.0, 10.0), "explicit size");
+        let d = rects[default.unwrap().idx()];
+        assert_eq!((d.size.w, d.size.h), (400.0, 6.0), "untouched default");
+    }
 
     #[test]
     fn fill_weights_clamp_and_split() {
