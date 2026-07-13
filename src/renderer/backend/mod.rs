@@ -40,7 +40,7 @@ use crate::renderer::backend::text::TextBackend;
 use crate::renderer::caches::RenderCaches;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
-use crate::ui::frame_report::RenderPlan;
+use crate::ui::frame_report::{RenderKind, RenderPlan};
 use rustc_hash::FxHashMap;
 
 /// Size of the per-pipeline immediate (push-constant) region every
@@ -286,9 +286,11 @@ impl WgpuBackend {
     }
 
     /// Lazily (re)create the backbuffer to match the surface texture's
-    /// size. Returns `true` if the backbuffer was just (re)created —
-    /// caller treats that as a forced full repaint (the new texture's
-    /// contents are undefined until the first pass writes to it). The
+    /// size. Returns `true` if the backbuffer was just (re)created — the
+    /// caller asserts its plan is already Full (a recreate implies a
+    /// size / format / freshness change upstream, all of which force Full
+    /// before the draw list builds; the new texture's contents are
+    /// undefined until the first pass writes to it). The
     /// `format` is the per-window surface format; the matching pipeline
     /// set is fetched per submit from the `pipelines` map, so no
     /// global-format assert is needed.
@@ -391,18 +393,15 @@ impl WgpuBackend {
     ///   bleed, and clamps to surface; rects that clamp to zero area
     ///   are filtered out.
     ///
-    /// Skip frames are handled in `WindowRenderer::render`'s early-return branch
-    /// (`pending_damage` is `None`); this method is only entered with
-    /// `Some(Full | Partial)`.
-    ///
-    /// A region whose every rect clamps to zero physical-px area
-    /// degrades to a single `Full` pass — correct, just wasteful.
+    /// Skip frames never reach this method — `WindowRenderer::render_to_texture`
+    /// dispatches them to the copy / no-op paths.
     ///
     /// `via_backbuffer` `Some` renders into that backbuffer and copies the
     /// result out (backbuffer-copy path); `None` renders straight into
-    /// `surface_tex` (direct present). `plan` is the *effective* plan — the
-    /// caller (`WindowRenderer`) has already escalated a Partial to Full if the
-    /// backbuffer was just (re)created, and ensured the stencil + backbuffer.
+    /// `surface_tex` (direct present). `plan` is the *effective* plan — every
+    /// escalation (promote / resync) was sealed in `present_mode` *before* the
+    /// draw list was built, so `plan` and `buffer` always agree; the caller
+    /// (`WindowRenderer`) has also ensured the stencil + backbuffer.
     #[profiling::function]
     pub(crate) fn submit(
         &mut self,
@@ -441,6 +440,16 @@ impl WgpuBackend {
         // rect in the region (see `build_damage_scissors`).
         let mut damage_scissors: tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]> = Default::default();
         build_damage_scissors(&mut damage_scissors, plan, buffer);
+        // A Partial region's rects are surface-clipped and non-empty
+        // (`DamageRegion::collapse_from`), and the AA padding keeps every
+        // physical scissor nonzero — so an empty list under a Partial plan
+        // means plan and draw list disagree. Degrading to a Full pass would
+        // clear the target under a Partial-culled draw list, erasing
+        // undamaged content; crash instead.
+        assert!(
+            !damage_scissors.is_empty() || !matches!(plan.kind, RenderKind::Partial { .. }),
+            "Partial plan produced no damage scissors"
+        );
         // `dim_undamaged` debug mode: every Partial frame, before any
         // damage passes, draw one full-viewport 40%-translucent black
         // quad onto the backbuffer with `LoadOp::Load`. Each frame
@@ -684,9 +693,7 @@ impl WgpuBackend {
             t.after_submit(&self.device);
         }
 
-        if !self.text.instances.is_empty() {
-            self.text.post_record();
-        }
+        self.text.post_record();
     }
 
     /// Full-viewport pass that draws one 40%-translucent black quad
@@ -1041,26 +1048,28 @@ impl WgpuBackend {
     /// Skip path: the host's damage compute returned `None`, but the
     /// swapchain target still needs valid pixels (visual tests capture
     /// it unconditionally; the showcase short-circuits earlier, but
-    /// other hosts may not). Ensure the backbuffer matches the
-    /// swapchain size, then copy it through. A freshly (re)created
-    /// backbuffer has undefined contents — `ensure_backbuffer` forces
-    /// the next painting frame to `Full` via the same signal, so the
-    /// one-frame glitch self-heals.
+    /// other hosts may not). A `Skip` requires the previous frame to
+    /// have been submitted at this size and format (`classify_frame`
+    /// forces `Full` otherwise), so the backbuffer must already exist
+    /// and match — copying anything else would present undefined or
+    /// stale-format pixels, so crash instead of degrading.
     pub(crate) fn copy_backbuffer_to_surface(
-        &mut self,
-        backbuffer: &mut Option<Backbuffer>,
+        &self,
+        backbuffer: &Backbuffer,
         surface_tex: &wgpu::Texture,
     ) {
-        self.ensure_backbuffer(backbuffer, surface_tex.size(), surface_tex.format());
+        assert!(
+            backbuffer.size == surface_tex.size()
+                && backbuffer.tex.format() == surface_tex.format(),
+            "skip-copy backbuffer doesn't match the target — a Skip frame \
+             implies the previous frame painted this size/format"
+        );
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("aperture.renderer.skip"),
             });
-        let bb = backbuffer
-            .as_ref()
-            .expect("ensure_backbuffer just succeeded");
-        self.copy_backbuffer_into(bb, &mut encoder, surface_tex);
+        self.copy_backbuffer_into(backbuffer, &mut encoder, surface_tex);
         self.queue.submit(std::iter::once(encoder.finish()));
     }
 

@@ -398,6 +398,11 @@ impl TextBackend {
     }
 
     pub(crate) fn post_record(&mut self) {
+        // Skipping text-less frames keeps the atlas frame counter (and the
+        // cache sweep it drives) pinned to frames that actually drew text.
+        if self.instances.is_empty() {
+            return;
+        }
         self.atlas.end_frame();
         self.encoded_cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
