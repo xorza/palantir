@@ -37,7 +37,7 @@ fn collapsed_child_consumes_no_space_in_hstack() {
 
     let kids: Vec<_> = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .children(root)
         .map(|c| c.id)
         .collect();
@@ -82,7 +82,7 @@ fn collapsed_does_not_consume_fill_weight() {
 
     let kids: Vec<_> = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .children(root)
         .map(|c| c.id)
         .collect();
@@ -136,7 +136,7 @@ fn hidden_keeps_slot_but_emits_no_draws() {
 
     let kids: Vec<_> = ui
         .forest
-        .tree(Layer::Main)
+        .trees[Layer::Main]
         .children(root)
         .map(|c| c.id)
         .collect();
@@ -230,7 +230,7 @@ fn hstack_child_align_per_axis_with_overrides() {
 
         let kids: Vec<_> = ui
             .forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .children(root)
             .map(|c| c.id)
             .collect();

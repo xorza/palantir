@@ -372,7 +372,6 @@ fn emit_one_shape(
             fill_grad_hash: _,
             cap,
             bbox,
-            content_hash: _,
         } => {
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px. Curves carry no
@@ -405,7 +404,6 @@ fn emit_one_shape(
             fill_grad_hash: _,
             cap,
             bbox,
-            content_hash: _,
         } => {
             // Same owner-local convention as `Curve`; the composer
             // resolves center/radius to physical px.

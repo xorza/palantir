@@ -961,7 +961,7 @@ fn fill_change_marks_only_the_changed_leaf() {
     assert_eq!(ui.damage_engine.dirty.len(), 1);
     let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
+        ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("a")
     );
     // DamageEngine rect = Frame's rect (50x50 at (0,0)). Color change
@@ -1010,7 +1010,7 @@ fn sibling_reflow_marks_downstream_neighbor_dirty() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("a")));
     assert!(dirty_ids.contains(&WidgetId::from_hash("b")));
@@ -1079,7 +1079,7 @@ fn added_widget_contributes_curr_rect_to_damage() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
         .collect();
     assert!(dirty_ids.contains(&WidgetId::from_hash("new")));
     assert!(!ui.damage_region().rects.is_empty());
@@ -1226,7 +1226,7 @@ fn animated_parent_transform_unions_old_and_new_positions() {
         .damage_engine
         .dirty
         .iter()
-        .map(|n| ui.forest.tree(Layer::Main).records.widget_id()[n.idx()])
+        .map(|n| ui.forest.trees[Layer::Main].records.widget_id()[n.idx()])
         .collect();
     assert_eq!(
         dirty_widget_ids,
@@ -2094,7 +2094,7 @@ fn button_hover_damage_covers_only_the_button() {
     );
     let dirty_id = ui.damage_engine.dirty[0];
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[dirty_id.idx()],
+        ui.forest.trees[Layer::Main].records.widget_id()[dirty_id.idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
@@ -2155,7 +2155,7 @@ fn button_unhover_damage_covers_only_the_button() {
     build(&mut ui, &mut hot_node, &mut cold_node);
     assert_eq!(ui.damage_engine.dirty.len(), 1);
     assert_eq!(
-        ui.forest.tree(Layer::Main).records.widget_id()[ui.damage_engine.dirty[0].idx()],
+        ui.forest.trees[Layer::Main].records.widget_id()[ui.damage_engine.dirty[0].idx()],
         WidgetId::from_hash("hot"),
     );
     assert_eq!(ui.damage_region().iter_rects().next(), Some(hot_rect));
@@ -3153,7 +3153,7 @@ fn direct_shape_on_clipped_node_clips_to_own_mask() {
     let host_ep = *cascades.by_id.get(&host_id).expect("host node recorded");
     let host_entry_idx = (cascades.layers[host_ep.layer].entries_base + host_ep.node.0) as usize;
     let host_rect = cascades.entries.rect()[host_entry_idx];
-    let tree = ui.forest.tree(Layer::Main);
+    let tree = ui.forest.trees[Layer::Main];
     let shape_span = tree.records.shape_span()[host_ep.node.idx()];
     assert!(shape_span.len >= 1, "host should have at least one shape");
     // The host paints chrome (the BLUE background), so row 0 of its

@@ -239,7 +239,7 @@ mod tests {
         let root = ui.under_outer(UVec2::new(400, 400), |ui| {
             ToggleSwitch::new(&mut on).label("Wi-Fi").show(ui).node()
         });
-        let tree = ui.forest.tree(Layer::Main);
+        let tree = &ui.forest.trees[Layer::Main];
         let track = tree.children(root).next().unwrap().id;
         let knob = tree.children(track).next().unwrap().id;
         let tr = ui.layout[Layer::Main].rect[track.idx()];

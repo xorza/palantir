@@ -672,7 +672,7 @@ mod bars {
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui
             .forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .records
             .widget_id()
             .iter()
@@ -683,7 +683,7 @@ mod bars {
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
         ui.forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .shapes_of(node)
             .filter(|s| {
                 matches!(
@@ -701,7 +701,7 @@ mod bars {
     /// are real `Sense::DRAG` leaf nodes under an overlay Canvas.
     /// Returns 0–2 rects (V and/or H) in vertical-then-horizontal order.
     fn thumb_rects(ui: &Ui, scroll_key: &str) -> Vec<Rect> {
-        let tree = ui.forest.tree(Layer::Main);
+        let tree = ui.forest.trees[Layer::Main];
         let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);
         let scroll_id = outer_id.with("__viewport");

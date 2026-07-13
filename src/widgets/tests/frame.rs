@@ -34,13 +34,13 @@ fn frame_paints_a_single_rounded_rect() {
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
         ui.forest
-            .tree(Layer::Main)
+            .trees[Layer::Main]
             .shapes_of(frame_node)
             .next()
             .is_none()
     );
     assert!(
-        ui.forest.tree(Layer::Main).chrome(frame_node).is_some(),
+        ui.forest.trees[Layer::Main].chrome(frame_node).is_some(),
         "frame chrome recorded in chrome table",
     );
 

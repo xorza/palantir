@@ -169,7 +169,7 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
     ui.run_at(SURFACE, |ui| scene(ui, &mut open));
     assert!(!open, "host flag must flip to false in pass 1");
     assert_eq!(
-        ui.forest.tree(crate::forest::Layer::Popup).records.len(),
+        ui.forest.trees[crate::forest::Layer::Popup].records.len(),
         0,
         "painted tree (pass 2) must contain no Popup-layer widgets",
     );
@@ -221,7 +221,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         });
                 });
         });
-        let popup_tree = ui.forest.tree(Layer::Popup);
+        let popup_tree = ui.forest.trees[Layer::Popup];
         let body_root = popup_tree.roots[1].first_node.idx();
         let body_rect = ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
@@ -273,7 +273,7 @@ fn popup_near_bottom_flips_upward() {
     // pass B in this very call places against pass A's measured size.
     ui.run_at(SURF, scene);
 
-    let popup_tree = ui.forest.tree(Layer::Popup);
+    let popup_tree = ui.forest.trees[Layer::Popup];
     let body_root = popup_tree.roots[1].first_node.idx();
     let body_rect = ui.layout[Layer::Popup].rect[body_root];
     assert_eq!(
@@ -327,7 +327,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
     ui.run_at_acked(SURF, scene);
 
     let flipped_min = Vec2::new(anchor.x, anchor.y - content.h); // (20, 80)
-    let body_root = ui.forest.tree(Layer::Popup).roots[1].first_node.idx();
+    let body_root = ui.forest.trees[Layer::Popup].roots[1].first_node.idx();
     let layout_min = ui.layout[Layer::Popup].rect[body_root].min;
     assert_eq!(layout_min, flipped_min, "layout sanity: popup flipped");
 
