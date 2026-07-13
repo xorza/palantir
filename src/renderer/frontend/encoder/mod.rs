@@ -1,5 +1,5 @@
 use crate::forest::frame_arena::FrameArenaInner;
-use crate::forest::rollups::CascadeInputHash;
+use crate::ui::cascade::CascadeInputHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,

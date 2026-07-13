@@ -221,7 +221,7 @@ fn popup_body_sizing_matches_sizing_mode() {
                         });
                 });
         });
-        let popup_tree = ui.forest.trees[Layer::Popup];
+        let popup_tree = &ui.forest.trees[Layer::Popup];
         let body_root = popup_tree.roots[1].first_node.idx();
         let body_rect = ui.layout[Layer::Popup].rect[body_root];
         assert_eq!(
@@ -273,7 +273,7 @@ fn popup_near_bottom_flips_upward() {
     // pass B in this very call places against pass A's measured size.
     ui.run_at(SURF, scene);
 
-    let popup_tree = ui.forest.trees[Layer::Popup];
+    let popup_tree = &ui.forest.trees[Layer::Popup];
     let body_root = popup_tree.roots[1].first_node.idx();
     let body_rect = ui.layout[Layer::Popup].rect[body_root];
     assert_eq!(

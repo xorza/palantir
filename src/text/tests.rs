@@ -276,7 +276,7 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
 
 #[test]
 fn shape_unbounded_caches_per_authoring_hash_only() {
-    // The reuse cache is keyed by `(WidgetId, NodeHash)` — different
+    // The reuse cache is keyed by `(WidgetId, ContentHash)` — different
     // line heights with the *same* hash would collide (same widget
     // id, same hash → cache hit returning the wrong measurement).
     // Authoring-side hash includes line_height_px (pinned in
@@ -285,8 +285,8 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
     // hash distinction.
     let m = TextShaper::default();
     let wid = WidgetId::from_hash("a");
-    let h1 = NodeHash(1);
-    let h2 = NodeHash(2);
+    let h1 = ContentHash(1);
+    let h2 = ContentHash(2);
     let r1 = m.shape_unbounded(
         wid,
         0,
@@ -350,7 +350,7 @@ fn shape_wrap_panics_without_prime() {
     m.shape_wrap(
         wid,
         0,
-        NodeHash(1),
+        ContentHash(1),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -893,7 +893,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
     // discriminates on halign, not just target_q.
     let m = TextShaper::with_bundled_fonts();
     let wid = WidgetId::from_hash("w");
-    let hash = NodeHash(7);
+    let hash = ContentHash(7);
     m.shape_unbounded(
         wid,
         0,
@@ -985,7 +985,7 @@ fn sweep_removed_evicts_reuse_entries() {
     m.shape_unbounded(
         a,
         0,
-        NodeHash(1),
+        ContentHash(1),
         "hi",
         ShapeParams {
             font_size_px: 16.0,
@@ -999,7 +999,7 @@ fn sweep_removed_evicts_reuse_entries() {
     m.shape_unbounded(
         b,
         0,
-        NodeHash(2),
+        ContentHash(2),
         "yo",
         ShapeParams {
             font_size_px: 16.0,

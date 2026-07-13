@@ -1442,7 +1442,7 @@ pub mod test_support {
     impl Ui {
         /// `Layer::Main` node whose `widget_id` matches `id`. Panics if absent.
         pub fn node_for_widget_id(&self, id: WidgetId) -> NodeId {
-            let tree = self.forest.trees[Layer::Main];
+            let tree = &self.forest.trees[Layer::Main];
             let idx = tree
                 .records
                 .widget_id()

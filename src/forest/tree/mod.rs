@@ -27,8 +27,9 @@ use crate::common::hash::Hasher;
 use crate::forest::Chrome;
 use crate::forest::element::{BoundsExtras, Element, LayoutMode, PanelExtras};
 use crate::forest::node::{NodeRecord, SubtreeEnd};
-use crate::forest::rollups::{NodeHash, SubtreeRollups};
+use crate::forest::rollups::{ContentHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
+use crate::forest::shapes::lower;
 use crate::forest::shapes::record::ChromeRow;
 use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
 use crate::forest::tree::paint_anims::PaintAnims;
@@ -259,7 +260,7 @@ impl Tree {
                 panel_tab[s].hash(&mut h);
             }
             // Chrome authoring hash is pre-computed at lowering time
-            // (`FrameArena::lower_background`) and stored inline on
+            // (`shapes::lower::background`) and stored inline on
             // `ChromeRow.hash`. Both arms write a 1-byte discriminant
             // before any payload so a chromeless node's stream can't
             // collide with a chromed node whose hash happens to start
@@ -314,16 +315,16 @@ impl Tree {
                 grid_defs[idx as usize].hash(&mut h);
             }
             let node_hash = h.finish();
-            node_out[i] = NodeHash(node_hash);
+            node_out[i] = ContentHash(node_hash);
 
             // Childless subtree = the node alone, so `node_hash` IS the
             // rollup — skip the second hasher round-trip (most nodes).
             // Inner nodes fold children (streamed above) then self.
             subtree_out[i] = if has_children {
                 sh.write_u64(node_hash);
-                NodeHash(sh.finish())
+                ContentHash(sh.finish())
             } else {
-                NodeHash(node_hash)
+                ContentHash(node_hash)
             };
         }
     }
@@ -428,7 +429,7 @@ impl Tree {
             let needs_chrome_row =
                 !bg.is_noop() || matches!(cols.attrs.clip_mode(), ClipMode::Rounded);
             if needs_chrome_row {
-                let row = arena.lower_background(bg, atlas);
+                let row = lower::background(arena, bg, atlas);
                 ex.chrome = Slot::from_len(self.chrome_table.len());
                 self.chrome_table.push(row);
             }

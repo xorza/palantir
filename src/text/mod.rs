@@ -18,7 +18,7 @@
 //!
 //! [`Ui`]: crate::Ui
 
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::ContentHash;
 use crate::layout::types::align::HAlign;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
@@ -232,7 +232,7 @@ impl TextShaper {
         &self,
         wid: WidgetId,
         ordinal: u16,
-        hash: NodeHash,
+        hash: ContentHash,
         text: &str,
         params: ShapeParams,
     ) -> MeasureResult {
@@ -284,7 +284,7 @@ impl TextShaper {
         &self,
         wid: WidgetId,
         ordinal: u16,
-        hash: NodeHash,
+        hash: ContentHash,
         text: &str,
         params: ShapeParams,
         target_q: u32,
@@ -871,7 +871,7 @@ fn cursor_to_byte(text: &str, cursor: cosmic_text::Cursor) -> usize {
 /// by authoring `hash`.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct TextReuseEntry {
-    hash: NodeHash,
+    hash: ContentHash,
     unbounded: MeasureResult,
     wrap: Option<WrapReuse>,
 }
