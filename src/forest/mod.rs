@@ -30,8 +30,9 @@ pub(crate) struct CollisionRecord {
 
 /// Background paint inputs for a chromed node, threaded by reference
 /// from `Ui::node` through [`Forest::open_node`] to `Tree::open_node`
-/// so the 168 B `Background` isn't copied on every chromed widget every
-/// frame. `None` chrome means no background paint.
+/// (which lowers it via `shapes::lower::background`) so the 168 B
+/// `Background` isn't copied on every chromed widget every frame.
+/// `None` chrome means no background paint.
 #[derive(Clone, Copy)]
 pub(crate) struct Chrome<'a> {
     pub(crate) bg: &'a Background,
@@ -52,7 +53,7 @@ pub(crate) mod visibility;
 /// Paint / hit-test order across layers. Lower variants paint first
 /// (under) and hit-test last (under). Total order — popups beat the
 /// main tree, modals beat popups, tooltips beat modals, debug beats
-/// everything. See `docs/popups.md`.
+/// everything.
 ///
 /// `#[repr(u8)]` + the contiguous variant layout means `layer.idx()`
 /// is a valid index into `[T; Layer::COUNT]` per-layer storage. With
@@ -71,6 +72,10 @@ pub enum Layer {
 impl Layer {
     /// Paint order (low → high). Iterate trees in this order so layers
     /// paint bottom-up; reverse for topmost-first hit-test traversal.
+    /// Must list every variant in discriminant order — `idx()`, the
+    /// derived `Ord` (the `push_layer` nesting check), and `PerLayer`
+    /// storage all key off the discriminant, and the const assert
+    /// below pins the array to it.
     pub(crate) const PAINT_ORDER: [Layer; <Layer as strum::EnumCount>::COUNT] = [
         Layer::Main,
         Layer::Popup,
@@ -90,14 +95,21 @@ impl Layer {
     }
 }
 
+const _: () = {
+    let mut i = 0;
+    while i < Layer::PAINT_ORDER.len() {
+        assert!(
+            Layer::PAINT_ORDER[i] as usize == i,
+            "Layer::PAINT_ORDER must match the discriminant order",
+        );
+        i += 1;
+    }
+};
+
 /// One arena per [`Layer`]. Recording dispatches `open_node`,
 /// `add_shape`, `close_node` to `trees[current_layer.idx()]`.
-/// Pipeline passes iterate trees via [`Forest::iter_paint_order`].
-///
-/// **Access convention**: prefer [`Forest::tree`] / [`Forest::tree_mut`]
-/// for known-layer access; iterate `trees` directly only for
-/// cross-layer aggregation that doesn't care about layer order
-/// (e.g. summing record counts).
+/// Pipeline passes iterate trees via [`Forest::iter_paint_order`];
+/// known-layer access indexes `trees[layer]` directly.
 #[derive(Default)]
 pub(crate) struct Forest {
     pub(crate) trees: PerLayer<Tree>,
@@ -255,6 +267,16 @@ impl Forest {
         tree.close_node(scratch);
     }
 
+    /// Shared gate for the `add_*` recording entry points: a shape can
+    /// only attach to a currently-open node, so widgets can't leak
+    /// shapes outside an `open_node` / `close_node` scope.
+    fn assert_node_open(&self, layer: Layer, what: &str) {
+        assert!(
+            !self.scratch[layer].open_frames.is_empty(),
+            "{what} called with no open node",
+        );
+    }
+
     /// Lower a user-facing [`Shape`] (curve flattening, span
     /// stamping, hashing) and append it to the active tree's shape
     /// buffer. Asserts a node is currently open so widgets can't leak
@@ -266,10 +288,7 @@ impl Forest {
         atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer();
-        assert!(
-            !self.scratch[layer].open_frames.is_empty(),
-            "add_shape called with no open node",
-        );
+        self.assert_node_open(layer, "add_shape");
         // No `paint_anims.by_shape` bookkeeping on the unanimated path —
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
@@ -283,10 +302,7 @@ impl Forest {
     /// so it skips the lowering path.
     pub(crate) fn add_gpu_view(&mut self, epoch: u64) {
         let layer = self.current_layer();
-        assert!(
-            !self.scratch[layer].open_frames.is_empty(),
-            "add_gpu_view called with no open node",
-        );
+        self.assert_node_open(layer, "add_gpu_view");
         self.trees[layer].shapes.add_gpu_view(epoch);
     }
 
@@ -303,10 +319,7 @@ impl Forest {
         atlas: &GradientAtlas,
     ) {
         let layer = self.current_layer();
-        assert!(
-            !self.scratch[layer].open_frames.is_empty(),
-            "add_shape_animated called with no open node",
-        );
+        self.assert_node_open(layer, "add_shape_animated");
         let node_idx = self.scratch[layer].open_frames.last().unwrap().node.0;
         let tree = &mut self.trees[layer];
         let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
@@ -359,18 +372,6 @@ impl Forest {
             layer,
         );
         scratch.pending_anchor = None;
-    }
-
-    /// Borrow the tree owned by `layer`.
-    #[inline]
-    pub(crate) fn tree(&self, layer: Layer) -> &Tree {
-        &self.trees[layer]
-    }
-
-    /// Mutably borrow the tree owned by `layer`.
-    #[inline]
-    pub(crate) fn tree_mut(&mut self, layer: Layer) -> &mut Tree {
-        &mut self.trees[layer]
     }
 
     /// Borrow the tree for the [`Self::current_layer`] — the one

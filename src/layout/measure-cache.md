@@ -11,7 +11,7 @@ Code lives in `cache/` (this directory's sibling).
 
 ## Mechanism
 
-- **Subtree-hash rollup.** `Tree.rollups.subtree: Vec<NodeHash>` is
+- **Subtree-hash rollup.** `Tree.rollups.subtree: Vec<ContentHash>` is
   populated alongside `rollups.node` in `Tree::post_record` via a fused
   reverse-pre-order walk. Pinned by `forest::tree::tests::subtree_hash_*`.
 - **Subtree-skip lookup.** `MeasureCache::try_lookup` fires at every

@@ -44,7 +44,8 @@
 
 use crate::forest::Forest;
 use crate::forest::node::SubtreeEnd;
-use crate::forest::rollups::{CascadeInputHash, NodeHash};
+use crate::forest::rollups::ContentHash;
+use crate::ui::cascade::CascadeInputHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::{NodeId, Tree};
@@ -89,13 +90,13 @@ pub(crate) struct NodeSnapshot {
     /// at all.
     pub(crate) paint_span: Span,
     /// Authoring hash from last frame's `Tree.rollups.node`.
-    pub(crate) hash: NodeHash,
+    pub(crate) hash: ContentHash,
     /// Rollup hash of this node + its entire subtree from last frame's
     /// `Tree.rollups.subtree`. Pair with `cascade_input` to drive the
     /// subtree-skip fast path: if both match the current frame, every
     /// descendant is bit-identical and the per-node diff can jump to
     /// `subtree_end[i]`.
-    pub(crate) subtree_hash: NodeHash,
+    pub(crate) subtree_hash: ContentHash,
     /// Fingerprint of last frame's cascade inputs at this node (parent
     /// transform/clip/disabled/invisible + own arranged rect). See
     /// [`crate::forest::rollups::CascadeInputHash`].

@@ -179,7 +179,8 @@ mod hot_struct_sizes {
     use crate::forest::element::Element;
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::forest::node::NodeRecord;
-    use crate::forest::rollups::{CascadeInputHash, NodeHash};
+    use crate::forest::rollups::ContentHash;
+use crate::ui::cascade::CascadeInputHash;
     use crate::forest::shapes::record::{
         ChromeRow, LoweredGradient, LoweredShadow, ShapeRecord, ShapeStroke,
     };
@@ -274,8 +275,8 @@ mod hot_struct_sizes {
         ShapedText => "layout::ShapedText": 32 / 8,
         TextCacheKey => "text::TextCacheKey": 24 / 8,
         // Cross-frame hash keys.
-        NodeHash => "rollups::NodeHash": 8 / 8,
-        CascadeInputHash => "rollups::CascadeInputHash": 8 / 8,
+        ContentHash => "rollups::ContentHash": 8 / 8,
+        CascadeInputHash => "cascade::CascadeInputHash": 8 / 8,
         // Cascade per-node rows.
         EntryRow => "cascade::EntryRow": 56 / 8,
         Paint => "cascade::Paint": 24 / 8,

@@ -29,7 +29,7 @@
 //! next compact.
 
 use crate::common::live_arena::{COMPACT_FLOOR, COMPACT_RATIO, LiveArena};
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::ContentHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::layout::ShapedText;
 use crate::layout::intrinsic::SLOT_COUNT;
@@ -49,7 +49,7 @@ pub(crate) struct ArenaSnapshot {
     /// Rolled subtree hash from last frame. The rollup includes child
     /// count and per-child subtree hashes, so any structural or
     /// authoring change anywhere in the subtree busts the key.
-    pub(crate) subtree_hash: NodeHash,
+    pub(crate) subtree_hash: ContentHash,
     /// Quantized `available` size at snapshot time — the dimensional
     /// half of the cache-validity check.
     pub(crate) available_q: AvailableKey,
@@ -254,7 +254,7 @@ impl MeasureCache {
     pub(crate) fn try_lookup(
         &self,
         wid: WidgetId,
-        curr_hash: NodeHash,
+        curr_hash: ContentHash,
         curr_avail: AvailableKey,
     ) -> Option<CachedSubtree<'_>> {
         let snap = self.snapshots.get(&wid)?;
@@ -287,7 +287,7 @@ impl MeasureCache {
     pub(crate) fn lookup_root_intrinsic(
         &self,
         wid: WidgetId,
-        subtree_hash: NodeHash,
+        subtree_hash: ContentHash,
         slot: usize,
     ) -> Option<f32> {
         let snap = self.snapshots.get(&wid)?;
@@ -309,7 +309,7 @@ impl MeasureCache {
     pub(crate) fn write_subtree(
         &mut self,
         wid: WidgetId,
-        subtree_hash: NodeHash,
+        subtree_hash: ContentHash,
         available_q: AvailableKey,
         root_intrinsics: [f32; SLOT_COUNT],
         arenas: SubtreeArenas<'_>,

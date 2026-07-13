@@ -383,7 +383,7 @@ impl LayoutEngine {
         }
         let surface_end = surface.max();
         for layer in Layer::PAINT_ORDER {
-            let tree = forest.trees[layer];
+            let tree = &forest.trees[layer];
             self.active_layer = layer;
             out[layer].resize_for(&tree);
             if tree.records.is_empty() {
