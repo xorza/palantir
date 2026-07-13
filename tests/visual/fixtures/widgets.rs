@@ -585,16 +585,23 @@ fn line_diagonal_aa_matches_golden() {
                     brush: Color::rgb(0.2, 0.9, 1.0).into(),
                     cap: LineCap::Butt,
                 });
-                // Hairline at sub-pixel width — should appear dim
-                // (alpha-faded) rather than vanish or look identical
-                // to the 4 px stroke. Pins the hairline branch.
-                ui.add_shape(Shape::Line {
-                    a: Vec2::new(10.0, 80.0),
-                    b: Vec2::new(150.0, 80.0),
-                    width: 0.4,
-                    brush: Color::rgb(1.0, 1.0, 1.0).into(),
-                    cap: LineCap::Butt,
-                });
+                // Hairlines at sub-pixel width — should appear dim
+                // (coverage-faded) rather than vanish or look identical
+                // to the 4 px stroke. Two alignments pin the trapezoid
+                // coverage plateau: on a pixel *boundary* (y = 80) the
+                // 0.4 px line splits 0.2 + 0.2 across two rows; through
+                // a pixel *center* (y = 40.5) it lands 0.4 on one row —
+                // equal total energy, so brightness doesn't pulse as a
+                // hairline drifts across alignments.
+                for y in [80.0, 40.5] {
+                    ui.add_shape(Shape::Line {
+                        a: Vec2::new(10.0, y),
+                        b: Vec2::new(150.0, y),
+                        width: 0.4,
+                        brush: Color::rgb(1.0, 1.0, 1.0).into(),
+                        cap: LineCap::Butt,
+                    });
+                }
             });
     });
     assert_matches_golden("line_diagonal_aa", &img, Tolerance::default());
