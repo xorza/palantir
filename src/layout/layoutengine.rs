@@ -385,11 +385,11 @@ impl LayoutEngine {
         for layer in Layer::PAINT_ORDER {
             let tree = &forest.trees[layer];
             self.active_layer = layer;
-            out[layer].resize_for(&tree);
+            out[layer].resize_for(tree);
             if tree.records.is_empty() {
                 continue;
             }
-            self.scratch.resize_for(&tree);
+            self.scratch.resize_for(tree);
             for slot in &tree.roots {
                 let root = slot.first_node;
                 // Main: implicit root spans the surface. Side layers:
@@ -422,7 +422,7 @@ impl LayoutEngine {
                     };
                     (slot.placement.anchor, available)
                 };
-                let desired = self.measure(&tree, root, available, tc, out);
+                let desired = self.measure(tree, root, available, tc, out);
                 // The layer engine *is* the parent for the root, so it
                 // does WPF Stretch's arrange-time grow here. Modeled
                 // as a synthetic `Fixed`-sized parent of size
@@ -444,7 +444,7 @@ impl LayoutEngine {
                 // sensible default for any driver that reads
                 // `parent_outer` (today only scroll, when mounted as
                 // root with no wrapper ZStack).
-                self.arrange(&tree, root, size, Rect { min: origin, size }, out);
+                self.arrange(tree, root, size, Rect { min: origin, size }, out);
             }
         }
         assert_eq!(
