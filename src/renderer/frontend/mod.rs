@@ -41,9 +41,9 @@ pub struct Frontend {
     pub(crate) cmds: RenderCmdBuffer,
     pub(crate) composer: Composer,
     pub(crate) buffer: RenderBuffer,
-    /// Shared frame arena (clone of `WindowRenderer`'s canonical handle). Compose
-    /// borrows it mutably to append polyline tessellation output and
-    /// to read user-supplied mesh / polyline bytes.
+    /// Shared frame arena (clone of `WindowRenderer`'s canonical handle).
+    /// Encode and compose both read it (shape payloads, mesh / polyline
+    /// bytes); neither writes — strokes expand on the GPU.
     pub(crate) frame_arena: FrameArena,
 }
 
@@ -67,18 +67,14 @@ impl Frontend {
     /// the `Ui` stays frozen after record.
     #[profiling::function]
     pub(crate) fn build(&mut self, ui: &Ui, plan: RenderPlan) -> &RenderBuffer {
-        // Two scoped borrows, not one held across both passes: encode
-        // only reads the arena (shared borrow), compose appends polyline
-        // tessellation (mutable). Keeping the mutable window to compose
-        // alone means encode can't deadlock-panic against any other
-        // shared reader, and the read/write split reads off the calls.
-        {
-            let arena = self.frame_arena.inner();
-            encode(ui, &arena, plan, &mut self.cmds);
-        }
-        let mut arena = self.frame_arena.inner_mut();
+        // One shared borrow spans both passes — encode and compose only
+        // read the arena (stroke expansion happens on the GPU), so no
+        // mutable window is needed and neither pass can deadlock-panic
+        // against another shared reader.
+        let arena = self.frame_arena.inner();
+        encode(ui, &arena, plan, &mut self.cmds);
         self.composer
-            .compose(&self.cmds, &mut arena, ui.display, &mut self.buffer);
+            .compose(&self.cmds, &arena, ui.display, &mut self.buffer);
         // Stamp the frame clock for the backend's per-GpuView `dt` (not
         // derivable from `Display`, so it doesn't ride `start_frame`).
         self.buffer.time = ui.time;

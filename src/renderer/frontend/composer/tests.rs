@@ -2,7 +2,7 @@ use crate::display::Display;
 use crate::forest::frame_arena::FrameArenaInner;
 use crate::primitives::span::Span;
 use crate::primitives::{
-    color::Color, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
+    color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
 use crate::renderer::frontend::cmd_buffer::{
@@ -567,7 +567,6 @@ fn windowed_rect_is_not_an_opaque_cover() {
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
-    use crate::primitives::color::ColorU8;
     use crate::primitives::paint::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
@@ -609,7 +608,6 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
-    use crate::primitives::color::ColorU8;
     use crate::primitives::paint::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
@@ -1033,34 +1031,26 @@ fn compose_rounded_clip_change_splits_text_batch() {
     assert_eq!(r1.corners.as_array()[0], 8.0);
 }
 
-/// Pin: a mesh (here, a polyline lowering to a mesh) recorded between
-/// two text runs splits the batch. Mesh paints over text by kind
-/// order; if it weren't a split, the merged batch's text would emit
-/// at end-of-batch, *after* the mesh, breaking that ordering.
+/// Pin: a higher-kind stroke (a polyline, riding the curve tier)
+/// recorded between two text runs splits the batch. Strokes paint
+/// over text by kind order; if it weren't a split, the merged batch's
+/// text would emit at end-of-batch, *after* the stroke, breaking that
+/// ordering.
 #[test]
-fn compose_mesh_between_texts_splits_text_batch() {
+fn compose_polyline_between_texts_splits_text_batch() {
     let buf = run(
         |b, arena| {
             text(b, rect(0.0, 0.0, 100.0, 20.0));
-            // Stuff a 2-point polyline into the frame arena and record it.
-            let p_start = arena.polyline_points.len() as u32;
-            arena.polyline_points.push(Vec2::new(0.0, 25.0));
-            arena.polyline_points.push(Vec2::new(100.0, 25.0));
-            let c_start = arena.polyline_colors.len() as u32;
-            arena.polyline_colors.push(Color::WHITE.into());
-            b.draw_polyline(DrawPolylinePayload {
-                bbox: rect(0.0, 25.0, 100.0, 0.0),
-                origin: Vec2::ZERO,
-                width: 1.0,
-                points_start: p_start,
-                points_len: 2,
-                colors_start: c_start,
-                colors_len: 1,
-                color_mode: ColorModeBits::new(ColorMode::Single),
-                cap: LineCapBits::new(LineCap::Butt),
-                join: LineJoinBits::new(LineJoin::Miter),
-                ..bytemuck::Zeroable::zeroed()
-            });
+            polyline_cmd(
+                b,
+                arena,
+                &[Vec2::new(0.0, 25.0), Vec2::new(100.0, 25.0)],
+                &[Color::WHITE],
+                ColorMode::Single,
+                1.0,
+                LineCap::Butt,
+                LineJoin::Miter,
+            );
             text(b, rect(0.0, 40.0, 100.0, 20.0));
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -1094,11 +1084,9 @@ fn polyline_cmd(
     let p_start = arena.polyline_points.len() as u32;
     arena.polyline_points.extend_from_slice(points);
     let c_start = arena.polyline_colors.len() as u32;
-    arena.polyline_colors.extend(
-        colors
-            .iter()
-            .map(|&c| crate::primitives::color::ColorU8::from(c)),
-    );
+    arena
+        .polyline_colors
+        .extend(colors.iter().map(|&c| ColorU8::from(c)));
     let mut lo = points[0];
     let mut hi = points[0];
     for &p in points {
@@ -1166,26 +1154,41 @@ fn compose_polyline_emits_segments_and_join_chrome() {
     assert_eq!(buf.curves.len(), 5, "nothing else in the stream");
 
     let round = LineCap::Round as u32;
+    let d0 = (pts[1] - pts[0]).normalize();
+    let d1 = (pts[2] - pts[1]).normalize();
+    let d2 = (pts[3] - pts[2]).normalize();
     // First segment: user cap at start, butt at joint end; the start
-    // neighbor lane mirrors p0 (cap tag) and the end lane carries the
-    // next polyline point.
+    // plane lane is zero (cap end, no clip) and the end lane carries
+    // the pre-oriented bisector normal.
     assert_eq!(segs[0].p0, pts[0]);
     assert_eq!(segs[0].p3, pts[1]);
-    assert_eq!(segs[0].p1, pts[0], "no prev neighbor at a cap end");
-    assert_eq!(segs[0].p2, pts[2], "next neighbor rides p2");
+    assert_eq!(segs[0].p1, Vec2::ZERO, "no clip plane at a cap end");
+    assert_eq!(segs[0].p2, d0 + d1, "end bisector plane rides p2");
     assert_eq!(segs[0].cap, cap_lanes(round, 0));
-    // Interior segment: butt both ends, neighbors on both lanes.
+    // Interior segment: butt both ends, planes on both lanes. The
+    // start plane must be the bit-exact negation of the previous
+    // segment's end plane — the overlap-partition contract.
     assert_eq!(segs[1].cap, cap_lanes(0, 0));
-    assert_eq!(segs[1].p1, pts[0]);
-    assert_eq!(segs[1].p2, pts[3]);
+    assert_eq!(
+        segs[1].p1, -segs[0].p2,
+        "shared joint planes negate exactly"
+    );
+    assert_eq!(segs[1].p2, d1 + d2);
     // Last segment: butt at joint, user cap at the true end.
     assert_eq!(segs[2].cap, cap_lanes(0, round));
-    assert_eq!(segs[2].p2, pts[3], "no next neighbor at a cap end");
-    // Chrome anchors at the interior points with its neighbors.
+    assert_eq!(
+        segs[2].p1, -segs[1].p2,
+        "shared joint planes negate exactly"
+    );
+    assert_eq!(segs[2].p2, Vec2::ZERO, "no clip plane at a cap end");
+    // Chrome anchors at the interior points with the pre-oriented
+    // face-plane normals (`p1 = -d_a`, `p2 = d_b`).
     assert_eq!(joins[0].p0, pts[1]);
-    assert_eq!(joins[0].p1, pts[0]);
-    assert_eq!(joins[0].p2, pts[2]);
+    assert_eq!(joins[0].p1, -d0);
+    assert_eq!(joins[0].p2, d1);
     assert_eq!(joins[1].p0, pts[2]);
+    assert_eq!(joins[1].p1, -d1);
+    assert_eq!(joins[1].p2, d2);
 }
 
 /// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
@@ -1252,9 +1255,9 @@ fn compose_polyline_color_modes_and_coincident_skip() {
     let red = Color::rgb(1.0, 0.0, 0.0);
     let green = Color::rgb(0.0, 1.0, 0.0);
     let blue = Color::rgb(0.0, 0.0, 1.0);
-    let red8: crate::primitives::color::ColorU8 = red.into();
-    let green8: crate::primitives::color::ColorU8 = green.into();
-    let blue8: crate::primitives::color::ColorU8 = blue.into();
+    let red8: ColorU8 = red.into();
+    let green8: ColorU8 = green.into();
+    let blue8: ColorU8 = blue.into();
 
     // PerPoint with a duplicated middle point: the duplicate is
     // dropped, and the kept segments read the colors at the original
@@ -2542,26 +2545,19 @@ fn quad_flushes_text_in_already_closed_batch_same_group() {
             // Node label.
             text(b, rect(0.0, 0.0, 100.0, 20.0));
             // A polyline far from everything closes the text batch
-            // (mesh-tier) without flushing the group, and doesn't overlap
-            // the quad below (so it can't be what forces the flush).
-            let p_start = arena.polyline_points.len() as u32;
-            arena.polyline_points.push(Vec2::new(0.0, 400.0));
-            arena.polyline_points.push(Vec2::new(50.0, 400.0));
-            let c_start = arena.polyline_colors.len() as u32;
-            arena.polyline_colors.push(Color::WHITE.into());
-            b.draw_polyline(DrawPolylinePayload {
-                bbox: rect(0.0, 400.0, 50.0, 0.0),
-                origin: Vec2::ZERO,
-                width: 1.0,
-                points_start: p_start,
-                points_len: 2,
-                colors_start: c_start,
-                colors_len: 1,
-                color_mode: ColorModeBits::new(ColorMode::Single),
-                cap: LineCapBits::new(LineCap::Butt),
-                join: LineJoinBits::new(LineJoin::Miter),
-                ..bytemuck::Zeroable::zeroed()
-            });
+            // (curve-tier) without flushing the group, and doesn't
+            // overlap the quad below (so it can't be what forces the
+            // flush).
+            polyline_cmd(
+                b,
+                arena,
+                &[Vec2::new(0.0, 400.0), Vec2::new(50.0, 400.0)],
+                &[Color::WHITE],
+                ColorMode::Single,
+                1.0,
+                LineCap::Butt,
+                LineJoin::Miter,
+            );
             // Panel chrome quad, overlapping the (now closed-batch) label.
             draw(b, rect(0.0, 0.0, 100.0, 60.0));
         },

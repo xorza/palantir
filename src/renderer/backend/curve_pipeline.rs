@@ -130,12 +130,12 @@ impl CurvePipeline {
 }
 
 // `p0/p1/p2/p3 : Float32x2`, `t_range : Float32x2`, `width : Float32`,
-// `color : Unorm8x4` (linear-u8, same convention as `MeshVertex.color`),
-// `cap : Uint32` (0 = Butt, 1 = Square, 2 = Round),
+// `color/color1 : Unorm8x4` (linear-u8, t=0 / t=1 stroke colours),
+// `cap : Uint32` (per-end caps packed: bits 0..8 start, 8..16 end),
 // `fill_kind : Uint32` (0 = solid, 1 = linear),
 // `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0),
-// `kind : Uint32` (0 = cubic, 1 = arc — geometry-lane interpretation).
-const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = wgpu::vertex_attr_array![
+// `kind : Uint32` (basis tag — geometry-lane interpretation).
+const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 12] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,
     2 => Float32x2,
@@ -143,10 +143,11 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = wgpu::vertex_attr_arra
     4 => Float32x2,
     5 => Float32,
     6 => Unorm8x4,
-    7 => Uint32,
+    7 => Unorm8x4,
     8 => Uint32,
     9 => Uint32,
     10 => Uint32,
+    11 => Uint32,
 ];
 
 // Compile-time guard: attribute offsets must match the `CurveInstance`
@@ -163,18 +164,26 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[4].offset == offset_of!(CurveInstance, t0) as u64);
     assert!(CURVE_INSTANCE_ATTRS[5].offset == offset_of!(CurveInstance, width) as u64);
     assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, cap) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, fill_kind) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, kind) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, color1) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, cap) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[11].offset == offset_of!(CurveInstance, kind) as u64);
 };
 
 // Pin the Rust-side basis tags against the `KIND_*` constants in
 // `curve.wgsl` — same guard as the `CAP_*` block above.
 const _: () = {
-    use crate::renderer::render_buffer::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
+    use crate::renderer::render_buffer::{
+        CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
+        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT,
+    };
     assert!(CURVE_KIND_CUBIC == 0);
     assert!(CURVE_KIND_ARC == 1);
+    assert!(CURVE_KIND_SEGMENT == 2);
+    assert!(CURVE_KIND_JOIN_ROUND == 3);
+    assert!(CURVE_KIND_JOIN_BEVEL == 4);
+    assert!(CURVE_KIND_JOIN_MITER == 5);
 };
 
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {
