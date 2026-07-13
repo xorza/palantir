@@ -1189,8 +1189,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
 }
 
 /// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
-/// bends), keep miter chrome on gentle ones — the SVG fallback the
-/// CPU tessellator pinned.
+/// bends), keep miter chrome on gentle ones — the SVG convention.
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
     use crate::renderer::render_buffer::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
