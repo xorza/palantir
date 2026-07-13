@@ -1,7 +1,6 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::text::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
@@ -18,6 +17,7 @@ use crate::primitives::{
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
+use crate::text::text_in_rect;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
