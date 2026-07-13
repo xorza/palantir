@@ -13,7 +13,7 @@ use crate::renderer::backend::quad_pipeline::{MaskIndices, build_mask_indices};
 use crate::renderer::backend::schedule::{RenderStep, for_each_step};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshBatch, MeshScene, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, MeshBatch, RenderBuffer, RoundedClip, TextBatch, TextRun,
 };
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};

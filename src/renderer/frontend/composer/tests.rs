@@ -212,7 +212,7 @@ fn cull_drops_drawmesh_entirely_outside_active_clip() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.meshes.rows.len(), 1, "outside-clip mesh must be culled");
+    assert_eq!(buf.meshes.len(), 1, "outside-clip mesh must be culled");
 }
 
 #[test]
@@ -277,7 +277,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert!(buf.has_rounded_clip);
+    assert!(!buf.rounded_clips.is_empty());
     assert_eq!(
         buf.groups.len(),
         2,
@@ -423,7 +423,7 @@ fn push_clip_rect_emits_no_rounded_data() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(buf.groups.len(), 1);
-    assert!(!buf.has_rounded_clip);
+    assert!(buf.rounded_clips.is_empty());
     assert_eq!(buf.groups[0].rounded_clips.len, 0);
 }
 
@@ -1067,7 +1067,7 @@ fn compose_polyline_between_texts_splits_text_batch() {
         buf.curve_batches[0].instances.len, 1,
         "one segment instance for a 2-point polyline",
     );
-    assert!(buf.meshes.rows.is_empty(), "no CPU-tessellated mesh");
+    assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh");
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1418,7 +1418,7 @@ fn compose_culled_mesh_between_texts_keeps_one_batch() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.meshes.rows.len(), 0, "the mesh must be culled");
+    assert_eq!(buf.meshes.len(), 0, "the mesh must be culled");
     assert_eq!(
         buf.text_batches.len(),
         1,
@@ -1465,21 +1465,21 @@ fn compose_emits_image_batch_for_drawimage() {
         },
         &params(2.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.rows.len(), 1, "one image draw");
-    assert_eq!(buf.images.rows.len(), 1, "one image instance");
+    assert_eq!(buf.images.len(), 1, "one image draw");
+    assert_eq!(buf.images.len(), 1, "one image instance");
     assert_eq!(buf.image_batches.len(), 1, "one image batch");
     assert_eq!(buf.image_batches[0].images, Span::new(0, 1));
-    assert_eq!(buf.images.rows.id()[0], TextureId(0xc0ffee));
+    assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     // Physical-px rect = logical * scale (no snap in `params`).
     assert_eq!(
-        buf.images.rows.instance()[0].rect,
+        buf.images.instance()[0].rect,
         rect(20.0, 40.0, 60.0, 80.0)
     );
     // Composer must forward the encoder's UV crop verbatim — a Zero
     // UV size means "sample one texel forever" and silently paints
     // every image as a uniform color (regression hunt: 2026-05).
-    assert_eq!(buf.images.rows.instance()[0].uv_min, glam::Vec2::ZERO);
-    assert_eq!(buf.images.rows.instance()[0].uv_size, glam::Vec2::ONE);
+    assert_eq!(buf.images.instance()[0].uv_min, glam::Vec2::ZERO);
+    assert_eq!(buf.images.instance()[0].uv_size, glam::Vec2::ONE);
 }
 
 #[test]
@@ -1499,11 +1499,11 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
         &params(1.0, UVec2::new(400, 400)),
     );
     assert_eq!(
-        buf.images.rows.instance()[0].uv_min,
+        buf.images.instance()[0].uv_min,
         glam::Vec2::new(0.25, 0.0)
     );
     assert_eq!(
-        buf.images.rows.instance()[0].uv_size,
+        buf.images.instance()[0].uv_size,
         glam::Vec2::new(0.5, 1.0)
     );
 }
@@ -1546,13 +1546,13 @@ fn compose_forwards_flags_and_repeat_uv() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(buf.images.rows.instance()[0].flags, 0);
-    assert_eq!(buf.images.rows.instance()[1].flags, IMG_FLAG_TILED);
+    assert_eq!(buf.images.instance()[0].flags, 0);
+    assert_eq!(buf.images.instance()[1].flags, IMG_FLAG_TILED);
     assert_eq!(
-        buf.images.rows.instance()[1].uv_size,
+        buf.images.instance()[1].uv_size,
         glam::Vec2::new(3.0, 2.0)
     );
-    assert_eq!(buf.images.rows.instance()[2].flags, IMG_FLAG_NEAREST);
+    assert_eq!(buf.images.instance()[2].flags, IMG_FLAG_NEAREST);
 }
 
 #[test]
