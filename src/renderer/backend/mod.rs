@@ -520,10 +520,10 @@ impl WgpuBackend {
                 &mut ctx,
                 &arena.meshes.vertices,
                 &arena.meshes.indices,
-                buffer.meshes.rows.instance(),
+                buffer.meshes.instance(),
             );
             self.image
-                .upload_instances(&mut ctx, buffer.images.rows.instance());
+                .upload_instances(&mut ctx, buffer.images.instance());
             // Paint every GpuView composited this frame into its off-screen
             // target on this same encoder, before the main pass samples it.
             // The composer listed them in `buffer.frame_targets` (size + paint
@@ -965,7 +965,7 @@ impl WgpuBackend {
                     let range = buffer.mesh_batches[batch].meshes;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for (offset, draw) in buffer.meshes.rows.draw()[start..end].iter().enumerate() {
+                    for (offset, draw) in buffer.meshes.draw()[start..end].iter().enumerate() {
                         // `draw_indexed` takes a per-call vertex
                         // offset; pass the mesh's vertex start as
                         // `base_vertex` so indices stay buffer-local.
@@ -987,7 +987,7 @@ impl WgpuBackend {
                     let range = buffer.image_batches[batch].images;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
-                    for (offset, id) in buffer.images.rows.id()[start..end].iter().enumerate() {
+                    for (offset, id) in buffer.images.id()[start..end].iter().enumerate() {
                         self.image.draw(pass, *id, (start + offset) as u32);
                     }
                     pass.pop_debug_group();

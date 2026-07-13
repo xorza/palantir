@@ -247,8 +247,8 @@ impl Composer {
         self.occlusion.prune(out, self.cursors.quads);
         let q_end = out.quads.len() as u32;
         let t_end = out.texts.len() as u32;
-        let m_end = out.meshes.rows.len() as u32;
-        let i_end = out.images.rows.len() as u32;
+        let m_end = out.meshes.len() as u32;
+        let i_end = out.images.len() as u32;
         let c_end = out.curves.len() as u32;
         if q_end > self.cursors.quads
             || t_end > self.cursors.texts
@@ -566,7 +566,6 @@ impl Composer {
                         // rect's true edges, otherwise corner curves
                         // would shift inward when the clip partially
                         // leaves the viewport.
-                        out.has_rounded_clip = true;
                         let rc = RoundedClip {
                             mask_rect: world.scaled_by(scale, snap),
                             corners: logical_radius.scaled_by(phys_scale),
@@ -868,7 +867,7 @@ impl Composer {
                     let phys_translate = (current_transform.scale * p.origin
                         + current_transform.translation)
                         * scale;
-                    out.meshes.rows.push(MeshDrawRow {
+                    out.meshes.push(MeshDrawRow {
                         draw: MeshDraw {
                             vertices: (p.v_start..p.v_start + p.v_len).into(),
                             indices: (p.i_start..p.i_start + p.i_len).into(),
@@ -893,7 +892,7 @@ impl Composer {
                     if !self.enter_higher_kind(HigherKind::Image, image_urect, out) {
                         continue;
                     }
-                    out.images.rows.push(ImageDrawRow {
+                    out.images.push(ImageDrawRow {
                         // Just the registration id — the backend looks it
                         // up in its texture cache; the encoder already
                         // resolved fit into `rect` + UV. A `GpuView` row is

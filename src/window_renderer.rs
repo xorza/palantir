@@ -458,7 +458,7 @@ impl WindowRenderer {
         let debug_overlay = self.ui.debug_overlay();
         // Ensure the rounded-clip stencil up front — both paint paths share it,
         // sized to the target.
-        let use_stencil = self.frontend.buffer.has_rounded_clip;
+        let use_stencil = !self.frontend.buffer.rounded_clips.is_empty();
         if use_stencil {
             gpu.ensure_stencil(&mut self.stencil, target.size());
         }
