@@ -11,7 +11,7 @@ use crate::common::hash::Hasher;
 use crate::forest::Forest;
 
 use crate::forest::per_layer::PerLayer;
-use crate::forest::rollups::{CascadeInputHash, NodeHash};
+use crate::forest::rollups::ContentHash;
 use crate::forest::seen_ids::{Endpoint, WidgetIdMap};
 use crate::forest::shapes::record::{ShapeRecord, shadow_paint_rect_local, text_paint_bbox_local};
 use crate::forest::tree::iter::{TreeItem, TreeItems};
@@ -26,6 +26,47 @@ use crate::text::TEXT_SCALE_STEP;
 use glam::Vec2;
 use soa_rs::{Soa, Soars};
 use std::hash::Hasher as _;
+
+/// Per-node fingerprint of cascade inputs flowing in from ancestors
+/// (parent transform/clip/disabled/invisible) plus the node's own
+/// arranged rect, packed with the resolved `invisible` bit. Folded
+/// into a 64-bit `FxHash` (lower 63 bits) during the cascade walk;
+/// the high bit holds the cascade-resolved `invisible` so encoder
+/// and damage can read both in one 8-byte load. Compared
+/// frame-over-frame by `DamageEngine::compute`: if this matches AND
+/// `subtree[i]` matches, the entire subtree's paint state is
+/// bit-identical by induction and the per-node diff jumps to
+/// `subtree_end[i]`.
+///
+/// Why packing is sound: the skip predicate also requires
+/// `subtree[i]` match, which covers every descendant's `node_hash`
+/// (where own visibility lives). If `subtree` matches AND the lower
+/// 63 hash bits match, the high `invisible` bit is implied — own
+/// visibility is in `node_hash`, parent_invisible is in the hash
+/// inputs.
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct CascadeInputHash(pub(crate) u64);
+
+const INVISIBLE_BIT: u64 = 1u64 << 63;
+const HASH_MASK: u64 = !INVISIBLE_BIT;
+
+impl CascadeInputHash {
+    /// Combine a raw 64-bit hash output with the cascade-resolved
+    /// `invisible` flag. The hash's top bit is masked off before the
+    /// flag is shifted into place — 63 bits of entropy is more than
+    /// enough for the skip predicate, and branchless avoids the cost
+    /// of a per-node conditional move on the hot cascade path.
+    #[inline]
+    pub(crate) fn pack(hash: u64, invisible: bool) -> Self {
+        Self((hash & HASH_MASK) | ((invisible as u64) << 63))
+    }
+
+    #[inline]
+    pub(crate) fn invisible(self) -> bool {
+        self.0 & INVISIBLE_BIT != 0
+    }
+}
 
 /// One row of a node's paint span — chrome (row 0 when the node has
 /// chrome), one direct shape, or a child marker, in record order.
@@ -45,7 +86,7 @@ pub(crate) struct Paint {
     /// For shape: `Tree.shapes.hashes[shape_idx]`. For a child marker:
     /// the child's `WidgetId` bits — its stable identity across
     /// reorders.
-    pub(crate) hash: NodeHash,
+    pub(crate) hash: ContentHash,
 }
 
 /// Per-layer paint state: the unified [`Paint`] arena plus a per-node
@@ -384,7 +425,7 @@ impl CascadesEngine {
     /// because trees never share NodeId space.
     #[profiling::function]
     pub(crate) fn run(&mut self, forest: &Forest, layout: &Layout, cascades: &mut Cascades) {
-        let total: usize = forest.trees.iter().map(|t| t.records.len()).sum();
+        let total: usize = forest.trees.0.iter().map(|t| t.records.len()).sum();
         cascades.entries.clear();
         cascades.entries.reserve(total);
 
@@ -722,7 +763,7 @@ fn inflate_text_damage(screen: Rect, measured: Size, clip: Option<Rect>) -> Rect
 /// stays out of the union, which would otherwise grow to include the
 /// degenerate box pinned at the clip edge.
 #[inline]
-fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, hash: NodeHash) {
+fn push_paint(arena: &mut PaintArena, union: &mut Option<Rect>, screen: Rect, hash: ContentHash) {
     if !screen.is_paint_empty() {
         *union = Some(union.map_or(screen, |a| a.union(screen)));
     }
@@ -848,7 +889,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                 TreeItem::Child(c) => {
                     arena.rows.push(Paint {
                         screen: Rect::ZERO,
-                        hash: NodeHash(widget_ids[c.id.idx()].0),
+                        hash: ContentHash(widget_ids[c.id.idx()].0),
                     });
                     continue;
                 }
