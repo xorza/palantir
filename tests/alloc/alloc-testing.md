@@ -135,7 +135,7 @@ in unnoticed:
   `RenderCmdBuffer` + `RenderBuffer.quads` capacity reuse far harder
   than `grid_8x8`'s 64.
 - `polyline_static` — a static `Shape::Polyline` pushed every frame;
-  pins the polyline tessellator's scratch reuse.
+  pins the composer polyline scratch reuse.
 - `mesh_static` — a static `Shape::Mesh` pushed every frame; pins that
   the mesh-encoding command path stays alloc-free.
 
