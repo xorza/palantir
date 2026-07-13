@@ -11,8 +11,7 @@ use glam::UVec2;
 use std::rc::Rc;
 
 fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
-    ui.forest
-        .trees[Layer::Main]
+    ui.forest.trees[Layer::Main]
         .children(root)
         .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()

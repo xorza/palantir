@@ -153,7 +153,17 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => lower::arc(arena, center, radius, start_angle, sweep, width, brush, cap, atlas),
+            } => lower::arc(
+                arena,
+                center,
+                radius,
+                start_angle,
+                sweep,
+                width,
+                brush,
+                cap,
+                atlas,
+            ),
             Shape::Text {
                 local_origin,
                 text,

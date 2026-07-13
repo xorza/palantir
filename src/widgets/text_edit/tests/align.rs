@@ -325,9 +325,7 @@ fn selection_rects_offset_matches_text() {
 
     // Selection wash is emitted *before* the text shape; pick the
     // first RoundedRect with a `local_rect` in the leaf's stream.
-    let first_rounded = ui
-        .forest
-        .trees[Layer::Main]
+    let first_rounded = ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::RoundedRect { local_rect, .. } => *local_rect,

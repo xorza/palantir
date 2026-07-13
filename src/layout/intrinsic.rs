@@ -271,9 +271,7 @@ mod tests {
                 .node();
         });
 
-        let child = ui
-            .forest
-            .trees[Layer::Main]
+        let child = ui.forest.trees[Layer::Main]
             .children(root)
             .map(|c| c.id)
             .next()
@@ -307,9 +305,7 @@ mod tests {
                 .node();
         });
 
-        let child = ui
-            .forest
-            .trees[Layer::Main]
+        let child = ui.forest.trees[Layer::Main]
             .children(root)
             .map(|c| c.id)
             .next()

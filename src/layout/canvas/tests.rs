@@ -24,9 +24,7 @@ fn canvas_places_child_at_position_within_inner_rect() {
             .node()
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();
@@ -97,9 +95,7 @@ fn canvas_fill_canvas_positioned_overflow_does_not_grow_bbox() {
         "FILL canvas width must not grow past available"
     );
     assert_eq!(r.size.h, 200.0);
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();
@@ -136,9 +132,7 @@ fn canvas_negative_position_does_not_extend_bbox() {
     assert_eq!(r.size.w, 15.0);
     assert_eq!(r.size.h, 15.0);
 
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();
@@ -179,9 +173,7 @@ fn canvas_fill_child_uses_inner_when_constrained_else_intrinsic() {
                 })
                 .node()
         });
-        let kids: Vec<_> = ui
-            .forest
-            .trees[Layer::Main]
+        let kids: Vec<_> = ui.forest.trees[Layer::Main]
             .children(panel)
             .map(|c| c.id)
             .collect();

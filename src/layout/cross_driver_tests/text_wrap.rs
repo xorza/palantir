@@ -48,9 +48,7 @@ fn wrapping_text_grows_height_in_narrow_frame() {
         r.size.h,
     );
 
-    let shape = ui
-        .forest
-        .trees[Layer::Main]
+    let shape = ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .next()
         .expect("text shape");
@@ -82,9 +80,7 @@ fn button_label_truncates_one_line_in_narrow_frame_by_default() {
     });
     let node = node.unwrap();
 
-    let wrap = ui
-        .forest
-        .trees[Layer::Main]
+    let wrap = ui.forest.trees[Layer::Main]
         .shapes_of(node)
         .find_map(|s| match s {
             ShapeRecord::Text { wrap, .. } => Some(*wrap),

@@ -9,8 +9,7 @@ use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
 fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
-    ui.forest
-        .trees[Layer::Main]
+    ui.forest.trees[Layer::Main]
         .children(root)
         .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()
