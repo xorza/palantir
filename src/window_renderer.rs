@@ -287,15 +287,16 @@ impl WindowRenderer {
     /// on change, force this frame to repaint fully. A format flip changes
     /// nothing the `Ui` tracks (same size, same scene), so an unchanged
     /// scene would otherwise damage-`Skip` and copy the stale-format
-    /// backbuffer. `mark_pending` forces a full record + clear (so submit,
-    /// not the copy path, runs); the shared backend builds the new
-    /// format's pipelines lazily and the backbuffer self-heals. Resetting
-    /// `configured` forces a windowed surface reconfigure at the new
-    /// format. Runs every frame — a no-op once the format is steady.
+    /// backbuffer. Clearing `frame_submitted` forces a full record +
+    /// clear (so submit, not the copy path, runs); the shared backend
+    /// builds the new format's pipelines lazily and the backbuffer
+    /// self-heals. Resetting `configured` forces a windowed surface
+    /// reconfigure at the new format. Runs every frame — a no-op once
+    /// the format is steady.
     fn note_format(&mut self, format: wgpu::TextureFormat) {
         if self.last_format != Some(format) {
             self.last_format = Some(format);
-            self.ui.frame_state.mark_pending();
+            self.ui.frame_submitted = false;
             self.configured = None;
         }
     }
@@ -502,7 +503,7 @@ impl WindowRenderer {
                 self.backbuffer_fresh = true;
             }
         }
-        self.ui.frame_state.mark_submitted();
+        self.ui.frame_submitted = true;
     }
 
     #[profiling::function]

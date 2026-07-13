@@ -2,13 +2,11 @@ pub(crate) mod cascade;
 pub mod damage;
 pub(crate) mod frame;
 pub mod frame_report;
-pub(crate) mod frame_state;
 pub(crate) mod state;
 
 use crate::InternedStr;
 use crate::animation::animatable::Animatable;
 use crate::animation::{AnimMap, AnimSlot, AnimSpec};
-use crate::common::hash::Hasher;
 use crate::common::time::{ANIM_SUBSTEP_DT, coalesce_dt_for_refresh};
 use crate::context::HostContext;
 use crate::debug_overlay::DebugOverlayConfig;
@@ -41,11 +39,10 @@ use crate::renderer::image_registry::ImageHandle;
 use crate::debug_overlay::record_frame_stats;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::Shape;
-use crate::ui::cascade::{Cascades, CascadesEngine};
+use crate::ui::cascade::{Cascades, CascadesEngine, cascade_fingerprint};
 use crate::ui::damage::{Damage, DamageEngine, DamageInput};
 use crate::ui::frame::{FramePlan, FrameStamp, Wake, WakeReasons};
 use crate::ui::frame_report::{FrameProcessing, FrameReport, RenderPlan};
-use crate::ui::frame_state::FrameState;
 use crate::ui::state::StateMap;
 use crate::widgets::theme::Theme;
 use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowGeometry, WindowToken};
@@ -157,10 +154,16 @@ pub struct Ui {
     /// `winit::ControlFlow::WaitUntil` (or equivalent).
     pub(crate) repaint_wakes: Vec<Wake>,
     pub(crate) anim: AnimMap,
-    /// Submission status of the last *painted* frame. NOT reset in
-    /// `pre_record` — `click_on_empty_bg_does_not_force_full`
-    /// pins why.
-    pub(crate) frame_state: FrameState,
+    /// Submission status of the last *painted* frame: set `false` at
+    /// the top of every [`Self::frame`] (pending), set `true` by
+    /// `WindowRenderer::render` after a successful submit / backbuffer
+    /// copy — and by `frame` itself on a Skip frame, which has nothing
+    /// to submit. `classify_frame` reads it to decide whether to
+    /// rewind the damage snapshot: `false` means the last frame never
+    /// reached the screen, so this frame escalates to `Full`. Starts
+    /// `false` (no prior frame to trust). NOT reset in `pre_record` —
+    /// `click_on_empty_bg_does_not_force_full` pins why.
+    pub(crate) frame_submitted: bool,
     /// Set by [`Self::request_relayout`]; consumed by
     /// `post_record` to trigger one re-record per
     /// `run_frame`.
@@ -280,7 +283,7 @@ impl Ui {
             repaint_requested: false,
             repaint_wakes: Vec::new(),
             anim: Default::default(),
-            frame_state: Default::default(),
+            frame_submitted: false,
             relayout_requested: false,
             pending_windows: Vec::new(),
             pending_closes: Vec::new(),
@@ -330,9 +333,9 @@ impl Ui {
 
         // Pending until the renderer (`WindowRenderer::render`) confirms a
         // successful submit. Tests driving `Ui::frame` directly must
-        // ack via `ui.frame_state.mark_submitted()` or the next
+        // ack via `ui.frame_submitted = true` or the next
         // frame's `classify_frame` will force a `Full`.
-        self.frame_state.mark_pending();
+        self.frame_submitted = false;
 
         let processing = match plan {
             FramePlan::PaintOnly => {
@@ -443,10 +446,10 @@ impl Ui {
         );
 
         // Skip frames have nothing for the host to submit, so ack
-        // here — otherwise `frame_state` stays `Pending` and the next
+        // here — otherwise `frame_submitted` stays false and the next
         // paint frame's `classify_frame` escalates to `Full`.
         if damage.is_skip() {
-            self.frame_state.mark_submitted();
+            self.frame_submitted = true;
         }
 
         // Re-queue the next paint-anim boundary regardless of path.
@@ -527,7 +530,7 @@ impl Ui {
         let display_changed = self
             .prev_stamp
             .is_some_and(|prev| !prev.display.raster_eq(&display));
-        let frame_skipped = !self.frame_state.was_last_submitted();
+        let frame_skipped = !self.frame_submitted;
         let force_full = display_changed || frame_skipped;
         if force_full {
             tracing::debug!(
@@ -680,7 +683,11 @@ impl Ui {
         // `Ui::cascades` can be reused verbatim (the tree is rebuilt
         // with identical structure when `subtree_hash` matches, so its
         // NodeId-indexed rows still line up).
-        let fp = self.cascade_fingerprint();
+        let fp = cascade_fingerprint(
+            &self.forest,
+            &self.layout_engine.scroll_states,
+            self.display,
+        );
         let skip = self.prev_cascade_fp == Some(fp);
         #[cfg(test)]
         {
@@ -692,64 +699,6 @@ impl Ui {
         self.prev_cascade_fp = Some(fp);
         self.cascades_engine
             .run(&self.forest, &self.layout, &mut self.cascades);
-    }
-
-    /// Fingerprint of everything the cascade reads, cheaply. Equal
-    /// fingerprints across two frames ⇒ identical cascade output (see
-    /// [`Self::prev_cascade_fp`]). Folds:
-    /// - the exact surface (a sub-quantum resize can hit the measure
-    ///   cache yet still re-arrange, so the *exact* rect must be here);
-    /// - every root's `subtree_hash`, which already captures all cascade
-    ///   authoring — transforms (`PanelExtras`), clip/disabled/focusable
-    ///   (`attrs`), visibility, shapes, chrome;
-    /// - scroll `offset`/`zoom`, the one cross-frame arrange input that
-    ///   lives in `LayoutEngine.scroll_states`, not in `subtree_hash`.
-    fn cascade_fingerprint(&self) -> u64 {
-        use std::hash::Hasher as _;
-        let mut h = Hasher::new();
-        h.write_u32(self.display.physical.x);
-        h.write_u32(self.display.physical.y);
-        h.write_u32(self.display.scale_factor.to_bits());
-        for (layer, tree) in self.forest.iter_paint_order() {
-            // Layer discriminant: an identical root subtree migrating
-            // between side layers (Popup → Tooltip) must not alias, or
-            // the skip reuses per-layer columns sized for the old
-            // assignment and the damage pass indexes them out of
-            // bounds.
-            h.write_u8(layer as u8);
-            for slot in &tree.roots {
-                // The root's own id reaches no other hash —
-                // `compute_hashes` folds only child ids into parents,
-                // and a root has no parent — so a re-keyed root with
-                // identical content would otherwise reuse cascades
-                // whose `by_id` still maps the dead old id.
-                h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
-                h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
-                // Layer placement (anchor + measure cap) rides on
-                // `RootSlot`, outside every node hash, yet it feeds
-                // arrange. Fold it so a popup's pass-B flip/clamp —
-                // which changes only the anchor while the body content
-                // is identical — re-runs the cascade instead of reusing
-                // pass A's pre-flip screen rects (else the popup paints
-                // at the raw anchor until an unrelated content change
-                // forces a recompute).
-                h.pod(&slot.placement.anchor);
-                match slot.placement.size {
-                    Some(s) => h.pod(&s),
-                    None => h.write_u32(u32::MAX),
-                }
-            }
-        }
-        // XOR fold so map iteration order doesn't matter.
-        let mut scroll_fold = 0u64;
-        for (wid, st) in self.layout_engine.scroll_states.iter() {
-            let mut sh = Hasher::new();
-            sh.write_u64(wid.0);
-            sh.pod(&st.offset);
-            sh.write_u32(st.zoom.to_bits());
-            scroll_fold ^= sh.finish();
-        }
-        h.finish() ^ scroll_fold
     }
 
     /// Paint-half of `frame`: diff seen ids against the last painted
@@ -768,7 +717,11 @@ impl Ui {
         self.anim.sweep_removed(removed);
         // Evict views whose widget vanished this frame; the backend frees the
         // orphaned texture the next frame it's no longer in `frame_targets`.
-        self.gpu_views.retain(|wid, _| !removed.contains(wid));
+        // Guarded like the sweep_removed family — `retain` walks the whole
+        // map even when nothing was removed.
+        if !removed.is_empty() {
+            self.gpu_views.retain(|wid, _| !removed.contains(wid));
+        }
 
         self.input.post_record(&self.cascades);
     }
@@ -1512,7 +1465,7 @@ pub mod test_support {
         /// content ⇒ `Partial`, from the all-Vacant walk).
         fn mark_warm_for_test(&mut self) {
             self.prev_stamp = Some(FrameStamp::new(self.display, Duration::ZERO));
-            self.frame_state.mark_submitted();
+            self.frame_submitted = true;
         }
 
         /// One frame at `size`, time frozen at zero.
@@ -1524,7 +1477,7 @@ pub mod test_support {
         /// `run_at` then mark the frame as submitted (suppress next-frame auto-rewind to `Full`).
         pub fn run_at_acked(&mut self, size: UVec2, record: impl FnMut(&mut Ui)) {
             self.run_at(size, record);
-            self.frame_state.mark_submitted();
+            self.frame_submitted = true;
         }
 
         /// Ack the just-run frame as presented — mirrors what the host
@@ -1534,7 +1487,7 @@ pub mod test_support {
         /// [`crate::renderer::frontend::Frontend::build_for_test`]
         /// instead of going through `WindowRenderer` (the `frame/*_cpu` arms).
         pub fn mark_frame_submitted(&mut self) {
-            self.frame_state.mark_submitted();
+            self.frame_submitted = true;
         }
 
         /// Wrap UUT inside a Fill HStack so the panel can express its own measured size.

@@ -203,11 +203,14 @@ const PAINT_ANIM_NONE: u16 = u16::MAX;
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct PaintAnimEntry {
     pub(crate) anim: PaintAnim,
-    /// Index into `Tree::shapes.records` of the shape this anim drives.
-    /// Read by the damage's `extend_predamaged` path, which derives
-    /// the paint-arena index from `node_idx` + the shape's ordinal
-    /// among the owner's *direct* shapes (counted via `TreeItems`).
-    pub(crate) shape_idx: u32,
+    /// Paint-arena row of the animated shape inside its owner's
+    /// `node_spans` span — the chrome offset plus the shape's position
+    /// in the owner's `TreeItems` stream, captured from
+    /// `OpenFrame::paint_rows` at `add_shape_animated` time. Lets
+    /// damage's `extend_predamaged` index the shape's screen rect as
+    /// `paint_arena.rows[node_span.start + row]` with no per-frame
+    /// `TreeItems` walk.
+    pub(crate) row: u32,
     /// Index into `Tree::records` of the node that owns this shape —
     /// the open node at `add_shape_animated` time. Lets the damage
     /// lookup index `node_spans[node_idx]` directly without needing a
@@ -245,17 +248,18 @@ impl PaintAnims {
         self.by_shape.clear();
     }
 
-    /// Register `entry` against the just-pushed shape. Lazily grows
-    /// `by_shape` to `entry.shape_idx + 1`, padding any preceding
+    /// Register `entry` against the just-pushed shape at `shape_idx`
+    /// (its index into `Tree::shapes.records`). Lazily grows
+    /// `by_shape` to `shape_idx + 1`, padding any preceding
     /// (unanimated) shapes with [`PAINT_ANIM_NONE`]. Asserts the
     /// `entries` cap so a `u16` index always fits in `by_shape`.
-    pub(crate) fn push_entry(&mut self, entry: PaintAnimEntry) {
+    pub(crate) fn push_entry(&mut self, shape_idx: u32, entry: PaintAnimEntry) {
         let idx = self.entries.len();
         assert!(
             idx < PAINT_ANIM_NONE as usize,
             "more than {PAINT_ANIM_NONE} paint-anim entries in one tree — bump by_shape to u32",
         );
-        let shape_idx = entry.shape_idx as usize;
+        let shape_idx = shape_idx as usize;
         if self.by_shape.len() <= shape_idx {
             self.by_shape.resize(shape_idx + 1, PAINT_ANIM_NONE);
         }

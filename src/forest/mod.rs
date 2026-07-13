@@ -292,7 +292,13 @@ impl Forest {
         // No `paint_anims.by_shape` bookkeeping on the unanimated path —
         // `PaintAnims` lazily grows the column only when a real anim
         // shows up. Saves one `Vec::push` per shape every frame.
-        let _ = self.trees[layer].shapes.add(shape, arena, atlas);
+        if self.trees[layer].shapes.add(shape, arena, atlas).is_some() {
+            self.scratch[layer]
+                .open_frames
+                .last_mut()
+                .unwrap()
+                .paint_rows += 1;
+        }
     }
 
     /// Append a `GpuView` shape (a [`ShapeRecord::GpuView`]) to the active
@@ -304,6 +310,11 @@ impl Forest {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_gpu_view");
         self.trees[layer].shapes.add_gpu_view(epoch);
+        self.scratch[layer]
+            .open_frames
+            .last_mut()
+            .unwrap()
+            .paint_rows += 1;
     }
 
     /// Same as `add_shape`, but registers a `PaintAnim` against the
@@ -320,16 +331,22 @@ impl Forest {
     ) {
         let layer = self.current_layer();
         self.assert_node_open(layer, "add_shape_animated");
-        let node_idx = self.scratch[layer].open_frames.last().unwrap().node.0;
+        // Disjoint borrow: `trees` and `scratch` are separate fields.
         let tree = &mut self.trees[layer];
+        let frame = self.scratch[layer].open_frames.last_mut().unwrap();
         let Some(shape_idx) = tree.shapes.add(shape, arena, atlas) else {
             return;
         };
-        tree.paint_anims.push_entry(PaintAnimEntry {
-            anim,
+        let row = frame.paint_rows;
+        frame.paint_rows += 1;
+        tree.paint_anims.push_entry(
             shape_idx,
-            node_idx,
-        });
+            PaintAnimEntry {
+                anim,
+                row,
+                node_idx: frame.node.0,
+            },
+        );
     }
 
     pub(crate) fn push_layer(&mut self, layer: Layer, anchor: Vec2, size: Option<Size>) {

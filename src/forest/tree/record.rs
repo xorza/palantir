@@ -22,6 +22,14 @@ use crate::primitives::size::Size;
 pub(crate) struct OpenFrame {
     pub(crate) node: NodeId,
     pub(crate) ancestor_or_self_disabled: bool,
+    /// Paint-arena rows this node's span holds so far: the chrome row
+    /// (seeded to 1 when a `ChromeRow` was allocated at open) plus one
+    /// per direct shape / immediate child, bumped in record order.
+    /// Mirrors the row stream `cascade::compute_paint_rect` emits, so
+    /// an animated shape can record its own row index at add time
+    /// (`PaintAnimEntry::row`) instead of damage re-deriving it from a
+    /// `TreeItems` walk every frame.
+    pub(crate) paint_rows: u32,
 }
 
 /// Per-layer recording-only state: the ancestor stack and the pending
