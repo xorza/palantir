@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::shapes::record::text_in_rect;
+use crate::text::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
