@@ -190,7 +190,7 @@ impl Popup {
             ui.request_relayout();
         }
         let dismiss_mode = self.click_outside == ClickOutside::Dismiss;
-        let eater_clicked = ui.response_for(eater_id).clicked;
+        let eater_clicked = ui.response_for(eater_id).left.clicked;
         PopupResponse {
             // A `Dismiss` popup closes on an eaten outside-press OR an Esc
             // press — so overlay hosts (ComboBox / ContextMenu) read one

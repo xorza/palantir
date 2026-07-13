@@ -162,15 +162,15 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert!(r.layout_rect.is_some());
 
     assert!(!r.hovered);
-    assert!(!r.pressed);
-    assert!(!r.clicked);
-    assert!(!r.secondary_clicked);
+    assert!(!r.pressed());
+    assert!(!r.left.clicked);
+    assert!(!r.right.clicked);
     assert!(!r.focused);
-    assert_eq!(r.drag, None);
-    assert_eq!(r.double_click, None);
-    assert_eq!(r.scroll_pixels, Vec2::ZERO);
-    assert_eq!(r.scroll_lines, Vec2::ZERO);
-    assert_eq!(r.zoom_factor, 1.0);
+    assert_eq!(r.left.drag, None);
+    assert!(!r.double_clicked());
+    assert_eq!(r.scroll.pixels, Vec2::ZERO);
+    assert_eq!(r.scroll.lines, Vec2::ZERO);
+    assert_eq!(r.scroll.zoom, 1.0);
     assert_eq!(r.pointer_local, None);
 }
 

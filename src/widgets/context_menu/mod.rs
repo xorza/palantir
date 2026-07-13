@@ -313,7 +313,7 @@ impl MenuItem {
 
         let mut state = raw_state;
         if shortcut_fired {
-            state.clicked = true;
+            state.left.clicked = true;
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
