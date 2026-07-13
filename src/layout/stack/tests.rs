@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
 use crate::forest::tree::NodeId;
-use crate::layout::types::{align::Align, sizing::Sizing};
+use crate::layout::types::{align::Align, align::VAlign, sizing::Sizing};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
@@ -550,4 +550,54 @@ fn hug_panel_clamps_to_min_and_max_size() {
         120.0,
         "Hug caps at max_size when content is larger",
     );
+}
+
+/// 200×100 hstack with `child_align(VAlign::Center)` and two 40×20
+/// children. The first child always inherits the parent default (y=40);
+/// the second child either inherits (no override → y=40) or overrides
+/// (`VAlign::Bottom` → y=80). Pins both inherit-default propagation
+/// and that an override on one child doesn't leak to its sibling.
+#[test]
+fn hstack_child_align_per_axis_with_overrides() {
+    let cases: &[(&str, Option<Align>, f32)] = &[
+        ("both_inherit_parent_center", None, 40.0),
+        (
+            "second_overrides_to_bottom",
+            Some(Align::v(VAlign::Bottom)),
+            80.0,
+        ),
+    ];
+    for (label, second_override, second_y) in cases {
+        let mut ui = Ui::for_test();
+        let mut root = None;
+        ui.run_at(UVec2::new(200, 100), |ui| {
+            root = Some(
+                Panel::hstack()
+                    .auto_id()
+                    .size((Sizing::FILL, Sizing::Fixed(100.0)))
+                    .child_align(Align::v(VAlign::Center))
+                    .show(ui, |ui| {
+                        Frame::new()
+                            .id(WidgetId::from_hash("a"))
+                            .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)))
+                            .show(ui);
+                        let mut b = Frame::new()
+                            .id(WidgetId::from_hash("b"))
+                            .size((Sizing::Fixed(40.0), Sizing::Fixed(20.0)));
+                        if let Some(a) = *second_override {
+                            b = b.align(a);
+                        }
+                        b.show(ui);
+                    })
+                    .node(),
+            );
+        });
+
+        let kids = child_rects(&ui, root.unwrap());
+        let (a, b) = (kids[0], kids[1]);
+        assert_eq!(a.min.y, 40.0, "case: {label} a inherits default");
+        assert_eq!(a.size.h, 20.0, "case: {label} a.size.h");
+        assert_eq!(b.min.y, *second_y, "case: {label} b");
+        assert_eq!(b.size.h, 20.0, "case: {label} b.size.h");
+    }
 }
