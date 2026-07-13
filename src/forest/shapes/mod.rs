@@ -2,6 +2,7 @@ pub(crate) mod hash;
 pub(crate) mod lower;
 pub(crate) mod record;
 
+use crate::common::hash::hash_str;
 use crate::forest::frame_arena::FrameArena;
 use crate::forest::rollups::ContentHash;
 use crate::forest::shapes::hash::compute_record_hash;
@@ -82,7 +83,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = arena.lower_brush(&fill, atlas);
+                let lowered = lower::brush(arena, &fill, atlas);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     corners,
@@ -97,7 +98,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = arena.lower_brush(&fill, atlas);
+                let lowered = lower::brush(arena, &fill, atlas);
                 ShapeRecord::WindowedRect {
                     local_rect,
                     corners,
@@ -183,7 +184,7 @@ impl Shapes {
                 //   no per-shape allocation).
                 let text_hash = match &text {
                     InternedStr::Interned { hash, .. } => *hash,
-                    InternedStr::Owned(s) => FrameArena::hash_text(s),
+                    InternedStr::Owned(s) => hash_str(s),
                 };
                 ShapeRecord::Text {
                     local_origin,
