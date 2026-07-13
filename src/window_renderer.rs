@@ -67,15 +67,14 @@ pub struct WindowRenderer {
     /// for on-screen windows, [`FixedClock`](crate::clock::FixedClock) for a
     /// reproducible offscreen render) so the pipeline doesn't branch on it.
     clock: Box<dyn Clock>,
-    /// When true, `frame()` short-circuits to `Idle` without running
-    /// `cpu_frame`. Every per-frame Ui flag (damage, repaint_requested,
-    /// animation driver state) is naturally preserved because nothing
-    /// consumes it. Input still flows through `Ui::on_input` and
-    /// accumulates for the first un-occluded frame.
-    occluded: bool,
-    /// Instant the window went occluded; on resume `start` is shifted
-    /// forward by the elapsed hidden duration so anim drivers don't
-    /// see a giant `dt` for the gap.
+    /// `Some(instant the window went occluded)` while occluded — `frame()`
+    /// short-circuits to `Idle` without running `cpu_frame`. Every
+    /// per-frame Ui flag (damage, repaint_requested, animation driver
+    /// state) is naturally preserved because nothing consumes it; input
+    /// still flows through `Ui::on_input` and accumulates for the first
+    /// un-occluded frame. On resume the clock is shifted forward by the
+    /// elapsed hidden duration so anim drivers don't see a giant `dt`
+    /// for the gap.
     occluded_at: Option<Instant>,
     /// Last physical size we actually called `surface.configure` for.
     /// Resize handlers mutate `SurfaceConfiguration` directly; the
@@ -249,7 +248,6 @@ impl WindowRendererBuilder<'_> {
             stencil: None,
             strategy: self.strategy,
             clock: self.clock,
-            occluded: false,
             occluded_at: None,
             configured: None,
             last_format: None,
@@ -284,16 +282,14 @@ impl WindowRenderer {
     /// Ui state (damage, repaint requests, animation deadlines)
     /// survives untouched until the window becomes visible again.
     pub fn set_occluded(&mut self, occluded: bool) {
-        match (self.occluded, occluded) {
-            (false, true) => self.occluded_at = Some(Instant::now()),
-            (true, false) => {
-                if let Some(t) = self.occluded_at.take() {
-                    self.clock.skip(t.elapsed());
-                }
+        match (occluded, self.occluded_at) {
+            (true, None) => self.occluded_at = Some(Instant::now()),
+            (false, Some(t)) => {
+                self.occluded_at = None;
+                self.clock.skip(t.elapsed());
             }
             _ => {}
         }
-        self.occluded = occluded;
     }
 
     /// Detect a color-format change against the last frame's target and,
@@ -340,7 +336,7 @@ impl WindowRenderer {
         let _tracy_frame = tracy_client::non_continuous_frame!("frame");
         profiling::scope!("WindowRenderer::frame");
 
-        if self.occluded {
+        if self.occluded_at.is_some() {
             return FramePresent::Idle;
         }
 
