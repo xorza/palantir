@@ -116,24 +116,24 @@ fn held_is_rect_independent_unlike_pressed() {
     // Idle over the widget: neither pressed nor held.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(!r.held && !r.pressed, "hover without press is neither");
+    assert!(!r.left.held && !r.pressed(), "hover without press is neither");
 
     // Press inside: both live, pointer is over the widget.
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(r.held && r.pressed, "press over the widget sets both");
+    assert!(r.left.held && r.pressed(), "press over the widget sets both");
 
     // Drag well outside the 100×100 rect: `pressed` drops (no longer
     // hovered), `held` stays — the capture is still latched.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(r.held, "held survives the pointer leaving the rect");
-    assert!(!r.pressed, "pressed dies once the pointer leaves the rect");
+    assert!(r.left.held, "held survives the pointer leaving the rect");
+    assert!(!r.pressed(), "pressed dies once the pointer leaves the rect");
 
     // Release ends the capture: held clears.
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(!r.held && !r.pressed, "release clears the capture");
+    assert!(!r.left.held && !r.pressed(), "release clears the capture");
 }
 
 #[test]
@@ -236,7 +236,7 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(r.clicked, "sub-threshold press+release is a click");
+    assert!(r.left.clicked, "sub-threshold press+release is a click");
     assert!(!r.drag_stopped(), "no drag latched, no stop edge");
 }
 
@@ -370,11 +370,10 @@ fn left_wins_over_simultaneously_latched_middle() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 60.0))); // latches middle
 
     let r = resp(&mut ui, s, build_draggable, id());
-    let d = r.drag.expect("a drag must be active");
-    assert_eq!(
-        d.button,
-        PointerButton::Left,
-        "left has priority over middle"
+    let d = r.left.drag.expect("a drag must be active");
+    assert!(
+        r.middle.drag.is_none(),
+        "left has priority over middle — only one drag slot populates"
     );
     // Left was pressed at (20, 20); current pointer (100, 60).
     assert_eq!(d.delta, Vec2::new(80.0, 40.0));
