@@ -9,8 +9,8 @@
 //!
 //! - `Shapes::add` drops shapes whose authoring inputs would emit no
 //!   pixels (`Shape::is_noop` covers every variant). Saves per-shape
-//!   lowering — bezier flattening, polyline tessellation, mesh
-//!   hashing — that runs inside `Shapes::add` itself.
+//!   lowering — payload staging, bbox math, mesh hashing — that runs
+//!   inside `Shapes::add` itself.
 //! - `Tree::open_node` drops a node's chrome entry from
 //!   `chrome_table` when `Background::is_noop` (all of fill, stroke,
 //!   shadow are no-op). Saves a slot write and keeps chrome iteration

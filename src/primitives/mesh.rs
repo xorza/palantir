@@ -47,9 +47,8 @@ impl MeshVertex {
 /// slices into the active `Tree`'s arena at `add_shape` time, so the
 /// `Mesh` only has to outlive the `add_shape` call.
 ///
-/// Indices are `u32` — the whole mesh pipeline (user meshes and
-/// tessellated polylines share one arena index stream) draws with
-/// `wgpu::IndexFormat::Uint32`.
+/// Indices are `u32` — the mesh pipeline draws its shared arena index
+/// stream with `wgpu::IndexFormat::Uint32`.
 ///
 /// Winding is conventionally CCW but the pipeline doesn't cull —
 /// either order paints.

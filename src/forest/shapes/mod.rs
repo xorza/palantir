@@ -54,9 +54,9 @@ impl Shapes {
     /// shape whose authoring inputs would emit no visible pixels
     /// before lowering runs. Mirrors `cmd_buffer::draw_*`'s emit-time
     /// gate: caller code can pass anything, the storage layer
-    /// canonicalises. Saves the per-shape lowering cost (polyline
-    /// tessellation, bezier flattening, mesh hashing, text shaping
-    /// downstream) that the cmd-buffer gate alone wouldn't.
+    /// canonicalises. Saves the per-shape lowering cost (payload
+    /// staging, mesh hashing, text shaping downstream) that the
+    /// cmd-buffer gate alone wouldn't.
     /// Returns the index of the pushed `ShapeRecord` in `self.records`,
     /// or `None` if the shape was dropped as a no-op. Callers that want
     /// to attach side data keyed by shape-index (e.g. paint-anim
