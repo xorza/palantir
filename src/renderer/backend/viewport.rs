@@ -61,10 +61,10 @@ pub(crate) fn damage_cull_margin(scale: f32) -> f32 {
 /// Fill `out` with the per-rect physical-px scissors for this frame.
 /// `Full` and `Skip` leave it empty; `Partial(region)` produces one
 /// entry per rect after physical-px scaling, AA padding, and viewport
-/// clamping — rects that clamp to zero area are filtered out. If every
-/// rect clamps to zero, the list ends up empty and the caller degrades
-/// the frame to a Full repaint (correct, just wasteful — won't happen
-/// in practice unless damage lies entirely outside the surface).
+/// clamping. Region rects arrive surface-clipped and non-empty
+/// (`DamageRegion::collapse_from`) and the AA padding keeps their
+/// scissors nonzero, so `Partial` always yields at least one entry —
+/// `WgpuBackend::submit` asserts that rather than degrade.
 #[profiling::function]
 pub(crate) fn build_damage_scissors(
     out: &mut tinyvec::ArrayVec<[URect; DAMAGE_RECT_CAP]>,

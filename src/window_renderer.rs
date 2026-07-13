@@ -34,6 +34,7 @@ use crate::{Display, FrameReport, FrameStamp};
 /// Per-window state driving the shared [`WgpuBackend`]. Built by
 /// [`Self::new`] from the shared [`HostContext`]; owns no GPU resources
 /// except its own [`Backbuffer`] + [`Stencil`].
+#[derive(Debug)]
 pub struct WindowRenderer {
     pub ui: Ui,
     /// Per-window CPU encode/compose scratch. Shares the backend's frame
@@ -98,7 +99,7 @@ pub struct WindowRenderer {
 }
 
 /// How a window's frames reach its target, chosen per host at construction.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum PresentStrategy {
     /// A target whose prior contents can't be relied on — a fresh texture each
     /// call (screenshots, the visual harness). Every frame renders into the
@@ -118,9 +119,9 @@ pub(crate) enum PresentStrategy {
 }
 
 /// How a frame reaches the target, given its plan and the window's
-/// [`PresentStrategy`]. Computed identically in `cpu_frame` (to pick the
-/// draw-list build plan) and `render_to_texture` (to pick the GPU path), so the
-/// two phases can't disagree.
+/// [`PresentStrategy`]. Computed once in `cpu_frame` — which builds the
+/// draw list for it — and threaded through to the GPU half, so the
+/// submitted plan is by construction the one the draw list was built for.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PresentMode {
     /// Skip frame on a backbuffer-copy window: copy the backbuffer onto the
@@ -200,6 +201,16 @@ fn present_mode(
             Some(p) => PresentMode::ViaBackbuffer(p),
         },
     }
+}
+
+/// The CPU half's result: the host-facing report plus the [`PresentMode`]
+/// sealed at draw-list-build time. Threading the mode (rather than
+/// recomputing it in the GPU half) is what guarantees the submitted plan
+/// is the one the draw list was built for.
+#[derive(Debug)]
+struct CpuFrame {
+    report: FrameReport,
+    mode: PresentMode,
 }
 
 /// Builder for [`WindowRenderer`] — see [`WindowRenderer::builder`]. The
@@ -364,8 +375,8 @@ impl WindowRenderer {
             self.configured = Some(display.physical);
         }
 
-        let report = self.cpu_frame(display, record);
-        let present = self.present(gpu, surface, config, report, pre_present);
+        let cpu = self.cpu_frame(display, record);
+        let present = self.present(gpu, surface, config, cpu, pre_present);
 
         profiling::finish_frame!();
 
@@ -393,45 +404,39 @@ impl WindowRenderer {
         // Force a full repaint when the target's format changes (offscreen
         // has no surface to reconfigure).
         self.note_format(target.format());
-        let report = self.cpu_frame(display, record);
-        self.render_to_texture(gpu, target, &report);
+        let cpu = self.cpu_frame(display, record);
+        self.render_to_texture(gpu, target, cpu.mode);
     }
 
     /// The CPU half of a frame: `Ui::frame` (record → measure / arrange /
     /// cascade / damage) followed, when the frame actually paints, by the
     /// draw-list build (encode → compose → resolve `GpuView`s into the
-    /// frontend's buffer). Returns the host-facing [`FrameReport`]; thread it
-    /// into the GPU half ([`Self::present`] / [`Self::render_to_texture`]).
-    /// No GPU input — the `GpuView` size cap was captured on the `Frontend` at
-    /// construction. Shared by [`Self::frame`] (surface) and
-    /// [`Self::frame_offscreen`] (texture).
+    /// frontend's buffer). Seals the [`PresentMode`] here — the one place
+    /// it is computed — so the GPU half submits exactly the plan the draw
+    /// list was built for (a promoted or resync'd Partial builds its
+    /// escalated Full list). No GPU input — the `GpuView` size cap was
+    /// captured on the `Frontend` at construction. Shared by
+    /// [`Self::frame`] (surface) and [`Self::frame_offscreen`] (texture).
     #[profiling::function]
-    fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> FrameReport {
+    fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> CpuFrame {
         // Ui::frame clears the shared Rc arena at the top of the record
         // cycle — the same Rc the frontend + shared backend hold.
         let report = self
             .ui
             .frame(FrameStamp::new(display, self.clock.now()), record);
+        let mode = present_mode(report.plan, self.strategy, self.backbuffer_fresh);
         // Build the draw list now (CPU) when the frame paints — encode,
         // compose, and resolve `GpuView` targets, all reading the now-frozen
-        // `Ui` immutably. Skip frames build nothing. The `present_mode` here is
-        // the same decision `render_to_texture` makes (same plan, strategy, and
-        // backbuffer freshness — none mutated between the two calls; the plan's
-        // sealed coverage rides along on the region), so the draw list always
-        // matches the plan that gets submitted (a promoted or resync'd Partial
-        // builds its escalated Full list).
-        let build_plan = match present_mode(report.plan, self.strategy, self.backbuffer_fresh) {
-            PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) => Some(plan),
-            PresentMode::SkipCopy | PresentMode::SkipNoop => None,
-        };
-        if let Some(plan) = build_plan {
+        // `Ui` immutably. Skip frames build nothing.
+        if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
             self.frontend.build(&self.ui, plan);
         }
-        report
+        CpuFrame { report, mode }
     }
 
     /// GPU submit against a caller-supplied texture, through the shared
-    /// `gpu`. On `RenderPlan::Skip`, copies the persistent backbuffer onto
+    /// `gpu`, dispatching on the [`PresentMode`] `cpu_frame` sealed. On
+    /// [`PresentMode::SkipCopy`], copies the persistent backbuffer onto
     /// `target` so callers that always present still see valid pixels.
     /// Shared by [`Self::frame`]'s present path (the acquired swapchain
     /// texture) and [`Self::frame_offscreen`] (an offscreen texture).
@@ -440,7 +445,7 @@ impl WindowRenderer {
         &mut self,
         gpu: &mut WgpuBackend,
         target: &wgpu::Texture,
-        report: &FrameReport,
+        mode: PresentMode,
     ) {
         let size = target.size();
         let display_phys = self.ui.display.physical;
@@ -459,20 +464,33 @@ impl WindowRenderer {
         // `self.frontend.buffer.frame_targets` (callback + size — see
         // `cpu_frame`); this is GPU submit only.
         let debug_overlay = self.ui.debug_overlay();
-        // Ensure the rounded-clip stencil up front — both paint paths share it,
-        // sized to the target.
-        let use_stencil = !self.frontend.buffer.rounded_clips.is_empty();
-        if use_stencil {
-            gpu.ensure_stencil(&mut self.stencil, target.size());
-        }
-        let stencil_view =
-            use_stencil.then(|| &self.stencil.as_ref().expect("ensure_stencil ran").view);
-        match present_mode(report.plan, self.strategy, self.backbuffer_fresh) {
+        // Rounded-clip stencil, shared by both paint paths and sized to the
+        // target. Gated to them: on a skip frame the frontend didn't build,
+        // so `buffer.rounded_clips` is stale and no pass reads the stencil.
+        let stencil_view = match mode {
+            PresentMode::Direct(_) | PresentMode::ViaBackbuffer(_)
+                if !self.frontend.buffer.rounded_clips.is_empty() =>
+            {
+                gpu.ensure_stencil(&mut self.stencil, size);
+                Some(&self.stencil.as_ref().expect("ensure_stencil ran").view)
+            }
+            _ => None,
+        };
+        // Skip arms leave `ui.frame_submitted` alone — `Ui::frame` acks a
+        // skip itself; the paint arms ack here after a successful submit.
+        match mode {
             // Nothing changed and the target already holds the last render —
             // leave it untouched.
             PresentMode::SkipNoop => {}
             PresentMode::SkipCopy => {
-                gpu.copy_backbuffer_to_surface(&mut self.backbuffer, target);
+                // A `Skip` implies the previous frame painted at this size +
+                // format, so the backbuffer must exist (and match — the
+                // backend asserts that).
+                let bb = self
+                    .backbuffer
+                    .as_ref()
+                    .expect("SkipCopy implies a prior submitted paint frame");
+                gpu.copy_backbuffer_to_surface(bb, target);
             }
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
@@ -486,14 +504,22 @@ impl WindowRenderer {
                     debug_overlay,
                 );
                 self.backbuffer_fresh = false;
+                self.ui.frame_submitted = true;
             }
-            // Render into the backbuffer and copy it out. A freshly (re)created
-            // backbuffer has undefined contents, so escalate a Partial to Full.
-            // Either way the backbuffer now mirrors the target.
+            // Render into the backbuffer and copy it out; the backbuffer now
+            // mirrors the target.
             PresentMode::ViaBackbuffer(plan) => {
-                let recreated =
-                    gpu.ensure_backbuffer(&mut self.backbuffer, target.size(), target.format());
-                let plan = if recreated { plan.to_full() } else { plan };
+                let recreated = gpu.ensure_backbuffer(&mut self.backbuffer, size, target.format());
+                // A Partial reaches here un-escalated only when
+                // `backbuffer_fresh` — last frame rendered into the backbuffer
+                // at this size/format — so a recreate under Partial means the
+                // freshness invariant broke. Escalating here couldn't fix it:
+                // the draw list was already Partial-culled in `cpu_frame`.
+                assert!(
+                    !recreated || matches!(plan.kind, RenderKind::Full),
+                    "backbuffer (re)created under a Partial plan whose draw \
+                     list was culled for Partial"
+                );
                 gpu.submit(
                     target,
                     self.backbuffer.as_ref(),
@@ -503,9 +529,9 @@ impl WindowRenderer {
                     debug_overlay,
                 );
                 self.backbuffer_fresh = true;
+                self.ui.frame_submitted = true;
             }
         }
-        self.ui.frame_submitted = true;
     }
 
     #[profiling::function]
@@ -514,16 +540,17 @@ impl WindowRenderer {
         gpu: &mut WgpuBackend,
         surface: &wgpu::Surface<'_>,
         config: &wgpu::SurfaceConfiguration,
-        report: FrameReport,
+        cpu: CpuFrame,
         pre_present: impl FnOnce(),
     ) -> FramePresent {
+        let CpuFrame { report, mode } = cpu;
         let repaint = if report.plan.is_none() {
             report.repaint_requested
         } else {
             use wgpu::CurrentSurfaceTexture::*;
             match surface.get_current_texture() {
                 Success(frame) => {
-                    self.render_to_texture(gpu, &frame.texture, &report);
+                    self.render_to_texture(gpu, &frame.texture, mode);
                     // Compositor hook (winit's `Window::pre_present_notify`)
                     // — required on Wayland to schedule the next frame
                     // callback. Without it, `RedrawRequested` throttling

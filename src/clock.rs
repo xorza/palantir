@@ -19,7 +19,7 @@ use std::time::{Duration, Instant};
 /// `skip` / `deadline` support the on-screen path (occlusion pause, present
 /// scheduling) and default to no-ops so a headless clock only has to
 /// implement `now`.
-pub trait Clock {
+pub trait Clock: std::fmt::Debug {
     /// Monotonic time since this clock's origin.
     fn now(&self) -> Duration;
 

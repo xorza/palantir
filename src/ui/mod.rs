@@ -331,8 +331,8 @@ impl Ui {
         }
         self.display = stamp.display;
 
-        // Pending until the renderer (`WindowRenderer::render`) confirms a
-        // successful submit. Tests driving `Ui::frame` directly must
+        // Pending until the renderer (`WindowRenderer::render_to_texture`)
+        // confirms a successful submit. Tests driving `Ui::frame` directly must
         // ack via `ui.frame_submitted = true` or the next
         // frame's `classify_frame` will force a `Full`.
         self.frame_submitted = false;
