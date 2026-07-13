@@ -260,9 +260,14 @@ mod tests {
     #[test]
     fn button_theme_pick_precedence() {
         let theme = ButtonTheme::default();
-        let s = |hovered, pressed, disabled| ResponseState {
+        // `pressed` is derived (`left.held && hovered`), so a pressed
+        // case sets the left capture + hover.
+        let s = |hovered, pressed: bool, disabled| ResponseState {
             hovered,
-            pressed,
+            left: crate::input::response::ButtonState {
+                held: pressed,
+                ..Default::default()
+            },
             disabled,
             ..ResponseState::default()
         };
