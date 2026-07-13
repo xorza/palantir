@@ -1,6 +1,6 @@
 //! Debug overlay configuration on `Ui`. Set fields on
-//! [`DebugOverlayConfig`] via `ui.debug_overlay.field = …` to enable
-//! per-frame visualizations. `damage_rect` and `dim_undamaged` draw
+//! [`DebugOverlayConfig`] via `ui.debug_overlay_mut().field = …` to
+//! enable per-frame visualizations. `damage_rect` and `dim_undamaged` draw
 //! on top of the regular paint without changing the main pass's
 //! `LoadOp`. `frame_stats` records a `Text` widget into
 //! `Layer::Debug` at the top-right during `Ui::frame` (via
@@ -40,7 +40,7 @@ pub struct DebugOverlayConfig {
     /// no partial damage skip the dim entirely (one full-screen clear
     /// resets the trail).
     pub dim_undamaged: bool,
-    /// Show a frame counter + EMA FPS readout in the top-left,
+    /// Show a frame counter + EMA FPS readout in the top-right,
     /// recorded into `Layer::Debug` by `Ui::frame` after the user's
     /// record callback. Because the text changes every frame, this
     /// forces a `Partial(small rect)` damage even when the rest of

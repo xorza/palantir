@@ -18,9 +18,10 @@ const SWEEP: f32 = 1.5 * PI;
 const SPEED: f32 = 4.5;
 
 /// Indeterminate activity spinner: a rounded arc that rotates with the
-/// frame clock, its tail fading to transparent (a "comet" trail). Drives
-/// its own continuous repaint while recorded, so it spins whenever it's
-/// on screen and costs nothing when it isn't.
+/// frame clock, its tail fading to transparent (a "comet" trail). The
+/// [`PaintAnim::Spin`]'s every-frame wake keeps the host repainting
+/// while the spinner is recorded — on the PaintOnly fast path, with no
+/// record/layout per tick — and costs nothing when it isn't.
 ///
 /// The recorded [`Shape::Arc`] is **identical every frame** (phase 0),
 /// so its `subtree_hash` is stable and measure/cascade skip the
@@ -89,8 +90,6 @@ impl Spinner {
                 },
             );
         });
-        // Continuous animation: keep the host awake while we're on screen.
-        ui.request_repaint();
         Response::lazy(id, ui)
     }
 }

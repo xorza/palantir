@@ -29,8 +29,8 @@ pub(crate) struct Gpu {
     /// at startup from `WinitHostConfig`, app-global.
     present_mode: wgpu::PresentMode,
     /// Whether the device was created with the timing-query features.
-    /// Threaded into every window's `WindowRenderer` so the backend opts into
-    /// instrumentation only when the device actually supports it.
+    /// Threaded into the shared backend via [`Self::make_backend`] so it
+    /// opts into instrumentation only when the device actually supports it.
     collect_gpu_stats: bool,
 }
 

@@ -1142,6 +1142,19 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r1.repaint_after, Some(half + half));
     let r2 = ui.frame(FrameStamp::new(display, half + half), |ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
+    ui.frame_submitted = true;
+
+    // A pending OS close request vetoes the fast path: the app can only
+    // read `close_requested` (and veto via `keep_open`) during record,
+    // so an anim-wake frame escalates to Full while `wants_close` is
+    // set — and drops back to PaintOnly once it clears.
+    ui.wants_close = true;
+    let r3 = ui.frame(FrameStamp::new(display, half * 3), |ui| body(ui, half));
+    assert_eq!(r3.processing, FrameProcessing::SingleLayout);
+    ui.frame_submitted = true;
+    ui.wants_close = false;
+    let r4 = ui.frame(FrameStamp::new(display, half * 4), |ui| body(ui, half));
+    assert_eq!(r4.processing, FrameProcessing::PaintOnly);
 }
 
 /// Regression: `Ui::frame` used to clear `frame_arena` unconditionally
