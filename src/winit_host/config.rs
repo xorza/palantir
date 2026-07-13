@@ -33,12 +33,3 @@ impl Default for WinitHostConfig {
         }
     }
 }
-
-impl WinitHostConfig {
-    pub fn new(title: impl Into<String>) -> Self {
-        Self {
-            window: WindowConfig::new(title),
-            ..Self::default()
-        }
-    }
-}

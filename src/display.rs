@@ -23,7 +23,7 @@ pub struct Display {
     /// to `wgpu::SurfaceConfiguration { width, height, .. }`.
     pub physical: UVec2,
     /// Logical→physical conversion factor (e.g. `2.0` on a 2× retina
-    /// display). Must be `≥ f32::EPSILON`; `Ui::set_display` asserts.
+    /// display). Must be ≥ `approx::EPS`; `Ui::frame` asserts.
     pub scale_factor: f32,
     /// Whether the composer snaps painted geometry edges (quad rects,
     /// shadow rects, image rects, text bounds, clip scissors) to

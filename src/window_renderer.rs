@@ -86,12 +86,14 @@ pub struct WindowRenderer {
     /// `None` until the first paint forces a baseline.
     configured: Option<glam::UVec2>,
     /// Color format of the last target this window rendered to. A format
-    /// flip (window moved to an HDR output) changes nothing the `Ui`
-    /// tracks — same size, same scene — so without noticing it here an
-    /// unchanged scene would damage-`Skip` and copy the stale-format
-    /// backbuffer. `frame` / `frame_offscreen` compare against it and
-    /// force a full repaint on change (see [`Self::note_format`]).
-    /// `None` until the first paint.
+    /// flip changes nothing the `Ui` tracks — same size, same scene — so
+    /// without noticing it here an unchanged scene would damage-`Skip`
+    /// and copy the stale-format backbuffer. In practice only the
+    /// offscreen path can flip (each `frame_offscreen` call brings its
+    /// own `target.format()`); a swapchain's format is chosen once at
+    /// surface creation and never rewritten. `frame` / `frame_offscreen`
+    /// compare against it and force a full repaint on change (see
+    /// [`Self::note_format`]). `None` until the first paint.
     last_format: Option<wgpu::TextureFormat>,
 }
 

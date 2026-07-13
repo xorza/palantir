@@ -13,11 +13,6 @@
 
 extern crate self as aperture;
 
-// Top-level modules are `pub` so that gated `test_support` submodules
-// inside them (`#[cfg(any(test, feature = "internals"))] pub mod
-// test_support`) are reachable from external benches / integration
-// tests as `aperture::foo::bar::test_support::*`. Items inside that
-// aren't `pub` remain unreachable to external consumers.
 pub mod animation;
 pub mod clock;
 pub(crate) mod common;
