@@ -1,6 +1,6 @@
 use crate::InternedStr;
 use crate::forest::rollups::ContentHash;
-use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::align::Align;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
@@ -15,7 +15,7 @@ use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, LineCap, LineJoin, TextWrap};
-use crate::text::{FontFamily, FontWeight};
+use crate::text::{FontFamily, FontWeight, text_in_rect};
 use glam::Vec2;
 use half::f16;
 use std::hash::Hash;
@@ -608,7 +608,8 @@ impl ShapeRecord {
 /// - `local_origin: Some(origin)` ⇒ widget owns positioning; rect is
 ///   `origin + measured`.
 /// - `local_origin: None` ⇒ encoder owns positioning via
-///   [`text_in_rect`] against the owner's padded inner rect.
+///   [`crate::text::text_in_rect`] against the owner's padded inner
+///   rect.
 pub(crate) fn text_paint_bbox_local(
     local_origin: Option<Vec2>,
     align: Align,
@@ -629,35 +630,6 @@ pub(crate) fn text_paint_bbox_local(
             text_in_rect(owner_local.deflated_by(padding), measured, align)
         }
     }
-}
-
-/// Position a text run's bounding box inside `leaf` per `align`.
-/// Returns a rect with `min` shifted by the alignment offset and
-/// `size` set to the measured text bbox — composer takes `min` as
-/// the glyph origin and `size` as the clip bounds. Glyphs don't
-/// stretch, so `Auto`/`Stretch` collapse to start (top-left) —
-/// matches `place_axis`'s behavior for non-stretchable content.
-///
-/// Coordinate-system agnostic: callers pass owner-local for the
-/// cascade's damage rect and screen-space for the encoder's draw
-/// rect.
-pub(crate) fn text_in_rect(leaf: Rect, measured: Size, align: Align) -> Rect {
-    let dx = match align.halign() {
-        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-        HAlign::Center => (leaf.size.w - measured.w) * 0.5,
-        HAlign::Right => leaf.size.w - measured.w,
-    };
-    let dy = match align.valign() {
-        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
-        VAlign::Center => (leaf.size.h - measured.h) * 0.5,
-        VAlign::Bottom => leaf.size.h - measured.h,
-    };
-    Rect::new(
-        leaf.min.x + dx.max(0.0),
-        leaf.min.y + dy.max(0.0),
-        measured.w,
-        measured.h,
-    )
 }
 
 #[cfg(test)]
