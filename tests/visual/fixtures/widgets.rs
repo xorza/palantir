@@ -565,11 +565,11 @@ fn interleaved_shapes_paint_in_record_order() {
 }
 
 /// Pin: `Shape::Line` paints a fringe-AA stroke. A diagonal 4-px
-/// cyan line across a dark frame exercises the polyline cmd →
-/// composer → mesh-pipeline path end-to-end. The fringe-AA fade is
-/// the load-bearing visual signal — a non-AA tessellator would
-/// produce a stair-stepped diagonal that fails the per-pixel
-/// channel tolerance immediately.
+/// cyan line across a dark frame exercises the curve cmd →
+/// composer → GPU stroke pipeline end-to-end. The AA fade is the
+/// load-bearing visual signal — a non-AA stroke path would produce
+/// a stair-stepped diagonal that fails the per-pixel channel
+/// tolerance immediately.
 #[test]
 fn line_diagonal_aa_matches_golden() {
     let mut h = Harness::new();
@@ -646,13 +646,13 @@ fn polyline_gradient_matches_golden() {
     assert_matches_golden("polyline_gradient", &img, Tolerance::default());
 }
 
-/// Pin: sharp polyline joins paint a clean bevel rather than the
-/// previous miter-clamp's hard cut-off. Two strokes side by side:
-/// the shallow 90° corner mitres (rendering path unchanged), the
-/// tight chevron triggers the bevel-bridge codepath. Golden
-/// captures both at the same width so a tessellator regression
-/// (e.g. bridge winding flipped → invisible corner fill) shows up
-/// as missing pixels in the right stroke only.
+/// Pin: sharp Miter polyline joins downgrade to a clean bevel
+/// rather than an unbounded spike. Two strokes side by side: the
+/// shallow 90° corner mitres, the tight chevron triggers the
+/// bevel downgrade. Golden captures both at the same width so a
+/// join-chrome regression (e.g. a flipped convex-side sign →
+/// missing corner fill) shows up as missing pixels in the sharp
+/// stroke only.
 #[test]
 fn polyline_bevel_join_matches_golden() {
     use aperture::PolylineColors;
@@ -723,11 +723,11 @@ fn polyline_round_caps_match_golden() {
     assert_matches_golden("polyline_round_caps", &img, Tolerance::default());
 }
 
-/// Pin: `LineJoin::Round` paints a curved arc at interior joins.
+/// Pin: `LineJoin::Round` paints a circular arc at interior joins.
 /// Three identical 90° corners with Miter / Bevel / Round joins
 /// — Miter shows a sharp point, Bevel a flat cut, Round a smooth
-/// arc. Visually distinct golden ensures the join-style branch
-/// reaches the tessellator and emits the right geometry.
+/// arc. Visually distinct golden ensures the join kind threads
+/// through to the chrome instances and their fragment metrics.
 #[test]
 fn polyline_round_join_matches_golden() {
     use aperture::PolylineColors;
@@ -761,10 +761,70 @@ fn polyline_round_join_matches_golden() {
     assert_matches_golden("polyline_round_join", &img, Tolerance::default());
 }
 
+/// Pin: translucent polyline joints must not double-blend. The GPU
+/// joint model clips adjacent segment strips at the angle bisector
+/// (each fragment of the concave overlap belongs to exactly one
+/// strip) and fills the convex wedge with one chrome instance — so an
+/// α=0.5 stroke stays uniformly α=0.5 straight through every joint.
+/// Probes the overlap wedge under each apex analytically on top of
+/// the golden.
+#[test]
+fn polyline_translucent_joins_have_uniform_coverage() {
+    use aperture::PolylineColors;
+    let mut h = Harness::new();
+    // Three translucent chevrons, one per join kind. The GPU joint
+    // model clips adjacent segment strips at the angle bisector, so
+    // their concave overlap is covered exactly once — a brighter
+    // wedge under a corner means the partition regressed and the
+    // strips double-blended.
+    let img = h.render(UVec2::new(180, 160), 1.0, Color::BLACK, |ui| {
+        Panel::zstack()
+            .auto_id()
+            .size((Sizing::FILL, Sizing::FILL))
+            .show(ui, |ui| {
+                for (i, join) in [LineJoin::Miter, LineJoin::Bevel, LineJoin::Round]
+                    .iter()
+                    .enumerate()
+                {
+                    let y = 40.0 + i as f32 * 45.0;
+                    let pts = [
+                        Vec2::new(20.0, y),
+                        Vec2::new(90.0, y - 25.0),
+                        Vec2::new(160.0, y),
+                    ];
+                    ui.add_shape(Shape::Polyline {
+                        points: &pts,
+                        colors: PolylineColors::Single(Color::rgba(0.0, 1.0, 0.0, 0.5)),
+                        width: 14.0,
+                        cap: LineCap::Butt,
+                        join: *join,
+                    });
+                }
+            });
+    });
+    // Analytic probe, stronger than the golden: a point 4 px below
+    // each apex sits inside the concave overlap wedge of the two
+    // strips (behind A's end face, ahead of B's start face, well
+    // within the stroke width). Its value must match a straight-run
+    // interior pixel exactly — α 0.5 blended twice would jump the
+    // green channel by ~35 sRGB steps.
+    for i in 0..3u32 {
+        let y = 40 + i * 45;
+        let joint = img.get_pixel(90, y - 21);
+        let straight = img.get_pixel(55, y - 12);
+        assert!(
+            joint[1].abs_diff(straight[1]) <= 2 && joint[0] == straight[0],
+            "row {i}: joint interior {joint:?} != straight interior {straight:?} — \
+             adjacent segments double-blended their concave overlap",
+        );
+    }
+    assert_matches_golden("polyline_translucent_joins", &img, Tolerance::default());
+}
+
 /// Pin: a translucent polyline must blend through
-/// `PREMULTIPLIED_ALPHA_BLENDING` correctly — the mesh pipeline's
-/// fragment shader must premultiply its straight-alpha vertex tint
-/// at output. The visual test paints a translucent green stroke
+/// `PREMULTIPLIED_ALPHA_BLENDING` correctly — the stroke pipeline's
+/// fragment shader must premultiply its straight-alpha color at
+/// output. The visual test paints a translucent green stroke
 /// (linear `(0, 1, 0)`, α=0.5) over an opaque magenta backdrop
 /// (linear `(1, 0, 1)`).
 ///
@@ -775,10 +835,10 @@ fn polyline_round_join_matches_golden() {
 /// bright green tint, green channel >220.
 ///
 /// Test asserts `green - max(red, blue) < 32` at the polyline's
-/// center pixel. A regression of the `mesh.wgsl::fs` premultiply
+/// center pixel. A regression of the `curve.wgsl::fs` premultiply
 /// step fails this with `delta ≈ 60+`.
 #[test]
-fn polyline_translucent_premultiplies_in_mesh_shader() {
+fn polyline_translucent_premultiplies_in_stroke_shader() {
     use aperture::PolylineColors;
     let mut h = Harness::new();
     // Backdrop + a 24px horizontal translucent green stroke at y=60.
