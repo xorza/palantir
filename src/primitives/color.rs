@@ -268,6 +268,22 @@ impl ColorU8 {
     pub const fn to_u32(self) -> u32 {
         u32::from_be_bytes([self.r, self.g, self.b, self.a])
     }
+
+    /// Per-channel rounding average — the straight-alpha linear
+    /// midpoint, quantized. Mirrors [`Color::midpoint`] to within one
+    /// 8-bit step; used for polyline join-chrome colors.
+    #[inline]
+    pub const fn midpoint(self, other: Self) -> Self {
+        const fn avg(a: u8, b: u8) -> u8 {
+            (a as u16 + b as u16).div_ceil(2) as u8
+        }
+        Self {
+            r: avg(self.r, other.r),
+            g: avg(self.g, other.g),
+            b: avg(self.b, other.b),
+            a: avg(self.a, other.a),
+        }
+    }
     /// Raw-byte constructor — bytes go straight into the struct, no
     /// colour-space conversion. Interpret the result as **linear u8**
     /// (the convention `ColorU8` carries everywhere downstream). Use

@@ -1068,24 +1068,269 @@ fn compose_mesh_between_texts_splits_text_batch() {
     assert_eq!(
         buf.text_batches.len(),
         2,
-        "mesh between texts must split the batch",
+        "polyline between texts must split the batch",
     );
-    // Phase 2 structural: a polyline lowering produces a MeshBatch
-    // parallel to its group's meshes span (1:1 mapping today).
+    // A polyline lowers to GPU stroke instances riding the curve
+    // batches — a 2-point polyline is one segment, no join chrome.
+    assert_eq!(buf.curve_batches.len(), 1);
     assert_eq!(
-        buf.mesh_batches.len(),
+        buf.curve_batches[0].instances.len, 1,
+        "one segment instance for a 2-point polyline",
+    );
+    assert!(buf.meshes.rows.is_empty(), "no CPU-tessellated mesh");
+}
+
+#[allow(clippy::too_many_arguments)]
+fn polyline_cmd(
+    b: &mut RenderCmdBuffer,
+    arena: &mut FrameArenaInner,
+    points: &[Vec2],
+    colors: &[Color],
+    mode: ColorMode,
+    width: f32,
+    cap: LineCap,
+    join: LineJoin,
+) {
+    let p_start = arena.polyline_points.len() as u32;
+    arena.polyline_points.extend_from_slice(points);
+    let c_start = arena.polyline_colors.len() as u32;
+    arena.polyline_colors.extend(
+        colors
+            .iter()
+            .map(|&c| crate::primitives::color::ColorU8::from(c)),
+    );
+    let mut lo = points[0];
+    let mut hi = points[0];
+    for &p in points {
+        lo = lo.min(p);
+        hi = hi.max(p);
+    }
+    b.draw_polyline(DrawPolylinePayload {
+        bbox: Rect {
+            min: lo,
+            size: Size::new(hi.x - lo.x, hi.y - lo.y),
+        },
+        origin: Vec2::ZERO,
+        width,
+        points_start: p_start,
+        points_len: points.len() as u32,
+        colors_start: c_start,
+        colors_len: colors.len() as u32,
+        color_mode: ColorModeBits::new(mode),
+        cap: LineCapBits::new(cap),
+        join: LineJoinBits::new(join),
+        ..bytemuck::Zeroable::zeroed()
+    });
+}
+
+/// Slice-2 polyline lowering: an N-point polyline emits N−1 segment
+/// instances (user caps only on the true ends, neighbor points on the
+/// joint lanes) plus N−2 join-chrome instances of the user's join
+/// kind, all in the curve stream.
+#[test]
+fn compose_polyline_emits_segments_and_join_chrome() {
+    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, cap_lanes};
+    let pts = [
+        Vec2::new(10.0, 10.0),
+        Vec2::new(60.0, 40.0),
+        Vec2::new(110.0, 10.0),
+        Vec2::new(160.0, 40.0),
+    ];
+    let buf = run(
+        |b, arena| {
+            polyline_cmd(
+                b,
+                arena,
+                &pts,
+                &[Color::WHITE],
+                ColorMode::Single,
+                4.0,
+                LineCap::Round,
+                LineJoin::Round,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let segs: Vec<_> = buf
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .collect();
+    let joins: Vec<_> = buf
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .collect();
+    assert_eq!(segs.len(), 3);
+    assert_eq!(joins.len(), 2);
+    assert_eq!(buf.curves.len(), 5, "nothing else in the stream");
+
+    let round = LineCap::Round as u32;
+    // First segment: user cap at start, butt at joint end; the start
+    // neighbor lane mirrors p0 (cap tag) and the end lane carries the
+    // next polyline point.
+    assert_eq!(segs[0].p0, pts[0]);
+    assert_eq!(segs[0].p3, pts[1]);
+    assert_eq!(segs[0].p1, pts[0], "no prev neighbor at a cap end");
+    assert_eq!(segs[0].p2, pts[2], "next neighbor rides p2");
+    assert_eq!(segs[0].cap, cap_lanes(round, 0));
+    // Interior segment: butt both ends, neighbors on both lanes.
+    assert_eq!(segs[1].cap, cap_lanes(0, 0));
+    assert_eq!(segs[1].p1, pts[0]);
+    assert_eq!(segs[1].p2, pts[3]);
+    // Last segment: butt at joint, user cap at the true end.
+    assert_eq!(segs[2].cap, cap_lanes(0, round));
+    assert_eq!(segs[2].p2, pts[3], "no next neighbor at a cap end");
+    // Chrome anchors at the interior points with its neighbors.
+    assert_eq!(joins[0].p0, pts[1]);
+    assert_eq!(joins[0].p1, pts[0]);
+    assert_eq!(joins[0].p2, pts[2]);
+    assert_eq!(joins[1].p0, pts[2]);
+}
+
+/// Miter joins downgrade to bevel chrome past MITER_LIMIT (sharp
+/// bends), keep miter chrome on gentle ones — the SVG fallback the
+/// CPU tessellator pinned.
+#[test]
+fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
+    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
+    let emit = |pts: [Vec2; 3]| {
+        run(
+            |b, arena| {
+                polyline_cmd(
+                    b,
+                    arena,
+                    &pts,
+                    &[Color::WHITE],
+                    ColorMode::Single,
+                    4.0,
+                    LineCap::Butt,
+                    LineJoin::Miter,
+                );
+            },
+            &params(1.0, UVec2::new(300, 300)),
+        )
+    };
+    // Gentle 90° bend: cos(half angle) = cos 45° ≈ 0.707 > 1/4.
+    let gentle = emit([
+        Vec2::new(10.0, 10.0),
+        Vec2::new(100.0, 10.0),
+        Vec2::new(100.0, 100.0),
+    ]);
+    assert_eq!(
+        gentle
+            .curves
+            .iter()
+            .filter(|c| c.kind == CURVE_KIND_JOIN_MITER)
+            .count(),
         1,
-        "polyline must contribute one mesh batch",
     );
-    let mb = buf.mesh_batches[0];
+    // Near-fold: turn ≈ 169°, cos(half angle) ≈ 0.095 < 1/4 → bevel.
+    let sharp = emit([
+        Vec2::new(10.0, 10.0),
+        Vec2::new(100.0, 10.0),
+        Vec2::new(10.0, 27.0),
+    ]);
     assert_eq!(
-        mb.meshes.len, 1,
-        "mesh batch covers exactly the one polyline draw",
+        sharp
+            .curves
+            .iter()
+            .filter(|c| c.kind == CURVE_KIND_JOIN_BEVEL)
+            .count(),
+        1,
+        "sharp miter must downgrade to bevel chrome",
     );
+}
+
+/// PerPoint colors land on the segment's color/color1 lanes (GPU
+/// lerps along t); PerSegment paints each segment solid with its own
+/// color and the chrome with the midpoint of its neighbors. Coincident
+/// points are skipped and their colors dropped, mirroring the CPU
+/// walker's kept-point discipline.
+#[test]
+fn compose_polyline_color_modes_and_coincident_skip() {
+    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT};
+    let red = Color::rgb(1.0, 0.0, 0.0);
+    let green = Color::rgb(0.0, 1.0, 0.0);
+    let blue = Color::rgb(0.0, 0.0, 1.0);
+    let red8: crate::primitives::color::ColorU8 = red.into();
+    let green8: crate::primitives::color::ColorU8 = green.into();
+    let blue8: crate::primitives::color::ColorU8 = blue.into();
+
+    // PerPoint with a duplicated middle point: the duplicate is
+    // dropped, and the kept segments read the colors at the original
+    // point indices (0, 1) and (1, 3).
+    let pts = [
+        Vec2::new(10.0, 10.0),
+        Vec2::new(60.0, 40.0),
+        Vec2::new(60.0, 40.0),
+        Vec2::new(110.0, 10.0),
+    ];
+    let buf = run(
+        |b, arena| {
+            polyline_cmd(
+                b,
+                arena,
+                &pts,
+                &[red, green, green, blue],
+                ColorMode::PerPoint,
+                4.0,
+                LineCap::Butt,
+                LineJoin::Round,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let segs: Vec<_> = buf
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .collect();
+    assert_eq!(segs.len(), 2, "duplicate point contributes no segment");
+    assert_eq!((segs[0].color, segs[0].color1), (red8, green8));
+    assert_eq!((segs[1].color, segs[1].color1), (green8, blue8));
+    let join = buf
+        .curves
+        .iter()
+        .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .unwrap();
+    assert_eq!(join.color, green8, "PerPoint chrome = the joint color");
+
+    // PerSegment: solid lanes per segment; the skipped middle point
+    // drops the degenerate segment's color (index 1), so the kept
+    // segments paint colors 0 and 2 and the chrome their midpoint.
+    let buf = run(
+        |b, arena| {
+            polyline_cmd(
+                b,
+                arena,
+                &pts,
+                &[red, green, blue],
+                ColorMode::PerSegment,
+                4.0,
+                LineCap::Butt,
+                LineJoin::Round,
+            );
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    let segs: Vec<_> = buf
+        .curves
+        .iter()
+        .filter(|c| c.kind == CURVE_KIND_SEGMENT)
+        .collect();
+    assert_eq!(segs.len(), 2);
+    assert_eq!((segs[0].color, segs[0].color1), (red8, red8));
+    assert_eq!((segs[1].color, segs[1].color1), (blue8, blue8));
+    let join = buf
+        .curves
+        .iter()
+        .find(|c| c.kind == CURVE_KIND_JOIN_ROUND)
+        .unwrap();
     assert_eq!(
-        mb.last_group as usize,
-        buf.groups.len() - 1,
-        "mesh batch anchors at the group that emitted the polyline",
+        join.color,
+        red8.midpoint(blue8),
+        "PerSegment chrome = midpoint of adjacent segment colors",
     );
 }
 
@@ -1129,15 +1374,11 @@ fn compose_spins_polyline_about_bbox_center() {
             params(1.0, UVec2::new(200, 200)),
             &mut out,
         );
-        let vs = &arena.meshes.vertices;
-        assert!(!vs.is_empty(), "polyline must tessellate to a mesh");
-        let mut lo = Vec2::splat(f32::INFINITY);
-        let mut hi = Vec2::splat(f32::NEG_INFINITY);
-        for v in vs {
-            lo = lo.min(v.pos);
-            hi = hi.max(v.pos);
-        }
-        (lo, hi)
+        // GPU path: the polyline emits one segment instance whose
+        // p0/p3 lanes carry the transformed (spun) endpoints.
+        assert_eq!(out.curves.len(), 1, "one segment instance");
+        let ci = &out.curves[0];
+        (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
     let (lo0, hi0) = aabb(0.0);
     let (lor, hir) = aabb(std::f32::consts::FRAC_PI_2);

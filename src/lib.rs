@@ -290,6 +290,6 @@ mod hot_struct_sizes {
         DrawArcPayload => "cmd::DrawArcPayload": 72 / 4,
         // GPU instance types.
         Quad => "renderer::Quad": 60 / 4,
-        CurveInstance => "renderer::CurveInstance": 64 / 4,
+        CurveInstance => "renderer::CurveInstance": 68 / 4,
     }
 }
