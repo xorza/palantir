@@ -66,17 +66,19 @@ pub enum Shape<'a> {
         fill: Brush,
         stroke: Stroke,
     },
-    /// Two-point stroked line — ergonomic shorthand for a 2-point
-    /// `Polyline { Single(color) }`. Lowers to `ShapeRecord::Polyline`
-    /// at authoring time; there's no `ShapeRecord::Line`. `cap`
-    /// applies to both endpoints; `join` is unused (no interior).
+    /// Two-point stroked line. Rendered natively on the GPU on the
+    /// same parametric stroke pipeline as the Béziers — lowered to a
+    /// degenerate `ShapeRecord::Curve` (control points on the
+    /// segment's thirds, so `t` runs linearly a → b); the composer's
+    /// flatness fast-path keeps it a single instance. `cap` applies
+    /// to both endpoints; a linear-gradient brush is sampled along
+    /// the segment (the gradient's own `angle` is ignored).
     Line {
         a: Vec2,
         b: Vec2,
         width: f32,
         brush: Brush,
         cap: LineCap,
-        join: LineJoin,
     },
     /// Stroked polyline with per-vertex or per-segment coloring. The
     /// framework copies `points` and `colors` into the active tree's
@@ -111,6 +113,31 @@ pub enum Shape<'a> {
         p0: Vec2,
         p1: Vec2,
         p2: Vec2,
+        width: f32,
+        brush: Brush,
+        cap: LineCap,
+    },
+    /// Circular arc, stroked. Rendered natively on the GPU on the
+    /// same parametric stroke pipeline as the Béziers — the vertex
+    /// shader evaluates the exact circle (no flattening, no cubic
+    /// approximation), so it stays smooth at any size, zoom, and DPI.
+    ///
+    /// `start_angle` is in radians, screen convention: `0` points
+    /// along +x and, with y down, increasing angles run clockwise.
+    /// The arc sweeps `sweep` radians from there; the sign picks the
+    /// direction. `|sweep|` is capped at `2π` (hard assert at
+    /// lowering — anything longer would repaint pixels and
+    /// double-blend a translucent stroke); exactly `±2π` with `Butt`
+    /// caps closes seamlessly into a full circle.
+    ///
+    /// A linear-gradient brush is sampled along the sweep (`t = 0`
+    /// at `start_angle`, `t = 1` at the far end); the gradient's own
+    /// `angle` is ignored, same as on the Bézier shapes.
+    Arc {
+        center: Vec2,
+        radius: f32,
+        start_angle: f32,
+        sweep: f32,
         width: f32,
         brush: Brush,
         cap: LineCap,
@@ -237,8 +264,8 @@ impl<'a> Shape<'a> {
         }
     }
 
-    /// A `width`-thick straight line from `a` to `b` (`Butt` cap, `Miter`
-    /// join). Starts transparent — chain [`Self::brush`] / [`Self::cap`].
+    /// A `width`-thick straight line from `a` to `b` (`Butt` cap).
+    /// Starts transparent — chain [`Self::brush`] / [`Self::cap`].
     pub fn line(a: Vec2, b: Vec2, width: f32) -> Self {
         Shape::Line {
             a,
@@ -246,7 +273,6 @@ impl<'a> Shape<'a> {
             width,
             brush: Brush::TRANSPARENT,
             cap: LineCap::Butt,
-            join: LineJoin::Miter,
         }
     }
 
@@ -287,6 +313,28 @@ impl<'a> Shape<'a> {
             brush: Brush::TRANSPARENT,
             cap: LineCap::Butt,
         }
+    }
+
+    /// A stroked circular arc sweeping `sweep` radians from
+    /// `start_angle` (`Butt` cap). Starts transparent — chain
+    /// [`Self::brush`] / [`Self::cap`]. See [`Shape::Arc`] for the
+    /// angle convention.
+    pub fn arc(center: Vec2, radius: f32, start_angle: f32, sweep: f32, width: f32) -> Self {
+        Shape::Arc {
+            center,
+            radius,
+            start_angle,
+            sweep,
+            width,
+            brush: Brush::TRANSPARENT,
+            cap: LineCap::Butt,
+        }
+    }
+
+    /// A stroked full circle — [`Self::arc`] with a `2π` sweep, which
+    /// closes seamlessly under the default `Butt` cap.
+    pub fn circle(center: Vec2, radius: f32, width: f32) -> Self {
+        Shape::arc(center, radius, 0.0, std::f32::consts::TAU, width)
     }
 
     /// A `shadow` of the owner's full rect. Chain [`Self::at`] to shadow a
@@ -380,35 +428,38 @@ impl<'a> Shape<'a> {
     }
 
     /// Set the stroke brush — [`Shape::Line`] / [`Shape::CubicBezier`] /
-    /// [`Shape::QuadraticBezier`].
+    /// [`Shape::QuadraticBezier`] / [`Shape::Arc`].
     pub fn brush(mut self, brush: impl Into<Brush>) -> Self {
         match &mut self {
             Shape::Line { brush: b, .. }
             | Shape::CubicBezier { brush: b, .. }
-            | Shape::QuadraticBezier { brush: b, .. } => *b = brush.into(),
-            _ => panic!("Shape::brush() applies only to Line / CubicBezier / QuadraticBezier"),
+            | Shape::QuadraticBezier { brush: b, .. }
+            | Shape::Arc { brush: b, .. } => *b = brush.into(),
+            _ => panic!("Shape::brush() applies only to Line / Bézier / Arc shapes"),
         }
         self
     }
 
     /// Set the endpoint cap — Line / Polyline / CubicBezier /
-    /// QuadraticBezier.
+    /// QuadraticBezier / Arc.
     pub fn cap(mut self, cap: LineCap) -> Self {
         match &mut self {
             Shape::Line { cap: c, .. }
             | Shape::Polyline { cap: c, .. }
             | Shape::CubicBezier { cap: c, .. }
-            | Shape::QuadraticBezier { cap: c, .. } => *c = cap,
-            _ => panic!("Shape::cap() applies only to Line / Polyline / Bézier shapes"),
+            | Shape::QuadraticBezier { cap: c, .. }
+            | Shape::Arc { cap: c, .. } => *c = cap,
+            _ => panic!("Shape::cap() applies only to Line / Polyline / Bézier / Arc shapes"),
         }
         self
     }
 
-    /// Set the interior join — [`Shape::Line`] / [`Shape::Polyline`].
+    /// Set the interior join — [`Shape::Polyline`] (the only shape
+    /// with interior joins; single-stroke shapes have none).
     pub fn join(mut self, join: LineJoin) -> Self {
         match &mut self {
-            Shape::Line { join: j, .. } | Shape::Polyline { join: j, .. } => *j = join,
-            _ => panic!("Shape::join() applies only to Line / Polyline"),
+            Shape::Polyline { join: j, .. } => *j = join,
+            _ => panic!("Shape::join() applies only to Polyline"),
         }
         self
     }
@@ -710,7 +761,9 @@ impl Shape<'_> {
                     // paints nothing even rounded — a point has zero area.
                     || (vec2_approx_eq(*a, *b) && vec2_approx_eq(*a, *c))
             }
-            Shape::Line { width, brush, .. } => noop_f32(*width) || brush.is_noop(),
+            Shape::Line {
+                a, b, width, brush, ..
+            } => noop_f32(*width) || brush.is_noop() || vec2_approx_eq(*a, *b),
             Shape::Polyline {
                 points,
                 colors,
@@ -752,6 +805,18 @@ impl Shape<'_> {
                 noop_f32(*width)
                     || brush.is_noop()
                     || (vec2_approx_eq(*p0, *p1) && vec2_approx_eq(*p0, *p2))
+            }
+            Shape::Arc {
+                radius,
+                sweep,
+                width,
+                brush,
+                ..
+            } => {
+                noop_f32(*width)
+                    || brush.is_noop()
+                    || noop_f32(*radius)
+                    || noop_f32(sweep.abs())
             }
             Shape::Text { text, brush, .. } => text.is_empty() || brush.is_noop(),
             Shape::Mesh {

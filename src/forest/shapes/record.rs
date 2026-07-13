@@ -431,6 +431,27 @@ pub(crate) enum ShapeRecord {
         /// See [`ShapeRecord::RoundedRect.fill_grad_hash`].
         fill_grad_hash: u64,
     } = 9,
+    /// Native GPU circular arc — the exact-circle sibling of
+    /// [`ShapeRecord::Curve`], sharing its pipeline, cap model, and
+    /// gradient-along-t sampling. `center` is owner-local; `a0`/`a1`
+    /// are the start/end angles in radians (screen convention: 0 = +x,
+    /// y-down ⇒ increasing = clockwise; `a1 < a0` for a negative
+    /// sweep). `bbox` is the owner-local stroked AABB inflated by
+    /// `width/2 + cap + AA fringe`, same discipline as `Curve`.
+    Arc {
+        center: Vec2,
+        radius: f32,
+        a0: f32,
+        a1: f32,
+        width: f32,
+        /// See [`ShapeRecord::Curve::fill`] — same solid/linear-only
+        /// contract, gradient sampled along the sweep.
+        fill: ShapeBrush,
+        fill_grad_hash: u64,
+        cap: LineCap,
+        bbox: Rect,
+        content_hash: u64,
+    } = 10,
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
     /// stable render-target [`TextureId`] + the app `paint` callback live in
     /// `Ui::gpu_views`, keyed by the owner node's `WidgetId`, which the encoder
@@ -511,6 +532,7 @@ impl ShapeRecord {
             }
             ShapeRecord::Polyline { bbox, .. }
             | ShapeRecord::Curve { bbox, .. }
+            | ShapeRecord::Arc { bbox, .. }
             | ShapeRecord::Triangle { bbox, .. } => *bbox,
             // A mesh's vertex hull can exceed the owner rect (rotated /
             // overflowing meshes), so it must report that hull — like
@@ -562,6 +584,7 @@ impl ShapeRecord {
             ShapeRecord::GpuView { .. } => 7,
             ShapeRecord::Triangle { .. } => 8,
             ShapeRecord::WindowedRect { .. } => 9,
+            ShapeRecord::Arc { .. } => 10,
         }
     }
 }

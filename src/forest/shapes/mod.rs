@@ -151,6 +151,15 @@ impl Shapes {
                 brush,
                 cap,
             } => arena.lower_quadratic_bezier([p0, p1, p2], width, brush, cap, atlas),
+            Shape::Arc {
+                center,
+                radius,
+                start_angle,
+                sweep,
+                width,
+                brush,
+                cap,
+            } => arena.lower_arc(center, radius, start_angle, sweep, width, brush, cap, atlas),
             Shape::Text {
                 local_origin,
                 text,

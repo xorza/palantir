@@ -65,9 +65,10 @@ pub(crate) struct PaintMod {
     pub(crate) alpha: f32,
     /// Rotation in radians applied to the shape's geometry about its
     /// owner-box centre at paint time. `0.0` = no rotation. Only
-    /// [`PaintAnim::Spin`] produces a non-zero value today, and only the
-    /// polyline emit honours it (the composer rotates each point before
-    /// the ancestor transform).
+    /// [`PaintAnim::Spin`] produces a non-zero value today; the
+    /// polyline, curve, and arc emits honour it (the composer rotates
+    /// points / control points / center + angles before the ancestor
+    /// transform — see the encoder's `spin_bbox` pivot contract).
     pub(crate) rotation: f32,
 }
 

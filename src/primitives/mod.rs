@@ -1,4 +1,5 @@
 pub(crate) mod approx;
+pub(crate) mod arc;
 pub(crate) mod background;
 pub(crate) mod bezier;
 pub(crate) mod brush;
