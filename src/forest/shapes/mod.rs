@@ -119,14 +119,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-                join,
-            } => arena.lower_polyline(
-                &[a, b],
-                PolylineColors::Single(brush.expect_solid()),
-                width,
-                cap,
-                join,
-            ),
+            } => arena.lower_line(a, b, width, brush, cap, atlas),
             Shape::Polyline {
                 points,
                 colors,
