@@ -379,7 +379,7 @@ fn post_record_clears_keys_and_text_but_preserves_modifiers() {
     state.on_input(InputEvent::Text(TextChunk::new("x").unwrap()), &cascades);
     let buf_cap_before = state.frame_keyboard_events.capacity();
 
-    state.post_record(&cascades);
+    state.end_frame(&cascades);
 
     assert!(state.frame_keyboard_events.is_empty());
     // Capacity-retained: typing across frames stays alloc-free.

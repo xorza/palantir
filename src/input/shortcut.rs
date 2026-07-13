@@ -15,15 +15,13 @@
 //! - [`Shortcut::matches`] compares the modifier set *exactly*: Ctrl+A
 //!   does NOT match Ctrl+Shift+A. `Char` keys compare ignore-case
 //!   because [`Key::Char`] arrives post-shift-layout.
-//! - [`Shortcut::label`] formats a platform-native string via
-//!   `Display`. Labels render once per menu-open, so the allocation
-//!   is cold.
+//! - `Display` formats a platform-native label (`"Ctrl+C"` / `"⌘C"`).
+//!   Labels render once per menu-open, so the allocation is cold.
 //!
 //! [`KeyboardEvent::Down`]: crate::input::keyboard::KeyboardEvent::Down
 
 use crate::common::platform::{PLATFORM, Platform};
 use crate::input::keyboard::{Key, KeyPress, Modifiers};
-use std::borrow::Cow;
 use std::fmt;
 
 /// Modifier set for declaring shortcuts. `ctrl` is the primary command
@@ -160,17 +158,12 @@ impl Shortcut {
             (a, b) => a == b,
         }
     }
-
-    /// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
-    /// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier
-    /// renders as ⌘ on macOS (it *is* Cmd there). Formats via
-    /// [`Display`] — labels render once per menu-open, not per frame,
-    /// so the allocation is cold.
-    pub fn label(self) -> Cow<'static, str> {
-        Cow::Owned(self.to_string())
-    }
 }
 
+/// Platform-native label. macOS uses glyph notation (`⌥⇧⌘<key>`);
+/// Win/Linux uses `Ctrl+Shift+Alt+<key>`. The primary modifier renders
+/// as ⌘ on macOS (it *is* Cmd there). Labels render once per
+/// menu-open, not per frame, so the `to_string()` allocation is cold.
 impl fmt::Display for Shortcut {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if matches!(PLATFORM, Platform::Mac) {
@@ -354,7 +347,7 @@ mod tests {
 
     #[test]
     fn label_ctrl_letter() {
-        let s = Shortcut::ctrl('C').label();
+        let s = Shortcut::ctrl('C').to_string();
         let expected = match PLATFORM {
             Platform::Mac => "⌘C",
             _ => "Ctrl+C",
@@ -364,7 +357,7 @@ mod tests {
 
     #[test]
     fn label_ctrl_shift_letter() {
-        let s = Shortcut::ctrl_shift('K').label();
+        let s = Shortcut::ctrl_shift('K').to_string();
         let expected = match PLATFORM {
             Platform::Mac => "⇧⌘K",
             _ => "Ctrl+Shift+K",
@@ -374,7 +367,7 @@ mod tests {
 
     #[test]
     fn label_non_letter_key() {
-        let s = Shortcut::new(Mods::CTRL, Key::ArrowLeft).label();
+        let s = Shortcut::new(Mods::CTRL, Key::ArrowLeft).to_string();
         let expected = match PLATFORM {
             Platform::Mac => "⌘←",
             _ => "Ctrl+←",

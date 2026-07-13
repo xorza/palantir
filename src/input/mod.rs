@@ -24,7 +24,7 @@ use strum::EnumCount as _;
 
 /// Per-button press/drag/click capture. One slot per [`PointerButton`].
 /// Cleared on release, on cascade-eviction of the captured widget, and
-/// on [`InputState::post_record`] for the one-frame edges
+/// on [`InputState::end_frame`] for the one-frame edges
 /// (`frame_drag_started`, `frame_click`, `frame_double_click`).
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct Capture {
@@ -38,21 +38,21 @@ pub(crate) struct Capture {
     /// lifetime; doubles as "suppress click on release."
     pub(crate) drag_latched: bool,
     /// One-frame edge: the `active` id on the move that flipped
-    /// `drag_latched` `false → true`. Cleared by `post_record` / release
+    /// `drag_latched` `false → true`. Cleared by `end_frame` / release
     /// / eviction.
     pub(crate) frame_drag_started: Option<WidgetId>,
     /// One-frame edge: the widget whose latched drag ended on this
     /// button's release. The release destroys the drag itself
     /// (`clear_press`), so this is the only way a widget can observe
     /// "my drag finished" — commit-on-release gestures key off it.
-    /// Cleared by `post_record`, like `frame_click`.
+    /// Cleared by `end_frame`, like `frame_click`.
     pub(crate) frame_drag_stopped: Option<WidgetId>,
     /// One-frame edge: widget that this button's press+release latched
     /// onto when the release landed on the same id and no drag was
-    /// latched. Cleared by `post_record`.
+    /// latched. Cleared by `end_frame`.
     pub(crate) frame_click: Option<WidgetId>,
     /// One-frame edge: widget on which two consecutive clicks landed
-    /// within [`DOUBLE_CLICK_WINDOW`]. Cleared by `post_record`.
+    /// within [`DOUBLE_CLICK_WINDOW`]. Cleared by `end_frame`.
     pub(crate) frame_double_click: Option<WidgetId>,
     /// Frame time ([`crate::Ui`]'s clock) of the most recent click on
     /// this button, used to detect a follow-up click within
@@ -172,13 +172,13 @@ impl InputEvent {
                     ElementState::Released => InputEvent::PointerReleased(pb),
                 });
             }
+            WindowEvent::PinchGesture { delta, .. } => emit(InputEvent::Zoom(1.0 + *delta as f32)),
             // Convert to "positive delta = pan offset forward" so widgets can
             // do `offset += delta` directly. winit reports +y when the wheel
             // rotates *away* from the user (scroll up) and +x when it rotates
             // / swipes right (reveal content to the right means panning
             // *into* it, i.e. content shifts left); flip both so positive
             // means "advance the scroll offset."
-            WindowEvent::PinchGesture { delta, .. } => emit(InputEvent::Zoom(1.0 + *delta as f32)),
             WindowEvent::MouseWheel { delta, .. } => emit(match *delta {
                 MouseScrollDelta::LineDelta(x, y) => InputEvent::ScrollLines(Vec2::new(-x, -y)),
                 MouseScrollDelta::PixelDelta(p) => {
@@ -223,17 +223,18 @@ fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
         let next_end = i + c.len_utf8();
         if next_end - start > cap {
             if i > start {
-                // SAFETY: `start` and `i` are both char-boundary offsets.
-                if let Some(chunk) = TextChunk::new(&s[start..i]) {
-                    emit(InputEvent::Text(chunk));
-                }
+                // `start` and `i` are both char-boundary offsets, so
+                // the slice can't panic and the chunk fits by the
+                // flush-before-exceeding-cap loop invariant.
+                let chunk =
+                    TextChunk::new(&s[start..i]).expect("flushed chunk fits by construction");
+                emit(InputEvent::Text(chunk));
             }
             start = i;
         }
     }
-    if start < s.len()
-        && let Some(chunk) = TextChunk::new(&s[start..])
-    {
+    if start < s.len() {
+        let chunk = TextChunk::new(&s[start..]).expect("tail chunk fits by construction");
         emit(InputEvent::Text(chunk));
     }
 }
@@ -246,7 +247,7 @@ pub(crate) struct InputState {
     pub(crate) pointer_pos: Option<Vec2>,
     pub(crate) hovered: Option<WidgetId>,
     /// Topmost `Sense::SCROLL` widget under the pointer, recomputed
-    /// whenever the pointer moves and at `post_record`. The scroll widget
+    /// whenever the pointer moves and at `end_frame`. The scroll widget
     /// matching this id consumes [`Self::frame_scroll_pixels`].
     pub(crate) scroll_target: Option<WidgetId>,
     /// Topmost `Sense::PINCH` widget under the pointer, recomputed
@@ -261,19 +262,19 @@ pub(crate) struct InputState {
     pub(crate) captures: [Capture; PointerButton::COUNT],
     /// Pixel-precise wheel / touchpad delta accumulated this frame
     /// (logical px from `ScrollPixels`). Cleared in
-    /// [`Self::post_record`]. Read by scroll widgets at record time
+    /// [`Self::end_frame`]. Read by scroll widgets at record time
     /// alongside [`Self::frame_scroll_lines`] — the widget combines
     /// the two via its font-derived line step.
     pub(crate) frame_scroll_pixels: Vec2,
     /// Notched wheel delta accumulated this frame (line count from
-    /// `ScrollLines`). Cleared in [`Self::post_record`]. The scroll
+    /// `ScrollLines`). Cleared in [`Self::end_frame`]. The scroll
     /// widget multiplies by its own line-px step at consumption time
     /// instead of baking a constant in here, so wheel feel tracks the
     /// active font size. Also read directly by zoom routing (each line
     /// = one notch, no roundtrip through a pixel constant).
     pub(crate) frame_scroll_lines: Vec2,
     /// Multiplicative pinch-zoom delta accumulated this frame; `1.0` =
-    /// no zoom. Cleared in [`Self::post_record`]. Read by scroll widgets
+    /// no zoom. Cleared in [`Self::end_frame`]. Read by scroll widgets
     /// configured with a `ZoomConfig`. Wheel-based zoom is computed
     /// at the widget from [`Self::frame_scroll_pixels`] under the
     /// `ZoomConfig::modifier` gate, not accumulated here.
@@ -296,13 +297,13 @@ pub(crate) struct InputState {
     /// keyboard subscribers ([`KeyboardSense`]) — both reading the
     /// same buffer.
     pub(crate) frame_keyboard_events: Vec<KeyboardEvent>,
-    /// Latest modifier-key snapshot. Persists across `post_record` —
+    /// Latest modifier-key snapshot. Persists across `end_frame` —
     /// modifier *state* is not a per-frame thing the way keystrokes
     /// are. Updated only on `ModifiersChanged` events.
     pub(crate) modifiers: Modifiers,
     /// Currently focused widget, or `None`. Set on `PointerPressed(Left)`
     /// when the press lands on a focusable widget. Evicted in
-    /// [`Self::post_record`] when the focused widget vanishes from the
+    /// [`Self::end_frame`] when the focused widget vanishes from the
     /// tree (matches the per-id state map's eviction model). Read by
     /// keyboard consumers to decide whether to drain
     /// `frame_keyboard_events`.
@@ -312,7 +313,7 @@ pub(crate) struct InputState {
     /// Set in `on_input` when an event arrives that could plausibly
     /// drive a state mutation (pointer press/release, `KeyDown`,
     /// `Text`). Read by `Ui::run_frame` to decide whether to
-    /// re-record the frame after pass 1's `post_record` drains the
+    /// re-record the frame after pass 1's `end_frame` drains the
     /// input queues. Hover-only events (`PointerMoved`, `PointerLeft`)
     /// and modifier changes don't flip it — they fire too often and
     /// don't typically mutate user state. Note: this is the
@@ -404,27 +405,21 @@ impl InputState {
         &mut self.captures[b.idx()]
     }
 
-    /// Push a [`PointerEvent::Scroll`] when at least one subscriber
-    /// holds [`PointerSense::SCROLL`] AND we have a pointer position.
-    /// Returns whether the wake fires.
-    fn push_scroll_event(&mut self, pixels: Vec2, lines: Vec2) -> bool {
+    /// Push a SCROLL-class event ([`PointerEvent::Scroll`] /
+    /// [`PointerEvent::Zoom`]) when at least one subscriber holds
+    /// [`PointerSense::SCROLL`] AND we have a pointer position.
+    /// Returns whether the wake fires. BUTTONS-class events go through
+    /// [`Self::record_pointer_button`], which wakes even without a
+    /// position.
+    fn push_scroll_class(&mut self, make: impl FnOnce(Vec2) -> PointerEvent) -> bool {
         if !self.subs.pointer_mask.contains(PointerSense::SCROLL) {
             return false;
         }
         let Some(pos) = self.pointer_pos else {
             return false;
         };
-        self.frame_pointer_events
-            .push(PointerEvent::Scroll { pos, pixels, lines });
+        self.frame_pointer_events.push(make(pos));
         true
-    }
-
-    fn record_pointer_down(&mut self, pos: Option<glam::Vec2>, button: PointerButton) -> bool {
-        self.record_pointer_button(pos, |pos| PointerEvent::Down { pos, button })
-    }
-
-    fn record_pointer_up(&mut self, pos: Option<glam::Vec2>, button: PointerButton) -> bool {
-        self.record_pointer_button(pos, |pos| PointerEvent::Up { pos, button })
     }
 
     /// Push a button event to [`Self::frame_pointer_events`] and
@@ -474,6 +469,7 @@ impl InputState {
             InputEvent::PointerMoved(p) => {
                 let prev_hover = self.hovered;
                 let prev_scroll = self.scroll_target;
+                let prev_pinch = self.pinch_target;
                 self.pointer_pos = Some(p);
                 // Drag-latch check per button. Every captured button
                 // independently latches once travel crosses
@@ -496,12 +492,7 @@ impl InputState {
                         self.frame_had_action = true;
                     }
                 }
-                let prev_pinch = self.pinch_target;
-                let hits =
-                    cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
-                self.hovered = hits.hover;
-                self.scroll_target = hits.scroll;
-                self.pinch_target = hits.pinch;
+                self.refresh_pointer_targets(cascades);
                 let move_subbed = self.subs.pointer_mask.contains(PointerSense::MOVE);
                 if move_subbed {
                     self.frame_pointer_events.push(PointerEvent::Move(p));
@@ -518,9 +509,7 @@ impl InputState {
                     || self.pinch_target.is_some()
                     || self.captures.iter().any(|c| c.active.is_some());
                 self.pointer_pos = None;
-                self.hovered = None;
-                self.scroll_target = None;
-                self.pinch_target = None;
+                self.refresh_pointer_targets(cascades);
                 // `Leave` is rare; emit whenever any pointer-class
                 // subscription is active so subscribers can clean up
                 // (clear crosshair, dismiss hover preview).
@@ -539,7 +528,9 @@ impl InputState {
                 // transparent to presses even though they show as hovered.
                 let pointer_pos = self.pointer_pos;
                 let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
-                let buttons_subbed = self.record_pointer_down(pointer_pos, btn);
+                let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
+                    PointerEvent::Down { pos, button: btn }
+                });
                 let cap = self.capture_mut(btn);
                 cap.active = hit;
                 cap.press_pos = hit.and(pointer_pos);
@@ -615,32 +606,34 @@ impl InputState {
                         }
                     }
                 }
-                let buttons_subbed = self.record_pointer_up(pointer_pos, btn);
+                let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
+                    PointerEvent::Up { pos, button: btn }
+                });
                 // Capture was live ⇒ owning widget needs a record;
                 // otherwise only `BUTTONS` subscribers wake.
                 captured.is_some() || buttons_subbed
             }
             InputEvent::ScrollPixels(d) => {
                 self.frame_scroll_pixels += d;
-                let subbed = self.push_scroll_event(d, Vec2::ZERO);
+                let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
+                    pos,
+                    pixels: d,
+                    lines: Vec2::ZERO,
+                });
                 self.scroll_target.is_some() || subbed
             }
             InputEvent::ScrollLines(d) => {
                 self.frame_scroll_lines += d;
-                let subbed = self.push_scroll_event(Vec2::ZERO, d);
+                let subbed = self.push_scroll_class(|pos| PointerEvent::Scroll {
+                    pos,
+                    pixels: Vec2::ZERO,
+                    lines: d,
+                });
                 self.scroll_target.is_some() || subbed
             }
             InputEvent::Zoom(f) => {
                 self.frame_zoom_delta *= f;
-                let subbed = if self.subs.pointer_mask.contains(PointerSense::SCROLL)
-                    && let Some(pos) = self.pointer_pos
-                {
-                    self.frame_pointer_events
-                        .push(PointerEvent::Zoom { pos, factor: f });
-                    true
-                } else {
-                    false
-                };
+                let subbed = self.push_scroll_class(|pos| PointerEvent::Zoom { pos, factor: f });
                 self.pinch_target.is_some() || subbed
             }
             InputEvent::KeyDown {
@@ -727,14 +720,15 @@ impl InputState {
     }
 
     /// Re-resolve `hovered` / `scroll_target` / `pinch_target` against
-    /// `cascades` using the current `pointer_pos`. Used by the
-    /// cold-start warmup path in `Ui::frame`: pre-frame-1 input
-    /// events arrived with an empty cascade so their hit-tests
-    /// resolved to nothing. After the warmup record pass has built
-    /// a real cascade, this routes the held pointer position onto the
-    /// right widgets before the user-visible record pass runs — so
-    /// hover styling on frame 1 reflects the actual content under
-    /// the cursor instead of None.
+    /// `cascades` using the current `pointer_pos` — the single owner of
+    /// the target-triple assignment (the `PointerMoved` / `PointerLeft`
+    /// arms, `end_frame`, and the cold-start warmup all route through
+    /// it). The warmup case: pre-frame-1 input events arrived with an
+    /// empty cascade so their hit-tests resolved to nothing; after the
+    /// warmup record pass has built a real cascade, `Ui::frame` calls
+    /// this to route the held pointer position onto the right widgets
+    /// before the user-visible record pass runs — so hover styling on
+    /// frame 1 reflects the actual content under the cursor.
     pub(crate) fn refresh_pointer_targets(&mut self, cascades: &Cascades) {
         if let Some(p) = self.pointer_pos {
             let hits = cascades.hit_test_targets(p, Sense::hovers, Sense::scrolls, Sense::pinches);
@@ -748,10 +742,12 @@ impl InputState {
         }
     }
 
-    /// Recompute hover, drop transient per-frame flags, evict captured
-    /// widgets that disappeared from the tree. Call after
-    /// `CascadesEngine::run` (whose result `cascades` is passed here).
-    pub(crate) fn post_record(&mut self, cascades: &Cascades) {
+    /// Once-per-frame close-out (from `Ui::finalize_frame`, after the
+    /// final record pass): recompute hover, drop transient per-frame
+    /// flags, evict captured widgets that disappeared from the tree.
+    /// Call after `CascadesEngine::run` (whose result `cascades` is
+    /// passed here).
+    pub(crate) fn end_frame(&mut self, cascades: &Cascades) {
         self.drain_per_frame_queues();
         // `modifiers` deliberately persists: modifier state is a running
         // snapshot, not per-frame. Held shift across multiple frames must

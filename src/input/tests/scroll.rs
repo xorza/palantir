@@ -89,7 +89,7 @@ fn post_record_resets_zoom_delta_to_identity() {
     let cascades = Cascades::default();
     state.on_input(InputEvent::Zoom(1.2), &cascades);
     assert!((state.frame_zoom_delta - 1.2).abs() < 1e-5);
-    state.post_record(&cascades);
+    state.end_frame(&cascades);
     assert_eq!(state.frame_zoom_delta, 1.0);
 }
 
@@ -99,6 +99,6 @@ fn post_record_clears_scroll_delta() {
     let cascades = Cascades::default();
     state.on_input(InputEvent::ScrollPixels(Vec2::new(7.0, 7.0)), &cascades);
     assert_eq!(state.frame_scroll_pixels, Vec2::new(7.0, 7.0));
-    state.post_record(&cascades);
+    state.end_frame(&cascades);
     assert_eq!(state.frame_scroll_pixels, Vec2::ZERO);
 }
