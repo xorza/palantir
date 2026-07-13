@@ -107,3 +107,6 @@ impl<T: PartialEq> Configure for RadioButton<'_, T> {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;

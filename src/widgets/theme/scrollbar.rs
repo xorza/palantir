@@ -35,7 +35,7 @@ pub struct ScrollbarTheme {
 
 impl Default for ScrollbarTheme {
     fn default() -> Self {
-        // Ayu doesn't define scrollbar colors directly. Use TEXT_MUTED
+        // The palette defines no scrollbar colors; use TEXT_MUTED
         // at decreasing translucency for idle / hover / active so the
         // bar reads as a soft overlay matching the palette's
         // muted-text gray rather than pure black.

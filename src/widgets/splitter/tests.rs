@@ -8,7 +8,7 @@ use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::widgets::splitter::Splitter;
+use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::window::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -131,4 +131,39 @@ fn divider_requests_the_resize_cursor() {
         CursorIcon::NsResize,
         "column split resizes vertically"
     );
+}
+
+#[test]
+fn pointer_to_ratio_maps_center_edges_and_floors() {
+    // extent 406, reserved 6 → span 400; seam center at
+    // pointer, so pointer 203 → first = 200 → ratio 0.5.
+    let cases = [
+        // (pos, extent, reserved, min_pane, want)
+        (203.0, 406.0, 6.0, 0.0, 0.5),
+        (3.0, 406.0, 6.0, 0.0, 0.0),   // at the left stop
+        (403.0, 406.0, 6.0, 0.0, 1.0), // at the right stop
+        (-50.0, 406.0, 6.0, 0.0, 0.0), // past the ends clamps
+        (999.0, 406.0, 6.0, 0.0, 1.0),
+        (103.0, 406.0, 6.0, 0.0, 0.25),   // quarter point
+        (10.0, 406.0, 6.0, 50.0, 0.125),  // min_pane floors first: 50/400
+        (395.0, 406.0, 6.0, 50.0, 0.875), // …and second: 350/400
+        (7.0, 406.0, 6.0, 300.0, 0.5),    // floors can't both fit → center
+        (10.0, 4.0, 6.0, 0.0, 0.5),       // degenerate extent
+    ];
+    for (pos, extent, thickness, min_pane, want) in cases {
+        let got = pointer_to_ratio(pos, extent, thickness, min_pane);
+        assert!(
+            (got - want).abs() < 1e-6,
+            "p2r({pos},{extent},{thickness},{min_pane})={got} want {want}"
+        );
+    }
+}
+
+#[test]
+fn sanitize_ratio_clamps_and_pins_non_finite() {
+    assert_eq!(sanitize_ratio(0.3), 0.3);
+    assert_eq!(sanitize_ratio(-0.2), 0.0);
+    assert_eq!(sanitize_ratio(1.5), 1.0);
+    assert_eq!(sanitize_ratio(f32::NAN), 0.5);
+    assert_eq!(sanitize_ratio(f32::INFINITY), 0.5);
 }

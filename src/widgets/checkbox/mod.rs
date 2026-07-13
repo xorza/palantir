@@ -105,3 +105,6 @@ fn check_pts(box_size: f32) -> [Vec2; 3] {
         Vec2::new(12.5 * s, 4.5 * s),
     ]
 }
+
+#[cfg(test)]
+mod tests;

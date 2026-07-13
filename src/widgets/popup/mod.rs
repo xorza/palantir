@@ -243,3 +243,6 @@ impl Configure for Popup {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;

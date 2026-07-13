@@ -281,36 +281,59 @@ struct ScrollWrappers {
 /// Split a user `Scroll` element into its outer/inner wrappers.
 ///
 /// **This routes every `Element` field that should survive on a
-/// `Scroll`** — adding a field means deciding whether it lands on
-/// `outer` (sizing/placement) or `inner` (layout/panel knobs);
-/// forgetting it drops the field silently on `Scroll` with no compile
-/// error. `Scroll::show` patches the remaining inner fields it computes
-/// per frame (`salt`, the reservation `margin`, `mode_payload` fit bits,
-/// `clip`, and the pan `transform`).
+/// `Scroll`** — the exhaustive destructure means adding an `Element`
+/// field fails to compile here, forcing the decision whether it lands
+/// on `outer` (sizing/placement) or `inner` (layout/panel knobs).
+/// `Scroll::show` patches the remaining inner fields it computes per
+/// frame (`salt`, the reservation `margin`, `mode_payload` fit bits,
+/// `clip` — read off `flags` before this runs — and the pan
+/// `transform`).
 fn scroll_wrappers(element: Element) -> ScrollWrappers {
-    let mut outer = Element::new(LayoutMode::ZStack);
-    outer.salt = element.salt;
-    outer.size = element.size;
-    outer.min_size = element.min_size;
-    outer.max_size = element.max_size;
-    outer.margin = element.margin;
-    outer.align = element.align;
-    outer.position = element.position;
-    outer.grid = element.grid;
-    outer.flags.set_sense(element.flags.sense());
-    outer.flags.set_disabled(element.flags.is_disabled());
-    outer.flags.set_focusable(element.flags.is_focusable());
-    outer.visibility = element.visibility;
+    let Element {
+        salt,
+        mode,
+        mode_payload,
+        size,
+        min_size,
+        max_size,
+        padding,
+        margin,
+        gaps,
+        justify,
+        align,
+        child_align,
+        position,
+        grid,
+        flags,
+        visibility,
+        // Owned by Scroll: `show()` writes the pan/zoom transform onto
+        // `inner` each frame, so a user transform has no slot here.
+        transform: _,
+    } = element;
 
-    let mut inner = Element::new(element.mode);
-    inner.mode_payload = element.mode_payload;
+    let mut outer = Element::new(LayoutMode::ZStack);
+    outer.salt = salt;
+    outer.size = size;
+    outer.min_size = min_size;
+    outer.max_size = max_size;
+    outer.margin = margin;
+    outer.align = align;
+    outer.position = position;
+    outer.grid = grid;
+    outer.flags.set_sense(flags.sense());
+    outer.flags.set_disabled(flags.is_disabled());
+    outer.flags.set_focusable(flags.is_focusable());
+    outer.visibility = visibility;
+
+    let mut inner = Element::new(mode);
+    inner.mode_payload = mode_payload;
     // Inner fills the outer wrapper; the outer carries the user's
     // `Sizing` and drives the actual size.
     inner.size = (Sizing::FILL, Sizing::FILL).into();
-    inner.padding = element.padding;
-    inner.gaps = element.gaps;
-    inner.justify = element.justify;
-    inner.child_align = element.child_align;
+    inner.padding = padding;
+    inner.gaps = gaps;
+    inner.justify = justify;
+    inner.child_align = child_align;
     ScrollWrappers { outer, inner }
 }
 
@@ -770,3 +793,6 @@ impl Configure for Scroll {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;
