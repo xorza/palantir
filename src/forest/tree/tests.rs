@@ -12,7 +12,7 @@ use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
 use crate::renderer::frontend::cmd_buffer::CmdKind;
-use crate::shape::{LineCap, LineJoin, Shape};
+use crate::shape::{LineCap, Shape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
 
