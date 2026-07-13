@@ -132,7 +132,7 @@ fn baseline_draw_rect_count_cases() {
 #[test]
 fn manually_pushed_shapes_emit_expected_cmds() {
     use crate::primitives::corners::Corners;
-    use crate::shape::{LineCap, LineJoin, Shape};
+    use crate::shape::{LineCap, Shape};
 
     let mut ui = Ui::for_test();
     ui.run_at_acked(UVec2::new(200, 200), |ui| {
@@ -193,18 +193,27 @@ fn manually_pushed_shapes_emit_expected_cmds() {
         rect_kinds.contains(&FillKind::SOLID.with_window()),
         "WindowedRect must emit a window-tagged DrawRect, got kinds {rect_kinds:?}",
     );
-    let polylines = cmds
+    // A Line rides the GPU curve pipeline (degenerate cubic), so it
+    // emits a DrawCurve — not a DrawPolyline — and never touches the
+    // polyline points arena.
+    let curves = cmds
         .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawPolyline))
+        .filter(|k| matches!(k, CmdKind::DrawCurve))
         .count();
-    assert_eq!(polylines, 1, "expected exactly one DrawPolyline cmd");
-    // Points live on the Rc-shared `Ui.frame_arena`; the 2-point line
-    // + noop-filtered duplicates leave exactly two entries.
+    assert_eq!(curves, 1, "expected exactly one DrawCurve cmd");
+    assert_eq!(
+        cmds.kinds
+            .iter()
+            .filter(|k| matches!(k, CmdKind::DrawPolyline))
+            .count(),
+        0,
+        "lines no longer lower to polylines"
+    );
     assert_eq!(
         ui.ctx.frame_arena.inner().polyline_points.len(),
-        2,
-        "one 2-point line populates the points arena"
+        0,
+        "the points arena stays untouched by lines"
     );
 }
 
