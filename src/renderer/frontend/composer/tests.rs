@@ -1367,12 +1367,7 @@ fn compose_spins_polyline_about_bbox_center() {
         });
         let mut composer = Composer::default();
         let mut out = RenderBuffer::default();
-        composer.compose(
-            &buffer,
-            &arena,
-            params(1.0, UVec2::new(200, 200)),
-            &mut out,
-        );
+        composer.compose(&buffer, &arena, params(1.0, UVec2::new(200, 200)), &mut out);
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.
         assert_eq!(out.curves.len(), 1, "one segment instance");
@@ -2806,7 +2801,7 @@ fn clear_fold_resets_across_frames() {
     let display = params(1.0, UVec2::new(200, 200));
     let mut composer = Composer::default();
     let mut out = RenderBuffer::default();
-    let mut arena = FrameArenaInner::default();
+    let arena = FrameArenaInner::default();
 
     let mut covered = RenderCmdBuffer::default();
     draw(&mut covered, rect(0.0, 0.0, 200.0, 200.0));
