@@ -1471,10 +1471,7 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.image_batches[0].images, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     // Physical-px rect = logical * scale (no snap in `params`).
-    assert_eq!(
-        buf.images.instance()[0].rect,
-        rect(20.0, 40.0, 60.0, 80.0)
-    );
+    assert_eq!(buf.images.instance()[0].rect, rect(20.0, 40.0, 60.0, 80.0));
     // Composer must forward the encoder's UV crop verbatim — a Zero
     // UV size means "sample one texel forever" and silently paints
     // every image as a uniform color (regression hunt: 2026-05).
@@ -1498,14 +1495,8 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
         },
         &params(1.0, UVec2::new(400, 400)),
     );
-    assert_eq!(
-        buf.images.instance()[0].uv_min,
-        glam::Vec2::new(0.25, 0.0)
-    );
-    assert_eq!(
-        buf.images.instance()[0].uv_size,
-        glam::Vec2::new(0.5, 1.0)
-    );
+    assert_eq!(buf.images.instance()[0].uv_min, glam::Vec2::new(0.25, 0.0));
+    assert_eq!(buf.images.instance()[0].uv_size, glam::Vec2::new(0.5, 1.0));
 }
 
 /// The composer forwards `flags` verbatim and keeps each draw's UV as-is
@@ -1548,10 +1539,7 @@ fn compose_forwards_flags_and_repeat_uv() {
     );
     assert_eq!(buf.images.instance()[0].flags, 0);
     assert_eq!(buf.images.instance()[1].flags, IMG_FLAG_TILED);
-    assert_eq!(
-        buf.images.instance()[1].uv_size,
-        glam::Vec2::new(3.0, 2.0)
-    );
+    assert_eq!(buf.images.instance()[1].uv_size, glam::Vec2::new(3.0, 2.0));
     assert_eq!(buf.images.instance()[2].flags, IMG_FLAG_NEAREST);
 }
 
