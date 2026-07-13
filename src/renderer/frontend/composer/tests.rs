@@ -1439,6 +1439,156 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     }
 }
 
+#[test]
+fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
+    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
+    use crate::renderer::render_buffer::CURVE_KIND_ARC;
+    use std::f32::consts::PI;
+    // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
+    let sweep = 1.5 * PI;
+    let buf = run(
+        |b, _arena| {
+            b.draw_arc(DrawArcPayload {
+                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                center: Vec2::new(50.0, 50.0),
+                radius: 20.0,
+                a0: 0.0,
+                a1: sweep,
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(2.0, UVec2::new(400, 400)),
+    );
+    // Arc length = r_phys · sweep = 40 · 1.5π ≈ 188.5 px. Segments =
+    // ⌈188.5 / 1.5⌉ = 126; instances = ⌈126 / 16⌉ = 8.
+    assert_eq!(buf.curves.len(), 8, "exact-length subdivision");
+    for (i, ci) in buf.curves.iter().enumerate() {
+        assert_eq!(ci.kind, CURVE_KIND_ARC);
+        // Center → physical px (DPI 2), radius scaled, angles verbatim.
+        assert_eq!(ci.p0, Vec2::new(100.0, 100.0), "center at DPI 2");
+        assert_eq!(ci.p1.x, 40.0, "radius at DPI 2");
+        assert_eq!(ci.p2, Vec2::new(0.0, sweep), "angles pass through");
+        assert_eq!(ci.width, 4.0, "stroke width at DPI 2");
+        // t ranges tile [0, 1] contiguously, ending exactly at 1.
+        let n = buf.curves.len() as f32;
+        assert!((ci.t0 - i as f32 / n).abs() < 1e-6);
+        if i + 1 == buf.curves.len() {
+            assert_eq!(ci.t1, 1.0);
+        }
+    }
+    // One batch covers every instance — arcs ride the curve batching.
+    assert_eq!(buf.curve_batches.len(), 1);
+    assert_eq!(buf.curve_batches[0].instances.len, 8);
+}
+
+#[test]
+fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
+    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
+    use std::f32::consts::{FRAC_PI_2, PI};
+    // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
+    // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
+    // so the spun center is (50, 70). Both angles shift by π/2.
+    let buf = run(
+        |b, _arena| {
+            b.draw_arc(DrawArcPayload {
+                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                center: Vec2::new(70.0, 50.0),
+                radius: 10.0,
+                a0: 0.0,
+                a1: PI,
+                rotation: FRAC_PI_2,
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(!buf.curves.is_empty());
+    for ci in &buf.curves {
+        assert!(
+            (ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4,
+            "center rotated about the bbox pivot, got {:?}",
+            ci.p0,
+        );
+        assert!((ci.p2.x - FRAC_PI_2).abs() < 1e-6, "a0 offset by rotation");
+        assert!((ci.p2.y - (PI + FRAC_PI_2)).abs() < 1e-6, "a1 offset");
+    }
+}
+
+#[test]
+fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
+    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use std::f32::consts::FRAC_PI_2;
+    // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
+    // screen, y-down) maps an offset (dx, dy) from the pivot to
+    // (-dy, dx). p0 = (70, 50) → (50, 70); p3 = (50, 30) → (70, 50).
+    let buf = run(
+        |b, _arena| {
+            b.draw_curve(DrawCurvePayload {
+                bbox: rect(0.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                rotation: FRAC_PI_2,
+                p0: Vec2::new(70.0, 50.0),
+                p1: Vec2::new(70.0, 40.0),
+                p2: Vec2::new(60.0, 30.0),
+                p3: Vec2::new(50.0, 30.0),
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(200, 200)),
+    );
+    assert!(!buf.curves.is_empty());
+    let ci = &buf.curves[0];
+    assert!((ci.p0 - Vec2::new(50.0, 70.0)).length() < 1e-4, "{:?}", ci.p0);
+    assert!((ci.p1 - Vec2::new(60.0, 70.0)).length() < 1e-4, "{:?}", ci.p1);
+    assert!((ci.p2 - Vec2::new(70.0, 60.0)).length() < 1e-4, "{:?}", ci.p2);
+    assert!((ci.p3 - Vec2::new(70.0, 50.0)).length() < 1e-4, "{:?}", ci.p3);
+}
+
+#[test]
+fn compose_arc_and_curve_share_one_batch_per_group() {
+    use crate::renderer::frontend::cmd_buffer::{DrawArcPayload, DrawCurvePayload};
+    use crate::renderer::render_buffer::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
+    let buf = run(
+        |b, _arena| {
+            b.draw_arc(DrawArcPayload {
+                bbox: rect(0.0, 0.0, 40.0, 40.0),
+                origin: Vec2::ZERO,
+                center: Vec2::new(20.0, 20.0),
+                radius: 10.0,
+                a0: 0.0,
+                a1: 1.0,
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+            b.draw_curve(DrawCurvePayload {
+                bbox: rect(100.0, 0.0, 100.0, 100.0),
+                origin: Vec2::ZERO,
+                p0: Vec2::new(100.0, 0.0),
+                p1: Vec2::new(110.0, 50.0),
+                p2: Vec2::new(190.0, 50.0),
+                p3: Vec2::new(200.0, 0.0),
+                color: Color::WHITE.into(),
+                width: 2.0,
+                ..bytemuck::Zeroable::zeroed()
+            });
+        },
+        &params(1.0, UVec2::new(300, 300)),
+    );
+    assert_eq!(buf.curve_batches.len(), 1, "arcs batch with cubics");
+    assert_eq!(buf.curve_batches[0].instances.len as usize, buf.curves.len());
+    assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
+    assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
+}
+
 fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
     use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
     b.draw_curve(DrawCurvePayload {

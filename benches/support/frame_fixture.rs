@@ -541,7 +541,6 @@ fn add_shape_gallery(ui: &mut Ui) {
         width: 3.0,
         brush: Color::rgb(0.2, 0.9, 1.0).into(),
         cap: LineCap::Round,
-        join: LineJoin::Miter,
     });
     let zigzag: [glam::Vec2; 5] = [
         glam::Vec2::new(140.0, 48.0),

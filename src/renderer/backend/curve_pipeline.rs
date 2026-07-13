@@ -1,4 +1,5 @@
-//! GPU side of native bezier-curve strokes. One `draw` per scissor
+//! GPU side of native parametric strokes (cubic beziers + circular
+//! arcs — see `CurveInstance::kind`). One `draw` per scissor
 //! group covers every `CurveInstance` in the group's `CurveBatch` —
 //! the vertex shader subdivides each instance into
 //! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::SEGMENTS_PER_INSTANCE)
@@ -132,8 +133,9 @@ impl CurvePipeline {
 // `color : Unorm8x4` (linear-u8, same convention as `MeshVertex.color`),
 // `cap : Uint32` (0 = Butt, 1 = Square, 2 = Round),
 // `fill_kind : Uint32` (0 = solid, 1 = linear),
-// `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0).
-const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_array![
+// `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0),
+// `kind : Uint32` (0 = cubic, 1 = arc — geometry-lane interpretation).
+const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 11] = wgpu::vertex_attr_array![
     0 => Float32x2,
     1 => Float32x2,
     2 => Float32x2,
@@ -144,6 +146,7 @@ const CURVE_INSTANCE_ATTRS: [wgpu::VertexAttribute; 10] = wgpu::vertex_attr_arra
     7 => Uint32,
     8 => Uint32,
     9 => Uint32,
+    10 => Uint32,
 ];
 
 // Compile-time guard: attribute offsets must match the `CurveInstance`
@@ -163,6 +166,15 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, cap) as u64);
     assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, fill_kind) as u64);
     assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, kind) as u64);
+};
+
+// Pin the Rust-side basis tags against the `KIND_*` constants in
+// `curve.wgsl` — same guard as the `CAP_*` block above.
+const _: () = {
+    use crate::renderer::render_buffer::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
+    assert!(CURVE_KIND_CUBIC == 0);
+    assert!(CURVE_KIND_ARC == 1);
 };
 
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {

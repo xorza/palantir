@@ -155,7 +155,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 width: 2.0,
                 brush: Color::rgb(1.0, 0.0, 0.0).into(),
                 cap: LineCap::Butt,
-                join: LineJoin::Miter,
             });
             // Degenerate variants: filtered before reaching the buffer.
             ui.add_shape(Shape::Line {
@@ -164,7 +163,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 width: 0.0,
                 brush: Color::rgb(1.0, 0.0, 0.0).into(),
                 cap: LineCap::Butt,
-                join: LineJoin::Miter,
             });
             ui.add_shape(Shape::Line {
                 a: Vec2::new(0.0, 0.0),
@@ -172,7 +170,6 @@ fn manually_pushed_shapes_emit_expected_cmds() {
                 width: 2.0,
                 brush: Color::TRANSPARENT.into(),
                 cap: LineCap::Butt,
-                join: LineJoin::Miter,
             });
             Frame::new()
                 .id(WidgetId::from_hash("host"))
@@ -514,6 +511,7 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
             | CmdKind::DrawPolyline
             | CmdKind::DrawImage
             | CmdKind::DrawCurve
+            | CmdKind::DrawArc
             | CmdKind::DrawTriangle => {}
         }
     }

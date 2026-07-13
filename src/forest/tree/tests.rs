@@ -1173,7 +1173,6 @@ fn shape_hashes_column_sized_to_shape_records() {
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: glam::Vec2::new(10.0, 10.0),
@@ -1181,7 +1180,6 @@ fn shape_hashes_column_sized_to_shape_records() {
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
             });
     });
@@ -1229,7 +1227,6 @@ fn shape_hash_stable_across_frames() {
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
             });
     };
@@ -1264,7 +1261,6 @@ fn one_shape_change_only_flips_its_own_hash() {
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: glam::Vec2::new(5.0, 5.0),
@@ -1272,7 +1268,6 @@ fn one_shape_change_only_flips_its_own_hash() {
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
             });
     };

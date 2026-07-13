@@ -149,10 +149,18 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             hash_fit(fit, &mut h);
             h.write_u8(*filter as u8);
         }
-        // `content_hash` summarizes p0..p3 + width + cap + (solid)
-        // inline colour. Brush variant folded in separately so curves
-        // with the same geometry but different fills don't collide.
+        // `content_hash` summarizes the stroke geometry + width + cap
+        // (cubic control points for `Curve`, center/radius/angles for
+        // `Arc`). Brush variant folded in separately so strokes with
+        // the same geometry but different fills don't collide; the tag
+        // byte above keeps the two kinds apart.
         ShapeRecord::Curve {
+            content_hash,
+            fill,
+            fill_grad_hash,
+            ..
+        }
+        | ShapeRecord::Arc {
             content_hash,
             fill,
             fill_grad_hash,

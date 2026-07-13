@@ -145,7 +145,6 @@ fn removing_canvas_child_does_not_redamage_sibling_shapes() {
                     width: 2.0,
                     brush: Brush::Solid(BLUE),
                     cap: LineCap::Round,
-                    join: LineJoin::Round,
                 });
                 for i in 0..n_children {
                     Frame::new()
@@ -415,7 +414,6 @@ fn shape_crossing_child_boundary_is_redamaged() {
             width: 4.0,
             brush: Brush::Solid(BLUE),
             cap: LineCap::Round,
-            join: LineJoin::Round,
         });
     };
     let child = |ui: &mut Ui| {
@@ -489,7 +487,6 @@ fn overlapping_direct_shape_swap_is_redamaged() {
             width: 8.0,
             brush: Brush::Solid(color),
             cap: LineCap::Round,
-            join: LineJoin::Round,
         });
     };
     let canvas = |ui: &mut Ui, first: Color, second: Color| {
@@ -553,7 +550,6 @@ fn inserting_a_child_does_not_redamage_unmoved_later_shapes() {
                     width: 4.0,
                     brush: Brush::Solid(RED),
                     cap: LineCap::Round,
-                    join: LineJoin::Round,
                 });
             });
     };
@@ -609,7 +605,6 @@ fn rekeying_a_child_damages_only_the_child() {
                     width: 4.0,
                     brush: Brush::Solid(RED),
                     cap: LineCap::Round,
-                    join: LineJoin::Round,
                 });
             });
     };
@@ -2527,7 +2522,6 @@ fn node_snapshot_decomposition_matches_cascade() {
                     width: 1.0,
                     brush: Color::rgb(1.0, 0.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
                 ui.add_shape(Shape::Line {
                     a: Vec2::new(20.0, 20.0),
@@ -2535,7 +2529,6 @@ fn node_snapshot_decomposition_matches_cascade() {
                     width: 1.0,
                     brush: Color::rgb(0.0, 1.0, 0.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
             });
     });
@@ -2583,7 +2576,6 @@ fn node_snapshot_decomposition_matches_cascade() {
             width: 1.0,
             brush: Color::rgb(1.0, 0.0, 0.0).into(),
             cap: LineCap::Butt,
-            join: LineJoin::Miter,
         });
         ui.add_shape(Shape::Line {
             a: Vec2::new(20.0, 20.0),
@@ -2591,7 +2583,6 @@ fn node_snapshot_decomposition_matches_cascade() {
             width: 1.0,
             brush: Color::rgb(0.0, 1.0, 0.0).into(),
             cap: LineCap::Butt,
-            join: LineJoin::Miter,
         });
     };
     frame(&mut ui, |ui| {
@@ -3210,7 +3201,6 @@ fn visibility_flip_with_coincident_shape_change_damages_whole_node() {
                 width: 2.0,
                 brush: Brush::Solid(color),
                 cap: LineCap::Round,
-                join: LineJoin::Round,
             });
         });
     };
@@ -3304,7 +3294,6 @@ fn front_insert_damages_only_the_new_shape() {
             width: 2.0,
             brush: Brush::Solid(BLUE),
             cap: LineCap::Round,
-            join: LineJoin::Round,
         });
     };
     let build = |ui: &mut Ui, with_front: bool| {
@@ -3319,7 +3308,6 @@ fn front_insert_damages_only_the_new_shape() {
                         width: 2.0,
                         brush: Brush::Solid(RED),
                         cap: LineCap::Round,
-                        join: LineJoin::Round,
                     });
                 }
                 line(ui, 20.0);

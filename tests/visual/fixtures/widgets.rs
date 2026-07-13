@@ -584,7 +584,6 @@ fn line_diagonal_aa_matches_golden() {
                     width: 4.0,
                     brush: Color::rgb(0.2, 0.9, 1.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
                 // Hairline at sub-pixel width — should appear dim
                 // (alpha-faded) rather than vanish or look identical
@@ -595,7 +594,6 @@ fn line_diagonal_aa_matches_golden() {
                     width: 0.4,
                     brush: Color::rgb(1.0, 1.0, 1.0).into(),
                     cap: LineCap::Butt,
-                    join: LineJoin::Miter,
                 });
             });
     });
@@ -711,7 +709,6 @@ fn polyline_round_caps_match_golden() {
                         width: 10.0,
                         brush: color.into(),
                         cap,
-                        join: LineJoin::Miter,
                     });
                 }
             });
