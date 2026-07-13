@@ -1209,7 +1209,7 @@ impl Ui {
     /// `Option<&Background>` (an 8-byte niche-encoded pointer, not the
     /// 168 B `Background` by value) so the chrome travels as one pointer
     /// per hop down `Forest::open_node` → `Tree::open_node` →
-    /// `FrameArena::lower_background`, and the no-chrome path is just a
+    /// `shapes::lower::background`, and the no-chrome path is just a
     /// perfectly-predicted `None` branch.
     ///
     /// `id` must be the [`Self::widget_id`] resolution of `element.salt`

@@ -180,7 +180,6 @@ mod hot_struct_sizes {
     use crate::forest::element::{BoundsExtras, LayoutCore, NodeFlags, PanelExtras};
     use crate::forest::node::NodeRecord;
     use crate::forest::rollups::ContentHash;
-use crate::ui::cascade::CascadeInputHash;
     use crate::forest::shapes::record::{
         ChromeRow, LoweredGradient, LoweredShadow, ShapeRecord, ShapeStroke,
     };
@@ -198,6 +197,7 @@ use crate::ui::cascade::CascadeInputHash;
     use crate::renderer::quad::Quad;
     use crate::renderer::render_buffer::{CurveInstance, ImageInstance, MeshInstance, TextRun};
     use crate::text::TextCacheKey;
+    use crate::ui::cascade::CascadeInputHash;
     use crate::ui::cascade::EntryRow;
     use crate::ui::cascade::Paint;
     use crate::ui::damage::NodeSnapshot;
@@ -262,7 +262,7 @@ use crate::ui::cascade::CascadeInputHash;
         PanelExtras => "forest::PanelExtras": 20 / 4,
         Element => "forest::Element": 104 / 8,
         // Per-shape / per-chrome paint records + lowered fill forms.
-        ShapeRecord => "forest::ShapeRecord": 96 / 8,
+        ShapeRecord => "forest::ShapeRecord": 88 / 8,
         ChromeRow => "forest::ChromeRow": 56 / 8,
         ShapeStroke => "shapes::ShapeStroke": 10 / 2,
         LoweredShadow => "shapes::LoweredShadow": 18 / 2,

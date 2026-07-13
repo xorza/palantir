@@ -21,11 +21,10 @@
 //! | What                                  | Producer site                                   | Consumer                                |
 //! | ------------------------------------- | ----------------------------------------------- | --------------------------------------- |
 //! | Per-shape canonical hash              | `forest::shapes::Shapes::add`                   | `Tree::compute_hashes`, damage diff     |
-//! | Per-chrome canonical hash             | `forest::frame_arena::FrameArena::lower_background` | `Tree::compute_hashes`, damage diff |
+//! | Per-chrome canonical hash             | `forest::shapes::lower::background`             | `Tree::compute_hashes`, damage diff     |
 //! | Per-text bytes hash                   | `forest::frame_arena::FrameArena::hash_text`    | `ShapeRecord::Text.text_hash`           |
 //! | Per-gradient content hash             | `forest::frame_arena::grad_hash`                | `ShapeRecord::*.fill_grad_hash`         |
-//! | Per-polyline content hash             | `forest::frame_arena::FrameArenaInner::lower_polyline_inner` | `ShapeRecord::Polyline.content_hash` |
-//! | Per-bezier content hash               | `forest::frame_arena::lower_curve_inner`        | `ShapeRecord::Curve.content_hash`       |
+//! | Per-polyline content hash             | `forest::shapes::lower::polyline`               | `ShapeRecord::Polyline.content_hash`    |
 //! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
 //! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
 //! | Per-cascade input hash                | `ui::cascade::finish_cascade_input`             | damage subtree-skip predicate           |
@@ -41,10 +40,10 @@
 /// affect rendering output for one node — *not* the derived layout
 /// output. Wrapping `u64` rather than passing it bare prevents
 /// confusion with `WidgetId` / other 64-bit handles in signatures
-/// like `shape_unbounded(wid: WidgetId, hash: NodeHash, …)`.
+/// like `shape_unbounded(wid: WidgetId, hash: ContentHash, …)`.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, bytemuck::Pod, bytemuck::Zeroable)]
-pub(crate) struct NodeHash(pub(crate) u64);
+pub(crate) struct ContentHash(pub(crate) u64);
 
 /// Per-node hash columns populated by [`crate::forest::Tree::post_record`].
 /// Both slices index by `NodeId.0` and are length `records.len()`
@@ -71,8 +70,8 @@ pub(crate) struct NodeHash(pub(crate) u64);
 /// was removed.
 #[derive(Default)]
 pub(crate) struct SubtreeRollups {
-    pub(crate) node: Vec<NodeHash>,
-    pub(crate) subtree: Vec<NodeHash>,
+    pub(crate) node: Vec<ContentHash>,
+    pub(crate) subtree: Vec<ContentHash>,
 }
 
 impl SubtreeRollups {
@@ -85,8 +84,8 @@ impl SubtreeRollups {
         // via indexed assignment, so the fill value is irrelevant —
         // `resize` is preferred over `clear()+resize_with` because it
         // avoids the truncate-then-grow round trip when `n` is steady.
-        self.node.resize(n, NodeHash::default());
-        self.subtree.resize(n, NodeHash::default());
+        self.node.resize(n, ContentHash::default());
+        self.subtree.resize(n, ContentHash::default());
     }
 }
 

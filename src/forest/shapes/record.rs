@@ -1,5 +1,5 @@
 use crate::InternedStr;
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::ContentHash;
 use crate::layout::types::align::{Align, HAlign, VAlign};
 use crate::primitives::brush::FillAxis;
 use crate::primitives::color::{Color, ColorF16};
@@ -104,7 +104,7 @@ impl From<ShapeStroke> for Stroke {
 /// uses), so chrome and shape paints share storage.
 ///
 /// `hash` is the canonical authoring fingerprint, pre-computed at
-/// lowering time (`FrameArena::lower_background`) over `fill` +
+/// lowering time (`shapes::lower::background`) over `fill` +
 /// `stroke` + `radius` + `shadow`. Read at damage diff time via the
 /// chrome row of [`crate::ui::cascade::Paint`], and folded into the
 /// owner node's hash in [`crate::forest::tree::Tree::compute_hashes`]
@@ -116,7 +116,7 @@ pub(crate) struct ChromeRow {
     pub(crate) corners: Corners,
     pub(crate) shadow: LoweredShadow,
     /// Canonical authoring hash. See struct docs.
-    pub(crate) hash: NodeHash,
+    pub(crate) hash: ContentHash,
 }
 
 /// Lowered shadow. The user-facing `Shadow` is 36 B (linear `Color` +
@@ -249,8 +249,8 @@ pub(crate) enum ShapeRecord {
         /// is computed once at lowering time by `frame_arena::grad_hash`.
         fill_grad_hash: u64,
     } = 0,
-    /// Stroked polyline. `points`/`colors` index into the active
-    /// tree's `polyline_points` / `polyline_colors` arenas. `colors`
+    /// Stroked polyline. `points`/`colors` index into the
+    /// `FrameArena`'s `polyline_points` / `polyline_colors`. `colors`
     /// length depends on `color_mode`: 1 for `Single`,
     /// `points.len()` for `PerPoint`, `points.len() - 1` for
     /// `PerSegment`. `content_hash` summarizes points+colors+mode
@@ -315,9 +315,9 @@ pub(crate) enum ShapeRecord {
         family: FontFamily,
         weight: FontWeight,
     } = 2,
-    /// User-supplied colored triangle mesh. Vertex/index data lives in
-    /// the active `Tree`'s `mesh_vertices` / `mesh_indices` arenas;
-    /// these spans index into them. `content_hash` summarizes
+    /// User-supplied colored triangle mesh. Vertex/index data lives on
+    /// the `FrameArena`'s `meshes` pool; these spans index into its
+    /// vertex/index vecs. `content_hash` summarizes
     /// vertex+index bytes for cache identity — two frames with
     /// identical mesh content share a hash even though their span
     /// offsets differ.
@@ -366,7 +366,7 @@ pub(crate) enum ShapeRecord {
     } = 5,
     /// Native GPU bezier curve. Four control points (quadratics
     /// promote to cubic at lowering, lines degenerate to one — see
-    /// `lower_curve_inner`'s degree tags). Stored owner-local; the
+    /// `shapes::lower`). Stored owner-local; the
     /// composer adds the owner origin + active transform at compose
     /// time and uploads to a per-instance buffer. No joins
     /// (single-segment primitive); `fill` and `cap` are documented on
@@ -398,7 +398,6 @@ pub(crate) enum ShapeRecord {
         /// composer-time bbox already includes that slack.
         cap: LineCap,
         bbox: Rect,
-        content_hash: u64,
     } = 6,
     /// Filled/stroked rounded triangle, rendered as an analytic SDF on the
     /// shared quad pipeline (`FillKind::TRIANGLE`). `a`/`b`/`c` are owner-local
@@ -452,7 +451,6 @@ pub(crate) enum ShapeRecord {
         fill_grad_hash: u64,
         cap: LineCap,
         bbox: Rect,
-        content_hash: u64,
     } = 10,
     /// App-rendered GPU surface. Carries only the redraw `epoch` — the view's
     /// stable render-target [`TextureId`] + the app `paint` callback live in
@@ -461,10 +459,11 @@ pub(crate) enum ShapeRecord {
     /// buffer stays small and `Rc`-free). Composited exactly like
     /// [`ShapeRecord::Image`] (the encoder lowers it to the same `DrawImage`
     /// cmd over the owner's full arranged rect), so it reuses the image pipeline
-    /// end to end. `epoch` is the `Ui` frame counter, bumped every painted
-    /// frame and folded into the shape hash (which only sees the `ShapeRecord`,
-    /// so it rides here), so the view's rect repaints each frame — its texture
-    /// is re-rendered every frame (see `Ui::gpu_view`).
+    /// end to end. `epoch` is the view's damage version, folded into the shape
+    /// hash (which only sees the `ShapeRecord`, so it rides here):
+    /// `Ui::gpu_view` bumps it to the frame id on `repaint(true)` — the rect
+    /// repaints and the texture re-renders — and holds it stable on
+    /// `.repaint(false)`, so a static view stays undamaged and is culled.
     GpuView { epoch: u64 } = 7,
 }
 

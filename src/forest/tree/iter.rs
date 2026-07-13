@@ -15,10 +15,10 @@ use crate::forest::visibility::Visibility;
 use crate::primitives::span::Span;
 
 pub(crate) struct ChildIter<'a> {
-    pub(super) layouts: &'a [LayoutCore],
-    pub(super) ends: &'a [SubtreeEnd],
-    pub(super) next: u32,
-    pub(super) end: u32,
+    pub(crate) layouts: &'a [LayoutCore],
+    pub(crate) ends: &'a [SubtreeEnd],
+    pub(crate) next: u32,
+    pub(crate) end: u32,
 }
 
 #[derive(Copy, Clone, Debug)]

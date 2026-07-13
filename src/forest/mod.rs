@@ -220,7 +220,7 @@ impl Forest {
     /// paint and `None` otherwise. The `Background` is borrowed (not
     /// owned) so its 168 B don't get copied through the
     /// `Ui::node → here → Tree::open_node →
-    /// FrameArena::lower_background` chain on every chromed widget.
+    /// shapes::lower::background` chain on every chromed widget.
     #[inline]
     pub(crate) fn open_node(
         &mut self,

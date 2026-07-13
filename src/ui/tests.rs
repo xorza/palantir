@@ -1165,7 +1165,7 @@ fn paint_only_preserves_gradient_arena_for_retained_shapes() {
 
     fn body(ui: &mut Ui, half: Duration) {
         Panel::hstack().auto_id().show(ui, |ui| {
-            // Gradient-filled chrome: `lower_background` pushes a
+            // Gradient-filled chrome: `lower::background` pushes a
             // `LoweredGradient` into `arena.gradients` every record
             // pass, and the resulting `ChromeRow` stores the index.
             Frame::new()

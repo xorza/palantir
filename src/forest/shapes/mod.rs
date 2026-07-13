@@ -1,8 +1,9 @@
 pub(crate) mod hash;
+pub(crate) mod lower;
 pub(crate) mod record;
 
 use crate::forest::frame_arena::FrameArena;
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::ContentHash;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
@@ -36,7 +37,7 @@ pub(crate) struct Shapes {
     /// multi-shape owner push only its own rect pair instead of the
     /// owner's whole paint-rect union. Cleared per frame, capacity
     /// retained.
-    pub(crate) hashes: Vec<NodeHash>,
+    pub(crate) hashes: Vec<ContentHash>,
 }
 
 impl Shapes {
@@ -46,9 +47,9 @@ impl Shapes {
     }
 
     /// Lower a user-facing [`Shape`] and append it to `records`:
-    /// passthrough for rect/text, curve flattening for beziers,
+    /// passthrough for rect/text, cubic promotion for beziers,
     /// span-stamping for the variable-length variants (polyline /
-    /// mesh) whose payloads land in `self.payloads`.
+    /// mesh) whose payload bytes land on the [`FrameArena`].
     ///
     /// Single canonical noop gate for the shape buffer — drops any
     /// shape whose authoring inputs would emit no visible pixels
@@ -81,7 +82,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = arena.lower_brush(fill, atlas);
+                let lowered = arena.lower_brush(&fill, atlas);
                 ShapeRecord::RoundedRect {
                     local_rect,
                     corners,
@@ -96,7 +97,7 @@ impl Shapes {
                 fill,
                 stroke,
             } => {
-                let lowered = arena.lower_brush(fill, atlas);
+                let lowered = arena.lower_brush(&fill, atlas);
                 ShapeRecord::WindowedRect {
                     local_rect,
                     corners,
@@ -112,21 +113,21 @@ impl Shapes {
                 radius,
                 fill,
                 stroke,
-            } => arena.lower_triangle(a, b, c, radius, fill, stroke),
+            } => lower::triangle(a, b, c, radius, fill, stroke),
             Shape::Line {
                 a,
                 b,
                 width,
                 brush,
                 cap,
-            } => arena.lower_line(a, b, width, brush, cap, atlas),
+            } => lower::line(arena, a, b, width, brush, cap, atlas),
             Shape::Polyline {
                 points,
                 colors,
                 width,
                 cap,
                 join,
-            } => arena.lower_polyline(points, colors, width, cap, join),
+            } => lower::polyline(arena, points, colors, width, cap, join),
             Shape::CubicBezier {
                 p0,
                 p1,
@@ -135,7 +136,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => arena.lower_cubic_bezier([p0, p1, p2, p3], width, brush, cap, atlas),
+            } => lower::cubic_bezier(arena, [p0, p1, p2, p3], width, brush, cap, atlas),
             Shape::QuadraticBezier {
                 p0,
                 p1,
@@ -143,7 +144,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => arena.lower_quadratic_bezier([p0, p1, p2], width, brush, cap, atlas),
+            } => lower::quadratic_bezier(arena, [p0, p1, p2], width, brush, cap, atlas),
             Shape::Arc {
                 center,
                 radius,
@@ -152,7 +153,7 @@ impl Shapes {
                 width,
                 brush,
                 cap,
-            } => arena.lower_arc(center, radius, start_angle, sweep, width, brush, cap, atlas),
+            } => lower::arc(arena, center, radius, start_angle, sweep, width, brush, cap, atlas),
             Shape::Text {
                 local_origin,
                 text,

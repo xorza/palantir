@@ -10,8 +10,8 @@ use strum::EnumCount as _;
 /// Fixed-size `[T; Layer::COUNT]` indexed by [`Layer`]. Implements
 /// `Index<Layer>` / `IndexMut<Layer>` for the natural sugar,
 /// `IntoIterator` for `&` and `&mut` so `for t in &per` works, plus
-/// the project's two common iteration shapes (`iter_paint_order` and
-/// the bare `iter`; mutable iteration goes through `&mut PerLayer`).
+/// [`Self::iter_paint_order`] for layer-tagged iteration. Order-blind
+/// slice access goes through the `pub(crate)` `.0` array directly.
 #[derive(Debug)]
 #[repr(transparent)]
 pub(crate) struct PerLayer<T>(pub(crate) [T; Layer::COUNT]);
@@ -23,11 +23,6 @@ impl<T: Default> Default for PerLayer<T> {
 }
 
 impl<T> PerLayer<T> {
-    #[inline]
-    pub(crate) fn iter(&self) -> std::slice::Iter<'_, T> {
-        self.0.iter()
-    }
-
     /// Iterate `(Layer, &T)` in [`Layer::PAINT_ORDER`] — bottom-up
     /// (under-first). Reverse for topmost-first hit-test traversal.
     pub(crate) fn iter_paint_order(&self) -> impl Iterator<Item = (Layer, &T)> {

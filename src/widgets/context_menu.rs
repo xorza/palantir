@@ -238,7 +238,7 @@ impl MenuItem {
     pub fn separator(ui: &mut Ui) -> Response<'_> {
         let mut element = Element::new(LayoutMode::Leaf);
         element.flags.set_sense(Sense::NONE);
-        // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container. See `docs/popups.md`.
+        // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container.
         element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
         element.align = Align::h(HAlign::Stretch);
         element.margin = Spacing::xy(0.0, 4.0);
@@ -280,7 +280,7 @@ impl MenuItem {
         };
 
         let mut element = self.element;
-        // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF — see `docs/popups.md`.
+        // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF.
         element.size = (Sizing::Hug, Sizing::Hug).into();
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
