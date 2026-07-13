@@ -130,7 +130,7 @@ impl CurvePipeline {
 }
 
 // `p0/p1/p2/p3 : Float32x2`, `t_range : Float32x2`, `width : Float32`,
-// `color/color1 : Unorm8x4` (linear-u8, t=0 / t=1 stroke colours),
+// `color0/color1 : Unorm8x4` (linear-u8, t=0 / t=1 stroke colours),
 // `cap : Uint32` (per-end caps packed: bits 0..8 start, 8..16 end),
 // `fill_kind : Uint32` (0 = solid, 1 = linear),
 // `fill_lut_row : Uint32` (gradient atlas row when fill_kind != 0),
@@ -163,7 +163,7 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[3].offset == offset_of!(CurveInstance, p3) as u64);
     assert!(CURVE_INSTANCE_ATTRS[4].offset == offset_of!(CurveInstance, t0) as u64);
     assert!(CURVE_INSTANCE_ATTRS[5].offset == offset_of!(CurveInstance, width) as u64);
-    assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color) as u64);
+    assert!(CURVE_INSTANCE_ATTRS[6].offset == offset_of!(CurveInstance, color0) as u64);
     assert!(CURVE_INSTANCE_ATTRS[7].offset == offset_of!(CurveInstance, color1) as u64);
     assert!(CURVE_INSTANCE_ATTRS[8].offset == offset_of!(CurveInstance, cap) as u64);
     assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
