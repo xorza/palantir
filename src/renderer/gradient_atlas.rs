@@ -41,7 +41,7 @@ use crate::animation::animatable::Animatable;
 use crate::common::hash::Hasher as FxHasher;
 use crate::primitives::brush::{Interp, MAX_STOPS, Stop};
 use crate::primitives::color::{Color, ColorF16, linear_to_oklab, oklab_to_linear};
-use crate::primitives::paint::LutRow;
+use crate::primitives::fill_wire::LutRow;
 use std::cell::RefCell;
 use std::hash::Hasher;
 use std::rc::Rc;

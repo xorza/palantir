@@ -8,8 +8,8 @@
 //! map for the body and put it back at the end — two moves of a small
 //! `String` per buffer.
 
-use crate::showcase::support;
-use crate::showcase::support::{row, section};
+use crate::support;
+use crate::support::{row, section};
 use aperture::{
     Align, Button, Configure, FocusPolicy, HAlign, Panel, Sizing, Text, TextEdit, Ui, VAlign,
     WidgetId,

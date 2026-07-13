@@ -3,8 +3,8 @@
 //! negative margin, gap, and Visibility. The colored chips are demo
 //! content — they visualize where layout puts each child.
 
-use crate::showcase::support;
-use crate::showcase::support::{panel_bg, section, swatch_bg};
+use crate::support;
+use crate::support::{panel_bg, section, swatch_bg};
 use aperture::{
     Align, Color, Configure, Frame, HAlign, Justify, Panel, Sizing, Ui, VAlign, Visibility,
 };

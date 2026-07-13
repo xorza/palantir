@@ -20,7 +20,7 @@ use crate::primitives::background::Background;
 use crate::primitives::bezier::{CurveBounds, cubic_bezier_bbox, quadratic_to_cubic};
 use crate::primitives::brush::Brush;
 use crate::primitives::color::{Color, ColorU8};
-use crate::primitives::paint::FillKind;
+use crate::primitives::fill_wire::FillKind;
 use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;

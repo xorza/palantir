@@ -69,7 +69,7 @@ impl ToggleTheme {
         Self::built(8.0, 16.0, 4.0, palette::TERMINAL_BG)
     }
 
-    /// Defaults sized for [`crate::ToggleSwitch`] — a 20 px-tall pill
+    /// Defaults sized for [`crate::Switch`] — a 20 px-tall pill
     /// track with a white sliding knob. `box_size` is the track height;
     /// the knob diameter is `box_size - 2 * indicator_inset`. Unlike the
     /// checkbox/radio, the switch defaults to an animated knob slide +

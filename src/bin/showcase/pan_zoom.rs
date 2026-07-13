@@ -12,8 +12,8 @@
 //! viewport once so `scroll_target` latches without clobbering the
 //! real cursor on later frames.
 
-use crate::showcase::support;
-use crate::showcase::support::caption_style;
+use crate::support;
+use crate::support::caption_style;
 use aperture::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,

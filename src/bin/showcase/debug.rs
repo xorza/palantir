@@ -15,8 +15,8 @@
 //!   straight-alpha-into-premul bug yields over-bright colors (see
 //!   `docs/review-wgsl-shaders.md` A1).
 
-use crate::showcase::support;
-use crate::showcase::support::{captioned_cell, demo_cell, section, swatch_bg};
+use crate::support;
+use crate::support::{captioned_cell, demo_cell, section, swatch_bg};
 use aperture::{
     Align, Background, Button, Color, Configure, Corners, Frame, Panel, PolylineColors, Rect,
     Shape, Sizing, Stroke, Text, TextStyle, Ui,

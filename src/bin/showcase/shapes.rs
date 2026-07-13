@@ -5,8 +5,8 @@
 //! `Shape::WindowedRect` (inverted-fill corner mask — the cheap
 //! stand-in for rounded-corner clipping).
 
-use crate::showcase::support;
-use crate::showcase::support::{cell_row, demo_cell};
+use crate::support;
+use crate::support::{cell_row, demo_cell};
 use aperture::{Brush, Color, ColorU8, Corners, LinearGradient, Mesh, Shape, Stroke, Ui};
 use glam::Vec2;
 

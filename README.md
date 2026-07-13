@@ -11,11 +11,11 @@
 Status: **beta** — feature-rich and usable, but still pre-1.0: the public
 API can still change and break between releases.
 
-![Showcase screenshot](docs/frame_bench.png)
+![Showcase screenshot](docs/media/frame_bench.png)
 
 Worst-case frame timing captured while resizing the window on a MacBook Air M5.
 
-![Frame 146 profile](docs/frame-146-profile.png)
+![Frame 146 profile](docs/media/frame-146-profile.png)
 
 Steady-state cost per frame on `frame/cached_cpu` (AMD Ryzen 7 6800U,
 Zen3+, clock locked at 2.4 GHz, ~332 µs/frame): **~2.55 M instructions
@@ -28,14 +28,14 @@ one core.
 
 ---
 
-A short screen recording of the [showcase](src/showcase) tabs:
+A short screen recording of the [showcase](src/bin/showcase) tabs:
 
 https://github.com/user-attachments/assets/73fd7143-087c-4895-a033-7644b184537f
 
 ---
 
 [Darkroom app](https://github.com/xorza/Darkroom)
-![Darkroom app screenshot](docs/darkroom-screenshot.png)
+![Darkroom app screenshot](docs/media/darkroom-screenshot.png)
 
 ## Highlights
 
@@ -121,7 +121,7 @@ fn main() {
 }
 ```
 
-Run the bundled [showcase](src/showcase) for a tour of every widget:
+Run the bundled [showcase](src/bin/showcase) for a tour of every widget:
 
 ```sh
 cargo run --release

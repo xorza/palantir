@@ -4,7 +4,7 @@
 //! frontend↔backend contract, so neither side owns them.
 
 use crate::primitives::brush::{FillAxis, Spread};
-use crate::primitives::paint::{FillKind, LutRow};
+use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
 

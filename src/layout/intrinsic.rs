@@ -15,7 +15,7 @@
 use crate::forest::element::LayoutMode;
 use crate::forest::tree::{NodeId, Tree};
 use crate::layout::axis::Axis;
-use crate::layout::layoutengine::LayoutEngine;
+use crate::layout::engine::LayoutEngine;
 use crate::layout::support::{AxisCtx, TextCtx, leaf_text_shapes, resolve_axis_size};
 use crate::layout::types::align::HAlign;
 use crate::layout::types::sizing::Sizing;

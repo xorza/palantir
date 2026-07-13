@@ -4,8 +4,8 @@
 //! `.justify` applies per-line), and Grid with fixed / fill / hug /
 //! clamped tracks plus cell spanning.
 
-use crate::showcase::support;
-use crate::showcase::support::{demo_cell, on_swatch_text, section, swatch_bg};
+use crate::support;
+use crate::support::{demo_cell, on_swatch_text, section, swatch_bg};
 use aperture::{
     Background, Color, Configure, Corners, Frame, Grid, Justify, Panel, Sizing, Stroke, Text,
     TextStyle, Track, Ui,

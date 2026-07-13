@@ -4,8 +4,8 @@
 //! horizontal scroll strip and a two-axis scroll grid. Drag the bars
 //! (double-click recenters), hover a pane and wheel / two-finger pan.
 
-use crate::showcase::support;
-use crate::showcase::support::{caption_style, on_swatch_text, panel_bg, swatch_bg};
+use crate::support;
+use crate::support::{caption_style, on_swatch_text, panel_bg, swatch_bg};
 use aperture::{Color, Configure, Panel, Scroll, Sizing, SplitHalf, Splitter, Text, Ui, WidgetId};
 
 #[derive(Debug)]

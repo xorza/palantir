@@ -51,10 +51,10 @@
 //! assert on it through this gate.
 
 use crate::forest::Forest;
-use crate::forest::node::SubtreeEnd;
 use crate::forest::rollups::ContentHash;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::tree::iter::TreeItem;
+use crate::forest::tree::node::SubtreeEnd;
 use crate::forest::tree::{NodeId, Tree};
 use crate::primitives::rect::Rect;
 use crate::primitives::span::Span;

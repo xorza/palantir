@@ -5,8 +5,8 @@
 //! intrinsic-dimensions plan — Grid Auto under constraint, a property
 //! grid, and a chat-message HStack with Fill wrapping text.
 
-use crate::showcase::support;
-use crate::showcase::support::section;
+use crate::support;
+use crate::support::section;
 use aperture::{
     Background, Color, Configure, Corners, Frame, Grid, Panel, Sizing, Text, TextStyle, TextWrap,
     Track, Ui,

@@ -6,8 +6,8 @@
 //! changes are pending, and shows a Save / Discard / Cancel dialog
 //! instead of letting the window vanish.
 
-use crate::showcase::support;
-use crate::showcase::support::{row, section};
+use crate::support;
+use crate::support::{row, section};
 use aperture::{
     Button, Checkbox, ComboBox, Configure, Modal, Panel, Sizing, Text, Ui, WidgetId, WindowToken,
 };

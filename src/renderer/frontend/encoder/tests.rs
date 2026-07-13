@@ -8,7 +8,7 @@ use crate::input::sense::Sense;
 use crate::layout::types::{align::Align, align::HAlign, align::VAlign, sizing::Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::color::ColorF16;
-use crate::primitives::paint::FillKind;
+use crate::primitives::fill_wire::FillKind;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
@@ -225,7 +225,7 @@ fn manually_pushed_shapes_emit_expected_cmds() {
 fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     use crate::Shadow;
     use crate::primitives::corners::Corners;
-    use crate::primitives::paint::FillKind;
+    use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::DrawShadowPayload;
     use crate::shape::Shape;
 

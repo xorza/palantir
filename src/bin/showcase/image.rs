@@ -3,8 +3,8 @@
 //! `fract` in-shader), and linear vs nearest sampling on an upscaled
 //! micro-sprite.
 
-use crate::showcase::support;
-use crate::showcase::support::{cell_row, demo_cell};
+use crate::support;
+use crate::support::{cell_row, demo_cell};
 use aperture::{Color, Image, ImageFilter, ImageFit, ImageHandle, Shape, Ui};
 use glam::Vec2;
 use std::cell::RefCell;

@@ -26,14 +26,14 @@ use crate::ClipMode;
 use crate::common::hash::Hasher;
 use crate::forest::Chrome;
 use crate::forest::element::{BoundsExtras, Element, LayoutMode, PanelExtras};
-use crate::forest::node::{NodeRecord, SubtreeEnd};
 use crate::forest::rollups::{ContentHash, SubtreeRollups};
 use crate::forest::shapes::Shapes;
 use crate::forest::shapes::lower;
 use crate::forest::shapes::record::ChromeRow;
 use crate::forest::tree::iter::{Child, ChildIter, TreeItem, TreeItems};
+use crate::forest::tree::node::{NodeRecord, SubtreeEnd};
 use crate::forest::tree::paint_anims::PaintAnims;
-use crate::forest::tree::record::{OpenFrame, RecordingScratch, RootSlot};
+use crate::forest::tree::recording::{OpenFrame, RecordingScratch, RootSlot};
 use crate::layout::types::track::GridDef;
 use crate::primitives::approx::noop_f32;
 use crate::primitives::span::Span;
@@ -625,8 +625,9 @@ impl GridArena {
 }
 
 pub(crate) mod iter;
+pub(crate) mod node;
 pub(crate) mod paint_anims;
-pub(crate) mod record;
+pub(crate) mod recording;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {

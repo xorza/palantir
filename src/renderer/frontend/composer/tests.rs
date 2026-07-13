@@ -505,12 +505,12 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         q.fill_kind,
         // Sharp + stroke-less + pixel-aligned, so the solid kind also
         // carries the fragment fast-path bit.
-        crate::primitives::paint::FillKind::SOLID.with_fast(),
+        crate::primitives::fill_wire::FillKind::SOLID.with_fast(),
         "solid quad must carry kind=solid (+fast)",
     );
     assert_eq!(
         q.fill_lut_row,
-        crate::primitives::paint::LutRow::FALLBACK,
+        crate::primitives::fill_wire::LutRow::FALLBACK,
         "solid quad has no LUT row",
     );
     assert_eq!(
@@ -529,7 +529,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 /// window bit this exact draw would trigger all three.
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
-    use crate::primitives::paint::FillKind;
+    use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     let buf = run(
         |b, _| {
@@ -567,7 +567,7 @@ fn windowed_rect_is_not_an_opaque_cover() {
 fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
-    use crate::primitives::paint::FillKind;
+    use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
     let g =
@@ -608,7 +608,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
 fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
-    use crate::primitives::paint::FillKind;
+    use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
     use crate::renderer::gradient_atlas::GradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
@@ -1628,8 +1628,8 @@ fn compose_splits_curve_batches_across_scissor_groups() {
 #[test]
 fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::brush::Spread;
-    use crate::primitives::paint::FillKind;
-    use crate::primitives::paint::LutRow;
+    use crate::primitives::fill_wire::FillKind;
+    use crate::primitives::fill_wire::LutRow;
     use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
@@ -2252,7 +2252,7 @@ fn rect_inscribed_for_corners_uses_max_of_adjacent_radii() {
 #[test]
 fn prune_keeps_shadow_under_opaque_cover() {
     use crate::primitives::brush::FillAxis;
-    use crate::primitives::paint::FillKind;
+    use crate::primitives::fill_wire::FillKind;
     // A shadow's blur fringe extends past the stored rect — even if
     // a later opaque solid fully contains its rect, the visible
     // outer halo would be lost. Predicate must never drop shadows.
@@ -2582,7 +2582,7 @@ fn clear_fold_absorbs_covers_and_rejects_non_qualifying() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
     use crate::primitives::color::ColorF16;
-    use crate::primitives::paint::{FillKind, LutRow};
+    use crate::primitives::fill_wire::{FillKind, LutRow};
 
     let vp = UVec2::new(200, 200);
     let bg = Color::rgb(0.14, 0.16, 0.22);
@@ -2816,7 +2816,7 @@ fn clear_fold_resets_across_frames() {
 fn quad_fast_path_flag_cases() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{FillAxis, Spread};
-    use crate::primitives::paint::{FillKind, LutRow};
+    use crate::primitives::fill_wire::{FillKind, LutRow};
 
     let solid = |c: Color| BrushSource::Solid(c.into());
     let opaque = Color::rgb(0.5, 0.5, 0.5);

@@ -6,12 +6,12 @@
 //! Spinner). The right column demos ButtonTheme styling, label
 //! eliding, spinner sizing, and echoes the live form state.
 
-use crate::showcase::support;
-use crate::showcase::support::{caption_style, row, section};
+use crate::support;
+use crate::support::{caption_style, row, section};
 use aperture::{
     AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners, DragValue,
-    Panel, ProgressBar, RadioButton, Separator, Shadow, Sizing, Slider, Spinner, Stroke, Text,
-    TextStyle, TextWrap, ToggleSwitch, Tooltip, Ui, WidgetId, WidgetLook,
+    Panel, ProgressBar, RadioButton, Separator, Shadow, Sizing, Slider, Spinner, Stroke, Switch,
+    Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -83,7 +83,7 @@ fn form(ui: &mut Ui, s: &mut State) {
         .background(support::panel_bg())
         .show(ui, |ui| {
             group_caption(ui, "network");
-            ToggleSwitch::new(&mut s.airplane)
+            Switch::new(&mut s.airplane)
                 .id_salt("airplane")
                 .label("Airplane mode")
                 .show(ui);
@@ -93,11 +93,11 @@ fn form(ui: &mut Ui, s: &mut State) {
                 .gap(10.0)
                 .disabled(s.airplane)
                 .show(ui, |ui| {
-                    ToggleSwitch::new(&mut s.wifi)
+                    Switch::new(&mut s.wifi)
                         .id_salt("wifi")
                         .label("Wi-Fi")
                         .show(ui);
-                    ToggleSwitch::new(&mut s.bluetooth)
+                    Switch::new(&mut s.bluetooth)
                         .id_salt("bt")
                         .label("Bluetooth")
                         .show(ui);

@@ -25,14 +25,14 @@ const TRACK_ASPECT: f32 = 1.75;
 /// Layout mirrors [`crate::Checkbox`]: `HStack [track, label]`, one
 /// `Sense::CLICK` hit target. The track is a `Canvas` so the knob can be
 /// absolutely positioned; the knob's x animates through [`Ui::animate`].
-pub struct ToggleSwitch<'a> {
+pub struct Switch<'a> {
     element: Element,
     value: &'a mut bool,
     label: InternedStr,
     style: Option<ToggleTheme>,
 }
 
-impl<'a> ToggleSwitch<'a> {
+impl<'a> Switch<'a> {
     #[track_caller]
     pub fn new(value: &'a mut bool) -> Self {
         let mut element = Element::new(LayoutMode::HStack);
@@ -128,7 +128,7 @@ impl<'a> ToggleSwitch<'a> {
     }
 }
 
-impl Configure for ToggleSwitch<'_> {
+impl Configure for Switch<'_> {
     fn element_mut(&mut self) -> &mut Element {
         &mut self.element
     }
@@ -170,7 +170,7 @@ fn switch_geom(track_h: f32, inset: f32, stroke: f32) -> SwitchGeom {
 mod tests {
     use crate::Ui;
     use crate::forest::Layer;
-    use crate::widgets::switch::{ToggleSwitch, switch_geom};
+    use crate::widgets::switch::{Switch, switch_geom};
     use glam::UVec2;
 
     /// Geometry math for the 20 px default with a 1 px track stroke:
@@ -237,7 +237,7 @@ mod tests {
         let mut ui = Ui::for_test();
         let mut on = false;
         let root = ui.under_outer(UVec2::new(400, 400), |ui| {
-            ToggleSwitch::new(&mut on).label("Wi-Fi").show(ui).node()
+            Switch::new(&mut on).label("Wi-Fi").show(ui).node()
         });
         let tree = &ui.forest.trees[Layer::Main];
         let track = tree.children(root).next().unwrap().id;
