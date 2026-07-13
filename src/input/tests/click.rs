@@ -438,3 +438,60 @@ fn drain_per_frame_queues_clears_action_latch() {
     input.drain_per_frame_queues();
     assert!(!input.take_action_flag());
 }
+
+/// `press_started` is a press-edge (unlike `clicked`, which fires on
+/// the release), and `press_count` numbers the multi-press run: presses
+/// on the same target within the double-click window + radius chain
+/// 1 → 2 → 3; a press past the radius restarts at 1. Both ride only
+/// the frame that processed the press — other frames read `(false, 0)`.
+#[test]
+fn press_started_counts_multi_press_runs() {
+    const SURFACE: UVec2 = UVec2::new(200, 80);
+
+    fn probe(ui: &mut Ui) -> (bool, u8) {
+        let id = WidgetId::from_hash("target");
+        let mut seen = (false, 0u8);
+        ui.run_at_acked(SURFACE, |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Button::new()
+                    .id(id)
+                    .label("hi")
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+                let r = ui.response_for(id);
+                seen.0 |= r.press_started;
+                seen.1 = seen.1.max(r.press_count);
+            });
+        });
+        seen
+    }
+
+    let mut ui = Ui::for_test();
+    probe(&mut ui); // settle layout
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 1), "first press starts a run");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    assert_eq!(
+        probe(&mut ui),
+        (false, 0),
+        "edge + count clear off the press frame"
+    );
+
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 2), "same-spot follow-up chains");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    probe(&mut ui);
+
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 3), "third press keeps counting");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    probe(&mut ui);
+
+    // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 1), "far press restarts the run");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+}
