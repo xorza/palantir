@@ -22,8 +22,8 @@
 //! | ------------------------------------- | ----------------------------------------------- | --------------------------------------- |
 //! | Per-shape canonical hash              | `forest::shapes::Shapes::add`                   | `Tree::compute_hashes`, damage diff     |
 //! | Per-chrome canonical hash             | `forest::shapes::lower::background`             | `Tree::compute_hashes`, damage diff     |
-//! | Per-text bytes hash                   | `forest::frame_arena::FrameArena::hash_text`    | `ShapeRecord::Text.text_hash`           |
-//! | Per-gradient content hash             | `forest::frame_arena::grad_hash`                | `ShapeRecord::*.fill_grad_hash`         |
+//! | Per-text bytes hash                   | `common::hash::hash_str`                        | `ShapeRecord::Text.text_hash`           |
+//! | Per-gradient content hash             | `forest::shapes::lower::grad_hash`              | `ShapeRecord::*.fill_grad_hash`         |
 //! | Per-polyline content hash             | `forest::shapes::lower::polyline`               | `ShapeRecord::Polyline.content_hash`    |
 //! | Per-mesh content hash                 | `primitives::mesh::Mesh::content_hash`          | `ShapeRecord::Mesh.content_hash`        |
 //! | Per-node + per-subtree rollup         | `forest::tree::Tree::compute_hashes`            | damage diff, measure cache              |
@@ -91,7 +91,7 @@ impl SubtreeRollups {
 
 #[cfg(test)]
 mod tests {
-    use crate::forest::frame_arena::FrameArena;
+    use crate::common::hash::hash_str;
     use crate::forest::shapes::hash::compute_record_hash;
     use crate::forest::shapes::record::ShapeRecord;
     use crate::layout::types::align::Align;
@@ -108,7 +108,7 @@ mod tests {
         ShapeRecord::Text {
             local_origin,
             text: InternedStr::from("hi"),
-            text_hash: FrameArena::hash_text("hi"),
+            text_hash: hash_str("hi"),
             color: Color::WHITE.into(),
             font_size_px: 16.0,
             line_height_px,

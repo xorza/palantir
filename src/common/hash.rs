@@ -21,6 +21,18 @@
 use rustc_hash::FxHasher;
 use std::hash::Hasher as _;
 
+/// Canonical FxHash of a `str`'s bytes — the text-content hash behind
+/// `ShapeRecord::Text.text_hash` and `InternedStr::Interned.hash`.
+/// Computed at intern time (`Ui::fmt` / `Ui::intern`) or at lowering
+/// time (`Shapes::add`'s `Owned` arm); both sites MUST route through
+/// this one function or the damage / text-cache keys drift apart.
+pub(crate) fn hash_str(s: &str) -> u64 {
+    use std::hash::Hash;
+    let mut h = Hasher::new();
+    s.hash(&mut h);
+    h.finish()
+}
+
 /// Wrapper around `FxHasher` that adds an inherent `pod()` method.
 /// Implements `std::hash::Hasher` so `value.hash(&mut h)` and
 /// `h.write_u8(...)` etc. work unchanged when the trait is in scope
