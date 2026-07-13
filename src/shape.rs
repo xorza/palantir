@@ -812,12 +812,7 @@ impl Shape<'_> {
                 width,
                 brush,
                 ..
-            } => {
-                noop_f32(*width)
-                    || brush.is_noop()
-                    || noop_f32(*radius)
-                    || noop_f32(sweep.abs())
-            }
+            } => noop_f32(*width) || brush.is_noop() || noop_f32(*radius) || noop_f32(sweep.abs()),
             Shape::Text { text, brush, .. } => text.is_empty() || brush.is_noop(),
             Shape::Mesh {
                 mesh,
