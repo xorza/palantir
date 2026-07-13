@@ -53,10 +53,8 @@ pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 /// spans recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default, Debug)]
 pub(crate) struct FrameArenaInner {
-    /// User-supplied mesh geometry plus the compose-time polyline
-    /// tessellation output. The latter appends in
-    /// [`crate::renderer::frontend::Composer::compose`], so the arena
-    /// is mutably borrowed by compose too — not just record.
+    /// User-supplied mesh geometry (`Shape::Mesh`), written at record
+    /// time only — compose reads the arena, never appends.
     pub(crate) meshes: Mesh,
     /// Point storage for `ShapeRecord::Polyline`. Indexed by the
     /// record's `points` `Span`.
@@ -64,8 +62,8 @@ pub(crate) struct FrameArenaInner {
     /// Color storage for `ShapeRecord::Polyline`. Length per
     /// record is 1, `points.len()`, or `points.len() - 1` per
     /// `ColorMode`. Stored as `ColorU8` (4 B/elem, same precision
-    /// the tessellator's destination `MeshVertex.color` uses) —
-    /// quantization happens once at lowering, not per-emitted-vertex.
+    /// the `CurveInstance` color lanes carry) — quantization happens
+    /// once at lowering, not per-emitted-instance.
     pub(crate) polyline_colors: Vec<ColorU8>,
     /// Frame-scoped gradient payloads. `ShapeBrush::Gradient(id)` (set
     /// by `lower_brush`) indexes into this vec. Cross-tree — keeping
@@ -107,9 +105,8 @@ impl FrameArena {
         self.0.borrow()
     }
 
-    /// Mutable counterpart to [`Self::inner`]. Composer holds this for
-    /// the full compose pass (it appends polyline-tessellation output);
-    /// `Frontend::build` opens a single guard for encode + compose.
+    /// Mutable counterpart to [`Self::inner`] — record-time writers
+    /// (shape lowering, mesh staging) and the per-frame `clear`.
     pub(crate) fn inner_mut(&self) -> RefMut<'_, FrameArenaInner> {
         self.0.borrow_mut()
     }
@@ -239,9 +236,10 @@ impl FrameArena {
     /// Lower a (points, colors, width) authoring shape into a
     /// `ShapeRecord::Polyline`: copy points and colors into the arena,
     /// compute the content hash. Only `Shape::Polyline` routes through
-    /// this — the CPU stroke tessellator is reserved for genuinely
-    /// multi-segment strokes with interior joins; every single-stroke
-    /// shape (`Line`/beziers/`Arc`) rides the GPU curve pipeline.
+    /// this — the one multi-segment stroke with interior joins; every
+    /// single-stroke shape (`Line`/beziers/`Arc`) lowers to a
+    /// `ShapeRecord::Curve`/`Arc` directly. Both render on the GPU
+    /// curve pipeline.
     pub(crate) fn lower_polyline(
         &self,
         points: &[Vec2],
@@ -582,10 +580,11 @@ impl FrameArenaInner {
 
 /// Inflate the centerline AABB `[lo, hi]` of a stroked polyline so it
 /// conservatively covers the painted extent: stroke half-width on every
-/// side, miter-limit slack at sharp joins (matches the bevel fallback
-/// in `stroke_tessellate`), `Square` cap projection past endpoints, and
-/// the AA fringe. Damage and per-shape clipping key on this — undersizing
-/// here leaves miter spikes / square caps unclipped/undamaged.
+/// side, miter-limit slack at sharp joins (the shared [`MITER_LIMIT`]
+/// the composer downgrades against), `Square` cap projection past
+/// endpoints, and the AA fringe. Damage and per-shape clipping key on
+/// this — undersizing here leaves miter spikes / square caps
+/// unclipped/undamaged.
 fn inflate_stroke_bbox(lo: Vec2, hi: Vec2, width: f32, cap: LineCap, join: LineJoin) -> Rect {
     let half = width * 0.5;
     let join_extent = if matches!(join, LineJoin::Miter) {
