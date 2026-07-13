@@ -2,22 +2,22 @@
 //! [`compute_record_hash`] — used by `Shapes::add` to populate the
 //! parallel `Shapes::hashes` arena, and by tests that pin the hash
 //! schedule. `Tree::compute_hashes` and damage diff both read those
-//! precomputed `NodeHash`es; no production code rehashes records.
+//! precomputed `ContentHash`es; no production code rehashes records.
 //!
 //! The schedule is `discriminant byte → per-variant fields`. Stable
 //! discriminants come from the explicit `= N` annotations on
 //! [`ShapeRecord`].
 
 use crate::common::hash::Hasher;
-use crate::forest::rollups::NodeHash;
+use crate::forest::rollups::ContentHash;
 use crate::forest::shapes::record::{ShapeBrush, ShapeRecord};
 use crate::primitives::image::ImageFit;
 use std::hash::{Hash, Hasher as _};
 
-/// Hash a fully-lowered `ShapeRecord` into a stable `NodeHash`.
+/// Hash a fully-lowered `ShapeRecord` into a stable `ContentHash`.
 /// Sole public entry; the production call site is `Shapes::add`,
 /// which pushes the result onto the parallel `Shapes::hashes` arena.
-pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
+pub(crate) fn compute_record_hash(record: &ShapeRecord) -> ContentHash {
     let mut h = Hasher::new();
     h.write_u8(record.tag());
     match record {
@@ -45,16 +45,7 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
                 }
             }
             corners.hash(&mut h);
-            match fill {
-                ShapeBrush::Solid(c) => {
-                    h.write_u8(0);
-                    c.hash(&mut h);
-                }
-                ShapeBrush::Gradient(_) => {
-                    h.write_u8(1);
-                    h.write_u64(*fill_grad_hash);
-                }
-            }
+            hash_brush(fill, *fill_grad_hash, &mut h);
             // Pod-byte hash for `(color, width)` — one `write()` dispatch.
             h.write(bytemuck::bytes_of(stroke));
         }
@@ -149,40 +140,49 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             hash_fit(fit, &mut h);
             h.write_u8(*filter as u8);
         }
-        // `content_hash` summarizes the stroke geometry + width + cap
-        // (cubic control points for `Curve`, center/radius/angles for
-        // `Arc`). Brush variant folded in separately so strokes with
-        // the same geometry but different fills don't collide; the tag
-        // byte above keeps the two kinds apart.
+        // Geometry + style hashed inline — every input lives on the
+        // record, so no lowering-time content hash is needed (unlike
+        // `Polyline`/`Mesh`, whose payload bytes live on the arena).
+        // `bbox` derives from geometry + width + cap and is excluded.
+        // Brush folded separately so strokes with the same geometry
+        // but different fills don't collide; the tag byte above keeps
+        // the two kinds apart.
         ShapeRecord::Curve {
-            content_hash,
+            p0,
+            p1,
+            p2,
+            p3,
+            width,
             fill,
             fill_grad_hash,
-            ..
-        }
-        | ShapeRecord::Arc {
-            content_hash,
-            fill,
-            fill_grad_hash,
-            ..
+            cap,
+            bbox: _,
         } => {
-            h.write_u64(*content_hash);
-            match fill {
-                ShapeBrush::Solid(c) => {
-                    h.write_u8(0);
-                    c.hash(&mut h);
-                }
-                ShapeBrush::Gradient(_) => {
-                    h.write_u8(1);
-                    h.write_u64(*fill_grad_hash);
-                }
-            }
+            h.pod(&[*p0, *p1, *p2, *p3]);
+            h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(*cap as u8));
+            hash_brush(fill, *fill_grad_hash, &mut h);
         }
-        // `epoch` is the Ui frame counter (bumped every painted frame), so the
-        // hash differs each frame and the damage diff repaints the view's rect
-        // — its texture is re-rendered every frame. The view's id + paint live
-        // in `Ui::gpu_views`, which the hash can't see; `epoch` rides the shape
-        // precisely so this stays correct.
+        ShapeRecord::Arc {
+            center,
+            radius,
+            a0,
+            a1,
+            width,
+            fill,
+            fill_grad_hash,
+            cap,
+            bbox: _,
+        } => {
+            h.pod(&[center.x, center.y, *radius, *a0, *a1]);
+            h.write_u64((u64::from(width.to_bits()) << 8) | u64::from(*cap as u8));
+            hash_brush(fill, *fill_grad_hash, &mut h);
+        }
+        // `epoch` is the view's damage version: `Ui::gpu_view` bumps it
+        // to the frame id on `repaint(true)` (hash changes → the rect
+        // repaints and the texture re-renders) and holds it stable on
+        // `.repaint(false)` (hash matches → the view culls). The view's
+        // id + paint live in `Ui::gpu_views`, which the hash can't see;
+        // `epoch` rides the shape precisely so this stays correct.
         ShapeRecord::GpuView { epoch } => {
             h.write_u64(*epoch);
         }
@@ -203,7 +203,24 @@ pub(crate) fn compute_record_hash(record: &ShapeRecord) -> NodeHash {
             h.write(bytemuck::bytes_of(stroke));
         }
     }
-    NodeHash(h.finish())
+    ContentHash(h.finish())
+}
+
+/// Fold a lowered fill into the shape hash: variant byte, then the
+/// inline colour for `Solid` or the pre-computed gradient content
+/// hash for `Gradient` (the `GradientId` itself is frame-local and
+/// excluded).
+fn hash_brush(fill: &ShapeBrush, fill_grad_hash: u64, h: &mut Hasher) {
+    match fill {
+        ShapeBrush::Solid(c) => {
+            h.write_u8(0);
+            c.hash(h);
+        }
+        ShapeBrush::Gradient(_) => {
+            h.write_u8(1);
+            h.write_u64(fill_grad_hash);
+        }
+    }
 }
 
 /// Fold an [`ImageFit`] into the shape hash: a discriminant tag plus,
