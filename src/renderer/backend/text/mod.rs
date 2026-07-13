@@ -447,12 +447,15 @@ fn build_atlas_bg(
 }
 
 // `pos: Sint32x2 @0`, `dim: Uint32 @8`, `uv_and_kind: Uint32 @12`,
-// `color: Uint32 @16` — the per-instance `GlyphInstance` stream.
+// `color: Unorm8x4 @16` — the per-instance `GlyphInstance` stream.
+// Color rides as `Unorm8x4` so the vertex fetch normalizes the
+// linear-u8 bytes to `vec4<f32>` in hardware (spec-exact `x/255`) —
+// same convention as the mesh / image tint attributes.
 const GLYPH_INSTANCE_ATTRS: [wgpu::VertexAttribute; 4] = wgpu::vertex_attr_array![
     0 => Sint32x2,
     1 => Uint32,
     2 => Uint32,
-    3 => Uint32,
+    3 => Unorm8x4,
 ];
 
 // Compile-time guard: attribute offsets must match the struct fields they
@@ -493,8 +496,8 @@ pub mod test_support {
 
     /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
     /// one to feed `prepare`/`flush`. The full path
-    /// (`crate::renderer::backend::dynamic_buffer::GpuCtx`) is
-    /// noisy at the call site.
+    /// (`crate::renderer::backend::gpu_ctx::GpuCtx`) is noisy at the
+    /// call site.
     pub use crate::renderer::backend::gpu_ctx::GpuCtx;
     /// Re-export the counting `Queue` wrapper so benches can build one
     /// to feed `GpuCtx::new`.
