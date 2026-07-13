@@ -12,7 +12,9 @@ struct VertexIn {
     @location(0) pos: vec2<i32>,
     @location(1) dim: u32,           // (w | h<<16)
     @location(2) uv_and_kind: u32,   // (u | kind<<15 | v<<16)
-    @location(3) color: u32,         // linear straight RGBA u8
+    // Linear straight RGBA — `Unorm8x4` fetch normalizes the u8 bytes
+    // to 0..1 in hardware, no shader unpack.
+    @location(3) color: vec4<f32>,
 }
 
 struct VertexOut {
@@ -67,14 +69,10 @@ fn vs(in: VertexIn) -> VertexOut {
         + vec2<f32>(-1.0, 1.0);
     out.position = vec4<f32>(ndc, 0.0, 1.0);
 
-    // Straight-alpha linear color from the instance. Shader premuls
-    // at output. No sRGB decode — caller hands us linear bytes.
-    out.color = vec4<f32>(
-        f32((in.color >>  0u) & 0xFFu) / 255.0,
-        f32((in.color >>  8u) & 0xFFu) / 255.0,
-        f32((in.color >> 16u) & 0xFFu) / 255.0,
-        f32((in.color >> 24u) & 0xFFu) / 255.0,
-    );
+    // Straight-alpha linear color, already normalized by the Unorm8x4
+    // vertex fetch. Shader premuls at output; no sRGB decode — the
+    // instance bytes are linear.
+    out.color = in.color;
     out.uv = uv_texel / f32(atlas_size_texels);
     out.kind = kind;
     return out;
