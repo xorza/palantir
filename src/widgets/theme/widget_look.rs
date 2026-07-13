@@ -115,7 +115,7 @@ pub(crate) fn pick_4<'a>(
 ) -> &'a WidgetLook {
     if state.disabled {
         disabled
-    } else if state.pressed {
+    } else if state.pressed() {
         pressed
     } else if state.hovered {
         hovered

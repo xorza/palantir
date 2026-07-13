@@ -58,7 +58,7 @@ impl<'a> Checkbox<'a> {
             raw: raw_state,
             merged: state,
         } = enter_widget(ui, &self.element);
-        if state.clicked && !state.disabled {
+        if state.left.clicked && !state.disabled {
             *self.value = !*self.value;
         }
         let checked = *self.value;

@@ -136,16 +136,16 @@ macro_rules! response_accessors {
             self.resolved_state().hovered
         }
         pub fn pressed(&self) -> bool {
-            self.resolved_state().pressed
+            self.resolved_state().pressed()
         }
         pub fn clicked(&self) -> bool {
-            self.resolved_state().clicked
+            self.resolved_state().left.clicked
         }
         /// One-frame edge: right mouse button clicked-and-released on
         /// this widget without latching a drag. Independent of
         /// `clicked` (left).
         pub fn secondary_clicked(&self) -> bool {
-            self.resolved_state().secondary_clicked
+            self.resolved_state().right.clicked
         }
         /// One-frame edge: any pointer button just double-clicked this
         /// widget (two clicks on the same id within
@@ -204,7 +204,7 @@ macro_rules! response_accessors {
         /// down/right). Use for "trackpad pan" intent (e.g. a graph
         /// viewport that pans on touchpad and zooms on wheel).
         pub fn scroll_pixels(&self) -> Vec2 {
-            self.resolved_state().scroll_pixels
+            self.resolved_state().scroll.pixels
         }
         /// Notched scroll delta this frame, in raw line units (NOT
         /// pixels) — the classic-wheel source (winit
@@ -214,14 +214,14 @@ macro_rules! response_accessors {
         /// compute `scroll_pixels() + scroll_lines() * line_px` where
         /// `line_px` is the caller's font-derived line step.
         pub fn scroll_lines(&self) -> Vec2 {
-            self.resolved_state().scroll_lines
+            self.resolved_state().scroll.lines
         }
         /// Multiplicative pinch zoom factor this frame (`1.0` = no
         /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
         /// Independent of the scroll routes so a list can pan-via-scroll
         /// without committing to pinch-to-zoom, and vice versa.
         pub fn zoom_factor(&self) -> f32 {
-            self.resolved_state().zoom_factor
+            self.resolved_state().scroll.zoom
         }
         /// Cursor position relative to this widget's `rect.min`. `None`
         /// when the pointer is off-surface or the widget didn't arrange.

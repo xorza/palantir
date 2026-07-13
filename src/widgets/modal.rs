@@ -99,7 +99,7 @@ impl Modal {
         });
 
         ModalResponse {
-            dismissed: ui.response_for(root_id).clicked || ui.escape_pressed(),
+            dismissed: ui.response_for(root_id).left.clicked || ui.escape_pressed(),
         }
     }
 }

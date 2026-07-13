@@ -77,7 +77,7 @@ pub use input::InputEvent;
 pub use input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers, TextChunk};
 pub use input::pointer::{PointerButton, PointerEvent};
 pub use input::policy::{FocusPolicy, InputPolicy};
-pub use input::response::{DragState, InputDelta, ResponseState};
+pub use input::response::{ButtonState, DragState, InputDelta, ResponseState, ScrollDelta};
 pub use input::sense::Sense;
 pub use input::shortcut::{Mods, Shortcut};
 pub use input::subscriptions::{KeyboardSense, PointerSense};

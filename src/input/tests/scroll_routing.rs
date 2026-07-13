@@ -122,8 +122,8 @@ fn sense_scroll_routes_scroll_but_not_pinch() {
     ui.run_at_acked(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
-        scroll_pixels = resp.scroll_pixels;
-        zoom_factor = resp.zoom_factor;
+        scroll_pixels = resp.scroll.pixels;
+        zoom_factor = resp.scroll.zoom;
     });
     assert_eq!(
         scroll_pixels,
@@ -161,8 +161,8 @@ fn sense_pinch_routes_pinch_but_not_scroll() {
     ui.run_at_acked(surface, |ui| {
         build(ui);
         let resp = ui.response_for(id);
-        scroll_pixels = resp.scroll_pixels;
-        zoom_factor = resp.zoom_factor;
+        scroll_pixels = resp.scroll.pixels;
+        zoom_factor = resp.scroll.zoom;
     });
     assert_eq!(
         scroll_pixels,
