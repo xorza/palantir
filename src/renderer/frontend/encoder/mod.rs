@@ -2,7 +2,6 @@ use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
-    text_in_rect,
 };
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::{NodeId, Tree};
@@ -16,6 +15,7 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::viewport::damage_cull_margin;
+use crate::text::text_in_rect;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
     DrawPolylinePayload, RenderCmdBuffer,
