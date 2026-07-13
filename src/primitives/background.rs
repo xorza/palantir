@@ -22,7 +22,7 @@ use aperture_anim_derive::Animatable;
 /// filtering catches both authored and animation-decayed no-ops.
 // `Background` is intentionally **not `Copy`** — it's 168 B and was
 // previously threaded by value through `Ui::node` →
-// `Forest::open_node` → `Tree::open_node` → `lower_background`. Each
+// `Forest::open_node` → `Tree::open_node` → `shapes::lower::background`. Each
 // hop forced 6+ `vmovups` of stack copy, totalling ~35 % of
 // `Ui::node`'s self-time in the `frame` bench. The chain now
 // takes `&Background`; the matching `Animatable` supertrait relaxed

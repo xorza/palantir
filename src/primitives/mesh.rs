@@ -232,8 +232,8 @@ fn rect_from_extents(lo: Vec2, hi: Vec2) -> Rect {
     }
 }
 
-// Sister inline loops in `forest/frame_arena.rs::lower_polyline` /
-// `lower_curve_inner` fuse this AABB-of-points pattern with their copy
+// Sister inline loops in `forest/shapes/lower.rs` — `polyline` /
+// `curve_inner` — fuse this AABB-of-points pattern with their copy
 // pass — don't "DRY" them into a shared helper, the fusion is the win.
 fn compute_aabb(verts: &[MeshVertex]) -> Rect {
     let Some((first, rest)) = verts.split_first() else {
