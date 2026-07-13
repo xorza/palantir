@@ -3,12 +3,12 @@ use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::justify::Justify;
-use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::popup::{ClickOutside, Popup, PopupHandle};
+use crate::widgets::separator::Separator;
 use crate::widgets::text::Text;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::{Response, ResponseSnapshot, WidgetEntry, enter_widget};
@@ -233,20 +233,15 @@ impl MenuItem {
     }
 
     /// Thin horizontal divider — no label, no input. Free function in
-    /// disguise: chain `.show(ui)` and ignore the response.
+    /// disguise: chain `.show(ui)` and ignore the response. The
+    /// [`crate::Separator`] widget, colored by
+    /// `theme.context_menu.separator` and given a little breathing room.
     #[track_caller]
     pub fn separator(ui: &mut Ui) -> Response<'_> {
-        let mut element = Element::new(LayoutMode::Leaf);
-        element.flags.set_sense(Sense::NONE);
-        // Hug+Stretch (not Fill) — avoids leaking INF width up to the Hug menu container.
-        element.size = (Sizing::Hug, Sizing::Fixed(1.0)).into();
-        element.align = Align::h(HAlign::Stretch);
-        element.margin = Spacing::xy(0.0, 4.0);
-        let chrome = Background::fill(ui.theme.context_menu.separator);
-        let id = ui.widget_id(&element);
-        ui.node(id, element, Some(&chrome), |_| {});
-        // Decorative separator: response is almost always discarded.
-        Response::lazy(id, ui)
+        Separator::horizontal()
+            .color(ui.theme.context_menu.separator)
+            .margin(Spacing::xy(0.0, 4.0))
+            .show(ui)
     }
 
     pub fn show<'ui>(self, ui: &'ui mut Ui, popup: &PopupHandle) -> Response<'ui> {
@@ -280,8 +275,10 @@ impl MenuItem {
         };
 
         let mut element = self.element;
-        // Hug+Stretch+SpaceBetween: row hugs content, arrange stretches to widest row, label/shortcut pin to opposite edges. Fill would leak INF.
-        element.size = (Sizing::Hug, Sizing::Hug).into();
+        // Hug+Stretch+SpaceBetween: row hugs content (the default
+        // `Sizes` — respects an explicit `.size(...)`), arrange
+        // stretches to widest row, label/shortcut pin to opposite
+        // edges. Fill would leak INF.
         element.align = Align::h(HAlign::Stretch);
         element.justify = Justify::SpaceBetween;
         element.padding = padding;
@@ -333,3 +330,6 @@ impl Configure for MenuItem {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;

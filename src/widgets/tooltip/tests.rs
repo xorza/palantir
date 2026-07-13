@@ -1,6 +1,6 @@
 //! `Tooltip` behavior tests.
 //!
-//! Two pure-fn tests pin `place_anchor` (default-below / flip-above /
+//! Two pure-fn tests pin `place_bubble` (default-below / flip-above /
 //! horizontal clamp). One multi-frame integration test drives a fake
 //! pointer hover at advancing `Ui::time` to assert the delay actually
 //! gates `TooltipState.visible`.
@@ -17,14 +17,14 @@ use crate::primitives::widget_id::WidgetId;
 use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
-use crate::widgets::tooltip::{Tooltip, TooltipState, place_anchor};
+use crate::widgets::tooltip::{Tooltip, TooltipState, place_bubble};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
 const SURFACE: UVec2 = UVec2::new(400, 300);
 
 #[test]
-fn place_anchor_below_when_room() {
+fn place_bubble_below_when_room() {
     let viewport = Rect {
         min: Vec2::ZERO,
         size: Size::new(400.0, 300.0),
@@ -34,14 +34,14 @@ fn place_anchor_below_when_room() {
         size: Size::new(80.0, 24.0),
     };
     let bubble = Size::new(120.0, 32.0);
-    let placed = place_anchor(trigger, bubble, viewport, 6.0);
+    let placed = place_bubble(trigger, bubble, viewport, 6.0);
     assert!((placed.x - 50.0).abs() < 1e-4);
     // Below the trigger (the flip didn't fire) — `y` encodes that.
     assert!((placed.y - (50.0 + 24.0 + 6.0)).abs() < 1e-4);
 }
 
 #[test]
-fn place_anchor_flips_above_at_bottom_edge() {
+fn place_bubble_flips_above_at_bottom_edge() {
     let viewport = Rect {
         min: Vec2::ZERO,
         size: Size::new(400.0, 300.0),
@@ -52,13 +52,13 @@ fn place_anchor_flips_above_at_bottom_edge() {
         size: Size::new(80.0, 24.0),
     };
     let bubble = Size::new(120.0, 32.0);
-    let placed = place_anchor(trigger, bubble, viewport, 6.0);
+    let placed = place_bubble(trigger, bubble, viewport, 6.0);
     // Flipped above the trigger (below would clip): `y` sits at the above-edge.
     assert!((placed.y - (270.0 - 6.0 - 32.0)).abs() < 1e-4);
 }
 
 #[test]
-fn place_anchor_clamps_horizontally() {
+fn place_bubble_clamps_horizontally() {
     let viewport = Rect {
         min: Vec2::ZERO,
         size: Size::new(400.0, 300.0),
@@ -70,7 +70,7 @@ fn place_anchor_clamps_horizontally() {
         size: Size::new(40.0, 24.0),
     };
     let bubble = Size::new(120.0, 32.0);
-    let placed = place_anchor(trigger, bubble, viewport, 6.0);
+    let placed = place_bubble(trigger, bubble, viewport, 6.0);
     assert!((placed.x - (400.0 - 120.0)).abs() < 1e-4);
 }
 

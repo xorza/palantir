@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
-use crate::layout::types::sizing::Sizing;
+use crate::layout::types::sizing::{Sizes, Sizing};
 use crate::primitives::background::Background;
 use crate::primitives::corners::Corners;
 use crate::ui::Ui;
@@ -44,7 +44,11 @@ impl ProgressBar {
         let radius = Corners::all(height * 0.5);
 
         let mut element = self.element;
-        element.size = (Sizing::FILL, Sizing::Fixed(height)).into();
+        // `Sizes::default()` (Hug×Hug) = "caller didn't set a size" —
+        // the same sentinel convention as theme padding/margin.
+        if element.size == Sizes::default() {
+            element.size = (Sizing::FILL, Sizing::Fixed(height)).into();
+        }
         let track = Background::rounded(theme.track, radius);
         let fill_bg = Background::rounded(theme.fill, radius);
 

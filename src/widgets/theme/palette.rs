@@ -1,7 +1,6 @@
-// Default palette: Ayu Mirage High Contrast. Mirrors
-// `assets/reference-palette.toml` — that file is the hand-edited source
-// of truth; these consts are the compile-time copy used to build the
-// framework defaults. Keep in sync when the palette changes.
+// Default palette: neutral dark grayscale surfaces with a single blue
+// accent. Compile-time constants used to build the framework's default
+// theme; apps restyle via `Theme`, not by touching these.
 
 use crate::primitives::color::Color;
 

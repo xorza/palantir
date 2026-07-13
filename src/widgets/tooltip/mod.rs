@@ -19,7 +19,7 @@ use std::borrow::Cow;
 /// flip above when below would clip; horizontally clamp so the bubble
 /// stays on-screen. `gap` is the breathing room between trigger and
 /// bubble. The chosen `y` encodes the flip (below-edge vs above-edge).
-pub(crate) fn place_anchor(trigger: Rect, bubble: Size, viewport: Rect, gap: f32) -> Vec2 {
+pub(crate) fn place_bubble(trigger: Rect, bubble: Size, viewport: Rect, gap: f32) -> Vec2 {
     let below_y = trigger.min.y + trigger.size.h + gap;
     let above_y = trigger.min.y - gap - bubble.h;
     let viewport_bottom = viewport.min.y + viewport.size.h;
@@ -196,7 +196,7 @@ impl<'r> Tooltip<'r> {
         {
             global.last_visible_at = Some(now);
             let viewport = ui.display().logical_rect();
-            let anchor = place_anchor(trigger_rect, state.last_size, viewport, gap);
+            let anchor = place_bubble(trigger_rect, state.last_size, viewport, gap);
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
@@ -235,3 +235,6 @@ impl Configure for Tooltip<'_> {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;

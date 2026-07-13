@@ -6,7 +6,6 @@ use crate::primitives::color::Color;
 use crate::shape::{LineCap, Shape};
 use crate::ui::Ui;
 use crate::widgets::Response;
-use crate::widgets::theme::palette;
 use glam::Vec2;
 use std::f32::consts::PI;
 use std::time::Duration;
@@ -33,7 +32,7 @@ const SPEED: f32 = 4.5;
 /// DPI; the comet fade is a linear gradient sampled along the sweep.
 pub struct Spinner {
     element: Element,
-    size: f32,
+    size: Option<f32>,
     color: Option<Color>,
     thickness: Option<f32>,
 }
@@ -44,19 +43,21 @@ impl Spinner {
     pub fn new() -> Self {
         Self {
             element: Element::new(LayoutMode::Leaf),
-            size: 24.0,
+            size: None,
             color: None,
             thickness: None,
         }
     }
 
-    /// Diameter in logical px. Default `24.0`.
+    /// Diameter in logical px. `None` (default) inherits
+    /// [`crate::Theme::spinner`].
     pub fn size(mut self, px: f32) -> Self {
-        self.size = px;
+        self.size = Some(px);
         self
     }
 
-    /// Arc color (head of the comet). Default the palette accent.
+    /// Arc color (head of the comet). `None` (default) inherits
+    /// [`crate::Theme::spinner`].
     pub fn color(mut self, c: Color) -> Self {
         self.color = Some(c);
         self
@@ -69,9 +70,10 @@ impl Spinner {
     }
 
     pub fn show(mut self, ui: &mut Ui) -> Response<'_> {
-        let size = self.size.max(1.0);
+        let theme = ui.theme.spinner;
+        let size = self.size.unwrap_or(theme.size).max(1.0);
         let width = self.thickness.unwrap_or((size * 0.12).max(1.5));
-        let color = self.color.unwrap_or(palette::ACCENT);
+        let color = self.color.unwrap_or(theme.color);
         self.element.size = (Sizing::Fixed(size), Sizing::Fixed(size)).into();
 
         let id = ui.widget_id(&self.element);

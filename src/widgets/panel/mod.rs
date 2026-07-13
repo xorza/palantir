@@ -139,3 +139,6 @@ impl Configure for Panel {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;

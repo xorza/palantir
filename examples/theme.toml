@@ -61,6 +61,7 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
 
 [menu_button]
 padding = [
@@ -153,6 +154,7 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
 
 [checkbox.checked.normal.background]
 corners = 3.0
@@ -189,6 +191,7 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
 
 [radio]
 indicator = "#1a1a1a"
@@ -250,6 +253,7 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
 
 [radio.checked.normal.background]
 corners = 8.0
@@ -286,6 +290,111 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
+
+[switch]
+indicator = "#ffffff"
+box_size = 20.0
+indicator_stroke = 2.0
+indicator_inset = 3.0
+row_gap = 8.0
+
+[switch.unchecked.normal.background]
+corners = 10.0
+
+[switch.unchecked.normal.background.fill]
+Solid = "#3e3e3e"
+
+[switch.unchecked.normal.background.stroke]
+width = 1.0
+
+[switch.unchecked.normal.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[switch.unchecked.hovered.background]
+corners = 10.0
+
+[switch.unchecked.hovered.background.fill]
+Solid = "#4b4b4b"
+
+[switch.unchecked.hovered.background.stroke]
+width = 1.0
+
+[switch.unchecked.hovered.background.stroke.brush]
+Solid = "#aaaaa859"
+
+[switch.unchecked.pressed.background]
+corners = 10.0
+
+[switch.unchecked.pressed.background.fill]
+Solid = "#4b4b4b"
+
+[switch.unchecked.pressed.background.stroke]
+width = 1.0
+
+[switch.unchecked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[switch.unchecked.disabled.background]
+corners = 10.0
+
+[switch.unchecked.disabled.background.fill]
+Solid = "#343434"
+
+[switch.unchecked.disabled.background.stroke]
+width = 1.0
+
+[switch.unchecked.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[switch.unchecked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+weight = "Regular"
+
+[switch.checked.normal.background]
+corners = 10.0
+
+[switch.checked.normal.background.fill]
+Solid = "#9adbfb"
+
+[switch.checked.hovered.background]
+corners = 10.0
+
+[switch.checked.hovered.background.fill]
+Solid = "#9adbfb"
+
+[switch.checked.pressed.background]
+corners = 10.0
+
+[switch.checked.pressed.background.fill]
+Solid = "#9adbfb"
+
+[switch.checked.pressed.background.stroke]
+width = 1.0
+
+[switch.checked.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[switch.checked.disabled.background]
+corners = 10.0
+
+[switch.checked.disabled.background.fill]
+Solid = "#9adbfb73"
+
+[switch.checked.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+weight = "Regular"
+
+[switch.anim]
+kind = "spring"
+stiffness = 170.0
+damping = 26.0
 
 [scrollbar]
 width = 8.0
@@ -349,6 +458,123 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
+
+[drag_value.chip]
+padding = [
+    12.0,
+    6.0,
+]
+margin = 0.0
+
+[drag_value.chip.normal.background]
+corners = 4.0
+
+[drag_value.chip.normal.background.fill]
+Solid = "#3e3e3e"
+
+[drag_value.chip.normal.background.stroke]
+width = 1.0
+
+[drag_value.chip.normal.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.chip.hovered.background]
+corners = 4.0
+
+[drag_value.chip.hovered.background.fill]
+Solid = "#4b4b4b"
+
+[drag_value.chip.hovered.background.stroke]
+width = 1.0
+
+[drag_value.chip.hovered.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.chip.pressed.background]
+corners = 4.0
+
+[drag_value.chip.pressed.background.fill]
+Solid = "#4b4b4b"
+
+[drag_value.chip.pressed.background.stroke]
+width = 1.0
+
+[drag_value.chip.pressed.background.stroke.brush]
+Solid = "#105577"
+
+[drag_value.chip.disabled.background]
+corners = 4.0
+
+[drag_value.chip.disabled.background.fill]
+Solid = "#343434"
+
+[drag_value.chip.disabled.background.stroke]
+width = 1.0
+
+[drag_value.chip.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.chip.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+weight = "Regular"
+
+[drag_value.editor]
+placeholder = "#aaaaa8"
+caret = "#ffffff"
+caret_width = 1.5
+selection = "#9adbfb40"
+padding = [
+    12.0,
+    6.0,
+]
+margin = 0.0
+
+[drag_value.editor.normal.background]
+corners = 4.0
+
+[drag_value.editor.normal.background.fill]
+Solid = "#3e3e3e"
+
+[drag_value.editor.normal.background.stroke]
+width = 1.0
+
+[drag_value.editor.normal.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.editor.focused.background]
+corners = 4.0
+
+[drag_value.editor.focused.background.fill]
+Solid = "#4b4b4b"
+
+[drag_value.editor.focused.background.stroke]
+width = 1.0
+
+[drag_value.editor.focused.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.editor.disabled.background]
+corners = 4.0
+
+[drag_value.editor.disabled.background.fill]
+Solid = "#343434"
+
+[drag_value.editor.disabled.background.stroke]
+width = 1.0
+
+[drag_value.editor.disabled.background.stroke.brush]
+Solid = "#aaaaa82e"
+
+[drag_value.editor.disabled.text]
+font_size_px = 16.0
+color = "#878a8d"
+line_height_mult = 1.2
+family = "Sans"
+weight = "Regular"
 
 [context_menu]
 padding = 4.0
@@ -387,6 +613,24 @@ font_size_px = 16.0
 color = "#878a8d"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
+
+[modal]
+backdrop = "#00000080"
+padding = 20.0
+min_width = 280.0
+
+[modal.card]
+corners = 12.0
+
+[modal.card.fill]
+Solid = "#3e3e3e"
+
+[modal.card.stroke]
+width = 1.0
+
+[modal.card.stroke.brush]
+Solid = "#aaaaa840"
 
 [tooltip]
 padding = [
@@ -424,12 +668,41 @@ font_size_px = 13.0
 color = "#ffffff"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"
 
 [tooltip.max_size]
 w = 280.0
+
+[progress_bar]
+track = "#3e3e3e"
+fill = "#9adbfb"
+height = 6.0
+
+[separator]
+color = "#aaaaa82e"
+thickness = 1.0
+
+[slider]
+rail = "#3e3e3e"
+fill = "#9adbfb"
+knob = "#ffffff"
+knob_size = 18.0
+rail_thickness = 4.0
+
+[spinner]
+color = "#9adbfb"
+size = 24.0
+
+[splitter]
+thickness = 6.0
+rule = "#aaaaa82e"
+rule_thickness = 1.0
+hover = "#3e3e3e"
+drag = "#9adbfb99"
 
 [text]
 font_size_px = 16.0
 color = "#ffffff"
 line_height_mult = 1.2
 family = "Sans"
+weight = "Regular"

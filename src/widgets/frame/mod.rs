@@ -42,3 +42,6 @@ impl Configure for Frame {
         &mut self.element
     }
 }
+
+#[cfg(test)]
+mod tests;
