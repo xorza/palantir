@@ -33,8 +33,7 @@ fn frame_paints_a_single_rounded_rect() {
     let frame_node = frame_node.unwrap();
     // Chrome lives in `Tree::chrome_table`, not in the shape stream.
     assert!(
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(frame_node)
             .next()
             .is_none()

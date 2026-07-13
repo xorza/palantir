@@ -670,9 +670,7 @@ mod bars {
         ui.run_at_acked(surface, build);
         ui.run_at_acked(surface, build);
         let scroll_id = WidgetId::from_hash("scroll");
-        let idx = ui
-            .forest
-            .trees[Layer::Main]
+        let idx = ui.forest.trees[Layer::Main]
             .records
             .widget_id()
             .iter()
@@ -682,8 +680,7 @@ mod bars {
     }
 
     fn count_positioned(ui: &Ui, node: NodeId) -> usize {
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(node)
             .filter(|s| {
                 matches!(

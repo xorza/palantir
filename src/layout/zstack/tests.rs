@@ -50,9 +50,7 @@ fn zstack_lays_children_at_inner_top_left_by_default() {
             })
             .node()
     });
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();
@@ -116,9 +114,7 @@ fn zstack_per_axis_alignment() {
             .node()
         });
         let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
-        let kids: Vec<_> = ui
-            .forest
-            .trees[Layer::Main]
+        let kids: Vec<_> = ui.forest.trees[Layer::Main]
             .children(panel)
             .map(|c| c.id)
             .collect();
@@ -150,9 +146,7 @@ fn zstack_fill_child_stretches_to_inner() {
             .node()
     });
     let panel_rect = ui.layout[Layer::Main].rect[panel.idx()];
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();
@@ -208,9 +202,7 @@ fn zstack_collapsed_child_does_not_grow_panel() {
     let r = ui.layout[Layer::Main].rect[panel.idx()];
     assert_eq!(r.size.w, 20.0);
     assert_eq!(r.size.h, 20.0);
-    let kids: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<_> = ui.forest.trees[Layer::Main]
         .children(panel)
         .map(|c| c.id)
         .collect();

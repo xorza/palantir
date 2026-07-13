@@ -36,8 +36,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
         });
     });
     let read_fs = |node: NodeId| -> f32 {
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(node)
             .find_map(|s| match s {
                 ShapeRecord::Text { font_size_px, .. } => Some(*font_size_px),
@@ -77,9 +76,7 @@ fn theme_text_color_used_when_text_widget_does_not_override() {
             node = Some(Text::new("hi").auto_id().show(ui).node());
         });
     });
-    let color = ui
-        .forest
-        .trees[Layer::Main]
+    let color = ui.forest.trees[Layer::Main]
         .shapes_of(node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
@@ -111,9 +108,7 @@ fn text_widget_color_override_wins_over_theme() {
             );
         });
     });
-    let color = ui
-        .forest
-        .trees[Layer::Main]
+    let color = ui.forest.trees[Layer::Main]
         .shapes_of(node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text { color, .. } => Some(*color),
@@ -159,8 +154,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
         });
     });
     let read_lh = |node: NodeId| -> f32 {
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(node)
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
@@ -218,9 +212,7 @@ fn textedit_style_override_replaces_default_theme() {
                 );
             });
         });
-        let lh = ui
-            .forest
-            .trees[Layer::Main]
+        let lh = ui.forest.trees[Layer::Main]
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::Text { line_height_px, .. } => Some(*line_height_px),
@@ -248,9 +240,7 @@ fn pushed_shape_carries_default_line_height_from_theme() {
             );
         });
     });
-    let text_shape = ui
-        .forest
-        .trees[Layer::Main]
+    let text_shape = ui.forest.trees[Layer::Main]
         .shapes_of(leaf_node.unwrap())
         .find_map(|s| match s {
             ShapeRecord::Text {
@@ -294,9 +284,7 @@ fn no_selection_paints_no_highlight_rect() {
     ui.click_at(Vec2::new(20.0, 20.0));
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: usize = ui
-        .forest
-        .trees[Layer::Main]
+    let rects: usize = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
         .filter(|s| matches!(s, ShapeRecord::RoundedRect { .. }))
         .count();
@@ -342,9 +330,7 @@ fn shift_end_paints_selection_highlight() {
     });
     ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf));
 
-    let rects: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let rects: Vec<_> = ui.forest.trees[Layer::Main]
         .shapes_of(leaf.unwrap())
         .filter_map(|s| match s {
             ShapeRecord::RoundedRect {
@@ -464,8 +450,7 @@ fn line_height_override_changes_caret_rect_height() {
         ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
         ui.click_at(Vec2::new(20.0, 20.0));
         ui.run_at_acked(NARROW, |ui| body(ui, &mut leaf, &mut buf, &style));
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(leaf.unwrap())
             .find_map(|s| match s {
                 ShapeRecord::RoundedRect {

@@ -30,16 +30,13 @@ fn shapes_attached_to_button_node() {
 
     // Button chrome lives in `chrome_table`, not in shapes — only the
     // label `Text` shape lands here.
-    let shapes: Vec<&ShapeRecord> = ui
-        .forest
-        .trees[Layer::Main]
+    let shapes: Vec<&ShapeRecord> = ui.forest.trees[Layer::Main]
         .shapes_of(button_node.unwrap())
         .collect();
     assert_eq!(shapes.len(), 1);
     assert!(matches!(shapes[0], ShapeRecord::Text { .. }));
     assert!(
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .chrome(button_node.unwrap())
             .is_some(),
     );
@@ -95,9 +92,7 @@ fn interleaved_shapes_record_correct_order() {
     let pi = p.idx();
     let p_shapes = ui.forest.trees[Layer::Main].records.shape_span()[pi];
     assert_eq!(p_shapes.len, 3);
-    let children: Vec<_> = ui
-        .forest
-        .trees[Layer::Main]
+    let children: Vec<_> = ui.forest.trees[Layer::Main]
         .children(p)
         .map(|c| c.id)
         .collect();
@@ -110,9 +105,7 @@ fn interleaved_shapes_record_correct_order() {
         p_shapes.start + p_shapes.len,
         c1_shapes.start + c1_shapes.len + 1
     );
-    let sizes: Vec<f32> = ui
-        .forest
-        .trees[Layer::Main]
+    let sizes: Vec<f32> = ui.forest.trees[Layer::Main]
         .shapes_of(p)
         .map(|s| match s {
             ShapeRecord::RoundedRect {
@@ -1133,17 +1126,13 @@ fn child_iter_traverses_correctly_after_finalize() {
                 .node(),
         );
     });
-    let kids: Vec<u32> = ui
-        .forest
-        .trees[Layer::Main]
+    let kids: Vec<u32> = ui.forest.trees[Layer::Main]
         .children(root.unwrap())
         .map(|c| c.id.0)
         .collect();
     // Synthetic viewport at NodeId(0); user "root" at NodeId(1).
     assert_eq!(kids, vec![2, 3, 5], "root's direct children: a, inner, c");
-    let inner_kids: Vec<u32> = ui
-        .forest
-        .trees[Layer::Main]
+    let inner_kids: Vec<u32> = ui.forest.trees[Layer::Main]
         .children(NodeId(3))
         .map(|c| c.id.0)
         .collect();

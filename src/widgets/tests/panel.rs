@@ -154,16 +154,14 @@ fn panel_hugs_largest_child_and_layers_them() {
     assert_eq!((b.size.w, b.size.h), (60.0, 50.0));
 
     assert!(
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .shapes_of(panel_node.unwrap())
             .next()
             .is_none(),
         "panel chrome doesn't show up in the shape stream"
     );
     assert!(
-        ui.forest
-            .trees[Layer::Main]
+        ui.forest.trees[Layer::Main]
             .chrome(panel_node.unwrap())
             .is_some(),
         "panel chrome recorded in chrome table",
