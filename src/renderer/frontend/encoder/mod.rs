@@ -19,7 +19,7 @@ use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::backend::viewport::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, GpuFillFields, RenderCmdBuffer,
+    DrawPolylinePayload, RenderCmdBuffer,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
@@ -232,10 +232,11 @@ fn emit_one_shape(
     text_ordinal: u32,
     out: &mut RenderCmdBuffer,
 ) {
-    // Paint-anim gate. Slice 1 ships only `BlinkOpacity`, whose
-    // alpha is binary 0/1 — so we just skip emission when the
-    // sample says "hidden". Fractional-alpha multiplication
-    // arrives with the `Pulse` variant.
+    // Paint-anim gate. Today's only alpha source (`BlinkOpacity`) is
+    // binary 0/1, so a "hidden" sample just skips emission;
+    // fractional-alpha multiplication arrives with a future `Pulse`
+    // variant. `Spin` rides `paint_mod.rotation`, consumed by the
+    // stroke arms below.
     let paint_mod = ctx.tree.paint_anims.sample(shape_idx, ctx.now);
     if noop_f32(paint_mod.alpha) {
         return;
@@ -315,8 +316,7 @@ fn emit_one_shape(
         } => {
             // Points + colors live in the host's FrameArena; spans
             // are forwarded verbatim. Owner-local convention — the
-            // composer folds `origin` into the per-point transform
-            // (no per-frame point copy any more).
+            // composer folds `origin` into the per-point transform.
             let rotation = paint_mod.rotation;
             let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_polyline(DrawPolylinePayload {
@@ -376,28 +376,22 @@ fn emit_one_shape(
         } => {
             // Curves are owner-local; composer adds `origin` + active
             // transform before scaling to physical px. Curves carry no
-            // gradient axis, so `axis` is dropped.
-            let GpuFillFields {
-                color,
-                kind: fill_kind,
-                lut_row: fill_lut_row,
-                ..
-            } = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            // gradient axis, so `fill.axis` goes unread.
+            let fill = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
-            let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_curve(DrawCurvePayload {
-                bbox,
+                bbox: spin_bbox(owner_rect, *bbox, rotation),
                 origin: owner_rect.min,
                 rotation,
                 p0: *p0,
                 p1: *p1,
                 p2: *p2,
                 p3: *p3,
-                color,
+                color: fill.color,
                 width: *width,
                 cap: *cap as u32,
-                fill_kind,
-                fill_lut_row,
+                fill_kind: fill.kind,
+                fill_lut_row: fill.lut_row,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
@@ -415,27 +409,21 @@ fn emit_one_shape(
         } => {
             // Same owner-local convention as `Curve`; the composer
             // resolves center/radius to physical px.
-            let GpuFillFields {
-                color,
-                kind: fill_kind,
-                lut_row: fill_lut_row,
-                ..
-            } = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
+            let fill = shape_brush_source(ctx.gradients, *fill).to_gpu_fields();
             let rotation = paint_mod.rotation;
-            let bbox = spin_bbox(owner_rect, *bbox, rotation);
             out.draw_arc(DrawArcPayload {
-                bbox,
+                bbox: spin_bbox(owner_rect, *bbox, rotation),
                 origin: owner_rect.min,
                 center: *center,
                 radius: *radius,
                 a0: *a0,
                 a1: *a1,
                 rotation,
-                color,
+                color: fill.color,
                 width: *width,
                 cap: *cap as u32,
-                fill_kind,
-                fill_lut_row,
+                fill_kind: fill.kind,
+                fill_lut_row: fill.lut_row,
                 ..bytemuck::Zeroable::zeroed()
             });
         }
