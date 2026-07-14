@@ -344,7 +344,7 @@ impl LayoutEngine {
         // children, so the children's own cache-hit restore comes too late
         // — only a lookup here stops the ancestor cold-recursing through
         // every unchanged sibling subtree.
-        let wid = tree.records.id[idx];
+        let wid = tree.records.widget_id()[idx];
         let hash = tree.rollups.subtree[idx];
         if let Some(v) = self.cache.lookup_root_intrinsic(wid, hash, slot) {
             self.scratch.intrinsics[idx][slot] = v;
@@ -478,7 +478,7 @@ impl LayoutEngine {
         // authoring equivalence; `available_q` guards against parent
         // resize since outer-leaf measure is `available`-dependent
         // for `Hug` / `Fill` axes.
-        let cache_wid = tree.records.id[node.idx()];
+        let cache_wid = tree.records.widget_id()[node.idx()];
         let cache_hash = tree.rollups.subtree[node.idx()];
         let cache_avail = quantize_available(available);
         if let Some(hit) = self.cache.try_lookup(cache_wid, cache_hash, cache_avail) {
@@ -773,7 +773,7 @@ impl LayoutEngine {
         text: &TextShaper,
         out: &mut Layout,
     ) -> Size {
-        let wid = tree.records.id[node.idx()];
+        let wid = tree.records.widget_id()[node.idx()];
         let curr_hash = tree.rollups.node[node.idx()];
 
         // Refresh the unbounded measurement only when the authoring hash

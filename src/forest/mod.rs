@@ -410,7 +410,7 @@ impl Forest {
         self.current_scratch()
             .open_frames
             .last()
-            .map(|f| tree.records.id[f.node.idx()])
+            .map(|f| tree.records.widget_id()[f.node.idx()])
     }
 
     /// Iterate trees in paint order (`Layer::PAINT_ORDER`), pairing

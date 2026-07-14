@@ -323,7 +323,7 @@ pub(crate) fn measure(
         stack::measure(layout, tree, node, child_avail, Axis::X, tc, out)
     };
 
-    let wid = tree.records.id[node.idx()];
+    let wid = tree.records.widget_id()[node.idx()];
     // Margin doesn't fold into `content` — it's applied at clamp
     // time only, so bars reflect the real bbox and the margin acts
     // as invisible overscroll. Negative-origin canvases are handled
@@ -369,7 +369,7 @@ pub(crate) fn arrange(
         stack::arrange(layout, tree, node, inner, Axis::X, out);
     }
 
-    let wid = tree.records.id[node.idx()];
+    let wid = tree.records.widget_id()[node.idx()];
     let entry = layout.scroll_states.entry(wid).or_default();
     let viewport = inner.size;
     let zoom = entry.zoom;

@@ -589,7 +589,7 @@ impl PaintSnapArena {
     pub(crate) fn compact(&mut self, forest: &Forest, prev: &mut WidgetIdMap<NodeSnapshot>) {
         self.scratch.clear();
         for (_layer, tree) in forest.iter_paint_order() {
-            for wid in tree.records.id {
+            for wid in tree.records.widget_id() {
                 let Some(snap) = prev.get_mut(wid) else {
                     continue;
                 };
@@ -733,7 +733,7 @@ impl DamageEngine {
             let node_hashes = tree.rollups.node.as_slice();
             let subtree_hashes = tree.rollups.subtree.as_slice();
             let n = tree.records.len();
-            let widget_ids = tree.records.id;
+            let widget_ids = tree.records.widget_id();
             let subtree_end = tree.records.subtree_end();
             let layer_paints = &layer_cascades.paint_arena.rows;
             let layer_node_paints = &layer_cascades.paint_arena.node_spans;
