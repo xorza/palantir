@@ -44,6 +44,40 @@ pub(crate) struct Capture {
     pub(crate) run: Option<PressRun>,
 }
 
+impl Capture {
+    /// Latch a press on `target` at `pos`, chaining the multi-press
+    /// run when it lands on the same target within
+    /// [`DOUBLE_CLICK_WINDOW`] of the previous press and
+    /// [`DOUBLE_CLICK_RADIUS`] of its position; any break restarts the
+    /// run at 1. `seq` saturates so a caffeinated 255-click run can't
+    /// wrap back to "single".
+    fn begin_press(&mut self, target: WidgetId, pos: Vec2, now: Duration) {
+        let seq = match &self.run {
+            Some(run)
+                if run.target == target
+                    && now.saturating_sub(run.at) <= DOUBLE_CLICK_WINDOW
+                    && pos.distance(run.pos) <= DOUBLE_CLICK_RADIUS =>
+            {
+                run.seq.saturating_add(1)
+            }
+            _ => 1,
+        };
+        self.run = Some(PressRun {
+            at: now,
+            target,
+            pos,
+            seq,
+        });
+        self.press = Some(Press {
+            target,
+            origin: pos,
+            seq,
+            fresh: true,
+            drag: PressDrag::None,
+        });
+    }
+}
+
 /// One in-flight press: the capture target, the drag anchor, and this
 /// press's run position, bundled so none can exist without the others.
 #[derive(Clone, Copy, Debug)]
@@ -114,17 +148,6 @@ pub(crate) struct PressRun {
     pub(crate) seq: u8,
 }
 
-/// A widget's live drag plus the button driving it —
-/// [`InputState::active_drag`]'s named result. `response_for` turns it
-/// into [`Drag::Started`] / [`Drag::Active`] on the owning button's
-/// slot.
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct ActiveDrag {
-    pub(crate) button: PointerButton,
-    pub(crate) delta: Vec2,
-    pub(crate) started: bool,
-}
-
 /// Aperture-native input event. Independent of any windowing toolkit.
 /// Convert from winit via [`InputEvent::from_winit`], then dispatch
 /// through [`crate::Ui::on_input`].
@@ -183,11 +206,6 @@ pub enum InputEvent {
     ModifiersChanged(Modifiers),
 }
 
-/// What changed observably after an [`InputEvent`] was dispatched.
-/// Hosts read [`Self::requests_repaint`] to decide whether to schedule
-/// a redraw — pointer moves over inert surfaces leave it `false`, so
-/// the frame can be skipped entirely. Animation/tooltip-delay wakes
-/// still drive paints via `FrameReport::repaint_after`, independently.
 impl InputEvent {
     /// Translate a winit `WindowEvent` into one or more aperture input
     /// events, invoking `emit` for each. Most events fan out 1:1; IME
@@ -267,25 +285,20 @@ impl InputEvent {
 /// grapheme cluster is visually ugly but doesn't corrupt the buffer —
 /// downstream text consumers re-assemble at append time.
 fn emit_text_chunks(s: &str, emit: &mut impl FnMut(InputEvent)) {
-    let cap = TextChunk::INLINE_CAP;
-    let mut start = 0;
-    for (i, c) in s.char_indices() {
-        let next_end = i + c.len_utf8();
-        if next_end - start > cap {
-            if i > start {
-                // `start` and `i` are both char-boundary offsets, so
-                // the slice can't panic and the chunk fits by the
-                // flush-before-exceeding-cap loop invariant.
-                let chunk =
-                    TextChunk::new(&s[start..i]).expect("flushed chunk fits by construction");
-                emit(InputEvent::Text(chunk));
-            }
-            start = i;
+    let mut rest = s;
+    while !rest.is_empty() {
+        // Greedy max prefix ≤ INLINE_CAP, backed off to a char
+        // boundary — at most 3 steps, and never to 0 since
+        // INLINE_CAP ≥ 4 (the longest UTF-8 char).
+        let mut end = rest.len().min(TextChunk::INLINE_CAP);
+        while !rest.is_char_boundary(end) {
+            end -= 1;
         }
-    }
-    if start < s.len() {
-        let chunk = TextChunk::new(&s[start..]).expect("tail chunk fits by construction");
-        emit(InputEvent::Text(chunk));
+        let (head, tail) = rest.split_at(end);
+        emit(InputEvent::Text(
+            TextChunk::new(head).expect("chunk fits by construction"),
+        ));
+        rest = tail;
     }
 }
 
@@ -413,12 +426,6 @@ pub(crate) struct InputState {
 
 impl Default for InputState {
     fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl InputState {
-    pub(crate) fn new() -> Self {
         Self {
             pointer_pos: None,
             hovered: None,
@@ -444,7 +451,9 @@ impl InputState {
             frame_time: Duration::ZERO,
         }
     }
+}
 
+impl InputState {
     #[inline]
     fn capture(&self, b: PointerButton) -> &Capture {
         &self.captures[b.idx()]
@@ -455,42 +464,34 @@ impl InputState {
         &mut self.captures[b.idx()]
     }
 
-    /// Push a SCROLL-class event ([`PointerEvent::Scroll`] /
-    /// [`PointerEvent::Zoom`]) when at least one subscriber holds
-    /// [`PointerSense::SCROLL`] AND we have a pointer position.
-    /// Returns whether the wake fires. BUTTONS-class events go through
-    /// [`Self::record_pointer_button`], which wakes even without a
-    /// position.
-    fn push_scroll_class(&mut self, make: impl FnOnce(Vec2) -> PointerEvent) -> bool {
-        if !self.subs.pointer_mask.contains(PointerSense::SCROLL) {
-            return false;
-        }
-        let Some(pos) = self.pointer_pos else {
-            return false;
-        };
-        self.frame_pointer_events.push(make(pos));
-        true
-    }
-
-    /// Push a button event to [`Self::frame_pointer_events`] and
+    /// Push a pointer event to [`Self::frame_pointer_events`] and
     /// answer "should this event wake the next frame?" Wake fires
-    /// when any subscriber holds [`PointerSense::BUTTONS`] — single
-    /// bitwise AND on the cached `pointer_mask`. Returns `true` even
-    /// when `pos` is `None` so an off-surface press still wakes; the
-    /// `PointerEvent` itself is only pushed if there's a position
-    /// (no consumer can do anything useful without one).
-    fn record_pointer_button(
+    /// when any subscriber holds `sense` — single bitwise AND on the
+    /// cached `pointer_mask`. Returns `true` even when `pos` is `None`
+    /// so an off-surface press still wakes; the `PointerEvent` itself
+    /// is only pushed if there's a position (no consumer can do
+    /// anything useful without one).
+    fn push_pointer_event(
         &mut self,
-        pos: Option<glam::Vec2>,
-        make_event: impl FnOnce(glam::Vec2) -> PointerEvent,
+        sense: PointerSense,
+        pos: Option<Vec2>,
+        make: impl FnOnce(Vec2) -> PointerEvent,
     ) -> bool {
-        if !self.subs.pointer_mask.contains(PointerSense::BUTTONS) {
+        if !self.subs.pointer_mask.contains(sense) {
             return false;
         }
         if let Some(pos) = pos {
-            self.frame_pointer_events.push(make_event(pos));
+            self.frame_pointer_events.push(make(pos));
         }
         true
+    }
+
+    /// SCROLL-class push ([`PointerEvent::Scroll`] / [`PointerEvent::Zoom`])
+    /// whose wake additionally requires a pointer position — scroll
+    /// with no pointer routes nowhere, so waking would be pointless.
+    fn push_scroll_class(&mut self, make: impl FnOnce(Vec2) -> PointerEvent) -> bool {
+        self.pointer_pos.is_some()
+            && self.push_pointer_event(PointerSense::SCROLL, self.pointer_pos, make)
     }
 
     /// Feed an aperture-native input event. Hit-tests against the
@@ -523,28 +524,24 @@ impl InputState {
                 self.pointer_pos = Some(p);
                 // Drag-latch check per button. Every captured button
                 // independently latches once travel crosses
-                // `DRAG_THRESHOLD`. `ResponseState::drag_delta` reports
-                // the left button; other buttons go through
-                // [`crate::Response::drag_delta_by`] /
-                // [`crate::Response::drag_started_by`]. Right-drag latching
-                // just suppresses the click (same as left), so a slow
-                // right-press that wiggles no longer pops a context
-                // menu — consistent with click-suppression semantics.
-                for btn in PointerButton::all() {
-                    let cap = self.capture_mut(btn);
+                // `DRAG_THRESHOLD`. Right-drag latching just suppresses
+                // the click (same as left), so a slow right-press that
+                // wiggles no longer pops a context menu — consistent
+                // with click-suppression semantics.
+                let mut latched = false;
+                for cap in &mut self.captures {
                     if let Some(press) = &mut cap.press
                         && press.drag == PressDrag::None
-                        && (p - press.origin).length() >= DRAG_THRESHOLD
+                        && p.distance_squared(press.origin) >= DRAG_THRESHOLD * DRAG_THRESHOLD
                     {
                         press.drag = PressDrag::Started;
-                        self.frame_had_action = true;
+                        latched = true;
                     }
                 }
+                self.frame_had_action |= latched;
                 self.refresh_pointer_targets(cascades);
-                let move_subbed = self.subs.pointer_mask.contains(PointerSense::MOVE);
-                if move_subbed {
-                    self.frame_pointer_events.push(PointerEvent::Move(p));
-                }
+                let move_subbed =
+                    self.push_pointer_event(PointerSense::MOVE, Some(p), PointerEvent::Move);
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
                     || self.pinch_target != prev_pinch
@@ -561,10 +558,7 @@ impl InputState {
                 // `Leave` is rare; emit whenever any pointer-class
                 // subscription is active so subscribers can clean up
                 // (clear crosshair, dismiss hover preview).
-                let pointer_subbed = self
-                    .subs
-                    .pointer_mask
-                    .intersects(PointerSense::MOVE | PointerSense::BUTTONS | PointerSense::SCROLL);
+                let pointer_subbed = !self.subs.pointer_mask.is_empty();
                 if pointer_subbed {
                     self.frame_pointer_events.push(PointerEvent::Leave);
                 }
@@ -576,47 +570,20 @@ impl InputState {
                 // transparent to presses even though they show as hovered.
                 let pointer_pos = self.pointer_pos;
                 let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
-                let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
-                    PointerEvent::Down { pos, button: btn }
-                });
+                let buttons_subbed =
+                    self.push_pointer_event(PointerSense::BUTTONS, pointer_pos, |pos| {
+                        PointerEvent::Down { pos, button: btn }
+                    });
                 // Frame clock for multi-press timing — read before the
                 // `capture_mut` borrow.
                 let now = self.frame_time;
                 let cap = self.capture_mut(btn);
-                // Multi-press run: this press chains the sequence when
-                // it lands on the same target within the double-click
-                // window + radius; any break restarts at 1. `seq`
-                // saturates so a caffeinated 255-click run can't wrap
-                // back to "single". A missed press (`hit == None`)
-                // clears any stale capture and leaves the run alone.
-                cap.press = match (hit, pointer_pos) {
-                    (Some(target), Some(pos)) => {
-                        let seq = match &cap.run {
-                            Some(run)
-                                if run.target == target
-                                    && now.saturating_sub(run.at) <= DOUBLE_CLICK_WINDOW
-                                    && pos.distance(run.pos) <= DOUBLE_CLICK_RADIUS =>
-                            {
-                                run.seq.saturating_add(1)
-                            }
-                            _ => 1,
-                        };
-                        cap.run = Some(PressRun {
-                            at: now,
-                            target,
-                            pos,
-                            seq,
-                        });
-                        Some(Press {
-                            target,
-                            origin: pos,
-                            seq,
-                            fresh: true,
-                            drag: PressDrag::None,
-                        })
-                    }
-                    _ => None,
-                };
+                match hit.zip(pointer_pos) {
+                    Some((target, pos)) => cap.begin_press(target, pos, now),
+                    // A missed press clears any stale capture and
+                    // leaves the run alone.
+                    None => cap.press = None,
+                }
                 // Focus updates on a separate hit-test on the *left*
                 // button only — right/middle clicks shouldn't steal
                 // focus from a TextEdit. Focusability is orthogonal to
@@ -624,9 +591,7 @@ impl InputState {
                 // from a TextEdit either, hence the separate test).
                 let prev_focus = self.focused;
                 if btn == PointerButton::Left {
-                    let focus_hit = self
-                        .pointer_pos
-                        .and_then(|p| cascades.hit_test_focusable(p));
+                    let focus_hit = pointer_pos.and_then(|p| cascades.hit_test_focusable(p));
                     match (focus_hit, self.focus_policy) {
                         (Some(id), _) => self.focused = Some(id),
                         (None, FocusPolicy::ClearOnMiss) => self.focused = None,
@@ -664,14 +629,15 @@ impl InputState {
                             ReleaseKind::Miss
                         }
                     };
-                    self.capture_mut(btn).release = Some(Release {
+                    cap.release = Some(Release {
                         target: press.target,
                         kind,
                     });
                 }
-                let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
-                    PointerEvent::Up { pos, button: btn }
-                });
+                let buttons_subbed =
+                    self.push_pointer_event(PointerSense::BUTTONS, pointer_pos, |pos| {
+                        PointerEvent::Up { pos, button: btn }
+                    });
                 // Capture was live ⇒ owning widget needs a record;
                 // otherwise only `BUTTONS` subscribers wake.
                 released.is_some() || buttons_subbed
@@ -704,10 +670,9 @@ impl InputState {
                 repeat,
                 physical,
             } => {
-                let mods = self.modifiers;
                 let kp = KeyPress {
                     key,
-                    mods,
+                    mods: self.modifiers,
                     repeat,
                     physical,
                 };
@@ -851,32 +816,6 @@ impl InputState {
         }
     }
 
-    /// Pixel-precise scroll this frame for `id` if it's the current
-    /// scroll target — the touchpad / precision-wheel source
-    /// (`MouseScrollDelta::PixelDelta`). Sibling of [`Self::scroll_delta_for`]
-    /// that exposes the touchpad slice on its own so consumers can
-    /// distinguish "trackpad pan" from "wheel notch."
-    pub(crate) fn scroll_pixels_for(&self, id: WidgetId) -> Vec2 {
-        if self.scroll_target == Some(id) {
-            self.frame_scroll_pixels
-        } else {
-            Vec2::ZERO
-        }
-    }
-
-    /// Line-discrete scroll this frame for `id` if it's the current
-    /// scroll target — the classic-wheel source
-    /// (`MouseScrollDelta::LineDelta`), in **raw line units** (not
-    /// multiplied by `line_px`). Sibling of [`Self::scroll_delta_for`]
-    /// that exposes the wheel slice on its own.
-    pub(crate) fn scroll_lines_for(&self, id: WidgetId) -> Vec2 {
-        if self.scroll_target == Some(id) {
-            self.frame_scroll_lines
-        } else {
-            Vec2::ZERO
-        }
-    }
-
     /// Returns this frame's notched scroll count if `id` is the
     /// current scroll hit-target; otherwise `Vec2::ZERO`. Combines
     /// real line deltas (classic wheel) with touchpad-pixel deltas
@@ -904,30 +843,6 @@ impl InputState {
         } else {
             1.0
         }
-    }
-
-    /// The active drag on `id`, or `None` outside a threshold-crossed
-    /// drag. When multiple buttons are simultaneously latched on the
-    /// same widget, the priority-first in [`PointerButton::all`]
-    /// wins — that exclusivity is why [`ResponseState`] populates at
-    /// most one button's `drag` slot. Rect-independent: the pointer
-    /// can leave `id`'s rect mid-drag and the delta keeps tracking.
-    pub(crate) fn active_drag(&self, id: WidgetId) -> Option<ActiveDrag> {
-        let pointer = self.pointer_pos?;
-        for button in PointerButton::all() {
-            let cap = self.capture(button);
-            if let Some(press) = &cap.press
-                && press.target == id
-                && press.drag != PressDrag::None
-            {
-                return Some(ActiveDrag {
-                    button,
-                    delta: pointer - press.origin,
-                    started: press.drag == PressDrag::Started,
-                });
-            }
-        }
-        None
     }
 
     /// Snapshot into [`Self::frame_quiescent`] whether any widget can
@@ -967,8 +882,7 @@ impl InputState {
         let disabled = entry_idx.is_some_and(|i| cascades.entries.disabled()[i]);
 
         // Interaction half — on a quiescent frame every field below is at
-        // its default, so skip the per-button capture scans, the two
-        // 3-iteration loops (`active_drag`, `double_click`), and the
+        // its default, so skip the per-button capture scan and the
         // scroll/zoom lookups that every idle widget would otherwise pay.
         // `focused` is the one interaction field still read live: it can
         // be set by `request_focus` after `frame_quiescent` was snapshotted.
@@ -997,8 +911,12 @@ impl InputState {
         // completed click outranks the lost press edge) and a
         // same-batch re-press collapses to `Down` (the live capture
         // outranks the stale release).
-        let button_state = |b: PointerButton| {
-            let cap = self.capture(b);
+        let mut buttons = [ButtonState::default(); PointerButton::COUNT];
+        // Drag exclusivity: only the priority-first latched button
+        // owns the widget's drag, so at most one slot goes live.
+        let mut drag_owned = false;
+        for btn in PointerButton::all() {
+            let cap = self.capture(btn);
             let phase = match &cap.press {
                 Some(press) if press.target == id => {
                     if press.fresh {
@@ -1017,48 +935,52 @@ impl InputState {
                     _ => ButtonPhase::Idle,
                 },
             };
-            ButtonState {
-                phase,
-                drag: match &cap.release {
-                    Some(release)
-                        if release.target == id && release.kind == ReleaseKind::DragStopped =>
-                    {
-                        Drag::Stopped
-                    }
-                    _ => Drag::None,
-                },
+            let mut drag = match &cap.release {
+                Some(release)
+                    if release.target == id && release.kind == ReleaseKind::DragStopped =>
+                {
+                    Drag::Stopped
+                }
+                _ => Drag::None,
+            };
+            // A threshold-crossed press overrides the stale stop edge
+            // (same-frame stop-and-relatch reports the fresh gesture).
+            // Rect-independent: the pointer can leave `id`'s rect
+            // mid-drag and the delta keeps tracking.
+            if !drag_owned
+                && let Some(pointer) = self.pointer_pos
+                && let Some(press) = &cap.press
+                && press.target == id
+                && press.drag != PressDrag::None
+            {
+                let delta = pointer - press.origin;
+                drag = if press.drag == PressDrag::Started {
+                    Drag::Started { delta }
+                } else {
+                    Drag::Active { delta }
+                };
+                drag_owned = true;
             }
-        };
-        let mut left = button_state(PointerButton::Left);
-        let mut right = button_state(PointerButton::Right);
-        let mut middle = button_state(PointerButton::Middle);
-        // Drag exclusivity: only the priority-first latched button
-        // owns the widget's drag (see `active_drag`), so at most one
-        // slot goes live.
-        if let Some(active) = self.active_drag(id) {
-            let slot = match active.button {
-                PointerButton::Left => &mut left,
-                PointerButton::Right => &mut right,
-                PointerButton::Middle => &mut middle,
-            };
-            slot.drag = if active.started {
-                Drag::Started {
-                    delta: active.delta,
-                }
-            } else {
-                Drag::Active {
-                    delta: active.delta,
-                }
-            };
+            buttons[btn.idx()] = ButtonState { phase, drag };
         }
+        let [left, right, middle] = buttons;
 
         // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
         // Both gates fire even when the routed delta is `Vec2::ZERO`
         // / `1.0` — the caller checks against the identity value to
         // distinguish "not routed" from "routed but quiet".
+        let scrolled = self.scroll_target == Some(id);
         let scroll = ScrollDelta {
-            pixels: self.scroll_pixels_for(id),
-            lines: self.scroll_lines_for(id),
+            pixels: if scrolled {
+                self.frame_scroll_pixels
+            } else {
+                Vec2::ZERO
+            },
+            lines: if scrolled {
+                self.frame_scroll_lines
+            } else {
+                Vec2::ZERO
+            },
             zoom: self.zoom_delta_for(id),
         };
         let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
