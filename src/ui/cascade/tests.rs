@@ -180,6 +180,12 @@ fn node_spans_rows_mirror_chrome_and_children() {
         chrome_span.len > 0 && arena.rows[chrome_span.start as usize].screen.area() > 0.0,
         "chromed panel must have a non-empty paint span with non-zero chrome rect",
     );
+    let chrome_entry = cascades.entry_idx_of(WidgetId::from_hash("chrome")).unwrap() as usize;
+    assert_eq!(
+        arena.rows[chrome_span.start as usize].screen,
+        cascades.entries.rect()[chrome_entry],
+        "no-shadow chrome must reuse the node's transformed and clipped visible rect",
+    );
     assert_eq!(
         bare_span.len, 0,
         "chromeless childless panel must have empty paint span; got {bare_span:?}",
@@ -201,23 +207,40 @@ fn node_spans_rows_mirror_chrome_and_children() {
     );
 }
 
-/// `node_spans` length matches the layer's node count so the
-/// damage diff can index by `NodeId.0` without a bounds-cap.
+/// Every per-node output column follows tree size changes exactly and every
+/// retained slot is overwritten with a valid row for the current tree.
 #[test]
-fn node_spans_sized_to_node_count() {
+fn per_node_columns_track_tree_size() {
     let mut ui = Ui::for_test();
-    ui.run_at_acked(UVec2::new(100, 100), |ui| {
-        Panel::hstack().auto_id().show(ui, |ui| {
-            Panel::hstack().auto_id().show(ui, |_| {});
+    for child_count in [3usize, 1, 4] {
+        ui.run_at_acked(UVec2::new(100, 100), |ui| {
+            Panel::hstack()
+                .id(WidgetId::from_hash("column-root"))
+                .show(ui, |ui| {
+                    for i in 0..child_count {
+                        Panel::hstack()
+                            .id(WidgetId::from_hash(("column-child", i)))
+                            .show(ui, |_| {});
+                    }
+                });
         });
-    });
-    let layer = Layer::Main;
-    let nodes = ui.forest.trees[Layer::Main].records.len();
-    assert_eq!(
-        ui.cascades.layers[layer].paint_arena.node_spans.len(),
-        nodes,
-        "node_spans column must be sized to the layer's node count",
-    );
+        let layer = Layer::Main;
+        let nodes = ui.forest.trees[layer].records.len();
+        let cascades = &ui.cascades.layers[layer];
+        assert_eq!(cascades.cascade_inputs.len(), nodes);
+        assert_eq!(cascades.subtree_paint_rects.len(), nodes);
+        assert_eq!(cascades.subtree_ends.len(), nodes);
+        assert_eq!(cascades.paint_arena.node_spans.len(), nodes);
+        for (i, (&end, &span)) in cascades
+            .subtree_ends
+            .iter()
+            .zip(&cascades.paint_arena.node_spans)
+            .enumerate()
+        {
+            assert!(end as usize > i && end as usize <= nodes);
+            assert!(span.start as usize + span.len as usize <= cascades.paint_arena.rows.len());
+        }
+    }
 }
 
 /// Cross-check that the cascade's transform/clip composition (which
