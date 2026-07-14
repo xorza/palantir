@@ -1,3 +1,5 @@
+use crate::common::hash::hash_str;
+use crate::text::cosmic::CosmicMeasure;
 use crate::text::*;
 
 /// Line-height equal to font size keeps the mono-fallback line
@@ -5,6 +7,23 @@ use crate::text::*;
 /// placeholder layout the existing tests pin.
 fn lh(font_size: f32) -> f32 {
     font_size
+}
+
+fn measure_truncated(
+    cosmic: &mut CosmicMeasure,
+    text: &str,
+    params: ShapeParams,
+    fit: LineFit,
+) -> MeasureResult {
+    let unbounded = cosmic.measure(
+        text,
+        ShapeParams {
+            max_width_px: None,
+            halign: HAlign::Auto,
+            ..params
+        },
+    );
+    cosmic.measure_truncated(text, params, fit, unbounded.key)
 }
 
 #[test]
@@ -109,7 +128,6 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
     // by key — without this discrimination, a 16/19.2 buffer would
     // be returned for a request that wanted 16/24, mismatching the
     // measured rect against the rasterized glyphs.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let a = c
         .measure(
@@ -139,6 +157,11 @@ fn cosmic_text_cache_key_distinguishes_line_height() {
         .key;
     assert_ne!(a, b, "different leading must produce different key");
     assert_ne!(a.lh_q, b.lh_q, "lh_q is the discriminating field");
+    assert_eq!(
+        a.text_hash,
+        hash_str("hi"),
+        "direct shaping and authoring use the same canonical text hash",
+    );
     // Same call repeated → identical key (cache hit, deterministic).
     let a2 = c
         .measure(
@@ -167,7 +190,6 @@ fn cosmic_text_family_distinguishes_key_and_metrics() {
     //    as the right face.
     // 2. Family enters the cache key (distinct `family_q`), so two runs
     //    differing only by family never collide on one shaped buffer.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
 
     assert_eq!(
@@ -233,7 +255,6 @@ fn cosmic_text_weight_distinguishes_key_and_metrics() {
     //    the cache key (weight instantiated on the `wght` axis) while the
     //    advance stays fixed — monospace keeps its cell width across
     //    weights, so we assert equality there rather than a widening.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
 
     let params = |family, weight| ShapeParams {
@@ -292,6 +313,7 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
         0,
         h1,
         "hi",
+        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -306,6 +328,7 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
         0,
         h2,
         "hi",
+        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 24.0,
@@ -326,6 +349,7 @@ fn shape_unbounded_caches_per_authoring_hash_only() {
         0,
         h1,
         "hi",
+        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -366,21 +390,18 @@ fn shape_wrap_panics_without_prime() {
 }
 
 #[test]
-fn text_cache_key_invalid_constant_zero_filled() {
-    // `_pad` byte was added to satisfy bytemuck's no-padding rule;
-    // pin that the INVALID sentinel still round-trips through
-    // `is_invalid`. Failure here would mean a malformed default.
+fn text_cache_key_validity_is_tagged_by_text_hash() {
     assert!(TextCacheKey::INVALID.is_invalid());
-    // And a non-INVALID key registers as such even with all
-    // hashable fields zero except text_hash.
-    let real = TextCacheKey::new(1, 0, 0, 0, 0, 0, 0);
+    let real = TextCacheKey {
+        text_hash: 1,
+        ..TextCacheKey::INVALID
+    };
     assert!(!real.is_invalid());
-    // A Bold-weight key (weight_q = 1) is likewise not the sentinel,
-    // even with every other hashable field zero — the added `weight_q`
-    // byte joins the all-zeroes check without swallowing real runs.
-    let bold = TextCacheKey::new(1, 0, 0, 0, 0, FontWeight::Bold as u8, 0);
-    assert!(!bold.is_invalid());
-    assert_eq!(bold.weight_q, 1);
+    let zero_hash = TextCacheKey {
+        fit_q: LineFit::Ellipsis as u8,
+        ..TextCacheKey::INVALID
+    };
+    assert!(zero_hash.is_invalid());
 }
 
 #[test]
@@ -675,7 +696,6 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
     // Empty-text early-return on the cosmic path: ZERO size, INVALID
     // key, zero intrinsic_min. Pins the renderer's "drop INVALID
     // runs" contract for empty strings.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let r = c.measure(
         "",
@@ -698,7 +718,6 @@ fn cosmic_empty_text_returns_invalid_zero_size() {
 
 #[test]
 fn cosmic_nonpositive_font_size_returns_invalid() {
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     for fs in [0.0_f32, -1.0, -16.0] {
         let r = c.measure(
@@ -725,7 +744,6 @@ fn cosmic_intrinsic_min_tracks_longest_word() {
     // and (c) match the standalone measurement of the longest word
     // within shaping tolerance — that's the wrap floor downstream
     // layout pins as the "can't break below this" guarantee.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let full = c.measure(
         "hello world hi",
@@ -811,7 +829,6 @@ fn cache_key_collapses_halign_when_unbounded() {
     // key folds non-Auto halign down to Auto. Two unbounded measures
     // with different halign must therefore produce identical keys —
     // single-line callers don't pay an N-way cache split.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let auto = c
         .measure(
@@ -899,6 +916,7 @@ fn shape_wrap_busts_on_halign_change_same_target() {
         0,
         hash,
         "hi",
+        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -987,6 +1005,7 @@ fn sweep_removed_evicts_reuse_entries() {
         0,
         ContentHash(1),
         "hi",
+        hash_str("hi"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -1001,6 +1020,7 @@ fn sweep_removed_evicts_reuse_entries() {
         0,
         ContentHash(2),
         "yo",
+        hash_str("yo"),
         ShapeParams {
             font_size_px: 16.0,
             line_height_px: 16.0,
@@ -1084,11 +1104,11 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
     // A label wider than the committed width truncates to one line that
     // fits, with a trailing ellipsis. Pins the "labels never overflow
     // their box" contract the Button relies on.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
     let w = 120.0;
-    let elided = c.measure_truncated(
+    let elided = measure_truncated(
+        &mut c,
         long,
         ShapeParams {
             font_size_px: 16.0,
@@ -1098,7 +1118,7 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        true,
+        LineFit::Ellipsis,
     );
     // Precondition: the natural single line genuinely overflows `w`.
     let full = c.measure(
@@ -1132,6 +1152,23 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
         elided.intrinsic_min, 0.0,
         "an elided run has zero min floor"
     );
+    let zero_width = measure_truncated(
+        &mut c,
+        long,
+        ShapeParams {
+            font_size_px: 16.0,
+            line_height_px: lh(16.0),
+            max_width_px: Some(0.0),
+            family: FontFamily::Sans,
+            weight: FontWeight::Regular,
+            halign: HAlign::Auto,
+        },
+        LineFit::Ellipsis,
+    );
+    assert_eq!(
+        zero_width.size.w, 0.0,
+        "an ellipsis that cannot fit collapses to zero width",
+    );
     // The elided buffer must not collide with the *wrapped* buffer at the
     // same width — they hold different strings, so distinct cache keys.
     let wrapped = c.measure(
@@ -1155,7 +1192,6 @@ fn cosmic_ellipsis_elides_long_line_to_width() {
 fn cosmic_ellipsis_short_text_not_truncated() {
     // A label that already fits the cap is shaped whole — no spurious
     // ellipsis, width matches the natural measurement.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let short = "ok";
     let natural = c.measure(
@@ -1169,7 +1205,8 @@ fn cosmic_ellipsis_short_text_not_truncated() {
             halign: HAlign::Auto,
         },
     );
-    let elided = c.measure_truncated(
+    let elided = measure_truncated(
+        &mut c,
         short,
         ShapeParams {
             font_size_px: 16.0,
@@ -1179,7 +1216,7 @@ fn cosmic_ellipsis_short_text_not_truncated() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        true,
+        LineFit::Ellipsis,
     );
     assert!(
         (elided.size.w - natural.size.w).abs() <= 2.0,
@@ -1196,7 +1233,6 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
     // non-`Auto` halign (the encoder positions the line; the shaped buffer
     // must not bake in width + per-line align). A `Center`-aligned label in
     // a 400 px cap previously measured ~half the box wide.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let label = "File";
     let cap = 400.0;
@@ -1212,7 +1248,8 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
         },
     );
     for fit in [false, true] {
-        let m = c.measure_truncated(
+        let m = measure_truncated(
+            &mut c,
             label,
             ShapeParams {
                 font_size_px: 16.0,
@@ -1222,7 +1259,11 @@ fn cosmic_truncate_fits_measures_natural_width_regardless_of_halign() {
                 weight: FontWeight::Regular,
                 halign: HAlign::Center,
             },
-            fit,
+            if fit {
+                LineFit::Ellipsis
+            } else {
+                LineFit::Clip
+            },
         );
         assert!(
             (m.size.w - natural.size.w).abs() <= 2.0,
@@ -1239,7 +1280,6 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     // label to fit the cap on one line — like the ellipsis path but with no
     // trailing `…`, and reserving no room for one. Distinct cache slot from
     // both the wrapped and the ellipsized buffers at the same width.
-    use crate::text::cosmic::CosmicMeasure;
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "Screenshot 2026-05-28 at 01.21.25.png";
     let w = 120.0;
@@ -1259,7 +1299,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
         "precondition: natural line ({}) must overflow the cap ({w})",
         full.size.w,
     );
-    let clipped = c.measure_truncated(
+    let clipped = measure_truncated(
+        &mut c,
         long,
         ShapeParams {
             font_size_px: 16.0,
@@ -1269,7 +1310,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        false,
+        LineFit::Clip,
     );
     assert!(
         clipped.size.w <= w + 1.0,
@@ -1288,7 +1329,8 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
     // Clip and ellipsis cut to the same cap but bake different strings (the
     // ellipsis path appends `…` and reserves its width), so they must key
     // distinct cache slots.
-    let elided = c.measure_truncated(
+    let elided = measure_truncated(
+        &mut c,
         long,
         ShapeParams {
             font_size_px: 16.0,
@@ -1298,7 +1340,7 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
             weight: FontWeight::Regular,
             halign: HAlign::Auto,
         },
-        true,
+        LineFit::Ellipsis,
     );
     // Clip, ellipsis, and wrap each bake a distinct buffer at the same width.
     let wrapped = c.measure(
@@ -1320,6 +1362,13 @@ fn cosmic_singleline_clips_to_width_without_ellipsis() {
         clipped.key, wrapped.key,
         "clip and wrap must key distinctly"
     );
+    assert_eq!(
+        clipped.key.text_hash, full.key.text_hash,
+        "bounded keys reuse the authoring-time text hash",
+    );
+    assert_eq!(clipped.key.fit_q, LineFit::Clip as u8);
+    assert_eq!(elided.key.fit_q, LineFit::Ellipsis as u8);
+    assert_eq!(wrapped.key.fit_q, LineFit::Wrap as u8);
 }
 
 #[test]
@@ -1341,22 +1390,18 @@ fn mono_ellipsis_caps_width_with_zero_floor() {
     );
 }
 
-/// The truncation probe reuses one shared `Buffer` across calls, so a
-/// prior shape must not leak into a later measurement. Measure the same
-/// (text, size, width) on a fresh measurer vs one that first shaped
-/// several unrelated strings through the shared probe + ellipsis cache;
-/// the result must be identical. Also pins that truncation actually
-/// fired (ellipsized width is below the unbounded width).
+/// Truncation reads its probe glyphs from the cached unbounded buffer.
+/// Measure the same input on a fresh measurer and one containing unrelated
+/// cached shapes; both the derived key and exact measurement must agree.
 #[test]
-fn truncation_probe_reuse_is_order_independent() {
-    use crate::text::cosmic::CosmicMeasure;
-
+fn truncation_from_cached_unbounded_is_order_independent() {
     let long = "the quick brown fox jumps over the lazy dog";
     let (fs, w) = (14.0, 80.0);
 
     // Fresh measurer: only the target measurement.
     let mut fresh = CosmicMeasure::with_bundled_fonts();
-    let r_fresh = fresh.measure_truncated(
+    let r_fresh = measure_truncated(
+        &mut fresh,
         long,
         ShapeParams {
             font_size_px: fs,
@@ -1366,14 +1411,14 @@ fn truncation_probe_reuse_is_order_independent() {
             weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
-        true,
+        LineFit::Ellipsis,
     );
 
-    // Reused measurer: drive several unrelated shapes through the shared
-    // `probe_buffer` (different texts, sizes, families) and the ellipsis
-    // cache first, then measure the identical target.
+    // Reused measurer: populate unrelated unbounded, truncated, and ellipsis
+    // cache entries first, then measure the identical target.
     let mut reused = CosmicMeasure::with_bundled_fonts();
-    reused.measure_truncated(
+    measure_truncated(
+        &mut reused,
         "a considerably longer string that grows the probe buffer capacity",
         ShapeParams {
             font_size_px: 20.0,
@@ -1383,9 +1428,10 @@ fn truncation_probe_reuse_is_order_independent() {
             weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
-        true,
+        LineFit::Ellipsis,
     );
-    reused.measure_truncated(
+    measure_truncated(
+        &mut reused,
         "short",
         ShapeParams {
             font_size_px: 10.0,
@@ -1395,9 +1441,10 @@ fn truncation_probe_reuse_is_order_independent() {
             weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
-        false,
+        LineFit::Clip,
     );
-    let r_reused = reused.measure_truncated(
+    let r_reused = measure_truncated(
+        &mut reused,
         long,
         ShapeParams {
             font_size_px: fs,
@@ -1407,12 +1454,12 @@ fn truncation_probe_reuse_is_order_independent() {
             weight: FontWeight::Regular,
             halign: HAlign::Left,
         },
-        true,
+        LineFit::Ellipsis,
     );
 
     assert_eq!(
         r_fresh.size, r_reused.size,
-        "probe-buffer reuse changed the measured size",
+        "unrelated cached buffers changed the measured size",
     );
     assert_eq!(
         r_fresh.key, r_reused.key,
@@ -1451,14 +1498,15 @@ fn truncation_probe_reuse_is_order_independent() {
 /// clear-on-overflow path), while still returning correct widths.
 #[test]
 fn ellipsis_cache_bounded_under_size_churn() {
-    use crate::text::cosmic::{CosmicMeasure, ELLIPSIS_CACHE_CAP};
+    use crate::text::cosmic::ELLIPSIS_CACHE_CAP;
 
     let mut c = CosmicMeasure::with_bundled_fonts();
     let long = "the quick brown fox jumps over the lazy dog";
     for i in 0..(ELLIPSIS_CACHE_CAP * 2 + 5) {
         // Distinct quantized size each iteration (0.1px steps × 64 ≥ 1).
         let fs = 8.0 + i as f32 * 0.1;
-        let r = c.measure_truncated(
+        let r = measure_truncated(
+            &mut c,
             long,
             ShapeParams {
                 font_size_px: fs,
@@ -1468,7 +1516,7 @@ fn ellipsis_cache_bounded_under_size_churn() {
                 weight: FontWeight::Regular,
                 halign: HAlign::Left,
             },
-            true,
+            LineFit::Ellipsis,
         );
         assert!(r.size.w <= 61.0, "still truncates to budget at size {fs}");
     }
@@ -1488,7 +1536,6 @@ fn ellipsis_cache_bounded_under_size_churn() {
 /// honoured.
 #[test]
 fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
-    use crate::text::cosmic::CosmicMeasure;
     use rustc_hash::FxHashSet;
 
     let mut c = CosmicMeasure::with_bundled_fonts();
@@ -1541,7 +1588,6 @@ fn end_frame_evict_pins_survive_and_unpinned_lru_capped() {
 /// working set never crosses the budget and so must never reshape.
 #[test]
 fn end_frame_evict_is_noop_under_budget() {
-    use crate::text::cosmic::CosmicMeasure;
     use rustc_hash::FxHashSet;
 
     let mut c = CosmicMeasure::with_bundled_fonts();

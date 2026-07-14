@@ -67,9 +67,7 @@ pub(crate) type SelectionRects = tinyvec::TinyVec<[Rect; 16]>;
 ///
 /// `#[repr(u8)]` with explicit discriminants pins the on-disk tag so
 /// `TextCacheKey::family_q` and the `ShapeRecord::Text` hash byte
-/// stay stable across variant reordering. `Sans = 0` is also load-
-/// bearing for [`TextCacheKey::is_invalid`], which folds family into
-/// its all-zeroes check.
+/// stay stable across variant reordering.
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
@@ -80,13 +78,6 @@ pub enum FontFamily {
     Mono = 1,
 }
 
-// `TextCacheKey::is_invalid` and `TextCacheKey::INVALID` both fold
-// `family_q == 0` into the all-zeros sentinel. If `Sans`'s
-// discriminant ever moves off zero, a real `Sans` key collides with
-// `INVALID` and the renderer silently drops valid text runs. Pin
-// here so the drift trips the compile.
-const _: () = assert!(FontFamily::Sans as u8 == 0);
-
 /// Font weight picker on [`crate::TextStyle`] and [`crate::Shape::Text`],
 /// independent of [`FontFamily`]. `Regular` shapes with the family's
 /// normal face; `Bold` requests the bold face (a distinct static face
@@ -94,9 +85,7 @@ const _: () = assert!(FontFamily::Sans as u8 == 0);
 /// Mono) via cosmic-text's `Attrs::weight` in [`attrs_for`].
 ///
 /// `#[repr(u8)]` pins the tag for `TextCacheKey::weight_q` and the
-/// `ShapeRecord::Text` hash byte. `Regular = 0` folds into the
-/// `TextCacheKey::INVALID` all-zeroes sentinel, mirroring
-/// [`FontFamily::Sans`].
+/// `ShapeRecord::Text` hash byte.
 #[repr(u8)]
 #[derive(
     Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
@@ -222,7 +211,7 @@ impl TextShaper {
     pub fn measure(&self, text: &str, params: ShapeParams) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
         inner.measure_calls += 1;
-        inner.dispatch(text, params, LineFit::Wrap)
+        inner.dispatch_direct(text, params)
     }
 
     /// Identity-cached unbounded shape for `wid`, refreshing it (and
@@ -234,6 +223,7 @@ impl TextShaper {
         ordinal: u16,
         hash: ContentHash,
         text: &str,
+        text_hash: u64,
         params: ShapeParams,
     ) -> MeasureResult {
         let mut inner = self.inner.borrow_mut();
@@ -250,14 +240,17 @@ impl TextShaper {
         // there's no width here. Always passes `HAlign::Auto` so the
         // shaped buffer (and its `TextCacheKey`) match callers who
         // look it up without an align param.
-        let unbounded = inner.dispatch(
+        let unbounded = dispatch(
+            &mut inner.cosmic,
             text,
+            text_hash,
             ShapeParams {
                 max_width_px: None,
                 halign: HAlign::Auto,
                 ..params
             },
             LineFit::Wrap,
+            TextCacheKey::INVALID,
         );
         inner.reuse.insert(
             (wid, ordinal),
@@ -292,8 +285,13 @@ impl TextShaper {
     ) -> MeasureResult {
         let halign = params.halign;
         let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-        let entry = match inner.reuse.entry((wid, ordinal)) {
+        let ShaperInner {
+            cosmic,
+            measure_calls,
+            reuse,
+            ..
+        } = &mut *inner;
+        let mut entry = match reuse.entry((wid, ordinal)) {
             Entry::Occupied(o) => o,
             Entry::Vacant(_) => panic!(
                 "shape_wrap requires a prior shape_unbounded call on the same (wid, ordinal)",
@@ -310,15 +308,17 @@ impl TextShaper {
         {
             return w.result;
         }
-        inner.measure_calls += 1;
-        let m = inner.dispatch(text, params, fit);
-        // Re-borrow `entry` because dispatch took `&mut inner` over the
-        // whole struct; the prior borrow ended at the early-return.
-        inner
-            .reuse
-            .get_mut(&(wid, ordinal))
-            .expect("entry just confirmed to exist")
-            .wrap = Some(WrapReuse {
+        let unbounded_key = entry.get().unbounded.key;
+        *measure_calls += 1;
+        let m = dispatch(
+            cosmic,
+            text,
+            unbounded_key.text_hash,
+            params,
+            fit,
+            unbounded_key,
+        );
+        entry.get_mut().wrap = Some(WrapReuse {
             target_q,
             halign,
             fit,
@@ -339,8 +339,9 @@ impl TextShaper {
         params: ShapeParams,
         body: impl FnOnce(&cosmic_text::Buffer) -> R,
     ) -> Option<R> {
-        let result = self.measure(text, params);
-        let inner = self.inner.borrow();
+        let mut inner = self.inner.borrow_mut();
+        inner.measure_calls += 1;
+        let result = inner.dispatch_direct(text, params);
         let buffer = inner.cosmic.as_ref()?.buffer_for(result.key)?;
         Some(body(buffer))
     }
@@ -559,11 +560,7 @@ impl ShaperInner {
         cosmic.advance_frame();
     }
 
-    /// Bypass-cache dispatch: cosmic if installed, mono otherwise.
-    /// Caller is responsible for incrementing `measure_calls` on cache
-    /// misses (we don't bump it here because some paths — `shape_wrap`
-    /// — already account for it).
-    fn dispatch(&mut self, text: &str, params: ShapeParams, fit: LineFit) -> MeasureResult {
+    fn dispatch_direct(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
         let ShapeParams {
             font_size_px,
             line_height_px,
@@ -571,19 +568,48 @@ impl ShaperInner {
             ..
         } = params;
         match self.cosmic.as_mut() {
-            // Truncation needs a finite width to cut against; without one
-            // it's just an unbounded single line, so fall through to the
-            // plain measure.
-            Some(c) => match (fit, max_width_px) {
-                (LineFit::Ellipsis | LineFit::Clip, Some(_)) => {
-                    c.measure_truncated(text, params, matches!(fit, LineFit::Ellipsis))
-                }
-                _ => c.measure(text, params),
-            },
-            // Mono fallback is single-line; cosmic per-line align
-            // can't be applied so `halign` is unused here.
-            None => mono_measure(text, font_size_px, line_height_px, max_width_px, fit),
+            Some(c) => c.measure(text, params),
+            None => mono_measure(
+                text,
+                font_size_px,
+                line_height_px,
+                max_width_px,
+                LineFit::Wrap,
+            ),
         }
+    }
+}
+
+/// Bypass-cache dispatch: cosmic if installed, mono otherwise. The caller
+/// owns reuse accounting, so shaping and map-entry mutation can borrow
+/// disjoint `ShaperInner` fields.
+fn dispatch(
+    cosmic: &mut Option<CosmicMeasure>,
+    text: &str,
+    text_hash: u64,
+    params: ShapeParams,
+    fit: LineFit,
+    unbounded_key: TextCacheKey,
+) -> MeasureResult {
+    let ShapeParams {
+        font_size_px,
+        line_height_px,
+        max_width_px,
+        ..
+    } = params;
+    match cosmic.as_mut() {
+        // Truncation needs a finite width to cut against; without one
+        // it's just an unbounded single line, so fall through to the
+        // plain measure.
+        Some(c) => match (fit, max_width_px) {
+            (LineFit::Ellipsis | LineFit::Clip, Some(_)) => {
+                c.measure_truncated(text, params, fit, unbounded_key)
+            }
+            _ => c.measure_hashed(text, text_hash, params),
+        },
+        // Mono fallback is single-line; cosmic per-line align
+        // can't be applied so `halign` is unused here.
+        None => mono_measure(text, font_size_px, line_height_px, max_width_px, fit),
     }
 }
 
@@ -596,7 +622,6 @@ impl ShaperInner {
 /// by size for atlas bin reuse). [`TextCacheKey::INVALID`] is the sentinel
 /// returned by the mono fallback — the renderer treats it as "drop this run".
 #[repr(C)]
-#[padding_struct::padding_struct]
 #[derive(Clone, Copy, Hash, Eq, PartialEq, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 pub(crate) struct TextCacheKey {
     /// 64-bit hash of the source string. `0` for the invalid sentinel.
@@ -612,17 +637,11 @@ pub(crate) struct TextCacheKey {
     pub lh_q: u32,
     /// [`FontFamily`] discriminant. Two runs with identical text/size
     /// but different families produce different shaped buffers, so the
-    /// key has to discriminate. `u8` because `FontFamily` is
-    /// `#[repr(u8)]`; `padding_struct` fills the trailing alignment
-    /// slack so `bytemuck::Pod`'s no-padding-bytes invariant still
-    /// holds.
+    /// key has to discriminate. `u8` because `FontFamily` is `#[repr(u8)]`.
     pub family_q: u8,
     /// [`FontWeight`] discriminant. Two runs with identical text/size/
     /// family but different weight shape against different physical faces
-    /// (Regular vs Bold), so the key has to discriminate. `0`
-    /// ([`FontWeight::Regular`]) folds into the all-zeroes `INVALID`
-    /// sentinel. Fits in the trailing alignment slack the `padding_struct`
-    /// macro already reserved — no size change.
+    /// (Regular vs Bold), so the key has to discriminate.
     pub weight_q: u8,
     /// [`HAlign`] discriminant for per-line text alignment. Cosmic
     /// shapes the buffer with line-internal x offsets that depend on
@@ -631,53 +650,29 @@ pub(crate) struct TextCacheKey {
     /// has to discriminate. `0` (`HAlign::Auto`) means "no per-line
     /// alignment" and matches the previous behaviour.
     pub halign_q: u8,
+    /// [`LineFit`] discriminant. Truncating fits bake different source text
+    /// into the shaped buffer at the same width, so fit is independent cache
+    /// identity rather than part of the text-content hash. This occupies the
+    /// former trailing padding byte, keeping the key at 24 bytes.
+    pub fit_q: u8,
 }
 
 impl TextCacheKey {
-    /// Sentinel returned by the mono fallback. The renderer skips runs
-    /// with this key. `bytemuck::Zeroable::zeroed` fills the padding
-    /// fields the `padding_struct` proc macro generated.
-    ///
-    /// `is_invalid` folds `family_q == 0` and `weight_q == 0` into the
-    /// all-zeroes check, which lines up with [`FontFamily::Sans`] and
-    /// [`FontWeight::Regular`] also having discriminant 0. If the variant
-    /// order ever changes, update `is_invalid` and the sentinel together.
-    pub const INVALID: Self = unsafe { std::mem::zeroed() };
-
-    /// Construct from the seven hashed fields. The `padding_struct` proc
-    /// macro injects trailing padding fields to satisfy
-    /// `bytemuck::Pod`'s no-padding-bytes invariant; the
-    /// `..Zeroable::zeroed()` spread fills them with zeros so callers
-    /// don't have to know they exist.
-    pub(crate) fn new(
-        text_hash: u64,
-        size_q: u32,
-        max_w_q: u32,
-        lh_q: u32,
-        family_q: u8,
-        weight_q: u8,
-        halign_q: u8,
-    ) -> Self {
-        Self {
-            text_hash,
-            size_q,
-            max_w_q,
-            lh_q,
-            family_q,
-            weight_q,
-            halign_q,
-            ..bytemuck::Zeroable::zeroed()
-        }
-    }
+    /// Sentinel returned by the mono fallback. Real keys always carry a
+    /// nonzero text hash, so that field alone tags validity.
+    pub const INVALID: Self = Self {
+        text_hash: 0,
+        size_q: 0,
+        max_w_q: 0,
+        lh_q: 0,
+        family_q: 0,
+        weight_q: 0,
+        halign_q: 0,
+        fit_q: 0,
+    };
 
     pub const fn is_invalid(self) -> bool {
         self.text_hash == 0
-            && self.size_q == 0
-            && self.max_w_q == 0
-            && self.lh_q == 0
-            && self.family_q == 0
-            && self.weight_q == 0
-            && self.halign_q == 0
     }
 }
 
@@ -930,19 +925,22 @@ struct WrapReuse {
 /// [`crate::shape::TextWrap`] (minus `SingleLine`/`Scroll`, which stay on
 /// the unbounded path). Threaded through `shape_wrap` → `dispatch` and
 /// folded into the shape cache key.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub(crate) enum LineFit {
     /// Multi-line reflow at the target width.
-    Wrap,
+    Wrap = 0,
     /// One line, hard-cut to the target width with no marker.
-    Clip,
+    Clip = 1,
     /// One line, cut to the target width with a trailing `…`.
-    Ellipsis,
+    Ellipsis = 2,
 }
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
     #![allow(dead_code)]
+    use crate::common::hash::hash_str;
+    use crate::shape::TextWrap;
     use crate::text::*;
 
     impl TextShaper {
@@ -954,6 +952,36 @@ pub mod test_support {
         /// `true` iff a reuse entry exists for `(wid, ordinal)`.
         pub fn has_reuse_entry(&self, wid: WidgetId, ordinal: u16) -> bool {
             self.inner.borrow().reuse.contains_key(&(wid, ordinal))
+        }
+
+        /// Drive the production unbounded-then-truncate sequence at one width.
+        pub fn measure_truncated_width_for_bench(
+            &self,
+            wid: WidgetId,
+            text: &str,
+            params: ShapeParams,
+            wrap: TextWrap,
+        ) -> MeasureResult {
+            let text_hash = hash_str(text);
+            let hash = ContentHash(text_hash);
+            self.shape_unbounded(wid, 0, hash, text, text_hash, params);
+            let target = params
+                .max_width_px
+                .expect("truncation benchmark requires a finite width");
+            let fit = match wrap {
+                TextWrap::Truncate => LineFit::Clip,
+                TextWrap::Ellipsis => LineFit::Ellipsis,
+                _ => panic!("truncation benchmark requires Truncate or Ellipsis"),
+            };
+            self.shape_wrap(
+                wid,
+                0,
+                hash,
+                text,
+                params,
+                (target.max(0.0) * 64.0).round() as u32,
+                fit,
+            )
         }
     }
 }

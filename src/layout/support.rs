@@ -32,8 +32,10 @@ pub(crate) struct TextCtx<'a> {
 
 /// One `ShapeRecord::Text` worth of layout-side inputs. Yielded by
 /// [`leaf_text_shapes`]; named so the fields aren't a tuple.
+#[derive(Debug)]
 pub(crate) struct LeafTextShape<'a> {
     pub(crate) text: &'a str,
+    pub(crate) text_hash: u64,
     pub(crate) font_size_px: f32,
     pub(crate) line_height_px: f32,
     pub(crate) wrap: TextWrap,
@@ -74,6 +76,7 @@ pub(crate) fn leaf_text_shapes<'a>(
         .filter_map(move |s| match s {
             ShapeRecord::Text {
                 text,
+                text_hash,
                 font_size_px,
                 line_height_px,
                 wrap,
@@ -83,6 +86,7 @@ pub(crate) fn leaf_text_shapes<'a>(
                 ..
             } => Some(LeafTextShape {
                 text: text.as_str(tc.bytes),
+                text_hash: *text_hash,
                 font_size_px: *font_size_px,
                 line_height_px: *line_height_px,
                 wrap: *wrap,

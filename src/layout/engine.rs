@@ -785,6 +785,7 @@ impl LayoutEngine {
             ordinal,
             curr_hash,
             ts.text,
+            ts.text_hash,
             ShapeParams {
                 font_size_px: ts.font_size_px,
                 line_height_px: ts.line_height_px,
