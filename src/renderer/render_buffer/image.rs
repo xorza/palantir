@@ -11,7 +11,7 @@ use soa_rs::Soars;
 /// [`RenderBuffer::frame_targets`]): the view's stable texture `id`, its used
 /// physical size (`used` — the composed paint-rect size, ceiled ≥1, clamped
 /// to the device max), and the app `paint` callback (threaded from
-/// `Ui::gpu_views` through the cmd-buffer side-list, so the backend reaches the
+/// `Ui::gpu_views` through the typed image command, so the backend reaches the
 /// renderer without a `Ui`-side registry). The backend allocates the target to
 /// exactly `used` and runs `paint` into it before the main pass samples it.
 #[derive(Clone, Debug)]
