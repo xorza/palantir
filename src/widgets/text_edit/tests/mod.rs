@@ -1,20 +1,18 @@
 use crate::widgets::text_edit::{
-    TextEditState, dispatch_shortcut, next_grapheme_boundary, next_word_boundary,
+    Editor, KeyOutcome, TextEditState, next_grapheme_boundary, next_word_boundary,
     prev_grapheme_boundary, prev_word_boundary, word_range_at,
 };
 
 /// Test wrapper: routes one keypress through `dispatch_shortcut`
 /// (clipboard / undo / select-all) then falls through to single-line
-/// `apply_key`. Single-line tests never exercise Up/Down so the
-/// motion sink is always `None`. Menu-intercept gating is exercised
-/// end-to-end via the integration tests instead.
+/// `apply_key`. Menu-intercept gating is exercised end-to-end via the
+/// integration tests instead. Returns whether the key asked to blur.
 fn apply_key(text: &mut String, state: &mut TextEditState, kp: KeyPress) -> bool {
-    let mut edited = false;
-    if dispatch_shortcut(text, state, kp, false, false, None, &mut edited) {
+    let mut ed = Editor::new(text, state, false, None);
+    if ed.dispatch_shortcut(kp, false) {
         return false;
     }
-    let mut vert = None;
-    crate::widgets::text_edit::apply_key(text, state, kp, false, None, &mut vert, &mut edited)
+    ed.apply_key(kp) == KeyOutcome::Blur
 }
 use crate::Spacing;
 use crate::Ui;
