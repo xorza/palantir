@@ -4,7 +4,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::image_pipeline::textures::ImageTextures;
 use crate::renderer::backend::pipeline_utils::texture_bind_group;
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuInitCtx};
-use crate::renderer::render_buffer::RenderTargetDraw;
+use crate::renderer::render_buffer::image::RenderTargetDraw;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use glam::UVec2;
@@ -169,7 +169,7 @@ fn keep_target(
 mod tests {
     use super::keep_target;
     use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
-    use crate::renderer::render_buffer::RenderTargetDraw;
+    use crate::renderer::render_buffer::image::RenderTargetDraw;
     use crate::renderer::render_buffer::owner::RenderOwnerId;
     use crate::renderer::texture_id::TextureId;
     use glam::UVec2;

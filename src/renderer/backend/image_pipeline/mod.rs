@@ -18,7 +18,7 @@ use crate::renderer::backend::pipeline_utils::{
 };
 use crate::renderer::image_registry::ImageRegistry;
 use crate::renderer::render_buffer::owner::RenderOwnerId;
-use crate::renderer::render_buffer::{ImageInstance, RenderTargetDraw};
+use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
 use crate::renderer::texture_id::TextureId;
 use std::time::Duration;
 

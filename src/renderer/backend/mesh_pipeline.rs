@@ -14,7 +14,7 @@ use crate::primitives::mesh::MeshVertex;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::render_buffer::MeshInstance;
+use crate::renderer::render_buffer::mesh::MeshInstance;
 
 #[derive(Debug)]
 pub(crate) struct MeshPipeline {
@@ -112,7 +112,7 @@ impl MeshPipeline {
         );
     }
 
-    /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::MeshDraw).
+    /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::mesh::MeshDraw).
     /// `instance` indexes into the per-frame instance buffer for the
     /// matching transform + tint.
     pub(crate) fn draw(

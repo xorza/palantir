@@ -32,7 +32,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
-use crate::renderer::render_buffer::TextRun;
+use crate::renderer::render_buffer::text::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
@@ -488,7 +488,7 @@ pub mod test_support {
     use crate::renderer::backend::pipeline_utils::StencilVariant;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
-    use crate::renderer::render_buffer::TextRun;
+    use crate::renderer::render_buffer::text::TextRun;
 
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
@@ -626,7 +626,7 @@ mod gpu_regression {
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::text::test_support::make_run;
-    use crate::renderer::render_buffer::TextRun;
+    use crate::renderer::render_buffer::text::TextRun;
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
 

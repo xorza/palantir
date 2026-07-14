@@ -318,7 +318,7 @@ pub(crate) struct DrawImagePayload {
     /// texture" and skips the draw.
     pub(crate) handle: TextureId,
     /// `IMG_FLAG_*` bits (tile wrap, nearest sampling), forwarded
-    /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::ImageInstance).
+    /// verbatim into [`ImageInstance::flags`](crate::renderer::render_buffer::image::ImageInstance).
     /// `0` (the common case, including a `GpuView`) samples the UV
     /// directly with the bilinear sampler.
     pub(crate) flags: u32,

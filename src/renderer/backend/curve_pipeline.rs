@@ -2,7 +2,7 @@
 //! arcs — see `CurveInstance::kind`). One `draw` per scissor
 //! group covers every `CurveInstance` in the group's `GroupBatch` —
 //! the vertex shader subdivides each instance into
-//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::SEGMENTS_PER_INSTANCE)
+//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE)
 //! chords (96 vertices per instance, no index buffer) and offsets the
 //! strip perpendicular to the tangent for stroking + AA.
 //!
@@ -20,7 +20,7 @@ use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
 use crate::renderer::gradient_atlas::ATLAS_ROWS;
-use crate::renderer::render_buffer::{
+use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
     CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
     SEGMENTS_PER_INSTANCE,

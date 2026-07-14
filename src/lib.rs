@@ -52,7 +52,7 @@ pub mod text_backend_internals {
     pub use crate::renderer::backend::gpu_ctx::GpuCtx;
     pub use crate::renderer::backend::queue::Queue;
     pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
-    pub use crate::renderer::render_buffer::TextRun;
+    pub use crate::renderer::render_buffer::text::TextRun;
 }
 
 pub use forest::frame_arena::FrameArena;
@@ -196,7 +196,10 @@ mod hot_struct_sizes {
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
     };
     use crate::renderer::quad::Quad;
-    use crate::renderer::render_buffer::{CurveInstance, ImageInstance, MeshInstance, TextRun};
+    use crate::renderer::render_buffer::curve::CurveInstance;
+    use crate::renderer::render_buffer::image::ImageInstance;
+    use crate::renderer::render_buffer::mesh::MeshInstance;
+    use crate::renderer::render_buffer::text::TextRun;
     use crate::text::TextCacheKey;
     use crate::ui::cascade::CascadeInputHash;
     use crate::ui::cascade::EntryRow;
