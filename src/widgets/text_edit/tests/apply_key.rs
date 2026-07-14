@@ -106,17 +106,7 @@ fn apply_key_cases() {
 
 /// Type one char via the real (cap-aware) `apply_key`.
 fn type_char(s: &mut String, state: &mut TextEditState, c: char, max: Option<usize>) {
-    let mut vert = None;
-    let mut edited = false;
-    crate::widgets::text_edit::apply_key(
-        s,
-        state,
-        press(Key::Char(c)),
-        false,
-        max,
-        &mut vert,
-        &mut edited,
-    );
+    Editor::new(s, state, false, max).apply_key(press(Key::Char(c)));
 }
 
 #[test]
