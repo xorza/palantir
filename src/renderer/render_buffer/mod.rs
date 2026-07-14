@@ -9,8 +9,13 @@ use crate::renderer::texture_id::TextureId;
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 use soa_rs::{Soa, Soars};
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+pub(crate) mod batch;
+pub(crate) mod owner;
+
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
+use crate::renderer::render_buffer::owner::RenderOwnerId;
 
 /// Output of `compose`: physical-px instances grouped by scissor region plus
 /// the wgpu callback sidecar for composited `GpuView`s.
@@ -116,16 +121,6 @@ pub(crate) struct RenderBuffer {
     pub(crate) owner: RenderOwnerId,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub(crate) struct RenderOwnerId(u64);
-
-impl RenderOwnerId {
-    pub(crate) fn reserve() -> Self {
-        static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
-        Self(NEXT_OWNER.fetch_add(1, Ordering::Relaxed))
-    }
-}
-
 impl RenderBuffer {
     pub(crate) fn new(owner: RenderOwnerId) -> Self {
         Self {
@@ -185,75 +180,6 @@ impl RenderBuffer {
         self.curve_batches.clear();
         self.rounded_clips.clear();
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct DrawGroup {
-    pub(crate) scissor: Option<URect>,
-    /// Outer→inner chain of rounded masks active for this group — a
-    /// span into [`RenderBuffer::rounded_clips`]; empty = plain scissor.
-    /// `scissor` is the rasterizer scissor (already clamped to viewport
-    /// / ancestor scissors), while each chain entry carries the
-    /// **unclamped** physical-px mask rect + per-corner radii used by
-    /// the stencil-mask SDF. Keeping the mask rects unclamped is what
-    /// prevents rounded corners from "sliding inward" into the visible
-    /// region when the clipped node partially leaves the viewport — the
-    /// SDF must always know the rect's true geometry; the scissor
-    /// handles off-screen pixel rejection.
-    pub(crate) rounded_clips: Span,
-    pub(crate) quads: Span,
-}
-
-/// A coalesced batch of text runs sharing one text-backend `prepare` /
-/// `render` call. `texts` is a contiguous range into
-/// `RenderBuffer.texts`. The schedule emits the render step at the
-/// end of the batch's last group (after that group's quads), so any
-/// quad in any group of the batch can underpaint the merged text.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct TextBatch {
-    pub(crate) texts: Span,
-    /// Index into `RenderBuffer.groups` of the last group whose text
-    /// contributed to this batch. The schedule emits the batch's
-    /// `Text` step immediately after this group's quads draw, so any
-    /// quad in any group of the batch underpaints the merged text.
-    /// Intermediate groups with no text (e.g. a quad-only group
-    /// between two text groups sharing one batch) can fall between
-    /// the batch's `first_group` and `last_group`.
-    pub(crate) last_group: u32,
-    /// Physical-pixel union of every contributing `TextRun.bounds`.
-    /// The schedule sets this as the GPU scissor before the batch's
-    /// `Text` step (intersected with `damage_scissor`) so glyphs can't
-    /// rasterize outside any contributing run's bounds — long lines
-    /// whose painted block grew past the per-group scissor (via
-    /// ladder-snap or a wide owner rect) get clipped here. The
-    /// shader does no per-fragment bounds test, so the GPU scissor
-    /// is the only x-axis clip.
-    pub(crate) scissor: URect,
-    /// The rounded-mask chain every run in this batch was recorded
-    /// under — a span into [`RenderBuffer::rounded_clips`], value-equal
-    /// to `groups[last_group].rounded_clips` (a chain change closes the
-    /// batch, so a batch never mixes masks). The schedule needs it when
-    /// a batch drains past damage-skipped groups: the text must
-    /// stencil-test against *this* chain, not whatever mask happens to
-    /// be stamped at the drain point.
-    pub(crate) rounded_clips: Span,
-}
-
-/// A contiguous non-text draw range anchored to the group that drains it.
-/// Mesh, image, and curve batches share this exact scheduling contract; the
-/// owning `RenderBuffer` column determines what [`Self::items`] indexes.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct GroupBatch {
-    pub(crate) items: Span,
-    pub(crate) last_group: u32,
-}
-
-/// Above-text replay tiers in the backend's fixed intra-group order.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) enum PaintTier {
-    Mesh,
-    Image,
-    Curve,
 }
 
 /// Physical-px rounded-clip geometry for stencil masking. `mask_rect`
@@ -533,7 +459,8 @@ pub(crate) fn cap_lanes(start: u32, end: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::{RenderBuffer, RenderOwnerId};
+    use super::RenderBuffer;
+    use crate::renderer::render_buffer::owner::RenderOwnerId;
 
     #[test]
     fn render_owner_is_explicit_and_unique() {
