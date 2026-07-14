@@ -106,6 +106,7 @@ impl AnimSpec {
     /// never instant by construction. `Ui::animate` short-circuits on
     /// this *and* on `None`, so a manually-constructed
     /// `Duration { secs: 0.0 }` behaves identically to passing `None`.
+    #[inline(always)]
     pub fn is_instant(self) -> bool {
         match self {
             Self::Duration { secs, .. } => approx_zero(secs) || secs < 0.0,
