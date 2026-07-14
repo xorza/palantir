@@ -128,7 +128,7 @@ impl<'a> Splitter<'a> {
                 };
                 ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
             }
-            if divider.left.click_count() == 2 {
+            if divider.left.double_clicked() {
                 ratio = 0.5;
             }
         }
