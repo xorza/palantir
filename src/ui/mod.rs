@@ -1237,6 +1237,10 @@ impl Ui {
     /// current value. `spec = None` snaps to `target` and drops any
     /// stale row without requesting a repaint — the canonical
     /// "no animation" path. See `src/animation/animations.md`.
+    // Generic and reached through cross-module widget helpers. Keep the
+    // dominant no-map/no-spec return in the widget's block so a static theme
+    // doesn't pay an outlined call plus a large `V` return-slot handoff.
+    #[inline(always)]
     pub fn animate<V: Animatable>(
         &mut self,
         id: WidgetId,
