@@ -1133,7 +1133,9 @@ fn polyline_cmd(
 /// kind, all in the curve stream.
 #[test]
 fn compose_polyline_emits_segments_and_join_chrome() {
-    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, cap_lanes};
+    use crate::renderer::render_buffer::curve::{
+        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, cap_lanes,
+    };
     let pts = [
         Vec2::new(10.0, 10.0),
         Vec2::new(60.0, 40.0),
@@ -1211,7 +1213,9 @@ fn compose_polyline_emits_segments_and_join_chrome() {
 /// bends), keep miter chrome on gentle ones — the SVG convention.
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
-    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
+    use crate::renderer::render_buffer::curve::{
+        CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
+    };
     let emit = |pts: [Vec2; 3]| {
         run(
             |b, arena| {
@@ -1267,7 +1271,7 @@ fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
 /// walker's kept-point discipline.
 #[test]
 fn compose_polyline_color_modes_and_coincident_skip() {
-    use crate::renderer::render_buffer::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT};
+    use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT};
     let red = Color::rgb(1.0, 0.0, 0.0);
     let green = Color::rgb(0.0, 1.0, 0.0);
     let blue = Color::rgb(0.0, 0.0, 1.0);
@@ -1520,7 +1524,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
     use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
-    use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
+    use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
     let buf = run(
         |b, _arena| {
             // Plain draw: flags stay 0.
@@ -1684,7 +1688,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     use crate::renderer::frontend::cmd_buffer::payload::DrawArcPayload;
-    use crate::renderer::render_buffer::CURVE_KIND_ARC;
+    use crate::renderer::render_buffer::curve::CURVE_KIND_ARC;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
     let sweep = 1.5 * PI;
@@ -1859,7 +1863,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
     use crate::renderer::frontend::cmd_buffer::payload::{DrawArcPayload, DrawCurvePayload};
-    use crate::renderer::render_buffer::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
+    use crate::renderer::render_buffer::curve::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
     let buf = run(
         |b, _arena| {
             b.draw_arc(DrawArcPayload {
