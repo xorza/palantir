@@ -366,7 +366,7 @@ impl<'a> DragValue<'a> {
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
         // programmatic `request_focus` get the same fresh draft.
-        if self.editable && !state.disabled && state.left.clicked {
+        if self.editable && !state.disabled && state.left.clicked() {
             ui.request_focus(Some(id));
             // Keep the response's documented focused-synchronicity: the raw
             // snapshot predates the request.
