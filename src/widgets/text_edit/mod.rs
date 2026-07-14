@@ -1,11 +1,12 @@
 use crate::common::clipboard::{get, set};
 use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::{Configure, Element, LayoutMode};
+
 use crate::forest::tree::paint_anims::PaintAnim;
 use crate::input::keyboard::{Key, KeyPress, KeyboardEvent, Modifiers};
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
-use crate::layout::types::align::{Align, HAlign, VAlign};
+use crate::layout::types::align::{Align, HAlign};
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::approx::noop_f32;
@@ -14,7 +15,7 @@ use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::{Shape, TextWrap};
-use crate::text::{CursorPos, FontFamily, FontWeight, ShapeParams, TextShaper};
+use crate::text::{CursorPos, FontFamily, FontWeight, ShapeParams, TextShaper, text_in_rect};
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
 use crate::widgets::theme::text_edit::TextEditTheme;
@@ -29,14 +30,6 @@ use std::time::Duration;
 /// to the visible phase on every caret or text change so during
 /// active typing the caret stays solid.
 const BLINK_HALF: f32 = 0.5;
-
-/// Max time between presses still counted as one multi-click
-/// sequence. Standard OS default.
-const MULTI_CLICK_WINDOW: f32 = 0.5;
-
-/// Max distance (in logical px) between consecutive presses still
-/// counted as the same multi-click sequence.
-const MULTI_CLICK_RADIUS: f32 = 5.0;
 
 /// After this long without caret/text/selection change, the blink
 /// stops scheduling wakes and the caret stays solid — saves the host
@@ -73,12 +66,6 @@ pub(crate) struct TextEditState {
     /// Caret byte at the rising edge of the pointer press, used as the
     /// drag anchor for click+drag selection. Reset on release.
     pub(crate) drag_anchor: Option<usize>,
-    /// Was the left-button press latched on the widget last frame
-    /// (`ResponseState::held` — capture-based, rect-independent)? Used to
-    /// detect the press rising edge for anchor latching. Capture-based so
-    /// a drag that leaves the editor's rect stays a continuation, not a
-    /// fresh press that would drop the selection.
-    pub(crate) prev_held: bool,
     /// Was the widget focused last frame? Used to detect the
     /// focus rising edge so the caret blink resets on re-focus
     /// even when the caret position itself didn't change.
@@ -103,17 +90,6 @@ pub(crate) struct TextEditState {
     /// against this so the caret stays solid for the first
     /// [`BLINK_HALF`] seconds after any input.
     pub(crate) last_caret_change: Duration,
-    /// `Ui::time` of the most recent press rising-edge. Compared
-    /// against the next press to detect double/triple clicks within
-    /// [`MULTI_CLICK_WINDOW`].
-    pub(crate) last_press_time: Duration,
-    /// Pointer position of the most recent press, for the "click
-    /// didn't move" half of the multi-click predicate.
-    pub(crate) last_press_pos: Vec2,
-    /// Running click count for the current multi-click sequence.
-    /// 1 = single click, 2 = double, ≥3 = triple. Reset to 1 once
-    /// the time or distance threshold is exceeded.
-    pub(crate) click_count: u8,
 }
 
 #[derive(Clone, Debug)]
@@ -159,9 +135,10 @@ fn apply_history(text: &mut String, state: &mut TextEditState, snap: EditSnapsho
     state.last_edit_kind = None;
 }
 
-fn apply_undo(text: &mut String, state: &mut TextEditState) {
+/// Returns whether a snapshot was applied (`false` on an empty stack).
+fn apply_undo(text: &mut String, state: &mut TextEditState) -> bool {
     let Some(snap) = state.undo.pop_back() else {
-        return;
+        return false;
     };
     state.redo.push(EditSnapshot {
         text: text.clone(),
@@ -169,28 +146,37 @@ fn apply_undo(text: &mut String, state: &mut TextEditState) {
         selection: state.selection,
     });
     apply_history(text, state, snap);
+    true
 }
 
-fn apply_redo(text: &mut String, state: &mut TextEditState) {
-    let Some(snap) = state.redo.pop() else { return };
+/// Returns whether a snapshot was applied (`false` on an empty stack).
+fn apply_redo(text: &mut String, state: &mut TextEditState) -> bool {
+    let Some(snap) = state.redo.pop() else {
+        return false;
+    };
     state.undo.push_back(EditSnapshot {
         text: text.clone(),
         caret: state.caret,
         selection: state.selection,
     });
     apply_history(text, state, snap);
+    true
 }
 
-/// Cut the live selection to the clipboard. No-op when nothing is
-/// selected — caller can use `state.sel_range().is_some()` to gate
-/// menu / shortcut UI affordances.
-fn cut_selection(text: &mut String, state: &mut TextEditState) {
-    let Some(r) = state.sel_range() else { return };
+/// Cut the live selection to the clipboard. Returns whether anything
+/// was cut — `false` when nothing is selected; caller can use
+/// `state.sel_range().is_some()` to gate menu / shortcut UI
+/// affordances.
+fn cut_selection(text: &mut String, state: &mut TextEditState) -> bool {
+    let Some(r) = state.sel_range() else {
+        return false;
+    };
     set(&text[r.clone()]);
     record_edit(text, state, EditKind::Other);
     text.replace_range(r.clone(), "");
     state.caret = r.start;
     state.selection = None;
+    true
 }
 
 /// Insert `s` at the caret, capped so the buffer holds at most
@@ -198,12 +184,18 @@ fn cut_selection(text: &mut String, state: &mut TextEditState) {
 /// that don't fit are dropped; the caret advances past what landed.
 /// Call *after* `delete_selection` so the freed room counts. The cap is
 /// by char count (not bytes) and only ever inserts on a char boundary.
-fn insert_capped(text: &mut String, state: &mut TextEditState, s: &str, max_chars: Option<usize>) {
+/// Returns whether anything landed (`false` when the cap ate it all).
+fn insert_capped(
+    text: &mut String,
+    state: &mut TextEditState,
+    s: &str,
+    max_chars: Option<usize>,
+) -> bool {
     let fit: &str = match max_chars {
         Some(max) => {
             let room = max.saturating_sub(text.chars().count());
             if room == 0 {
-                return;
+                return false;
             }
             match s.char_indices().nth(room) {
                 Some((byte, _)) => &s[..byte],
@@ -213,43 +205,48 @@ fn insert_capped(text: &mut String, state: &mut TextEditState, s: &str, max_char
         None => s,
     };
     if fit.is_empty() {
-        return;
+        return false;
     }
     text.insert_str(state.caret, fit);
     state.caret += fit.len();
+    true
 }
 
 /// Paste `raw` at the caret, replacing any live selection. Sanitizes
 /// line breaks for single-line editors so `\n` / `\r` never enter the
-/// buffer. No-op on an empty clipboard. Honors `max_chars`.
+/// buffer. No-op on an empty clipboard. Honors `max_chars`. Returns
+/// whether the buffer was mutated.
 fn paste_at_caret(
     text: &mut String,
     state: &mut TextEditState,
     raw: &str,
     multiline: bool,
     max_chars: Option<usize>,
-) {
+) -> bool {
     let cleaned: Cow<'_, str> = if multiline {
         Cow::Borrowed(raw)
     } else {
         Cow::Owned(sanitize_single_line(raw))
     };
     if cleaned.is_empty() {
-        return;
+        return false;
     }
     record_edit(text, state, EditKind::Other);
-    delete_selection(text, state);
-    insert_capped(text, state, &cleaned, max_chars);
+    let deleted = delete_selection(text, state);
+    let inserted = insert_capped(text, state, &cleaned, max_chars);
+    deleted || inserted
 }
 
-fn clear_buffer(text: &mut String, state: &mut TextEditState) {
+/// Returns whether the buffer was non-empty and got cleared.
+fn clear_buffer(text: &mut String, state: &mut TextEditState) -> bool {
     if text.is_empty() {
-        return;
+        return false;
     }
     record_edit(text, state, EditKind::Other);
     text.clear();
     state.caret = 0;
     state.selection = None;
+    true
 }
 
 impl TextEditState {
@@ -340,27 +337,6 @@ fn sanitize_single_line(s: &str) -> String {
     out
 }
 
-/// Place a text bbox of size `measured` inside an inner rect of size
-/// `inner` per `align`, returning the top-left offset. Overflow on
-/// either axis clamps that axis to zero, matching the encoder's
-/// `align_text_in` so widget-side caret/selection placement can't
-/// drift from the rendered glyphs. The widget owns this rather than
-/// delegating to `Shape::Text.align` because caret + selection rects
-/// must use the same offset, and they aren't `Shape::Text`.
-fn align_offset(inner: Size, measured: Size, align: Align) -> Vec2 {
-    let dx = match align.halign() {
-        HAlign::Auto | HAlign::Left | HAlign::Stretch => 0.0,
-        HAlign::Center => (inner.w - measured.w) * 0.5,
-        HAlign::Right => inner.w - measured.w,
-    };
-    let dy = match align.valign() {
-        VAlign::Auto | VAlign::Top | VAlign::Stretch => 0.0,
-        VAlign::Center => (inner.h - measured.h) * 0.5,
-        VAlign::Bottom => inner.h - measured.h,
-    };
-    Vec2::new(dx.max(0.0), dy.max(0.0))
-}
-
 /// Bundle of text-shape parameters resolved once at the top of
 /// `show()` and threaded down to input handling, scroll, and caret
 /// resolution. All fields are read-only for the duration of one
@@ -377,6 +353,27 @@ struct ShapeCtx {
     weight: FontWeight,
     multiline: bool,
     halign: HAlign,
+    /// Alignment offset of the measured text block inside the inner
+    /// rect ([`text_in_rect`] against last frame's arranged
+    /// rect). `ZERO` before the first arrange — patched onto the ctx
+    /// right after the measure that derives it.
+    block_offset: Vec2,
+}
+
+impl ShapeCtx {
+    /// The shaper-facing subset, assembled in one place — every
+    /// measure / cursor / hit query must pass identical params or it
+    /// reads a different `TextCacheKey` than the rendered buffer.
+    fn params(&self) -> ShapeParams {
+        ShapeParams {
+            font_size_px: self.font_size,
+            line_height_px: self.line_height_px,
+            max_width_px: self.wrap_target,
+            family: self.family,
+            weight: self.weight,
+            halign: self.halign,
+        }
+    }
 }
 
 /// Scroll the editor so the caret stays inside the visible inner
@@ -576,7 +573,7 @@ impl<'a> TextEdit<'a> {
 
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = ui.widget_id(&self.element);
-        let is_focused = ui.input.focused == Some(id);
+        let mut is_focused = ui.input.focused == Some(id);
         let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
         // Apply theme padding/margin when the builder hasn't set
         // anything (sentinel: `Spacing::ZERO` == "use theme"). The
@@ -597,6 +594,15 @@ impl<'a> TextEdit<'a> {
         // response to a freshly toggled `.disabled(true)`.
         let mut response = ui.response_for(id);
         response.disabled |= self.element.flags.is_disabled();
+        // A disabled editor must not keep keyboard focus — it would
+        // paint disabled while still routing typing / paste / undo
+        // into the host's buffer. Kick focus out (mirrors `DragValue`'s
+        // click-to-edit path) and run this frame unfocused, so the
+        // same frame's keystrokes are dropped and no caret paints.
+        if is_focused && response.disabled {
+            ui.request_focus(None);
+            is_focused = false;
+        }
         let fallback_text = ui.theme.text;
         let look = theme
             .pick(response)
@@ -627,10 +633,10 @@ impl<'a> TextEdit<'a> {
         // Reserve a caret-width sliver at the trailing edge of every
         // line so a caret sitting at end-of-line on right/center-
         // aligned text stays inside the clip. The shaper's per-line
-        // halign and the widget's single-line `align_offset` both see
+        // halign and the widget's single-line `text_in_rect` both see
         // the same reduced width, so glyphs + caret + selection wash
         // shift together and click hit-test (which reads back the
-        // same `align_offset`) stays consistent.
+        // same `text_in_rect`) stays consistent.
         let caret_room = theme.caret_width.max(0.0);
 
         // Wrap target for multi-line: editor's inner width (outer −
@@ -662,7 +668,7 @@ impl<'a> TextEdit<'a> {
         } else {
             Align::LEFT
         });
-        let ctx = ShapeCtx {
+        let mut ctx = ShapeCtx {
             font_size,
             line_height_px: font_size * line_height_mult,
             padding,
@@ -671,6 +677,7 @@ impl<'a> TextEdit<'a> {
             weight: look.text.weight,
             multiline: self.multiline,
             halign: text_align.halign(),
+            block_offset: Vec2::ZERO,
         };
         // Multi-line lets cosmic bake per-line halign offsets into
         // the shaped buffer (`BufferLine::set_align`), so the widget
@@ -682,7 +689,7 @@ impl<'a> TextEdit<'a> {
         } else {
             text_align
         };
-        // `layout_rect` (pre-transform) — `align_offset` math has to
+        // `layout_rect` (pre-transform) — `text_in_rect` math has to
         // stay in the same units as `measured` (logical, from the
         // shaper). Reading `rect` would mix post-transform widget
         // height with logical text height and drift the vertical center
@@ -699,64 +706,53 @@ impl<'a> TextEdit<'a> {
             } else {
                 &self.placeholder
             };
-            let m = ui
-                .ctx
-                .shaper
-                .measure(
-                    measure_str,
-                    ShapeParams {
-                        font_size_px: ctx.font_size,
-                        line_height_px: ctx.line_height_px,
-                        max_width_px: ctx.wrap_target,
-                        family: ctx.family,
-                        weight: ctx.weight,
-                        halign: ctx.halign,
-                    },
-                )
-                .size;
+            let m = ui.ctx.shaper.measure(measure_str, ctx.params()).size;
             content_w = m.w;
             let measured = Size::new(m.w, m.h.max(ctx.line_height_px));
             let inner_w = (r.size.w - ctx.padding.horiz() - caret_room).max(0.0);
             let inner_h = (r.size.h - ctx.padding.vert()).max(0.0);
-            align_offset(Size::new(inner_w, inner_h), measured, widget_align)
+            text_in_rect(
+                Rect::new(0.0, 0.0, inner_w, inner_h),
+                measured,
+                widget_align,
+            )
+            .min
         } else {
             Vec2::ZERO
         };
+        ctx.block_offset = offset;
 
         // Phase 1: input handling. Touches `ui.state` and `ui.input`
         // (separate fields, disjoint borrows). Click-to-place-caret
         // happens here too, before keystroke processing, so a click +
         // type in the same frame inserts at the click point.
-        // Snapshot caret + selection + text length before input so
-        // the blink reset can detect any change without instrumenting
-        // every mutation site.
-        let text_len_before = self.text.len();
+        // Snapshot caret + selection before input so the blink reset
+        // can detect caret motion.
         let (caret_before, sel_before, was_focused) = {
             let s = ui.state_mut::<TextEditState>(id);
             (s.caret, s.selection, s.prev_focused)
         };
-        let mut blur_after = false;
-        let mut submitted = false;
         let input = handle_input(
             ui,
             id,
             is_focused,
             self.text,
             &ctx,
-            offset,
             self.max_chars,
             self.select_all_on_focus,
-            &mut blur_after,
-            &mut submitted,
         );
         let caret_byte = input.caret;
         let selection = input.selection;
+        let blur_after = input.blur;
+        let submitted = input.submitted;
         // Edit-specific signals for the returned `TextEditResponse`, captured
-        // before `self.text` is moved below. `changed` is a length-delta proxy —
-        // it catches every insert/delete (a same-length overwrite is the only
-        // miss, negligible for the fields this serves). Focus edges read against
-        // `was_focused` (this frame's `prev_focused`, before Phase 2 rewrites it).
-        let changed = text_len_before != self.text.len();
+        // before `self.text` is moved below. `edited` comes from the mutation
+        // choke points (`record_edit`, undo/redo), so a same-length overwrite
+        // (select "a", type "b") still reports. The context menu can also
+        // mutate the buffer — Phase 5 ORs its result in. Focus edges read
+        // against `was_focused` (this frame's `prev_focused`, before Phase 2
+        // rewrites it).
+        let mut changed = input.edited;
         let gained_focus = is_focused && !was_focused;
         let lost_focus = was_focused && !is_focused;
 
@@ -766,24 +762,12 @@ impl<'a> TextEdit<'a> {
         // and (c) snapshotting `last_caret_change` for the visibility
         // calc below. `caret_pos` is computed via the shaper (disjoint
         // field) first so the state borrow is contiguous.
-        let caret_pos = ui.ctx.shaper.cursor_xy(
-            self.text,
-            caret_byte,
-            ShapeParams {
-                font_size_px: ctx.font_size,
-                line_height_px: ctx.line_height_px,
-                max_width_px: ctx.wrap_target,
-                family: ctx.family,
-                weight: ctx.weight,
-                halign: ctx.halign,
-            },
-        );
+        let caret_pos = ui.ctx.shaper.cursor_xy(self.text, caret_byte, ctx.params());
         let now = ui.time;
         let (scroll, last_caret_change) = {
             let state = ui.state_mut::<TextEditState>(id);
-            let caret_changed = caret_before != caret_byte
-                || sel_before != state.selection
-                || text_len_before != self.text.len();
+            let caret_changed =
+                caret_before != caret_byte || sel_before != state.selection || input.edited;
             let focus_gained = is_focused && !state.prev_focused;
             update_scroll(
                 state,
@@ -856,22 +840,9 @@ impl<'a> TextEdit<'a> {
                 } else {
                     self.text.as_str()
                 };
-                let reserve_w = ui
-                    .ctx
-                    .shaper
-                    .measure(
-                        measure_str,
-                        ShapeParams {
-                            font_size_px: ctx.font_size,
-                            line_height_px: ctx.line_height_px,
-                            max_width_px: None,
-                            family: ctx.family,
-                            weight: ctx.weight,
-                            halign: ctx.halign,
-                        },
-                    )
-                    .size
-                    .w;
+                // `ctx.params()` measures unbounded here — single-line,
+                // so `wrap_target` is `None` by construction.
+                let reserve_w = ui.ctx.shaper.measure(measure_str, ctx.params()).size.w;
                 let reserved = reserve_w + ctx.padding.horiz() + 2.0 * caret_room;
                 if element.min_size.w < reserved {
                     element.min_size.w = reserved;
@@ -893,19 +864,9 @@ impl<'a> TextEdit<'a> {
                 // painting through the public `ui.add_shape` API.
                 let sel_color = theme.selection;
                 let mut rects = crate::text::SelectionRects::new();
-                ui.ctx.shaper.selection_rects(
-                    text_ptr,
-                    range,
-                    ShapeParams {
-                        font_size_px: ctx.font_size,
-                        line_height_px: ctx.line_height_px,
-                        max_width_px: ctx.wrap_target,
-                        family: ctx.family,
-                        weight: ctx.weight,
-                        halign: ctx.halign,
-                    },
-                    &mut rects,
-                );
+                ui.ctx
+                    .shaper
+                    .selection_rects(text_ptr, range, ctx.params(), &mut rects);
                 let dx = pad_l + offset.x - scroll.x;
                 let dy = pad_t + offset.y - scroll.y;
                 for r in rects {
@@ -1018,7 +979,10 @@ impl<'a> TextEdit<'a> {
 
         // Phase 5: the default Cut / Copy / Paste / Clear context menu, opened
         // by secondary-click and mutating the buffer through the same borrow.
-        default_context_menu(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
+        // Menu actions edit the buffer after Phase 1 captured `input.edited`,
+        // so fold their result into `changed` here.
+        changed |=
+            default_context_menu(ui, id, &snapshot, self.text, ctx.multiline, self.max_chars);
 
         // Eager Response build last — all `&mut ui` ops above are
         // done. Caller inherits the cached state without a re-probe. The
@@ -1042,7 +1006,8 @@ impl Configure for TextEdit<'_> {
 /// The editor's default Cut / Copy / Paste / Clear context menu, opened by
 /// secondary-click. Items mutate the host's `&mut String` through the same
 /// borrow `show` holds and sync `TextEditState` caret/selection for the next
-/// frame. Clipboard liveness is probed **inside** the closure — `ContextMenu`
+/// frame. Returns whether a menu action mutated the buffer this frame.
+/// Clipboard liveness is probed **inside** the closure — `ContextMenu`
 /// early-returns when closed, so a closed menu makes no clipboard syscall
 /// (`arboard` → `NSPasteboardItem`) on the common path. `Cut`/`Copy` gate on a
 /// live selection; `Paste` on a non-empty clipboard; `Clear` on a non-empty
@@ -1054,23 +1019,26 @@ fn default_context_menu(
     text: &mut String,
     multiline: bool,
     max_chars: Option<usize>,
-) {
+) -> bool {
     let sel = ui.state_mut::<TextEditState>(id).sel_range();
     let has_sel = sel.is_some();
     let has_text = !text.is_empty();
+    let mut edited = false;
     ContextMenu::attach(ui, snapshot).show(ui, |ui, popup| {
         if MenuItem::new("Cut")
             .shortcut(CUT)
             .enabled(has_sel)
             .show(ui, popup)
+            .left
             .clicked()
         {
-            cut_selection(text, ui.state_mut::<TextEditState>(id));
+            edited |= cut_selection(text, ui.state_mut::<TextEditState>(id));
         }
         if MenuItem::new("Copy")
             .shortcut(COPY)
             .enabled(has_sel)
             .show(ui, popup)
+            .left
             .clicked()
             && let Some(r) = sel.clone()
         {
@@ -1081,9 +1049,10 @@ fn default_context_menu(
             .shortcut(PASTE)
             .enabled(cb_has)
             .show(ui, popup)
+            .left
             .clicked()
         {
-            paste_at_caret(
+            edited |= paste_at_caret(
                 text,
                 ui.state_mut::<TextEditState>(id),
                 &get(),
@@ -1095,11 +1064,13 @@ fn default_context_menu(
         if MenuItem::new("Clear")
             .enabled(has_text)
             .show(ui, popup)
+            .left
             .clicked()
         {
-            clear_buffer(text, ui.state_mut::<TextEditState>(id));
+            edited |= clear_buffer(text, ui.state_mut::<TextEditState>(id));
         }
     });
+    edited
 }
 
 /// What [`TextEdit::show`] returns: the widget's [`Response`] (pointer / click /
@@ -1110,7 +1081,7 @@ fn default_context_menu(
 #[derive(Debug)]
 pub struct TextEditResponse<'a> {
     /// The widget's pointer/click/hover [`Response`]. Also reachable through
-    /// `Deref`, so `resp.clicked()` resolves here; use the field when you need
+    /// `Deref`, so `resp.left.clicked()` resolves here; use the field when you need
     /// the `Response` itself (`&resp.response`).
     pub response: Response<'a>,
     /// The buffer was edited this frame (characters inserted or removed).
@@ -1132,31 +1103,40 @@ impl<'a> std::ops::Deref for TextEditResponse<'a> {
     }
 }
 
-/// Result of one frame's input pass over a TextEdit: the caret byte
-/// and the (sorted) selection range, if any. Painter consumes both.
+/// Result of one frame's input pass over a TextEdit: the caret byte,
+/// the (sorted) selection range for the painter, and the edge signals
+/// `show()` folds into [`TextEditResponse`].
 struct InputResult {
     caret: usize,
     selection: Option<std::ops::Range<usize>>,
+    /// Escape asked to blur — applied by `show()` after the node closes.
+    blur: bool,
+    /// Enter accepted a single-line value this frame.
+    submitted: bool,
+    /// The buffer was mutated this frame (typing, delete, paste, cut,
+    /// undo/redo). Reported by the mutation choke points, so it's
+    /// content-accurate — a same-length overwrite still counts, unlike
+    /// a length-delta proxy.
+    edited: bool,
 }
 
 /// Process this frame's pointer + keyboard input for one TextEdit
-/// widget and return the caret + selection to render. Splitting this
-/// out of `show()` keeps the borrow choreography contained: we touch
-/// `ui.state`, `ui.input`, and `ui.ctx.shaper` here, but never the
-/// shape/tree storage.
-#[allow(clippy::too_many_arguments)]
+/// widget and return the caret + selection to render plus the frame's
+/// edge signals. Splitting this out of `show()` keeps the borrow
+/// choreography contained: we touch `ui.state`, `ui.input`, and
+/// `ui.ctx.shaper` here, but never the shape/tree storage.
 fn handle_input(
     ui: &mut Ui,
     id: WidgetId,
     is_focused: bool,
     text: &mut String,
     ctx: &ShapeCtx,
-    align_offset: Vec2,
     max_chars: Option<usize>,
     select_all_on_focus: bool,
-    blur_after: &mut bool,
-    submitted: &mut bool,
 ) -> InputResult {
+    let mut blur = false;
+    let mut submitted = false;
+    let mut edited = false;
     let resp_state = ui.response_for(id);
     // Snapshot once before the long `&mut state` borrow below. The
     // menu and the text-edit state live under the same WidgetId but
@@ -1179,7 +1159,7 @@ fn handle_input(
     // Select-all-on-focus: the frame focus lands (and no press this frame — a
     // press falls through to place the caret below). `prev_focused` still holds
     // last frame's value here; `show`'s Phase 2 rewrites it after this returns.
-    if select_all_on_focus && is_focused && !state.prev_focused && !resp_state.held {
+    if select_all_on_focus && is_focused && !state.prev_focused && !resp_state.left.held() {
         state.selection = Some(0);
         state.caret = text.len();
     }
@@ -1200,7 +1180,7 @@ fn handle_input(
     // has left the surface (`pointer_pos == None`) the inner `let` fails
     // and we fall through *without* clearing the anchor — the gesture is
     // still live, just position-less this frame.
-    if resp_state.held
+    if resp_state.left.held()
         && let (Some(rect), Some(ptr)) = (resp_state.rect, ui.input.pointer_pos)
     {
         // `ptr` and `rect` are in surface (post-transform) space, but glyphs
@@ -1217,8 +1197,8 @@ fn handle_input(
         // `handle_input` returns — the user clicked on what they
         // saw, which is last frame's scroll.
         let [pad_l, pad_t, _, _] = ctx.padding.as_array();
-        let local_x = (ptr.x - rect.min.x) / scale - pad_l - align_offset.x + state.scroll.x;
-        let local_y = (ptr.y - rect.min.y) / scale - pad_t - align_offset.y + state.scroll.y;
+        let local_x = (ptr.x - rect.min.x) / scale - pad_l - ctx.block_offset.x + state.scroll.x;
+        let local_y = (ptr.y - rect.min.y) / scale - pad_t - ctx.block_offset.y + state.scroll.y;
         // `byte_at_xy` handles both axes; single-line probes at
         // `y=0` (against an unwrapped layout) collapse to cosmic's
         // 1D `Buffer::hit` walk — one shaped lookup.
@@ -1226,36 +1206,16 @@ fn handle_input(
             text,
             local_x,
             if ctx.multiline { local_y } else { 0.0 },
-            ShapeParams {
-                font_size_px: ctx.font_size,
-                line_height_px: ctx.line_height_px,
-                max_width_px: ctx.wrap_target,
-                family: ctx.family,
-                weight: ctx.weight,
-                halign: ctx.halign,
-            },
+            ctx.params(),
         );
-        if !state.prev_held {
-            // Press rising edge. Detect multi-click: consecutive
-            // presses within `MULTI_CLICK_WINDOW` and `MULTI_CLICK_RADIUS`
-            // increment `click_count`; otherwise it resets to 1.
-            let elapsed = ui.time.saturating_sub(state.last_press_time).as_secs_f32();
-            let near = (ptr - state.last_press_pos).length_squared()
-                <= MULTI_CLICK_RADIUS * MULTI_CLICK_RADIUS;
-            state.click_count = if elapsed < MULTI_CLICK_WINDOW && near {
-                state.click_count.saturating_add(1)
-            } else {
-                1
-            };
-            state.last_press_time = ui.time;
-            state.last_press_pos = ptr;
+        if resp_state.left.press_count() > 0 {
+            // Press rising edge — the input layer counts the
+            // multi-press run (`press_count`: 1 = single, 2 = double,
+            // 3+ = triple) within the shared double-click window +
+            // radius, so single/word/all selection dispatches straight
+            // off it.
             state.last_edit_kind = None;
-            match state.click_count {
-                1 => {
-                    state.drag_anchor = Some(hit);
-                    state.selection = None;
-                    state.caret = hit;
-                }
+            match resp_state.left.press_count() {
                 2 => {
                     // Double-click: select the word under the caret.
                     let r = word_range_at(text, hit);
@@ -1269,11 +1229,16 @@ fn handle_input(
                         state.caret = r.end;
                     }
                 }
-                _ => {
+                3.. => {
                     // Triple-click and beyond: select everything.
                     state.drag_anchor = None;
                     state.selection = if text.is_empty() { None } else { Some(0) };
                     state.caret = text.len();
+                }
+                _ => {
+                    state.drag_anchor = Some(hit);
+                    state.selection = None;
+                    state.caret = hit;
                 }
             }
         } else if state.drag_anchor.is_some() {
@@ -1286,16 +1251,18 @@ fn handle_input(
             state.caret = hit;
             state.selection = if hit == anchor { None } else { Some(anchor) };
         }
-    } else if !resp_state.held {
+    } else if !resp_state.left.held() {
         state.drag_anchor = None;
     }
-    state.prev_held = resp_state.held;
 
     if !is_focused {
         state.normalize(text);
         return InputResult {
             caret: state.caret,
             selection: state.sel_range(),
+            blur,
+            submitted,
+            edited,
         };
     }
 
@@ -1320,8 +1287,9 @@ fn handle_input(
                 };
                 if !to_insert.is_empty() {
                     record_edit(text, state, EditKind::Typing);
-                    delete_selection(text, state);
-                    insert_capped(text, state, &to_insert, max_chars);
+                    let deleted = delete_selection(text, state);
+                    let inserted = insert_capped(text, state, &to_insert, max_chars);
+                    edited |= deleted || inserted;
                 }
             }
             KeyboardEvent::Down(kp) => {
@@ -1329,14 +1297,30 @@ fn handle_input(
                 // is left untouched (multi-line handles `\n` in `apply_key`), but
                 // the caller learns the user accepted the value.
                 if !ctx.multiline && kp.key == Key::Enter && !kp.mods.any_command() {
-                    *submitted = true;
+                    submitted = true;
                     continue;
                 }
-                if dispatch_shortcut(text, state, kp, ctx.multiline, menu_open, max_chars) {
+                if dispatch_shortcut(
+                    text,
+                    state,
+                    kp,
+                    ctx.multiline,
+                    menu_open,
+                    max_chars,
+                    &mut edited,
+                ) {
                     continue;
                 }
-                if apply_key(text, state, kp, ctx.multiline, max_chars, &mut vert) {
-                    *blur_after = true;
+                if apply_key(
+                    text,
+                    state,
+                    kp,
+                    ctx.multiline,
+                    max_chars,
+                    &mut vert,
+                    &mut edited,
+                ) {
+                    blur = true;
                 }
                 if let Some(v) = vert.take() {
                     resolve_vertical_motion(&ui.ctx.shaper, text, state, ctx, v);
@@ -1349,6 +1333,9 @@ fn handle_input(
     InputResult {
         caret: state.caret,
         selection: state.sel_range(),
+        blur,
+        submitted,
+        edited,
     }
 }
 
@@ -1383,18 +1370,7 @@ fn resolve_vertical_motion(
     ctx: &ShapeCtx,
     v: VerticalMotion,
 ) {
-    let pos = shaper.cursor_xy(
-        text,
-        state.caret,
-        ShapeParams {
-            font_size_px: ctx.font_size,
-            line_height_px: ctx.line_height_px,
-            max_width_px: ctx.wrap_target,
-            family: ctx.family,
-            weight: ctx.weight,
-            halign: ctx.halign,
-        },
-    );
+    let pos = shaper.cursor_xy(text, state.caret, ctx.params());
     let probe_y = match v.direction {
         VerticalDir::Up => pos.y_top - 1.0,
         VerticalDir::Down => pos.y_top + pos.line_height + 1.0,
@@ -1402,28 +1378,17 @@ fn resolve_vertical_motion(
     let target = if matches!(v.direction, VerticalDir::Up) && pos.y_top <= 0.5 {
         0
     } else {
-        shaper.byte_at_xy(
-            text,
-            pos.x,
-            probe_y,
-            ShapeParams {
-                font_size_px: ctx.font_size,
-                line_height_px: ctx.line_height_px,
-                max_width_px: ctx.wrap_target,
-                family: ctx.family,
-                weight: ctx.weight,
-                halign: ctx.halign,
-            },
-        )
+        shaper.byte_at_xy(text, pos.x, probe_y, ctx.params())
     };
     move_caret(state, target, v.extend);
 }
 
 /// Route platform shortcuts (undo / redo / select-all / cut / copy /
 /// paste) before keyboard edit dispatch. Returns `true` when `kp` was
-/// claimed; caller skips `apply_key` for that key. Undo/redo always
-/// fire; clipboard + select-all are suppressed when a context menu
-/// owns the same bindings (`menu_open == true`).
+/// claimed; caller skips `apply_key` for that key. Sets `edited` when
+/// the claimed shortcut mutated the buffer. Undo/redo always fire;
+/// clipboard + select-all are suppressed when a context menu owns the
+/// same bindings (`menu_open == true`).
 fn dispatch_shortcut(
     text: &mut String,
     state: &mut TextEditState,
@@ -1431,13 +1396,14 @@ fn dispatch_shortcut(
     multiline: bool,
     menu_open: bool,
     max_chars: Option<usize>,
+    edited: &mut bool,
 ) -> bool {
     if UNDO.matches(kp) {
-        apply_undo(text, state);
+        *edited |= apply_undo(text, state);
         return true;
     }
     if REDO.matches(kp) {
-        apply_redo(text, state);
+        *edited |= apply_redo(text, state);
         return true;
     }
     if menu_open {
@@ -1458,25 +1424,26 @@ fn dispatch_shortcut(
         return true;
     }
     if CUT.matches(kp) {
-        cut_selection(text, state);
+        *edited |= cut_selection(text, state);
         return true;
     }
     if PASTE.matches(kp) {
-        paste_at_caret(text, state, &get(), multiline, max_chars);
+        *edited |= paste_at_caret(text, state, &get(), multiline, max_chars);
         return true;
     }
     false
 }
 
 /// Apply one keypress to the buffer + state. Returns `true` if the
-/// caller should blur (Escape with no live selection in single-line
-/// mode); every other recognized key is consumed silently. Sets
-/// `out_vertical` to `Some(VerticalMotion)` when the key is `Up` /
-/// `Down` in multi-line mode — the caller resolves the cross-axis
-/// probe against the shaper, which this function doesn't touch.
-/// Platform shortcuts (undo / clipboard / select-all) are handled by
-/// `dispatch_shortcut` before this; `multiline` toggles Enter → `\n`
-/// insertion and enables Up/Down motion.
+/// caller should blur (Escape with no live selection — both modes);
+/// every other recognized key is consumed silently. Sets `edited` when
+/// the key mutated the buffer, and `out_vertical` to
+/// `Some(VerticalMotion)` when the key is `Up` / `Down` in multi-line
+/// mode — the caller resolves the cross-axis probe against the shaper,
+/// which this function doesn't touch. Platform shortcuts (undo /
+/// clipboard / select-all) are handled by `dispatch_shortcut` before
+/// this; `multiline` toggles Enter → `\n` insertion and enables
+/// Up/Down motion.
 fn apply_key(
     text: &mut String,
     state: &mut TextEditState,
@@ -1484,15 +1451,17 @@ fn apply_key(
     multiline: bool,
     max_chars: Option<usize>,
     out_vertical: &mut Option<VerticalMotion>,
+    edited: &mut bool,
 ) -> bool {
     let shift = kp.mods.shift;
     match kp.key {
         Key::Char(c) if !kp.mods.any_command() => {
             record_edit(text, state, EditKind::Typing);
-            delete_selection(text, state);
+            let deleted = delete_selection(text, state);
             let mut buf = [0u8; 4];
             let s = c.encode_utf8(&mut buf);
-            insert_capped(text, state, s, max_chars);
+            let inserted = insert_capped(text, state, s, max_chars);
+            *edited |= deleted || inserted;
         }
         Key::Backspace => {
             let has_sel = state.sel_range().is_some();
@@ -1503,6 +1472,7 @@ fn apply_key(
                     text.replace_range(prev..state.caret, "");
                     state.caret = prev;
                 }
+                *edited = true;
             }
         }
         Key::Delete => {
@@ -1513,6 +1483,7 @@ fn apply_key(
                     let next = next_grapheme_boundary(text, state.caret);
                     text.replace_range(state.caret..next, "");
                 }
+                *edited = true;
             }
         }
         Key::ArrowLeft if is_word_nav(kp.mods) => {
@@ -1557,8 +1528,9 @@ fn apply_key(
         }
         Key::Enter if multiline => {
             record_edit(text, state, EditKind::Other);
-            delete_selection(text, state);
-            insert_capped(text, state, "\n", max_chars);
+            let deleted = delete_selection(text, state);
+            let inserted = insert_capped(text, state, "\n", max_chars);
+            *edited |= deleted || inserted;
         }
         Key::Home => move_caret(state, 0, shift),
         Key::End => move_caret(state, text.len(), shift),
