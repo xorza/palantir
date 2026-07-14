@@ -15,15 +15,12 @@
 //!   priming iterations. Every glyph is an `atlas.touch` hit; the
 //!   measurement floor is `encode_batch` walking layout runs +
 //!   `swash_cache::CacheKey::new` + vertex buffer upload + draw.
-//! - `text_atlas/zoom_smooth` — scale advances by `TEXT_SCALE_STEP`
-//!   (0.025) each frame. Matches a real zoom gesture: each rung is a
-//!   fresh cosmic `CacheKey` (font_size × scale) → fresh swash
-//!   rasterization → fresh atlas slot → `queue.write_texture` per
-//!   glyph. Cycles through `SCALE_CYCLE` rungs so the LRU eventually
-//!   evicts old rungs.
-//! - `text_atlas/zoom_cold` — scale jumps `5 × TEXT_SCALE_STEP` each
-//!   frame across `SCALE_CYCLE` rungs. Worst-case miss-storm without
-//!   running off the ladder entirely.
+//! - `text_atlas/zoom_smooth` / `zoom_cold` — cycle through five
+//!   resident scale rungs in adjacent or jumping order. These isolate
+//!   multi-scale encoded-cache hits after all rungs are primed.
+//! - `text_atlas/cache_churn` — cycles through 128 scale rungs in a
+//!   permuted order. That exceeds the encoded-cache retention window,
+//!   so every revisited rung is a real encode/raster/upload miss.
 //!
 //! Each iteration:
 //!   1. begin command encoder
@@ -55,7 +52,9 @@ const PHYSICAL: UVec2 = UVec2::new(1280, 800);
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const BASE_SCALE: f32 = 2.0;
 const TEXT_SCALE_STEP: f32 = 0.025;
-const SCALE_CYCLE: u32 = 5;
+const WARM_SCALE_CYCLE: u32 = 5;
+const CHURN_SCALE_CYCLE: u32 = 128;
+const CHURN_INDEX_STRIDE: u32 = 37;
 
 /// Per-frame text count. Graph-view-shaped: many small runs rather
 /// than a few wrapped paragraphs. 32 rows × 4 columns = 128 runs ≈
@@ -80,7 +79,7 @@ fn gpu() -> &'static Gpu {
             })
             .block_on()
             .expect("request adapter (headless)");
-        // Text Params via immediates — feature + 16-byte budget.
+        // Viewport + text atlas sizes use the 16-byte immediate budget.
         let mut limits = wgpu::Limits::default();
         limits.max_immediate_size = limits.max_immediate_size.max(16);
         let (device, queue) = adapter
@@ -290,14 +289,14 @@ fn bench_text_atlas(c: &mut Criterion) {
         let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
         // Prime the cycle so the LRU has all rungs resident before the
         // measured loop starts evicting + re-inserting.
-        for step in 0..SCALE_CYCLE {
+        for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
             run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_smooth", |b| {
             b.iter(|| {
-                let step = (i % SCALE_CYCLE) as f32;
+                let step = (i % WARM_SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * TEXT_SCALE_STEP;
                 run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
                 i = i.wrapping_add(1);
@@ -309,15 +308,33 @@ fn bench_text_atlas(c: &mut Criterion) {
         let (mut backend, runs) = fresh_backend(g);
         let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
         let stride = 5.0 * TEXT_SCALE_STEP;
-        for step in 0..SCALE_CYCLE {
+        for step in 0..WARM_SCALE_CYCLE {
             let scale = BASE_SCALE + (step as f32) * stride;
             run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
         }
         let mut i: u32 = 0;
         group.bench_function("zoom_cold", |b| {
             b.iter(|| {
-                let step = (i % SCALE_CYCLE) as f32;
+                let step = (i % WARM_SCALE_CYCLE) as f32;
                 let scale = BASE_SCALE + step * stride;
+                run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+                i = i.wrapping_add(1);
+            });
+        });
+    }
+
+    {
+        let (mut backend, runs) = fresh_backend(g);
+        let mut belt = wgpu::util::StagingBelt::new(g.device.clone(), 1 << 20);
+        for step in 0..CHURN_SCALE_CYCLE {
+            let scale = BASE_SCALE + (step as f32) * TEXT_SCALE_STEP;
+            run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
+        }
+        let mut i: u32 = 0;
+        group.bench_function("cache_churn", |b| {
+            b.iter(|| {
+                let rung = i.wrapping_mul(CHURN_INDEX_STRIDE) % CHURN_SCALE_CYCLE;
+                let scale = BASE_SCALE + (rung as f32) * TEXT_SCALE_STEP;
                 run_frame(g, &mut backend, &mut belt, &view, &runs, scale);
                 i = i.wrapping_add(1);
             });

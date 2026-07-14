@@ -39,14 +39,11 @@ pub(crate) struct GlyphSlot {
 }
 
 /// One per-content-type backing store. Indexed by `ContentType as usize`.
-pub(crate) struct Side {
-    pub(crate) texture: wgpu::Texture,
-    pub(crate) view: wgpu::TextureView,
-    pub(crate) size: u32,
-    pub(crate) packer: BucketedAtlasAllocator,
-    pub(crate) format: wgpu::TextureFormat,
-    pub(crate) bpp: u32,
-    pub(crate) label: &'static str,
+struct Side {
+    texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    size: u32,
+    packer: BucketedAtlasAllocator,
     /// On grow, the previous-frame texture is moved here so the
     /// shared-encoder flush can record the copy alongside pending
     /// glyph writes. `None` whenever there's no pending grow blit
@@ -58,14 +55,21 @@ pub(crate) struct Side {
 /// old.height) preserved across the grow point. Consumed by
 /// `flush_pending_uploads`.
 #[derive(Debug)]
-pub(crate) struct PendingGrow {
-    pub(crate) old_texture: wgpu::Texture,
-    pub(crate) old_size: u32,
+struct PendingGrow {
+    old_texture: wgpu::Texture,
+    old_size: u32,
+}
+
+#[derive(Debug)]
+pub(crate) struct AtlasBindings<'a> {
+    pub(crate) mask_view: &'a wgpu::TextureView,
+    pub(crate) color_view: &'a wgpu::TextureView,
+    pub(crate) atlas_px: [u32; 2],
 }
 
 #[derive(Debug)]
 pub(crate) struct GlyphAtlas {
-    pub(crate) sides: [Side; 2],
+    sides: [Side; 2],
     /// Dense slot slab; `cache` maps each key to an index into it.
     /// Encoded-run caches record these indices so their hot-path LRU
     /// refresh is an indexed store instead of a map probe per glyph —
@@ -84,7 +88,7 @@ pub(crate) struct GlyphAtlas {
     /// (conservative — slot rectangles are stable across grows because
     /// `etagere::grow` preserves rects).
     pub(crate) eviction_count: u64,
-    pub(crate) max_texture_dimension_2d: u32,
+    max_texture_dimension_2d: u32,
     /// Set on grow; the renderer rebuilds its bind group and clears it.
     pub(crate) bind_group_dirty: bool,
 
@@ -94,10 +98,10 @@ pub(crate) struct GlyphAtlas {
     /// [`Self::flush_pending_uploads`] into one staging buffer + one
     /// encoder with N `copy_buffer_to_texture` commands.
     pending_staging: Vec<u8>,
+    pending_staging_used: usize,
     pending_copies: Vec<PendingCopy>,
     /// Retained staging buffer; grown on demand, reused across frames.
     staging_buf: Option<wgpu::Buffer>,
-    staging_cap: u64,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -117,19 +121,11 @@ impl GlyphAtlas {
 
         // Order matches `ContentType as usize`: [Mask, Color].
         let sides = [
+            Side::new(device, ContentType::Mask, INITIAL_MASK_ATLAS_SIZE.min(max)),
             Side::new(
                 device,
-                INITIAL_MASK_ATLAS_SIZE.min(max),
-                wgpu::TextureFormat::R8Unorm,
-                1,
-                "aperture text mask atlas",
-            ),
-            Side::new(
-                device,
+                ContentType::Color,
                 INITIAL_COLOR_ATLAS_SIZE.min(max),
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-                4,
-                "aperture text color atlas",
             ),
         ];
 
@@ -143,23 +139,20 @@ impl GlyphAtlas {
             max_texture_dimension_2d: max,
             bind_group_dirty: false,
             pending_staging: Vec::new(),
+            pending_staging_used: 0,
             pending_copies: Vec::new(),
             staging_buf: None,
-            staging_cap: 0,
         }
     }
 
-    pub(crate) fn mask_view(&self) -> &wgpu::TextureView {
-        &self.sides[ContentType::Mask as usize].view
-    }
-    pub(crate) fn color_view(&self) -> &wgpu::TextureView {
-        &self.sides[ContentType::Color as usize].view
-    }
-    pub(crate) fn mask_size(&self) -> u32 {
-        self.sides[ContentType::Mask as usize].size
-    }
-    pub(crate) fn color_size(&self) -> u32 {
-        self.sides[ContentType::Color as usize].size
+    pub(crate) fn bindings(&self) -> AtlasBindings<'_> {
+        let mask = &self.sides[ContentType::Mask as usize];
+        let color = &self.sides[ContentType::Color as usize];
+        AtlasBindings {
+            mask_view: &mask.view,
+            color_view: &color.view,
+            atlas_px: [color.size, mask.size],
+        }
     }
 
     /// Cache-hit fast path: bump the slot's LRU stamp and return its
@@ -248,17 +241,20 @@ impl GlyphAtlas {
         height: u32,
         pixels: &[u8],
     ) {
-        let bpp = self.sides[content as usize].bpp;
+        let bpp = content.bytes_per_pixel();
         let unpadded = width * bpp;
         let bytes_per_row = unpadded.next_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT);
         // Every queued region is `bytes_per_row × height` with
         // `bytes_per_row` a multiple of 256, so the append offset is
         // 256-aligned by construction — the buffer-offset and row-pitch
         // alignment requirements hold for every PendingCopy.
-        let region_start = self.pending_staging.len();
+        let region_start = self.pending_staging_used;
         assert!(region_start.is_multiple_of(COPY_BYTES_PER_ROW_ALIGNMENT as usize));
         let region_bytes = bytes_per_row as usize * height as usize;
-        self.pending_staging.resize(region_start + region_bytes, 0);
+        self.pending_staging_used += region_bytes;
+        if self.pending_staging.len() < self.pending_staging_used {
+            self.pending_staging.resize(self.pending_staging_used, 0);
+        }
         for row in 0..height as usize {
             let src = &pixels[row * unpadded as usize..(row + 1) * unpadded as usize];
             let dst_off = region_start + row * bytes_per_row as usize;
@@ -310,22 +306,19 @@ impl GlyphAtlas {
         if self.pending_copies.is_empty() {
             return;
         }
-        let bytes = self.pending_staging.len() as u64;
-        if bytes > self.staging_cap || self.staging_buf.is_none() {
-            let new_cap = bytes
-                .next_power_of_two()
-                .max(self.staging_cap * 2)
-                .max(4096);
+        let bytes = self.pending_staging_used as u64;
+        let current_cap = self.staging_buf.as_ref().map_or(0, wgpu::Buffer::size);
+        if bytes > current_cap {
+            let new_cap = bytes.next_power_of_two().max(current_cap * 2).max(4096);
             self.staging_buf = Some(ctx.device.create_buffer(&wgpu::BufferDescriptor {
                 label: Some("aperture text atlas staging"),
                 size: new_cap,
                 usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             }));
-            self.staging_cap = new_cap;
         }
         let buf = self.staging_buf.as_ref().unwrap();
-        ctx.write(buf, 0, &self.pending_staging);
+        ctx.write(buf, 0, &self.pending_staging[..self.pending_staging_used]);
 
         ctx.encoder
             .push_debug_group("aperture text atlas batch upload");
@@ -359,7 +352,7 @@ impl GlyphAtlas {
         }
         ctx.encoder.pop_debug_group();
 
-        self.pending_staging.clear();
+        self.pending_staging_used = 0;
         self.pending_copies.clear();
     }
 
@@ -458,7 +451,7 @@ impl GlyphAtlas {
             return false;
         }
         let new_size = (side.size * ATLAS_GROWTH_FACTOR).min(self.max_texture_dimension_2d);
-        let new_texture = make_texture(device, side.format, new_size, side.label);
+        let new_texture = make_texture(device, content.format(), new_size, content.label());
         let old_size = side.size;
         let old_texture = std::mem::replace(&mut side.texture, new_texture);
 
@@ -487,31 +480,19 @@ impl std::fmt::Debug for Side {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Side")
             .field("size", &self.size)
-            .field("format", &self.format)
-            .field("bpp", &self.bpp)
-            .field("label", &self.label)
             .finish_non_exhaustive()
     }
 }
 
 impl Side {
-    fn new(
-        device: &wgpu::Device,
-        size: u32,
-        format: wgpu::TextureFormat,
-        bpp: u32,
-        label: &'static str,
-    ) -> Self {
-        let texture = make_texture(device, format, size, label);
+    fn new(device: &wgpu::Device, content: ContentType, size: u32) -> Self {
+        let texture = make_texture(device, content.format(), size, content.label());
         let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
         Self {
             texture,
             view,
             size,
             packer: BucketedAtlasAllocator::new(size2(size as i32, size as i32)),
-            format,
-            bpp,
-            label,
             pending_grow: None,
         }
     }
