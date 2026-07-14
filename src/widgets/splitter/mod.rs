@@ -2,29 +2,31 @@ use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
+use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
+use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use crate::window::CursorIcon;
 use glam::Vec2;
+use std::rc::Rc;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
 /// the panes side by side (vertical divider bar); [`Splitter::vertical`]
 /// stacks them (horizontal bar). The caller owns the split as `ratio` —
-/// the first pane's share of the free space, `0..1` — and the widget
-/// writes it back while the divider is dragged, mapping the pointer
-/// through last frame's arranged extent (one-frame lag, invisible at
-/// interactive rates — same trick as [`crate::Slider`]). Double-clicking
-/// the divider recenters to `0.5`. Panes clip their content so an
-/// oversized body can't bleed across the divider mid-resize. Visuals
+/// the first pane's share of the free space, `0..1`. While dragging,
+/// the current pointer target feeds layout immediately; the widget writes
+/// the resulting content-constrained share back on the following record.
+/// Double-clicking the divider recenters to `0.5`. Panes clip their content
+/// so an oversized body can't bleed across the divider mid-resize. Visuals
 /// come from [`crate::SplitterTheme`] (theme slot `splitter`).
 ///
-/// Layout reserves only the visible `rule_thickness` seam between the
-/// panes — the wide grab target is an *overlay* bar straddling the seam
-/// (sash-style), so no backdrop stripe ever shows through at rest and
-/// the hover/drag fill paints over the pane edges it covers.
+/// One Grid owns the pane tracks and the visible `rule_thickness` seam.
+/// The wide grab target is a late-recorded overlay in the rule's cell,
+/// so layout places it at the content-constrained boundary without a
+/// second layout pass.
 ///
 /// [`Splitter::show`] records both panes through one `FnMut` body called
 /// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
@@ -44,6 +46,27 @@ pub enum SplitHalf {
     Second,
 }
 
+#[derive(Debug)]
+struct SplitterState {
+    /// Grid scratch may retain one list, so the other remains writable in place.
+    main_tracks: [Rc<[Track]>; 2],
+    cross_tracks: Rc<[Track]>,
+    sync_ratio_next_record: bool,
+}
+
+impl Default for SplitterState {
+    fn default() -> Self {
+        Self {
+            main_tracks: [
+                Rc::from([Track::fill(), Track::fixed(0.0), Track::fill()]),
+                Rc::from([Track::fill(), Track::fixed(0.0), Track::fill()]),
+            ],
+            cross_tracks: Rc::from([Track::fill()]),
+            sync_ratio_next_record: false,
+        }
+    }
+}
+
 impl<'a> Splitter<'a> {
     /// Side-by-side panes with a vertical divider bar; `ratio` is the
     /// left pane's share.
@@ -61,10 +84,8 @@ impl<'a> Splitter<'a> {
 
     #[track_caller]
     fn axis(ratio: &'a mut f32, horizontal: bool) -> Self {
-        // Canvas root: the split stack fills it, and the overlay bar is
-        // placed at an explicit position on top. Clipped so the bar's
-        // overhang at a ratio stop can't paint or hit outside the widget.
-        let mut element = Element::new(LayoutMode::Canvas);
+        // The clipped root contains the grab overlay's overhang within the splitter.
+        let mut element = Element::new(LayoutMode::Grid);
         element.size = (Sizing::FILL, Sizing::FILL).into();
         element.flags.set_clip(ClipMode::Rect);
         Self {
@@ -113,8 +134,18 @@ impl<'a> Splitter<'a> {
         // is this frame's.
         let divider_id = id.with("divider");
         let divider = ui.response_for(divider_id);
+        let first_id = id.with("first");
+        let second_id = id.with("second");
 
-        let mut ratio = sanitize_ratio(*self.ratio);
+        let sync_pending = ui
+            .try_state::<SplitterState>(id)
+            .is_some_and(|state| state.sync_ratio_next_record);
+        let synced_ratio = sync_pending
+            .then(|| arranged_pane_ratio(ui, first_id, second_id, self.horizontal))
+            .flatten();
+        let ratio = synced_ratio.unwrap_or_else(|| sanitize_ratio(*self.ratio));
+        let mut layout_ratio = ratio;
+        let mut resizing = false;
         if !state.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
@@ -126,13 +157,36 @@ impl<'a> Splitter<'a> {
                 } else {
                     (local.y, rect.size.h)
                 };
-                ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                layout_ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                resizing = true;
             }
             if divider.left.double_clicked() {
-                ratio = 0.5;
+                layout_ratio = 0.5;
+                resizing = true;
             }
         }
         *self.ratio = ratio;
+
+        let (rows, cols) = {
+            let grid_state = ui.state_mut::<SplitterState>(id);
+            let main_tracks = grid_state
+                .main_tracks
+                .iter_mut()
+                .find(|tracks| Rc::strong_count(tracks) == 1)
+                .expect("one splitter track buffer must be reusable each record");
+            let tracks = Rc::get_mut(main_tracks).unwrap();
+            tracks[0] = Track::fill_weight(layout_ratio);
+            tracks[1] = Track::fixed(rule_thickness);
+            tracks[2] = Track::fill_weight(1.0 - layout_ratio);
+            let main_tracks = Rc::clone(main_tracks);
+            grid_state.sync_ratio_next_record =
+                resizing || (sync_pending && synced_ratio.is_none());
+            if self.horizontal {
+                (Rc::clone(&grid_state.cross_tracks), main_tracks)
+            } else {
+                (main_tracks, Rc::clone(&grid_state.cross_tracks))
+            }
+        };
 
         let bar_fill = if divider.left.drag.dragging() {
             Some(drag_color)
@@ -155,73 +209,51 @@ impl<'a> Splitter<'a> {
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
         let rule_bg = Background::fill(rule_color);
 
-        // The seam's center, from last frame's arranged extent — the
-        // overlay bar trails a container resize by one frame (the same
-        // lag the drag mapping rides); at rest the bar paints nothing,
-        // so the lag can't be seen. First frame: no rect yet, the bar
-        // lands off-origin and corrects itself next frame.
-        let extent = state
-            .rect
-            .map(|r| if self.horizontal { r.size.w } else { r.size.h })
-            .unwrap_or(0.0);
-        let seam = ratio * (extent - rule_thickness).max(0.0) + rule_thickness * 0.5;
-
         let horizontal = self.horizontal;
-        ui.node(id, self.element, None, |ui| {
-            // The split stack: panes touching a Fixed(rule) seam —
-            // layout reserves only the visible rule, so no backdrop
-            // stripe shows between the panes.
-            let stack_id = id.with("stack");
-            let mut stack = Element::new(if horizontal {
-                LayoutMode::HStack
-            } else {
-                LayoutMode::VStack
-            });
-            stack.salt = Salt::Verbatim(stack_id);
-            stack.size = (Sizing::FILL, Sizing::FILL).into();
-            ui.node(stack_id, stack, None, |ui| {
-                pane(
-                    ui,
-                    id.with("first"),
-                    horizontal,
-                    Sizing::Fill(ratio),
-                    |ui| body(ui, SplitHalf::First),
-                );
+        let layer = ui.forest.current_layer();
+        let mut element = self.element;
+        element.mode_payload = ui.forest.trees[layer].grid.push_def(GridDef {
+            rows,
+            cols,
+            row_gap: 0.0,
+            col_gap: 0.0,
+        });
+        ui.node(id, element, None, |ui| {
+            pane(ui, first_id, horizontal, 0, |ui| body(ui, SplitHalf::First));
 
-                let rule_id = id.with("rule");
-                let mut rule = Element::new(LayoutMode::Leaf);
-                rule.salt = Salt::Verbatim(rule_id);
-                rule.size = if horizontal {
-                    (Sizing::Fixed(rule_thickness), Sizing::FILL)
+            let rule_id = id.with("rule");
+            let mut rule = Element::new(LayoutMode::Leaf);
+            rule.salt = Salt::Verbatim(rule_id);
+            rule.size = (Sizing::FILL, Sizing::FILL).into();
+            set_main_cell(&mut rule, horizontal, 1);
+            ui.node(rule_id, rule, Some(&rule_bg), |_| {});
+
+            pane(ui, second_id, horizontal, 2, |ui| {
+                body(ui, SplitHalf::Second)
+            });
+
+            let overlay_id = id.with("divider_overlay");
+            let mut overlay = Element::new(LayoutMode::ZStack);
+            overlay.salt = Salt::Verbatim(overlay_id);
+            overlay.size = (Sizing::FILL, Sizing::FILL).into();
+            overlay.transform = TranslateScale::from_translation(if horizontal {
+                Vec2::new((rule_thickness - thickness) * 0.5, 0.0)
+            } else {
+                Vec2::new(0.0, (rule_thickness - thickness) * 0.5)
+            });
+            set_main_cell(&mut overlay, horizontal, 1);
+            ui.node(overlay_id, overlay, None, |ui| {
+                let mut bar = Element::new(LayoutMode::Leaf);
+                bar.salt = Salt::Verbatim(divider_id);
+                bar.flags.set_sense(Sense::DRAG);
+                bar.size = if horizontal {
+                    (Sizing::Fixed(thickness), Sizing::FILL)
                 } else {
-                    (Sizing::FILL, Sizing::Fixed(rule_thickness))
+                    (Sizing::FILL, Sizing::Fixed(thickness))
                 }
                 .into();
-                ui.node(rule_id, rule, Some(&rule_bg), |_| {});
-
-                pane(
-                    ui,
-                    id.with("second"),
-                    horizontal,
-                    Sizing::Fill(1.0 - ratio),
-                    |ui| body(ui, SplitHalf::Second),
-                );
+                ui.node(divider_id, bar, Some(&bar_bg), |_| {});
             });
-
-            // The grab target: an overlay bar straddling the seam,
-            // recorded after the stack so it paints (hover/drag fill)
-            // and hit-tests above the pane edges it covers.
-            let mut bar = Element::new(LayoutMode::Leaf);
-            bar.salt = Salt::Verbatim(divider_id);
-            bar.flags.set_sense(Sense::DRAG);
-            if horizontal {
-                bar.size = (Sizing::Fixed(thickness), Sizing::FILL).into();
-                bar.position = Vec2::new(seam - thickness * 0.5, 0.0);
-            } else {
-                bar.size = (Sizing::FILL, Sizing::Fixed(thickness)).into();
-                bar.position = Vec2::new(0.0, seam - thickness * 0.5);
-            }
-            ui.node(divider_id, bar, Some(&bar_bg), |_| {});
         });
 
         Response::eager(id, ui, raw)
@@ -234,18 +266,47 @@ impl Configure for Splitter<'_> {
     }
 }
 
-/// One pane: a clipped ZStack sized `main` on the split axis, filling
-/// the cross axis.
-fn pane(ui: &mut Ui, id: WidgetId, horizontal: bool, main: Sizing, body: impl FnOnce(&mut Ui)) {
+/// One pane: a clipped ZStack filling its Grid cell.
+fn pane(ui: &mut Ui, id: WidgetId, horizontal: bool, main_cell: u16, body: impl FnOnce(&mut Ui)) {
     let mut el = Element::new(LayoutMode::ZStack);
     el.salt = Salt::Verbatim(id);
-    el.size = if horizontal {
-        (main, Sizing::FILL).into()
-    } else {
-        (Sizing::FILL, main).into()
-    };
+    el.size = (Sizing::FILL, Sizing::FILL).into();
     el.flags.set_clip(ClipMode::Rect);
+    set_main_cell(&mut el, horizontal, main_cell);
     ui.node(id, el, None, body)
+}
+
+fn set_main_cell(element: &mut Element, horizontal: bool, main_cell: u16) {
+    if horizontal {
+        element.grid.col = main_cell;
+    } else {
+        element.grid.row = main_cell;
+    }
+}
+
+/// Recover the first pane's effective share after layout applied both
+/// panes' intrinsic content floors. The next record writes this back while
+/// the current layout remains free to follow the latest pointer target.
+fn arranged_pane_ratio(
+    ui: &Ui,
+    first_id: WidgetId,
+    second_id: WidgetId,
+    horizontal: bool,
+) -> Option<f32> {
+    let first = ui.response_for(first_id).layout_rect?;
+    let second = ui.response_for(second_id).layout_rect?;
+    let first_extent = if horizontal {
+        first.size.w
+    } else {
+        first.size.h
+    };
+    let second_extent = if horizontal {
+        second.size.w
+    } else {
+        second.size.h
+    };
+    let span = first_extent + second_extent;
+    (span > f32::EPSILON).then(|| sanitize_ratio(first_extent / span))
 }
 
 /// A caller-supplied ratio, made safe to use as a `Fill` weight:

@@ -1,6 +1,6 @@
 //! Splitter divider drag: pointer→ratio mapping through last frame's
-//! arranged extent, clamping at the stops, the resulting pane
-//! re-layout, and the resize-cursor request.
+//! arranged extent, clamping at explicit and content-driven stops,
+//! the resulting pane re-layout, and the resize-cursor request.
 
 use crate::Ui;
 use crate::forest::Layer;
@@ -8,7 +8,8 @@ use crate::forest::element::Configure;
 use crate::input::InputEvent;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
-use crate::widgets::splitter::{Splitter, pointer_to_ratio, sanitize_ratio};
+use crate::widgets::frame::Frame;
+use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
 use crate::window::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -21,20 +22,23 @@ fn split_id() -> WidgetId {
 /// One frame: a 401×100 horizontal splitter at the surface origin.
 /// Default theme reserves the 1 px rule, so the free span is 400 —
 /// seam center at x = ratio · 400 + 0.5, with the 6 px grab bar
-/// straddling it. The bar is placed from *last* frame's extent, so
-/// tests run two warm-up frames before interacting.
-fn frame_with(ui: &mut Ui, ratio: &mut f32) {
+/// straddling it. Tests run two warm-up frames before interacting so
+/// the divider has arranged geometry for hit-testing.
+fn frame_with(ui: &mut Ui, ratio: &mut f32) -> usize {
+    let mut passes = 0;
     ui.run_at_acked(SURFACE, |ui| {
+        passes += 1;
         Splitter::horizontal(ratio)
             .id(split_id())
             .size((Sizing::Fixed(401.0), Sizing::Fixed(100.0)))
             .min_pane(50.0)
             .show(ui, |_, _| {});
     });
+    passes
 }
 
 #[test]
-fn divider_drag_maps_pointer_to_ratio_and_relayouts() {
+fn divider_drag_maps_pointer_to_ratio_without_relayout() {
     let mut ui = Ui::for_test();
     let mut ratio = 0.5;
     frame_with(&mut ui, &mut ratio);
@@ -51,24 +55,28 @@ fn divider_drag_maps_pointer_to_ratio_and_relayouts() {
         "pointer 300.5 over span 400 → 0.75, got {ratio}"
     );
 
-    // The next frame arranges the panes from the new ratio: first pane
-    // spans 0.75 · 400 = 300 px.
-    frame_with(&mut ui, &mut ratio);
+    // A later drag movement records once. Layout follows the current
+    // pointer immediately, while the caller still receives the prior
+    // arranged ratio until the next record.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(999.0, 50.0)));
+    assert_eq!(frame_with(&mut ui, &mut ratio), 1);
+    assert!(
+        (ratio - 0.75).abs() < 1e-6,
+        "model holds the prior arranged ratio for one record, got {ratio}"
+    );
     let first = ui.node_for_widget_id(split_id().with("first"));
     let rect = ui.layout[Layer::Main].rect[first.idx()];
     assert!(
-        (rect.size.w - 300.0).abs() < 0.5,
-        "first pane arranged to 300 px, got {}",
+        (rect.size.w - 350.0).abs() < 0.5,
+        "min_pane(50) stops the current layout at 350 px, got {}",
         rect.size.w
     );
 
-    // Dragging far past the end clamps at the min_pane stop:
-    // second pane floors at 50 → first = 350 → 0.875.
-    ui.on_input(InputEvent::PointerMoved(Vec2::new(999.0, 50.0)));
-    frame_with(&mut ui, &mut ratio);
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(998.0, 50.0)));
+    assert_eq!(frame_with(&mut ui, &mut ratio), 1);
     assert!(
         (ratio - 0.875).abs() < 1e-6,
-        "min_pane(50) stops at 350/400, got {ratio}"
+        "the next record writes back the arranged 350/400 ratio, got {ratio}"
     );
 
     // Release ends the gesture; further pointer motion leaves the
@@ -80,6 +88,149 @@ fn divider_drag_maps_pointer_to_ratio_and_relayouts() {
         (ratio - 0.875).abs() < 1e-6,
         "ratio holds after release, got {ratio}"
     );
+}
+
+#[test]
+fn divider_and_pane_stop_together_when_content_is_rigid() {
+    for (horizontal, rigid_half, expected_ratio) in [
+        (true, SplitHalf::First, 0.45),
+        (true, SplitHalf::Second, 0.55),
+        (false, SplitHalf::First, 0.45),
+        (false, SplitHalf::Second, 0.55),
+    ] {
+        let mut ui = Ui::for_test();
+        let mut ratio = 0.5;
+        let frame = |ui: &mut Ui, ratio: &mut f32| {
+            let mut passes = 0;
+            ui.run_at_acked(SURFACE, |ui| {
+                passes += 1;
+                let splitter = if horizontal {
+                    Splitter::horizontal(ratio)
+                } else {
+                    Splitter::vertical(ratio)
+                };
+                splitter
+                    .id(split_id())
+                    .size(if horizontal {
+                        (Sizing::Fixed(401.0), Sizing::Fixed(100.0))
+                    } else {
+                        (Sizing::Fixed(100.0), Sizing::Fixed(401.0))
+                    })
+                    .min_pane(50.0)
+                    .show(ui, |ui, half| {
+                        if half == rigid_half {
+                            Frame::new()
+                                .id(split_id().with("rigid"))
+                                .size(if horizontal {
+                                    (Sizing::Fixed(180.0), Sizing::FILL)
+                                } else {
+                                    (Sizing::FILL, Sizing::Fixed(180.0))
+                                })
+                                .show(ui);
+                        }
+                    });
+            });
+            passes
+        };
+        frame(&mut ui, &mut ratio);
+        frame(&mut ui, &mut ratio);
+
+        ui.press_at(if horizontal {
+            Vec2::new(200.5, 50.0)
+        } else {
+            Vec2::new(50.0, 200.5)
+        });
+        let activation_main = 210.5;
+        ui.on_input(InputEvent::PointerMoved(if horizontal {
+            Vec2::new(activation_main, 50.0)
+        } else {
+            Vec2::new(50.0, activation_main)
+        }));
+        frame(&mut ui, &mut ratio);
+
+        let pointer_main = if rigid_half == SplitHalf::First {
+            -100.0
+        } else {
+            500.0
+        };
+        ui.on_input(InputEvent::PointerMoved(if horizontal {
+            Vec2::new(pointer_main, 50.0)
+        } else {
+            Vec2::new(50.0, pointer_main)
+        }));
+        assert_eq!(
+            frame(&mut ui, &mut ratio),
+            1,
+            "active drag movement must not request a second layout"
+        );
+
+        assert!(
+            (ratio - 0.525).abs() < 1e-6,
+            "model keeps the prior arranged ratio for one record"
+        );
+        let shrinking = ui.node_for_widget_id(split_id().with(match rigid_half {
+            SplitHalf::First => "first",
+            SplitHalf::Second => "second",
+        }));
+        let shrinking_rect = ui.layout[Layer::Main].rect[shrinking.idx()];
+        assert_eq!(
+            if horizontal {
+                shrinking_rect.size.w
+            } else {
+                shrinking_rect.size.h
+            },
+            180.0,
+            "{rigid_half:?} pane stops at its rigid content floor"
+        );
+        let rigid = ui.node_for_widget_id(split_id().with("rigid"));
+        let rigid_rect = ui.layout[Layer::Main].rect[rigid.idx()];
+        assert_eq!(
+            if horizontal {
+                rigid_rect.size.w
+            } else {
+                rigid_rect.size.h
+            },
+            180.0,
+            "rigid content remains laid out"
+        );
+        let first = ui.node_for_widget_id(split_id().with("first"));
+        let first_rect = ui.layout[Layer::Main].rect[first.idx()];
+        let divider_rect = ui
+            .response_for(split_id().with("divider"))
+            .rect
+            .expect("divider arranged");
+        let divider_center = if horizontal {
+            divider_rect.center().x
+        } else {
+            divider_rect.center().y
+        };
+        let first_edge = if horizontal {
+            first_rect.max().x
+        } else {
+            first_rect.max().y
+        };
+        assert_eq!(
+            divider_center,
+            first_edge + 0.5,
+            "{rigid_half:?} divider center stays on the arranged pane edge"
+        );
+
+        let next_pointer = if rigid_half == SplitHalf::First {
+            -101.0
+        } else {
+            501.0
+        };
+        ui.on_input(InputEvent::PointerMoved(if horizontal {
+            Vec2::new(next_pointer, 50.0)
+        } else {
+            Vec2::new(50.0, next_pointer)
+        }));
+        assert_eq!(frame(&mut ui, &mut ratio), 1);
+        assert!(
+            (ratio - expected_ratio).abs() < 1e-6,
+            "{rigid_half:?} next record writes back its content floor"
+        );
+    }
 }
 
 #[test]

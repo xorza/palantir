@@ -1,7 +1,7 @@
 use crate::harness::audit_steady_state;
 use aperture::{
-    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Text, TextEdit,
-    Track, Ui, WidgetId,
+    Background, Button, Color, Configure, Frame, Grid, Panel, Scroll, Sizing, Splitter, Text,
+    TextEdit, Track, Ui, WidgetId,
 };
 use std::rc::Rc;
 
@@ -61,6 +61,17 @@ fn grid_8x8_alloc_free() {
                     }
                 }
             });
+    });
+}
+
+#[test]
+fn splitter_alloc_free() {
+    let mut ratio = 0.5;
+    audit_steady_state("splitter", 0, move |ui| {
+        Splitter::horizontal(&mut ratio)
+            .id_salt("splitter")
+            .min_pane(80.0)
+            .show(ui, |_, _| {});
     });
 }
 
