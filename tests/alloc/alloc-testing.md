@@ -1,7 +1,7 @@
 # Per-frame Allocation Audit Suite
 
 Catches the regression where someone introduces a per-frame `Vec::new()`
-/ `HashMap` rebuild / `format!` and silently violates CLAUDE.md's
+/ `HashMap` rebuild / `format!` and silently violates AGENTS.md's
 "alloc-free steady state" rule.
 
 ## Goals

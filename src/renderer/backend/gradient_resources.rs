@@ -41,7 +41,7 @@ pub(crate) struct GradientResources {
     /// LUT atlas texture. 256 cols × 256 rows of `Rgba16Float`
     /// (linear, no sampler decode — the LUT bake stores linear-RGB
     /// directly via `From<Color> for ColorF16`, so the GPU sees
-    /// ready-to-blend linear values; see `CLAUDE.md` "Colour pipeline").
+    /// ready-to-blend linear values; see `AGENTS.md` "Colour pipeline").
     /// f16 over 8-bit linear: dark gradient stops linearise to tiny
     /// values, and an 8-bit linear row crushes them onto a handful of
     /// levels (visible banding) — see `gradient_atlas` module docs.

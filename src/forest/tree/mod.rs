@@ -67,7 +67,7 @@ impl Slot {
     /// resulting `Slot` indexes the entry that push wrote. Release
     /// `assert!` because silent truncation at `len ≥ u16::MAX` would
     /// collide with [`Slot::ABSENT`] and corrupt the table mapping —
-    /// invariant per CLAUDE.md's "default to release assert!".
+    /// invariant per AGENTS.md's "default to release assert!".
     #[inline]
     pub(crate) fn from_len(len: usize) -> Self {
         assert!(

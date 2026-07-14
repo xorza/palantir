@@ -1,6 +1,6 @@
 //! Strict per-frame allocation invariant for aperture's record/measure/
 //! arrange/cascade/encode pipeline (no GPU). Pinning test for the
-//! `CLAUDE.md` claim: "Per-frame allocation is a real metric.
+//! `AGENTS.md` claim: "Per-frame allocation is a real metric.
 //! Steady-state must be heap-alloc-free after warmup."
 //!
 //! Runs the shared `frame_fixture` workload through `Ui::frame`, warms
