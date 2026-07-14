@@ -15,9 +15,10 @@ use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
 use crate::renderer::damage::damage_cull_margin;
-use crate::renderer::frontend::cmd_buffer::{
+use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+use crate::renderer::frontend::cmd_buffer::payload::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, RenderCmdBuffer,
+    DrawPolylinePayload,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};

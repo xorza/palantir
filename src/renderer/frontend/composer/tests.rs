@@ -1858,7 +1858,7 @@ fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
 
 #[test]
 fn compose_arc_and_curve_share_one_batch_per_group() {
-    use crate::renderer::frontend::cmd_buffer::{DrawArcPayload, DrawCurvePayload};
+    use crate::renderer::frontend::cmd_buffer::payload::{DrawArcPayload, DrawCurvePayload};
     use crate::renderer::render_buffer::{CURVE_KIND_ARC, CURVE_KIND_CUBIC};
     let buf = run(
         |b, _arena| {
