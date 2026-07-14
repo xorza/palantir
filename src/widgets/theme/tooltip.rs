@@ -5,7 +5,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use glam::Vec2;
 
@@ -44,10 +44,10 @@ impl TooltipTheme {
     }
 }
 
-impl Default for TooltipTheme {
-    fn default() -> Self {
-        let panel = Background::rounded(palette::ELEM, Corners::all(4.0))
-            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0))
+impl TooltipTheme {
+    pub fn from_palette(p: &Palette) -> Self {
+        let panel = Background::rounded(p.elem, Corners::all(4.0))
+            .with_stroke(Stroke::solid(p.border_mid(), 1.0))
             .with_shadow(Shadow::drop(
                 Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
                 Vec2::new(2.0, 2.0),
@@ -55,12 +55,18 @@ impl Default for TooltipTheme {
             ));
         Self {
             panel,
-            text: TextStyle::default().with_font_size(13.0),
+            text: TextStyle::default().with_font_size(13.0).with_color(p.text),
             padding: Spacing::xy(6.0, 4.0),
             max_size: Size::new(280.0, f32::INFINITY),
             delay: 0.5,
             warmup: 1.0,
             gap: 6.0,
         }
+    }
+}
+
+impl Default for TooltipTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

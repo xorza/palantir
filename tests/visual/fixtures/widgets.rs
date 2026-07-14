@@ -1008,7 +1008,7 @@ fn progress_bar_half_matches_golden() {
 #[test]
 fn toggle_switch_states_matches_golden() {
     let mut h = Harness::new();
-    let mut style = ToggleTheme::switch();
+    let mut style = ToggleTheme::switch(&aperture::Palette::DEFAULT);
     style.anim = None; // sit at the rest position, no first-frame transient
     let img = h.render(UVec2::new(220, 110), 1.0, DARK_BG, |ui| {
         let mut on = true;

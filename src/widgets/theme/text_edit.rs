@@ -6,7 +6,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::WidgetTheme;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
@@ -84,6 +84,12 @@ impl WidgetTheme for TextEditTheme {
 
 impl Default for TextEditTheme {
     fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
+
+impl TextEditTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         let radius = Corners::all(4.0);
         // Stroke width stays constant across states — color is the
         // only thing that changes on focus. `Tree::open_node` folds
@@ -93,16 +99,15 @@ impl Default for TextEditTheme {
         // lands. Picking 1.5 px gives focused its emphasis without
         // the layout shift.
         let stroke_w = 1.5;
-        let normal_bg = Background::rounded(palette::ELEM_HOVER, radius)
-            .with_stroke(Stroke::solid(palette::BORDER_SOFT, stroke_w));
-        let focused_bg = Background::rounded(palette::ELEM_HOVER, radius)
-            .with_stroke(Stroke::solid(palette::BORDER_FOCUSED, stroke_w));
-        let disabled_bg = Background::rounded(palette::ELEM, radius)
-            .with_stroke(Stroke::solid(palette::BORDER_SOFT, stroke_w));
+        let normal_bg = Background::rounded(p.elem_hover, radius)
+            .with_stroke(Stroke::solid(p.border_soft(), stroke_w));
+        let focused_bg = Background::rounded(p.elem_hover, radius)
+            .with_stroke(Stroke::solid(p.border_focused, stroke_w));
+        let disabled_bg = Background::rounded(p.elem, radius)
+            .with_stroke(Stroke::solid(p.border_soft(), stroke_w));
         // Selection = accent at ~25% alpha — readable wash that doesn't
         // obscure the glyphs underneath.
-        let acc = palette::ACCENT;
-        let selection = acc.with_alpha(0.25);
+        let selection = p.accent.with_alpha(0.25);
         // `hovered` defaults to the `normal` look — editors don't give
         // hover feedback out of the box; the slot exists for themes
         // that want it.
@@ -120,11 +125,11 @@ impl Default for TextEditTheme {
                 },
                 disabled: WidgetLook {
                     background: Some(disabled_bg),
-                    text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+                    text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
-            placeholder: palette::TEXT_MUTED,
-            caret: palette::TEXT,
+            placeholder: p.text_muted,
+            caret: p.text,
             caret_width: 1.5,
             selection,
             padding: Spacing::xy(5.0, 3.0),

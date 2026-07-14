@@ -1,6 +1,6 @@
 use crate::primitives::color::Color;
 use crate::text::{FontFamily, FontWeight, LINE_HEIGHT_MULT};
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Default text-rendering inputs grouped together so apps can swap the
 /// whole "text look" with one assignment, and so future axes (italic,
@@ -54,7 +54,7 @@ impl Default for TextStyle {
     fn default() -> Self {
         Self {
             font_size_px: 16.0,
-            color: palette::TEXT,
+            color: Palette::DEFAULT.text,
             line_height_mult: LINE_HEIGHT_MULT,
             family: FontFamily::Sans,
             weight: FontWeight::Regular,

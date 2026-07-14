@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Splitter`]: the divider between the two panes.
 /// Layout reserves only the `rule_thickness` seam (painted in `rule`);
@@ -20,14 +20,20 @@ pub struct SplitterTheme {
     pub drag: Color,
 }
 
-impl Default for SplitterTheme {
-    fn default() -> Self {
+impl SplitterTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
             thickness: 6.0,
-            rule: palette::BORDER_SOFT,
+            rule: p.border_soft(),
             rule_thickness: 1.0,
-            hover: palette::ELEM_HOVER,
-            drag: palette::ACCENT.with_alpha(0.6),
+            hover: p.elem_hover,
+            drag: p.accent.with_alpha(0.6),
         }
+    }
+}
+
+impl Default for SplitterTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

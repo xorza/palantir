@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::ProgressBar`]: a rounded `track` rail with an
 /// accent `fill` spanning the value. `height` is the bar thickness; the
@@ -14,12 +14,18 @@ pub struct ProgressBarTheme {
     pub height: f32,
 }
 
-impl Default for ProgressBarTheme {
-    fn default() -> Self {
+impl ProgressBarTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
-            track: palette::ELEM_HOVER,
-            fill: palette::ACCENT,
+            track: p.elem_hover,
+            fill: p.accent,
             height: 6.0,
         }
+    }
+}
+
+impl Default for ProgressBarTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

@@ -4,7 +4,7 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
@@ -63,22 +63,28 @@ impl MenuItemTheme {
     }
 }
 
-impl Default for ContextMenuTheme {
-    fn default() -> Self {
-        let panel = Background::rounded(palette::ELEM, Corners::all(6.0))
-            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0));
+impl ContextMenuTheme {
+    pub fn from_palette(p: &Palette) -> Self {
+        let panel = Background::rounded(p.elem, Corners::all(6.0))
+            .with_stroke(Stroke::solid(p.border_mid(), 1.0));
         Self {
             panel,
             padding: Spacing::all(4.0),
             min_width: 160.0,
-            item: MenuItemTheme::default(),
-            separator: palette::BORDER_SOFT,
+            item: MenuItemTheme::from_palette(p),
+            separator: p.border_soft(),
         }
     }
 }
 
-impl Default for MenuItemTheme {
+impl Default for ContextMenuTheme {
     fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
+
+impl MenuItemTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         // Rows are transparent at rest; hover paints one surface-step
         // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses
         // (`ButtonTheme::menu_button`), so the bar and the popup that
@@ -86,7 +92,7 @@ impl Default for MenuItemTheme {
         // (pressed) keeps the hover look: the click auto-closes the
         // menu, so a louder pressed state buys nothing by default.
         let hovered = WidgetLook {
-            background: Some(Background::rounded(palette::ELEM_HOVER, Corners::all(4.0))),
+            background: Some(Background::rounded(p.elem_hover, Corners::all(4.0))),
             text: None,
         };
         Self {
@@ -96,11 +102,17 @@ impl Default for MenuItemTheme {
                 hovered,
                 disabled: WidgetLook {
                     background: None,
-                    text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+                    text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
-            shortcut: palette::TEXT_MUTED,
+            shortcut: p.text_muted,
             padding: Spacing::xy(10.0, 6.0),
         }
+    }
+}
+
+impl Default for MenuItemTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

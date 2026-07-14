@@ -7,7 +7,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::WidgetTheme;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
@@ -42,29 +42,35 @@ pub struct ButtonTheme {
 
 impl Default for ButtonTheme {
     fn default() -> Self {
-        // Buttons map to the palette's clickable-surface family:
-        // ELEM / ELEM_HOVER / ELEM_ACTIVE (resting at the ELEM_HOVER
-        // tier). Disabled keeps the same ELEM fill but swaps text to
-        // TEXT_DISABLED. `text: None` on active states means "inherit
-        // Theme::text" — bumping `theme.text.color` recolors active
-        // button labels. The historical 4 px radius is retained.
+        Self::from_palette(&Palette::DEFAULT)
+    }
+}
+
+impl ButtonTheme {
+    /// The standard button recipe over `p`: clickable-surface family
+    /// `elem` / `elem_hover` / `elem_active` (resting at the
+    /// `elem_hover` tier). Disabled keeps the `elem` fill but swaps
+    /// text to `text_disabled`. `text: None` on active states means
+    /// "inherit `Theme::text`" — bumping `theme.text.color` recolors
+    /// active button labels. The historical 4 px radius is retained.
+    pub fn from_palette(p: &Palette) -> Self {
         let bg = |fill: Color| {
             Some(
                 Background::rounded(fill, Corners::all(4.0))
-                    .with_stroke(Stroke::solid(palette::BORDER_SOFT, 1.0)),
+                    .with_stroke(Stroke::solid(p.border_soft(), 1.0)),
             )
         };
-        // Pressed = hovered fill + focused stroke (palette has no further fill tier).
-        let pressed_bg = Background::rounded(palette::ELEM_ACTIVE, Corners::all(4.0))
-            .with_stroke(Stroke::solid(palette::BORDER_FOCUSED, 1.0));
+        // Pressed = hovered fill + focused stroke (the palette has no further fill tier).
+        let pressed_bg = Background::rounded(p.elem_active, Corners::all(4.0))
+            .with_stroke(Stroke::solid(p.border_focused, 1.0));
         Self {
             looks: StatefulLook {
                 normal: WidgetLook {
-                    background: bg(palette::ELEM_HOVER),
+                    background: bg(p.elem_hover),
                     text: None,
                 },
                 hovered: WidgetLook {
-                    background: bg(palette::ELEM_ACTIVE),
+                    background: bg(p.elem_active),
                     text: None,
                 },
                 active: WidgetLook {
@@ -72,8 +78,8 @@ impl Default for ButtonTheme {
                     text: None,
                 },
                 disabled: WidgetLook {
-                    background: bg(palette::ELEM),
-                    text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+                    background: bg(p.elem),
+                    text: Some(TextStyle::default().with_color(p.text_disabled)),
                 },
             },
             padding: Spacing::xy(12.0, 6.0),
@@ -81,9 +87,7 @@ impl Default for ButtonTheme {
             anim: None,
         }
     }
-}
 
-impl ButtonTheme {
     /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
     pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.looks.for_each_text(f);
@@ -97,7 +101,7 @@ impl ButtonTheme {
     /// conventional menu-bar look (Figma / VS Code / macOS).
     /// Distinct from a popup-row `MenuItem`, which lives inside a
     /// `ContextMenu` and is themed via `theme.context_menu.item`.
-    pub fn menu_button() -> Self {
+    pub fn menu_button(p: &Palette) -> Self {
         let flat = |fill: Brush| WidgetLook {
             background: Some(Background::rounded(fill, Corners::all(4.0))),
             text: None,
@@ -105,8 +109,8 @@ impl ButtonTheme {
         Self {
             looks: StatefulLook {
                 normal: flat(Brush::TRANSPARENT),
-                hovered: flat(palette::ELEM_HOVER.into()),
-                active: flat(palette::ELEM_ACTIVE.into()),
+                hovered: flat(p.elem_hover.into()),
+                active: flat(p.elem_active.into()),
                 disabled: flat(Brush::TRANSPARENT),
             },
             padding: Spacing::xy(8.0, 4.0),
