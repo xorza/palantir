@@ -10,6 +10,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::frame::Frame;
 use crate::widgets::splitter::{SplitHalf, Splitter, pointer_to_ratio, sanitize_ratio};
+use crate::widgets::theme::splitter::SplitterTheme;
 use crate::window::CursorIcon;
 use glam::{UVec2, Vec2};
 
@@ -282,6 +283,40 @@ fn divider_requests_the_resize_cursor() {
         CursorIcon::NsResize,
         "column split resizes vertically"
     );
+
+    for (thickness, rule_thickness) in [(3.0, 9.0), (6.0, 0.0)] {
+        let mut ui = Ui::for_test();
+        let mut ratio = 0.5;
+        let frame = |ui: &mut Ui, ratio: &mut f32| {
+            ui.run_at_acked(SURFACE, |ui| {
+                let style = SplitterTheme {
+                    thickness,
+                    rule_thickness,
+                    ..SplitterTheme::default()
+                };
+                Splitter::horizontal(ratio)
+                    .id(split_id())
+                    .size((Sizing::Fixed(401.0), Sizing::Fixed(100.0)))
+                    .style(style)
+                    .show(ui, |_, _| {});
+            });
+        };
+        frame(&mut ui, &mut ratio);
+        frame(&mut ui, &mut ratio);
+
+        let first = ui.node_for_widget_id(split_id().with("first"));
+        let first_rect = ui.layout[Layer::Main].rect[first.idx()];
+        let divider_rect = ui
+            .response_for(split_id().with("divider"))
+            .rect
+            .expect("divider arranged");
+        assert_eq!(divider_rect.size.w, thickness);
+        assert_eq!(
+            divider_rect.center().x,
+            first_rect.max().x + rule_thickness * 0.5,
+            "grab bar stays centered whether narrower or wider than the rule"
+        );
+    }
 }
 
 #[test]
