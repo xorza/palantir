@@ -14,7 +14,7 @@ use crate::primitives::fill_wire::FillKind;
 use crate::primitives::image::{ImageFilter, ImageFit};
 use crate::primitives::stroke::Stroke;
 use crate::primitives::{corners::Corners, rect::Rect, size::Size};
-use crate::renderer::backend::viewport::damage_cull_margin;
+use crate::renderer::damage::damage_cull_margin;
 use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
     DrawPolylinePayload, RenderCmdBuffer,
@@ -122,7 +122,7 @@ pub(crate) fn encode(
     let gradients = arena.gradients.as_slice();
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in
-    // `viewport::damage_cull_margin` so the two can't drift.
+    // `renderer::damage::damage_cull_margin` so the two can't drift.
     let damage_cull_margin = damage_cull_margin(ui.display.scale_factor);
     for (layer, tree) in ui.forest.iter_paint_order() {
         let layer_cascades = &ui.cascades.layers[layer];
@@ -480,13 +480,7 @@ fn emit_one_shape(
             // `epoch` only affects the shape hash (damage), not the draw.
             let wid = ctx.tree.records.widget_id()[id.idx()];
             let view = &ctx.gpu_views[&wid];
-            let paint_index = out.gpu_view_paints.len() as u32;
-            out.gpu_view_paints.push(view.paint.clone());
-            out.draw_image(DrawImagePayload::gpu_view(
-                owner_rect,
-                view.texture_id,
-                paint_index,
-            ));
+            out.draw_gpu_view(owner_rect, view.texture_id, view.paint.clone());
         }
     }
 }

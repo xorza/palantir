@@ -12,6 +12,7 @@ mod pipeline_utils;
 mod quad_pipeline;
 pub(crate) mod queue;
 mod schedule;
+mod shader_template;
 mod stencil;
 pub mod text;
 pub(crate) mod viewport;

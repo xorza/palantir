@@ -25,14 +25,6 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
 
-/// The off-screen target's texture format. `Rgba8UnormSrgb`, identical to
-/// registered images, so the image pipeline samples a `GpuView` target
-/// exactly like any other texture: the user writes linear in their
-/// fragment shader, the format encodes sRGB on store, and aperture's
-/// sampler decodes back to linear. App code matches this on its color
-/// target (see [`GpuInitCtx::target_format`]).
-pub(crate) const GPU_VIEW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
-
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.
 /// `'static` because the framework holds the renderer (behind
