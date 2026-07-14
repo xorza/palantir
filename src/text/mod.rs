@@ -118,7 +118,7 @@ pub enum FontWeight {
 ///   for tests, headless drivers, and the `Ui::for_test()` state.
 /// - [`Self::with_bundled_fonts`] / [`Self::with_cosmic`] — real
 ///   shaping via cosmic-text.
-#[derive(Clone, Default)]
+#[derive(Clone, Debug, Default)]
 pub struct TextShaper {
     /// `pub(crate)` for [`test_support`] observability helpers. Direct
     /// field access from inside the crate is fine; invariants live in
@@ -130,7 +130,7 @@ pub struct TextShaper {
 /// Both [`crate::Ui`] (layout-time measurement + reuse cache) and
 /// [`crate::WgpuBackend`] (shaping during render) borrow this; backend
 /// only touches `cosmic` via [`TextShaper::with_render_split`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct ShaperInner {
     /// `None` ⇒ mono fallback path. `Some` ⇒ real shaping.
     cosmic: Option<CosmicMeasure>,
