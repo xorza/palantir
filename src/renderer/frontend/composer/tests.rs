@@ -9,7 +9,8 @@ use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
 };
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::render_buffer::{RenderBuffer, RenderOwnerId};
+use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
 use crate::text::TextCacheKey;
@@ -583,7 +584,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
-    use crate::renderer::gradient_atlas::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
     let expected_axis = g.axis();
@@ -624,7 +625,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
     use crate::renderer::frontend::cmd_buffer::BrushSource;
-    use crate::renderer::gradient_atlas::GradientAtlas;
+    use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = GradientAtlas::default();
     let lowered = LoweredGradient {

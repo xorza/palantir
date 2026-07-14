@@ -22,7 +22,8 @@ pub(crate) mod encoder;
 use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::frontend::encoder::encode;
-use crate::renderer::render_buffer::{RenderBuffer, RenderOwnerId};
+use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::ui::Ui;
 use crate::ui::frame_report::RenderPlan;
 

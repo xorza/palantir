@@ -10,7 +10,8 @@
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
-use crate::renderer::gradient_atlas::{ATLAS_ROWS, GradientAtlas, LUT_ROW_TEXELS};
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
+use crate::renderer::gradient_atlas::{ATLAS_ROWS, LUT_ROW_TEXELS};
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
 /// Derived from the CPU-side `ColorF16` row store
