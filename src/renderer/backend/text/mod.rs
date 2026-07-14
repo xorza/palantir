@@ -22,7 +22,7 @@
 //! - **20-byte instances** (vs glyphon's 24). content_type packed
 //!   into uv high bit.
 //! - **No `Viewport` object.** Atlas sizes ride the shared immediate
-//!   region ([`Params`]), pushed per batch — no uniform buffer.
+//!   region as two `u32`s, pushed per batch — no uniform buffer.
 
 pub(crate) mod atlas;
 pub(crate) mod encode;
@@ -59,39 +59,11 @@ pub(crate) struct GlyphInstance {
     pub(crate) color: u32,
 }
 
-/// Atlas-size params (text-only). Lives in the shared immediate
-/// region at offset 8 (right after `ViewportPush` at offset 0).
-/// `encase::ShaderType` handles WGSL alignment; `push_into` writes
-/// the encoded bytes through `set_immediates`.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, encase::ShaderType)]
-pub(crate) struct Params {
-    /// `[color_atlas_size, mask_atlas_size]`.
-    pub(crate) atlas_px: glam::UVec2,
-}
-
-impl Params {
-    /// Offset inside the shared immediate region. 8 = right after
-    /// `ViewportPush::BYTES`. Hard-coded rather than computed so a
-    /// drift between this and the shader's `Immediates` struct trips
-    /// the `params_offset_follows_viewport` test, not silent mis-reads.
-    const OFFSET: u32 = 8;
-    const BYTES: usize = <Self as encase::ShaderSize>::SHADER_SIZE.get() as usize;
-
-    fn encode(&self) -> [u8; Self::BYTES] {
-        let mut out = [0u8; Self::BYTES];
-        encase::UniformBuffer::new(&mut out[..])
-            .write(self)
-            .unwrap();
-        out
-    }
-
-    /// Push these atlas sizes into the active pipeline's immediate
-    /// region at [`Self::OFFSET`]. Caller must ensure a pipeline is
-    /// already bound (wgpu's `set_immediates` validation).
-    fn push_into(&self, pass: &mut wgpu::RenderPass<'_>) {
-        pass.set_immediates(Self::OFFSET, &self.encode());
-    }
-}
+/// `[color_atlas_size, mask_atlas_size]` follows `ViewportPush` in the
+/// shared immediate region.
+const PARAMS_OFFSET: u32 = 8;
+const PARAMS_BYTES: usize = std::mem::size_of::<[u32; 2]>();
+const _: () = assert!(PARAMS_BYTES == 8);
 
 /// 0 = mask, 1 = color. Encoded in the high bit of `uv.u`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -99,6 +71,29 @@ impl Params {
 pub(crate) enum ContentType {
     Mask = 0,
     Color = 1,
+}
+
+impl ContentType {
+    fn format(self) -> wgpu::TextureFormat {
+        match self {
+            Self::Mask => wgpu::TextureFormat::R8Unorm,
+            Self::Color => wgpu::TextureFormat::Rgba8UnormSrgb,
+        }
+    }
+
+    fn bytes_per_pixel(self) -> u32 {
+        match self {
+            Self::Mask => 1,
+            Self::Color => 4,
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Mask => "aperture text mask atlas",
+            Self::Color => "aperture text color atlas",
+        }
+    }
 }
 
 pub struct TextBackend {
@@ -119,13 +114,10 @@ pub struct TextBackend {
     atlas_bg: wgpu::BindGroup,
     sampler: wgpu::Sampler,
 
-    /// Atlas-size params. Reassigned on every `prepare_batch`, pushed
-    /// per-pass via `RenderPass::set_immediates` in `render_batch` —
-    /// no uniform buffer, no bind group, no dirty tracking.
-    params: Params,
+    /// `[color_atlas_size, mask_atlas_size]`, updated only when an atlas grows.
+    atlas_px: [u32; 2],
 
-    /// Non-empty exactly when some batch prepared glyphs this frame —
-    /// the backend gates `post_record` on it.
+    /// Drawable glyph instances accumulated across this frame's batches.
     pub(crate) instances: Vec<GlyphInstance>,
     vbuf: DynamicBuffer,
 
@@ -152,7 +144,7 @@ impl std::fmt::Debug for TextBackend {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TextBackend")
             .field("atlas", &self.atlas)
-            .field("params", &self.params)
+            .field("atlas_px", &self.atlas_px)
             .field("instances", &self.instances.len())
             .finish_non_exhaustive()
     }
@@ -193,15 +185,14 @@ impl TextBackend {
             ],
         });
 
-        let params = Params {
-            atlas_px: glam::UVec2::new(atlas.color_size(), atlas.mask_size()),
-        };
+        let bindings = atlas.bindings();
+        let atlas_px = bindings.atlas_px;
 
         let atlas_bg = build_atlas_bg(
             device,
             &atlas_bgl,
-            atlas.mask_view(),
-            atlas.color_view(),
+            bindings.mask_view,
+            bindings.color_view,
             &sampler,
         );
 
@@ -215,7 +206,7 @@ impl TextBackend {
             atlas_bgl,
             atlas_bg,
             sampler,
-            params,
+            atlas_px,
             instances: Vec::new(),
             vbuf,
             ranges: Vec::new(),
@@ -234,8 +225,8 @@ impl TextBackend {
         device: &wgpu::Device,
         format: wgpu::TextureFormat,
     ) -> StencilVariant {
-        // Group 0 = atlas textures + sampler. Viewport + atlas-size
-        // `Params` ride the shared immediate region.
+        // Group 0 = atlas textures + sampler. Viewport + atlas sizes
+        // ride the shared immediate region.
         StencilVariant::build(
             device,
             ColorVariantSpec {
@@ -262,6 +253,11 @@ impl TextBackend {
         batch_idx: usize,
         runs: &[TextRun],
     ) {
+        assert_eq!(
+            batch_idx,
+            self.ranges.len(),
+            "text batches must be prepared once in contiguous order",
+        );
         let start = self.instances.len() as u32;
 
         // Pass 1: walk every run, emit encoded-cache hits straight to
@@ -290,11 +286,17 @@ impl TextBackend {
             });
         }
 
-        // Pass 2: shape only the misses. Take `misses` so the closure
-        // can borrow it without conflicting with `&mut self`.
+        // Pass 2: shape only the misses.
         if !self.misses.is_empty() {
-            let shaper = self.shaper.clone();
-            let misses = std::mem::take(&mut self.misses);
+            let Self {
+                shaper,
+                swash_cache,
+                atlas,
+                instances,
+                encoded_cache,
+                misses,
+                ..
+            } = self;
             shaper.with_render_split(|split| {
                 let RenderSplit {
                     font_system,
@@ -303,56 +305,44 @@ impl TextBackend {
 
                 let resolved = misses.iter().filter_map(|m| {
                     let r = &runs[m.run_idx as usize];
-                    lookup.get(r.key).map(|buffer| {
-                        (
-                            ResolvedRun {
-                                buffer,
-                                origin: r.origin,
-                                bounds: r.bounds,
-                                scale: scale * r.scale,
-                                color: r.color,
-                            },
-                            m.run_key,
-                        )
+                    lookup.get(r.key).map(|buffer| ResolvedRun {
+                        buffer,
+                        origin: r.origin,
+                        bounds: r.bounds,
+                        scale: scale * r.scale,
+                        color: r.color,
+                        run_key: m.run_key,
                     })
                 });
 
                 let mut ectx = EncodeCtx {
                     device: ctx.device,
                     font_system,
-                    swash_cache: &mut self.swash_cache,
-                    atlas: &mut self.atlas,
-                    cache: &mut self.encoded_cache,
+                    swash_cache,
+                    atlas,
+                    cache: encoded_cache,
                 };
-                encode_batch(&mut ectx, resolved, &mut self.instances);
+                encode_batch(&mut ectx, resolved, instances);
             });
-            self.misses = misses;
         }
 
         let end = self.instances.len() as u32;
 
         // Rebuild bind group if atlas grew during encode.
         if self.atlas.bind_group_dirty {
+            let bindings = self.atlas.bindings();
             self.atlas_bg = build_atlas_bg(
                 ctx.device,
                 &self.atlas_bgl,
-                self.atlas.mask_view(),
-                self.atlas.color_view(),
+                bindings.mask_view,
+                bindings.color_view,
                 &self.sampler,
             );
+            self.atlas_px = bindings.atlas_px;
             self.atlas.bind_group_dirty = false;
         }
 
-        // Reassign `self.params` unconditionally (it only changes when
-        // an atlas grew); `render_batch` pushes the value via
-        // `set_immediates` each draw — no buffer write, no bind-group
-        // rebind, no dirty tracking.
-        self.params.atlas_px = glam::UVec2::new(self.atlas.color_size(), self.atlas.mask_size());
-
-        if self.ranges.len() <= batch_idx {
-            self.ranges.resize(batch_idx + 1, Span::default());
-        }
-        self.ranges[batch_idx] = Span::new(start, end - start);
+        self.ranges.push(Span::new(start, end - start));
     }
 
     /// Upload this frame's accumulated glyph instances in one belt
@@ -392,22 +382,21 @@ impl TextBackend {
         // pass, so the backend hasn't pushed viewport elsewhere yet.
         // Cheap: register-mapped, no buffer round-trip.
         viewport.push_into(pass);
-        self.params.push_into(pass);
+        pass.set_immediates(PARAMS_OFFSET, bytemuck::bytes_of(&self.atlas_px));
         pass.set_vertex_buffer(0, self.vbuf.buffer.slice(..));
         pass.draw(0..4, span.start..span.start + span.len);
     }
 
     pub(crate) fn post_record(&mut self) {
-        // Skipping text-less frames keeps the atlas frame counter (and the
-        // cache sweep it drives) pinned to frames that actually drew text.
-        if self.instances.is_empty() {
+        if self.ranges.is_empty() {
+            assert!(self.instances.is_empty());
             return;
         }
         self.atlas.end_frame();
         self.encoded_cache
             .sweep(self.atlas.current_frame, ENCODED_CACHE_KEEP_FRAMES);
         self.instances.clear();
-        self.ranges.fill(Span::default());
+        self.ranges.clear();
     }
 }
 
@@ -595,7 +584,7 @@ pub mod test_support {
 
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::text::{GlyphInstance, Params};
+    use crate::renderer::backend::text::{GlyphInstance, PARAMS_BYTES, PARAMS_OFFSET};
     use std::mem::{align_of, offset_of, size_of};
 
     #[test]
@@ -609,26 +598,21 @@ mod tests {
     }
 
     #[test]
-    fn params_shader_size_matches_a_vec2_u32() {
-        // Pinned: with a single `UVec2` member, `encase::ShaderSize`
-        // reports 8 bytes — matches WGSL's `vec2<u32>` layout. If
-        // this trips, the struct shape changed and `Params::encode`
-        // / the shader binding need re-checking.
-        assert_eq!(<Params as encase::ShaderSize>::SHADER_SIZE.get(), 8);
-        assert_eq!(Params::BYTES, 8);
+    fn params_bytes_match_a_vec2_u32() {
+        assert_eq!(PARAMS_BYTES, 8);
     }
 
     #[test]
     fn params_offset_follows_viewport() {
-        // Pinned: `Params` lives in the shared immediate region right
+        // Pinned: atlas sizes live in the shared immediate region right
         // after `ViewportPush` (8 bytes). If `ViewportPush` grows or
-        // `Params::OFFSET` drifts, the shader's `imm.params` would
+        // `PARAMS_OFFSET` drifts, the shader's `imm.params` would
         // read the wrong bytes. Total 16 must also still fit inside
         // `IMMEDIATES_BYTES`.
         use crate::renderer::backend::IMMEDIATES_BYTES;
         use crate::renderer::backend::viewport::ViewportPush;
-        assert_eq!(Params::OFFSET as usize, ViewportPush::BYTES);
-        assert!(Params::OFFSET as usize + Params::BYTES <= IMMEDIATES_BYTES as usize);
+        assert_eq!(PARAMS_OFFSET as usize, ViewportPush::BYTES);
+        assert!(PARAMS_OFFSET as usize + PARAMS_BYTES <= IMMEDIATES_BYTES as usize);
     }
 }
 
@@ -980,7 +964,7 @@ mod gpu_regression {
 
         let runs = [make_run(
             &shaper,
-            "a b",
+            " ",
             14.0,
             16.0,
             Vec2::new(2.0, 2.0),
@@ -997,16 +981,33 @@ mod gpu_regression {
         };
 
         run_one_frame(&device, &queue, &mut backend, 1.0, &runs);
+        assert!(
+            backend.instances.is_empty(),
+            "whitespace prepares a text batch without drawable glyphs",
+        );
         assert_eq!(
             empties(&backend),
             1,
             "the space rasterizes to one zero-area entry"
         );
+        let first_frame = backend.atlas.current_frame;
+        backend.post_record();
+        assert_eq!(
+            backend.atlas.current_frame,
+            first_frame + 1,
+            "a prepared zero-instance batch must still advance cache aging",
+        );
 
         // The space's last_use is frame 1. The sweep at frame 512 keeps
         // it (cutoff 512 - 512 = 0 <= 1); the one at frame 1024 drops
-        // it (cutoff 512 > 1). Advance idle frames to there.
+        // it (cutoff 512 > 1). Advance prepared text frames that don't
+        // touch the space to there.
+        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         while backend.atlas.current_frame < 1024 {
+            let mut ctx = GpuCtx::new(&device, &queue, &mut belt, &mut encoder);
+            backend.prepare_batch(&mut ctx, 1.0, 0, &[]);
             backend.post_record();
         }
         assert_eq!(

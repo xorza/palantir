@@ -4,8 +4,8 @@
 //!
 //! - **Cache hit**: prior frames laid this exact `(TextCacheKey,
 //!   scale, subpixel origin bin, area color)` run out into the atlas;
-//!   the resulting `GlyphInstance` templates are stored in the
-//!   [`EncodedCache`]. Emit = `Vec::extend` with origin-shifted
+//!   the resulting origin-relative `GlyphInstance` templates are stored
+//!   in the [`EncodedCache`]. Emit = a copy with origin-shifted
 //!   positions, no cosmic walk, no per-glyph atlas hashmap lookup, no
 //!   `CacheKey::new`. This is the ~37% of frame time we're targeting.
 //! - **Cache miss**: walks cosmic `LayoutRun`s, touches/inserts atlas
@@ -30,7 +30,6 @@ use crate::renderer::render_buffer::TextRun;
 use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;
-use std::cell::Cell;
 
 use crate::renderer::backend::text::atlas::GlyphAtlas;
 use crate::renderer::backend::text::{ContentType, GlyphInstance};
@@ -43,6 +42,7 @@ pub(crate) struct ResolvedRun<'a> {
     pub(crate) bounds: URect,
     pub(crate) scale: f32,
     pub(crate) color: ColorU8,
+    pub(crate) run_key: EncodedRunKey,
 }
 
 /// Cache-hit identity for an encoded run. Subpixel bins capture the
@@ -51,12 +51,12 @@ pub(crate) struct ResolvedRun<'a> {
 /// atlas slots and can't share an entry).
 ///
 /// `area_color` is in the key because the run's colour is baked into
-/// every cached [`EncodedGlyph::color`] at insert time. **This is only
+/// every cached [`GlyphInstance::color`] at insert time. **This is only
 /// sufficient because aperture shapes every run with one uniform
 /// colour** — `attrs_for` (`cosmic.rs`) sets no per-span colour, so
 /// cosmic never emits a per-glyph `color_opt`. If per-span colours are
 /// ever added, fold a colour-span fingerprint into this key *first*, or
-/// the cache will serve a stale run's baked colours. The `debug_assert`
+/// the cache will serve a stale run's baked colours. The assertion
 /// in `encode_batch`'s glyph loop is the tripwire for that invariant.
 #[derive(Clone, Copy, Debug, Hash, PartialEq, Eq)]
 pub(crate) struct EncodedKey {
@@ -81,18 +81,6 @@ pub(crate) struct EncodedRunKey {
     pub(crate) origin_y: i32,
 }
 
-/// One cached glyph: origin-relative position + slot's atlas uv +
-/// final post-blend color (per-glyph cosmic override resolved against
-/// the run's area color at cache-insertion time).
-#[derive(Clone, Copy, Debug)]
-pub(crate) struct EncodedGlyph {
-    pub(crate) rel_x: i32,
-    pub(crate) rel_y: i32,
-    pub(crate) dim: u32,
-    pub(crate) uv_and_kind: u32,
-    pub(crate) color: u32,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct EncodedEntry {
     /// Slice into `EncodedCache.arena` holding this run's glyph
@@ -106,8 +94,9 @@ pub(crate) struct EncodedEntry {
     pub(crate) eviction_at: u64,
 }
 
-/// Flat-arena cache: one contiguous `Vec<EncodedGlyph>` holds every
-/// run's glyphs, with each `EncodedEntry` pointing at its span.
+/// Flat-arena cache: one contiguous `Vec<GlyphInstance>` holds every
+/// run's origin-relative glyphs, with each `EncodedEntry` pointing at
+/// its span.
 /// After warmup this is alloc-free — the arena/map/scratch all retain
 /// capacity across frames.
 #[derive(Debug, Default)]
@@ -116,7 +105,7 @@ pub(crate) struct EncodedCache {
     /// Append-only arena. Replaced runs leave dead spans behind;
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
-    pub(crate) arena: Vec<EncodedGlyph>,
+    pub(crate) arena: Vec<GlyphInstance>,
     /// Per-glyph atlas slab index, parallel to `arena` (same spans).
     /// A cache hit emits `arena` straight out without walking cosmic,
     /// so the atlas slots backing the run would never get their LRU
@@ -129,7 +118,7 @@ pub(crate) struct EncodedCache {
     pub(crate) slots: Vec<u32>,
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
-    pub(crate) scratch: Vec<EncodedGlyph>,
+    pub(crate) scratch: Vec<GlyphInstance>,
     pub(crate) scratch_slots: Vec<u32>,
 }
 
@@ -213,7 +202,7 @@ pub(crate) fn try_emit_cached(
     // holds the same glyph.
     for (g, &idx) in glyphs.iter().zip(&cache.slots[span.range()]) {
         out.push(GlyphInstance {
-            pos: [g.rel_x + run_key.origin_x, g.rel_y + run_key.origin_y],
+            pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
             dim: g.dim,
             uv_and_kind: g.uv_and_kind,
             color: g.color,
@@ -241,11 +230,12 @@ pub(crate) struct EncodeCtx<'a> {
 /// to have already filtered out invalid keys and cache hits.
 pub(crate) fn encode_batch<'a>(
     ctx: &mut EncodeCtx<'_>,
-    runs: impl IntoIterator<Item = (ResolvedRun<'a>, EncodedRunKey)>,
+    runs: impl IntoIterator<Item = ResolvedRun<'a>>,
     out: &mut Vec<GlyphInstance>,
 ) {
     let current_frame = ctx.atlas.current_frame;
-    for (area, run_key) in runs {
+    for area in runs {
+        let run_key = area.run_key;
         let area_color: u32 = bytemuck::cast(area.color);
         let scale = area.scale;
         let origin = area.origin;
@@ -258,24 +248,7 @@ pub(crate) fn encode_batch<'a>(
         // become a cache template (`EncodedKey` carries no bounds, so
         // integer-pixel scrolling replays the same key with lines
         // newly in view — they'd stay blank forever).
-        let culled = Cell::new(false);
-        let runs_iter = area
-            .buffer
-            .layout_runs()
-            .skip_while(|run| {
-                let skip = (run.line_top + run.line_height) * scale + origin.y < bounds_top;
-                if skip {
-                    culled.set(true);
-                }
-                skip
-            })
-            .take_while(|run| {
-                let take = run.line_top * scale + origin.y <= bounds_bot;
-                if !take {
-                    culled.set(true);
-                }
-                take
-            });
+        let mut culled = false;
 
         // Build a fresh cache entry as a side effect of the slow
         // walk. We push templates straight onto `cache.arena`; if an
@@ -285,7 +258,15 @@ pub(crate) fn encode_batch<'a>(
         let eviction_at_start = ctx.atlas.eviction_count;
         let pending_start = ctx.cache.arena.len() as u32;
 
-        for run in runs_iter {
+        for run in area.buffer.layout_runs() {
+            if (run.line_top + run.line_height) * scale + origin.y < bounds_top {
+                culled = true;
+                continue;
+            }
+            if run.line_top * scale + origin.y > bounds_bot {
+                culled = true;
+                break;
+            }
             let line_y_px = (run.line_y * scale).round() as i32;
             for glyph in run.glyphs.iter() {
                 let physical = glyph.physical((origin.x, origin.y), scale);
@@ -296,16 +277,12 @@ pub(crate) fn encode_batch<'a>(
                 // sets no per-span colour). If this fires, per-span
                 // colour was added without growing `EncodedKey`, and the
                 // encoded cache would alias runs differing only in glyph
-                // colour. `debug_assert` (not release): one Option check
-                // per glyph in the miss-path loop.
-                debug_assert!(
+                // colour.
+                assert!(
                     glyph.color_opt.is_none(),
                     "per-glyph colour override requires folding colour into EncodedKey",
                 );
-                let color = match glyph.color_opt {
-                    Some(c) => cosmic_color_to_linear_rgba_u32(c),
-                    None => area_color,
-                };
+                let color = area_color;
 
                 let idx = match ctx.atlas.touch(&physical.cache_key) {
                     Some(i) => i,
@@ -337,9 +314,8 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
-                ctx.cache.arena.push(EncodedGlyph {
-                    rel_x: abs_x - run_key.origin_x,
-                    rel_y: abs_y - run_key.origin_y,
+                ctx.cache.arena.push(GlyphInstance {
+                    pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
                     dim,
                     uv_and_kind,
                     color,
@@ -353,7 +329,7 @@ pub(crate) fn encode_batch<'a>(
         // precondition. Partially visible runs re-encode each frame;
         // the reverse (a cached full template replayed under narrower
         // bounds) is safe — the batch scissor is the real clip.
-        if ctx.atlas.eviction_count == eviction_at_start && !culled.get() {
+        if ctx.atlas.eviction_count == eviction_at_start && !culled {
             let span = Span::new(pending_start, ctx.cache.arena.len() as u32 - pending_start);
             ctx.cache.map.insert(
                 run_key.key,
@@ -405,23 +381,9 @@ fn rasterize_and_insert(
     atlas.insert(device, key, content, w, h, left, top, &image.data)
 }
 
-/// Cosmic's `Color` packs as `0xAARRGGBB`; our shader reads R from the
-/// low byte. Repack via the public accessors.
-fn cosmic_color_to_linear_rgba_u32(c: cosmic_text::Color) -> u32 {
-    u32::from_le_bytes([c.r(), c.g(), c.b(), c.a()])
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::renderer::backend::text::encode::{
-        ContentType, cosmic_color_to_linear_rgba_u32, pack_uv,
-    };
-
-    #[test]
-    fn cosmic_to_rgba_byteswap() {
-        let c = cosmic_text::Color::rgba(0x11, 0x22, 0x33, 0x44);
-        assert_eq!(cosmic_color_to_linear_rgba_u32(c), 0x44332211);
-    }
+    use crate::renderer::backend::text::encode::{ContentType, pack_uv};
 
     #[test]
     fn pack_uv_round_trip() {
