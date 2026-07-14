@@ -62,21 +62,26 @@ impl TextEditTheme {
     /// `state.disabled` is the cascaded ancestor-or-self flag —
     /// caller can merge `state.disabled |= element.disabled` for
     /// lag-free response to its own self-toggle (mirrors Button).
+    #[inline(always)]
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
         self.looks.pick(state, state.focused)
     }
 }
 
 impl WidgetTheme for TextEditTheme {
+    #[inline(always)]
     fn pick(&self, state: ResponseState) -> &WidgetLook {
         self.pick(state)
     }
+    #[inline(always)]
     fn padding(&self) -> Spacing {
         self.padding
     }
+    #[inline(always)]
     fn margin(&self) -> Spacing {
         self.margin
     }
+    #[inline(always)]
     fn anim(&self) -> Option<AnimSpec> {
         self.anim
     }

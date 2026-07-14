@@ -69,6 +69,7 @@ impl WidgetLook {
     /// borrowed from an owned theme animates without a clone; callers
     /// whose look borrows `ui.theme` still clone first to end that
     /// borrow before `ui` is reborrowed mutably.
+    #[inline(always)]
     pub fn animate(
         &self,
         ui: &mut Ui,
@@ -114,6 +115,7 @@ impl StatefulLook {
     /// `active` is the widget's engaged flag (`state.pressed()` for
     /// press-driven widgets, `state.focused` for focus-driven ones);
     /// `disabled` / `hovered` read straight from `state`.
+    #[inline(always)]
     pub fn pick(&self, state: ResponseState, active: bool) -> &WidgetLook {
         if state.disabled {
             &self.disabled
