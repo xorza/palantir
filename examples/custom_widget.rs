@@ -94,7 +94,7 @@ impl<'a> Stepper<'a> {
         });
 
         // 3) Hand back a Response for the container so callers can chain
-        //    `.hovered()` etc.; the `&mut i32` mutation is the real effect.
+        //    `.hovered` etc.; the `&mut i32` mutation is the real effect.
         Response::lazy(id, ui)
     }
 }

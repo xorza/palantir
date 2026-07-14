@@ -511,7 +511,7 @@ impl Card {
         if let Some(delta) = r.drag_delta() {
             self.pos = self.anchor + delta;
         }
-        self.clicked |= r.clicked();
+        self.clicked |= r.left.clicked();
     }
 }
 

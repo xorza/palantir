@@ -64,7 +64,7 @@ pub fn build(ui: &mut Ui) {
                         .label(label)
                         .min_size((220.0, 32.0))
                         .show(ui)
-                        .clicked()
+                        .left.clicked()
                     {
                         let next = match policy {
                             FocusPolicy::ClearOnMiss => FocusPolicy::PreserveOnMiss,
@@ -77,7 +77,7 @@ pub fn build(ui: &mut Ui) {
                         .label("clear both")
                         .min_size((140.0, 32.0))
                         .show(ui)
-                        .clicked()
+                        .left.clicked()
                     {
                         buf_a.clear();
                         buf_b.clear();

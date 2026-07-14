@@ -81,12 +81,12 @@ impl ContextMenu {
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before attaching the menu.
     pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
-        if snapshot.state().right.clicked()
+        if snapshot.right.clicked()
             && let Some(p) = ui.pointer_pos()
         {
-            ContextMenu::open(ui, snapshot.widget_id(), p);
+            ContextMenu::open(ui, snapshot.id, p);
         }
-        ContextMenu::for_id(snapshot.widget_id())
+        ContextMenu::for_id(snapshot.id)
     }
 
     /// Record the menu and return per-frame outcome. The body closure
@@ -196,7 +196,7 @@ impl Configure for ContextMenu {
 ///
 /// If [`Self::shortcut`] is set, the row also intercepts that
 /// shortcut from this frame's key events: matching keypresses
-/// synthesize a click (so `if item.clicked() { … }` fires) AND
+/// synthesize a click (so `if item.left.clicked() { … }` fires) AND
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
 pub struct MenuItem {
@@ -318,7 +318,7 @@ impl MenuItem {
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
         let resp = Response::eager(id, ui, state);
-        if resp.clicked() {
+        if resp.left.clicked() {
             popup.close();
         }
         resp

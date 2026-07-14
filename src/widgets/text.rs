@@ -117,7 +117,7 @@ impl Text {
             });
         });
         // Decorative: skip eager `response_for`. Discarded responses
-        // pay zero; a `.clicked()` call later does one lazy probe.
+        // pay zero; a `.left.clicked()` call later does one lazy probe.
         Response::lazy(id, ui)
     }
 }

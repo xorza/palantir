@@ -287,8 +287,8 @@ impl LayerCascades {
 pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
-    /// contiguous slice (`entries.rect()`, `entries.sense()`,
-    /// `entries.widget_id()`, …) so the hot reverse-scan in
+    /// contiguous slice (`entries.rect`, `entries.sense()`,
+    /// `entries.id`, …) so the hot reverse-scan in
     /// `hit_test*` only pulls rect + flags into cache and pays the
     /// `WidgetId` / `layout_rect` load only on a match. Layers
     /// append in paint order so reverse iteration yields topmost-
@@ -340,8 +340,8 @@ impl Cascades {
     /// Shared by [`Self::hit_test`] and [`Self::hit_test_focusable`], which
     /// differ only in the per-entry gate column they consult.
     fn hit_first(&self, pos: Vec2, gate: impl Fn(usize) -> bool) -> Option<WidgetId> {
-        let rects = self.entries.rect();
-        let ids = self.entries.widget_id();
+        let rects = self.entries.rect;
+        let ids = self.entries.id;
         for i in (0..rects.len()).rev() {
             if gate(i) && rects[i].contains(pos) {
                 return Some(ids[i]);
@@ -370,9 +370,9 @@ impl Cascades {
         scroll_filter: impl Fn(Sense) -> bool,
         pinch_filter: impl Fn(Sense) -> bool,
     ) -> HitTargets {
-        let rects = self.entries.rect();
+        let rects = self.entries.rect;
         let senses = self.entries.sense();
-        let ids = self.entries.widget_id();
+        let ids = self.entries.id;
         let mut hover = None;
         let mut scroll = None;
         let mut pinch = None;
@@ -510,7 +510,7 @@ pub(crate) fn cascade_fingerprint(
             // and a root has no parent — so a re-keyed root with
             // identical content would otherwise reuse cascades
             // whose `by_id` still maps the dead old id.
-            h.write_u64(tree.records.widget_id()[slot.first_node.idx()].0);
+            h.write_u64(tree.records.id[slot.first_node.idx()].0);
             h.write_u64(tree.rollups.subtree[slot.first_node.idx()].0);
             // Layer placement (anchor + measure cap) rides on
             // `RootSlot`, outside every node hash, yet it feeds
@@ -565,7 +565,7 @@ fn run_tree(
     let n = tree.records.len() as u32;
     let layout_col = tree.records.layout();
     let attrs_col = tree.records.attrs();
-    let widget_ids = tree.records.widget_id();
+    let widget_ids = tree.records.id;
     let ends = tree.records.subtree_end();
     let root_prefix = build_cascade_prefix(TranslateScale::IDENTITY, None, false, false);
 
@@ -953,7 +953,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
         let shape_hashes = tree.shapes.hashes.as_slice();
-        let widget_ids = tree.records.widget_id();
+        let widget_ids = tree.records.id;
         for item in TreeItems::new(&tree.records, &tree.shapes.records, node) {
             let (idx, s) = match item {
                 TreeItem::ShapeRecord(idx, s) => (idx, s),

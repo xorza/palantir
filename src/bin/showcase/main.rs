@@ -170,7 +170,7 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
                         if i == state.active {
                             btn = btn.style(active_style.clone());
                         }
-                        if btn.show(ui).clicked() {
+                        if btn.show(ui).left.clicked() {
                             state.active = i;
                         }
                     }

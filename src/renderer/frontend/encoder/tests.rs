@@ -559,7 +559,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         })
                         .sense(Sense::CLICK)
                         .show(ui)
-                        .clicked();
+                        .left.clicked();
                     capture.1 |= Frame::new()
                         .id(WidgetId::from_hash("D"))
                         .position((40.0, 0.0))
@@ -571,7 +571,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .sense(Sense::CLICK)
                         .disabled(true)
                         .show(ui)
-                        .clicked();
+                        .left.clicked();
                     capture.2 |= Frame::new()
                         .id(WidgetId::from_hash("H"))
                         .position((80.0, 0.0))
@@ -583,7 +583,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .sense(Sense::CLICK)
                         .hidden()
                         .show(ui)
-                        .clicked();
+                        .left.clicked();
                 });
         });
     };

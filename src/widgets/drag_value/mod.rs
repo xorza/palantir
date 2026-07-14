@@ -152,7 +152,7 @@ struct DragEdit {
 #[derive(Debug)]
 pub struct DragValueResponse<'a> {
     /// The widget's pointer/click/hover [`Response`]. Also reachable through
-    /// `Deref`, so `resp.clicked()` resolves here.
+    /// `Deref`, so `resp.left.clicked()` resolves here.
     pub response: Response<'a>,
     /// The bound value was written with a value differing from what the
     /// caller passed in this frame. Under the commit-deferring pattern
