@@ -136,11 +136,11 @@ pub(crate) struct PaintSnapArena {
     /// Reusable destination for compaction (and a swap target). Same
     /// invariants as `snaps` after a `swap`.
     scratch: Vec<Paint>,
-    /// Retained "which prev paints have been claimed?" byte flags for
-    /// the content-keyed slow path in [`Self::diff_changed_leg`]. Sized
-    /// to `prev_span.len` per call; capacity is reused so steady-state
+    /// Retained "which prev paints have been claimed?" flags for the
+    /// content-keyed slow path in [`Self::diff_changed_leg`]. Sized to
+    /// `prev_span.len` per call; capacity is reused so steady-state
     /// content reshuffles don't allocate.
-    prev_matched: Vec<u8>,
+    prev_matched: Vec<bool>,
     /// Pass-1 exact-match position map: for each curr paint, the prev
     /// row it paired with (`ROW_UNMATCHED` when pass 1 didn't pair
     /// it). Feeds the within-node order-inversion check — an exact
@@ -475,7 +475,7 @@ impl PaintSnapArena {
         let prev_slice = &snaps[prev_start..prev_start + prev_len];
 
         prev_matched.clear();
-        prev_matched.resize(prev_len, 0);
+        prev_matched.resize(prev_len, false);
         matched_pos.clear();
         matched_pos.resize(curr_paints.len(), ROW_UNMATCHED);
 
@@ -493,7 +493,7 @@ impl PaintSnapArena {
             let p = prev_slice[j];
             let c = curr_paints[j];
             if p == c {
-                prev_matched[j] = 1;
+                prev_matched[j] = true;
                 matched_pos[j] = j as u32;
             } else {
                 prev_keyed.push((PaintKey::of(&p), j as u32));
@@ -525,7 +525,7 @@ impl PaintSnapArena {
                     // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
                     // screens are never `==` — confirm before pairing.
                     if prev_slice[prow as usize] == curr_paints[crow as usize] {
-                        prev_matched[prow as usize] = 1;
+                        prev_matched[prow as usize] = true;
                         matched_pos[crow as usize] = prow;
                         ci += 1;
                     }
@@ -548,7 +548,7 @@ impl PaintSnapArena {
             }
             while pi < prev_keyed.len() {
                 let (pk, prow) = prev_keyed[pi];
-                if prev_matched[prow as usize] != 0 || pk.hash < ck.hash {
+                if prev_matched[prow as usize] || pk.hash < ck.hash {
                     pi += 1;
                 } else {
                     break;
@@ -558,7 +558,7 @@ impl PaintSnapArena {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
                     push_screen(out, prev_slice[prow as usize].screen);
                     push_screen(out, curr_paints[crow as usize].screen);
-                    prev_matched[prow as usize] = 1;
+                    prev_matched[prow as usize] = true;
                     pi += 1;
                 }
                 _ => push_screen(out, curr_paints[crow as usize].screen),
@@ -566,7 +566,7 @@ impl PaintSnapArena {
         }
         // Remaining prev paints — removals.
         for (i, &p) in prev_slice.iter().enumerate() {
-            if prev_matched[i] == 0 {
+            if !prev_matched[i] {
                 push_screen(out, p.screen);
             }
         }
