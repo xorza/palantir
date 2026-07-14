@@ -9,7 +9,7 @@ fn each_text_widget_reads_its_own_theme_path_for_font_size() {
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.font_size_px = 22.0;
-    ui.theme.text_edit.normal.text = Some(TextStyle::default().with_font_size(24.0));
+    ui.theme.text_edit.looks.normal.text = Some(TextStyle::default().with_font_size(24.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -127,7 +127,7 @@ fn each_text_widget_reads_its_own_theme_path_for_line_height() {
 
     let mut ui = ui_at_no_cosmic(UVec2::new(600, 200));
     ui.theme.text.line_height_mult = 2.0;
-    ui.theme.text_edit.normal.text = Some(TextStyle::default().with_line_height_mult(3.0));
+    ui.theme.text_edit.looks.normal.text = Some(TextStyle::default().with_line_height_mult(3.0));
     let mut buf = String::from("hi");
 
     let mut btn_node = None;
@@ -184,7 +184,7 @@ fn textedit_style_override_replaces_default_theme() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::WidgetLook;
+    use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
     for (label, mult, expected_lh) in [
         ("mult_3x_override", 3.0_f32, 48.0_f32),
@@ -193,9 +193,12 @@ fn textedit_style_override_replaces_default_theme() {
         let mut ui = ui_at_no_cosmic(NARROW);
         let mut buf = String::from("hi");
         let style = TextEditTheme {
-            normal: WidgetLook {
-                text: Some(TextStyle::default().with_line_height_mult(mult)),
-                ..TextEditTheme::default().normal
+            looks: StatefulLook {
+                normal: WidgetLook {
+                    text: Some(TextStyle::default().with_line_height_mult(mult)),
+                    ..TextEditTheme::default().looks.normal
+                },
+                ..TextEditTheme::default().looks
             },
             ..TextEditTheme::default()
         };
@@ -431,7 +434,7 @@ fn line_height_override_changes_caret_rect_height() {
     use crate::TextEditTheme;
     use crate::TextStyle;
     use crate::forest::shapes::record::ShapeRecord;
-    use crate::widgets::theme::widget_look::WidgetLook;
+    use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
     fn caret_height(style: Option<TextEditTheme>) -> f32 {
         let mut ui = ui_at_no_cosmic(NARROW);
@@ -468,9 +471,12 @@ fn line_height_override_changes_caret_rect_height() {
 
     let default = caret_height(None);
     let doubled = caret_height(Some(TextEditTheme {
-        focused: WidgetLook {
-            text: Some(TextStyle::default().with_line_height_mult(2.0)),
-            ..TextEditTheme::default().focused
+        looks: StatefulLook {
+            active: WidgetLook {
+                text: Some(TextStyle::default().with_line_height_mult(2.0)),
+                ..TextEditTheme::default().looks.active
+            },
+            ..TextEditTheme::default().looks
         },
         ..TextEditTheme::default()
     }));

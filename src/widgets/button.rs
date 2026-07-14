@@ -5,7 +5,8 @@ use crate::primitives::interned_str::InternedStr;
 use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::{Response, WidgetEntry, button_look, enter_widget};
+use crate::widgets::theme::resolve_look;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 
 pub struct Button {
     element: Element,
@@ -76,7 +77,14 @@ impl Button {
             raw: raw_state,
             merged: picked_state,
         } = enter_widget(ui, &element);
-        let look = button_look(ui, id, &mut element, picked_state, self.style.as_ref());
+        let look = resolve_look(
+            ui,
+            id,
+            &mut element,
+            picked_state,
+            self.style.as_ref(),
+            |t| &t.button,
+        );
         let label = self.label;
         let label_align = self.label_align;
         let label_wrap = self.label_wrap;

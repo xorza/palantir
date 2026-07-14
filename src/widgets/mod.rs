@@ -29,11 +29,8 @@ use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 
-use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
-use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::theme::widget_look::AnimatedLook;
 
 use std::cell::OnceCell;
 
@@ -77,35 +74,6 @@ pub(crate) fn enter_widget(ui: &mut Ui, element: &Element) -> WidgetEntry {
     let mut merged = raw;
     merged.disabled |= element.flags.is_disabled();
     WidgetEntry { id, raw, merged }
-}
-
-/// Resolve a `ButtonTheme`-driven look for the button-shaped widgets
-/// (`Button`/`DragValue`/`ComboBox`): pick the per-state `WidgetLook`,
-/// fill in the theme's padding/margin wherever the caller left the
-/// `Spacing::ZERO` sentinel, and animate. The scalars are copied out so
-/// the borrow on `ui.theme` (the `~540 B` `ButtonTheme`, borrowed not
-/// cloned) ends before `animate` reborrows `ui` mutably. `style` of
-/// `None` inherits `ui.theme.button`.
-pub(crate) fn button_look(
-    ui: &mut Ui,
-    id: WidgetId,
-    element: &mut Element,
-    state: ResponseState,
-    style: Option<&ButtonTheme>,
-) -> AnimatedLook {
-    let fallback_text = ui.theme.text;
-    let style = style.unwrap_or(&ui.theme.button);
-    let padding = style.padding;
-    let margin = style.margin;
-    let anim = style.anim;
-    let look_target = style.pick(state).clone();
-    if element.padding == Spacing::ZERO {
-        element.padding = padding;
-    }
-    if element.margin == Spacing::ZERO {
-        element.margin = margin;
-    }
-    look_target.animate(ui, id, fallback_text, anim)
 }
 
 /// Lazy handle to a widget's per-frame interaction state. Holds a

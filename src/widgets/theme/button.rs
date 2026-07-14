@@ -6,13 +6,14 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
+use crate::widgets::theme::WidgetTheme;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::{WidgetLook, pick_4};
+use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
-/// Four-state button theme. The leaf type ([`WidgetLook`]) is shared
-/// with `TextEditTheme`; widget reads `theme.{normal,hovered,pressed,
-/// disabled}` based on the live response state and `Element::disabled`.
+/// Four-state button theme: a [`StatefulLook`] (`active` = pressed)
+/// plus the container knobs. The widget picks a look from the live
+/// response state and `Element::disabled` via [`Self::pick`].
 ///
 /// `padding`/`margin` apply when the user didn't call `.padding(...)`
 /// / `.margin(...)` on the builder. The "user didn't override" check
@@ -21,10 +22,10 @@ use crate::widgets::theme::widget_look::{WidgetLook, pick_4};
 /// rather than passing zero.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ButtonTheme {
-    pub normal: WidgetLook,
-    pub hovered: WidgetLook,
-    pub pressed: WidgetLook,
-    pub disabled: WidgetLook,
+    /// The four per-state looks. `flatten` keeps theme files flat
+    /// (`[button.normal]`, not `[button.looks.normal]`).
+    #[serde(flatten)]
+    pub looks: StatefulLook,
     /// Default padding inside the button (around the label).
     /// Applied at `show()` time when the builder hasn't set padding.
     pub padding: Spacing,
@@ -39,49 +40,41 @@ pub struct ButtonTheme {
     pub anim: Option<AnimSpec>,
 }
 
-impl ButtonTheme {
-    /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
-    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.normal.for_each_text(f);
-        self.hovered.for_each_text(f);
-        self.pressed.for_each_text(f);
-        self.disabled.for_each_text(f);
-    }
-}
-
 impl Default for ButtonTheme {
     fn default() -> Self {
         // Buttons map to the palette's clickable-surface family:
-        // ELEM / ELEM_HOVER / ELEM_ACTIVE. Disabled keeps the same
-        // ELEM fill but swaps text to TEXT_DISABLED. `text: None` on
-        // active states means "inherit Theme::text" — bumping
-        // `theme.text.color` recolors active button labels. The
-        // historical 4 px radius is retained.
-        // Resting state at ELEM_HOVER tier; soft TEXT_MUTED-alpha edge (palette BORDER is invisible).
-        let m = palette::TEXT_MUTED;
-        let edge = m.with_alpha(0.18);
+        // ELEM / ELEM_HOVER / ELEM_ACTIVE (resting at the ELEM_HOVER
+        // tier). Disabled keeps the same ELEM fill but swaps text to
+        // TEXT_DISABLED. `text: None` on active states means "inherit
+        // Theme::text" — bumping `theme.text.color` recolors active
+        // button labels. The historical 4 px radius is retained.
         let bg = |fill: Color| {
-            Some(Background::rounded(fill, Corners::all(4.0)).with_stroke(Stroke::solid(edge, 1.0)))
+            Some(
+                Background::rounded(fill, Corners::all(4.0))
+                    .with_stroke(Stroke::solid(palette::BORDER_SOFT, 1.0)),
+            )
         };
         // Pressed = hovered fill + focused stroke (palette has no further fill tier).
         let pressed_bg = Background::rounded(palette::ELEM_ACTIVE, Corners::all(4.0))
             .with_stroke(Stroke::solid(palette::BORDER_FOCUSED, 1.0));
         Self {
-            normal: WidgetLook {
-                background: bg(palette::ELEM_HOVER),
-                text: None,
-            },
-            hovered: WidgetLook {
-                background: bg(palette::ELEM_ACTIVE),
-                text: None,
-            },
-            pressed: WidgetLook {
-                background: Some(pressed_bg),
-                text: None,
-            },
-            disabled: WidgetLook {
-                background: bg(palette::ELEM),
-                text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+            looks: StatefulLook {
+                normal: WidgetLook {
+                    background: bg(palette::ELEM_HOVER),
+                    text: None,
+                },
+                hovered: WidgetLook {
+                    background: bg(palette::ELEM_ACTIVE),
+                    text: None,
+                },
+                active: WidgetLook {
+                    background: Some(pressed_bg),
+                    text: None,
+                },
+                disabled: WidgetLook {
+                    background: bg(palette::ELEM),
+                    text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+                },
             },
             padding: Spacing::xy(12.0, 6.0),
             margin: Spacing::ZERO,
@@ -91,6 +84,11 @@ impl Default for ButtonTheme {
 }
 
 impl ButtonTheme {
+    /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        self.looks.for_each_text(f);
+    }
+
     /// Flat "menu-trigger" preset. Use for `Button`s that act as
     /// menu-bar entries (File / Edit / View etc.) — transparent at
     /// rest, hover-only background, no border or shadow, tighter
@@ -105,28 +103,40 @@ impl ButtonTheme {
             text: None,
         };
         Self {
-            normal: flat(Brush::TRANSPARENT),
-            hovered: flat(palette::ELEM_HOVER.into()),
-            pressed: flat(palette::ELEM_ACTIVE.into()),
-            disabled: flat(Brush::TRANSPARENT),
+            looks: StatefulLook {
+                normal: flat(Brush::TRANSPARENT),
+                hovered: flat(palette::ELEM_HOVER.into()),
+                active: flat(palette::ELEM_ACTIVE.into()),
+                disabled: flat(Brush::TRANSPARENT),
+            },
             padding: Spacing::xy(8.0, 4.0),
             margin: Spacing::ZERO,
             anim: None,
         }
     }
 
-    /// Pick the visual state for `state`. Disabled wins over
-    /// hover/press; pressed wins over hover; otherwise normal.
+    /// Pick the visual state for `state`: `active` = pressed.
+    /// Disabled wins over hover/press; pressed wins over hover;
+    /// otherwise normal.
     /// `state.disabled` is the cascaded ancestor-or-self flag — if
     /// the caller wants lag-free response to its own self-toggle,
     /// merge `state.disabled |= element.disabled` before calling.
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        pick_4(
-            state,
-            &self.normal,
-            &self.hovered,
-            &self.pressed,
-            &self.disabled,
-        )
+        self.looks.pick(state, state.pressed())
+    }
+}
+
+impl WidgetTheme for ButtonTheme {
+    fn pick(&self, state: ResponseState) -> &WidgetLook {
+        self.pick(state)
+    }
+    fn padding(&self) -> Spacing {
+        self.padding
+    }
+    fn margin(&self) -> Spacing {
+        self.margin
+    }
+    fn anim(&self) -> Option<AnimSpec> {
+        self.anim
     }
 }

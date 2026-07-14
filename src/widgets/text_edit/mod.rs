@@ -20,6 +20,7 @@ use crate::text::{
 };
 use crate::ui::Ui;
 use crate::widgets::context_menu::{ContextMenu, MenuItem};
+use crate::widgets::theme::resolve_look;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::{Response, ResponseSnapshot};
 use glam::Vec2;
@@ -791,18 +792,6 @@ impl<'a> TextEdit<'a> {
     pub fn show(mut self, ui: &mut Ui) -> TextEditResponse<'_> {
         let id = ui.widget_id(&self.element);
         let mut is_focused = ui.input.focused == Some(id);
-        let theme = self.style.unwrap_or_else(|| ui.theme.text_edit.clone());
-        // Apply theme padding/margin when the builder hasn't set
-        // anything (sentinel: `Spacing::ZERO` == "use theme"). The
-        // renderer reads `element.padding` to deflate the buffer
-        // layout, and the caret hit-test reads it back below — both
-        // see the resolved value.
-        if self.element.padding == Spacing::ZERO {
-            self.element.padding = theme.padding;
-        }
-        if self.element.margin == Spacing::ZERO {
-            self.element.margin = theme.margin;
-        }
         // Pick the per-state look + animate its visual components.
         // Disabled wins over focus — a disabled editor that still
         // happens to hold focus paints with its disabled visuals
@@ -820,11 +809,26 @@ impl<'a> TextEdit<'a> {
             ui.request_focus(None);
             is_focused = false;
         }
-        let fallback_text = ui.theme.text;
-        let look = theme
-            .pick(response)
-            .clone()
-            .animate(ui, id, fallback_text, theme.anim);
+        // `resolve_look` also substitutes theme padding/margin where
+        // the builder left the `Spacing::ZERO` sentinel. The renderer
+        // reads `element.padding` to deflate the buffer layout, and
+        // the caret hit-test reads it back below — both see the
+        // resolved value.
+        let look = resolve_look(
+            ui,
+            id,
+            &mut self.element,
+            response,
+            self.style.as_ref(),
+            |t| &t.text_edit,
+        );
+        // State-independent scalars off the same style source, copied
+        // out so no theme borrow (or whole-theme clone) survives.
+        let style = self.style.as_ref().unwrap_or(&ui.theme.text_edit);
+        let caret_color = style.caret;
+        let caret_width = style.caret_width;
+        let selection_color = style.selection;
+        let placeholder_color = style.placeholder;
         let font_size = look.text.font_size_px;
         let line_height_mult = look.text.line_height_mult;
         // `Tree::open_node` folds chrome stroke width into the stored
@@ -848,7 +852,7 @@ impl<'a> TextEdit<'a> {
         // the same reduced width, so glyphs + caret + selection wash
         // shift together and click hit-test (which reads back the
         // same `text_in_rect`) stays consistent.
-        let caret_room = theme.caret_width.max(0.0);
+        let caret_room = caret_width.max(0.0);
 
         // Wrap target for multi-line: editor's inner width (outer −
         // padding − caret room). Read from the previous arrange via
@@ -978,7 +982,7 @@ impl<'a> TextEdit<'a> {
                 response.layout_rect,
                 &ctx,
                 caret_pos,
-                theme.caret_width,
+                caret_width,
                 content_w,
             );
             if is_focused && (caret_moved || edited || gained_focus) {
@@ -1066,7 +1070,7 @@ impl<'a> TextEdit<'a> {
                 // Materialize selection rects via the shaper's out-arg
                 // form, then release the `ui.ctx.shaper` borrow before
                 // painting through the public `ui.add_shape` API.
-                let sel_color = theme.selection;
+                let sel_color = selection_color;
                 let mut rects = SelectionRects::new();
                 ui.ctx
                     .shaper
@@ -1098,7 +1102,7 @@ impl<'a> TextEdit<'a> {
             // origin sits at `leaf.min` and the painted extent is the
             // shaped glyph bbox).
             let (display, color) = if text_ptr.is_empty() {
-                (placeholder.clone().into(), theme.placeholder)
+                (placeholder.clone().into(), placeholder_color)
             } else {
                 // Intern the live buffer into the retained frame arena
                 // (a memcpy into `fmt_scratch`, not a per-frame `String`
@@ -1151,10 +1155,10 @@ impl<'a> TextEdit<'a> {
                 let caret_rect = Rect::new(
                     pad_l + offset.x + caret_pos.x - scroll.x,
                     pad_t + offset.y + caret_pos.y_top - scroll.y,
-                    theme.caret_width,
+                    caret_width,
                     caret_pos.line_height,
                 );
-                let shape = Shape::rect(caret_rect).fill(theme.caret);
+                let shape = Shape::rect(caret_rect).fill(caret_color);
                 match caret_anim {
                     Some(anim) => ui.add_shape_animated(shape, anim),
                     None => ui.add_shape(shape),

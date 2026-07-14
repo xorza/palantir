@@ -48,12 +48,13 @@ impl ToggleTheme {
         self.checked.for_each_text(f);
     }
 
-    /// Pick the chrome+label look for this `(state, checked)` pair.
+    /// Pick the chrome+label look for this `(state, checked)` pair
+    /// (`active` = pressed).
     pub fn pick(&self, state: ResponseState, checked: bool) -> &WidgetLook {
         if checked {
-            self.checked.pick(state)
+            self.checked.pick(state, state.pressed())
         } else {
-            self.unchecked.pick(state)
+            self.unchecked.pick(state, state.pressed())
         }
     }
 
@@ -82,7 +83,7 @@ impl ToggleTheme {
 
     fn built(corner: f32, box_size: f32, indicator_inset: f32, indicator: Color) -> Self {
         let radius = Corners::all(corner);
-        let edge = palette::TEXT_MUTED.with_alpha(0.35);
+        let edge = palette::BORDER_STRONG;
         let bg = |fill: Color, stroke: Stroke| {
             Some(Background::rounded(fill, radius).with_stroke(stroke))
         };
@@ -96,7 +97,7 @@ impl ToggleTheme {
                 background: bg(palette::ELEM_ACTIVE, Stroke::solid(edge, 1.0)),
                 text: None,
             },
-            pressed: WidgetLook {
+            active: WidgetLook {
                 background: bg(
                     palette::ELEM_ACTIVE,
                     Stroke::solid(palette::BORDER_FOCUSED, 1.0),
@@ -104,7 +105,7 @@ impl ToggleTheme {
                 text: None,
             },
             disabled: WidgetLook {
-                background: bg(palette::ELEM, Stroke::solid(edge.with_alpha(0.18), 1.0)),
+                background: bg(palette::ELEM, Stroke::solid(palette::BORDER_SOFT, 1.0)),
                 text: disabled_text,
             },
         };
@@ -118,7 +119,7 @@ impl ToggleTheme {
                 background: bg(acc, Stroke::ZERO),
                 text: None,
             },
-            pressed: WidgetLook {
+            active: WidgetLook {
                 background: bg(acc, Stroke::solid(palette::BORDER_FOCUSED, 1.0)),
                 text: None,
             },

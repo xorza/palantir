@@ -7,6 +7,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
+use glam::Vec2;
 
 /// Visuals + timing for [`crate::widgets::tooltip::Tooltip`]. Bubbles
 /// paint into `Layer::Tooltip` after the pointer has hovered a trigger
@@ -36,15 +37,20 @@ pub struct TooltipTheme {
     pub gap: f32,
 }
 
+impl TooltipTheme {
+    /// Visit every `TextStyle` this theme owns — drives `Theme::set_text_scale`.
+    pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
+        f(&mut self.text);
+    }
+}
+
 impl Default for TooltipTheme {
     fn default() -> Self {
-        let m = palette::TEXT_MUTED;
-        let edge = m.with_alpha(0.22);
         let panel = Background::rounded(palette::ELEM, Corners::all(4.0))
-            .with_stroke(Stroke::solid(edge, 1.0))
+            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0))
             .with_shadow(Shadow::drop(
                 Color::linear_rgba(0.0, 0.0, 0.0, 0.6),
-                glam::Vec2::new(2.0, 2.0),
+                Vec2::new(2.0, 2.0),
                 5.0,
             ));
         Self {
