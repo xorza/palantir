@@ -21,6 +21,7 @@ use crate::input::sense::Sense;
 use crate::layout::scroll::ScrollStates;
 use crate::layout::{LayerLayout, Layout};
 use crate::primitives::size::Size;
+use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{rect::Rect, transform::TranslateScale};
@@ -108,13 +109,13 @@ pub(crate) struct PaintArena {
 }
 
 impl PaintArena {
-    /// Reset both columns for a new frame. `n_nodes` sizes
-    /// `node_spans` (zero-init to `Span::default()`); `rows` is cleared
-    /// and reserved for the expected upper bound.
+    /// Reset both columns for a new frame. `n_nodes` resizes
+    /// `node_spans`; every retained slot is overwritten by
+    /// [`compute_paint_rect`]. `rows` is cleared and reserved for the
+    /// expected upper bound.
     pub(crate) fn reset_for(&mut self, n_nodes: usize) {
         self.rows.clear();
         self.rows.reserve(n_nodes);
-        self.node_spans.clear();
         self.node_spans.resize(n_nodes, Span::default());
     }
 }
@@ -265,16 +266,15 @@ impl LayerCascades {
     /// `entries_base` in one call — both prep this
     /// layer for the upcoming `run_tree`, splitting them invites a
     /// caller that resets but forgets the offset (or vice versa).
-    /// `cascade_inputs` and `subtree_paint_rects` are cleared and
-    /// reserved (filled by per-node pushes during the walk);
+    /// The fixed-size per-node columns are resized once and overwritten
+    /// in place during the walk, retaining both allocation and initialized
+    /// slots when the tree size is stable;
     /// `paint_arena` columns reset according to their own sizing rules.
     pub(crate) fn reset_for(&mut self, n_nodes: usize, entries_base: u32) {
-        self.cascade_inputs.clear();
-        self.cascade_inputs.reserve(n_nodes);
-        self.subtree_paint_rects.clear();
-        self.subtree_paint_rects.reserve(n_nodes);
-        self.subtree_ends.clear();
-        self.subtree_ends.reserve(n_nodes);
+        self.cascade_inputs
+            .resize(n_nodes, CascadeInputHash::default());
+        self.subtree_paint_rects.resize(n_nodes, Rect::ZERO);
+        self.subtree_ends.resize(n_nodes, 0);
         self.paint_arena.reset_for(n_nodes);
         self.entries_base = entries_base;
     }
@@ -594,14 +594,16 @@ fn run_tree(
         let iu = i as usize;
         let id = NodeId(i);
         let attrs = attrs_col[iu];
+        let layout_core = layout_col[iu];
 
         let disabled = parent_dis || attrs.is_disabled();
-        let invisible = parent_inv || !layout_col[iu].visibility().is_visible();
+        let invisible = parent_inv || !layout_core.visibility().is_visible();
 
         let layout_rect = layout.rect[iu];
         // `.end()` strips the packed grid flag — downstream uses (walk
         // cursor, leaf compare) need the clean pre-order end.
         let subtree_end = ends[iu].end();
+        let has_children = subtree_end != i + 1;
         let wid = widget_ids[iu];
 
         let screen_rect = parent_transform.apply_rect(layout_rect);
@@ -634,8 +636,7 @@ fn run_tree(
         // shaped buffer) reports damage well past the editor's rect
         // on every scroll tick.
         let shape_clip = if clips {
-            let padding = layout_col[iu].padding;
-            let mask_local = layout_rect.deflated_by(padding);
+            let mask_local = layout_rect.deflated_by(layout_core.padding);
             let mask_screen = parent_transform.apply_rect(mask_local);
             Some(parent_clip.map_or(mask_screen, |c| mask_screen.intersect(c)))
         } else {
@@ -647,11 +648,14 @@ fn run_tree(
                 layout,
                 node: id,
                 layout_rect,
+                visible_rect,
+                padding: layout_core.padding,
                 parent_transform,
                 parent_clip,
                 shape_clip,
                 shape_transform: desc_transform,
                 clips,
+                has_children,
             },
             &mut lc.paint_arena,
         );
@@ -662,10 +666,9 @@ fn run_tree(
         // ancestor). Visibility is in `cascade_input` regardless, so
         // damage tracking is unaffected.
         let subtree_seed = if invisible { Rect::ZERO } else { paint_rect };
-        lc.cascade_inputs
-            .push(finish_cascade_input(parent_prefix, layout_rect, invisible));
-        lc.subtree_paint_rects.push(subtree_seed);
-        lc.subtree_ends.push(subtree_end);
+        lc.cascade_inputs[iu] = finish_cascade_input(parent_prefix, layout_rect, invisible);
+        lc.subtree_paint_rects[iu] = subtree_seed;
+        lc.subtree_ends[iu] = subtree_end;
 
         // Descendants inherit the deflated-mask clip — same value the
         // direct shapes were clipped to above and the encoder pushes
@@ -688,9 +691,9 @@ fn run_tree(
             transform: parent_transform,
         });
 
-        if subtree_end == i + 1 {
+        if !has_children {
             // Leaf: no descendants, so no frame — its
-            // `subtree_paint_rects` slot already holds the seed pushed
+            // `subtree_paint_rects` slot already holds the seed written
             // above; fold the seed straight into the parent accumulator
             // (a non-painting leaf's `Rect::ZERO` seed is `union`'s
             // identity). Skips a per-leaf Frame push/pop and the 32 B
@@ -852,11 +855,14 @@ struct PaintRectCtx<'a> {
     layout: &'a LayerLayout,
     node: NodeId,
     layout_rect: Rect,
+    visible_rect: Rect,
+    padding: Spacing,
     parent_transform: TranslateScale,
     parent_clip: Option<Rect>,
     shape_clip: Option<Rect>,
     shape_transform: TranslateScale,
     clips: bool,
+    has_children: bool,
 }
 
 impl std::fmt::Debug for PaintRectCtx<'_> {
@@ -864,11 +870,14 @@ impl std::fmt::Debug for PaintRectCtx<'_> {
         f.debug_struct("PaintRectCtx")
             .field("node", &self.node)
             .field("layout_rect", &self.layout_rect)
+            .field("visible_rect", &self.visible_rect)
+            .field("padding", &self.padding)
             .field("parent_transform", &self.parent_transform)
             .field("parent_clip", &self.parent_clip)
             .field("shape_clip", &self.shape_clip)
             .field("shape_transform", &self.shape_transform)
             .field("clips", &self.clips)
+            .field("has_children", &self.has_children)
             .finish_non_exhaustive()
     }
 }
@@ -904,11 +913,14 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
         layout,
         node,
         layout_rect,
+        visible_rect,
+        padding,
         parent_transform,
         parent_clip,
         shape_clip,
         shape_transform,
         clips,
+        has_children,
     } = ctx;
     let paints_start = arena.rows.len() as u32;
 
@@ -923,32 +935,30 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
     };
 
     if let Some(bg) = tree.chrome(node) {
-        let chrome_local = if bg.shadow.is_noop() {
-            owner_local
+        let screen = if bg.shadow.is_noop() {
+            visible_rect
         } else {
             let g = bg.shadow.geom();
-            owner_local.union(shadow_paint_rect_local(
+            let chrome_local = owner_local.union(shadow_paint_rect_local(
                 None,
                 layout_rect.size,
                 g.offset,
                 g.blur,
                 g.spread,
                 bg.shadow.inset(),
-            ))
+            ));
+            lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip)
         };
-        let screen = lift_to_screen(chrome_local, layout_rect.min, parent_transform, parent_clip);
         push_paint(arena, &mut union, screen, bg.hash);
     } else if clips {
         // Chromeless clip-only container: union the owner rect into
         // the cull rollup so the encoder emits the PushClip/PopClip
         // pair even when the subtree paints nothing (empty scroll
         // host, etc.). No Paint row — the node contributes no pixels.
-        let screen = lift_to_screen(owner_local, layout_rect.min, parent_transform, parent_clip);
-        union = Some(union.map_or(screen, |a| a.union(screen)));
+        union = Some(visible_rect);
     }
 
     let has_shapes = tree.records.shape_span()[node.idx()].len > 0;
-    let has_children = tree.records.subtree_end()[node.idx()].end() > node.0 + 1;
     if has_shapes || has_children {
         let text_span = layout.text_spans[node.idx()];
         let mut text_ord: u32 = 0;
@@ -986,7 +996,7 @@ fn compute_paint_rect(ctx: PaintRectCtx<'_>, arena: &mut PaintArena) -> Rect {
                     let local = text_paint_bbox_local(
                         *local_origin,
                         *align,
-                        tree.records.layout()[node.idx()].padding,
+                        padding,
                         layout_rect.size,
                         shaped.measured,
                     );
