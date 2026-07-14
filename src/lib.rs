@@ -47,6 +47,13 @@ pub mod gpu_pass_stats {
 pub mod write_stats {
     pub use crate::renderer::backend::write_stats::{Stats, take};
 }
+#[cfg(feature = "internals")]
+pub mod text_backend_internals {
+    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
+    pub use crate::renderer::backend::queue::Queue;
+    pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
+    pub use crate::renderer::render_buffer::text::TextRun;
+}
 
 pub use forest::frame_arena::FrameArena;
 
@@ -114,7 +121,7 @@ pub use primitives::stroke::Stroke;
 pub use primitives::transform::TranslateScale;
 pub use primitives::widget_id::WidgetId;
 pub use renderer::gpu_view::{GpuFrameCtx, GpuInitCtx, GpuPaint};
-pub use renderer::image_registry::{ImageHandle, ImageRegistry};
+pub use renderer::image_registry::ImageHandle;
 pub use shape::{LineCap, LineJoin, PolylineColors, Shape, TextWrap};
 // The owned string type behind `InternedStr::Owned`. Re-exported as the
 // canonical owned-text carrier for consumers that keep their own strings and
@@ -184,12 +191,15 @@ mod hot_struct_sizes {
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
     use crate::renderer::backend::text::GlyphInstance;
-    use crate::renderer::frontend::cmd_buffer::{
+    use crate::renderer::frontend::cmd_buffer::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
     };
     use crate::renderer::quad::Quad;
-    use crate::renderer::render_buffer::{CurveInstance, ImageInstance, MeshInstance, TextRun};
+    use crate::renderer::render_buffer::curve::CurveInstance;
+    use crate::renderer::render_buffer::image::ImageInstance;
+    use crate::renderer::render_buffer::mesh::MeshInstance;
+    use crate::renderer::render_buffer::text::TextRun;
     use crate::text::TextCacheKey;
     use crate::ui::cascade::CascadeInputHash;
     use crate::ui::cascade::EntryRow;

@@ -31,7 +31,7 @@
 use crate::renderer::backend::gpu_pass_stats::{BatchKind, GpuPassStats, PipelineStats};
 use std::cell::{Cell, RefCell};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering::Relaxed};
+use std::sync::atomic::{AtomicU8, Ordering::Acquire, Ordering::Release};
 use strum::IntoEnumIterator;
 
 const BYTES_PER_U64: u64 = 8;
@@ -57,6 +57,11 @@ const STATS_BUFFER_BYTES: u64 = STATS_FIELD_COUNT as u64 * BYTES_PER_U64;
 /// than blocking.
 const NUM_STAGING: usize = 2;
 
+const TIMESTAMPS_DONE: u8 = 1 << 0;
+const STATS_DONE: u8 = 1 << 1;
+const TIMESTAMPS_FAILED: u8 = 1 << 2;
+const STATS_FAILED: u8 = 1 << 3;
+
 /// All pipeline-statistics fields we care about. Compute is included
 /// for layout completeness (always 0 — we have no compute passes).
 fn pipeline_stats_flags() -> wgpu::PipelineStatisticsTypes {
@@ -79,7 +84,7 @@ struct Slot {
     /// publish). Saved at `resolve()` time.
     segment_kinds: Vec<BatchKind>,
     stats_buffer: Option<wgpu::Buffer>,
-    ready: Arc<AtomicBool>,
+    map_state: Arc<AtomicU8>,
     in_flight: bool,
 }
 
@@ -189,7 +194,7 @@ impl GpuTimings {
                     mapped_at_creation: false,
                 })
             }),
-            ready: Arc::new(AtomicBool::new(false)),
+            map_state: Arc::new(AtomicU8::new(0)),
             in_flight: false,
         });
 
@@ -352,36 +357,62 @@ impl GpuTimings {
     /// [`gpu_pass_stats`].
     pub(crate) fn after_submit(&mut self, device: &wgpu::Device) {
         if let Some(slot_idx) = self.pending_slot.take() {
-            let ready = self.slots[slot_idx].ready.clone();
-            // Map the timestamps buffer; once it fires we'll also read
-            // the (already-completed) stats buffer in the same poll
-            // tick.
+            let map_state = self.slots[slot_idx].map_state.clone();
+            map_state.store(0, Release);
             self.slots[slot_idx].timestamps_buffer.slice(..).map_async(
                 wgpu::MapMode::Read,
                 move |res| {
-                    if res.is_ok() {
-                        ready.store(true, Relaxed);
-                    }
+                    let failed = if res.is_err() { TIMESTAMPS_FAILED } else { 0 };
+                    map_state.fetch_or(TIMESTAMPS_DONE | failed, Release);
                 },
             );
             if let Some(stats_buf) = &self.slots[slot_idx].stats_buffer {
-                // Independent map, ignored result — the timestamps
-                // `ready` is the gate; the stats buffer races toward
-                // mapped on the same submit so by the time we check
-                // both, both are mapped. If the stats map fails (e.g.
-                // device loss) `get_mapped_range` below will panic,
-                // which is fine in instrumentation-only code paths.
-                stats_buf.slice(..).map_async(wgpu::MapMode::Read, |_| {});
+                let map_state = self.slots[slot_idx].map_state.clone();
+                stats_buf
+                    .slice(..)
+                    .map_async(wgpu::MapMode::Read, move |res| {
+                        let failed = if res.is_err() { STATS_FAILED } else { 0 };
+                        map_state.fetch_or(STATS_DONE | failed, Release);
+                    });
             }
         }
         let _ = device.poll(wgpu::PollType::Poll);
         for slot in &mut self.slots {
-            if slot.in_flight && slot.ready.load(Relaxed) {
-                consume_slot(slot, self.period_ns, &self.sink);
-                slot.ready.store(false, Relaxed);
-                slot.in_flight = false;
+            if !slot.in_flight {
+                continue;
             }
+            let state = slot.map_state.load(Acquire);
+            if !mappings_complete(state, slot.stats_buffer.is_some()) {
+                continue;
+            }
+            if mappings_failed(state) {
+                discard_slot(slot, state);
+            } else {
+                consume_slot(slot, self.period_ns, &self.sink);
+            }
+            slot.map_state.store(0, Release);
+            slot.in_flight = false;
         }
+    }
+}
+
+fn mappings_complete(state: u8, has_stats: bool) -> bool {
+    let required = TIMESTAMPS_DONE | if has_stats { STATS_DONE } else { 0 };
+    state & required == required
+}
+
+fn mappings_failed(state: u8) -> bool {
+    state & (TIMESTAMPS_FAILED | STATS_FAILED) != 0
+}
+
+fn discard_slot(slot: &Slot, state: u8) {
+    if state & TIMESTAMPS_FAILED == 0 {
+        slot.timestamps_buffer.unmap();
+    }
+    if state & STATS_FAILED == 0
+        && let Some(stats_buf) = &slot.stats_buffer
+    {
+        stats_buf.unmap();
     }
 }
 
@@ -532,5 +563,19 @@ mod tests {
         assert_eq!(s.clipper_primitives_out, 30);
         assert_eq!(s.fragment_shader_invocations, 40);
         assert_eq!(s.compute_shader_invocations, 0);
+    }
+
+    #[test]
+    fn readback_waits_for_every_mapping_and_reports_failures() {
+        assert!(!mappings_complete(0, false));
+        assert!(mappings_complete(TIMESTAMPS_DONE, false));
+
+        assert!(!mappings_complete(TIMESTAMPS_DONE, true));
+        assert!(!mappings_complete(STATS_DONE, true));
+        assert!(mappings_complete(TIMESTAMPS_DONE | STATS_DONE, true));
+
+        assert!(!mappings_failed(TIMESTAMPS_DONE | STATS_DONE));
+        assert!(mappings_failed(TIMESTAMPS_DONE | TIMESTAMPS_FAILED));
+        assert!(mappings_failed(STATS_DONE | STATS_FAILED));
     }
 }

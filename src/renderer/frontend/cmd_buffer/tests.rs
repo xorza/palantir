@@ -3,10 +3,45 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::frontend::cmd_buffer::{
-    BrushSource, CmdKind, DrawRectPayload, DrawTrianglePayload, RenderCmdBuffer,
+use crate::renderer::frontend::cmd_buffer::payload::{
+    BrushSource, CmdKind, DrawRectPayload, DrawTrianglePayload,
 };
+use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
+use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
+use crate::renderer::texture_id::TextureId;
 use glam::Vec2;
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Debug)]
+struct NoopPaint;
+
+impl GpuPaint for NoopPaint {
+    fn paint(&mut self, _ctx: &mut GpuFrameCtx<'_>) {}
+}
+
+fn paint() -> GpuPaintRef {
+    GpuPaintRef(Rc::new(RefCell::new(NoopPaint)))
+}
+
+#[test]
+fn gpu_view_records_payload_and_paint_atomically() {
+    let mut buffer = RenderCmdBuffer::default();
+    buffer.draw_gpu_view(Rect::new(2.0, 3.0, 0.0, 8.0), TextureId(1), paint());
+    assert_eq!(buffer.iter().len(), 0);
+    assert!(buffer.gpu_view_paints.is_empty());
+
+    buffer.draw_gpu_view(Rect::new(2.0, 3.0, 7.0, 8.0), TextureId(1), paint());
+    assert_eq!(buffer.gpu_view_paints.len(), 1);
+    let command = buffer.iter().next().expect("GpuView command missing");
+    match command {
+        Command::DrawImage {
+            payload,
+            paint: Some(_),
+        } => assert_eq!(payload.rect, Rect::new(2.0, 3.0, 7.0, 8.0)),
+        other => panic!("expected linked GpuView image command, got {other:?}"),
+    }
+}
 
 /// Both draw paths run the same stroke normalization inside the cmd
 /// buffer (the single canonical correctness gate): a noop stroke —

@@ -11,7 +11,7 @@ use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::frontend::cmd_buffer::CmdKind;
+use crate::renderer::frontend::cmd_buffer::Command;
 use crate::shape::{LineCap, Shape};
 use crate::widgets::{button::Button, frame::Frame, panel::Panel};
 use glam::UVec2;
@@ -119,9 +119,8 @@ fn interleaved_shapes_record_correct_order() {
 
     let cmds = ui.encode_cmds();
     let draw_rect_count = cmds
-        .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect))
+        .filter(|command| matches!(command, Command::DrawRect(_)))
         .count();
     assert_eq!(
         draw_rect_count, 5,

@@ -17,6 +17,7 @@ use crate::primitives::shadow::Shadow;
 use crate::primitives::{
     color::Color, corners::Corners, stroke::Stroke, transform::TranslateScale,
 };
+use crate::renderer::frontend::cmd_buffer::test_support::assert_same_stream;
 use crate::widgets::{frame::Frame, grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -448,9 +449,7 @@ fn encoded_buffer_stable_across_cache_hit_boundary() {
     ui.run_at_acked(UVec2::new(800, 600), |ui| record(ui));
     let warm = ui.encode_cmds();
 
-    assert_eq!(cold.kinds, warm.kinds, "cmd kind sequence must match");
-    assert_eq!(cold.starts, warm.starts, "cmd payload offsets must match");
-    assert_eq!(cold.data, warm.data, "cmd payload bytes must match");
+    assert_same_stream(&cold, &warm);
 }
 
 /// Stress test: alternating surface widths force the cache through

@@ -41,9 +41,7 @@ use std::time::Duration;
 
 use aperture::ColorU8;
 use aperture::TextShaper;
-use aperture::renderer::backend::text::test_support::{
-    BenchText, GpuCtx, Queue, TextRun, make_run,
-};
+use aperture::text_backend_internals::{BenchText, GpuCtx, Queue, TextRun, make_run};
 use criterion::{Criterion, criterion_group, criterion_main};
 use glam::{UVec2, Vec2};
 use pollster::FutureExt;

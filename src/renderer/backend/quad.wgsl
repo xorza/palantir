@@ -17,7 +17,7 @@ var<immediate> imm: Immediates;
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
 
-const ATLAS_ROWS_F: f32 = 256.0;
+const ATLAS_ROWS_F: f32 = /*{ATLAS_ROWS}*/;
 
 // Divide-by-zero guard on object-local axes (quad size, gradient
 // span, radial radius). Anything smaller than this rounds to "no
@@ -35,16 +35,16 @@ const BLUR_EPS: f32 = 1e-4;
 //   1 = linear (sample LUT via `fill_axis = (dir.xy, t0, t1)`)
 //   2 = radial (sample LUT via `fill_axis = (cx, cy, rx, ry)`)
 //   3 = conic  (sample LUT via `fill_axis = (cx, cy, start_angle, _)`)
-const BRUSH_KIND_SOLID:        u32 = 0u;
-const BRUSH_KIND_LINEAR:       u32 = 1u;
-const BRUSH_KIND_RADIAL:       u32 = 2u;
-const BRUSH_KIND_CONIC:        u32 = 3u;
+const BRUSH_KIND_SOLID:        u32 = /*{BRUSH_KIND_SOLID}*/;
+const BRUSH_KIND_LINEAR:       u32 = /*{BRUSH_KIND_LINEAR}*/;
+const BRUSH_KIND_RADIAL:       u32 = /*{BRUSH_KIND_RADIAL}*/;
+const BRUSH_KIND_CONIC:        u32 = /*{BRUSH_KIND_CONIC}*/;
 // Bit 16 of fill_kind: fragment fast path. The composer sets it on a
 // solid, sharp, stroke-less quad whose rect is pixel-aligned — every
 // rasterized fragment is interior (SDF coverage exactly 1.0), so `fs`
 // returns the premultiplied fill directly. Kept in lockstep with
 // `FillKind::FAST_BIT` on the CPU side.
-const FILL_FLAG_FAST: u32 = 0x10000u;
+const FILL_FLAG_FAST: u32 = /*{FILL_FLAG_FAST}*/;
 // Bit 17 of fill_kind: windowed rect — inverted fill coverage. The fill
 // paints *outside* the rounded boundary (the corner wedges, out to the
 // quad edge), the stroke keeps its usual inner-edge annulus, and the
@@ -53,7 +53,7 @@ const FILL_FLAG_FAST: u32 = 0x10000u;
 // it with the surrounding background as `fill`. Only meaningful for the
 // rect path (kinds 0..3 — solid + gradients). Kept in lockstep with
 // `FillKind::WINDOW_BIT` on the CPU side.
-const FILL_FLAG_WINDOW: u32 = 0x20000u;
+const FILL_FLAG_WINDOW: u32 = /*{FILL_FLAG_WINDOW}*/;
 // Drop/inset shadow: closed-form Gaussian-blurred rounded rect.
 // `fill_axis = (offset.x, offset.y, sigma, spread)` in physical px.
 // `fill` is the shadow colour, `radius` is the source rect's corner
@@ -64,17 +64,17 @@ const FILL_FLAG_WINDOW: u32 = 0x20000u;
 //            (held at 0 by the encoder).
 //   - Inset: paint bbox = source. Spread shrinks the "hole" rect
 //            inside the shader via `fill_axis.w`.
-const BRUSH_KIND_SHADOW_DROP:  u32 = 4u;
-const BRUSH_KIND_SHADOW_INSET: u32 = 5u;
+const BRUSH_KIND_SHADOW_DROP:  u32 = /*{BRUSH_KIND_SHADOW_DROP}*/;
+const BRUSH_KIND_SHADOW_INSET: u32 = /*{BRUSH_KIND_SHADOW_INSET}*/;
 // Rounded-triangle SDF. `fill` is the solid fill; the three corner points
 // ride the reused instance lanes — `radius.xy = a`, `radius.zw = b`,
 // `fill_axis.xy = c` — all in `local` (0..size) coords, and `fill_axis.z`
 // is the corner radius. Stroke uses the usual `stroke_color`/`stroke_width`.
-const BRUSH_KIND_TRIANGLE:     u32 = 6u;
+const BRUSH_KIND_TRIANGLE:     u32 = /*{BRUSH_KIND_TRIANGLE}*/;
 // Spread mode (bits 8..16 of fill_kind), only meaningful for gradients.
-const SPREAD_PAD:     u32 = 0u;
-const SPREAD_REPEAT:  u32 = 1u;
-const SPREAD_REFLECT: u32 = 2u;
+const SPREAD_PAD:     u32 = /*{SPREAD_PAD}*/;
+const SPREAD_REPEAT:  u32 = /*{SPREAD_REPEAT}*/;
+const SPREAD_REFLECT: u32 = /*{SPREAD_REFLECT}*/;
 const TAU: f32 = 6.2831853;
 
 struct VertexOut {

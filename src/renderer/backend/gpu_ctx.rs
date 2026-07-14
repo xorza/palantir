@@ -15,11 +15,10 @@
 //! every uploader. Dropping the ctx releases all four borrows so
 //! render passes can resume using the encoder afterward.
 
-use crate::renderer::backend::Queue;
+use crate::renderer::backend::queue::Queue;
 
-// `pub` (not `pub(crate)`) is load-bearing: the text backend's gated
-// `test_support` re-exports `GpuCtx` via `pub use` for external benches,
-// and a `pub(crate)` item can't be `pub use`d out of the crate.
+// Public because the feature-gated `text_backend_internals` bench surface
+// exposes this context from `lib.rs`.
 #[derive(Debug)]
 pub struct GpuCtx<'a> {
     pub(crate) device: &'a wgpu::Device,

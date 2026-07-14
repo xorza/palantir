@@ -13,7 +13,7 @@ use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::background::Background;
 use crate::primitives::shadow::Shadow;
 use crate::primitives::{color::Color, corners::Corners, stroke::Stroke};
-use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
+use crate::renderer::frontend::cmd_buffer::Command;
 use crate::widgets::{grid::Grid, panel::Panel, text::Text};
 use glam::UVec2;
 use std::rc::Rc;
@@ -247,9 +247,9 @@ fn property_grid_emits_distinct_drawtext_x_positions() {
 
     let cmds = ui.encode_cmds();
     let mut text_xs: Vec<f32> = Vec::new();
-    for i in 0..cmds.kinds.len() {
-        if cmds.kinds[i] == CmdKind::DrawText {
-            text_xs.push(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect.min.x);
+    for command in cmds.iter() {
+        if let Command::DrawText(payload) = command {
+            text_xs.push(payload.rect.min.x);
         }
     }
     assert!(
@@ -346,10 +346,13 @@ fn text_layouts_full_showcase_drawtext_dump() {
 
     let cmds = ui.encode_cmds();
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
-    for i in 0..cmds.kinds.len() {
-        if cmds.kinds[i] == CmdKind::DrawText {
-            let p: DrawTextPayload = cmds.read(cmds.starts[i]);
-            entries.push((p.rect.min.x, p.rect.min.y, p.key.text_hash));
+    for command in cmds.iter() {
+        if let Command::DrawText(payload) = command {
+            entries.push((
+                payload.rect.min.x,
+                payload.rect.min.y,
+                payload.key.text_hash,
+            ));
         }
     }
     for i in 0..entries.len() {

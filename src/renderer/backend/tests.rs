@@ -9,12 +9,12 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::backend::quad_pipeline::{MaskIndices, build_mask_indices};
-use crate::renderer::backend::schedule::{RenderStep, for_each_step};
+use crate::renderer::backend::schedule::{MaskPlan, RenderStep, build_mask_plan, for_each_step};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{
-    DrawGroup, MeshBatch, RenderBuffer, RoundedClip, TextBatch, TextRun,
-};
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
+use crate::renderer::render_buffer::owner::RenderOwnerId;
+use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
@@ -39,7 +39,7 @@ enum DrawOp {
 fn collect(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    masks: &MaskIndices,
+    masks: &MaskPlan,
     use_stencil: bool,
 ) -> Vec<RenderStep> {
     let mut steps = Vec::new();
@@ -52,9 +52,9 @@ fn collect(
 /// Run the real mask staging (CPU half) over `buf`, returning the
 /// per-group / per-batch mask spans; `masks` receives the deduped
 /// mask-quad instances.
-fn mask_ix(buf: &RenderBuffer, masks: &mut Vec<Quad>) -> MaskIndices {
-    let mut mi = MaskIndices::default();
-    build_mask_indices(buf, &mut mi, masks);
+fn mask_ix(buf: &RenderBuffer, masks: &mut Vec<Quad>) -> MaskPlan {
+    let mut mi = MaskPlan::default();
+    build_mask_plan(buf, &mut mi, masks);
     mi
 }
 
@@ -66,7 +66,14 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
             RenderStep::SetScissor(_) | RenderStep::SetStencilRef(_) => {}
             RenderStep::MaskStamp(mi) => out.push(DrawOp::MaskWrite(*mi)),
             RenderStep::MaskClear(mi) => out.push(DrawOp::MaskClear(*mi)),
-            RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
+            RenderStep::Quads { range } => {
+                let group = buffer
+                    .groups
+                    .iter()
+                    .position(|candidate| candidate.quads == *range)
+                    .expect("quad range missing from draw groups");
+                out.push(DrawOp::Quads(group));
+            }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
                 buffer.mesh_batches[*batch].last_group as usize,
@@ -151,8 +158,8 @@ fn text_batch(texts: Span, last_group: u32) -> TextBatch {
 fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.mesh_batches.push(MeshBatch {
-            meshes: Span::new(i as u32, 1),
+        buf.mesh_batches.push(GroupBatch {
+            items: Span::new(i as u32, 1),
             last_group: g,
         });
     }
@@ -161,11 +168,10 @@ fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffe
 
 /// Same shape as [`buf_with_mesh_anchors`] but for image batches.
 fn buf_with_image_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
-    use crate::renderer::render_buffer::ImageBatch;
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.image_batches.push(ImageBatch {
-            images: Span::new(i as u32, 1),
+        buf.image_batches.push(GroupBatch {
+            items: Span::new(i as u32, 1),
             last_group: g,
         });
     }
@@ -196,7 +202,7 @@ fn text_interleaves_per_group() {
         vec![text_batch(Span::new(0, 1), 0)],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
     );
 }
@@ -222,7 +228,7 @@ fn text_emits_for_quadless_group() {
         vec![text_batch(Span::new(0, 2), 1)],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         // Group 0 has no text → not part of a batch. Group 1's text
         // is the only batch (idx 0), emitted after group 1's quads
         // (it has none) → immediately.
@@ -247,11 +253,11 @@ fn preclear_emits_under_partial_damage() {
     );
     let damage = Some(URect::new(0, 0, 50, 50));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
         vec![DrawOp::PreClear, DrawOp::Quads(0), DrawOp::Text(0),],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0)],
     );
 }
@@ -280,13 +286,13 @@ fn schedule_replays_per_damage_rect() {
     let pass_a = collect(
         &buf,
         Some(URect::new(0, 0, 50, 100)),
-        &MaskIndices::default(),
+        &MaskPlan::default(),
         false,
     );
     let pass_b = collect(
         &buf,
         Some(URect::new(50, 0, 50, 100)),
-        &MaskIndices::default(),
+        &MaskPlan::default(),
         false,
     );
     let mut combined = pass_a;
@@ -350,7 +356,6 @@ fn stencil_group_brackets_draws_with_mask_write() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 2),
             },
             // Batch drain: same chain, batch scissor inside the stamp's
@@ -409,7 +414,7 @@ fn stencil_mixed_rounded_and_plain_groups_keep_brackets_local() {
     );
 }
 
-/// End-to-end pin of the same-mask elision: `build_mask_indices` (the
+/// End-to-end pin of the same-mask elision: `build_mask_plan` (the
 /// CPU half of `stage_masks`) dedups consecutive value-equal chains
 /// onto one shared mask-quad run (common: a rect clip nested in a
 /// rounded ancestor inherits the ancestor's chain verbatim, and
@@ -473,11 +478,11 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     // quads but group 1's scissor set — no SetStencilRef, no mask quad.
     let q0 = steps
         .iter()
-        .position(|s| matches!(s, RenderStep::Quads { group: 0, .. }))
+        .position(|s| matches!(s, RenderStep::Quads { range } if *range == Span::new(0, 1)))
         .unwrap();
     let q1 = steps
         .iter()
-        .position(|s| matches!(s, RenderStep::Quads { group: 1, .. }))
+        .position(|s| matches!(s, RenderStep::Quads { range } if *range == Span::new(1, 1)))
         .unwrap();
     assert!(
         steps[q0 + 1..q1]
@@ -598,7 +603,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // A→B transition: clear A's mask under SA — the scissor
@@ -614,7 +618,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskStamp(1),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 1,
                 range: Span::new(1, 1),
             },
             // B→C transition: clear B's mask under SB; the clear left
@@ -624,7 +627,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskClear(1),
             RenderStep::SetScissor(sc),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
             // C is unmasked: stencil already clean, no tail clear.
@@ -655,7 +657,7 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
 /// outer at ref 0 → stencil 1, inner at ref 1 → stencil 2 (only
 /// inside the outer), content at ref 2. Group 1 carries a value-equal
 /// chain in a *different* span (pop/re-push of identical clips) —
-/// `build_mask_indices` dedups by value, so the schedule elides and
+/// `build_mask_plan` dedups by value, so the schedule elides and
 /// nothing but a scissor set separates the two groups' quads. Group 2
 /// is unmasked: ONE clear of the outermost mask resets the whole
 /// chain (inner stamps only incremented inside the outer's SDF).
@@ -695,13 +697,11 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             RenderStep::MaskStamp(1),
             RenderStep::SetStencilRef(2),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Group 1: identical chain, contained scissor — elided.
             RenderStep::SetScissor(e),
             RenderStep::Quads {
-                group: 1,
                 range: Span::new(1, 1),
             },
             // Group 2: one clear of the OUTERMOST quad resets both
@@ -711,7 +711,6 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(e),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
         ],
@@ -845,7 +844,6 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Group 1 skipped; its batch drains before group 2: same
@@ -860,7 +858,6 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(URect::new(45, 0, 50, 40)),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
         ],
@@ -909,7 +906,6 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Trailing drain: the unmasked batch clears group 0's
@@ -937,14 +933,19 @@ fn setscissor_steps_present_under_partial_damage() {
         quads: Span::new(0, 1),
     }]);
     let damage = URect::new(0, 0, 80, 80);
-    let steps = collect(&buf, Some(damage), &MaskIndices::default(), false);
+    let steps = collect(&buf, Some(damage), &MaskPlan::default(), false);
     // First two: scissor to damage, then PreClear.
     assert_eq!(steps[0], RenderStep::SetScissor(damage));
     assert_eq!(steps[1], RenderStep::PreClear);
     // Group 0's effective scissor is intersection (10,10,50,50) ∩ damage = (10,10,50,50).
     assert_eq!(steps[2], RenderStep::SetScissor(URect::new(10, 10, 50, 50)));
     // Then quads.
-    assert!(matches!(steps[3], RenderStep::Quads { group: 0, .. }));
+    assert_eq!(
+        steps[3],
+        RenderStep::Quads {
+            range: Span::new(0, 1),
+        }
+    );
 }
 
 /// Pin: a group whose scissor is disjoint from the damage rect emits
@@ -970,7 +971,7 @@ fn group_outside_damage_emits_no_steps() {
     assert_eq!(
         simplify(
             &buf,
-            &collect(&buf, Some(damage), &MaskIndices::default(), false)
+            &collect(&buf, Some(damage), &MaskPlan::default(), false)
         ),
         vec![DrawOp::PreClear, DrawOp::Quads(0)],
     );
@@ -981,16 +982,15 @@ fn group_outside_damage_emits_no_steps() {
 /// [`text_batch`]). Quads/texts pools have four slots each so any
 /// small span is valid.
 fn buf_with_batches(groups: Vec<DrawGroup>, text_batches: Vec<TextBatch>) -> RenderBuffer {
-    RenderBuffer {
-        quads: vec![dummy_quad(); 4],
-        texts: vec![dummy_text(); 4],
-        groups,
-        text_batches,
-        viewport_phys: UVec2::new(100, 100),
-        viewport_phys_f: Vec2::new(100.0, 100.0),
-        scale: 1.0,
-        ..RenderBuffer::default()
-    }
+    let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
+    buffer.quads = vec![dummy_quad(); 4];
+    buffer.texts = vec![dummy_text(); 4];
+    buffer.groups = groups;
+    buffer.text_batches = text_batches;
+    buffer.viewport_phys = UVec2::new(100, 100);
+    buffer.viewport_phys_f = Vec2::new(100.0, 100.0);
+    buffer.scale = 1.0;
+    buffer
 }
 
 /// Pin: two groups sharing one text batch emit `Text` ONCE, after the
@@ -1014,7 +1014,7 @@ fn text_batch_spanning_two_groups_emits_once_at_last_group() {
         vec![text_batch(Span::new(0, 2), 1)],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Quads(0), DrawOp::Quads(1), DrawOp::Text(0)],
     );
 }
@@ -1041,7 +1041,7 @@ fn text_batch_emits_at_last_group_even_with_trailing_quad_group() {
         vec![text_batch(Span::new(0, 1), 0)],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Quads(0), DrawOp::Text(0), DrawOp::Quads(1)],
     );
 }
@@ -1076,7 +1076,7 @@ fn text_batch_anchored_in_damage_skipped_group_still_emits() {
     let damage = URect::new(0, 0, 50, 50);
     let steps = simplify(
         &buf,
-        &collect(&buf, Some(damage), &MaskIndices::default(), false),
+        &collect(&buf, Some(damage), &MaskPlan::default(), false),
     );
     // Must include Text(0) — group 0's text lives in batch 0, and
     // batch 0 anchored at the skipped group 1 must still emit.
@@ -1112,7 +1112,7 @@ fn text_batch_anchored_in_trailing_skipped_group_drains_after_loop() {
     let damage = URect::new(0, 0, 50, 50);
     let steps = simplify(
         &buf,
-        &collect(&buf, Some(damage), &MaskIndices::default(), false),
+        &collect(&buf, Some(damage), &MaskPlan::default(), false),
     );
     assert!(
         steps.contains(&DrawOp::Text(0)),
@@ -1144,7 +1144,7 @@ fn two_text_batches_emit_at_their_own_last_groups() {
         ],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![
             DrawOp::Quads(0),
             DrawOp::Text(0),
@@ -1175,7 +1175,7 @@ fn mesh_batches_emit_per_group_in_order() {
         &[0, 1],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Meshes(0), DrawOp::Meshes(1)],
     );
 }
@@ -1204,7 +1204,7 @@ fn mesh_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
         vec![DrawOp::PreClear, DrawOp::Meshes(1)],
     );
 }
@@ -1231,7 +1231,7 @@ fn image_batch_emits_after_group_quads_in_non_stencil_path() {
         &[0, 1],
     );
     assert_eq!(
-        simplify(&buf, &collect(&buf, None, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, None, &MaskPlan::default(), false)),
         vec![DrawOp::Images(0), DrawOp::Images(1)],
     );
 }
@@ -1256,7 +1256,7 @@ fn image_batch_in_damage_skipped_group_drops_silently() {
     );
     let damage = Some(URect::new(50, 0, 50, 100));
     assert_eq!(
-        simplify(&buf, &collect(&buf, damage, &MaskIndices::default(), false)),
+        simplify(&buf, &collect(&buf, damage, &MaskPlan::default(), false)),
         vec![DrawOp::PreClear, DrawOp::Images(1)],
     );
 }

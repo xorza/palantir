@@ -8,8 +8,65 @@
 
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::backend::quad_pipeline::MaskIndices;
-use crate::renderer::render_buffer::{CurveBatch, ImageBatch, MeshBatch, RenderBuffer, TextBatch};
+use crate::primitives::{color::Color, color::ColorF16};
+use crate::renderer::quad::Quad;
+use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::batch::{GroupBatch, TextBatch};
+
+/// Per-group and per-text-batch spans into the staged mask-quad buffer.
+#[derive(Debug, Default)]
+pub(crate) struct MaskPlan {
+    pub(crate) groups: Vec<Span>,
+    pub(crate) batches: Vec<Span>,
+}
+
+/// Build the schedule's mask spans and deduplicated mask-quad instances.
+pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
+    plan.groups.clear();
+    plan.batches.clear();
+    masks.clear();
+    let clips = &buffer.rounded_clips;
+    let mut previous_chain = Span::default();
+    let mut previous_masks = Span::default();
+    for group in &buffer.groups {
+        let chain = group.rounded_clips;
+        let mask_span = if group.scissor.is_some() && chain.len != 0 {
+            if clips[chain.range()] == clips[previous_chain.range()] {
+                previous_masks
+            } else {
+                let start = masks.len() as u32;
+                for clip in &clips[chain.range()] {
+                    masks.push(Quad {
+                        rect: clip.mask_rect,
+                        fill: Color::default().into(),
+                        corners: clip.corners,
+                        stroke_color: ColorF16::TRANSPARENT,
+                        stroke_width: 0.0,
+                        ..Default::default()
+                    });
+                }
+                Span::new(start, chain.len)
+            }
+        } else {
+            Span::default()
+        };
+        previous_chain = if mask_span.len != 0 {
+            chain
+        } else {
+            Span::default()
+        };
+        previous_masks = mask_span;
+        plan.groups.push(mask_span);
+    }
+    for batch in &buffer.text_batches {
+        let group = batch.last_group as usize;
+        assert!(
+            clips[batch.rounded_clips.range()] == clips[buffer.groups[group].rounded_clips.range()],
+            "text batch chain decorrelated from its last_group's chain"
+        );
+        plan.batches.push(plan.groups[group]);
+    }
+}
 
 /// One conceptual step of the per-frame render schedule. Variants
 /// describe *what* to do, not *how*; the consumer holds context
@@ -45,7 +102,7 @@ pub(crate) enum RenderStep {
     MaskClear(u32),
     /// Bind the quad pipeline (stencil-test variant when stencil is
     /// active, plain otherwise) + draw the group's quad range.
-    Quads { group: usize, range: Span },
+    Quads { range: Span },
     /// Render a coalesced text batch via the text-renderer pool slot.
     /// Emitted once per batch, immediately after the last group in
     /// the batch has drawn its quads (any meshes in that group still
@@ -54,13 +111,13 @@ pub(crate) enum RenderStep {
     Text { batch: usize },
     /// Bind the mesh pipeline + issue one `draw_indexed` per
     /// `MeshDraw` in the referenced batch. Consumer pulls per-draw spans
-    /// from `RenderBuffer.mesh_batches[batch].meshes` (then via
+    /// from `RenderBuffer.mesh_batches[batch].items` (then via
     /// `RenderBuffer.meshes`). One `MeshBatch { batch }` step → one
     /// pipeline+buffer bind → N `draw_indexed` calls.
     MeshBatch { batch: usize },
     /// Bind the image pipeline + issue one `draw` per `ImageDraw` in
     /// the referenced batch. Consumer pulls per-draw handles from
-    /// `RenderBuffer.image_batches[batch].images` (then via
+    /// `RenderBuffer.image_batches[batch].items` (then via
     /// `RenderBuffer.images.draws`). The pipeline switches the per-image
     /// bind group between draws.
     ImageBatch { batch: usize },
@@ -77,7 +134,7 @@ pub(crate) enum RenderStep {
 /// `emit`. Pure logic — no GPU calls.
 ///
 /// `masks` holds the per-group and per-text-batch mask-quad chains
-/// (see [`MaskIndices`]), built by `QuadPipeline::stage_masks`.
+/// (see [`MaskPlan`]), built during quad mask staging.
 /// Ignored when `use_stencil` is `false`.
 ///
 /// Per-frame ordering invariants pinned by the emitted sequence:
@@ -115,7 +172,7 @@ pub(crate) enum RenderStep {
 pub(crate) fn for_each_step(
     buffer: &RenderBuffer,
     damage_scissor: Option<URect>,
-    masks: &MaskIndices,
+    masks: &MaskPlan,
     use_stencil: bool,
     mut emit: impl FnMut(RenderStep),
 ) {
@@ -329,17 +386,7 @@ impl PerGroupBatch for TextBatch {
         self.last_group as usize
     }
 }
-impl PerGroupBatch for MeshBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-impl PerGroupBatch for ImageBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-impl PerGroupBatch for CurveBatch {
+impl PerGroupBatch for GroupBatch {
     fn last_group(&self) -> usize {
         self.last_group as usize
     }
@@ -395,7 +442,7 @@ fn drain_text_batches(
     damage_scissor: Option<URect>,
     target: usize,
     cursor: &mut usize,
-    masks: &MaskIndices,
+    masks: &MaskPlan,
     use_stencil: bool,
     stencil: &mut StencilTracker,
     emit: &mut dyn FnMut(RenderStep),
@@ -435,7 +482,7 @@ fn emit_group_body(
     damage_scissor: Option<URect>,
     i: usize,
     effective: URect,
-    masks: &MaskIndices,
+    masks: &MaskPlan,
     use_stencil: bool,
     cursors: &mut ScheduleCursors,
     stencil: &mut StencilTracker,
@@ -443,10 +490,7 @@ fn emit_group_body(
 ) {
     let quads = buffer.groups[i].quads;
     if quads.len != 0 {
-        emit(RenderStep::Quads {
-            group: i,
-            range: quads,
-        });
+        emit(RenderStep::Quads { range: quads });
     }
     drain_text_batches(
         buffer,

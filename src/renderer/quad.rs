@@ -3,50 +3,10 @@
 //! Lives at the renderer root alongside `RenderBuffer`: both are the
 //! frontend↔backend contract, so neither side owns them.
 
-use crate::primitives::brush::{FillAxis, Spread};
+use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect};
 use bytemuck::{Pod, Zeroable};
-
-// Compile-time pins for the shader↔CPU discriminant contract. Mirrors
-// `BRUSH_KIND_*` / `SPREAD_*` in `src/renderer/backend/quad.wgsl`.
-// Reordering `Spread` or the `FillKind` constructors without updating
-// the WGSL constants silently mis-renders; bumping a value here trips
-// the compile rather than waiting for the runtime tests below or the
-// visual goldens.
-const _: () = assert!(FillKind::SOLID.0 == 0, "BRUSH_KIND_SOLID");
-const _: () = assert!(
-    FillKind::linear(Spread::Pad).0 & 0xFF == 1,
-    "BRUSH_KIND_LINEAR"
-);
-const _: () = assert!(
-    FillKind::radial(Spread::Pad).0 & 0xFF == 2,
-    "BRUSH_KIND_RADIAL"
-);
-const _: () = assert!(
-    FillKind::conic(Spread::Pad).0 & 0xFF == 3,
-    "BRUSH_KIND_CONIC"
-);
-const _: () = assert!(FillKind::SHADOW_DROP.0 == 4, "BRUSH_KIND_SHADOW_DROP");
-const _: () = assert!(FillKind::SHADOW_INSET.0 == 5, "BRUSH_KIND_SHADOW_INSET");
-const _: () = assert!(FillKind::TRIANGLE.0 == 6, "BRUSH_KIND_TRIANGLE");
-const _: () = assert!(FillKind::SOLID.with_fast().0 == 0x10000, "FILL_FLAG_FAST");
-const _: () = assert!(
-    FillKind::SOLID.with_window().0 == 0x20000,
-    "FILL_FLAG_WINDOW"
-);
-const _: () = assert!(
-    (FillKind::linear(Spread::Pad).0 >> 8) & 0xFF == 0,
-    "SPREAD_PAD"
-);
-const _: () = assert!(
-    (FillKind::linear(Spread::Repeat).0 >> 8) & 0xFF == 1,
-    "SPREAD_REPEAT"
-);
-const _: () = assert!(
-    (FillKind::linear(Spread::Reflect).0 >> 8) & 0xFF == 2,
-    "SPREAD_REFLECT"
-);
 
 /// Per-instance quad data (60 B). Field types are the matching
 /// `repr(C)` primitives, byte-identical to `[f32; N]`s — see the
