@@ -242,7 +242,7 @@ impl WindowRendererBuilder<'_> {
     pub(crate) fn build(self) -> WindowRenderer {
         WindowRenderer {
             ui: Ui::new(self.ctx),
-            frontend: Frontend::new(self.ctx.frame_arena.clone(), self.max_texture_dim),
+            frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
             stencil: None,

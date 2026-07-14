@@ -119,7 +119,7 @@ pub struct TextBackend {
 
     /// Drawable glyph instances accumulated across this frame's batches.
     pub(crate) instances: Vec<GlyphInstance>,
-    vbuf: DynamicBuffer,
+    vbuf: DynamicBuffer<GlyphInstance>,
 
     /// Per-batch slice of `instances`; empty span = nothing to draw.
     ranges: Vec<Span>,
@@ -196,7 +196,7 @@ impl TextBackend {
             &sampler,
         );
 
-        let vbuf = DynamicBuffer::vertex::<GlyphInstance>(device, "aperture text vbuf", 4096);
+        let vbuf = DynamicBuffer::<GlyphInstance>::vertex(device, "aperture text vbuf", 4096);
 
         Self {
             shaper,
@@ -303,16 +303,19 @@ impl TextBackend {
                     lookup,
                 } = split;
 
-                let resolved = misses.iter().filter_map(|m| {
+                let resolved = misses.iter().map(|m| {
                     let r = &runs[m.run_idx as usize];
-                    lookup.get(r.key).map(|buffer| ResolvedRun {
+                    let buffer = lookup
+                        .get(r.key)
+                        .expect("valid text key missing from pinned render lookup");
+                    ResolvedRun {
                         buffer,
                         origin: r.origin,
                         bounds: r.bounds,
                         scale: scale * r.scale,
                         color: r.color,
                         run_key: m.run_key,
-                    })
+                    }
                 });
 
                 let mut ectx = EncodeCtx {
@@ -368,9 +371,10 @@ impl TextBackend {
         use_stencil: bool,
         viewport: &ViewportPush,
     ) {
-        let Some(&span) = self.ranges.get(batch_idx) else {
-            return;
-        };
+        let &span = self
+            .ranges
+            .get(batch_idx)
+            .expect("render schedule referenced an unprepared text batch");
         if span.len == 0 {
             return;
         }
@@ -753,7 +757,8 @@ mod gpu_regression {
         // The refresh must have gone through the entry's *recorded*
         // slab indices — the exact path the hot loop writes.
         for entry in backend.encoded_cache.map.values() {
-            for &idx in &backend.encoded_cache.slots[entry.span.range()] {
+            for glyph in &backend.encoded_cache.arena[entry.span.range()] {
+                let idx = glyph.atlas_slot;
                 assert_eq!(
                     backend.atlas.slots[idx as usize].last_use, cf,
                     "recorded slab index {idx} not refreshed on hit",

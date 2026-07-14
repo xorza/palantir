@@ -12,7 +12,7 @@ use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::Track;
 use crate::layout::{axis::Axis, intrinsic::LenReq};
 use crate::primitives::color::Color;
-use crate::renderer::frontend::cmd_buffer::{CmdKind, DrawTextPayload};
+use crate::renderer::frontend::cmd_buffer::Command;
 use crate::shape::{Shape, TextWrap};
 use crate::text::{FontFamily, FontWeight};
 use crate::widgets::{button::Button, grid::Grid, panel::Panel, text::Text};
@@ -680,9 +680,12 @@ fn multi_shape_text_per_leaf_emits_one_drawtext_per_run_at_local_rect() {
     let leaf = leaf.unwrap();
     let owner_min = ui.layout[Layer::Main].rect[leaf.idx()].min;
     let cmds = ui.encode_cmds();
-    let mut drawn: Vec<glam::Vec2> = (0..cmds.kinds.len())
-        .filter(|&i| cmds.kinds[i] == CmdKind::DrawText)
-        .map(|i| cmds.read::<DrawTextPayload>(cmds.starts[i]).rect.min)
+    let mut drawn: Vec<glam::Vec2> = cmds
+        .iter()
+        .filter_map(|command| match command {
+            Command::DrawText(payload) => Some(payload.rect.min),
+            _ => None,
+        })
         .collect();
     assert_eq!(
         drawn.len(),

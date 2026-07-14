@@ -969,7 +969,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Mesh);
                     pass.push_debug_group("meshes");
                     rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                    let range = buffer.mesh_batches[batch].meshes;
+                    let range = buffer.mesh_batches[batch].items;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for (offset, draw) in buffer.meshes.draw()[start..end].iter().enumerate() {
@@ -991,7 +991,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Image);
                     pass.push_debug_group("images");
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                    let range = buffer.image_batches[batch].images;
+                    let range = buffer.image_batches[batch].items;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for (offset, id) in buffer.images.id()[start..end].iter().enumerate() {
@@ -1007,7 +1007,7 @@ impl WgpuBackend {
                         self.curve
                             .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                     );
-                    let range = buffer.curve_batches[batch].instances;
+                    let range = buffer.curve_batches[batch].items;
                     self.curve.draw(pass, range.start..range.start + range.len);
                     pass.pop_debug_group();
                 }

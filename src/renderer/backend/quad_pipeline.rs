@@ -28,12 +28,12 @@ pub(crate) struct QuadPipeline {
     /// sampler) is owned by
     /// [`GradientResources`](crate::renderer::backend::gradient_resources::GradientResources)
     /// and passed to every `bind*` call.
-    instance_buffer: DynamicBuffer,
+    instance_buffer: DynamicBuffer<Quad>,
     /// Lazy buffer holding one `Quad` per deduped rounded clip in the
     /// current frame; uploaded by `stage_masks`, drawn by `draw_mask`. Reused
     /// across frames; capacity grows monotonically. `None` until the
     /// first stencil frame.
-    mask_buffer: Option<DynamicBuffer>,
+    mask_buffer: Option<DynamicBuffer<Quad>>,
     /// Retained scratch for the stencil-mask sweep, populated by
     /// [`Self::stage_masks`] and read by the render schedule. Stale on
     /// non-stencil frames; the schedule only reads it when
@@ -78,7 +78,7 @@ impl QuadPipeline {
             source: wgpu::ShaderSource::Wgsl(include_str!("quad.wgsl").into()),
         });
 
-        let instance_buffer = DynamicBuffer::vertex::<Quad>(device, "aperture.quad.instances", 256);
+        let instance_buffer = DynamicBuffer::<Quad>::vertex(device, "aperture.quad.instances", 256);
 
         let clear_buffer = device.create_buffer(&wgpu::BufferDescriptor {
             label: Some("aperture.quad.clear"),
@@ -336,7 +336,7 @@ impl QuadPipeline {
         // reuse across frames (capacity grows monotonically through
         // `DynamicBuffer::upload`).
         let buf = self.mask_buffer.get_or_insert_with(|| {
-            DynamicBuffer::vertex::<Quad>(ctx.device, "aperture.quad.masks", 8)
+            DynamicBuffer::<Quad>::vertex(ctx.device, "aperture.quad.masks", 8)
         });
         buf.upload_instances(ctx, &self.masks);
     }

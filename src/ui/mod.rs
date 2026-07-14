@@ -1027,9 +1027,9 @@ impl Ui {
                 entry
             }
             // First sight always paints — the texture doesn't exist yet.
-            // `texture_ids` (on `self.ctx`) is disjoint from `self.gpu_views`.
+            // The shared id source is disjoint from `self.gpu_views`.
             Entry::Vacant(e) => e.insert(GpuViewEntry {
-                texture_id: self.ctx.texture_ids.reserve(),
+                texture_id: self.ctx.caches.texture_ids.reserve(),
                 paint: GpuPaintRef(paint),
                 epoch: frame_id,
             }),

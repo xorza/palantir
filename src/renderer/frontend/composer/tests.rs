@@ -9,11 +9,25 @@ use crate::renderer::frontend::cmd_buffer::{
     BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
 };
 use crate::renderer::frontend::composer::Composer;
-use crate::renderer::render_buffer::RenderBuffer;
+use crate::renderer::render_buffer::{RenderBuffer, RenderOwnerId};
 use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
+
+fn composer() -> Composer {
+    Composer::new(16_384)
+}
+
+fn render_buffer() -> RenderBuffer {
+    RenderBuffer::new(RenderOwnerId::reserve())
+}
+
+#[test]
+#[should_panic(expected = "composer texture dimension limit must be positive")]
+fn composer_rejects_zero_texture_limit() {
+    let _ = Composer::new(0);
+}
 
 fn rect(x: f32, y: f32, w: f32, h: f32) -> Rect {
     Rect::new(x, y, w, h)
@@ -48,8 +62,8 @@ fn run(
     let mut buffer = RenderCmdBuffer::default();
     let mut arena = FrameArenaInner::default();
     build(&mut buffer, &mut arena);
-    let mut composer = Composer::default();
-    let mut out = RenderBuffer::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
     composer.compose(&buffer, &arena, *display, &mut out);
     out
 }
@@ -490,8 +504,8 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         BrushSource::Solid(Color::rgb(0.5, 0.5, 0.5).into()),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::default();
-    let mut out = RenderBuffer::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
     // 200×200 viewport: an opaque solid sharp quad covering the whole
     // viewport would fold into the clear instead of emitting a quad.
     composer.compose(
@@ -587,8 +601,8 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
         BrushSource::Gradient(lowered),
         Stroke::ZERO.into(),
     );
-    let mut composer = Composer::default();
-    let mut out = RenderBuffer::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
     composer.compose(
         &buffer,
         &FrameArenaInner::default(),
@@ -627,8 +641,8 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
             Stroke::ZERO.into(),
         );
     }
-    let mut composer = Composer::default();
-    let mut out = RenderBuffer::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
     composer.compose(
         &buffer,
         &FrameArenaInner::default(),
@@ -1064,7 +1078,7 @@ fn compose_polyline_between_texts_splits_text_batch() {
     // batches — a 2-point polyline is one segment, no join chrome.
     assert_eq!(buf.curve_batches.len(), 1);
     assert_eq!(
-        buf.curve_batches[0].instances.len, 1,
+        buf.curve_batches[0].items.len, 1,
         "one segment instance for a 2-point polyline",
     );
     assert!(buf.meshes.is_empty(), "no CPU-tessellated mesh");
@@ -1368,8 +1382,8 @@ fn compose_spins_polyline_about_bbox_center() {
             join: LineJoinBits::new(LineJoin::Miter),
             ..bytemuck::Zeroable::zeroed()
         });
-        let mut composer = Composer::default();
-        let mut out = RenderBuffer::default();
+        let mut composer = composer();
+        let mut out = render_buffer();
         composer.compose(&buffer, &arena, params(1.0, UVec2::new(200, 200)), &mut out);
         // GPU path: the polyline emits one segment instance whose
         // p0/p3 lanes carry the transformed (spun) endpoints.
@@ -1468,7 +1482,7 @@ fn compose_emits_image_batch_for_drawimage() {
     assert_eq!(buf.images.len(), 1, "one image draw");
     assert_eq!(buf.images.len(), 1, "one image instance");
     assert_eq!(buf.image_batches.len(), 1, "one image batch");
-    assert_eq!(buf.image_batches[0].images, Span::new(0, 1));
+    assert_eq!(buf.image_batches[0].items, Span::new(0, 1));
     assert_eq!(buf.images.id()[0], TextureId(0xc0ffee));
     // Physical-px rect = logical * scale (no snap in `params`).
     assert_eq!(buf.images.instance()[0].rect, rect(20.0, 40.0, 60.0, 80.0));
@@ -1574,10 +1588,10 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
     // Sub-instance count depends on adaptive subdivision, but both
     // curves contribute the *same* per-curve count (identical shape),
     // so the total must be ≥ 2 and even.
-    assert!(batch.instances.len >= 2 && batch.instances.len.is_multiple_of(2));
+    assert!(batch.items.len >= 2 && batch.items.len.is_multiple_of(2));
     assert_eq!(
         buf.curves.len() as u32,
-        batch.instances.len,
+        batch.items.len,
         "batch covers every emitted instance",
     );
 }
@@ -1707,7 +1721,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
     }
     // One batch covers every instance — arcs ride the curve batching.
     assert_eq!(buf.curve_batches.len(), 1);
-    assert_eq!(buf.curve_batches[0].instances.len, 8);
+    assert_eq!(buf.curve_batches[0].items.len, 8);
 }
 
 #[test]
@@ -1873,7 +1887,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
     );
     assert_eq!(buf.curve_batches.len(), 1, "arcs batch with cubics");
     assert_eq!(
-        buf.curve_batches[0].instances.len as usize,
+        buf.curve_batches[0].items.len as usize,
         buf.curves.len()
     );
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
@@ -2494,13 +2508,13 @@ fn prune_steady_state_across_repeated_compose_calls() {
     // entry would either panic on index OOB after the slice shrinks
     // or leak across-frame drops.
     let mut buffer = RenderCmdBuffer::default();
-    let mut composer = Composer::default();
+    let mut composer = composer();
     let display = params(1.0, UVec2::new(200, 200));
     for _ in 0..5 {
         buffer.clear();
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
         draw(&mut buffer, rect(0.0, 0.0, 100.0, 100.0));
-        let mut out = RenderBuffer::default();
+        let mut out = render_buffer();
         composer.compose(&buffer, &FrameArenaInner::default(), display, &mut out);
         assert_eq!(out.quads.len(), 1, "prune runs cleanly each frame");
     }
@@ -2783,8 +2797,8 @@ fn clear_fold_discards_hidden_underlay_mid_stream() {
 #[test]
 fn clear_fold_resets_across_frames() {
     let display = params(1.0, UVec2::new(200, 200));
-    let mut composer = Composer::default();
-    let mut out = RenderBuffer::default();
+    let mut composer = composer();
+    let mut out = render_buffer();
     let arena = FrameArenaInner::default();
 
     let mut covered = RenderCmdBuffer::default();

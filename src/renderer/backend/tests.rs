@@ -9,11 +9,12 @@ use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::backend::quad_pipeline::{MaskIndices, build_mask_indices};
-use crate::renderer::backend::schedule::{RenderStep, for_each_step};
+use crate::renderer::backend::schedule::{
+    MaskPlan as MaskIndices, RenderStep, build_mask_plan as build_mask_indices, for_each_step,
+};
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::{
-    DrawGroup, MeshBatch, RenderBuffer, RoundedClip, TextBatch, TextRun,
+    DrawGroup, GroupBatch, RenderBuffer, RenderOwnerId, RoundedClip, TextBatch, TextRun,
 };
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
@@ -151,8 +152,8 @@ fn text_batch(texts: Span, last_group: u32) -> TextBatch {
 fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.mesh_batches.push(MeshBatch {
-            meshes: Span::new(i as u32, 1),
+        buf.mesh_batches.push(GroupBatch {
+            items: Span::new(i as u32, 1),
             last_group: g,
         });
     }
@@ -161,11 +162,10 @@ fn buf_with_mesh_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffe
 
 /// Same shape as [`buf_with_mesh_anchors`] but for image batches.
 fn buf_with_image_anchors(groups: Vec<DrawGroup>, anchors: &[u32]) -> RenderBuffer {
-    use crate::renderer::render_buffer::ImageBatch;
     let mut buf = buf_with(groups);
     for (i, &g) in anchors.iter().enumerate() {
-        buf.image_batches.push(ImageBatch {
-            images: Span::new(i as u32, 1),
+        buf.image_batches.push(GroupBatch {
+            items: Span::new(i as u32, 1),
             last_group: g,
         });
     }
@@ -981,16 +981,15 @@ fn group_outside_damage_emits_no_steps() {
 /// [`text_batch`]). Quads/texts pools have four slots each so any
 /// small span is valid.
 fn buf_with_batches(groups: Vec<DrawGroup>, text_batches: Vec<TextBatch>) -> RenderBuffer {
-    RenderBuffer {
-        quads: vec![dummy_quad(); 4],
-        texts: vec![dummy_text(); 4],
-        groups,
-        text_batches,
-        viewport_phys: UVec2::new(100, 100),
-        viewport_phys_f: Vec2::new(100.0, 100.0),
-        scale: 1.0,
-        ..RenderBuffer::default()
-    }
+    let mut buffer = RenderBuffer::new(RenderOwnerId::reserve());
+    buffer.quads = vec![dummy_quad(); 4];
+    buffer.texts = vec![dummy_text(); 4];
+    buffer.groups = groups;
+    buffer.text_batches = text_batches;
+    buffer.viewport_phys = UVec2::new(100, 100);
+    buffer.viewport_phys_f = Vec2::new(100.0, 100.0);
+    buffer.scale = 1.0;
+    buffer
 }
 
 /// Pin: two groups sharing one text batch emit `Text` ONCE, after the
