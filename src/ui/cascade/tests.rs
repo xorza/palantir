@@ -180,7 +180,9 @@ fn node_spans_rows_mirror_chrome_and_children() {
         chrome_span.len > 0 && arena.rows[chrome_span.start as usize].screen.area() > 0.0,
         "chromed panel must have a non-empty paint span with non-zero chrome rect",
     );
-    let chrome_entry = cascades.entry_idx_of(WidgetId::from_hash("chrome")).unwrap() as usize;
+    let chrome_entry = cascades
+        .entry_idx_of(WidgetId::from_hash("chrome"))
+        .unwrap() as usize;
     assert_eq!(
         arena.rows[chrome_span.start as usize].screen,
         cascades.entries.rect()[chrome_entry],
