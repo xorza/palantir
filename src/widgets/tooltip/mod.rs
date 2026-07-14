@@ -3,44 +3,15 @@ use crate::forest::element::Salt;
 use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
 use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
 use crate::primitives::size::Size;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::shape::TextWrap;
 use crate::ui::Ui;
 use crate::widgets::ResponseSnapshot;
+use crate::widgets::overlay_position::OverlayPosition;
 use crate::widgets::text::Text;
-use glam::Vec2;
 use std::borrow::Cow;
-
-/// Pure positioning math: pick a top-left anchor for a `bubble`-sized
-/// bubble next to a `trigger` rect, inside `viewport`. Default = below;
-/// flip above when below would clip; horizontally clamp so the bubble
-/// stays on-screen. `gap` is the breathing room between trigger and
-/// bubble. The chosen `y` encodes the flip (below-edge vs above-edge).
-pub(crate) fn place_bubble(trigger: Rect, bubble: Size, viewport: Rect, gap: f32) -> Vec2 {
-    let below_y = trigger.min.y + trigger.size.h + gap;
-    let above_y = trigger.min.y - gap - bubble.h;
-    let viewport_bottom = viewport.min.y + viewport.size.h;
-    let viewport_right = viewport.min.x + viewport.size.w;
-    let fits_below = below_y + bubble.h <= viewport_bottom;
-    // Below by default; flip above only when below would clip and above fits.
-    let preferred_y = if fits_below || above_y < viewport.min.y {
-        below_y
-    } else {
-        above_y
-    };
-    let y = preferred_y.clamp(
-        viewport.min.y,
-        (viewport_bottom - bubble.h).max(viewport.min.y),
-    );
-    let x = trigger.min.x.clamp(
-        viewport.min.x,
-        (viewport_right - bubble.w).max(viewport.min.x),
-    );
-    Vec2::new(x, y)
-}
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
@@ -204,13 +175,8 @@ impl<'r> Tooltip<'r> {
             if let Some(rect) = ui.response_for(bubble_id).rect {
                 state.last_size = Some(rect.size);
             }
-            let first_measure = state.last_size.is_none();
-            let anchor = place_bubble(
-                trigger_rect,
-                state.last_size.unwrap_or_default(),
-                viewport,
-                gap,
-            );
+            let position =
+                OverlayPosition::below(trigger_rect, gap).resolve(state.last_size, viewport);
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
@@ -226,9 +192,7 @@ impl<'r> Tooltip<'r> {
             if element.max_size == Size::INF {
                 element.max_size = ui.theme.tooltip.max_size;
             }
-            // Anchor-relative availability would squeeze edge tooltips before
-            // their measured width can feed the placement clamp.
-            ui.layer(Layer::Tooltip, anchor, Some(viewport.size), |ui| {
+            position.show(ui, Layer::Tooltip, |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(text_style)
@@ -236,10 +200,6 @@ impl<'r> Tooltip<'r> {
                         .show(ui);
                 });
             });
-            if first_measure {
-                // Pass B places against the size measured by pass A.
-                ui.request_relayout();
-            }
         }
 
         *ui.state_mut::<TooltipState>(state_id) = state;
