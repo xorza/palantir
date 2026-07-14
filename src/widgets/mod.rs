@@ -7,6 +7,7 @@ pub(crate) mod frame;
 pub(crate) mod gpu_view;
 pub(crate) mod grid;
 pub(crate) mod modal;
+pub(crate) mod overlay_position;
 pub(crate) mod panel;
 pub(crate) mod popup;
 pub(crate) mod progress_bar;

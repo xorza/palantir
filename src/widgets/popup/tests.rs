@@ -176,11 +176,11 @@ fn run_frame_settles_popup_dismissal_in_one_call() {
 }
 
 /// Pin popup-body sizing + anchor placement under each `Sizing` mode.
-/// `Popup::show` passes `Some(surface)` to `Ui::layer` for an anchor-
-/// independent measure, then runs `place_anchor` (flip-then-clamp).
+/// `Popup::show` measures against the full surface before resolving its
+/// shared edge-aware position.
 ///
 /// - `Hug` / `Fixed` bodies fit at the raw anchor with room to spare.
-/// - `FILL` fills the full surface and `place_anchor`'s safety clamp
+/// - `FILL` fills the full surface and the safety clamp
 ///   shifts it to `(0, 0)` — the body is the size of the surface and
 ///   can't sit at the anchor without overflowing.
 #[test]
@@ -241,10 +241,10 @@ fn popup_body_sizing_matches_sizing_mode() {
 /// must flip and paint *above* the anchor instead of squeezing into
 /// the few pixels of remaining vertical space. Earlier the layout
 /// engine clamped `available` to `surface − anchor`, so the body
-/// measured into the tiny slot, `place_anchor` saw the squeezed size
+/// measured into the tiny slot, placement saw the squeezed size
 /// and decided no flip was needed — feedback loop. `Ui::layer` now
 /// passes `Some(surface)` for anchor-independent measurement, which
-/// lets the body keep its full size and `place_anchor` flip cleanly.
+/// lets the body keep its full size and flip cleanly.
 #[test]
 fn popup_near_bottom_flips_upward() {
     use crate::forest::Layer;
@@ -350,7 +350,7 @@ fn popup_flip_reaches_cascade_not_just_layout() {
 /// surface edge settles on the very first frame. `Scroll`'s bar
 /// gutter reservation is constant (not state-driven), so the Hugged
 /// popup body has the same outer width in pass A and pass B, and
-/// `place_anchor` lands the body in one shot. Bar visibility (thumb +
+/// placement lands the body in one shot. Bar visibility (thumb +
 /// track drawn or not) toggles separately based on this-frame's
 /// overflow; the gutter is reserved either way.
 ///

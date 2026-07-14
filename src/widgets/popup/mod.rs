@@ -3,10 +3,9 @@ use crate::forest::element::{Configure, Element, LayoutMode};
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
-use crate::primitives::size::Size;
 use crate::ui::Ui;
 use crate::widgets::frame::Frame;
+use crate::widgets::overlay_position::OverlayPosition;
 use crate::widgets::resolve_container_chrome;
 use glam::Vec2;
 use std::cell::Cell;
@@ -138,14 +137,9 @@ impl Popup {
         // the trigger lives.
         let body_id = ui.widget_id(&self.element);
         let eater_id = body_id.with("eater");
-        // Smart placement: read last frame's body size and place the
-        // popup so it fits inside the surface. First open has no prior
-        // rect — record at the raw anchor and request a relayout so
-        // pass B places against the just-measured size.
         let surface = ui.display().logical_rect();
         let prev_size = ui.response_for(body_id).rect.map(|r| r.size);
-        let placed = place_anchor(self.anchor, prev_size, surface);
-        let first_open = prev_size.is_none();
+        let position = OverlayPosition::around(self.anchor).resolve(prev_size, surface);
         // Eater records first → paints under the body. Hit-test runs
         // reverse-iter so the body's leaves still win inside its rect.
         //
@@ -171,24 +165,10 @@ impl Popup {
             ui.theme.panel_background.as_ref(),
             ui.theme.panel_clip,
         );
-        // Anchor-independent measure — pass `Some(surface.size)` so
-        // the body measures against its full natural height regardless
-        // of where it'll paint. Without this, a popup anchored near
-        // the bottom would be limited to `surface − anchor` (a few
-        // pixels), measure into that slot, and `place_anchor` would
-        // see the squeezed size and decide no flip is needed — feedback
-        // loop that never lets the popup escape the bottom band.
         let handle = PopupHandle::new();
-        let measure_cap = Some(surface.size);
-        ui.layer(Layer::Popup, placed, measure_cap, |ui| {
+        position.show(ui, Layer::Popup, |ui| {
             ui.node(body_id, element, chrome.as_ref(), |ui| body(ui, &handle));
         });
-        if first_open {
-            // No measured size yet → `placed` fell back to the raw
-            // anchor. Run another pass so the just-measured size
-            // feeds back into the placement algorithm.
-            ui.request_relayout();
-        }
         let dismiss_mode = self.click_outside == ClickOutside::Dismiss;
         let eater_clicked = ui.response_for(eater_id).left.clicked();
         PopupResponse {
@@ -200,42 +180,6 @@ impl Popup {
             close_requested: handle.requested.get(),
         }
     }
-}
-
-/// Pick a screen-space top-left for a popup body that prefers the
-/// raw anchor but flips to the opposite side of it when the body
-/// wouldn't fit on that side. After flipping, clamps to the surface
-/// as a last-resort safety net so tall popups near the edge stay
-/// visible (even if they slightly overlap the anchor).
-///
-/// Returns the raw `anchor` unchanged when `size` is `None` (no prior
-/// frame to measure against). `Popup::show` pairs this with a one-shot
-/// relayout request so the second pass places against measured size.
-pub(crate) fn place_anchor(anchor: Vec2, size: Option<Size>, surface: Rect) -> Vec2 {
-    let Some(s) = size else {
-        return anchor;
-    };
-    let surface_max = surface.max();
-    Vec2::new(
-        place_axis(anchor.x, s.w, surface.min.x, surface_max.x),
-        place_axis(anchor.y, s.h, surface.min.y, surface_max.y),
-    )
-}
-
-/// Single-axis flip-then-clamp. `anchor` is the desired top/left edge,
-/// `size` the body's extent on that axis. If the body would spill past
-/// `surface_max` AND has room on the opposite side, flip so the
-/// body's trailing edge lands on `anchor` instead. Then clamp so the
-/// top-left stays on-surface even when the body's bigger than the
-/// surface (trailing edge may still overflow — unavoidable).
-fn place_axis(anchor: f32, size: f32, surface_min: f32, surface_max: f32) -> f32 {
-    let pos = if anchor + size > surface_max && anchor - size >= surface_min {
-        anchor - size
-    } else {
-        anchor
-    };
-    let max_pos = (surface_max - size).max(surface_min);
-    pos.min(max_pos).max(surface_min)
 }
 
 impl Configure for Popup {
