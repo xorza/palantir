@@ -177,7 +177,7 @@ mod tests {
                     .sense(Sense::CLICK)
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                     .show(ui)
-                    .clicked();
+                    .left.clicked();
             });
         });
         assert!(clicked, "GpuView senses clicks when sense is set");

@@ -22,7 +22,7 @@ impl App for Counter {
                 Text::new(format!("clicks: {}", self.clicks))
                     .auto_id()
                     .show(ui);
-                if Button::new().label("click me").show(ui).clicked() {
+                if Button::new().label("click me").show(ui).left.clicked() {
                     self.clicks += 1;
                 }
             });

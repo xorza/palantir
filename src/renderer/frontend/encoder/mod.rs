@@ -478,7 +478,7 @@ fn emit_one_shape(
             // buffer's own side channel, linked to this draw by index so the
             // composer can list the off-screen target in `frame_targets`.
             // `epoch` only affects the shape hash (damage), not the draw.
-            let wid = ctx.tree.records.widget_id()[id.idx()];
+            let wid = ctx.tree.records.id[id.idx()];
             let view = &ctx.gpu_views[&wid];
             let paint_index = out.gpu_view_paints.len() as u32;
             out.gpu_view_paints.push(view.paint.clone());

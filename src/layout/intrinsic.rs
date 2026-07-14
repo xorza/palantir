@@ -174,7 +174,7 @@ fn content_intrinsic(
 /// there isn't one — leaves have no driver, the leaf path is just "ask
 /// the recorded shapes."
 fn leaf(tree: &Tree, node: NodeId, axis: Axis, req: LenReq, tc: &TextCtx<'_>) -> f32 {
-    let wid = tree.records.widget_id()[node.idx()];
+    let wid = tree.records.id[node.idx()];
     let curr_hash = tree.rollups.node[node.idx()];
     let mut acc = 0.0_f32;
     // Same within-node `ordinal` keying + overflow contract as

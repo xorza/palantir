@@ -96,7 +96,7 @@ fn delay_gates_visibility() {
                             .label("hi")
                             .show(ui)
                             .snapshot();
-                        *captured = Some(r.widget_id());
+                        *captured = Some(r.id);
                         Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                     });
             },
@@ -179,7 +179,7 @@ fn hover_clears_after_tooltip_visible() {
                             .label("hi")
                             .show(ui)
                             .snapshot();
-                        *captured = Some(r.widget_id());
+                        *captured = Some(r.id);
                         Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                     });
             },
@@ -257,7 +257,7 @@ fn tooltip_inside_popup_records_without_panic() {
                                     .label("hi")
                                     .show(ui)
                                     .snapshot();
-                                *captured = Some(r.widget_id());
+                                *captured = Some(r.id);
                                 Tooltip::on(&r).text("tip").delay(0.3).show(ui);
                             });
                     });
