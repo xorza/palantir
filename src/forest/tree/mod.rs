@@ -234,7 +234,7 @@ impl Tree {
         // at lowering time. compute_hashes just folds them into the
         // owner's node hasher in record order.
         let shape_hashes = self.shapes.hashes.as_slice();
-        let widget_ids = self.records.id;
+        let widget_ids = self.records.widget_id();
         let extras = self.extras_idx.as_slice();
         let bounds_tab = self.bounds_table.as_slice();
         let panel_tab = self.panel_table.as_slice();
