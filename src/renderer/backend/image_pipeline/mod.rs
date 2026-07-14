@@ -48,9 +48,8 @@ pub(crate) struct ImagePipeline {
     textures: ImageTextures,
     /// Framework-owned off-screen `GpuView` targets, keyed by [`TextureId`].
     /// [`Self::paint_gpu_views`] (re)allocates + paints them and frees the
-    /// submitting window's culled ones (eviction is owner-scoped — see
-    /// [`keep_target`]); the bind groups live in `cache` above so the
-    /// composite samples a target exactly like any image.
+    /// submitting window's culled ones. Its bind groups live in the shared
+    /// texture-binding store above, so composites sample targets like images.
     gpu_view_targets: GpuViewTargets,
 }
 
@@ -139,10 +138,9 @@ impl ImagePipeline {
 
     /// Paint every [`GpuView`](crate::widgets::gpu_view::GpuView) drawn this
     /// frame into its off-screen target, before the main pass. Called once per
-    /// frame from `WgpuBackend::submit`'s upload phase. For each `frame_targets`
-    /// entry: [`Self::ensure_target`] (re)allocates the target (registering its
-    /// bind group in the **shared** `cache` so the composite samples it like any
-    /// image), runs [`GpuPaint::init`](crate::renderer::gpu_view::GpuPaint::init)
+    /// frame from `WgpuBackend::submit`'s upload phase. The target store
+    /// allocates or resizes each entry, registers its bind group in the shared
+    /// image-texture store, and runs [`GpuPaint::init`](crate::renderer::gpu_view::GpuPaint::init)
     /// once, then `GpuPaint::paint` into it. Never touches the instance buffer,
     /// so it only has to run before the main pass samples the targets.
     ///
