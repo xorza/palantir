@@ -240,7 +240,7 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     use crate::Shadow;
     use crate::primitives::corners::Corners;
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::DrawShadowPayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawShadowPayload;
     use crate::shape::Shape;
 
     let mut ui = Ui::for_test();
