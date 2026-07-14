@@ -88,7 +88,7 @@ fn disabled_false_when_chain_clean() {
 fn frame_quiescent_predicate() {
     // Fresh state, one mutation, snapshot — returns the sealed flag.
     let quiescent = |mutate: &dyn Fn(&mut InputState)| {
-        let mut s = InputState::new();
+        let mut s = InputState::default();
         mutate(&mut s);
         s.snapshot_frame_quiescent();
         s.frame_quiescent
