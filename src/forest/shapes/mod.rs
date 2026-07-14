@@ -8,7 +8,7 @@ use crate::forest::rollups::ContentHash;
 use crate::forest::shapes::hash::compute_record_hash;
 use crate::forest::shapes::record::{ShapeRecord, ShapeStroke};
 use crate::primitives::span::Span;
-use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 
 /// Per-frame shape-record buffer for one [`crate::forest::tree::Tree`].

@@ -24,7 +24,9 @@ use std::time::Instant;
 
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
-use crate::renderer::backend::{Backbuffer, Stencil, WgpuBackend};
+use crate::renderer::backend::{
+    Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend,
+};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::ui::damage::FULL_REPAINT_THRESHOLD;
@@ -491,14 +493,16 @@ impl WindowRenderer {
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
-                gpu.submit(
-                    target,
-                    None,
-                    stencil_view,
-                    &self.frontend.buffer,
+                gpu.submit(Submission {
+                    targets: SubmissionTargets {
+                        surface: target,
+                        backbuffer: None,
+                        stencil: stencil_view,
+                    },
+                    buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
-                );
+                });
                 self.backbuffer_fresh = false;
                 self.ui.frame_submitted = true;
             }
@@ -516,14 +520,16 @@ impl WindowRenderer {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
-                gpu.submit(
-                    target,
-                    self.backbuffer.as_ref(),
-                    stencil_view,
-                    &self.frontend.buffer,
+                gpu.submit(Submission {
+                    targets: SubmissionTargets {
+                        surface: target,
+                        backbuffer: self.backbuffer.as_ref(),
+                        stencil: stencil_view,
+                    },
+                    buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
-                );
+                });
                 self.backbuffer_fresh = true;
                 self.ui.frame_submitted = true;
             }

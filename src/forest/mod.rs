@@ -13,7 +13,7 @@ use crate::forest::tree::recording::{Placement, RecordingScratch};
 use crate::primitives::background::Background;
 use crate::primitives::size::Size;
 use crate::primitives::widget_id::WidgetId;
-use crate::renderer::gradient_atlas::GradientAtlas;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::shape::Shape;
 use glam::Vec2;
 use std::time::Duration;

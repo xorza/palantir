@@ -13,9 +13,9 @@ use crate::renderer::backend::schedule::{
     MaskPlan as MaskIndices, RenderStep, build_mask_plan as build_mask_indices, for_each_step,
 };
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{
-    DrawGroup, GroupBatch, RenderBuffer, RenderOwnerId, RoundedClip, TextBatch, TextRun,
-};
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
+use crate::renderer::render_buffer::owner::RenderOwnerId;
+use crate::renderer::render_buffer::{RenderBuffer, RoundedClip, TextRun};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 
