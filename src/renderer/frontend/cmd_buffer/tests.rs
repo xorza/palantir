@@ -3,9 +3,10 @@ use crate::primitives::color::{Color, ColorF16};
 use crate::primitives::corners::Corners;
 use crate::primitives::rect::Rect;
 use crate::primitives::stroke::Stroke;
-use crate::renderer::frontend::cmd_buffer::{
-    BrushSource, CmdKind, Command, DrawRectPayload, DrawTrianglePayload, RenderCmdBuffer,
+use crate::renderer::frontend::cmd_buffer::payload::{
+    BrushSource, CmdKind, DrawRectPayload, DrawTrianglePayload,
 };
+use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::gpu_view::{GpuFrameCtx, GpuPaint, GpuPaintRef};
 use crate::renderer::texture_id::TextureId;
 use glam::Vec2;

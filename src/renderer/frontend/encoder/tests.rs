@@ -14,9 +14,8 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
-use crate::renderer::frontend::cmd_buffer::{
-    CmdKind, Command, PushClipPayload, RenderCmdBuffer,
-};
+use crate::renderer::frontend::cmd_buffer::payload::{CmdKind, PushClipPayload};
+use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::text::text_in_rect;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
