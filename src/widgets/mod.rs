@@ -139,13 +139,13 @@ macro_rules! response_accessors {
             self.resolved_state().pressed()
         }
         pub fn clicked(&self) -> bool {
-            self.resolved_state().left.clicked
+            self.resolved_state().left.clicked()
         }
         /// One-frame edge: right mouse button clicked-and-released on
         /// this widget without latching a drag. Independent of
         /// `clicked` (left).
         pub fn secondary_clicked(&self) -> bool {
-            self.resolved_state().right.clicked
+            self.resolved_state().right.clicked()
         }
         /// One-frame edge: any pointer button just double-clicked this
         /// widget (two clicks on the same id within
