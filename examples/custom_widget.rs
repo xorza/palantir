@@ -70,10 +70,10 @@ impl<'a> Stepper<'a> {
         let plus_id = id.with("plus");
         let minus = ui.response_for(minus_id);
         let plus = ui.response_for(plus_id);
-        if minus.left.clicked && !minus.disabled {
+        if minus.left.clicked() && !minus.disabled {
             *self.value = (*self.value - self.step).max(self.min);
         }
-        if plus.left.clicked && !plus.disabled {
+        if plus.left.clicked() && !plus.disabled {
             *self.value = (*self.value + self.step).min(self.max);
         }
 

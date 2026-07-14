@@ -81,7 +81,7 @@ impl ContextMenu {
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before attaching the menu.
     pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
-        if snapshot.secondary_clicked()
+        if snapshot.state().right.clicked()
             && let Some(p) = ui.pointer_pos()
         {
             ContextMenu::open(ui, snapshot.widget_id(), p);
