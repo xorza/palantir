@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Slider`]: a thin two-tone rail (filled `fill`
 /// left of the knob, `rail` right of it) with a round `knob`. The rail
@@ -19,14 +19,20 @@ pub struct SliderTheme {
     pub rail_thickness: f32,
 }
 
-impl Default for SliderTheme {
-    fn default() -> Self {
+impl SliderTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
-            rail: palette::ELEM_HOVER,
-            fill: palette::ACCENT,
-            knob: palette::TEXT,
+            rail: p.elem_hover,
+            fill: p.accent,
+            knob: p.text,
             knob_size: 18.0,
             rail_thickness: 4.0,
         }
+    }
+}
+
+impl Default for SliderTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

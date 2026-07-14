@@ -152,6 +152,7 @@ pub use widgets::theme::button::ButtonTheme;
 pub use widgets::theme::context_menu::{ContextMenuTheme, MenuItemTheme};
 pub use widgets::theme::drag_value::DragValueTheme;
 pub use widgets::theme::modal::ModalTheme;
+pub use widgets::theme::palette::Palette;
 pub use widgets::theme::progress_bar::ProgressBarTheme;
 pub use widgets::theme::scrollbar::ScrollbarTheme;
 pub use widgets::theme::separator::SeparatorTheme;

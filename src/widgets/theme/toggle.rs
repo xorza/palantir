@@ -4,7 +4,7 @@ use crate::primitives::background::Background;
 use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
@@ -59,15 +59,15 @@ impl ToggleTheme {
     }
 
     /// Defaults sized for [`crate::Checkbox`] — 16 px box with a 3 px
-    /// corner radius and a `TERMINAL_BG` check.
-    pub fn checkbox() -> Self {
-        Self::built(3.0, 16.0, 4.0, palette::TERMINAL_BG)
+    /// corner radius and a `terminal_bg` check.
+    pub fn checkbox(p: &Palette) -> Self {
+        Self::built(3.0, 16.0, 4.0, p.terminal_bg, p)
     }
 
     /// Defaults sized for [`crate::RadioButton`] — 16 px pip with pill
-    /// radius (`box_size * 0.5`) and a `TERMINAL_BG` dot.
-    pub fn radio() -> Self {
-        Self::built(8.0, 16.0, 4.0, palette::TERMINAL_BG)
+    /// radius (`box_size * 0.5`) and a `terminal_bg` dot.
+    pub fn radio(p: &Palette) -> Self {
+        Self::built(8.0, 16.0, 4.0, p.terminal_bg, p)
     }
 
     /// Defaults sized for [`crate::Switch`] — a 20 px-tall pill
@@ -75,41 +75,44 @@ impl ToggleTheme {
     /// the knob diameter is `box_size - 2 * indicator_inset`. Unlike the
     /// checkbox/radio, the switch defaults to an animated knob slide +
     /// track cross-fade — the motion is the point of the control.
-    pub fn switch() -> Self {
-        let mut t = Self::built(10.0, 20.0, 3.0, palette::TEXT);
+    pub fn switch(p: &Palette) -> Self {
+        let mut t = Self::built(10.0, 20.0, 3.0, p.text, p);
         t.anim = Some(AnimSpec::SPRING);
         t
     }
 
-    fn built(corner: f32, box_size: f32, indicator_inset: f32, indicator: Color) -> Self {
+    fn built(
+        corner: f32,
+        box_size: f32,
+        indicator_inset: f32,
+        indicator: Color,
+        p: &Palette,
+    ) -> Self {
         let radius = Corners::all(corner);
-        let edge = palette::BORDER_STRONG;
+        let edge = p.border_strong();
         let bg = |fill: Color, stroke: Stroke| {
             Some(Background::rounded(fill, radius).with_stroke(stroke))
         };
-        let disabled_text = Some(TextStyle::default().with_color(palette::TEXT_DISABLED));
+        let disabled_text = Some(TextStyle::default().with_color(p.text_disabled));
         let unchecked = StatefulLook {
             normal: WidgetLook {
-                background: bg(palette::ELEM_HOVER, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_hover, Stroke::solid(edge, 1.0)),
                 text: None,
             },
             hovered: WidgetLook {
-                background: bg(palette::ELEM_ACTIVE, Stroke::solid(edge, 1.0)),
+                background: bg(p.elem_active, Stroke::solid(edge, 1.0)),
                 text: None,
             },
             active: WidgetLook {
-                background: bg(
-                    palette::ELEM_ACTIVE,
-                    Stroke::solid(palette::BORDER_FOCUSED, 1.0),
-                ),
+                background: bg(p.elem_active, Stroke::solid(p.border_focused, 1.0)),
                 text: None,
             },
             disabled: WidgetLook {
-                background: bg(palette::ELEM, Stroke::solid(palette::BORDER_SOFT, 1.0)),
+                background: bg(p.elem, Stroke::solid(p.border_soft(), 1.0)),
                 text: disabled_text,
             },
         };
-        let acc = palette::ACCENT;
+        let acc = p.accent;
         let checked = StatefulLook {
             normal: WidgetLook {
                 background: bg(acc, Stroke::ZERO),
@@ -120,7 +123,7 @@ impl ToggleTheme {
                 text: None,
             },
             active: WidgetLook {
-                background: bg(acc, Stroke::solid(palette::BORDER_FOCUSED, 1.0)),
+                background: bg(acc, Stroke::solid(p.border_focused, 1.0)),
                 text: None,
             },
             disabled: WidgetLook {

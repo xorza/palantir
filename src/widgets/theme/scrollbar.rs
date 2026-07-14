@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Scroll`] reservation-layout scrollbars. When
 /// content overflows on a panned axis, the widget reserves `width`
@@ -33,16 +33,13 @@ pub struct ScrollbarTheme {
     pub radius: f32,
 }
 
-impl Default for ScrollbarTheme {
-    fn default() -> Self {
-        // The palette defines no scrollbar colors; use TEXT_MUTED
-        // at decreasing translucency for idle / hover / active so the
-        // bar reads as a soft overlay matching the palette's
-        // muted-text gray rather than pure black.
-        let thumb = |alpha: f32| {
-            let m = palette::TEXT_MUTED;
-            m.with_alpha(alpha)
-        };
+impl ScrollbarTheme {
+    /// The palette defines no scrollbar colors; use `text_muted` at
+    /// decreasing translucency for idle / hover / active so the bar
+    /// reads as a soft overlay matching the palette's muted-text gray
+    /// rather than pure black.
+    pub fn from_palette(p: &Palette) -> Self {
+        let thumb = |alpha: f32| p.text_muted.with_alpha(alpha);
         Self {
             width: 8.0,
             gap: 4.0,
@@ -53,5 +50,11 @@ impl Default for ScrollbarTheme {
             thumb_active: thumb(0.85),
             radius: 4.0,
         }
+    }
+}
+
+impl Default for ScrollbarTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

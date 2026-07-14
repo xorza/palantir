@@ -28,6 +28,7 @@ use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
 use crate::widgets::theme::modal::ModalTheme;
+use crate::widgets::theme::palette::Palette;
 use crate::widgets::theme::progress_bar::ProgressBarTheme;
 use crate::widgets::theme::scrollbar::ScrollbarTheme;
 use crate::widgets::theme::separator::SeparatorTheme;
@@ -199,31 +200,42 @@ pub(crate) fn resolve_look<T: WidgetTheme>(
     look_target.animate(ui, id, fallback_text, anim)
 }
 
-impl Default for Theme {
-    fn default() -> Self {
+impl Theme {
+    /// Assemble a full theme from a [`Palette`] — every widget recipe
+    /// recolored from one roster. This is the single source of the
+    /// recipes: `Theme::default()` is `from_palette(&Palette::DEFAULT)`,
+    /// and apps with their own palettes (light themes, brand colors)
+    /// build here instead of hand-recoloring each sub-theme.
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
-            button: ButtonTheme::default(),
-            menu_button: ButtonTheme::menu_button(),
-            checkbox: ToggleTheme::checkbox(),
-            radio: ToggleTheme::radio(),
-            switch: ToggleTheme::switch(),
-            scrollbar: ScrollbarTheme::default(),
-            text_edit: TextEditTheme::default(),
-            drag_value: DragValueTheme::default(),
-            context_menu: ContextMenuTheme::default(),
-            modal: ModalTheme::default(),
-            tooltip: TooltipTheme::default(),
-            progress_bar: ProgressBarTheme::default(),
-            separator: SeparatorTheme::default(),
-            slider: SliderTheme::default(),
-            spinner: SpinnerTheme::default(),
-            splitter: SplitterTheme::default(),
-            text: TextStyle::default(),
-            window_clear: palette::TERMINAL_BG,
+            button: ButtonTheme::from_palette(p),
+            menu_button: ButtonTheme::menu_button(p),
+            checkbox: ToggleTheme::checkbox(p),
+            radio: ToggleTheme::radio(p),
+            switch: ToggleTheme::switch(p),
+            scrollbar: ScrollbarTheme::from_palette(p),
+            text_edit: TextEditTheme::from_palette(p),
+            drag_value: DragValueTheme::from_palette(p),
+            context_menu: ContextMenuTheme::from_palette(p),
+            modal: ModalTheme::from_palette(p),
+            tooltip: TooltipTheme::from_palette(p),
+            progress_bar: ProgressBarTheme::from_palette(p),
+            separator: SeparatorTheme::from_palette(p),
+            slider: SliderTheme::from_palette(p),
+            spinner: SpinnerTheme::from_palette(p),
+            splitter: SplitterTheme::from_palette(p),
+            text: TextStyle::default().with_color(p.text),
+            window_clear: p.terminal_bg,
             panel_background: None,
             panel_clip: ClipMode::None,
             text_scale: default_text_scale(),
         }
+    }
+}
+
+impl Default for Theme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }
 

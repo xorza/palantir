@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Spinner`]: the rotating comet arc. Builder
 /// overrides (`.color(...)` / `.size(...)`) win; otherwise these
@@ -13,11 +13,17 @@ pub struct SpinnerTheme {
     pub size: f32,
 }
 
-impl Default for SpinnerTheme {
-    fn default() -> Self {
+impl SpinnerTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
-            color: palette::ACCENT,
+            color: p.accent,
             size: 24.0,
         }
+    }
+}
+
+impl Default for SpinnerTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

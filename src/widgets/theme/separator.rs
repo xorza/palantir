@@ -1,5 +1,5 @@
 use crate::primitives::color::Color;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::Separator`]: the thin divider rule between
 /// content. Builder overrides (`.color(...)` / `.thickness(...)`) win;
@@ -13,11 +13,17 @@ pub struct SeparatorTheme {
     pub thickness: f32,
 }
 
-impl Default for SeparatorTheme {
-    fn default() -> Self {
+impl SeparatorTheme {
+    pub fn from_palette(p: &Palette) -> Self {
         Self {
-            color: palette::BORDER_SOFT,
+            color: p.border_soft(),
             thickness: 1.0,
         }
+    }
+}
+
+impl Default for SeparatorTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }

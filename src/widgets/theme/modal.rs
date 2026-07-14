@@ -3,7 +3,7 @@ use crate::primitives::color::Color;
 use crate::primitives::corners::Corners;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
-use crate::widgets::theme::palette;
+use crate::widgets::theme::palette::Palette;
 
 /// Visuals for [`crate::widgets::modal::Modal`]: the centered dialog
 /// card plus the dimming backdrop behind it. Builder overrides
@@ -24,10 +24,10 @@ pub struct ModalTheme {
     pub min_width: f32,
 }
 
-impl Default for ModalTheme {
-    fn default() -> Self {
-        let card = Background::rounded(palette::ELEM_HOVER, Corners::all(12.0))
-            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0));
+impl ModalTheme {
+    pub fn from_palette(p: &Palette) -> Self {
+        let card = Background::rounded(p.elem_hover, Corners::all(12.0))
+            .with_stroke(Stroke::solid(p.border_mid(), 1.0));
         Self {
             card,
             // Straight-alpha linear black at 50% — a dim scrim. Black is
@@ -36,5 +36,11 @@ impl Default for ModalTheme {
             padding: Spacing::all(20.0),
             min_width: 280.0,
         }
+    }
+}
+
+impl Default for ModalTheme {
+    fn default() -> Self {
+        Self::from_palette(&Palette::DEFAULT)
     }
 }
