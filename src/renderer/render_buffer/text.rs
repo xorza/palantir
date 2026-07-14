@@ -2,7 +2,6 @@
 
 use crate::primitives::color::ColorU8;
 use crate::primitives::urect::URect;
-use crate::renderer::render_buffer::batch::TextBatch;
 use crate::text::TextCacheKey;
 use glam::Vec2;
 
@@ -28,7 +27,8 @@ pub struct TextRun {
     /// Bounds for clipping (physical px) — the parent rect after transform &
     /// snap. The backend only y-culls whole lines against this (keeps
     /// off-screen lines out of the glyph atlas); the actual pixel clip is
-    /// the batch GPU scissor ([`TextBatch::scissor`], the union of the
+    /// the batch GPU scissor
+    /// ([`TextBatch::scissor`](crate::renderer::render_buffer::batch::TextBatch::scissor), the union of the
     /// batch's bounds), which the composer's strict-bounds batching rule
     /// keeps no wider than any ancestor-clipped run's bounds.
     pub(crate) bounds: URect,
