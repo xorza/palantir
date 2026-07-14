@@ -9,21 +9,21 @@ use crate::primitives::fill_wire::LutRow;
 use crate::primitives::spacing::Spacing;
 use crate::primitives::span::Span;
 use crate::primitives::{rect::Rect, size::Size, transform::TranslateScale, urect::URect};
-use crate::renderer::frontend::cmd_buffer::{
-    CmdKind, DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload,
-    DrawPolylinePayload, DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload,
-    PushClipPayload, RenderCmdBuffer,
-};
+use crate::renderer::frontend::cmd_buffer::{Command, RenderCmdBuffer};
 use crate::renderer::quad::Quad;
-use crate::renderer::render_buffer::{
+use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, PaintTier, TextBatch};
+use crate::renderer::render_buffer::curve::{
     CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveBatch, CurveInstance, DrawGroup, ImageBatch,
-    ImageDrawRow, ImageInstance, MITER_LIMIT, MeshBatch, MeshDraw, MeshDrawRow, MeshInstance,
-    RenderBuffer, RenderTargetDraw, RoundedClip, SEGMENTS_PER_INSTANCE, TextBatch, TextRun,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, MITER_LIMIT, SEGMENTS_PER_INSTANCE,
     cap_lanes,
 };
+use crate::renderer::render_buffer::image::{ImageDrawRow, ImageInstance, RenderTargetDraw};
+use crate::renderer::render_buffer::mesh::{MeshDraw, MeshDrawRow, MeshInstance};
+use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::shape::{ColorMode, LineCap, LineJoin};
 use glam::{UVec2, Vec2};
+use std::num::NonZeroU32;
 
 mod occlusion;
 mod text_grid;
@@ -50,63 +50,18 @@ use text_grid::TextRectGrid;
 /// draw must not follow an overlapping higher-kind draw of a
 /// later-replaying kind (e.g. a mesh recorded after an overlapping
 /// image or curve). The checks use
-/// [`text_grid`](Self::text_grid) (per-batch text AABBs, spatially indexed)
+/// the batch state's open text grid (per-batch text AABBs, spatially indexed)
 /// and [`higher_kind_rects`](Self::higher_kind_rects) (per-group
 /// kind-tagged AABBs of mesh/image/curve draws).
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct Composer {
     /// Compose-time scratch — bounded by tree depth (typically <8).
     /// Pairs the resolved scissor with its rounded-mask chain; both
     /// ride together so a `PopClip` restores them as a unit.
     clip_stack: Vec<ClipFrame>,
     transform_stack: Vec<TranslateScale>,
-    /// Scratch for `DrawPolyline`: transformed physical-px points the
-    /// segment/join instance emission walks. Cleared per cmd, capacity
-    /// reused — keeps steady-state alloc-free.
-    polyline_scratch: Vec<Vec2>,
-    /// Scratch for `DrawPolyline`: indices into `polyline_scratch` of
-    /// the kept (non-coincident) points. Same lifecycle.
-    kept_scratch: Vec<u32>,
-    /// Spatial index over the physical-px AABBs of the *open* text
-    /// batch's runs (spans groups with its batch). A new quad overlapping
-    /// any of these would paint *under* the merged batch text — closes
-    /// the batch (and flushes the group) so paint order is preserved.
-    /// Cleared in [`Self::close_batch`].
-    ///
-    /// Backed by a viewport-tiled grid (see [`TextRectGrid`]). The
-    /// grid replaces a flat `Vec<URect>` linear scan that dominated
-    /// compose time in dense text UIs (~9% of frame on the resizing
-    /// benchmark): batches grew to ~120 rects on average and every
-    /// `quad_forces_flush` did a 4-axis AABB compare per rect. The
-    /// grid lookup walks only the tiles the query rect overlaps and
-    /// drops typical scan length to 1-4 candidates.
-    text_grid: TextRectGrid,
-    /// Spatial index over text runs of batches **already closed within
-    /// the in-flight group**. Such text still drains at its `last_group`
-    /// (= this group), *after* the group's quads, so a later overlapping
-    /// quad must flush even though the batch is no longer open
-    /// ([`Self::text_grid`] tracks only the open one). Cleared in
-    /// [`Self::flush`] at the group boundary (closed batches have
-    /// rendered by then).
-    ///
-    /// Filled **lazily**: [`Self::close_batch`] only records the batch
-    /// on [`Self::closed_pending`] (O(1)); the per-rect grid fill runs
-    /// on the first quad whose overlap query hits a pending batch's
-    /// union ([`Self::closed_hit`]). Groups nothing probes — including
-    /// every close immediately followed by a flush — never pay the
-    /// copy. Still a grid, not a scan-the-span list: a full-tree
-    /// repaint closes several batches mid-group and then tests
-    /// hundreds of quads against them — measured, a per-query span
-    /// scan regressed `frame/cached_cpu` ~60% where the grid absorbs
-    /// the same union false positives in a few tile loads.
-    closed_text_grid: TextRectGrid,
-    /// Batches closed within the in-flight group whose rects haven't
-    /// been copied into [`Self::closed_text_grid`] yet: their run span
-    /// in `out.texts` + union AABB (carried from
-    /// [`OpenBatch::text_union`] at close time). Drained into the grid
-    /// by [`Self::closed_hit`] on first union hit; cleared in
-    /// [`Self::flush`]. Capacity retained.
-    closed_pending: Vec<PendingClosedBatch>,
+    polyline: PolylineScratch,
+    batch: BatchState,
     /// Per-group kind-tagged AABBs of draws that paint above both quads
     /// and text under the kind-reorder (mesh, image, curve — polylines
     /// ride the curve tier). Used by three checks: a later quad overlapping
@@ -129,12 +84,6 @@ pub(crate) struct Composer {
     /// begin in `out`. [`Self::flush`] closes each slice and advances
     /// the matching cursor.
     cursors: GroupCursors,
-    /// Bundled state for the currently-open text batch — `Some` while
-    /// the composer is accumulating runs into a batch, `None`
-    /// between batches. The rect scratch lives outside in
-    /// `text_grid` so its tile vectors stay capacity-retained across
-    /// open/close cycles (steady-state alloc-free).
-    open_batch: Option<OpenBatch>,
     /// Per-group occlusion-prune scratch: the solid-opaque occluders
     /// pushed into the in-flight group and the sweep that drops earlier
     /// quads they fully cover. See [`OcclusionPruner`].
@@ -143,7 +92,7 @@ pub(crate) struct Composer {
     /// target's size — the composer ceils each composited `GpuView`'s
     /// physical rect into `RenderBuffer.frame_targets`, clamped to this. Fixed
     /// for the device's lifetime, so it rides the ctor, not every compose.
-    max_texture_dim: u32,
+    max_texture_dim: NonZeroU32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -156,32 +105,36 @@ struct ClipFrame {
     chain: Span,
 }
 
-/// Above-text paint kinds, declared in the backend's intra-group replay
-/// order (`schedule::emit_group_body`: quads → text → **mesh batches →
-/// image batches → curve batches**), so `Ord` compares replay position.
-/// Polylines enter as `Curve` (segment + join-chrome instances).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
-enum HigherKind {
-    Mesh,
-    Image,
-    Curve,
-}
-
-/// One higher-kind draw recorded into the in-flight group: its
-/// physical-px AABB tagged with its replay tier (see [`HigherKind`]).
+/// One above-text draw recorded into the in-flight group: its physical-px
+/// AABB and [`PaintTier`], whose ordering matches backend replay order.
 #[derive(Clone, Copy, Debug)]
 struct HigherKindRect {
-    kind: HigherKind,
+    tier: PaintTier,
     rect: URect,
 }
 
-/// One closed-but-not-yet-indexed text batch on
-/// [`Composer::closed_pending`]: its run span in `out.texts` plus the
-/// union AABB of those runs' bounds.
+/// One closed-but-not-yet-indexed text batch: its run span in `out.texts`
+/// plus the union AABB of those runs' bounds.
 #[derive(Clone, Copy, Debug)]
 struct PendingClosedBatch {
     texts: Span,
     union: URect,
+}
+
+#[derive(Debug, Default)]
+struct PolylineScratch {
+    points: Vec<Vec2>,
+    kept: Vec<u32>,
+}
+
+/// Allocation-owning state for text batching. The open grid may span groups;
+/// the closed grid and pending list are cleared at each group boundary.
+#[derive(Debug, Default)]
+struct BatchState {
+    open: Option<OpenBatch>,
+    open_grid: TextRectGrid,
+    closed_grid: TextRectGrid,
+    pending: Vec<PendingClosedBatch>,
 }
 
 /// Per-kind slice cursors for the in-flight group. Each field marks
@@ -215,7 +168,7 @@ struct OpenBatch {
     /// in-flight group's eventual index is `out.groups.len()`).
     /// Tells the schedule where to emit the merged render step.
     last_group: u32,
-    /// Union AABB of every rect in `Composer.text_grid` for this
+    /// Union AABB of every rect in the batch state's open grid for this
     /// batch. The first reject for a new quad's overlap test — O(1)
     /// before falling through to the grid lookup.
     text_union: URect,
@@ -234,8 +187,17 @@ impl Composer {
     /// `GpuView` target-size ceiling). All scratch starts empty.
     pub(crate) fn new(max_texture_dim: u32) -> Self {
         Self {
-            max_texture_dim,
-            ..Default::default()
+            clip_stack: Vec::new(),
+            transform_stack: Vec::new(),
+            polyline: PolylineScratch::default(),
+            batch: BatchState::default(),
+            higher_kind_rects: Vec::new(),
+            current_scissor: None,
+            current_chain: Span::default(),
+            cursors: GroupCursors::default(),
+            occlusion: OcclusionPruner::default(),
+            max_texture_dim: NonZeroU32::new(max_texture_dim)
+                .expect("composer texture dimension limit must be positive"),
         }
     }
 
@@ -260,20 +222,20 @@ impl Composer {
             // their `last_group` matches the in-flight group's
             // eventual index (= current `out.groups.len()`).
             if m_end > self.cursors.meshes {
-                out.mesh_batches.push(MeshBatch {
-                    meshes: (self.cursors.meshes..m_end).into(),
+                out.mesh_batches.push(GroupBatch {
+                    items: (self.cursors.meshes..m_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
             if i_end > self.cursors.images {
-                out.image_batches.push(ImageBatch {
-                    images: (self.cursors.images..i_end).into(),
+                out.image_batches.push(GroupBatch {
+                    items: (self.cursors.images..i_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
             if c_end > self.cursors.curves {
-                out.curve_batches.push(CurveBatch {
-                    instances: (self.cursors.curves..c_end).into(),
+                out.curve_batches.push(GroupBatch {
+                    items: (self.cursors.curves..c_end).into(),
                     last_group: out.groups.len() as u32,
                 });
             }
@@ -297,30 +259,30 @@ impl Composer {
         // drains at its `last_group`), so its rects no longer gate quads.
         // The open-batch grid is NOT cleared here — it spans groups with
         // its (still-open) batch.
-        self.closed_text_grid.clear();
-        self.closed_pending.clear();
+        self.batch.closed_grid.clear();
+        self.batch.pending.clear();
     }
 
     /// Finalize the open text batch (if any): push a [`TextBatch`]
     /// entry covering `batch_texts_start..out.texts.len()`. No-op when no
     /// batch is active. Called at batch-split events — rounded-clip
     /// change, a higher-kind append, or a strict-bounds mismatch. The
-    /// batch also lands on [`Self::closed_pending`] (group-scoped,
+    /// batch also lands on the batch state's pending list (group-scoped,
     /// cleared in `flush`) so a later quad still flushes for text in an
     /// already-closed batch that shares this group — the grid fill is
     /// deferred to [`Self::closed_hit`].
     fn close_batch(&mut self, out: &mut RenderBuffer) {
-        let Some(b) = self.open_batch.take() else {
+        let Some(b) = self.batch.open.take() else {
             return;
         };
         let texts_end = out.texts.len() as u32;
         // Record the batch for the group-scoped closed check, then
         // reset the open-batch grid for the next batch.
-        self.closed_pending.push(PendingClosedBatch {
+        self.batch.pending.push(PendingClosedBatch {
             texts: (b.texts_start..texts_end).into(),
             union: b.text_union,
         });
-        self.text_grid.clear();
+        self.batch.open_grid.clear();
         // Invariants the schedule cursor relies on: batches are pushed
         // in walk order so `last_group` is monotonically non-decreasing
         // (multiple batches can anchor to the same group when a mesh
@@ -358,7 +320,7 @@ impl Composer {
     /// reuse the same `OpenBatch` and only refresh `last_group` to
     /// the in-flight group's eventual index.
     fn open_batch(&mut self, out: &RenderBuffer) -> &mut OpenBatch {
-        let b = self.open_batch.get_or_insert(OpenBatch {
+        let b = self.batch.open.get_or_insert(OpenBatch {
             texts_start: out.texts.len() as u32,
             last_group: 0,
             text_union: URect::default(),
@@ -395,7 +357,7 @@ impl Composer {
     /// [`Self::cull_against_active_clip`].
     fn enter_higher_kind(
         &mut self,
-        kind: HigherKind,
+        tier: PaintTier,
         scissor: URect,
         out: &mut RenderBuffer,
     ) -> bool {
@@ -403,11 +365,11 @@ impl Composer {
             return false;
         }
         self.close_batch(out);
-        if self.higher_kind_conflict(kind, scissor) {
+        if self.higher_kind_conflict(tier, scissor) {
             self.flush(out);
         }
         self.higher_kind_rects.push(HigherKindRect {
-            kind,
+            tier,
             rect: scissor,
         });
         true
@@ -423,10 +385,10 @@ impl Composer {
     /// therefore `kind < recorded.kind` (incoming replays earlier than
     /// an overlapping recorded draw) — the caller must flush so the
     /// earlier draw renders in an earlier group.
-    fn higher_kind_conflict(&self, kind: HigherKind, rect: URect) -> bool {
+    fn higher_kind_conflict(&self, tier: PaintTier, rect: URect) -> bool {
         self.higher_kind_rects
             .iter()
-            .any(|e| kind < e.kind && e.rect.intersect(rect).is_some())
+            .any(|e| tier < e.tier && e.rect.intersect(rect).is_some())
     }
 
     /// Conservative overlap of `rect` against every recorded higher-kind
@@ -444,7 +406,7 @@ impl Composer {
     /// Quad is the lowest paint kind, so any higher-kind draw it overlaps
     /// would paint *under* it after the backend's intra-group reorder —
     /// flush to keep record order. Text overlap is checked against both
-    /// the open batch ([`Self::text_grid`], which may span groups) and
+    /// the open batch's grid (which may span groups) and
     /// batches already closed in this group ([`Self::closed_hit`]);
     /// an open-batch hit additionally closes the batch so its text can't
     /// coalesce forward and re-cover this quad. The open check goes
@@ -463,7 +425,7 @@ impl Composer {
         // at a later `last_group`, re-covering this quad. A closed-grid
         // hit needs no close — that text's batch is already finalized at
         // this group; flushing alone puts the quad in the next group.
-        if self.text_grid.any_overlap(overlap) {
+        if self.batch.open_grid.any_overlap(overlap) {
             self.close_batch(out);
             self.flush(out);
         } else if self.closed_hit(overlap, out) || self.any_higher_kind_overlap(overlap) {
@@ -472,26 +434,27 @@ impl Composer {
     }
 
     /// `true` if `q` overlaps text of a batch closed within the
-    /// in-flight group. Batches land on [`Self::closed_pending`] as
+    /// in-flight group. Batches land on the batch state's pending list as
     /// span + union at close time (O(1)); the first query whose `q`
     /// hits a pending union drains *all* pending batches into
-    /// [`Self::closed_text_grid`] and every later query is a grid
+    /// the closed grid and every later query is a grid
     /// lookup. Groups nothing probes near closed text never pay the
     /// per-rect fill.
     fn closed_hit(&mut self, q: URect, out: &RenderBuffer) -> bool {
-        if !self.closed_pending.is_empty()
+        if !self.batch.pending.is_empty()
             && self
-                .closed_pending
+                .batch
+                .pending
                 .iter()
                 .any(|b| b.union.intersect(q).is_some())
         {
-            for b in self.closed_pending.drain(..) {
+            for b in self.batch.pending.drain(..) {
                 for ti in b.texts.range() {
-                    self.closed_text_grid.push(out.texts[ti].bounds);
+                    self.batch.closed_grid.push(out.texts[ti].bounds);
                 }
             }
         }
-        self.closed_text_grid.any_overlap(q)
+        self.batch.closed_grid.any_overlap(q)
     }
 
     /// Switch to a new clip (scissor + rounded-mask chain), flushing
@@ -520,7 +483,7 @@ impl Composer {
     /// provided `out` buffer. Pure: no device, no queue.
     ///
     /// Gradient atlas registration happens at shape-lowering time
-    /// (upstream of this stage), so each `DrawRectPayload` carries a
+    /// (upstream of this stage), so each draw-rect payload carries a
     /// pre-resolved `fill_lut_row`; nothing here touches the atlas.
     #[profiling::function]
     pub(crate) fn compose(
@@ -543,12 +506,9 @@ impl Composer {
         self.current_chain = Span::default();
         let mut current_transform = TranslateScale::IDENTITY;
 
-        for i in 0..cmds.kinds.len() {
-            let kind = cmds.kinds[i];
-            let start = cmds.starts[i];
-            match kind {
-                CmdKind::PushClip => {
-                    let p: PushClipPayload = cmds.read(start);
+        for command in cmds.iter() {
+            match command {
+                Command::PushClip(p) => {
                     let logical_radius = (!p.corners.approx_zero()).then_some(p.corners);
                     let world = current_transform.apply_rect(p.rect);
                     let me = scissor_from_logical(world, scale, snap, viewport_phys);
@@ -597,7 +557,7 @@ impl Composer {
                     self.clip_stack.push(ClipFrame { scissor, chain });
                     self.set_clip(Some(scissor), chain, out);
                 }
-                CmdKind::PopClip => {
+                Command::PopClip => {
                     self.clip_stack
                         .pop()
                         .expect("PopClip without matching PushClip");
@@ -608,19 +568,17 @@ impl Composer {
                         out,
                     );
                 }
-                CmdKind::PushTransform => {
-                    let t: TranslateScale = cmds.read(start);
+                Command::PushTransform(t) => {
                     self.transform_stack.push(current_transform);
                     current_transform = current_transform.compose(t);
                 }
-                CmdKind::PopTransform => {
+                Command::PopTransform => {
                     current_transform = self
                         .transform_stack
                         .pop()
                         .expect("PopTransform without matching PushTransform");
                 }
-                CmdKind::DrawRect => {
-                    let p: DrawRectPayload = cmds.read(start);
+                Command::DrawRect(p) => {
                     let world_rect = current_transform.apply_rect(p.rect);
                     // Scale to physical px once: the cull `URect` and the
                     // emitted quad share this rect (the cull needs the
@@ -734,8 +692,7 @@ impl Composer {
                         }
                     }
                 }
-                CmdKind::DrawShadow => {
-                    let p: DrawShadowPayload = cmds.read(start);
+                Command::DrawShadow(p) => {
                     let world_rect = current_transform.apply_rect(p.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let quad_urect = urect_from_phys(phys_rect.min, phys_rect.max(), viewport_phys);
@@ -770,8 +727,7 @@ impl Composer {
                         fill_axis,
                     });
                 }
-                CmdKind::DrawTriangle => {
-                    let p: DrawTrianglePayload = cmds.read(start);
+                Command::DrawTriangle(p) => {
                     // Fold owner origin + active transform, scale to physical
                     // px. No pixel-snap — the SDF handles sub-pixel placement;
                     // snapping the covering rect would only shift the AA band.
@@ -824,10 +780,9 @@ impl Composer {
                         fill_axis: FillAxis::from_lanes(cl.x, cl.y, radius_phys, 0.0),
                     });
                 }
-                CmdKind::DrawMesh => {
-                    let p: DrawMeshPayload = cmds.read(start);
+                Command::DrawMesh(p) => {
                     // `draw_mesh` already gated empty/degenerate meshes
-                    // (`DrawMeshPayload::is_noop`), so `v_len >= 1` here.
+                    // (`draw_mesh` applies its no-op gate), so `v_len >= 1` here.
                     // Inflate by 0.5 phys-px to match polyline's AA-fringe
                     // policy. Mesh today paints inside its vertex hull,
                     // but a future AA edge or displacement shader would
@@ -852,7 +807,7 @@ impl Composer {
                     // active scissor (e.g. scrolled out of an ancestor clip)
                     // is skipped; a surviving one closes the open text batch
                     // so its text emits before this above-text geometry.
-                    if !self.enter_higher_kind(HigherKind::Mesh, mesh_urect, out) {
+                    if !self.enter_higher_kind(PaintTier::Mesh, mesh_urect, out) {
                         continue;
                     }
                     // Verts already live in FrameArena owner-local;
@@ -880,8 +835,7 @@ impl Composer {
                         },
                     });
                 }
-                CmdKind::DrawImage => {
-                    let p: DrawImagePayload = cmds.read(start);
+                Command::DrawImage { payload: p, paint } => {
                     let world_rect = current_transform.apply_rect(p.rect);
                     let phys_rect = world_rect.scaled_by(scale, snap);
                     let image_urect =
@@ -889,7 +843,7 @@ impl Composer {
                     // Clip-cull + batch-close: image sits above text in the
                     // kind order (same as mesh), so a surviving draw closes
                     // the open text batch first.
-                    if !self.enter_higher_kind(HigherKind::Image, image_urect, out) {
+                    if !self.enter_higher_kind(PaintTier::Image, image_urect, out) {
                         continue;
                     }
                     out.images.push(ImageDrawRow {
@@ -914,19 +868,18 @@ impl Composer {
                     // to the device max) + the app paint callback from the cmd
                     // buffer's side channel. The draw above already composites
                     // the result by `id`.
-                    if let Some(paint_index) = p.gpu_view_paint() {
-                        let cap = self.max_texture_dim as i64;
+                    if let Some(paint) = paint {
+                        let cap = i64::from(self.max_texture_dim.get());
                         let px = |v: f32| (v.ceil() as i64).clamp(1, cap) as u32;
                         let s = phys_rect.size;
                         out.frame_targets.push(RenderTargetDraw {
                             id: p.handle,
                             used: UVec2::new(px(s.w), px(s.h)),
-                            paint: cmds.gpu_view_paints[paint_index as usize].clone(),
+                            paint: paint.clone(),
                         });
                     }
                 }
-                CmdKind::DrawCurve => {
-                    let p: DrawCurvePayload = cmds.read(start);
+                Command::DrawCurve(p) => {
                     let width_phys = p.width * current_transform.scale * scale;
                     // Inflate the owner-local bbox by the stroke's AA
                     // fringe, transform to physical px, then cull. Same
@@ -942,7 +895,7 @@ impl Composer {
                     // Clip-cull + batch-close: curve sits above text in the
                     // kind order (same as mesh/image), so a surviving draw
                     // closes the open text batch first.
-                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
+                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
                         continue;
                     }
                     // Transform control points to physical px. Owner
@@ -999,8 +952,7 @@ impl Composer {
                         },
                     );
                 }
-                CmdKind::DrawArc => {
-                    let p: DrawArcPayload = cmds.read(start);
+                Command::DrawArc(p) => {
                     let width_phys = p.width * current_transform.scale * scale;
                     let bbox_scissor = stroke_bbox_scissor(
                         current_transform,
@@ -1010,7 +962,7 @@ impl Composer {
                         scale,
                         viewport_phys,
                     );
-                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
+                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
                         continue;
                     }
                     // Paint-time spin: rotate the center about the
@@ -1060,8 +1012,7 @@ impl Composer {
                         },
                     );
                 }
-                CmdKind::DrawPolyline => {
-                    let p: DrawPolylinePayload = cmds.read(start);
+                Command::DrawPolyline(p) => {
                     let mode = p.color_mode.get();
                     let cap = p.cap.get();
                     let join = p.join.get();
@@ -1098,9 +1049,9 @@ impl Composer {
                     // pixel-snap — snapping stroke verts shifts thin
                     // lines off-axis. Hairline regime (<1 phys px) is
                     // the shader's trapezoid-plateau coverage.
-                    self.polyline_scratch.clear();
+                    self.polyline.points.clear();
                     if p.rotation == 0.0 {
-                        self.polyline_scratch.extend(
+                        self.polyline.points.extend(
                             src_points
                                 .iter()
                                 .map(|&q| current_transform.apply_point(q + p.origin) * scale),
@@ -1116,7 +1067,7 @@ impl Composer {
                         // ends of that contract in sync.
                         let pivot = p.bbox.center();
                         let rotor = Vec2::from_angle(p.rotation);
-                        self.polyline_scratch.extend(src_points.iter().map(|&q| {
+                        self.polyline.points.extend(src_points.iter().map(|&q| {
                             let local = rotor.rotate(q - pivot) + pivot;
                             current_transform.apply_point(local + p.origin) * scale
                         }));
@@ -1126,27 +1077,27 @@ impl Composer {
                     // from their predecessor — degenerate segments
                     // contribute no geometry and their colors drop
                     // with them.
-                    self.kept_scratch.clear();
+                    self.polyline.kept.clear();
                     let mut prev: Option<Vec2> = None;
-                    for (i, &q) in self.polyline_scratch.iter().enumerate() {
+                    for (i, &q) in self.polyline.points.iter().enumerate() {
                         if prev
                             .is_none_or(|p| (q - p).length_squared() > POLYLINE_COINCIDENT_EPS_SQ)
                         {
-                            self.kept_scratch.push(i as u32);
+                            self.polyline.kept.push(i as u32);
                             prev = Some(q);
                         }
                     }
-                    if self.kept_scratch.len() < 2 {
+                    if self.polyline.kept.len() < 2 {
                         continue;
                     }
                     // Only now that the polyline will actually emit
                     // geometry — an empty or culled polyline must not
                     // split the batch or the group.
-                    if !self.enter_higher_kind(HigherKind::Curve, bbox_scissor, out) {
+                    if !self.enter_higher_kind(PaintTier::Curve, bbox_scissor, out) {
                         continue;
                     }
-                    let pts = &self.polyline_scratch;
-                    let kept = &self.kept_scratch;
+                    let pts = &self.polyline.points;
+                    let kept = &self.polyline.kept;
                     let pt = |k: usize| pts[kept[k] as usize];
                     // Segment color(s) for the kept segment `k → k+1`,
                     // honoring the original indices (coincident skips
@@ -1233,8 +1184,7 @@ impl Composer {
                         });
                     }
                 }
-                CmdKind::DrawText => {
-                    let t: DrawTextPayload = cmds.read(start);
+                Command::DrawText(t) => {
                     let world_rect = current_transform.apply_rect(t.rect);
                     // Scale once: `unclipped` (overlap/cull bounds) and the
                     // emitted run's `origin` both derive from this rect.
@@ -1271,7 +1221,7 @@ impl Composer {
                     // run's glyphs paint past their intended clip.
                     // Non-strict-with-non-strict coalesces freely.
                     let new_strict = bounds != unclipped;
-                    if let Some(b) = self.open_batch.as_ref()
+                    if let Some(b) = self.batch.open.as_ref()
                         && (b.strict || new_strict)
                         && b.text_union != bounds
                     {
@@ -1304,7 +1254,7 @@ impl Composer {
                         // text glyph crispness "steps."
                         scale: snap_text_scale(current_transform.scale),
                     });
-                    self.text_grid.push(bounds);
+                    self.batch.open_grid.push(bounds);
                 }
             }
         }
@@ -1332,12 +1282,12 @@ impl Composer {
     /// active scissor + chain) is deliberately not touched — the
     /// discard path must preserve it.
     fn reset_group_scratch(&mut self, viewport_phys: UVec2) {
-        self.text_grid.start_frame(viewport_phys);
-        self.closed_text_grid.start_frame(viewport_phys);
-        self.closed_pending.clear();
+        self.batch.open_grid.start_frame(viewport_phys);
+        self.batch.closed_grid.start_frame(viewport_phys);
+        self.batch.pending.clear();
         self.higher_kind_rects.clear();
         self.cursors = GroupCursors::default();
-        self.open_batch = None;
+        self.batch.open = None;
         self.occlusion.clear();
     }
 }
