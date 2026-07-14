@@ -210,7 +210,10 @@ fn build_ui(ui: &mut Ui, state: &mut State) {
 /// the defaults.
 fn active_toolbar_button(default: &aperture::ButtonTheme) -> aperture::ButtonTheme {
     aperture::ButtonTheme {
-        normal: default.hovered.clone(),
+        looks: aperture::StatefulLook {
+            normal: default.looks.hovered.clone(),
+            ..default.looks.clone()
+        },
         ..default.clone()
     }
 }

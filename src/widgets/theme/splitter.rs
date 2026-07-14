@@ -24,7 +24,7 @@ impl Default for SplitterTheme {
     fn default() -> Self {
         Self {
             thickness: 6.0,
-            rule: palette::TEXT_MUTED.with_alpha(0.18),
+            rule: palette::BORDER_SOFT,
             rule_thickness: 1.0,
             hover: palette::ELEM_HOVER,
             drag: palette::ACCENT.with_alpha(0.6),

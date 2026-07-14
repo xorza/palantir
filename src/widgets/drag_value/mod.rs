@@ -9,7 +9,8 @@ use crate::shape::{Shape, TextWrap};
 use crate::ui::Ui;
 use crate::widgets::text_edit::TextEdit;
 use crate::widgets::theme::drag_value::DragValueTheme;
-use crate::widgets::{Response, WidgetEntry, button_look, enter_widget};
+use crate::widgets::theme::resolve_look;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 use std::ops::RangeInclusive;
 
 /// The numeric target a [`DragValue`] scrubs: either an `i64` or an `f64`,
@@ -378,8 +379,11 @@ impl<'a> DragValue<'a> {
             DragNum::F64(v) => ui.fmt(format_args!("{:.*}{}", self.decimals, **v, self.suffix)),
         };
 
+        // Default to `theme.drag_value.chip` — the same bundle the edit
+        // mode's editor defaults to — so the two modes stay in sync
+        // under a global restyle.
         let chip = self.style.as_ref().map(|s| &s.chip);
-        let look = button_look(ui, id, &mut element, state, chip);
+        let look = resolve_look(ui, id, &mut element, state, chip, |t| &t.drag_value.chip);
 
         ui.node(id, element, Some(&look.background), |ui| {
             ui.add_shape(Shape::Text {

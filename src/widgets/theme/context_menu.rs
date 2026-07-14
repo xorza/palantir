@@ -6,7 +6,7 @@ use crate::primitives::spacing::Spacing;
 use crate::primitives::stroke::Stroke;
 use crate::widgets::theme::palette;
 use crate::widgets::theme::text_style::TextStyle;
-use crate::widgets::theme::widget_look::{WidgetLook, pick_3};
+use crate::widgets::theme::widget_look::{StatefulLook, WidgetLook};
 
 /// Visuals for [`crate::widgets::popup::Popup`]-hosted context menus.
 /// `panel` paints the surrounding container chrome (fill + stroke +
@@ -35,12 +35,16 @@ impl ContextMenuTheme {
     }
 }
 
-/// Three-state row look for [`crate::widgets::context_menu::MenuItem`].
+/// Four-state row look for [`crate::widgets::context_menu::MenuItem`]
+/// (`active` = pressed). The default `active` look equals `hovered` —
+/// a row's click auto-closes the menu, so a louder pressed state is
+/// opt-in.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct MenuItemTheme {
-    pub normal: WidgetLook,
-    pub hovered: WidgetLook,
-    pub disabled: WidgetLook,
+    /// The four per-state looks. `flatten` keeps theme files flat
+    /// (`[context_menu.item.normal]`, not `[….item.looks.normal]`).
+    #[serde(flatten)]
+    pub looks: StatefulLook,
     /// Color for the right-aligned shortcut hint (e.g. "⌘C"). Pulled
     /// off the row label color so the hint reads muted.
     pub shortcut: Color,
@@ -50,35 +54,25 @@ pub struct MenuItemTheme {
 
 impl MenuItemTheme {
     pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
-        self.normal.for_each_text(f);
-        self.hovered.for_each_text(f);
-        self.disabled.for_each_text(f);
+        self.looks.for_each_text(f);
     }
 
+    /// Pick the visual state: `active` = pressed.
     pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        pick_3(
-            state,
-            state.hovered,
-            &self.normal,
-            &self.hovered,
-            &self.disabled,
-        )
+        self.looks.pick(state, state.pressed())
     }
 }
 
 impl Default for ContextMenuTheme {
     fn default() -> Self {
-        let m = palette::TEXT_MUTED;
-        let edge = m.with_alpha(0.22);
         let panel = Background::rounded(palette::ELEM, Corners::all(6.0))
-            .with_stroke(Stroke::solid(edge, 1.0));
-        let separator = m.with_alpha(0.18);
+            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0));
         Self {
             panel,
             padding: Spacing::all(4.0),
             min_width: 160.0,
             item: MenuItemTheme::default(),
-            separator,
+            separator: palette::BORDER_SOFT,
         }
     }
 }
@@ -88,20 +82,22 @@ impl Default for MenuItemTheme {
         // Rows are transparent at rest; hover paints one surface-step
         // brighter (`ELEM_HOVER`) — same delta a menu-bar trigger uses
         // (`ButtonTheme::menu_button`), so the bar and the popup that
-        // drops out of it feel like one continuous surface. Rows have
-        // no visible pressed state (the click auto-closes the menu),
-        // so the bar's louder `ELEM_ACTIVE` pressed slot doesn't have
-        // a counterpart here.
-        let hover_bg = Background::rounded(palette::ELEM_HOVER, Corners::all(4.0));
+        // drops out of it feel like one continuous surface. `active`
+        // (pressed) keeps the hover look: the click auto-closes the
+        // menu, so a louder pressed state buys nothing by default.
+        let hovered = WidgetLook {
+            background: Some(Background::rounded(palette::ELEM_HOVER, Corners::all(4.0))),
+            text: None,
+        };
         Self {
-            normal: WidgetLook::default(),
-            hovered: WidgetLook {
-                background: Some(hover_bg),
-                text: None,
-            },
-            disabled: WidgetLook {
-                background: None,
-                text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+            looks: StatefulLook {
+                normal: WidgetLook::default(),
+                active: hovered.clone(),
+                hovered,
+                disabled: WidgetLook {
+                    background: None,
+                    text: Some(TextStyle::default().with_color(palette::TEXT_DISABLED)),
+                },
             },
             shortcut: palette::TEXT_MUTED,
             padding: Spacing::xy(10.0, 6.0),

@@ -17,8 +17,8 @@ use crate::support::caption_style;
 use aperture::{
     AnimSpec, Background, Brush, Button, ButtonTheme, Checkbox, Color, Configure, Corners, Frame,
     Grid, InputEvent, LineCap, LineJoin, LinearGradient, Panel, PolylineColors, RadioButton,
-    Scroll, Shape, Sizing, Spacing, Stroke, Text, TextStyle, TextWrap, Track, Ui, WidgetId,
-    WidgetLook,
+    Scroll, Shape, Sizing, Spacing, StatefulLook, Stroke, Text, TextStyle, TextWrap, Track, Ui,
+    WidgetId, WidgetLook,
 };
 use glam::Vec2;
 use std::rc::Rc;
@@ -389,21 +389,23 @@ fn cell_theme(r: u32, c: u32) -> ButtonTheme {
         .with_font_size(11.0)
         .with_color(Color::hex(0x1a1a1a));
     ButtonTheme {
-        normal: WidgetLook {
-            background: Some(bg(base)),
-            text: Some(label_text),
-        },
-        hovered: WidgetLook {
-            background: Some(bg(brighten(base, 0.15))),
-            text: Some(label_text),
-        },
-        pressed: WidgetLook {
-            background: Some(pressed_bg),
-            text: Some(label_text),
-        },
-        disabled: WidgetLook {
-            background: Some(bg(base)),
-            text: Some(label_text),
+        looks: StatefulLook {
+            normal: WidgetLook {
+                background: Some(bg(base)),
+                text: Some(label_text),
+            },
+            hovered: WidgetLook {
+                background: Some(bg(brighten(base, 0.15))),
+                text: Some(label_text),
+            },
+            active: WidgetLook {
+                background: Some(pressed_bg),
+                text: Some(label_text),
+            },
+            disabled: WidgetLook {
+                background: Some(bg(base)),
+                text: Some(label_text),
+            },
         },
         padding: Spacing::xy(6.0, 4.0),
         margin: Spacing::ZERO,

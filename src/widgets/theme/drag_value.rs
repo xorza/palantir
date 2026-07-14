@@ -1,6 +1,7 @@
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
+use crate::widgets::theme::widget_look::StatefulLook;
 
 /// Theme for [`crate::DragValue`]: the scrub `chip` (a [`ButtonTheme`]) and the
 /// inline `editor` (a [`TextEditTheme`]) it swaps to under
@@ -10,8 +11,8 @@ use crate::widgets::theme::text_style::TextStyle;
 /// match the app's other text fields.
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct DragValueTheme {
-    /// Chrome for the scrub chip. Also drives `Button`/`ComboBox` siblings that
-    /// want the same look (they read `.chip` directly).
+    /// Chrome for the scrub chip — the DragValue-specific `ButtonTheme`
+    /// slot (`Button`/`ComboBox` default to `Theme::button` instead).
     pub chip: ButtonTheme,
     /// Chrome for the inline editor. Its box (padding / margin / backgrounds)
     /// mirrors `chip`; its caret / selection come from the app's text-edit look.
@@ -22,13 +23,17 @@ impl DragValueTheme {
     /// Derive from a `chip` look: the editor inherits the chip's box (padding /
     /// margin / per-state backgrounds) so the two modes are pixel-identical,
     /// while caret / selection / placeholder come from `text_edit` so they match
-    /// the app's other fields. `focused` maps to the chip's `hovered` look — the
-    /// chip is already hovered under the pointer that clicked it.
+    /// the app's other fields. The editor's `active` (= focused) maps to the
+    /// chip's `hovered` look — the chip is already hovered under the pointer
+    /// that clicked it.
     pub fn from_chip(chip: ButtonTheme, text_edit: &TextEditTheme) -> Self {
         let editor = TextEditTheme {
-            normal: chip.normal.clone(),
-            focused: chip.hovered.clone(),
-            disabled: chip.disabled.clone(),
+            looks: StatefulLook {
+                normal: chip.looks.normal.clone(),
+                hovered: chip.looks.hovered.clone(),
+                active: chip.looks.hovered.clone(),
+                disabled: chip.looks.disabled.clone(),
+            },
             padding: chip.padding,
             margin: chip.margin,
             anim: chip.anim,

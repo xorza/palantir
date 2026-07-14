@@ -9,7 +9,8 @@ use crate::widgets::context_menu::MenuItem;
 use crate::widgets::popup::{ClickOutside, Popup};
 use crate::widgets::text::Text;
 use crate::widgets::theme::button::ButtonTheme;
-use crate::widgets::{Response, WidgetEntry, button_look, enter_widget};
+use crate::widgets::theme::resolve_look;
+use crate::widgets::{Response, WidgetEntry, enter_widget};
 use glam::Vec2;
 
 /// Down-chevron arrow box (logical px). Drawn as a polyline so it's
@@ -69,7 +70,9 @@ impl<'a> ComboBox<'a> {
         } = enter_widget(ui, &element);
 
         // Trigger chrome from the button theme (same flow as `Button`).
-        let look = button_look(ui, id, &mut element, state, self.style.as_ref());
+        let look = resolve_look(ui, id, &mut element, state, self.style.as_ref(), |t| {
+            &t.button
+        });
 
         element.justify = Justify::SpaceBetween;
         element.child_align = Align::v(VAlign::Center);

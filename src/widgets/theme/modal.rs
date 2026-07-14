@@ -27,7 +27,7 @@ pub struct ModalTheme {
 impl Default for ModalTheme {
     fn default() -> Self {
         let card = Background::rounded(palette::ELEM_HOVER, Corners::all(12.0))
-            .with_stroke(Stroke::solid(palette::TEXT_MUTED.with_alpha(0.25), 1.0));
+            .with_stroke(Stroke::solid(palette::BORDER_MID, 1.0));
         Self {
             card,
             // Straight-alpha linear black at 50% — a dim scrim. Black is

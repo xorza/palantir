@@ -15,9 +15,15 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 pub(crate) mod widget_look;
 
+use crate::animation::AnimSpec;
+use crate::forest::element::Element;
+use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
 use crate::primitives::color::Color;
+use crate::primitives::spacing::Spacing;
+use crate::primitives::widget_id::WidgetId;
+use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::context_menu::ContextMenuTheme;
 use crate::widgets::theme::drag_value::DragValueTheme;
@@ -32,6 +38,7 @@ use crate::widgets::theme::text_edit::TextEditTheme;
 use crate::widgets::theme::text_style::TextStyle;
 use crate::widgets::theme::toggle::ToggleTheme;
 use crate::widgets::theme::tooltip::TooltipTheme;
+use crate::widgets::theme::widget_look::{AnimatedLook, WidgetLook};
 
 /// Global theme. Aggregates per-widget themes. Widgets opt in by reading
 /// from `Ui::theme`.
@@ -54,9 +61,12 @@ pub struct Theme {
     pub switch: ToggleTheme,
     pub scrollbar: ScrollbarTheme,
     pub text_edit: TextEditTheme,
-    /// Theme for [`crate::DragValue`] — the scrub chip plus its inline editor.
-    /// Default derives the editor from `button` + `text_edit` so the two modes
-    /// match; apps that restyle either should rebuild this to stay consistent.
+    /// Theme for [`crate::DragValue`] — the scrub chip plus its inline
+    /// editor. Both modes resolve from this bundle (`chip` at rest,
+    /// `editor` while editing), so restyling it moves them together.
+    /// The default derives both from `button` + `text_edit` via
+    /// [`DragValueTheme::from_chip`]; apps that restyle `button` and
+    /// want DragValue to match should rebuild this bundle the same way.
     pub drag_value: DragValueTheme,
     pub context_menu: ContextMenuTheme,
     pub modal: ModalTheme,
@@ -139,8 +149,54 @@ impl Theme {
         self.text_edit.for_each_text(f);
         self.drag_value.for_each_text(f);
         self.context_menu.for_each_text(f);
-        f(&mut self.tooltip.text);
+        self.tooltip.for_each_text(f);
     }
+}
+
+/// The shape a per-widget theme bundle needs for [`resolve_look`]:
+/// a per-state [`WidgetLook`] pick plus the box defaults
+/// (padding / margin / motion) that fill in where the builder left
+/// the `Spacing::ZERO` sentinel. Implemented by [`ButtonTheme`] and
+/// [`TextEditTheme`]; each impl defines its own `active` semantics by
+/// delegating to its inherent `pick`.
+pub(crate) trait WidgetTheme {
+    fn pick(&self, state: ResponseState) -> &WidgetLook;
+    fn padding(&self) -> Spacing;
+    fn margin(&self) -> Spacing;
+    fn anim(&self) -> Option<AnimSpec>;
+}
+
+/// Resolve a widget's animated look from its theme: pick the per-state
+/// [`WidgetLook`], fill in the theme's padding/margin wherever the
+/// caller left the `Spacing::ZERO` sentinel, and animate. Used by every
+/// chrome-box widget (`Button` / `ComboBox` / `DragValue` / `TextEdit`).
+/// The scalars are copied out so the borrow on `ui.theme` (borrowed,
+/// not cloned) ends before `animate` reborrows `ui` mutably. `style` of
+/// `None` inherits `fallback(&ui.theme)` — the widget's own global
+/// theme slot (`theme.button` for Button/ComboBox,
+/// `theme.drag_value.chip` for the DragValue chip, `theme.text_edit`
+/// for TextEdit).
+pub(crate) fn resolve_look<T: WidgetTheme>(
+    ui: &mut Ui,
+    id: WidgetId,
+    element: &mut Element,
+    state: ResponseState,
+    style: Option<&T>,
+    fallback: impl FnOnce(&Theme) -> &T,
+) -> AnimatedLook {
+    let fallback_text = ui.theme.text;
+    let style = style.unwrap_or_else(|| fallback(&ui.theme));
+    let padding = style.padding();
+    let margin = style.margin();
+    let anim = style.anim();
+    let look_target = style.pick(state).clone();
+    if element.padding == Spacing::ZERO {
+        element.padding = padding;
+    }
+    if element.margin == Spacing::ZERO {
+        element.margin = margin;
+    }
+    look_target.animate(ui, id, fallback_text, anim)
 }
 
 impl Default for Theme {
@@ -193,6 +249,7 @@ mod tests {
         // Button disabled is an explicit `Some(TextStyle)` override.
         let disabled = t
             .button
+            .looks
             .disabled
             .text
             .expect("button disabled has a text override")
@@ -202,7 +259,7 @@ mod tests {
         assert_eq!(t.text_scale(), 2.0);
         assert!((t.text.font_size_px - body * 2.0).abs() < 1e-3);
         assert!((t.tooltip.text.font_size_px - tip * 2.0).abs() < 1e-3);
-        assert!((t.button.disabled.text.unwrap().font_size_px - disabled * 2.0).abs() < 1e-3);
+        assert!((t.button.looks.disabled.text.unwrap().font_size_px - disabled * 2.0).abs() < 1e-3);
 
         // Absolute: 2.0 → 1.5 lands at 1.5×, not 3.0×.
         t.set_text_scale(1.5);
@@ -213,7 +270,53 @@ mod tests {
         t.set_text_scale(1.0);
         assert!((t.text.font_size_px - body).abs() < 1e-3);
         assert!((t.tooltip.text.font_size_px - tip).abs() < 1e-3);
-        assert!((t.button.disabled.text.unwrap().font_size_px - disabled).abs() < 1e-3);
+        assert!((t.button.looks.disabled.text.unwrap().font_size_px - disabled).abs() < 1e-3);
+    }
+
+    /// Reflection sweep keeping `for_each_text` honest: serialize the
+    /// theme, scale ×2, serialize again, and walk both TOML trees —
+    /// every `font_size_px` anywhere in the theme must double and every
+    /// other value must stay identical. A future font-bearing field
+    /// whose sub-theme forgets its `for_each_text` visitor fails here
+    /// without anyone remembering to extend a hand-written list.
+    #[test]
+    fn set_text_scale_reaches_every_font_size() {
+        fn walk(path: &str, before: &toml::Value, after: &toml::Value) {
+            match (before, after) {
+                (toml::Value::Table(b), toml::Value::Table(a)) => {
+                    assert_eq!(
+                        b.keys().collect::<Vec<_>>(),
+                        a.keys().collect::<Vec<_>>(),
+                        "key set changed at {path}"
+                    );
+                    for (k, bv) in b {
+                        walk(&format!("{path}.{k}"), bv, &a[k]);
+                    }
+                }
+                (toml::Value::Array(b), toml::Value::Array(a)) => {
+                    assert_eq!(b.len(), a.len(), "array len changed at {path}");
+                    for (i, (bv, av)) in b.iter().zip(a).enumerate() {
+                        walk(&format!("{path}[{i}]"), bv, av);
+                    }
+                }
+                // `text_scale` itself moves 1.0 → 2.0, which is the same
+                // ×2 the font sizes get.
+                (toml::Value::Float(b), toml::Value::Float(a))
+                    if path.ends_with("font_size_px") || path == "theme.text_scale" =>
+                {
+                    assert!(
+                        (a - b * 2.0).abs() < 1e-3,
+                        "{path}: {a} is not double {b} — a TextStyle escaped for_each_text"
+                    );
+                }
+                _ => assert_eq!(before, after, "non-font value changed at {path}"),
+            }
+        }
+        let mut t = Theme::default();
+        let before = toml::Value::try_from(&t).expect("serialize");
+        t.set_text_scale(2.0);
+        let after = toml::Value::try_from(&t).expect("serialize");
+        walk("theme", &before, &after);
     }
 
     #[test]
@@ -253,10 +356,10 @@ mod tests {
         }
     }
 
-    /// `ButtonTheme::pick` precedence: disabled > pressed > hovered >
-    /// normal. Table-driven sweep — every state combination resolves
-    /// to the right slot, so reordering the if-cascade silently is
-    /// caught.
+    /// `ButtonTheme::pick` precedence (`active` = pressed): disabled >
+    /// active > hovered > normal. Table-driven sweep — every state
+    /// combination resolves to the right slot, so reordering the
+    /// if-cascade silently is caught.
     #[test]
     fn button_theme_pick_precedence() {
         let theme = ButtonTheme::default();
@@ -276,11 +379,23 @@ mod tests {
             ..ResponseState::default()
         };
         let cases: &[(ResponseState, &WidgetLook, &str)] = &[
-            (s(false, false, false), &theme.normal, "normal"),
-            (s(true, false, false), &theme.hovered, "hovered"),
-            (s(true, true, false), &theme.pressed, "pressed > hovered"),
-            (s(false, false, true), &theme.disabled, "disabled (idle)"),
-            (s(true, true, true), &theme.disabled, "disabled wins all"),
+            (s(false, false, false), &theme.looks.normal, "normal"),
+            (s(true, false, false), &theme.looks.hovered, "hovered"),
+            (
+                s(true, true, false),
+                &theme.looks.active,
+                "pressed > hovered",
+            ),
+            (
+                s(false, false, true),
+                &theme.looks.disabled,
+                "disabled (idle)",
+            ),
+            (
+                s(true, true, true),
+                &theme.looks.disabled,
+                "disabled wins all",
+            ),
         ];
         for (state, expected, label) in cases {
             assert!(
@@ -290,22 +405,36 @@ mod tests {
         }
     }
 
-    /// `TextEditTheme::pick`: disabled > focused > normal. Reads
-    /// `state.focused` from `ResponseState` (no separate parameter
-    /// since `focused` is in-state now).
+    /// `TextEditTheme::pick` precedence (`active` = focused): disabled >
+    /// focused > hovered > normal.
     #[test]
     fn text_edit_theme_pick_precedence() {
         let theme = TextEditTheme::default();
-        let s = |focused, disabled| ResponseState {
+        let s = |focused, hovered, disabled| ResponseState {
             disabled,
             focused,
+            hovered,
             ..ResponseState::default()
         };
         let cases: &[(ResponseState, &WidgetLook, &str)] = &[
-            (s(false, false), &theme.normal, "normal"),
-            (s(true, false), &theme.focused, "focused"),
-            (s(false, true), &theme.disabled, "disabled (unfocused)"),
-            (s(true, true), &theme.disabled, "disabled wins focus"),
+            (s(false, false, false), &theme.looks.normal, "normal"),
+            (s(false, true, false), &theme.looks.hovered, "hovered"),
+            (s(true, false, false), &theme.looks.active, "focused"),
+            (
+                s(true, true, false),
+                &theme.looks.active,
+                "focused wins hover",
+            ),
+            (
+                s(false, false, true),
+                &theme.looks.disabled,
+                "disabled (unfocused)",
+            ),
+            (
+                s(true, true, true),
+                &theme.looks.disabled,
+                "disabled wins focus",
+            ),
         ];
         for (state, expected, label) in cases {
             assert!(

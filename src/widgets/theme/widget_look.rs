@@ -65,16 +65,19 @@ impl WidgetLook {
     /// on motion.
     ///
     /// `fallback_text` is used when `self.text == None` — pass
-    /// `ui.theme.text` (TextStyle is `Copy`).
+    /// `ui.theme.text` (TextStyle is `Copy`). Takes `&self` so a look
+    /// borrowed from an owned theme animates without a clone; callers
+    /// whose look borrows `ui.theme` still clone first to end that
+    /// borrow before `ui` is reborrowed mutably.
     pub fn animate(
-        self,
+        &self,
         ui: &mut Ui,
         id: WidgetId,
         fallback_text: TextStyle,
         spec: Option<AnimSpec>,
     ) -> AnimatedLook {
         let target = AnimatedLook {
-            background: self.background.unwrap_or_default(),
+            background: self.background.clone().unwrap_or_default(),
             text: self.text.unwrap_or(fallback_text),
         };
         ui.animate(id, Self::SLOT_LOOK, target, spec)
@@ -89,80 +92,44 @@ impl WidgetLook {
     }
 }
 
-/// Four-state look pack reused by widgets that share Button's
-/// `normal/hovered/pressed/disabled` rhythm but don't carry Button's
-/// container ergonomics (`padding`/`margin`/`anim` on the outer
-/// theme). [`crate::ToggleTheme`] keeps one of these per checked-state.
+/// The uniform four-state look pack every state-styled widget theme
+/// carries: `normal` / `hovered` / `active` / `disabled`. `active` is
+/// the widget's *engaged* state — pressed for Button / Toggle /
+/// MenuItem, focused for TextEdit — supplied per widget as
+/// [`Self::pick`]'s flag so the precedence stays identical everywhere.
+/// [`crate::ButtonTheme`], [`crate::TextEditTheme`], and
+/// [`crate::MenuItemTheme`] embed one (serde-flattened);
+/// [`crate::ToggleTheme`] keeps one per checked-state.
 // **Not `Copy`** because `WidgetLook` isn't.
 #[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct StatefulLook {
     pub normal: WidgetLook,
     pub hovered: WidgetLook,
-    pub pressed: WidgetLook,
+    pub active: WidgetLook,
     pub disabled: WidgetLook,
 }
 
-/// Four-state pick precedence shared by [`StatefulLook::pick`] and
-/// [`crate::widgets::theme::button::ButtonTheme::pick`] (which keeps its
-/// looks as flat fields for ergonomic theme construction rather than
-/// embedding a `StatefulLook`): disabled > pressed > hovered > normal.
-pub(crate) fn pick_4<'a>(
-    state: ResponseState,
-    normal: &'a WidgetLook,
-    hovered: &'a WidgetLook,
-    pressed: &'a WidgetLook,
-    disabled: &'a WidgetLook,
-) -> &'a WidgetLook {
-    if state.disabled {
-        disabled
-    } else if state.pressed() {
-        pressed
-    } else if state.hovered {
-        hovered
-    } else {
-        normal
-    }
-}
-
-/// Three-state pick precedence for widgets without a pressed slot
-/// ([`crate::widgets::theme::text_edit::TextEditTheme`] keys `mid` on
-/// `focused`, [`crate::widgets::theme::context_menu::MenuItemTheme`] on
-/// `hovered`): disabled > mid > normal. The middle flag is passed in so
-/// the two callers can read different `ResponseState` bits while sharing
-/// the precedence; only `state.disabled` is read here.
-pub(crate) fn pick_3<'a>(
-    state: ResponseState,
-    mid: bool,
-    normal: &'a WidgetLook,
-    mid_look: &'a WidgetLook,
-    disabled: &'a WidgetLook,
-) -> &'a WidgetLook {
-    if state.disabled {
-        disabled
-    } else if mid {
-        mid_look
-    } else {
-        normal
-    }
-}
-
 impl StatefulLook {
-    /// Same precedence as `ButtonTheme::pick`: disabled > pressed >
-    /// hovered > normal.
-    pub fn pick(&self, state: ResponseState) -> &WidgetLook {
-        pick_4(
-            state,
-            &self.normal,
-            &self.hovered,
-            &self.pressed,
-            &self.disabled,
-        )
+    /// Uniform pick precedence: disabled > active > hovered > normal.
+    /// `active` is the widget's engaged flag (`state.pressed()` for
+    /// press-driven widgets, `state.focused` for focus-driven ones);
+    /// `disabled` / `hovered` read straight from `state`.
+    pub fn pick(&self, state: ResponseState, active: bool) -> &WidgetLook {
+        if state.disabled {
+            &self.disabled
+        } else if active {
+            &self.active
+        } else if state.hovered {
+            &self.hovered
+        } else {
+            &self.normal
+        }
     }
 
     pub(crate) fn for_each_text<F: FnMut(&mut TextStyle)>(&mut self, f: &mut F) {
         self.normal.for_each_text(f);
         self.hovered.for_each_text(f);
-        self.pressed.for_each_text(f);
+        self.active.for_each_text(f);
         self.disabled.for_each_text(f);
     }
 }

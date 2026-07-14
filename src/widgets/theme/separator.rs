@@ -16,7 +16,7 @@ pub struct SeparatorTheme {
 impl Default for SeparatorTheme {
     fn default() -> Self {
         Self {
-            color: palette::TEXT_MUTED.with_alpha(0.18),
+            color: palette::BORDER_SOFT,
             thickness: 1.0,
         }
     }

@@ -10,8 +10,8 @@ use crate::support;
 use crate::support::{caption_style, row, section};
 use aperture::{
     AnimSpec, Background, Button, ButtonTheme, Checkbox, Color, Configure, Corners, DragValue,
-    Panel, ProgressBar, RadioButton, Separator, Shadow, Sizing, Slider, Spinner, Stroke, Switch,
-    Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook,
+    Panel, ProgressBar, RadioButton, Separator, Shadow, Sizing, Slider, Spinner, StatefulLook,
+    Stroke, Switch, Text, TextStyle, TextWrap, Tooltip, Ui, WidgetId, WidgetLook,
 };
 
 #[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
@@ -333,24 +333,26 @@ fn outlined_style() -> ButtonTheme {
         shadow: Shadow::NONE,
     };
     ButtonTheme {
-        normal: WidgetLook {
-            background: Some(bg(Color::TRANSPARENT, stroke.clone())),
-            text: None,
-        },
-        hovered: WidgetLook {
-            background: Some(bg(accent.with_alpha(0.18), stroke.clone())),
-            text: None,
-        },
-        pressed: WidgetLook {
-            background: Some(bg(accent.with_alpha(0.35), stroke)),
-            text: None,
-        },
-        disabled: WidgetLook {
-            background: Some(bg(
-                Color::TRANSPARENT,
-                Stroke::solid(accent.with_alpha(0.35), 1.5),
-            )),
-            text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
+        looks: StatefulLook {
+            normal: WidgetLook {
+                background: Some(bg(Color::TRANSPARENT, stroke.clone())),
+                text: None,
+            },
+            hovered: WidgetLook {
+                background: Some(bg(accent.with_alpha(0.18), stroke.clone())),
+                text: None,
+            },
+            active: WidgetLook {
+                background: Some(bg(accent.with_alpha(0.35), stroke)),
+                text: None,
+            },
+            disabled: WidgetLook {
+                background: Some(bg(
+                    Color::TRANSPARENT,
+                    Stroke::solid(accent.with_alpha(0.35), 1.5),
+                )),
+                text: Some(TextStyle::default().with_color(Color::hex(0x878a8d))),
+            },
         },
         ..Default::default()
     }
@@ -366,21 +368,25 @@ fn danger_style() -> ButtonTheme {
         shadow: Shadow::NONE,
     };
     ButtonTheme {
-        normal: WidgetLook {
-            background: Some(bg(red)),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        hovered: WidgetLook {
-            background: Some(bg(Color::hex(0xff7e6a))),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        pressed: WidgetLook {
-            background: Some(bg(Color::hex(0xc74734))),
-            text: Some(TextStyle::default().with_color(Color::WHITE)),
-        },
-        disabled: WidgetLook {
-            background: Some(bg(red.with_alpha(0.4))),
-            text: Some(TextStyle::default().with_color(Color::linear_rgba(1.0, 1.0, 1.0, 0.55))),
+        looks: StatefulLook {
+            normal: WidgetLook {
+                background: Some(bg(red)),
+                text: Some(TextStyle::default().with_color(Color::WHITE)),
+            },
+            hovered: WidgetLook {
+                background: Some(bg(Color::hex(0xff7e6a))),
+                text: Some(TextStyle::default().with_color(Color::WHITE)),
+            },
+            active: WidgetLook {
+                background: Some(bg(Color::hex(0xc74734))),
+                text: Some(TextStyle::default().with_color(Color::WHITE)),
+            },
+            disabled: WidgetLook {
+                background: Some(bg(red.with_alpha(0.4))),
+                text: Some(
+                    TextStyle::default().with_color(Color::linear_rgba(1.0, 1.0, 1.0, 0.55)),
+                ),
+            },
         },
         ..Default::default()
     }
