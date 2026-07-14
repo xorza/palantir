@@ -177,6 +177,7 @@ fn hidden_button_does_not_click() {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .hidden()
                 .show(ui)
+                .left
                 .clicked();
         });
     });

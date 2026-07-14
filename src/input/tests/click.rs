@@ -1,6 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::InputEvent;
+use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
@@ -9,7 +10,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn input_state_press_release_emits_click() {
-    // Frame 1 lays out the button; frame 2 reads .clicked() after a
+    // Frame 1 lays out the button; frame 2 reads .left.clicked() after a
     // press+release pair lands inside its rect; frame 3 confirms the
     // click is one-shot.
     let mut ui = Ui::for_test();
@@ -34,6 +35,7 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
+                .left
                 .clicked();
         });
     });
@@ -47,6 +49,7 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
+                .left
                 .clicked();
         });
     });
@@ -115,10 +118,11 @@ fn stack_sense_routing() {
                         .id(WidgetId::from_hash("inside"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .show(ui)
+                        .left
                         .clicked();
                 });
-            stack_clicked |= r.clicked();
-            stack_hovered |= r.hovered();
+            stack_clicked |= r.left.clicked();
+            stack_hovered |= r.hovered;
         });
         assert_eq!(
             stack_clicked, *expect_stack_click,
@@ -158,6 +162,7 @@ fn input_state_release_outside_does_not_click() {
                 .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
+                .left
                 .clicked();
         });
     });
@@ -182,6 +187,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                         .id(WidgetId::from_hash("inner"))
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .show(ui)
+                        .left
                         .clicked();
                 });
         });
@@ -225,6 +231,7 @@ fn zoom_panel_routes_clicks_by_world_rect() {
                             .id(WidgetId::from_hash("inner"))
                             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                             .show(ui)
+                            .left
                             .clicked();
                     });
             });
@@ -250,9 +257,9 @@ fn secondary_click_press_release_emits_secondary_clicked() {
                 .label("rc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *sink |= r.secondary_clicked();
+            *sink |= r.right.clicked();
             // Left-click must NOT flip secondary_clicked.
-            assert!(!(r.clicked() && r.secondary_clicked()));
+            assert!(!(r.left.clicked() && r.right.clicked()));
         });
     };
     let mut sink = false;
@@ -283,8 +290,8 @@ fn two_left_clicks_within_window_emit_double_clicked() {
                 .label("dc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *single |= r.clicked();
-            *double |= r.double_clicked();
+            *single |= r.left.clicked();
+            *double |= r.left.double_clicked();
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
@@ -336,7 +343,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
                 .label("dc")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *double |= r.double_clicked();
+            *double |= r.left.double_clicked();
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false));
@@ -367,13 +374,17 @@ fn click_on_different_widget_resets_double_click() {
                 .label("a")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .double_clicked();
+                .left
+                .click_count()
+                == 2;
             *b |= Button::new()
                 .id(WidgetId::from_hash("dc_b"))
                 .label("b")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .double_clicked();
+                .left
+                .click_count()
+                == 2;
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
@@ -401,8 +412,8 @@ fn left_and_right_click_are_independent() {
                 .label("x")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *lc |= r.clicked();
-            *rc |= r.secondary_clicked();
+            *lc |= r.left.clicked();
+            *rc |= r.right.clicked();
         });
     };
     let mut a = false;
@@ -437,4 +448,61 @@ fn drain_per_frame_queues_clears_action_latch() {
     };
     input.drain_per_frame_queues();
     assert!(!input.take_action_flag());
+}
+
+/// `press_started` is a press-edge (unlike `clicked`, which fires on
+/// the release), and `press_count` numbers the multi-press run: presses
+/// on the same target within the double-click window + radius chain
+/// 1 → 2 → 3; a press past the radius restarts at 1. Both ride only
+/// the frame that processed the press — other frames read `(false, 0)`.
+#[test]
+fn press_started_counts_multi_press_runs() {
+    const SURFACE: UVec2 = UVec2::new(200, 80);
+
+    fn probe(ui: &mut Ui) -> (bool, u8) {
+        let id = WidgetId::from_hash("target");
+        let mut seen = (false, 0u8);
+        ui.run_at_acked(SURFACE, |ui| {
+            Panel::hstack().auto_id().show(ui, |ui| {
+                Button::new()
+                    .id(id)
+                    .label("hi")
+                    .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
+                    .show(ui);
+                let r = ui.response_for(id);
+                seen.0 |= r.left.press_count() > 0;
+                seen.1 = seen.1.max(r.left.press_count());
+            });
+        });
+        seen
+    }
+
+    let mut ui = Ui::for_test();
+    probe(&mut ui); // settle layout
+
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 1), "first press starts a run");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    assert_eq!(
+        probe(&mut ui),
+        (false, 0),
+        "edge + count clear off the press frame"
+    );
+
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 2), "same-spot follow-up chains");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    probe(&mut ui);
+
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 3), "third press keeps counting");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
+    probe(&mut ui);
+
+    // Past DOUBLE_CLICK_RADIUS (5 px): the run restarts.
+    ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 20.0)));
+    ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
+    assert_eq!(probe(&mut ui), (true, 1), "far press restarts the run");
+    ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
 }

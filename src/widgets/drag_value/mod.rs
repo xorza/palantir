@@ -1,5 +1,5 @@
 use crate::forest::element::{Configure, Element, LayoutMode};
-use crate::input::pointer::PointerButton;
+
 use crate::input::sense::Sense;
 use crate::layout::types::align::Align;
 use crate::layout::types::sizing::Sizing;
@@ -152,7 +152,7 @@ struct DragEdit {
 #[derive(Debug)]
 pub struct DragValueResponse<'a> {
     /// The widget's pointer/click/hover [`Response`]. Also reachable through
-    /// `Deref`, so `resp.clicked()` resolves here.
+    /// `Deref`, so `resp.left.clicked()` resolves here.
     pub response: Response<'a>,
     /// The bound value was written with a value differing from what the
     /// caller passed in this frame. Under the commit-deferring pattern
@@ -324,7 +324,7 @@ impl<'a> DragValue<'a> {
         // (snap / round / clamp). The write is gated on `armed`: a drag
         // latched while the editor owned this id (text selection) has no
         // anchor for this gesture.
-        if state.drag_started_by(PointerButton::Left) {
+        if state.left.drag.started() {
             *ui.state_mut::<DragAnchor>(id) = DragAnchor {
                 value: self.value.get(),
                 speed: self.speed,
@@ -333,7 +333,7 @@ impl<'a> DragValue<'a> {
             };
         }
         if !state.disabled
-            && let Some(delta) = state.drag_delta_by(PointerButton::Left)
+            && let Some(delta) = state.left.drag.delta()
         {
             let anchor = ui.state_mut::<DragAnchor>(id);
             if anchor.armed {
@@ -349,7 +349,7 @@ impl<'a> DragValue<'a> {
         // commit-deferring caller re-seeds the stale pre-drag value every
         // frame, including this one. Released while disabled, the gesture
         // is dropped, not committed; disarming either way ends it.
-        if state.drag_stopped_by(PointerButton::Left) {
+        if state.left.drag.stopped() {
             let anchor = ui.state_mut::<DragAnchor>(id);
             if anchor.armed {
                 anchor.armed = false;
@@ -366,7 +366,7 @@ impl<'a> DragValue<'a> {
         // A plain enabled click (no drag latched) enters keyboard entry;
         // `show_editing` seeds the buffer on entry, so a click and a
         // programmatic `request_focus` get the same fresh draft.
-        if self.editable && !state.disabled && state.clicked {
+        if self.editable && !state.disabled && state.left.clicked() {
             ui.request_focus(Some(id));
             // Keep the response's documented focused-synchronicity: the raw
             // snapshot predates the request.

@@ -288,7 +288,7 @@ pub(crate) struct Cascades {
     pub(crate) layers: PerLayer<LayerCascades>,
     /// Pre-order hit-test rows in SoA form — each field is its own
     /// contiguous slice (`entries.rect()`, `entries.sense()`,
-    /// `entries.widget_id()`, …) so the hot reverse-scan in
+    /// `entries.id`, …) so the hot reverse-scan in
     /// `hit_test*` only pulls rect + flags into cache and pays the
     /// `WidgetId` / `layout_rect` load only on a match. Layers
     /// append in paint order so reverse iteration yields topmost-

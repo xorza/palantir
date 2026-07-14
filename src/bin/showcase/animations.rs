@@ -28,6 +28,7 @@ pub fn build(ui: &mut Ui) {
             .id_salt("anim-go")
             .label("go")
             .show(ui)
+            .left
             .clicked()
         {
             clicked = true;

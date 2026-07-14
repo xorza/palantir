@@ -278,6 +278,7 @@ fn cell(ui: &mut Ui, salt: &'static str, r: u32, c: u32) -> bool {
         .padding((6.0, 4.0))
         .style(cell_theme(r, c))
         .show(ui)
+        .left
         .clicked()
 }
 

@@ -30,7 +30,7 @@ pub(crate) struct ContextMenuState {
 /// caller threading a flag.
 ///
 /// Typical usage chains [`Self::attach`] off a trigger's `Response`,
-/// which auto-opens at the pointer on `secondary_clicked`:
+/// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
 /// ```ignore
 /// let trigger = Button::new().label("…").show(ui);
@@ -77,16 +77,16 @@ impl ContextMenu {
 
     /// Derive `for_id` from a trigger widget's response snapshot, and
     /// auto-open at the current pointer position if the trigger
-    /// reported `secondary_clicked` this frame. Pass via
+    /// reported a right-click this frame. Pass via
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before attaching the menu.
     pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
-        if snapshot.secondary_clicked()
+        if snapshot.right.clicked()
             && let Some(p) = ui.pointer_pos()
         {
-            ContextMenu::open(ui, snapshot.widget_id(), p);
+            ContextMenu::open(ui, snapshot.id, p);
         }
-        ContextMenu::for_id(snapshot.widget_id())
+        ContextMenu::for_id(snapshot.id)
     }
 
     /// Record the menu and return per-frame outcome. The body closure
@@ -196,7 +196,7 @@ impl Configure for ContextMenu {
 ///
 /// If [`Self::shortcut`] is set, the row also intercepts that
 /// shortcut from this frame's key events: matching keypresses
-/// synthesize a click (so `if item.clicked() { … }` fires) AND
+/// synthesize a click (so `if item.left.clicked() { … }` fires) AND
 /// close the menu, mirroring native menu behaviour. Disabled rows
 /// don't intercept.
 pub struct MenuItem {
@@ -313,12 +313,12 @@ impl MenuItem {
 
         let mut state = raw_state;
         if shortcut_fired {
-            state.clicked = true;
+            state.left.phase = crate::input::response::ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.
         let resp = Response::eager(id, ui, state);
-        if resp.clicked() {
+        if resp.left.clicked() {
             popup.close();
         }
         resp

@@ -64,6 +64,7 @@ pub fn build(ui: &mut Ui) {
                         .label(label)
                         .min_size((220.0, 32.0))
                         .show(ui)
+                        .left
                         .clicked()
                     {
                         let next = match policy {
@@ -77,6 +78,7 @@ pub fn build(ui: &mut Ui) {
                         .label("clear both")
                         .min_size((140.0, 32.0))
                         .show(ui)
+                        .left
                         .clicked()
                     {
                         buf_a.clear();

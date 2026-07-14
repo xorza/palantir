@@ -26,7 +26,7 @@ fn frame_with_rects(ui: &mut Ui, surface: UVec2, sel: &mut Pick) -> [Option<Rect
                     .id(WidgetId::from_hash(("rb", format!("{value:?}"))))
                     .label(format!("{value:?}"))
                     .show(ui);
-                rects[i] = r.rect();
+                rects[i] = r.rect;
             }
         });
     });

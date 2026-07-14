@@ -51,7 +51,7 @@ fn record_body(ui: &mut Ui, config: ClickOutside, dismissed: &mut bool) {
 
 fn main_panel_clicked(ui: &Ui) -> bool {
     let main_id = WidgetId::from_hash("main-bg");
-    ui.response_for(main_id).clicked
+    ui.response_for(main_id).left.clicked()
 }
 
 #[test]
@@ -499,21 +499,21 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
     ui.run_at(SURFACE, scene);
     let bg = ui.response_for(bg_id);
     assert_eq!(
-        bg.scroll_pixels,
+        bg.scroll.pixels,
         Vec2::ZERO,
         "scroll-pixels under popup must not reach Main",
     );
     assert_eq!(
-        bg.scroll_lines,
+        bg.scroll.lines,
         Vec2::ZERO,
         "scroll-lines under popup must not reach Main",
     );
     assert_eq!(
-        bg.zoom_factor, 1.0,
+        bg.scroll.zoom, 1.0,
         "pinch zoom under popup must not reach Main",
     );
     assert!(
-        bg.drag.is_none(),
+        !bg.middle.drag.dragging(),
         "middle-drag under popup must not latch on Main",
     );
 }

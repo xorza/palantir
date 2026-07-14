@@ -118,7 +118,7 @@ impl<'a> Splitter<'a> {
         if !state.disabled {
             // Divider follows the pointer: map the container-local
             // position on the split axis to the first pane's share.
-            if divider.dragged()
+            if divider.left.drag.dragging()
                 && let (Some(local), Some(rect)) = (state.pointer_local, state.rect)
             {
                 let (pos, extent) = if self.horizontal {
@@ -128,13 +128,13 @@ impl<'a> Splitter<'a> {
                 };
                 ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
             }
-            if divider.double_clicked() {
+            if divider.left.double_clicked() {
                 ratio = 0.5;
             }
         }
         *self.ratio = ratio;
 
-        let bar_fill = if divider.dragged() {
+        let bar_fill = if divider.left.drag.dragging() {
             Some(drag_color)
         } else if divider.hovered && !state.disabled {
             Some(hover_color)

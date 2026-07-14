@@ -1,7 +1,7 @@
 use crate::Ui;
 use crate::forest::element::Configure;
 use crate::input::pointer::PointerButton;
-use crate::input::{InputEvent, InputState};
+use crate::input::{InputEvent, InputState, Press, PressDrag, Release, ReleaseKind};
 use crate::layout::types::sizing::Sizing;
 use crate::primitives::widget_id::WidgetId;
 use crate::widgets::button::Button;
@@ -88,7 +88,7 @@ fn disabled_false_when_chain_clean() {
 fn frame_quiescent_predicate() {
     // Fresh state, one mutation, snapshot — returns the sealed flag.
     let quiescent = |mutate: &dyn Fn(&mut InputState)| {
-        let mut s = InputState::new();
+        let mut s = InputState::default();
         mutate(&mut s);
         s.snapshot_frame_quiescent();
         s.frame_quiescent
@@ -108,14 +108,26 @@ fn frame_quiescent_predicate() {
     broken("hovered", &|s| s.hovered = Some(id));
     broken("scroll_target", &|s| s.scroll_target = Some(id));
     broken("pinch_target", &|s| s.pinch_target = Some(id));
-    broken("capture.active", &|s| {
-        s.captures[PointerButton::Left.idx()].active = Some(id)
+    broken("capture.press", &|s| {
+        s.captures[PointerButton::Left.idx()].press = Some(Press {
+            target: id,
+            origin: Vec2::ZERO,
+            seq: 1,
+            fresh: true,
+            drag: PressDrag::None,
+        })
     });
-    broken("capture.frame_click", &|s| {
-        s.captures[PointerButton::Right.idx()].frame_click = Some(id)
+    broken("capture.release (click)", &|s| {
+        s.captures[PointerButton::Right.idx()].release = Some(Release {
+            target: id,
+            kind: ReleaseKind::Click { count: 1 },
+        })
     });
-    broken("capture.frame_double_click", &|s| {
-        s.captures[PointerButton::Middle.idx()].frame_double_click = Some(id)
+    broken("capture.release (miss)", &|s| {
+        s.captures[PointerButton::Middle.idx()].release = Some(Release {
+            target: id,
+            kind: ReleaseKind::Miss,
+        })
     });
 
     // `focused` is excluded: a focused widget on an otherwise idle frame
@@ -162,15 +174,15 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert!(r.layout_rect.is_some());
 
     assert!(!r.hovered);
-    assert!(!r.pressed);
-    assert!(!r.clicked);
-    assert!(!r.secondary_clicked);
+    assert!(!r.pressed());
+    assert!(!r.left.clicked());
+    assert!(!r.right.clicked());
     assert!(!r.focused);
-    assert_eq!(r.drag, None);
-    assert_eq!(r.double_click, None);
-    assert_eq!(r.scroll_pixels, Vec2::ZERO);
-    assert_eq!(r.scroll_lines, Vec2::ZERO);
-    assert_eq!(r.zoom_factor, 1.0);
+    assert!(!r.left.drag.dragging());
+    assert_eq!(r.left.click_count(), 0);
+    assert_eq!(r.scroll.pixels, Vec2::ZERO);
+    assert_eq!(r.scroll.lines, Vec2::ZERO);
+    assert_eq!(r.scroll.zoom, 1.0);
     assert_eq!(r.pointer_local, None);
 }
 

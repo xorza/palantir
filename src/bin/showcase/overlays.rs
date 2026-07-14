@@ -47,10 +47,10 @@ fn popup_section(ui: &mut Ui) {
                     .id_salt("popup-trigger")
                     .label("menu")
                     .show(ui);
-                if r.clicked() {
+                if r.left.clicked() {
                     clicked = true;
                 }
-                trigger_rect = r.rect();
+                trigger_rect = r.rect;
 
                 let label = ui
                     .state_mut::<MenuState>(menu_id)
@@ -94,6 +94,7 @@ fn popup_section(ui: &mut Ui) {
                     .label(label)
                     .size((Sizing::FILL, Sizing::Hug))
                     .show(ui)
+                    .left
                     .clicked()
                 {
                     chosen = Some(label);
@@ -293,6 +294,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
         if MenuItem::new("Copy")
             .shortcut(Shortcut::ctrl('C'))
             .show(ui, popup)
+            .left
             .clicked()
         {
             ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Copy");
@@ -300,6 +302,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
         if MenuItem::new("Cut")
             .shortcut(Shortcut::ctrl('X'))
             .show(ui, popup)
+            .left
             .clicked()
         {
             ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Cut");
@@ -307,6 +310,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
         if MenuItem::new("Paste")
             .shortcut(Shortcut::ctrl('V'))
             .show(ui, popup)
+            .left
             .clicked()
         {
             ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Paste");
@@ -317,6 +321,7 @@ fn attach_menu(ui: &mut Ui, trigger: &ResponseSnapshot, state_id: WidgetId, flav
         if MenuItem::new("Delete")
             .shortcut(Shortcut::new(Mods::NONE, Key::Backspace))
             .show(ui, popup)
+            .left
             .clicked()
         {
             ui.state_mut::<CtxState>(state_id).last_action = Some("last action: Delete");

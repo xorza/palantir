@@ -74,7 +74,7 @@ impl<'a> Slider<'a> {
         // Pointer drives the value: pressing or dragging the rail maps
         // the cursor x (relative to last frame's rect) to the value.
         if !state.disabled
-            && (state.pressed || state.dragged())
+            && (state.pressed() || state.left.drag.dragging())
             && let (Some(local), Some(rect)) = (state.pointer_local, state.rect)
         {
             let f = pointer_to_fraction(local.x, rect.size.w, knob);
