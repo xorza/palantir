@@ -9,9 +9,9 @@ use crate::primitives::widget_id::WidgetId;
 use crate::primitives::{color::Color, rect::Rect, transform::TranslateScale};
 use crate::shape::{LineCap, Shape};
 use crate::text::TEXT_SCALE_STEP;
-use crate::ui::cascade::CascadeInputHash;
+use crate::ui::cascade::{CascadeInputHash, Paint};
 use crate::ui::damage::region::DamageRegion;
-use crate::ui::damage::{Damage, DamageEngine};
+use crate::ui::damage::{Damage, DamageEngine, paints_on_surface};
 use crate::ui::frame::FrameStamp;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use crate::widgets::popup::Popup;
@@ -2498,6 +2498,21 @@ fn fully_off_surface_rect_is_dropped_from_region() {
 /// contributes nothing useful to damage bookkeeping.
 #[test]
 fn off_surface_first_seen_node_skips_prev_insert() {
+    let straddling = [
+        Paint {
+            screen: Rect::new(-20.0, 0.0, 10.0, 10.0),
+            ..Default::default()
+        },
+        Paint {
+            screen: Rect::new(110.0, 0.0, 10.0, 10.0),
+            ..Default::default()
+        },
+    ];
+    assert!(
+        !paints_on_surface(&straddling, Rect::new(0.0, 0.0, 100.0, 100.0)),
+        "the union can cross the surface even though no paint row does",
+    );
+
     let mut ui = Ui::for_test();
     frame(&mut ui, |ui| {
         // Wrap in a transformed parent: `Panel::transform` applies to
@@ -2714,6 +2729,8 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     // geometry AND authoring → no chrome push. Shapes 0 and 1 are
     // bit-identical → no push.
     let prev_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
+    let prev_arena_len = ui.damage_engine.arena.snaps.len();
+    let prev_orphaned = ui.damage_engine.arena.orphaned;
     // paint_snaps row 0 is chrome; shapes follow at offset 1.
     let prev_shape2_rect = ui.damage_engine.arena.snaps[prev_snap.paint_span.range()][1 + 2].screen;
     frame(&mut ui, |ui| build(140.0, ui));
@@ -2721,6 +2738,12 @@ fn per_shape_damage_only_pushes_changed_shapes() {
     let canvas_snap = ui.damage_engine.prev[&WidgetId::from_hash("canvas")];
     let curr_shape2_rect =
         ui.damage_engine.arena.snaps[canvas_snap.paint_span.range()][1 + 2].screen;
+    assert_eq!(
+        canvas_snap.paint_span, prev_snap.paint_span,
+        "same-count paint changes must refresh the existing arena span",
+    );
+    assert_eq!(ui.damage_engine.arena.snaps.len(), prev_arena_len);
+    assert_eq!(ui.damage_engine.arena.orphaned, prev_orphaned);
 
     // The damage region must intersect both old and new positions of
     // shape 2 (so the pixels-at-old-position get cleared and
