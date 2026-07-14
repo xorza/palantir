@@ -62,33 +62,33 @@ var<immediate> imm: Immediates;
 // `t` is already in [0, 1] by construction, so spread is a no-op.
 @group(0) @binding(0) var gradient_tex:     texture_2d<f32>;
 @group(0) @binding(1) var gradient_sampler: sampler;
-const ATLAS_ROWS_F: f32 = 256.0;
+const ATLAS_ROWS_F: f32 = /*{ATLAS_ROWS}*/;
 
 // `SEGMENTS_PER_INSTANCE` is substituted at shader-module construction
 // from the Rust const of the same name (see `curve_pipeline.rs`). Don't
 // change the placeholder syntax without updating the substitution.
-const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/16u;
+const SEGMENTS_PER_INSTANCE: u32 = /*{SEGMENTS_PER_INSTANCE}*/;
 const INV_N: f32 = 1.0 / f32(SEGMENTS_PER_INSTANCE);
-const HALF_FRINGE: f32 = 0.5;
+const HALF_FRINGE: f32 = /*{HALF_FRINGE}*/;
 
 // Pinned against `render_buffer::MITER_LIMIT` (the composer
 // downgrades sharper miters to bevel, so this only bounds the miter
 // billboard extent).
-const MITER_LIMIT: f32 = 4.0;
+const MITER_LIMIT: f32 = /*{MITER_LIMIT}*/;
 
-const CAP_BUTT: u32 = 0u;
-const CAP_SQUARE: u32 = 1u;
-const CAP_ROUND: u32 = 2u;
+const CAP_BUTT: u32 = /*{CAP_BUTT}*/;
+const CAP_SQUARE: u32 = /*{CAP_SQUARE}*/;
+const CAP_ROUND: u32 = /*{CAP_ROUND}*/;
 
-const KIND_CUBIC: u32 = 0u;
-const KIND_ARC: u32 = 1u;
-const KIND_SEGMENT: u32 = 2u;
-const KIND_JOIN_ROUND: u32 = 3u;
-const KIND_JOIN_BEVEL: u32 = 4u;
-const KIND_JOIN_MITER: u32 = 5u;
+const KIND_CUBIC: u32 = /*{KIND_CUBIC}*/;
+const KIND_ARC: u32 = /*{KIND_ARC}*/;
+const KIND_SEGMENT: u32 = /*{KIND_SEGMENT}*/;
+const KIND_JOIN_ROUND: u32 = /*{KIND_JOIN_ROUND}*/;
+const KIND_JOIN_BEVEL: u32 = /*{KIND_JOIN_BEVEL}*/;
+const KIND_JOIN_MITER: u32 = /*{KIND_JOIN_MITER}*/;
 
-const BRUSH_KIND_SOLID:  u32 = 0u;
-const BRUSH_KIND_LINEAR: u32 = 1u;
+const BRUSH_KIND_SOLID:  u32 = /*{BRUSH_KIND_SOLID}*/;
+const BRUSH_KIND_LINEAR: u32 = /*{BRUSH_KIND_LINEAR}*/;
 
 // `VsOut.flags` bits — the per-instance predicates the fragment
 // actually branches on, packed once in `vs` so they ride one flat

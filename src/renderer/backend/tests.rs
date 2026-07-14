@@ -67,7 +67,14 @@ fn simplify(buffer: &RenderBuffer, steps: &[RenderStep]) -> Vec<DrawOp> {
             RenderStep::SetScissor(_) | RenderStep::SetStencilRef(_) => {}
             RenderStep::MaskStamp(mi) => out.push(DrawOp::MaskWrite(*mi)),
             RenderStep::MaskClear(mi) => out.push(DrawOp::MaskClear(*mi)),
-            RenderStep::Quads { group, .. } => out.push(DrawOp::Quads(*group)),
+            RenderStep::Quads { range } => {
+                let group = buffer
+                    .groups
+                    .iter()
+                    .position(|candidate| candidate.quads == *range)
+                    .expect("quad range missing from draw groups");
+                out.push(DrawOp::Quads(group));
+            }
             RenderStep::Text { batch } => out.push(DrawOp::Text(*batch)),
             RenderStep::MeshBatch { batch } => out.push(DrawOp::Meshes(
                 buffer.mesh_batches[*batch].last_group as usize,
@@ -350,7 +357,6 @@ fn stencil_group_brackets_draws_with_mask_write() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 2),
             },
             // Batch drain: same chain, batch scissor inside the stamp's
@@ -473,11 +479,11 @@ fn stencil_consecutive_same_mask_groups_dedup_writes() {
     // quads but group 1's scissor set — no SetStencilRef, no mask quad.
     let q0 = steps
         .iter()
-        .position(|s| matches!(s, RenderStep::Quads { group: 0, .. }))
+        .position(|s| matches!(s, RenderStep::Quads { range } if *range == Span::new(0, 1)))
         .unwrap();
     let q1 = steps
         .iter()
-        .position(|s| matches!(s, RenderStep::Quads { group: 1, .. }))
+        .position(|s| matches!(s, RenderStep::Quads { range } if *range == Span::new(1, 1)))
         .unwrap();
     assert!(
         steps[q0 + 1..q1]
@@ -598,7 +604,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // A→B transition: clear A's mask under SA — the scissor
@@ -614,7 +619,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskStamp(1),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 1,
                 range: Span::new(1, 1),
             },
             // B→C transition: clear B's mask under SB; the clear left
@@ -624,7 +628,6 @@ fn stencil_stale_mask_clears_under_stamp_scissor_then_tail_clears() {
             RenderStep::MaskClear(1),
             RenderStep::SetScissor(sc),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
             // C is unmasked: stencil already clean, no tail clear.
@@ -695,13 +698,11 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             RenderStep::MaskStamp(1),
             RenderStep::SetStencilRef(2),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Group 1: identical chain, contained scissor — elided.
             RenderStep::SetScissor(e),
             RenderStep::Quads {
-                group: 1,
                 range: Span::new(1, 1),
             },
             // Group 2: one clear of the OUTERMOST quad resets both
@@ -711,7 +712,6 @@ fn stencil_nested_chain_stamps_ladder_elides_and_single_clears() {
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(e),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
         ],
@@ -845,7 +845,6 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Group 1 skipped; its batch drains before group 2: same
@@ -860,7 +859,6 @@ fn stencil_drained_batch_elides_when_own_chain_still_stamped() {
             RenderStep::MaskClear(0),
             RenderStep::SetScissor(URect::new(45, 0, 50, 40)),
             RenderStep::Quads {
-                group: 2,
                 range: Span::new(2, 1),
             },
         ],
@@ -909,7 +907,6 @@ fn stencil_unmasked_batch_drained_under_active_mask_clears_first() {
             RenderStep::MaskStamp(0),
             RenderStep::SetStencilRef(1),
             RenderStep::Quads {
-                group: 0,
                 range: Span::new(0, 1),
             },
             // Trailing drain: the unmasked batch clears group 0's
@@ -944,7 +941,12 @@ fn setscissor_steps_present_under_partial_damage() {
     // Group 0's effective scissor is intersection (10,10,50,50) ∩ damage = (10,10,50,50).
     assert_eq!(steps[2], RenderStep::SetScissor(URect::new(10, 10, 50, 50)));
     // Then quads.
-    assert!(matches!(steps[3], RenderStep::Quads { group: 0, .. }));
+    assert_eq!(
+        steps[3],
+        RenderStep::Quads {
+            range: Span::new(0, 1),
+        }
+    );
 }
 
 /// Pin: a group whose scissor is disjoint from the damage rect emits

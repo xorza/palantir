@@ -1,7 +1,7 @@
 //! `DynamicBuffer` — a `wgpu::Buffer` plus power-of-two growth.
 //!
-//! `buf.upload(ctx, bytes, count)` grows the underlying buffer when
-//! `count` exceeds capacity, then schedules a belt-backed
+//! `buf.upload_instances(ctx, items)` grows the underlying buffer when
+//! the typed slice exceeds capacity, then schedules a belt-backed
 //! `copy_buffer_to_buffer` to offset 0. No content-hash deduplication:
 //! staging-belt memcpy is cheaper than FxHash of the same bytes, so
 //! gating by hash is always net-negative.
@@ -80,11 +80,10 @@ impl<T: bytemuck::Pod> DynamicBuffer<T> {
         }
     }
 
-    /// Grow if needed, write `bytes` to offset 0. On a grow frame the
+    /// Grow if needed and write `items` to offset 0. On a grow frame the
     /// new buffer is created `mapped_at_creation: true` and the bytes
     /// are memcpy'd straight into the mapped range — no belt staging
-    /// copy, no `copy_buffer_to_buffer` recorded. `bytes.len()` must
-    /// equal `item_count * self.item_size`.
+    /// copy and no `copy_buffer_to_buffer` is recorded.
     fn upload(&mut self, ctx: &mut GpuCtx<'_>, items: &[T]) {
         let bytes = bytemuck::cast_slice(items);
         if self.grow_mapped(ctx.device, items.len()) {

@@ -3,9 +3,8 @@
 //! of two. Both inner fields are `Rc`-shared, so cloning [`RenderCaches`]
 //! is cheap and every clone observes the same state.
 //!
-//! Lifetime: same as the renderer (constructed by `WindowRenderer`, dropped when
-//! the surface goes away). Distinct from [`crate::forest::frame_arena::FrameArena`]
-//! which is per-frame scratch.
+//! Lifetime: app-global, shared by every window and the one backend. Distinct
+//! from [`crate::forest::frame_arena::FrameArena`] which is per-frame scratch.
 
 use crate::renderer::gradient_atlas::GradientAtlas;
 use crate::renderer::image_registry::ImageRegistry;
@@ -13,6 +12,8 @@ use crate::renderer::texture_id::TextureIdSource;
 
 #[derive(Clone, Debug)]
 pub(crate) struct RenderCaches {
+    /// Shared authority for registered images and `GpuView` render targets.
+    pub(crate) texture_ids: TextureIdSource,
     /// Image cache. Authoring code stages bytes once via
     /// [`crate::Ui::register_image`] and references the returned handle
     /// in [`crate::Shape::Image`]; this field is reached only from
@@ -24,15 +25,34 @@ pub(crate) struct RenderCaches {
 }
 
 impl RenderCaches {
-    /// Build the caches with `images` minting from `ids` — the shared
-    /// [`TextureIdSource`] owned by [`HostContext`](crate::host::context::HostContext),
-    /// also drawn from by each `GpuView` target (`Ui::gpu_view`), so a
-    /// registered image and a `GpuView` target can never land on the same id
-    /// in the one backend texture cache.
-    pub(crate) fn new(ids: TextureIdSource) -> Self {
+    pub(crate) fn new() -> Self {
+        let texture_ids = TextureIdSource::default();
         Self {
-            images: ImageRegistry::new(ids),
+            images: ImageRegistry::new(texture_ids.clone()),
             gradients: GradientAtlas::default(),
+            texture_ids,
         }
+    }
+}
+
+impl Default for RenderCaches {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::RenderCaches;
+    use crate::primitives::image::Image;
+
+    #[test]
+    fn images_and_gpu_views_share_one_texture_id_authority() {
+        let caches = RenderCaches::default();
+        let gpu_view_id = caches.texture_ids.reserve();
+        let image = Image::from_rgba8(1, 1, vec![0, 0, 0, 0]);
+        let image_id = caches.images.register(image).id();
+
+        assert_ne!(gpu_view_id, image_id);
     }
 }

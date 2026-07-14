@@ -96,7 +96,7 @@ impl ContentType {
     }
 }
 
-pub struct TextBackend {
+pub(crate) struct TextBackend {
     shaper: TextShaper,
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
@@ -500,7 +500,6 @@ pub mod test_support {
     /// Re-export the counting `Queue` wrapper so benches can build one
     /// to feed `GpuCtx::new`.
     pub use crate::renderer::backend::queue::Queue;
-    pub use crate::renderer::backend::text::TextBackend;
     /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
     /// name it in their fixture slice.
     pub use crate::renderer::render_buffer::TextRun;
