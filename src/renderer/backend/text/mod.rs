@@ -487,6 +487,7 @@ pub mod test_support {
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::pipeline_utils::StencilVariant;
+    use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
 
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
