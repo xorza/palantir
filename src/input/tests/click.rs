@@ -291,7 +291,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             *single |= r.left.clicked();
-            *double |= r.double_clicked();
+            *double |= r.left.click_count() == 2;
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
@@ -343,7 +343,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
                 .label("dc")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *double |= r.double_clicked();
+            *double |= r.left.click_count() == 2;
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false));

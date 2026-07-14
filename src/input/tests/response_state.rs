@@ -167,7 +167,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert!(!r.right.clicked());
     assert!(!r.focused);
     assert!(!r.left.drag.dragging());
-    assert!(!r.double_clicked());
+    assert_eq!(r.left.click_count(), 0);
     assert_eq!(r.scroll.pixels, Vec2::ZERO);
     assert_eq!(r.scroll.lines, Vec2::ZERO);
     assert_eq!(r.scroll.zoom, 1.0);
