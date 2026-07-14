@@ -1,8 +1,10 @@
 //! Widget-facing input results: [`ResponseState`] (one widget's
-//! interaction snapshot for the frame), [`DragState`] (its active drag,
-//! if any), and [`InputDelta`] (the repaint hint `Ui::on_input` returns).
-//! These are pure outputs — they never reference the [`InputState`]
-//! machine (`super`) that produces them.
+//! interaction snapshot for the frame), [`ButtonState`] (its per-button
+//! slice), [`ButtonPhase`] / [`Drag`] (its press + drag lifecycles), [`ScrollDelta`]
+//! (routed wheel/touchpad/pinch deltas), and [`InputDelta`] (the
+//! repaint hint `Ui::on_input` returns). These are pure outputs — they
+//! never reference the [`InputState`] machine (`super`) that produces
+//! them.
 
 use glam::Vec2;
 
@@ -17,22 +19,209 @@ pub struct InputDelta {
     pub requests_repaint: bool,
 }
 
-/// One widget's active drag. Carried on
-/// [`ResponseState::drag`]. Only one drag exists per widget at a
-/// time — when multiple buttons are simultaneously latched on the
-/// same widget, the priority-first in
-/// [`crate::input::pointer::PointerButton::all`] wins.
+/// One button's drag lifecycle, carried on [`ButtonState::drag`] — the
+/// owning button is the slot's position in [`ResponseState`]. The four
+/// phases are mutually exclusive per button, which is why this is an
+/// enum rather than an `Option` + edge flags:
+///
+/// `None` → `Started` (the threshold-crossing frame) → `Active` (every
+/// following held frame) → `Stopped` (the release frame) → `None`.
+///
+/// `delta` is the cumulative pointer travel since press —
+/// rect-independent; the pointer may leave the widget's rect mid-drag
+/// and the delta keeps tracking. `Stopped` carries no delta: the
+/// capture is already gone, so commit-on-release gestures stash the
+/// running value while `Started`/`Active` and commit it on `Stopped`.
+///
+/// A same-frame stop-and-relatch (release + press + threshold-crossing
+/// move all in one event batch) reports the fresh `Started` — the new
+/// gesture supersedes the stale stop edge.
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum Drag {
+    #[default]
+    None,
+    /// One-frame edge: the drag latched this frame. Snapshot anchors
+    /// here.
+    Started { delta: Vec2 },
+    /// Latched on an earlier frame, still held.
+    Active { delta: Vec2 },
+    /// One-frame edge: the latched drag ended this frame (release).
+    Stopped,
+}
+
+impl Drag {
+    /// Cumulative travel of a live drag (`Started` / `Active`).
+    #[inline]
+    pub fn delta(self) -> Option<Vec2> {
+        match self {
+            Drag::Started { delta } | Drag::Active { delta } => Some(delta),
+            Drag::None | Drag::Stopped => None,
+        }
+    }
+
+    /// A drag is live (`Started` / `Active`).
+    #[inline]
+    pub fn dragging(self) -> bool {
+        matches!(self, Drag::Started { .. } | Drag::Active { .. })
+    }
+
+    /// One-frame edge: the latch frame.
+    #[inline]
+    pub fn started(self) -> bool {
+        matches!(self, Drag::Started { .. })
+    }
+
+    /// One-frame edge: the release frame of a latched drag.
+    #[inline]
+    pub fn stopped(self) -> bool {
+        matches!(self, Drag::Stopped)
+    }
+}
+
+/// One pointer button's press lifecycle on a widget. The phases are
+/// mutually exclusive per frame, walked in order:
+///
+/// `Idle` → `Down` (press-edge frame) → `Held` (every following held
+/// frame) → `Up` (release-edge frame) → `Idle`.
+///
+/// `Down`/`Held` are capture-based and rect-independent: they keep
+/// reporting while the pointer drags outside the widget's rect or off
+/// the surface entirely (no travel threshold — live from the first
+/// press frame). Drag-tracking widgets (text selection) ride that to
+/// keep following the pointer past their own bounds.
+///
+/// Multi-press runs ride the phases: presses chain when they land on
+/// the same widget within
+/// [`crate::input::sense::DOUBLE_CLICK_WINDOW`] and
+/// [`crate::input::sense::DOUBLE_CLICK_RADIUS`]; any break resets the
+/// run. `Down.press` is the press's position in its run (1 = single,
+/// 2 = double-press, 3+ = triple…), and a completing click carries the
+/// same number in `Up.click` — so `Up { click: Some(2) }` *is* the
+/// double-click, and the second click of a double still reads as a
+/// click (`clicked()` and `double_clicked()` both fire on it).
+///
+/// Collapsed edge cases (one event batch, no frame between): a
+/// press+release collapses to `Up` (the completed click outranks the
+/// lost press edge); a release+re-press collapses to `Down` (the live
+/// capture outranks the stale release).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub enum ButtonPhase {
+    #[default]
+    Idle,
+    /// One-frame edge: the press landed this frame. `press` = its
+    /// position in the multi-press run. Rises on the press — clicks
+    /// fire on the release — so press-driven gestures (caret
+    /// placement, press-select-drag) react while the button is still
+    /// down.
+    Down { press: u8 },
+    /// The press is latched on the widget (level, frames after the
+    /// press edge).
+    Held,
+    /// One-frame edge: released this frame. `click` is `Some(n)` when
+    /// the release completed a click (press + release on the widget,
+    /// no drag latched), with `n` the click's position in its
+    /// multi-press run; `None` when a drag suppressed the click or
+    /// the release landed off the widget.
+    Up { click: Option<u8> },
+}
+
+/// One pointer button's slice of a widget's interaction snapshot.
+/// [`ResponseState`] carries one per [`PointerButton`] — every button
+/// gets the same uniform surface (middle-click is as queryable as
+/// left).
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct ButtonState {
+    /// Press lifecycle (see [`ButtonPhase`]).
+    pub phase: ButtonPhase,
+    /// Drag lifecycle (see [`Drag`]). At most one button's drag is
+    /// live per widget: when several buttons are simultaneously
+    /// latched, the priority-first in [`PointerButton::all`] wins.
+    pub drag: Drag,
+}
+
+impl ButtonState {
+    /// The press is latched on the widget (`Down` or `Held`) —
+    /// rect-independent, no travel threshold.
+    #[inline]
+    pub fn held(self) -> bool {
+        matches!(self.phase, ButtonPhase::Down { .. } | ButtonPhase::Held)
+    }
+
+    /// One-frame edge: a press+release landed on the widget without
+    /// latching a drag. Fires on the release. For double/triple
+    /// dispatch read [`Self::click_count`] (`== 2` is the
+    /// double-click).
+    #[inline]
+    pub fn clicked(self) -> bool {
+        matches!(self.phase, ButtonPhase::Up { click: Some(_) })
+    }
+
+    /// This frame's press-run position: `0` off the press edge,
+    /// 1/2/3+ on it (`press_count() > 0` is the press-rising edge).
+    #[inline]
+    pub fn press_count(self) -> u8 {
+        match self.phase {
+            ButtonPhase::Down { press } => press,
+            _ => 0,
+        }
+    }
+
+    /// This frame's click-run position: `0` off the click edge,
+    /// 1/2/3+ on it (`2` = double-click, `3` = triple-click).
+    #[inline]
+    pub fn click_count(self) -> u8 {
+        match self.phase {
+            ButtonPhase::Up { click } => click.unwrap_or(0),
+            _ => 0,
+        }
+    }
+
+    /// One-frame edge: this click completed a double (its press was
+    /// the second in its run). Sugar for `click_count() == 2` — read
+    /// [`Self::click_count`] for triple and beyond.
+    #[inline]
+    pub fn double_clicked(self) -> bool {
+        self.click_count() == 2
+    }
+}
+
+/// Wheel / touchpad / pinch deltas routed to the widget this frame.
+/// Only non-identity when the widget has
+/// [`Sense::SCROLL`](crate::input::sense::Sense::SCROLL) /
+/// [`Sense::PINCH`](crate::input::sense::Sense::PINCH) AND was the
+/// topmost routed target under the pointer — and identity even then
+/// when no event arrived this frame.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub struct DragState {
-    /// Which pointer button is doing the dragging.
-    pub button: PointerButton,
-    /// Cumulative pointer travel since press. Rect-independent; the
-    /// pointer may leave the widget's rect mid-drag and the delta
-    /// keeps tracking.
-    pub delta: Vec2,
-    /// One-frame edge: `true` on exactly the frame the drag latched
-    /// (the threshold-crossing pointer move). Snapshot anchors here.
-    pub started: bool,
+pub struct ScrollDelta {
+    /// Pixel-precise scroll delta in logical pixels — the touchpad /
+    /// precision-wheel source (winit `MouseScrollDelta::PixelDelta`).
+    /// Already negated at ingest so `+y` means "advance the scroll
+    /// offset forward." Pair with [`Self::lines`] to form a combined
+    /// pan delta: `pixels + lines * line_px`.
+    pub pixels: Vec2,
+    /// Notched / line-discrete scroll delta in raw line units (NOT
+    /// pixels) — the classic-wheel source (winit
+    /// `MouseScrollDelta::LineDelta`). Sign matches [`Self::pixels`].
+    /// Use for "mouse wheel" intent (e.g. zoom-by-notches in a graph
+    /// viewport that pans on touchpad).
+    pub lines: Vec2,
+    /// Multiplicative pinch zoom factor (`1.0` = no pinch). Pinch
+    /// always reports — no modifier gating, unlike wheel zoom which
+    /// the caller derives manually from [`Self::lines`] + modifiers.
+    pub zoom: f32,
+}
+
+/// Hand-rolled because `zoom`'s identity is `1.0`, not the `0.0` that
+/// `#[derive(Default)]` would produce — `(zoom - 1.0).abs() > eps` is
+/// a safe presence check on a `Default`-constructed instance.
+impl Default for ScrollDelta {
+    fn default() -> Self {
+        Self {
+            pixels: Vec2::ZERO,
+            lines: Vec2::ZERO,
+            zoom: 1.0,
+        }
+    }
 }
 
 /// Snapshot of one widget's interaction state for the current frame.
@@ -46,7 +235,7 @@ pub struct DragState {
 ///
 /// `focused` is `true` when this widget currently holds keyboard focus
 /// (`Ui::focused_id() == Some(id)`). Updated synchronously with focus
-/// changes, so unlike `hovered`/`pressed` it isn't one-frame stale —
+/// changes, so unlike `hovered`/`left.held` it isn't one-frame stale —
 /// a widget that just called `ui.request_focus(id)` reads `true` on
 /// the same frame.
 #[derive(Clone, Copy, Debug)]
@@ -66,175 +255,69 @@ pub struct ResponseState {
     /// logical coordinates — e.g. `(ptr - rect.min) / transform.scale` for
     /// hit-testing content laid out in logical px under a zoomed canvas.
     pub transform: TranslateScale,
-    pub hovered: bool,
-    pub pressed: bool,
-    /// The primary (left) button's press is currently latched on this
-    /// widget — `true` from the press that captured it until release,
-    /// **regardless of where the pointer has since moved**. Unlike
-    /// [`Self::pressed`] (which also requires the pointer to stay over
-    /// the widget), this keeps reporting while the pointer drags outside
-    /// the widget's rect or off the surface entirely, and — unlike
-    /// [`Self::drag`] — it has no travel threshold, so it's live from the
-    /// very first press frame. Drag-tracking widgets (text selection)
-    /// use it to keep following the pointer past their own bounds.
-    pub held: bool,
-    pub clicked: bool,
-    /// One-frame edge: right-button click landed and released on this
-    /// widget without a drag. Independent of `clicked` (left-button).
-    pub secondary_clicked: bool,
-    pub disabled: bool,
-    pub focused: bool,
-    /// Active drag on this widget — `None` outside drag and for
-    /// sub-threshold wiggle. Only one button can drag a given widget
-    /// at a time; when more than one button is captured + latched,
-    /// the priority-first in `PointerButton::all()` wins. Callers go
-    /// through [`Self::drag_delta`] / [`Self::drag_started`] /
-    /// [`Self::dragged_by`] etc. rather than reading this field.
-    pub drag: Option<DragState>,
-    /// One-frame edge: the button whose latched drag on this widget
-    /// ended this frame (release). The drag itself is already gone —
-    /// [`Self::drag`] is `None` and [`Self::drag_delta`] can't report
-    /// the final travel — so commit-on-release gestures stash their
-    /// running value and key the commit off this edge. `None` outside
-    /// that frame. Callers use [`Self::drag_stopped`] /
-    /// [`Self::drag_stopped_by`] rather than reading this field.
-    pub drag_stopped: Option<PointerButton>,
-    /// One-frame edge: the button that just fired a double-click on
-    /// this widget (two clicks on the same id within
-    /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]). `None` outside
-    /// that frame. Callers use [`Self::double_clicked`] /
-    /// [`Self::double_clicked_by`] rather than reading this field.
-    pub double_click: Option<PointerButton>,
-    /// Pixel-precise scroll delta this frame, in logical pixels — the
-    /// touchpad / precision-wheel source (winit
-    /// `MouseScrollDelta::PixelDelta`). Already negated at ingest so
-    /// `+y` means "advance the scroll offset forward." Only non-zero
-    /// when the widget has [`Sense::SCROLL`](crate::input::sense::Sense::SCROLL)
-    /// AND was the topmost scroll target under the pointer this frame.
-    /// Pair with [`Self::scroll_lines`] to form a combined pan delta:
-    /// `scroll_pixels + scroll_lines * line_px`.
-    pub scroll_pixels: Vec2,
-    /// Notched / line-discrete scroll delta this frame, in raw line
-    /// units (NOT pixels) — the classic-wheel source (winit
-    /// `MouseScrollDelta::LineDelta`). Sign matches `scroll_pixels`
-    /// (`+y` = advance offset). Use for "mouse wheel" intent (e.g.
-    /// zoom-by-notches in a graph viewport that pans on touchpad).
-    /// Same routing as `scroll_pixels`.
-    pub scroll_lines: Vec2,
-    /// Multiplicative pinch zoom factor this frame (`1.0` = no
-    /// pinch). Same routing as `scroll_pixels`/`scroll_lines` (widget
-    /// must have [`Sense::SCROLL`](crate::input::sense::Sense::SCROLL)
-    /// and be the topmost target). Pinch always reports — no modifier
-    /// gating, unlike wheel zoom which the caller derives manually from
-    /// `scroll_lines` + modifiers.
-    pub zoom_factor: f32,
     /// Cursor position relative to this widget's `rect.min`. `None`
     /// when the pointer is off-surface or the widget didn't arrange
     /// (no `rect`). Useful as a pivot for zoom-about-cursor or any
     /// custom local-space hit math without recomputing the rect
     /// origin at every call site.
     pub pointer_local: Option<Vec2>,
+    pub hovered: bool,
+    pub disabled: bool,
+    pub focused: bool,
+    /// Primary-button state. The classic single-pointer surface
+    /// (`clicked`, `held`, press runs, drags) lives here.
+    pub left: ButtonState,
+    /// Secondary-button state — `right.clicked` is the context-menu
+    /// trigger.
+    pub right: ButtonState,
+    pub middle: ButtonState,
+    /// Wheel / touchpad / pinch deltas routed to this widget.
+    pub scroll: ScrollDelta,
 }
 
-/// Hand-rolled because `zoom_factor`'s identity is `1.0`, not the
-/// `0.0` that `#[derive(Default)]` would produce — `(factor - 1.0)
-/// .abs() > eps` is a safe presence check for routed pinch on a
-/// `Default`-constructed instance.
 impl Default for ResponseState {
     fn default() -> Self {
         Self {
             rect: None,
             layout_rect: None,
             transform: TranslateScale::IDENTITY,
+            pointer_local: None,
             hovered: false,
-            pressed: false,
-            held: false,
-            clicked: false,
-            secondary_clicked: false,
             disabled: false,
             focused: false,
-            drag: None,
-            drag_stopped: None,
-            double_click: None,
-            scroll_pixels: Vec2::ZERO,
-            scroll_lines: Vec2::ZERO,
-            zoom_factor: 1.0,
-            pointer_local: None,
+            left: ButtonState::default(),
+            right: ButtonState::default(),
+            middle: ButtonState::default(),
+            scroll: ScrollDelta::default(),
         }
     }
 }
 
 impl ResponseState {
-    /// Any pointer button currently dragging this widget. Sugar for
-    /// `self.drag.is_some()`.
+    /// The per-button slice for a **runtime** `button` value — the one
+    /// thing the public fields can't express. For a compile-time-known
+    /// button read the field directly (`state.left`, not
+    /// `state.button(PointerButton::Left)`); reach for this only when
+    /// the button is a variable (configurable gesture bindings, loops
+    /// over [`PointerButton::all`]).
     #[inline]
-    pub fn dragged(&self) -> bool {
-        self.drag.is_some()
+    pub fn button(&self, button: PointerButton) -> &ButtonState {
+        match button {
+            PointerButton::Left => &self.left,
+            PointerButton::Right => &self.right,
+            PointerButton::Middle => &self.middle,
+        }
     }
 
-    /// `true` when `button` is the one dragging this widget. For "is
-    /// anything dragging?" use [`Self::dragged`].
+    /// Left-button press with the pointer still over the widget — the
+    /// "shows pressed visuals" predicate. Derived: `left.held &&
+    /// hovered` (a held press whose pointer wandered off reports
+    /// `left.held` but not `pressed`). The only cross-field
+    /// derivation on this type — everything per-button reads its
+    /// slot: `state.left.clicked()`, `state.left.drag.delta()`,
+    /// `state.left.double_clicked()`.
     #[inline]
-    pub fn dragged_by(&self, button: PointerButton) -> bool {
-        self.drag.is_some_and(|d| d.button == button)
-    }
-
-    /// One-frame edge: `true` on the frame the active drag latches.
-    /// Snapshot anchors here.
-    #[inline]
-    pub fn drag_started(&self) -> bool {
-        self.drag.is_some_and(|d| d.started)
-    }
-
-    /// One-frame edge filtered by button. `drag_started_by(Middle)`
-    /// is `true` only on the frame a middle-button drag latches.
-    #[inline]
-    pub fn drag_started_by(&self, button: PointerButton) -> bool {
-        self.drag.is_some_and(|d| d.button == button && d.started)
-    }
-
-    /// Cumulative pointer travel of the active drag, regardless of
-    /// which button is dragging.
-    #[inline]
-    pub fn drag_delta(&self) -> Option<Vec2> {
-        self.drag.map(|d| d.delta)
-    }
-
-    /// Cumulative pointer travel, but only if the dragging button is
-    /// `button`. `None` outside drag or when a different button is
-    /// dragging.
-    #[inline]
-    pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
-        self.drag.filter(|d| d.button == button).map(|d| d.delta)
-    }
-
-    /// One-frame edge: a latched drag on this widget ended this frame
-    /// (any button). The drag state is already gone by now — stash the
-    /// running value during the drag and commit it on this edge.
-    #[inline]
-    pub fn drag_stopped(&self) -> bool {
-        self.drag_stopped.is_some()
-    }
-
-    /// One-frame edge filtered by button. `drag_stopped_by(Left)` is
-    /// the standard "scrub finished, commit" gesture.
-    #[inline]
-    pub fn drag_stopped_by(&self, button: PointerButton) -> bool {
-        self.drag_stopped == Some(button)
-    }
-
-    /// One-frame edge: any pointer button double-clicked this widget
-    /// this frame. Mirror of [`Self::dragged`] for two-click gestures.
-    #[inline]
-    pub fn double_clicked(&self) -> bool {
-        self.double_click.is_some()
-    }
-
-    /// One-frame edge filtered by button. `double_clicked_by(Left)`
-    /// is the standard "open / activate" gesture; right- or middle-
-    /// double-clicks are rarer but available without extra plumbing.
-    #[inline]
-    pub fn double_clicked_by(&self, button: PointerButton) -> bool {
-        self.double_click == Some(button)
+    pub fn pressed(&self) -> bool {
+        self.left.held() && self.hovered
     }
 }

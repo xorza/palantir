@@ -291,7 +291,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             *single |= r.left.clicked();
-            *double |= r.left.click_count() == 2;
+            *double |= r.left.double_clicked();
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
@@ -343,7 +343,7 @@ fn two_clicks_outside_radius_do_not_double_click() {
                 .label("dc")
                 .size((Sizing::Fixed(120.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *double |= r.left.click_count() == 2;
+            *double |= r.left.double_clicked();
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false));
@@ -374,13 +374,17 @@ fn click_on_different_widget_resets_double_click() {
                 .label("a")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .double_clicked();
+                .left
+                .click_count()
+                == 2;
             *b |= Button::new()
                 .id(WidgetId::from_hash("dc_b"))
                 .label("b")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .double_clicked();
+                .left
+                .click_count()
+                == 2;
         });
     };
     ui.run_at_acked(surface, |ui| build(ui, &mut false, &mut false));
