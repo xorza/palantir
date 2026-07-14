@@ -10,7 +10,7 @@ use glam::{UVec2, Vec2};
 
 #[test]
 fn input_state_press_release_emits_click() {
-    // Frame 1 lays out the button; frame 2 reads .clicked() after a
+    // Frame 1 lays out the button; frame 2 reads .left.clicked() after a
     // press+release pair lands inside its rect; frame 3 confirms the
     // click is one-shot.
     let mut ui = Ui::for_test();
@@ -35,7 +35,7 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .clicked();
+                .left.clicked();
         });
     });
     assert!(got_click, "press+release inside button rect should click");
@@ -48,7 +48,7 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .clicked();
+                .left.clicked();
         });
     });
     assert!(!still_clicking, "click is one-shot");
@@ -116,10 +116,10 @@ fn stack_sense_routing() {
                         .id(WidgetId::from_hash("inside"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .show(ui)
-                        .clicked();
+                        .left.clicked();
                 });
-            stack_clicked |= r.clicked();
-            stack_hovered |= r.hovered();
+            stack_clicked |= r.left.clicked();
+            stack_hovered |= r.hovered;
         });
         assert_eq!(
             stack_clicked, *expect_stack_click,
@@ -159,7 +159,7 @@ fn input_state_release_outside_does_not_click() {
                 .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .clicked();
+                .left.clicked();
         });
     });
     assert!(
@@ -183,7 +183,7 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                         .id(WidgetId::from_hash("inner"))
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .show(ui)
-                        .clicked();
+                        .left.clicked();
                 });
         });
     };
@@ -226,7 +226,7 @@ fn zoom_panel_routes_clicks_by_world_rect() {
                             .id(WidgetId::from_hash("inner"))
                             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                             .show(ui)
-                            .clicked();
+                            .left.clicked();
                     });
             });
         };
@@ -251,9 +251,9 @@ fn secondary_click_press_release_emits_secondary_clicked() {
                 .label("rc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *sink |= r.state().right.clicked();
+            *sink |= r.right.clicked();
             // Left-click must NOT flip secondary_clicked.
-            assert!(!(r.clicked() && r.state().right.clicked()));
+            assert!(!(r.left.clicked() && r.right.clicked()));
         });
     };
     let mut sink = false;
@@ -284,7 +284,7 @@ fn two_left_clicks_within_window_emit_double_clicked() {
                 .label("dc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *single |= r.clicked();
+            *single |= r.left.clicked();
             *double |= r.double_clicked();
         });
     };
@@ -402,8 +402,8 @@ fn left_and_right_click_are_independent() {
                 .label("x")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *lc |= r.clicked();
-            *rc |= r.state().right.clicked();
+            *lc |= r.left.clicked();
+            *rc |= r.right.clicked();
         });
     };
     let mut a = false;

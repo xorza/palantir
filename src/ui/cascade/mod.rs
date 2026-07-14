@@ -341,7 +341,7 @@ impl Cascades {
     /// differ only in the per-entry gate column they consult.
     fn hit_first(&self, pos: Vec2, gate: impl Fn(usize) -> bool) -> Option<WidgetId> {
         let rects = self.entries.rect();
-        let ids = self.entries.id;
+        let ids = self.entries.widget_id();
         for i in (0..rects.len()).rev() {
             if gate(i) && rects[i].contains(pos) {
                 return Some(ids[i]);
@@ -372,7 +372,7 @@ impl Cascades {
     ) -> HitTargets {
         let rects = self.entries.rect();
         let senses = self.entries.sense();
-        let ids = self.entries.id;
+        let ids = self.entries.widget_id();
         let mut hover = None;
         let mut scroll = None;
         let mut pinch = None;
