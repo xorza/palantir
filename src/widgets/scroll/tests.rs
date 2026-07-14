@@ -672,7 +672,7 @@ mod bars {
         let scroll_id = WidgetId::from_hash("scroll");
         let idx = ui.forest.trees[Layer::Main]
             .records
-            .id
+            .widget_id()
             .iter()
             .position(|w| *w == scroll_id)
             .expect("scroll widget recorded");
@@ -702,7 +702,7 @@ mod bars {
         let layout = &ui.layout[Layer::Main];
         let outer_id = WidgetId::from_hash(scroll_key);
         let scroll_id = outer_id.with("__viewport");
-        let widget_ids = tree.records.id;
+        let widget_ids = tree.records.widget_id();
         let outer_idx = widget_ids
             .iter()
             .position(|w| *w == outer_id)

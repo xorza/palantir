@@ -35,7 +35,8 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .left.clicked();
+                .left
+                .clicked();
         });
     });
     assert!(got_click, "press+release inside button rect should click");
@@ -48,7 +49,8 @@ fn input_state_press_release_emits_click() {
                 .label("hi")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .left.clicked();
+                .left
+                .clicked();
         });
     });
     assert!(!still_clicking, "click is one-shot");
@@ -116,7 +118,8 @@ fn stack_sense_routing() {
                         .id(WidgetId::from_hash("inside"))
                         .size((Sizing::Fixed(40.0), Sizing::Fixed(40.0)))
                         .show(ui)
-                        .left.clicked();
+                        .left
+                        .clicked();
                 });
             stack_clicked |= r.left.clicked();
             stack_hovered |= r.hovered;
@@ -159,7 +162,8 @@ fn input_state_release_outside_does_not_click() {
                 .id(WidgetId::from_hash("target"))
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui)
-                .left.clicked();
+                .left
+                .clicked();
         });
     });
     assert!(
@@ -183,7 +187,8 @@ fn click_on_overflow_outside_clipped_parent_is_suppressed() {
                         .id(WidgetId::from_hash("inner"))
                         .size((Sizing::Fixed(200.0), Sizing::Fixed(200.0)))
                         .show(ui)
-                        .left.clicked();
+                        .left
+                        .clicked();
                 });
         });
     };
@@ -226,7 +231,8 @@ fn zoom_panel_routes_clicks_by_world_rect() {
                             .id(WidgetId::from_hash("inner"))
                             .size((Sizing::Fixed(50.0), Sizing::Fixed(50.0)))
                             .show(ui)
-                            .left.clicked();
+                            .left
+                            .clicked();
                     });
             });
         };

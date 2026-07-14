@@ -30,7 +30,7 @@ pub(crate) struct ContextMenuState {
 /// caller threading a flag.
 ///
 /// Typical usage chains [`Self::attach`] off a trigger's `Response`,
-/// which auto-opens at the pointer on `secondary_clicked`:
+/// which auto-opens at the pointer on a right-click (`right.clicked()`):
 ///
 /// ```ignore
 /// let trigger = Button::new().label("…").show(ui);
@@ -77,7 +77,7 @@ impl ContextMenu {
 
     /// Derive `for_id` from a trigger widget's response snapshot, and
     /// auto-open at the current pointer position if the trigger
-    /// reported `secondary_clicked` this frame. Pass via
+    /// reported a right-click this frame. Pass via
     /// `trigger.snapshot()` to detach from the trigger's `&Ui`
     /// borrow before attaching the menu.
     pub fn attach(ui: &mut Ui, snapshot: &ResponseSnapshot) -> Self {
