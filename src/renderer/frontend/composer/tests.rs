@@ -1213,9 +1213,7 @@ fn compose_polyline_emits_segments_and_join_chrome() {
 /// bends), keep miter chrome on gentle ones — the SVG convention.
 #[test]
 fn compose_polyline_miter_downgrades_to_bevel_when_sharp() {
-    use crate::renderer::render_buffer::curve::{
-        CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-    };
+    use crate::renderer::render_buffer::curve::{CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER};
     let emit = |pts: [Vec2; 3]| {
         run(
             |b, arena| {
@@ -1892,10 +1890,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
         &params(1.0, UVec2::new(300, 300)),
     );
     assert_eq!(buf.curve_batches.len(), 1, "arcs batch with cubics");
-    assert_eq!(
-        buf.curve_batches[0].items.len as usize,
-        buf.curves.len()
-    );
+    assert_eq!(buf.curve_batches[0].items.len as usize, buf.curves.len());
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_ARC));
     assert!(buf.curves.iter().any(|c| c.kind == CURVE_KIND_CUBIC));
 }

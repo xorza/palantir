@@ -30,7 +30,6 @@ impl ImageTextures {
             self.bindings.remove(&id);
         });
     }
-
 }
 
 fn upload(

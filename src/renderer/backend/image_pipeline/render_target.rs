@@ -34,7 +34,9 @@ impl GpuViewTargets {
         sampler: &wgpu::Sampler,
     ) {
         for draw in frame_targets {
-            let target = self.ensure(ctx.device, draw.id, draw.used, owner, textures, layout, sampler);
+            let target = self.ensure(
+                ctx.device, draw.id, draw.used, owner, textures, layout, sampler,
+            );
             let mut paint = draw.paint.0.borrow_mut();
             if !target.initialized {
                 profiling::scope!("GpuView::init");
@@ -146,13 +148,7 @@ fn allocate(
         view_formats: &[],
     });
     let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-    let bind_group = texture_bind_group(
-        device,
-        layout,
-        sampler,
-        &view,
-        "aperture.gpu_view.tex.bg",
-    );
+    let bind_group = texture_bind_group(device, layout, sampler, &view, "aperture.gpu_view.tex.bg");
     AllocatedTarget { view, bind_group }
 }
 

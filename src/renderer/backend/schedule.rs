@@ -21,11 +21,7 @@ pub(crate) struct MaskPlan {
 }
 
 /// Build the schedule's mask spans and deduplicated mask-quad instances.
-pub(crate) fn build_mask_plan(
-    buffer: &RenderBuffer,
-    plan: &mut MaskPlan,
-    masks: &mut Vec<Quad>,
-) {
+pub(crate) fn build_mask_plan(buffer: &RenderBuffer, plan: &mut MaskPlan, masks: &mut Vec<Quad>) {
     plan.groups.clear();
     plan.batches.clear();
     masks.clear();
@@ -65,8 +61,7 @@ pub(crate) fn build_mask_plan(
     for batch in &buffer.text_batches {
         let group = batch.last_group as usize;
         assert!(
-            clips[batch.rounded_clips.range()]
-                == clips[buffer.groups[group].rounded_clips.range()],
+            clips[batch.rounded_clips.range()] == clips[buffer.groups[group].rounded_clips.range()],
             "text batch chain decorrelated from its last_group's chain"
         );
         plan.batches.push(plan.groups[group]);

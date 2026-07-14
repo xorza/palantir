@@ -70,13 +70,7 @@ fn lerp_at(stops: &[Stop], linear: &[Color], oklab: &[[f32; 3]], t: f32, interp:
     let upper_color = linear[upper];
     match interp {
         Interp::Linear => Color::lerp(lower, upper_color, amount),
-        Interp::Oklab => lerp_oklab(
-            lower,
-            upper_color,
-            oklab[upper - 1],
-            oklab[upper],
-            amount,
-        ),
+        Interp::Oklab => lerp_oklab(lower, upper_color, oklab[upper - 1], oklab[upper], amount),
     }
 }
 

@@ -17,8 +17,8 @@ use crate::renderer::backend::pipeline_utils::{
     ColorVariantSpec, StencilVariant, texture_sampler_bgl,
 };
 use crate::renderer::image_registry::ImageRegistry;
-use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::render_buffer::image::{ImageInstance, RenderTargetDraw};
+use crate::renderer::render_buffer::owner::RenderOwnerId;
 use crate::renderer::texture_id::TextureId;
 use std::time::Duration;
 

@@ -29,8 +29,8 @@ fn fresh_row() -> LutRowTexels {
 /// below the 0.4 threshold.
 #[test]
 fn linear_midpoint_black_to_white_is_half() {
-    let g = LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE)
-        .with_interp(Interp::Linear);
+    let g =
+        LinearGradient::two_stop(0.0, ColorU8::BLACK, ColorU8::WHITE).with_interp(Interp::Linear);
     let mut out = fresh_row();
     bake_stops(&g.stops, g.interp, &mut out);
     let mid = texel(&out, 127);
