@@ -114,8 +114,8 @@ fn frame_quiescent_predicate() {
     broken("capture.frame_click", &|s| {
         s.captures[PointerButton::Right.idx()].frame_click = Some(id)
     });
-    broken("capture.frame_double_click", &|s| {
-        s.captures[PointerButton::Middle.idx()].frame_double_click = Some(id)
+    broken("capture.frame_release", &|s| {
+        s.captures[PointerButton::Middle.idx()].frame_release = Some(id)
     });
 
     // `focused` is excluded: a focused widget on an otherwise idle frame
@@ -166,7 +166,7 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
     assert!(!r.left.clicked());
     assert!(!r.right.clicked());
     assert!(!r.focused);
-    assert_eq!(r.left.drag, None);
+    assert!(!r.left.drag.dragging());
     assert!(!r.double_clicked());
     assert_eq!(r.scroll.pixels, Vec2::ZERO);
     assert_eq!(r.scroll.lines, Vec2::ZERO);

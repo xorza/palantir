@@ -251,9 +251,9 @@ fn secondary_click_press_release_emits_secondary_clicked() {
                 .label("rc")
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
-            *sink |= r.secondary_clicked();
+            *sink |= r.state().right.clicked();
             // Left-click must NOT flip secondary_clicked.
-            assert!(!(r.clicked() && r.secondary_clicked()));
+            assert!(!(r.clicked() && r.state().right.clicked()));
         });
     };
     let mut sink = false;
@@ -403,7 +403,7 @@ fn left_and_right_click_are_independent() {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                 .show(ui);
             *lc |= r.clicked();
-            *rc |= r.secondary_clicked();
+            *rc |= r.state().right.clicked();
         });
     };
     let mut a = false;

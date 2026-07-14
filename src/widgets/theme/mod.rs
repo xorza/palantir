@@ -265,7 +265,11 @@ mod tests {
         let s = |hovered, pressed: bool, disabled| ResponseState {
             hovered,
             left: crate::input::response::ButtonState {
-                held: pressed,
+                phase: if pressed {
+                    crate::input::response::ButtonPhase::Held
+                } else {
+                    crate::input::response::ButtonPhase::Idle
+                },
                 ..Default::default()
             },
             disabled,
