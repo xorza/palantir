@@ -478,17 +478,14 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
-    //! Bench/test reach-in surface. Exposes `TextBackend` end-to-end so
-    //! `benches/text_atlas.rs` can drive prepare → flush → render
-    //! without going through `WindowRenderer`'s full record/measure/cascade/encode
-    //! pipeline.
+    //! Bench/test reach-in surface for driving prepare → flush → render
+    //! without `WindowRenderer`'s full record/measure/cascade/encode pipeline.
 
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::pipeline_utils::StencilVariant;
-    use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
     use crate::renderer::render_buffer::TextRun;
