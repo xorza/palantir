@@ -195,7 +195,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 40.0)));
     let r = resp(&mut ui, s, build_clickable, id());
     assert_eq!(r.left.drag.delta(), Some(Vec2::new(60.0, 0.0)));
-    assert!(!r.drag_started(), "re-entry resumes, not re-latches");
+    assert!(!r.left.drag.started(), "re-entry resumes, not re-latches");
 
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
     let r = resp(&mut ui, s, build_clickable, id());
@@ -213,14 +213,14 @@ fn drag_stopped_edge_fires_once_on_release() {
 
     // Mid-drag: no stop edge, drag observable.
     let r = resp(&mut ui, s, build_draggable, id());
-    assert!(r.middle.drag.dragging() && !r.drag_stopped());
+    assert!(r.middle.drag.dragging() && !r.middle.drag.stopped());
 
     // Release frame: the drag itself is gone, only the edge remains,
     // and it carries the button.
     ui.on_input(InputEvent::PointerReleased(PointerButton::Middle));
     let r = resp(&mut ui, s, build_draggable, id());
-    assert!(!r.dragged(), "release destroys the drag state");
-    assert!(r.drag_stopped() && r.middle.drag.stopped());
+    assert!(!r.middle.drag.dragging(), "release destroys the drag state");
+    assert!(r.middle.drag.stopped());
     assert!(!r.left.drag.stopped(), "edge is button-filtered",);
 
     // One-frame edge: gone the next frame.
@@ -242,7 +242,7 @@ fn sub_threshold_release_fires_click_not_drag_stopped() {
 
     let r = resp(&mut ui, s, build_clickable, id());
     assert!(r.left.clicked(), "sub-threshold press+release is a click");
-    assert!(!r.drag_stopped(), "no drag latched, no stop edge");
+    assert!(!r.left.drag.stopped(), "no drag latched, no stop edge");
 }
 
 #[test]
@@ -505,10 +505,10 @@ impl Card {
     // would otherwise overwrite the click with `false` and miss the
     // one-shot drag_started.
     fn fold(&mut self, r: &Response) {
-        if r.drag_started() {
+        if r.left.drag.started() {
             self.anchor = self.pos;
         }
-        if let Some(delta) = r.drag_delta() {
+        if let Some(delta) = r.left.drag.delta() {
             self.pos = self.anchor + delta;
         }
         self.clicked |= r.left.clicked();

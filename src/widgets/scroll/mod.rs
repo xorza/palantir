@@ -225,7 +225,7 @@ fn push_bar_nodes(
         ui.node(track_id, track, None, |_| {});
     }
 
-    let fill = if resp.drag_delta().is_some() || resp.pressed() {
+    let fill = if resp.left.drag.delta().is_some() || resp.pressed() {
         theme.thumb_active
     } else if resp.hovered {
         theme.thumb_hover
@@ -613,7 +613,7 @@ impl Scroll {
                     let max_off = (main_content - track_main).max(0.0);
                     (max_off / travel, max_off)
                 });
-                row.apply_thumb_drag(axis, resp.drag_started(), resp.drag_delta(), geom);
+                row.apply_thumb_drag(axis, resp.left.drag.started(), resp.left.drag.delta(), geom);
             }
             // 4) Click-on-track to page. Press above/below the thumb pages
             //    the offset by one viewport. The track's main-axis origin

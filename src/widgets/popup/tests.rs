@@ -513,7 +513,7 @@ fn outside_pointer_gestures_do_not_leak_to_main() {
         "pinch zoom under popup must not reach Main",
     );
     assert!(
-        !bg.dragged(),
+        !bg.middle.drag.dragging(),
         "middle-drag under popup must not latch on Main",
     );
 }
