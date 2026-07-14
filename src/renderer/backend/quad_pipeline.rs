@@ -2,8 +2,8 @@
 //! buffer. Consumes `&[Quad]` (defined frontend-side) and binds the
 //! shader at `quad.wgsl` next to this file.
 
-use crate::primitives::color::ColorF16;
 use crate::primitives::brush::Spread;
+use crate::primitives::color::ColorF16;
 use crate::primitives::fill_wire::FillKind;
 use crate::primitives::span::Span;
 use crate::primitives::{color::Color, corners::Corners, rect::Rect, size::Size};
@@ -384,7 +384,6 @@ impl QuadPipeline {
     pub(crate) fn draw_mask(&self, pass: &mut wgpu::RenderPass<'_>, mask_idx: u32) {
         pass.draw(0..4, mask_idx..mask_idx + 1);
     }
-
 }
 
 const QUAD_INSTANCE_ATTRS: [wgpu::VertexAttribute; 9] = wgpu::vertex_attr_array![

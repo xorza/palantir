@@ -42,12 +42,7 @@
 use crate::forest::shapes::record::ShapeStroke;
 use crate::primitives::brush::FillAxis;
 use crate::primitives::fill_wire::FillKind;
-use crate::primitives::{
-    color::ColorF16,
-    corners::Corners,
-    rect::Rect,
-    transform::TranslateScale,
-};
+use crate::primitives::{color::ColorF16, corners::Corners, rect::Rect, transform::TranslateScale};
 use crate::renderer::gpu_view::GpuPaintRef;
 use crate::renderer::texture_id::TextureId;
 use crate::text::TextCacheKey;
@@ -302,12 +297,7 @@ impl RenderCmdBuffer {
         write_pod(&mut self.data, payload);
     }
 
-    pub(crate) fn draw_gpu_view(
-        &mut self,
-        rect: Rect,
-        handle: TextureId,
-        paint: GpuPaintRef,
-    ) {
+    pub(crate) fn draw_gpu_view(&mut self, rect: Rect, handle: TextureId, paint: GpuPaintRef) {
         let paint_index = u32::try_from(self.gpu_view_paints.len())
             .expect("GpuView paint side channel exceeded u32::MAX entries");
         let payload = DrawImagePayload::gpu_view(rect, handle, paint_index);

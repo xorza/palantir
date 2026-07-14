@@ -348,7 +348,11 @@ fn text_layouts_full_showcase_drawtext_dump() {
     let mut entries: Vec<(f32, f32, u64)> = Vec::new();
     for command in cmds.iter() {
         if let Command::DrawText(payload) = command {
-            entries.push((payload.rect.min.x, payload.rect.min.y, payload.key.text_hash));
+            entries.push((
+                payload.rect.min.x,
+                payload.rect.min.y,
+                payload.key.text_hash,
+            ));
         }
     }
     for i in 0..entries.len() {

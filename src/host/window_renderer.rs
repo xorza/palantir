@@ -24,9 +24,7 @@ use std::time::Instant;
 
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
-use crate::renderer::backend::{
-    Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend,
-};
+use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
 use crate::renderer::frontend::Frontend;
 use crate::ui::Ui;
 use crate::ui::damage::FULL_REPAINT_THRESHOLD;
