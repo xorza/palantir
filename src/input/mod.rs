@@ -12,7 +12,9 @@ use crate::input::keyboard::{
 };
 use crate::input::pointer::{PointerButton, PointerEvent};
 use crate::input::policy::FocusPolicy;
-use crate::input::response::{DragState, InputDelta, ResponseState};
+use crate::input::response::{
+    ButtonPhase, ButtonState, Drag, InputDelta, ResponseState, ScrollDelta,
+};
 use crate::input::sense::{DOUBLE_CLICK_RADIUS, DOUBLE_CLICK_WINDOW, DRAG_THRESHOLD, Sense};
 use crate::input::subscriptions::{KeyboardSense, PointerSense, Subscriptions};
 use crate::primitives::transform::TranslateScale;
@@ -22,57 +24,105 @@ use glam::Vec2;
 use std::time::Duration;
 use strum::EnumCount as _;
 
-/// Per-button press/drag/click capture. One slot per [`PointerButton`].
-/// Cleared on release, on cascade-eviction of the captured widget, and
-/// on [`InputState::end_frame`] for the one-frame edges
-/// (`frame_drag_started`, `frame_click`, `frame_double_click`).
+/// Per-button capture. One slot per [`PointerButton`]; three
+/// all-or-nothing pieces instead of twelve loose fields, so the old
+/// by-convention invariants (a capture always has a press origin, a
+/// drag latch always has a capture, click and drag-stop never
+/// coexist, the run tracker never half-exists) are unrepresentable
+/// rather than maintained.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct Capture {
-    /// Widget the press latched onto, or `None` if the press missed.
-    pub(crate) active: Option<WidgetId>,
-    /// Pointer position at the moment of press. Subtracted from the
-    /// current pointer position for rect-independent drag deltas.
-    pub(crate) press_pos: Option<Vec2>,
-    /// Pointer has travelled at least [`DRAG_THRESHOLD`] from
-    /// `press_pos` since the press latched. Sticky for the press
-    /// lifetime; doubles as "suppress click on release."
-    pub(crate) drag_latched: bool,
-    /// One-frame edge: the `active` id on the move that flipped
-    /// `drag_latched` `false → true`. Cleared by `end_frame` / release
-    /// / eviction.
-    pub(crate) frame_drag_started: Option<WidgetId>,
-    /// One-frame edge: the widget whose latched drag ended on this
-    /// button's release. The release destroys the drag itself
-    /// (`clear_press`), so this is the only way a widget can observe
-    /// "my drag finished" — commit-on-release gestures key off it.
-    /// Cleared by `end_frame`, like `frame_click`.
-    pub(crate) frame_drag_stopped: Option<WidgetId>,
-    /// One-frame edge: widget that this button's press+release latched
-    /// onto when the release landed on the same id and no drag was
-    /// latched. Cleared by `end_frame`.
-    pub(crate) frame_click: Option<WidgetId>,
-    /// One-frame edge: widget on which two consecutive clicks landed
-    /// within [`DOUBLE_CLICK_WINDOW`]. Cleared by `end_frame`.
-    pub(crate) frame_double_click: Option<WidgetId>,
-    /// Frame time ([`crate::Ui`]'s clock) of the most recent click on
-    /// this button, used to detect a follow-up click within
-    /// [`DOUBLE_CLICK_WINDOW`]. Cleared once a double-click fires so a
-    /// third click within the same window doesn't fire a second one.
-    pub(crate) last_click_at: Option<Duration>,
-    /// Widget id of the most recent click on this button. A double-
-    /// click only fires when the follow-up click lands on the same id.
-    pub(crate) last_click_id: Option<WidgetId>,
-    /// Pointer position of the most recent click. A double-click only
-    /// fires when the follow-up lands within [`DOUBLE_CLICK_RADIUS`].
-    pub(crate) last_click_pos: Option<Vec2>,
+    /// The in-flight press, created on the press event and destroyed
+    /// by release / cascade-eviction. `Some` == "this button's
+    /// capture is latched".
+    pub(crate) press: Option<Press>,
+    /// One-frame edge: how a capture ended this frame. Cleared by
+    /// `end_frame`.
+    pub(crate) release: Option<Release>,
+    /// Multi-press run tracker. Persists *across* presses (that's the
+    /// chaining) — never cleared, only replaced by the next press.
+    pub(crate) run: Option<PressRun>,
 }
 
-impl Capture {
-    fn clear_press(&mut self) {
-        self.press_pos = None;
-        self.drag_latched = false;
-        self.frame_drag_started = None;
-    }
+/// One in-flight press: the capture target, the drag anchor, and this
+/// press's run position, bundled so none can exist without the others.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Press {
+    /// Widget the press latched onto.
+    pub(crate) target: WidgetId,
+    /// Pointer position at the press. Subtracted from the current
+    /// pointer position for rect-independent drag deltas.
+    pub(crate) origin: Vec2,
+    /// This press's position in its multi-press run (1 = single,
+    /// 2 = double-press, 3+ = triple…), stamped from [`PressRun::seq`]
+    /// at press time so the release can carry the click count without
+    /// depending on the run tracker's later state.
+    pub(crate) seq: u8,
+    /// One-frame edge: the press landed this frame (drives
+    /// `ButtonPhase::Down`). Lowered by `drain_per_frame_queues`.
+    pub(crate) fresh: bool,
+    /// Drag latch. Sticky non-`None` for the press lifetime; doubles
+    /// as "suppress click on release".
+    pub(crate) drag: PressDrag,
+}
+
+/// Drag latch of an in-flight [`Press`]: `None` until the pointer has
+/// travelled [`DRAG_THRESHOLD`] from `origin`, `Started` on exactly
+/// the threshold-crossing frame (the drag-start edge),
+/// `Active` after — `drain_per_frame_queues` lowers the edge.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) enum PressDrag {
+    #[default]
+    None,
+    Started,
+    Active,
+}
+
+/// One-frame edge: how this button's capture ended this frame. One
+/// value instead of three parallel edge fields — a click and a
+/// drag-stop are mutually exclusive by construction, and either can
+/// only target the widget that was released.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Release {
+    /// The widget whose capture ended.
+    pub(crate) target: WidgetId,
+    pub(crate) kind: ReleaseKind,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ReleaseKind {
+    /// The release landed back on the captured widget with no drag
+    /// latched — a click. `count` is the press run's number
+    /// (2 = double-click, 3 = triple…), stamped from [`Press::seq`].
+    Click { count: u8 },
+    /// A latched drag ended — the commit edge for drag gestures.
+    DragStopped,
+    /// Released off the widget with no drag latched — the capture
+    /// just dissolves (drives the click-less `ButtonPhase::Up`).
+    Miss,
+}
+
+/// Multi-press run state: where/when/on-what the last press landed and
+/// its position in the run. The next press chains (`seq + 1`) when it
+/// lands on the same `target` within [`DOUBLE_CLICK_WINDOW`] of `at`
+/// and [`DOUBLE_CLICK_RADIUS`] of `pos`; any break restarts at 1.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct PressRun {
+    pub(crate) at: Duration,
+    pub(crate) target: WidgetId,
+    pub(crate) pos: Vec2,
+    pub(crate) seq: u8,
+}
+
+/// A widget's live drag plus the button driving it —
+/// [`InputState::active_drag`]'s named result. `response_for` turns it
+/// into [`Drag::Started`] / [`Drag::Active`] on the owning button's
+/// slot.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct ActiveDrag {
+    pub(crate) button: PointerButton,
+    pub(crate) delta: Vec2,
+    pub(crate) started: bool,
 }
 
 /// Aperture-native input event. Independent of any windowing toolkit.
@@ -482,13 +532,11 @@ impl InputState {
                 // menu — consistent with click-suppression semantics.
                 for btn in PointerButton::all() {
                     let cap = self.capture_mut(btn);
-                    if !cap.drag_latched
-                        && cap.active.is_some()
-                        && let Some(press) = cap.press_pos
-                        && (p - press).length() >= DRAG_THRESHOLD
+                    if let Some(press) = &mut cap.press
+                        && press.drag == PressDrag::None
+                        && (p - press.origin).length() >= DRAG_THRESHOLD
                     {
-                        cap.drag_latched = true;
-                        cap.frame_drag_started = cap.active;
+                        press.drag = PressDrag::Started;
                         self.frame_had_action = true;
                     }
                 }
@@ -500,14 +548,14 @@ impl InputState {
                 self.hovered != prev_hover
                     || self.scroll_target != prev_scroll
                     || self.pinch_target != prev_pinch
-                    || self.captures.iter().any(|c| c.active.is_some())
+                    || self.captures.iter().any(|c| c.press.is_some())
                     || move_subbed
             }
             InputEvent::PointerLeft => {
                 let observable = self.hovered.is_some()
                     || self.scroll_target.is_some()
                     || self.pinch_target.is_some()
-                    || self.captures.iter().any(|c| c.active.is_some());
+                    || self.captures.iter().any(|c| c.press.is_some());
                 self.pointer_pos = None;
                 self.refresh_pointer_targets(cascades);
                 // `Leave` is rare; emit whenever any pointer-class
@@ -531,9 +579,44 @@ impl InputState {
                 let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
                     PointerEvent::Down { pos, button: btn }
                 });
+                // Frame clock for multi-press timing — read before the
+                // `capture_mut` borrow.
+                let now = self.frame_time;
                 let cap = self.capture_mut(btn);
-                cap.active = hit;
-                cap.press_pos = hit.and(pointer_pos);
+                // Multi-press run: this press chains the sequence when
+                // it lands on the same target within the double-click
+                // window + radius; any break restarts at 1. `seq`
+                // saturates so a caffeinated 255-click run can't wrap
+                // back to "single". A missed press (`hit == None`)
+                // clears any stale capture and leaves the run alone.
+                cap.press = match (hit, pointer_pos) {
+                    (Some(target), Some(pos)) => {
+                        let seq = match &cap.run {
+                            Some(run)
+                                if run.target == target
+                                    && now.saturating_sub(run.at) <= DOUBLE_CLICK_WINDOW
+                                    && pos.distance(run.pos) <= DOUBLE_CLICK_RADIUS =>
+                            {
+                                run.seq.saturating_add(1)
+                            }
+                            _ => 1,
+                        };
+                        cap.run = Some(PressRun {
+                            at: now,
+                            target,
+                            pos,
+                            seq,
+                        });
+                        Some(Press {
+                            target,
+                            origin: pos,
+                            seq,
+                            fresh: true,
+                            drag: PressDrag::None,
+                        })
+                    }
+                    _ => None,
+                };
                 // Focus updates on a separate hit-test on the *left*
                 // button only — right/middle clicks shouldn't steal
                 // focus from a TextEdit. Focusability is orthogonal to
@@ -560,58 +643,38 @@ impl InputState {
             }
             InputEvent::PointerReleased(btn) => {
                 let pointer_pos = self.pointer_pos;
-                // Frame clock for double-click timing — read before the
-                // `capture_mut` borrow.
-                let now = self.frame_time;
                 let cap = self.capture_mut(btn);
-                let drag_suppressed_click = cap.drag_latched;
-                let captured = cap.active.take();
-                cap.clear_press();
-                // A latched drag ending is its own edge — the release just
-                // destroyed the drag state, so widgets can't infer it.
-                if drag_suppressed_click {
-                    cap.frame_drag_stopped = captured;
-                }
-                if let Some(a) = captured {
-                    let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
-                    if hit == Some(a) && !drag_suppressed_click {
-                        let cap = self.capture_mut(btn);
-                        cap.frame_click = Some(a);
-                        // Double-click: same widget, within
-                        // `DOUBLE_CLICK_WINDOW` on the frame clock *and*
-                        // `DOUBLE_CLICK_RADIUS` of the first press — a slow
-                        // drift between the two no longer false-fires.
-                        // Frame-time (not wall-clock `Instant`) keeps this
-                        // deterministic and testable. Resets the last-click
-                        // slot on a fire so a third click doesn't pair with
-                        // the second.
-                        let near = match (pointer_pos, cap.last_click_pos) {
-                            (Some(p), Some(q)) => p.distance(q) <= DOUBLE_CLICK_RADIUS,
-                            _ => false,
-                        };
-                        let is_double = cap.last_click_id == Some(a)
-                            && cap.last_click_at.is_some_and(|prev| {
-                                now.saturating_sub(prev) <= DOUBLE_CLICK_WINDOW
-                            })
-                            && near;
-                        if is_double {
-                            cap.frame_double_click = Some(a);
-                            cap.last_click_at = None;
-                            cap.last_click_id = None;
-                            cap.last_click_pos = None;
+                // A captureless release (the press missed every widget)
+                // has no press to take and touches nothing — an earlier
+                // same-batch gesture's release edge survives it.
+                let released = cap.press.take();
+                if let Some(press) = released {
+                    // A latched drag ending is its own edge (the release
+                    // just destroyed the drag, so widgets can't infer it);
+                    // otherwise a release back on the widget is a click
+                    // carrying its press's run number — double-click is
+                    // simply "the click whose press was #2 in the run".
+                    let kind = if press.drag != PressDrag::None {
+                        ReleaseKind::DragStopped
+                    } else {
+                        let hit = pointer_pos.and_then(|p| cascades.hit_test(p, Sense::clicks));
+                        if hit == Some(press.target) {
+                            ReleaseKind::Click { count: press.seq }
                         } else {
-                            cap.last_click_at = Some(now);
-                            cap.last_click_id = Some(a);
-                            cap.last_click_pos = pointer_pos;
+                            ReleaseKind::Miss
                         }
-                    }
+                    };
+                    self.capture_mut(btn).release = Some(Release {
+                        target: press.target,
+                        kind,
+                    });
                 }
                 let buttons_subbed = self.record_pointer_button(pointer_pos, |pos| {
                     PointerEvent::Up { pos, button: btn }
                 });
                 // Capture was live ⇒ owning widget needs a record;
                 // otherwise only `BUTTONS` subscribers wake.
-                captured.is_some() || buttons_subbed
+                released.is_some() || buttons_subbed
             }
             InputEvent::ScrollPixels(d) => {
                 self.frame_scroll_pixels += d;
@@ -698,10 +761,13 @@ impl InputState {
     /// Capacity-retained on the backing buffers.
     pub(crate) fn drain_per_frame_queues(&mut self) {
         for cap in &mut self.captures {
-            cap.frame_click = None;
-            cap.frame_double_click = None;
-            cap.frame_drag_started = None;
-            cap.frame_drag_stopped = None;
+            cap.release = None;
+            if let Some(press) = &mut cap.press {
+                press.fresh = false;
+                if press.drag == PressDrag::Started {
+                    press.drag = PressDrag::Active;
+                }
+            }
         }
         self.had_input_since_last_frame = false;
         self.repaint_requested_since_last_frame = false;
@@ -753,11 +819,10 @@ impl InputState {
         // snapshot, not per-frame. Held shift across multiple frames must
         // stay `true`.
         for cap in &mut self.captures {
-            if let Some(a) = cap.active
-                && !cascades.by_id.contains_key(&a)
+            if let Some(press) = &cap.press
+                && !cascades.by_id.contains_key(&press.target)
             {
-                cap.active = None;
-                cap.clear_press();
+                cap.press = None;
             }
         }
         // Focus eviction: same model as the per-button capture eviction
@@ -844,20 +909,21 @@ impl InputState {
     /// The active drag on `id`, or `None` outside a threshold-crossed
     /// drag. When multiple buttons are simultaneously latched on the
     /// same widget, the priority-first in [`PointerButton::all`]
-    /// wins. Rect-independent: the pointer can leave `id`'s rect
-    /// mid-drag and the delta keeps tracking.
-    pub(crate) fn active_drag(&self, id: WidgetId) -> Option<DragState> {
+    /// wins — that exclusivity is why [`ResponseState`] populates at
+    /// most one button's `drag` slot. Rect-independent: the pointer
+    /// can leave `id`'s rect mid-drag and the delta keeps tracking.
+    pub(crate) fn active_drag(&self, id: WidgetId) -> Option<ActiveDrag> {
         let pointer = self.pointer_pos?;
         for button in PointerButton::all() {
             let cap = self.capture(button);
-            if cap.active == Some(id)
-                && cap.drag_latched
-                && let Some(press) = cap.press_pos
+            if let Some(press) = &cap.press
+                && press.target == id
+                && press.drag != PressDrag::None
             {
-                return Some(DragState {
+                return Some(ActiveDrag {
                     button,
-                    delta: pointer - press,
-                    started: cap.frame_drag_started == Some(id),
+                    delta: pointer - press.origin,
+                    started: press.drag == PressDrag::Started,
                 });
             }
         }
@@ -879,12 +945,10 @@ impl InputState {
             && self.hovered.is_none()
             && self.scroll_target.is_none()
             && self.pinch_target.is_none()
-            && self.captures.iter().all(|c| {
-                c.active.is_none()
-                    && c.frame_click.is_none()
-                    && c.frame_double_click.is_none()
-                    && c.frame_drag_stopped.is_none()
-            });
+            && self
+                .captures
+                .iter()
+                .all(|c| c.press.is_none() && c.release.is_none());
     }
 
     pub(crate) fn response_for(&self, id: WidgetId, cascades: &Cascades) -> ResponseState {
@@ -919,54 +983,98 @@ impl InputState {
             };
         }
 
-        let left = self.capture(PointerButton::Left);
-        let right = self.capture(PointerButton::Right);
-
         let me_under_pointer = self.hovered == Some(id);
-        let me_left_captured = left.active == Some(id);
-        let nothing_left_captured = left.active.is_none();
-
-        let pressed = me_left_captured && me_under_pointer;
-        // Rect-independent: stays true from press to release even after
-        // the pointer drags off the widget, so drag-select keeps tracking.
-        let held = me_left_captured;
-        let hovered = me_under_pointer && (nothing_left_captured || me_left_captured);
-        let clicked = left.frame_click == Some(id);
-        let secondary_clicked = right.frame_click == Some(id);
+        let left_press = self.capture(PointerButton::Left).press;
+        // Hover is left-capture-gated: while some *other* widget holds
+        // the left press, nothing else reads hovered.
+        let hovered = me_under_pointer && left_press.is_none_or(|p| p.target == id);
         let focused = self.focused == Some(id);
-        let drag = self.active_drag(id);
-        let drag_stopped =
-            PointerButton::all().find(|b| self.capture(*b).frame_drag_stopped == Some(id));
-        let double_click =
-            PointerButton::all().find(|b| self.capture(*b).frame_double_click == Some(id));
+
+        // One uniform slice per button. Phase priority mirrors the
+        // capture: a live press is `Down` (its `fresh` edge) or
+        // `Held`; with no press, a release edge is `Up` — so a
+        // same-batch press+release collapses to `Up{click}` (the
+        // completed click outranks the lost press edge) and a
+        // same-batch re-press collapses to `Down` (the live capture
+        // outranks the stale release).
+        let button_state = |b: PointerButton| {
+            let cap = self.capture(b);
+            let phase = match &cap.press {
+                Some(press) if press.target == id => {
+                    if press.fresh {
+                        ButtonPhase::Down { press: press.seq }
+                    } else {
+                        ButtonPhase::Held
+                    }
+                }
+                _ => match &cap.release {
+                    Some(release) if release.target == id => ButtonPhase::Up {
+                        click: match release.kind {
+                            ReleaseKind::Click { count } => Some(count),
+                            ReleaseKind::DragStopped | ReleaseKind::Miss => None,
+                        },
+                    },
+                    _ => ButtonPhase::Idle,
+                },
+            };
+            ButtonState {
+                phase,
+                drag: match &cap.release {
+                    Some(release)
+                        if release.target == id && release.kind == ReleaseKind::DragStopped =>
+                    {
+                        Drag::Stopped
+                    }
+                    _ => Drag::None,
+                },
+            }
+        };
+        let mut left = button_state(PointerButton::Left);
+        let mut right = button_state(PointerButton::Right);
+        let mut middle = button_state(PointerButton::Middle);
+        // Drag exclusivity: only the priority-first latched button
+        // owns the widget's drag (see `active_drag`), so at most one
+        // slot goes live.
+        if let Some(active) = self.active_drag(id) {
+            let slot = match active.button {
+                PointerButton::Left => &mut left,
+                PointerButton::Right => &mut right,
+                PointerButton::Middle => &mut middle,
+            };
+            slot.drag = if active.started {
+                Drag::Started {
+                    delta: active.delta,
+                }
+            } else {
+                Drag::Active {
+                    delta: active.delta,
+                }
+            };
+        }
 
         // Scroll routes on `Sense::SCROLL`, pinch on `Sense::PINCH`.
         // Both gates fire even when the routed delta is `Vec2::ZERO`
         // / `1.0` — the caller checks against the identity value to
         // distinguish "not routed" from "routed but quiet".
-        let scroll_pixels = self.scroll_pixels_for(id);
-        let scroll_lines = self.scroll_lines_for(id);
-        let zoom_factor = self.zoom_delta_for(id);
+        let scroll = ScrollDelta {
+            pixels: self.scroll_pixels_for(id),
+            lines: self.scroll_lines_for(id),
+            zoom: self.zoom_delta_for(id),
+        };
         let pointer_local = self.pointer_pos.zip(rect).map(|(p, r)| p - r.min);
 
         ResponseState {
             rect,
             layout_rect,
             transform,
+            pointer_local,
             hovered,
-            pressed,
-            held,
-            clicked,
-            secondary_clicked,
             disabled,
             focused,
-            drag,
-            drag_stopped,
-            double_click,
-            scroll_pixels,
-            scroll_lines,
-            zoom_factor,
-            pointer_local,
+            left,
+            right,
+            middle,
+            scroll,
         }
     }
 }
