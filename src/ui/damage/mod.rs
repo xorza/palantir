@@ -136,11 +136,11 @@ pub(crate) struct PaintSnapArena {
     /// Reusable destination for compaction (and a swap target). Same
     /// invariants as `snaps` after a `swap`.
     scratch: Vec<Paint>,
-    /// Retained "which prev paints have been claimed?" bitmap for the
-    /// content-keyed slow path in [`Self::diff_changed_leg`]. Sized to
-    /// `prev_span.len` per call; capacity is reused so steady-state
+    /// Retained "which prev paints have been claimed?" byte flags for
+    /// the content-keyed slow path in [`Self::diff_changed_leg`]. Sized
+    /// to `prev_span.len` per call; capacity is reused so steady-state
     /// content reshuffles don't allocate.
-    prev_matched: Vec<bool>,
+    prev_matched: Vec<u8>,
     /// Pass-1 exact-match position map: for each curr paint, the prev
     /// row it paired with (`ROW_UNMATCHED` when pass 1 didn't pair
     /// it). Feeds the within-node order-inversion check — an exact
@@ -367,8 +367,8 @@ impl Damage {
 /// Result of [`PaintSnapArena::diff_changed_leg`].
 #[derive(Debug)]
 pub(crate) struct ChangedLeg {
-    /// Span covering this frame's paints — `prev_span` reused on the
-    /// fast path, a fresh tail span on the slow path.
+    /// Span covering this frame's paints — `prev_span` reused when the
+    /// row count is stable, a fresh tail span when it changes.
     pub(crate) span: Span,
     /// True when every `Paint` matched bit-identically (the fast path),
     /// so the per-shape diff emitted *no* damage. Reaching the
@@ -439,10 +439,11 @@ impl PaintSnapArena {
     /// `prev_matched` / `matched_pos` / `prev_keyed` / `curr_keyed`
     /// scratch keeps every pass alloc-free across frames; empty
     /// leftovers (every shape paired positionally) make both merges
-    /// trivially skip. The slow path spills `curr_paints` to the
-    /// tail of `snaps` and routes the prev span through
-    /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail
-    /// once orphans accumulate.
+    /// trivially skip. The slow path refreshes the existing span when
+    /// the row count is stable. Count changes spill `curr_paints` to
+    /// the tail of `snaps` and route the prev span through
+    /// [`Self::mark_orphaned`]; `maybe_compact` reclaims the tail once
+    /// orphans accumulate.
     pub(crate) fn diff_changed_leg(
         &mut self,
         out: &mut Vec<Rect>,
@@ -474,37 +475,40 @@ impl PaintSnapArena {
         let prev_slice = &snaps[prev_start..prev_start + prev_len];
 
         prev_matched.clear();
-        prev_matched.resize(prev_len, false);
+        prev_matched.resize(prev_len, 0);
         matched_pos.clear();
         matched_pos.resize(curr_paints.len(), ROW_UNMATCHED);
 
         // Pass 1 — exact (screen, hash) pairs. No damage. A positional
         // pre-pass claims same-index matches first: the dominant churn
         // shape (one shape changed, the rest in place — every wire of a
-        // dragged canvas node) pairs in O(n). Identical rows are
-        // interchangeable, so which duplicate pairs up doesn't matter.
-        for (j, (&c, &p)) in curr_paints.iter().zip(prev_slice).enumerate() {
-            if p == c {
-                prev_matched[j] = true;
-                matched_pos[j] = j as u32;
-            }
-        }
-        // Key the leftovers once for both merge passes below. Sorting
-        // by (key, row index) makes each merge claim ascending indices
-        // on both sides — the same pairing the old first-fit scan
-        // produced.
+        // dragged canvas node) pairs in O(n). Build the keyed leftovers
+        // here too, so the slow path traverses each side only once.
+        // Identical rows are interchangeable, so which duplicate pairs
+        // up doesn't matter.
         prev_keyed.clear();
         curr_keyed.clear();
-        for (i, p) in prev_slice.iter().enumerate() {
-            if !prev_matched[i] {
-                prev_keyed.push((PaintKey::of(p), i as u32));
+        let shared_len = prev_len.min(curr_paints.len());
+        for j in 0..shared_len {
+            let p = prev_slice[j];
+            let c = curr_paints[j];
+            if p == c {
+                prev_matched[j] = 1;
+                matched_pos[j] = j as u32;
+            } else {
+                prev_keyed.push((PaintKey::of(&p), j as u32));
+                curr_keyed.push((PaintKey::of(&c), j as u32));
             }
         }
-        for (j, c) in curr_paints.iter().enumerate() {
-            if matched_pos[j] == ROW_UNMATCHED {
-                curr_keyed.push((PaintKey::of(c), j as u32));
-            }
+        for (offset, p) in prev_slice[shared_len..].iter().enumerate() {
+            prev_keyed.push((PaintKey::of(p), (shared_len + offset) as u32));
         }
+        for (offset, c) in curr_paints[shared_len..].iter().enumerate() {
+            curr_keyed.push((PaintKey::of(c), (shared_len + offset) as u32));
+        }
+        // Sorting by (key, row index) makes each merge claim ascending
+        // indices on both sides — the same pairing the old first-fit
+        // scan produced.
         prev_keyed.sort_unstable();
         curr_keyed.sort_unstable();
 
@@ -521,7 +525,7 @@ impl PaintSnapArena {
                     // Key-equal ⇒ bit-equal (modulo -0.0), but NaN
                     // screens are never `==` — confirm before pairing.
                     if prev_slice[prow as usize] == curr_paints[crow as usize] {
-                        prev_matched[prow as usize] = true;
+                        prev_matched[prow as usize] = 1;
                         matched_pos[crow as usize] = prow;
                         ci += 1;
                     }
@@ -544,7 +548,7 @@ impl PaintSnapArena {
             }
             while pi < prev_keyed.len() {
                 let (pk, prow) = prev_keyed[pi];
-                if prev_matched[prow as usize] || pk.hash < ck.hash {
+                if prev_matched[prow as usize] != 0 || pk.hash < ck.hash {
                     pi += 1;
                 } else {
                     break;
@@ -554,7 +558,7 @@ impl PaintSnapArena {
                 Some(&(pk, prow)) if pk.hash == ck.hash => {
                     push_screen(out, prev_slice[prow as usize].screen);
                     push_screen(out, curr_paints[crow as usize].screen);
-                    prev_matched[prow as usize] = true;
+                    prev_matched[prow as usize] = 1;
                     pi += 1;
                 }
                 _ => push_screen(out, curr_paints[crow as usize].screen),
@@ -562,16 +566,22 @@ impl PaintSnapArena {
         }
         // Remaining prev paints — removals.
         for (i, &p) in prev_slice.iter().enumerate() {
-            if !prev_matched[i] {
+            if prev_matched[i] == 0 {
                 push_screen(out, p.screen);
             }
         }
 
-        let new_start = snaps.len() as u32;
-        snaps.extend_from_slice(curr_paints);
-        self.mark_orphaned(prev_len as u32);
+        let span = if prev_len == curr_paints.len() {
+            snaps[prev_span.range()].copy_from_slice(curr_paints);
+            prev_span
+        } else {
+            let new_start = snaps.len() as u32;
+            snaps.extend_from_slice(curr_paints);
+            self.mark_orphaned(prev_len as u32);
+            Span::new(new_start, curr_paints.len() as u32)
+        };
         ChangedLeg {
-            span: Span::new(new_start, curr_paints.len() as u32),
+            span,
             geometry_unchanged: false,
         }
     }
@@ -1124,10 +1134,6 @@ impl DamageEngine {
             input.prev_time,
             input.now,
         );
-        // Provably a no-op today (nothing on this path orphans arena
-        // entries) — runs anyway so the fast path stays self-healing
-        // if predamage ever starts mutating snapshots.
-        self.arena.maybe_compact(input.forest, &mut self.prev);
         self.finish_region(input.surface)
     }
 }
@@ -1178,7 +1184,9 @@ fn union_screens(paints: &[Paint]) -> Option<Rect> {
 /// they must agree or painting-but-untracked nodes reappear.
 #[inline]
 fn paints_on_surface(paints: &[Paint], surface: Rect) -> bool {
-    union_screens(paints).is_some_and(|u| u.intersects(surface))
+    paints
+        .iter()
+        .any(|paint| !paint.screen.is_paint_empty() && paint.screen.intersects(surface))
 }
 
 /// `matched_pos` sentinel for a curr row with no exact match in the
