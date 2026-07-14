@@ -27,7 +27,7 @@ use crate::window::WindowToken;
 /// Shared, app-global state cloned into every window's `Ui` + `Frontend`
 /// and (the render handles) into the one shared backend. Cloning is cheap —
 /// every field is an Rc/Arc-backed handle pointing at one set.
-#[derive(Clone)]
+#[derive(Clone, Debug, Default)]
 pub(crate) struct HostContext {
     pub(crate) shaper: TextShaper,
     pub(crate) frame_arena: FrameArena,
@@ -38,18 +38,6 @@ pub(crate) struct HostContext {
     /// seen by all. Private: the backend pulls only the render handles
     /// above, never this.
     host: Rc<RefCell<HostState>>,
-}
-
-impl Default for HostContext {
-    fn default() -> Self {
-        Self {
-            caches: RenderCaches::default(),
-            shaper: Default::default(),
-            frame_arena: Default::default(),
-            pass_stats: Default::default(),
-            host: Default::default(),
-        }
-    }
 }
 
 #[derive(Debug, Default)]
