@@ -313,7 +313,7 @@ impl MenuItem {
 
         let mut state = raw_state;
         if shortcut_fired {
-            state.left.clicked = true;
+            state.left.phase = crate::input::response::ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.

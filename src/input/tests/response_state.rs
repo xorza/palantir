@@ -163,8 +163,8 @@ fn quiescent_frame_keeps_geometry_defaults_interaction() {
 
     assert!(!r.hovered);
     assert!(!r.pressed());
-    assert!(!r.left.clicked);
-    assert!(!r.right.clicked);
+    assert!(!r.left.clicked());
+    assert!(!r.right.clicked());
     assert!(!r.focused);
     assert_eq!(r.left.drag, None);
     assert!(!r.double_clicked());

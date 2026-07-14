@@ -624,7 +624,7 @@ impl Scroll {
                 (Axis::X, resp_track_h, pan.x),
             ];
             for (axis, resp_track, panned) in panned_axes {
-                if !panned || !resp_track.left.clicked {
+                if !panned || !resp_track.left.clicked() {
                     continue;
                 }
                 let (Some(ptr), Some(origin)) = (pointer, widget_origin) else {

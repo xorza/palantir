@@ -460,8 +460,8 @@ fn press_started_counts_multi_press_runs() {
                     .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                     .show(ui);
                 let r = ui.response_for(id);
-                seen.0 |= r.left.press_count > 0;
-                seen.1 = seen.1.max(r.left.press_count);
+                seen.0 |= r.left.press_count() > 0;
+                seen.1 = seen.1.max(r.left.press_count());
             });
         });
         seen
