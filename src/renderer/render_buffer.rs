@@ -12,10 +12,10 @@ use soa_rs::{Soa, Soars};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-/// Pure output of `compose`: physical-px instances grouped by scissor region,
-/// ready for any rasterizing backend (wgpu, software, headless test capture).
+/// Output of `compose`: physical-px instances grouped by scissor region plus
+/// the wgpu callback sidecar for composited `GpuView`s.
 ///
-/// Contains no GPU handles, no compose-time scratch — just the result. Owns
+/// Contains no compose-time scratch. Owns
 /// its allocations across frames so steady-state composing is alloc-free for
 /// the output; reuse a single `RenderBuffer` and call
 /// `compose(.., &mut buffer)` each frame.
@@ -40,12 +40,12 @@ pub(crate) struct RenderBuffer {
     /// in `RenderBuffer.texts` by composer construction; batches anchor
     /// to groups via `TextBatch.last_group`.
     pub(crate) text_batches: Vec<TextBatch>,
-    /// One entry per *batch* of mesh draws. Currently one `MeshBatch`
+    /// One entry per *batch* of mesh draws. Currently one [`GroupBatch`]
     /// per group that emitted meshes (mesh batches don't span scissor
     /// boundaries since meshes have no per-run bounds). Schedule and
     /// backend treat meshes structurally like text — drained via the
     /// same cursor-walking pattern as `text_batches`.
-    pub(crate) mesh_batches: Vec<MeshBatch>,
+    pub(crate) mesh_batches: Vec<GroupBatch>,
     /// Scene-wide image rows, SoA-stored; structurally mirrors
     /// [`Self::meshes`]. The backend binds a per-handle texture and
     /// issues one draw per row (no shared vertex/index buffers — every
@@ -64,12 +64,12 @@ pub(crate) struct RenderBuffer {
     /// any `Ui`-side registry.
     pub(crate) frame_targets: Vec<RenderTargetDraw>,
     /// One entry per *batch* of image draws (currently one
-    /// `ImageBatch` per group that emitted images). Schedule walks
+    /// [`GroupBatch`] per group that emitted images). Schedule walks
     /// these in lockstep with `groups` via a cursor — same pattern as
     /// `text_batches` / `mesh_batches`.
-    pub(crate) image_batches: Vec<ImageBatch>,
+    pub(crate) image_batches: Vec<GroupBatch>,
     /// Native GPU stroke instances + per-scissor-group batches. One
-    /// `CurveBatch` per group that emitted strokes; the schedule walks
+    /// [`GroupBatch`] per group that emitted strokes; the schedule walks
     /// them in lockstep with `mesh_batches` / `image_batches` via a
     /// cursor. Each instance is one [`CurveInstance`] basis kind —
     /// a `[t0, t1]` sub-range of a cubic/arc (adaptive count from
@@ -77,7 +77,7 @@ pub(crate) struct RenderBuffer {
     /// pipeline draws all instances in a batch with one non-indexed
     /// instanced draw.
     pub(crate) curves: Vec<CurveInstance>,
-    pub(crate) curve_batches: Vec<CurveBatch>,
+    pub(crate) curve_batches: Vec<GroupBatch>,
     /// Flat pool of rounded-clip mask geometry. `DrawGroup.rounded_clips`
     /// and `TextBatch.rounded_clips` are spans into it, each an
     /// outer→inner chain of the rounded masks active for that group /
@@ -113,16 +113,23 @@ pub(crate) struct RenderBuffer {
     /// `start_frame`. The shared backend's `ImagePipeline::paint_gpu_views`
     /// scopes `GpuView`-target eviction to it, so window A's submit can't
     /// free window B's targets.
-    pub(crate) owner: u64,
+    pub(crate) owner: RenderOwnerId,
 }
 
-impl Default for RenderBuffer {
-    fn default() -> Self {
-        // Global (not per-anything) so two windows' buffers can never
-        // collide, whatever host constructed them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub(crate) struct RenderOwnerId(u64);
+
+impl RenderOwnerId {
+    pub(crate) fn reserve() -> Self {
         static NEXT_OWNER: AtomicU64 = AtomicU64::new(1);
+        Self(NEXT_OWNER.fetch_add(1, Ordering::Relaxed))
+    }
+}
+
+impl RenderBuffer {
+    pub(crate) fn new(owner: RenderOwnerId) -> Self {
         Self {
-            owner: NEXT_OWNER.fetch_add(1, Ordering::Relaxed),
+            owner,
             quads: Vec::new(),
             texts: Vec::new(),
             meshes: Soa::default(),
@@ -142,9 +149,7 @@ impl Default for RenderBuffer {
             time: Duration::ZERO,
         }
     }
-}
 
-impl RenderBuffer {
     /// Reset every per-frame column (capacity retained) and stamp the
     /// frame's viewport + scale from `display`. Called by
     /// `Composer::compose` at frame start — the reset lives here,
@@ -234,27 +239,21 @@ pub(crate) struct TextBatch {
     pub(crate) rounded_clips: Span,
 }
 
-/// A batch of mesh draws emitted together. `meshes` is a contiguous
-/// row range into [`RenderBuffer::meshes`]; `last_group`
-/// is the group whose iteration drains this batch in the schedule —
-/// mirrors `TextBatch.last_group`. Today's structural Phase 2 produces
-/// one batch per group with meshes, so schedule iterates them via a
-/// cursor in lockstep with the group loop.
+/// A contiguous non-text draw range anchored to the group that drains it.
+/// Mesh, image, and curve batches share this exact scheduling contract; the
+/// owning `RenderBuffer` column determines what [`Self::items`] indexes.
 #[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct MeshBatch {
-    pub(crate) meshes: Span,
+pub(crate) struct GroupBatch {
+    pub(crate) items: Span,
     pub(crate) last_group: u32,
 }
 
-/// A batch of image draws emitted together. `images` is a contiguous
-/// row range into [`RenderBuffer::images`];
-/// `last_group` is the group whose iteration drains this batch in the
-/// schedule — mirrors `MeshBatch`. Phase 5 emits one batch per group
-/// with images; later slices can coalesce by texture handle.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct ImageBatch {
-    pub(crate) images: Span,
-    pub(crate) last_group: u32,
+/// Above-text replay tiers in the backend's fixed intra-group order.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum PaintTier {
+    Mesh,
+    Image,
+    Curve,
 }
 
 /// Physical-px rounded-clip geometry for stencil masking. `mask_rect`
@@ -412,18 +411,6 @@ impl std::hash::Hash for TextRun {
     }
 }
 
-/// A batch of stroke instances emitted together. `instances` is a
-/// contiguous range into [`RenderBuffer::curves`]; `last_group` is the
-/// group whose iteration drains this batch in the schedule — mirrors
-/// `MeshBatch.last_group` / `ImageBatch.last_group`. One batch per
-/// scissor group with curves (no cross-group spanning — curves must
-/// clip to the active scissor same as meshes).
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(crate) struct CurveBatch {
-    pub(crate) instances: Span,
-    pub(crate) last_group: u32,
-}
-
 /// Chord-subdivisions per curve sub-instance. The shader expands one
 /// instance into this many quads (= 2× this many triangles = 6× this
 /// many indices). Has to stay in lockstep with the constant of the
@@ -542,4 +529,19 @@ pub(crate) struct CurveInstance {
 #[inline]
 pub(crate) fn cap_lanes(start: u32, end: u32) -> u32 {
     start | (end << 8)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{RenderBuffer, RenderOwnerId};
+
+    #[test]
+    fn render_owner_is_explicit_and_unique() {
+        let first = RenderOwnerId::reserve();
+        let second = RenderOwnerId::reserve();
+        assert_ne!(first, second);
+
+        let buffer = RenderBuffer::new(first);
+        assert_eq!(buffer.owner, first);
+    }
 }

@@ -79,7 +79,7 @@ impl FillKind {
     /// 1.0), so the shader returns the premultiplied fill directly and
     /// skips the SDF + composite path, bitwise-identically. Kept in
     /// lockstep with `FILL_FLAG_FAST` in `quad.wgsl`.
-    const FAST_BIT: u32 = 1 << 16;
+    pub(crate) const FAST_BIT: u32 = 1 << 16;
 
     /// Bit 17: windowed rect — the fill coverage is inverted, painting
     /// the region *outside* the rounded boundary (the corner wedges out
@@ -92,7 +92,7 @@ impl FillKind {
     /// compare `fill_kind == FillKind::SOLID` *exactly*, so this bit
     /// disqualifies windowed quads from being treated as opaque covers
     /// — their interior is a hole.
-    const WINDOW_BIT: u32 = 1 << 17;
+    pub(crate) const WINDOW_BIT: u32 = 1 << 17;
 
     /// Tag this kind with the fragment fast-path bit (see [`Self::FAST_BIT`]).
     #[inline]
