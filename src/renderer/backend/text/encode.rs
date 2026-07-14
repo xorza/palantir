@@ -94,7 +94,13 @@ pub(crate) struct EncodedEntry {
     pub(crate) eviction_at: u64,
 }
 
-/// Flat-arena cache: one contiguous `Vec<GlyphInstance>` holds every
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct EncodedGlyph {
+    pub(crate) instance: GlyphInstance,
+    pub(crate) atlas_slot: u32,
+}
+
+/// Flat-arena cache: one contiguous `Vec<EncodedGlyph>` holds every
 /// run's origin-relative glyphs, with each `EncodedEntry` pointing at
 /// its span.
 /// After warmup this is alloc-free — the arena/map/scratch all retain
@@ -105,8 +111,8 @@ pub(crate) struct EncodedCache {
     /// Append-only arena. Replaced runs leave dead spans behind;
     /// `sweep` compacts when dead bytes exceed live ones (see
     /// `COMPACT_RATIO`).
-    pub(crate) arena: Vec<GlyphInstance>,
-    /// Per-glyph atlas slab index, parallel to `arena` (same spans).
+    pub(crate) arena: Vec<EncodedGlyph>,
+    /// A cache hit emits each row's instance without walking cosmic,
     /// A cache hit emits `arena` straight out without walking cosmic,
     /// so the atlas slots backing the run would never get their LRU
     /// `last_use` bumped — `evict_one` could then reclaim a slot still
@@ -115,11 +121,9 @@ pub(crate) struct EncodedCache {
     /// indexed write, no map probe per glyph. The entry's `eviction_at`
     /// latch is what keeps these indices honest: only `evict_one` ever
     /// reassigns an allocated slot's index, and it bumps the count.
-    pub(crate) slots: Vec<u32>,
     /// Retained scratch for the compact pass — kept on the struct so
     /// compaction is a `swap`, not an alloc.
-    pub(crate) scratch: Vec<GlyphInstance>,
-    pub(crate) scratch_slots: Vec<u32>,
+    pub(crate) scratch: Vec<EncodedGlyph>,
 }
 
 /// Compact when `arena.len() > live_glyphs * (1 + COMPACT_RATIO)`,
@@ -141,16 +145,13 @@ impl EncodedCache {
             return;
         }
         self.scratch.clear();
-        self.scratch_slots.clear();
         for entry in self.map.values_mut() {
             let new_start = self.scratch.len() as u32;
             let r = entry.span.range();
-            self.scratch.extend_from_slice(&self.arena[r.clone()]);
-            self.scratch_slots.extend_from_slice(&self.slots[r]);
+            self.scratch.extend_from_slice(&self.arena[r]);
             entry.span = Span::new(new_start, entry.span.len);
         }
         std::mem::swap(&mut self.arena, &mut self.scratch);
-        std::mem::swap(&mut self.slots, &mut self.scratch_slots);
     }
 }
 
@@ -200,14 +201,15 @@ pub(crate) fn try_emit_cached(
     // drawing this frame. The eviction_at check above guarantees no
     // recorded index was evicted since insert, so every slot still
     // holds the same glyph.
-    for (g, &idx) in glyphs.iter().zip(&cache.slots[span.range()]) {
+    for glyph in glyphs {
+        let g = glyph.instance;
         out.push(GlyphInstance {
             pos: [g.pos[0] + run_key.origin_x, g.pos[1] + run_key.origin_y],
             dim: g.dim,
             uv_and_kind: g.uv_and_kind,
             color: g.color,
         });
-        atlas.slots[idx as usize].last_use = current_frame;
+        atlas.slots[glyph.atlas_slot as usize].last_use = current_frame;
     }
     true
 }
@@ -314,13 +316,15 @@ pub(crate) fn encode_batch<'a>(
                     uv_and_kind,
                     color,
                 });
-                ctx.cache.arena.push(GlyphInstance {
-                    pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
-                    dim,
-                    uv_and_kind,
-                    color,
+                ctx.cache.arena.push(EncodedGlyph {
+                    instance: GlyphInstance {
+                        pos: [abs_x - run_key.origin_x, abs_y - run_key.origin_y],
+                        dim,
+                        uv_and_kind,
+                        color,
+                    },
+                    atlas_slot: idx,
                 });
-                ctx.cache.slots.push(idx);
             }
         }
 
@@ -343,7 +347,6 @@ pub(crate) fn encode_batch<'a>(
             // Roll back the partial entry — truncated by the cull, or
             // its uv coords are stale after an eviction.
             ctx.cache.arena.truncate(pending_start as usize);
-            ctx.cache.slots.truncate(pending_start as usize);
         }
     }
 }

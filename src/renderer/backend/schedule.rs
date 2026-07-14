@@ -9,7 +9,7 @@
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::quad_pipeline::MaskIndices;
-use crate::renderer::render_buffer::{CurveBatch, ImageBatch, MeshBatch, RenderBuffer, TextBatch};
+use crate::renderer::render_buffer::{GroupBatch, RenderBuffer, TextBatch};
 
 /// One conceptual step of the per-frame render schedule. Variants
 /// describe *what* to do, not *how*; the consumer holds context
@@ -329,17 +329,7 @@ impl PerGroupBatch for TextBatch {
         self.last_group as usize
     }
 }
-impl PerGroupBatch for MeshBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-impl PerGroupBatch for ImageBatch {
-    fn last_group(&self) -> usize {
-        self.last_group as usize
-    }
-}
-impl PerGroupBatch for CurveBatch {
+impl PerGroupBatch for GroupBatch {
     fn last_group(&self) -> usize {
         self.last_group as usize
     }

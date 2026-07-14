@@ -15,7 +15,7 @@ use crate::primitives::{
     color::Color, rect::Rect, size::Size, stroke::Stroke, transform::TranslateScale,
 };
 use crate::renderer::frontend::cmd_buffer::{
-    CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
+    CmdKind, Command, PushClipPayload, RenderCmdBuffer,
 };
 use crate::text::text_in_rect;
 use crate::widgets::{frame::Frame, panel::Panel};
@@ -29,23 +29,39 @@ struct ClipPairs {
 
 fn count_clip_pairs(cmds: &RenderCmdBuffer) -> ClipPairs {
     let pushes = cmds
-        .kinds
         .iter()
-        .filter(|k| **k == CmdKind::PushClip)
+        .filter(|command| matches!(command, Command::PushClip(_)))
         .count();
     let pops = cmds
-        .kinds
         .iter()
-        .filter(|k| **k == CmdKind::PopClip)
+        .filter(|command| matches!(command, Command::PopClip))
         .count();
     ClipPairs { pushes, pops }
 }
 
 fn count_draw_rects(cmds: &RenderCmdBuffer) -> usize {
-    cmds.kinds
-        .iter()
-        .filter(|k| matches!(k, CmdKind::DrawRect))
+    cmds.iter()
+        .filter(|command| matches!(command, Command::DrawRect(_)))
         .count()
+}
+
+fn command_matches_kind(command: &Command<'_>, kind: CmdKind) -> bool {
+    matches!(
+        (command, kind),
+        (Command::PushClip(_), CmdKind::PushClip)
+            | (Command::PopClip, CmdKind::PopClip)
+            | (Command::PushTransform(_), CmdKind::PushTransform)
+            | (Command::PopTransform, CmdKind::PopTransform)
+            | (Command::DrawRect(_), CmdKind::DrawRect)
+            | (Command::DrawShadow(_), CmdKind::DrawShadow)
+            | (Command::DrawText(_), CmdKind::DrawText)
+            | (Command::DrawMesh(_), CmdKind::DrawMesh)
+            | (Command::DrawPolyline(_), CmdKind::DrawPolyline)
+            | (Command::DrawImage { .. }, CmdKind::DrawImage)
+            | (Command::DrawCurve(_), CmdKind::DrawCurve)
+            | (Command::DrawArc(_), CmdKind::DrawArc)
+            | (Command::DrawTriangle(_), CmdKind::DrawTriangle)
+    )
 }
 
 /// Baseline encoder counts: empty tree emits no draws; a Frame with a
@@ -179,11 +195,11 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     });
     let cmds = ui.encode_cmds();
     let rect_kinds: Vec<_> = cmds
-        .kinds
         .iter()
-        .enumerate()
-        .filter(|(_, k)| matches!(k, CmdKind::DrawRect))
-        .map(|(idx, _)| cmds.read::<DrawRectPayload>(cmds.starts[idx]).fill_kind)
+        .filter_map(|command| match command {
+            Command::DrawRect(payload) => Some(payload.fill_kind),
+            _ => None,
+        })
         .collect();
     assert!(
         rect_kinds.contains(&FillKind::SOLID),
@@ -197,15 +213,13 @@ fn manually_pushed_shapes_emit_expected_cmds() {
     // emits a DrawCurve — not a DrawPolyline — and never touches the
     // polyline points arena.
     let curves = cmds
-        .kinds
         .iter()
-        .filter(|k| matches!(k, CmdKind::DrawCurve))
+        .filter(|command| matches!(command, Command::DrawCurve(_)))
         .count();
     assert_eq!(curves, 1, "expected exactly one DrawCurve cmd");
     assert_eq!(
-        cmds.kinds
-            .iter()
-            .filter(|k| matches!(k, CmdKind::DrawPolyline))
+        cmds.iter()
+            .filter(|command| matches!(command, Command::DrawPolyline(_)))
             .count(),
         0,
         "lines no longer lower to polylines"
@@ -251,11 +265,11 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     });
     let cmds = ui.encode_cmds();
     let shadow_payloads: Vec<DrawShadowPayload> = cmds
-        .kinds
         .iter()
-        .zip(cmds.starts.iter())
-        .filter(|(k, _)| matches!(k, CmdKind::DrawShadow))
-        .map(|(_, s)| cmds.read::<DrawShadowPayload>(*s))
+        .filter_map(|command| match command {
+            Command::DrawShadow(payload) => Some(payload),
+            _ => None,
+        })
         .collect();
     assert_eq!(shadow_payloads.len(), 1, "exactly one shadow cmd");
     let p = shadow_payloads[0];
@@ -296,7 +310,8 @@ fn text_shape_emits_draw_text() {
     });
     let cmds = ui.encode_cmds();
     assert!(
-        cmds.kinds.contains(&CmdKind::DrawText),
+        cmds.iter()
+            .any(|command| matches!(command, Command::DrawText(_))),
         "Text widget must emit a DrawText command"
     );
 }
@@ -351,20 +366,17 @@ fn clip_emits_balanced_push_pop() {
     assert_eq!(pops, 1);
 
     let push_idx = cmds
-        .kinds
         .iter()
-        .position(|k| *k == CmdKind::PushClip)
+        .position(|command| matches!(command, Command::PushClip(_)))
         .unwrap();
     let pop_idx = cmds
-        .kinds
         .iter()
-        .position(|k| *k == CmdKind::PopClip)
+        .position(|command| matches!(command, Command::PopClip))
         .unwrap();
     let draw_idxs: Vec<_> = cmds
-        .kinds
         .iter()
         .enumerate()
-        .filter_map(|(i, k)| matches!(k, CmdKind::DrawRect).then_some(i))
+        .filter_map(|(i, command)| matches!(command, Command::DrawRect(_)).then_some(i))
         .collect();
     assert!(!draw_idxs.is_empty());
     for &di in &draw_idxs {
@@ -408,34 +420,17 @@ fn clip_rounded_emits_push_clip_rounded_when_background_has_radius() {
     });
     let cmds = ui.encode_cmds();
 
-    let rounded_idx = cmds
-        .kinds
+    let rounded_clips: Vec<_> = cmds
         .iter()
-        .enumerate()
-        .find_map(|(idx, k)| {
-            if *k != CmdKind::PushClip {
-                return None;
-            }
-            let payload: PushClipPayload = cmds.read(cmds.starts[idx]);
-            (!payload.corners.approx_zero()).then_some(idx)
+        .filter_map(|command| match command {
+            Command::PushClip(payload) if !payload.corners.approx_zero() => Some(payload),
+            _ => None,
         })
-        .expect("rounded clip with rounded background emits PushClip with non-zero radius");
-    let rounded_count = cmds
-        .kinds
-        .iter()
-        .enumerate()
-        .filter(|(idx, k)| {
-            **k == CmdKind::PushClip && {
-                let p: PushClipPayload = cmds.read(cmds.starts[*idx]);
-                !p.corners.approx_zero()
-            }
-        })
-        .count();
-    assert_eq!(rounded_count, 1);
+        .collect();
+    assert_eq!(rounded_clips.len(), 1);
+    let payload = rounded_clips[0];
 
     let panel_rect = ui.layout[Layer::Main].rect[panel_node.unwrap().idx()];
-    let start = cmds.starts[rounded_idx];
-    let payload: PushClipPayload = cmds.read(start);
     // Stroke=2 is auto-folded into padding by `Tree::open_node`, so the
     // encoder's `rect.deflated_by(padding)` insets the mask by 2 on
     // every side. Radius reduces by 2 to stay concentric with the
@@ -463,11 +458,11 @@ fn clip_rounded_falls_back_to_scissor_without_background() {
     });
     let cmds = ui.encode_cmds();
     let push_clips: Vec<PushClipPayload> = cmds
-        .kinds
         .iter()
-        .enumerate()
-        .filter(|(_, k)| **k == CmdKind::PushClip)
-        .map(|(idx, _)| cmds.read::<PushClipPayload>(cmds.starts[idx]))
+        .filter_map(|command| match command {
+            Command::PushClip(payload) => Some(payload),
+            _ => None,
+        })
         .collect();
     assert_eq!(push_clips.len(), 1);
     assert!(
@@ -484,18 +479,14 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
     let mut clip: Option<Rect> = None;
     let mut clip_stack: Vec<Option<Rect>> = Vec::new();
     let mut out = Vec::new();
-    for i in 0..cmds.kinds.len() {
-        let kind = cmds.kinds[i];
-        let start = cmds.starts[i];
-        match kind {
-            CmdKind::PushTransform => {
-                let child: TranslateScale = cmds.read(start);
+    for command in cmds.iter() {
+        match command {
+            Command::PushTransform(child) => {
                 t_stack.push(t);
                 t = t.compose(child);
             }
-            CmdKind::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
-            CmdKind::PushClip => {
-                let p: PushClipPayload = cmds.read(start);
+            Command::PopTransform => t = t_stack.pop().expect("balanced PushTransform/Pop"),
+            Command::PushClip(p) => {
                 let screen = t.apply_rect(p.rect);
                 let intersected = match clip {
                     Some(c) => screen.intersect(c),
@@ -504,9 +495,8 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
                 clip_stack.push(clip);
                 clip = Some(intersected);
             }
-            CmdKind::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
-            CmdKind::DrawRect => {
-                let p: DrawRectPayload = cmds.read(start);
+            Command::PopClip => clip = clip_stack.pop().expect("balanced PushClip/Pop"),
+            Command::DrawRect(p) => {
                 let screen = t.apply_rect(p.rect);
                 let visible = match clip {
                     Some(c) => screen.intersect(c),
@@ -514,14 +504,14 @@ fn screen_rects_by_fill(cmds: &RenderCmdBuffer) -> Vec<(ColorF16, Rect)> {
                 };
                 out.push((p.fill, visible));
             }
-            CmdKind::DrawShadow
-            | CmdKind::DrawText
-            | CmdKind::DrawMesh
-            | CmdKind::DrawPolyline
-            | CmdKind::DrawImage
-            | CmdKind::DrawCurve
-            | CmdKind::DrawArc
-            | CmdKind::DrawTriangle => {}
+            Command::DrawShadow(_)
+            | Command::DrawText(_)
+            | Command::DrawMesh(_)
+            | Command::DrawPolyline(_)
+            | Command::DrawImage { .. }
+            | Command::DrawCurve(_)
+            | Command::DrawArc(_)
+            | Command::DrawTriangle(_) => {}
         }
     }
     assert!(t_stack.is_empty(), "transform stack unbalanced");
@@ -745,9 +735,10 @@ fn encoder_text_alignment_respects_leaf_padding() {
         });
     });
     let cmds = ui.encode_cmds();
-    let text_rect = (0..cmds.kinds.len())
-        .find_map(|i| match cmds.kinds[i] {
-            CmdKind::DrawText => Some(cmds.read::<DrawTextPayload>(cmds.starts[i]).rect),
+    let text_rect = cmds
+        .iter()
+        .find_map(|command| match command {
+            Command::DrawText(payload) => Some(payload.rect),
             _ => None,
         })
         .expect("button must emit one DrawText");
@@ -856,8 +847,14 @@ fn damage_filter_culls_subtree_outside_damage() {
             });
         });
         let cmds = ui.encode_cmds_filtered(Some(Rect::new(150.0, 150.0, 50.0, 50.0)));
-        let pushes = cmds.kinds.iter().filter(|k| *k == push_kind).count();
-        let pops = cmds.kinds.iter().filter(|k| *k == pop_kind).count();
+        let pushes = cmds
+            .iter()
+            .filter(|command| command_matches_kind(command, *push_kind))
+            .count();
+        let pops = cmds
+            .iter()
+            .filter(|command| command_matches_kind(command, *pop_kind))
+            .count();
         assert_eq!(pushes, 0, "case {label}: no push (cull)");
         assert_eq!(pops, 0, "case {label}: no pop");
         assert_eq!(count_draw_rects(&cmds), 0, "case {label}: no draws");
@@ -1106,7 +1103,6 @@ fn image_fit_modes_resolve_to_expected_rects_and_uv() {
 fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::renderer::frontend::cmd_buffer::DrawPolylinePayload;
     use crate::shape::{LineCap, LineJoin, PolylineColors, Shape};
     use crate::ui::frame::FrameStamp;
     use std::time::Duration;
@@ -1138,9 +1134,10 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
         });
     });
     let cmds = ui.encode_cmds();
-    let p = (0..cmds.kinds.len())
-        .find_map(|i| match cmds.kinds[i] {
-            CmdKind::DrawPolyline => Some(cmds.read::<DrawPolylinePayload>(cmds.starts[i])),
+    let p = cmds
+        .iter()
+        .find_map(|command| match command {
+            Command::DrawPolyline(payload) => Some(payload),
             _ => None,
         })
         .expect("spun polyline must emit a DrawPolyline");
@@ -1173,7 +1170,6 @@ fn spun_polyline_bbox_is_rotation_invariant_square_about_owner_centre() {
 fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
     use crate::display::Display;
     use crate::forest::tree::paint_anims::PaintAnim;
-    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
     use crate::shape::Shape;
     use crate::ui::frame::FrameStamp;
     use std::f32::consts::PI;
@@ -1199,9 +1195,10 @@ fn spun_arc_bbox_is_rotation_invariant_square_about_owner_centre() {
         });
     });
     let cmds = ui.encode_cmds();
-    let p = (0..cmds.kinds.len())
-        .find_map(|i| match cmds.kinds[i] {
-            CmdKind::DrawArc => Some(cmds.read::<DrawArcPayload>(cmds.starts[i])),
+    let p = cmds
+        .iter()
+        .find_map(|command| match command {
+            Command::DrawArc(payload) => Some(payload),
             _ => None,
         })
         .expect("spun arc must emit a DrawArc");

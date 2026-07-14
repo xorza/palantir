@@ -35,7 +35,7 @@ const _: () = {
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
-    instance_buffer: DynamicBuffer,
+    instance_buffer: DynamicBuffer<CurveInstance>,
     /// Curve shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -60,7 +60,7 @@ impl CurvePipeline {
         });
 
         let instance_buffer =
-            DynamicBuffer::vertex::<CurveInstance>(device, "aperture.curve.instances", 64);
+            DynamicBuffer::<CurveInstance>::vertex(device, "aperture.curve.instances", 64);
 
         Self {
             instance_buffer,

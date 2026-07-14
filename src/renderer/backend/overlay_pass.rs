@@ -13,6 +13,7 @@
 
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
+use crate::renderer::backend::viewport::ViewportPush;
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
@@ -25,7 +26,6 @@ use crate::{
         size::Size,
         spacing::Spacing,
     },
-    renderer::backend::ViewportPush,
 };
 use glam::Vec2;
 use tinyvec::ArrayVec;
@@ -66,7 +66,7 @@ pub(crate) struct DebugOverlay {
     /// it never touches the backbuffer and produces no ghosts. Only
     /// written when `DebugOverlayConfig::damage_rect` is on;
     /// [`DynamicBuffer`] grows it to fit the region's rect count.
-    overlay_buffer: DynamicBuffer,
+    overlay_buffer: DynamicBuffer<Quad>,
 }
 
 impl DebugOverlay {
@@ -79,7 +79,7 @@ impl DebugOverlay {
         });
         // `upload_overlays` grows it on demand when the damage region
         // carries more rects (8-quad start avoids tiny early regrows).
-        let overlay_buffer = DynamicBuffer::vertex::<Quad>(device, "aperture.quad.overlay", 8);
+        let overlay_buffer = DynamicBuffer::<Quad>::vertex(device, "aperture.quad.overlay", 8);
         Self {
             dim_buffer,
             overlay_buffer,
