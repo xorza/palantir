@@ -40,7 +40,7 @@ For changes that touch feature-gated code, use the full feature matrix:
 
     scripts/test-all.sh
 
-See [CLAUDE.md](CLAUDE.md) for the project's coding conventions.
+See [AGENTS.md](AGENTS.md) for the project's coding conventions.
 
 ## Scope
 

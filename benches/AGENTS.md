@@ -87,7 +87,7 @@ below). Two pin a floor and fail; one only measures.
 - **`alloc_free`** — aperture CPU pipeline only (record → measure →
   arrange → cascade → encode), no GPU. **Strict zero** — any non-zero
   block delta over 256 steady-state frames fails. This pins the
-  load-bearing CLAUDE.md invariant.
+  load-bearing AGENTS.md invariant.
 - **`alloc_free_gpu`** — same fixture, plus the wgpu submission path
   via `WindowRenderer::frame_offscreen` against an offscreen target with a GPU
   poll between frames. Baselined: every wgpu submission fundamentally
@@ -203,7 +203,7 @@ inlining or specialization).
 
 - `format_inner` / `String::write_str` / `Vec::reserve` in steady-state
   → per-frame allocation, violates the project's alloc-free posture
-  (per `CLAUDE.md`). Inspect callers to find the source.
+  (per `AGENTS.md`). Inspect callers to find the source.
 - `HashMap::insert` / `HashMap::rehash` high self-time → a per-frame
   map rebuild that should reuse a retained scratch.
 - `core::mem::drop` / `__rust_dealloc` high self-time → drop cost on a

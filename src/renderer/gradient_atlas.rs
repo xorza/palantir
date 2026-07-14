@@ -11,7 +11,7 @@
 //! gets the stored linear value directly as f16-decoded floats.
 //! Premultiply happens in the shader on the sampled value — same
 //! convention as the rest of the pipeline (see "Colour pipeline" in
-//! `CLAUDE.md`).
+//! `AGENTS.md`).
 //!
 //! f16, not u8: a dark stop linearises to a tiny value (`#1a1a2e`'s red
 //! is linear ≈ 0.010 ≈ 3/255), so an 8-bit *linear* row crushes the

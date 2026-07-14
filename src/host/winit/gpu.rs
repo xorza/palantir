@@ -140,7 +140,7 @@ impl Gpu {
     fn build_window_surface(&self, surface: wgpu::Surface<'static>, size: UVec2) -> WindowSurface {
         let caps = surface.get_capabilities(&self.adapter);
         // Color pipeline assumes an sRGB swapchain target — see the
-        // colour section of CLAUDE.md. Non-sRGB would skip the GPU
+        // colour section of AGENTS.md. Non-sRGB would skip the GPU
         // linear→sRGB encode and silently darken every paint.
         let format = caps
             .formats

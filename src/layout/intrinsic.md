@@ -108,7 +108,7 @@ Cross-frame caching is **deferred**. Cosmic already caches text shapes
 across frames keyed on content hash, which covers the expensive part of
 leaf intrinsics for free. Container intrinsics are cheap arithmetic;
 re-running them per frame is fine until profiles say otherwise. When the
-persistent `Id → Any` state map lands (CLAUDE.md §Status), revisit
+persistent `Id → Any` state map lands (AGENTS.md §Status), revisit
 keying on `WidgetId` plus a content/topology hash, which is the model
 Yoga/Taffy use.
 
