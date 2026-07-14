@@ -75,7 +75,8 @@ pub fn build(ui: &mut Ui) {
                     .id_salt("open")
                     .label("Open dialog")
                     .show(ui)
-                    .left.clicked()
+                    .left
+                    .clicked()
                 {
                     ui.state_mut::<State>(state_id).modal_open = true;
                 }
@@ -110,7 +111,8 @@ pub fn build(ui: &mut Ui) {
                         .id_salt("cancel")
                         .label("Cancel")
                         .show(ui)
-                        .left.clicked()
+                        .left
+                        .clicked()
                     {
                         ui.state_mut::<State>(state_id).modal_open = false;
                     }
@@ -118,7 +120,8 @@ pub fn build(ui: &mut Ui) {
                         .id_salt("ok")
                         .label("Delete")
                         .show(ui)
-                        .left.clicked()
+                        .left
+                        .clicked()
                     {
                         ui.state_mut::<State>(state_id).modal_open = false;
                     }
@@ -160,7 +163,8 @@ pub fn intercept(ui: &mut Ui, win: WindowToken) {
                             .id_salt(("exit", "save"))
                             .label("Save & Close")
                             .show(ui)
-                            .left.clicked()
+                            .left
+                            .clicked()
                         {
                             let s = ui.state_mut::<ExitState>(id);
                             s.pretend_dirty = false;
@@ -171,7 +175,8 @@ pub fn intercept(ui: &mut Ui, win: WindowToken) {
                             .id_salt(("exit", "discard"))
                             .label("Discard")
                             .show(ui)
-                            .left.clicked()
+                            .left
+                            .clicked()
                         {
                             ui.state_mut::<ExitState>(id).show_dialog = false;
                             ui.close_window(win);
@@ -180,7 +185,8 @@ pub fn intercept(ui: &mut Ui, win: WindowToken) {
                             .id_salt(("exit", "cancel"))
                             .label("Cancel")
                             .show(ui)
-                            .left.clicked()
+                            .left
+                            .clicked()
                         {
                             ui.state_mut::<ExitState>(id).show_dialog = false;
                         }

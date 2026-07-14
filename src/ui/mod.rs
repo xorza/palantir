@@ -1386,7 +1386,7 @@ pub mod test_support {
             let tree = &self.forest.trees[Layer::Main];
             let idx = tree
                 .records
-                .id
+                .widget_id()
                 .iter()
                 .position(|w| *w == id)
                 .unwrap_or_else(|| panic!("no node found for widget_id {id:?}"));

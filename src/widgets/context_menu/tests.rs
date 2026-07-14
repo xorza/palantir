@@ -34,7 +34,8 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 if MenuItem::new("Copy")
                     .shortcut(Shortcut::ctrl('C'))
                     .show(ui, popup)
-                    .left.clicked()
+                    .left
+                    .clicked()
                 {
                     *clicked_copy = true;
                 }
@@ -186,7 +187,7 @@ fn menu_body_width_does_not_span_surface() {
     let rect = ui
         .cascades
         .entry_idx_of(body_id)
-        .map(|i| ui.cascades.entries.rect[i as usize])
+        .map(|i| ui.cascades.entries.rect()[i as usize])
         .expect("menu body recorded");
     // Theme min_width is 160; sample labels are short so we expect
     // ≤ 200 px wide. SURFACE.w = 400, so a "spans surface" regression

@@ -24,18 +24,18 @@ pub(crate) mod toggle;
 pub(crate) mod tooltip;
 
 use crate::forest::element::Element;
-use crate::input::pointer::PointerButton;
+
 use crate::input::response::ResponseState;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::primitives::background::Background;
-use crate::primitives::rect::Rect;
+
 use crate::primitives::spacing::Spacing;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::button::ButtonTheme;
 use crate::widgets::theme::widget_look::AnimatedLook;
-use glam::Vec2;
-use std::cell::Cell;
+
+use std::cell::OnceCell;
 
 /// Resolve a container widget's chrome + clip against the theme
 /// fallbacks, mutating `element`'s clip mode in place. Shared by
@@ -108,160 +108,42 @@ pub(crate) fn button_look(
     look_target.animate(ui, id, fallback_text, anim)
 }
 
-/// Generates the shared read-only accessor surface for [`Response`]
-/// and [`ResponseSnapshot`]. Both forward to a private
-/// `resolved_state(&self) -> ResponseState` (lazy probe on `Response`,
-/// owned field on `ResponseSnapshot`) and carry an `id` field, so the
-/// accessor bodies are identical — the only real difference is how
-/// `resolved_state` is obtained. Keep the two surfaces from drifting by
-/// defining them once here.
-macro_rules! response_accessors {
-    () => {
-        /// Widget id of the originating widget. Stable across frames as
-        /// long as the call-site / explicit-key inputs don't change.
-        /// Cheap — no `response_for` probe.
-        #[inline]
-        pub fn widget_id(&self) -> WidgetId {
-            self.id
-        }
-        pub fn rect(&self) -> Option<Rect> {
-            self.resolved_state().rect
-        }
-        /// Pre-transform layout rect — see
-        /// [`crate::input::ResponseState::layout_rect`].
-        pub fn layout_rect(&self) -> Option<Rect> {
-            self.resolved_state().layout_rect
-        }
-        pub fn hovered(&self) -> bool {
-            self.resolved_state().hovered
-        }
-        pub fn pressed(&self) -> bool {
-            self.resolved_state().pressed()
-        }
-        pub fn clicked(&self) -> bool {
-            self.resolved_state().left.clicked()
-        }
-        /// One-frame edge: right mouse button clicked-and-released on
-        /// this widget without latching a drag. Independent of
-        /// `clicked` (left).
-        pub fn secondary_clicked(&self) -> bool {
-            self.resolved_state().right.clicked()
-        }
-        /// One-frame edge: any pointer button just double-clicked this
-        /// widget (two clicks on the same id within
-        /// [`crate::input::sense::DOUBLE_CLICK_WINDOW`]).
-        pub fn double_clicked(&self) -> bool {
-            self.resolved_state().double_clicked()
-        }
-        /// One-frame edge filtered by button.
-        pub fn double_clicked_by(&self, button: PointerButton) -> bool {
-            self.resolved_state().double_clicked_by(button)
-        }
-        /// Any button is currently dragging this widget.
-        pub fn dragged(&self) -> bool {
-            self.resolved_state().dragged()
-        }
-        /// `button` is currently dragging this widget.
-        pub fn dragged_by(&self, button: PointerButton) -> bool {
-            self.resolved_state().dragged_by(button)
-        }
-        /// One-frame edge: the active drag latched this frame. Snapshot
-        /// the position here to anchor subsequent `drag_delta()` reads.
-        pub fn drag_started(&self) -> bool {
-            self.resolved_state().drag_started()
-        }
-        /// One-frame edge for `button`-drag specifically.
-        pub fn drag_started_by(&self, button: PointerButton) -> bool {
-            self.resolved_state().drag_started_by(button)
-        }
-        /// Cumulative pointer travel of the active drag (any button).
-        /// `None` outside drag and for sub-threshold wiggle.
-        pub fn drag_delta(&self) -> Option<Vec2> {
-            self.resolved_state().drag_delta()
-        }
-        /// Cumulative pointer travel, filtered to `button`. `None` when
-        /// a different button (or none) is dragging.
-        pub fn drag_delta_by(&self, button: PointerButton) -> Option<Vec2> {
-            self.resolved_state().drag_delta_by(button)
-        }
-        /// One-frame edge: a latched drag on this widget ended this
-        /// frame (any button). The drag state is already gone — commit
-        /// a value stashed during the drag on this edge.
-        pub fn drag_stopped(&self) -> bool {
-            self.resolved_state().drag_stopped()
-        }
-        /// One-frame edge for `button`-drag specifically.
-        pub fn drag_stopped_by(&self, button: PointerButton) -> bool {
-            self.resolved_state().drag_stopped_by(button)
-        }
-        /// Pixel-precise scroll delta this frame, in logical pixels —
-        /// the touchpad / precision-wheel source (winit
-        /// `MouseScrollDelta::PixelDelta`). Routes only to widgets with
-        /// [`crate::Sense::SCROLL`] that were the topmost scroll target
-        /// under the pointer. `Vec2::ZERO` otherwise — and also when the
-        /// widget *is* the target but no scroll event arrived this frame.
-        /// Sign matches "advance offset forward" (positive = scroll
-        /// down/right). Use for "trackpad pan" intent (e.g. a graph
-        /// viewport that pans on touchpad and zooms on wheel).
-        pub fn scroll_pixels(&self) -> Vec2 {
-            self.resolved_state().scroll.pixels
-        }
-        /// Notched scroll delta this frame, in raw line units (NOT
-        /// pixels) — the classic-wheel source (winit
-        /// `MouseScrollDelta::LineDelta`). Same routing as
-        /// [`Self::scroll_pixels`]. Use for "mouse wheel" intent (e.g.
-        /// zoom-by-notches). To form a combined pan delta in pixels,
-        /// compute `scroll_pixels() + scroll_lines() * line_px` where
-        /// `line_px` is the caller's font-derived line step.
-        pub fn scroll_lines(&self) -> Vec2 {
-            self.resolved_state().scroll.lines
-        }
-        /// Multiplicative pinch zoom factor this frame (`1.0` = no
-        /// pinch). Routes to widgets with [`crate::Sense::PINCH`].
-        /// Independent of the scroll routes so a list can pan-via-scroll
-        /// without committing to pinch-to-zoom, and vice versa.
-        pub fn zoom_factor(&self) -> f32 {
-            self.resolved_state().scroll.zoom
-        }
-        /// Cursor position relative to this widget's `rect.min`. `None`
-        /// when the pointer is off-surface or the widget didn't arrange.
-        /// Useful as a pivot for zoom-about-cursor without recomputing
-        /// the rect origin from `rect()`.
-        pub fn pointer_local(&self) -> Option<Vec2> {
-            self.resolved_state().pointer_local
-        }
-    };
-}
-
 /// Lazy handle to a widget's per-frame interaction state. Holds a
-/// `WidgetId` plus a shared borrow of `Ui`; reading any field probes
-/// `ui.response_for(self.id)` on first access and memoizes the result.
-/// Dropping the handle without reading any field skips the probe
-/// entirely — the common case for decorative widgets (Text, Frame,
-/// Panel chrome, etc.).
+/// `WidgetId` plus a shared borrow of `Ui`; the first deref probes
+/// `ui.response_for(self.id)` and memoizes the result. Dropping the
+/// handle without touching it skips the probe entirely — the common
+/// case for decorative widgets (Text, Frame, Panel chrome, etc.).
+///
+/// There is **no accessor surface of its own**: `Response` derefs to
+/// [`ResponseState`], so everything reads exactly like the state —
+/// `r.hovered`, `r.pressed()`, `r.left.clicked()`,
+/// `r.left.drag.delta()`, `r.scroll.pixels`. One API, defined once.
+/// Deref-copy (`*r`) hands out the owned `Copy` state.
 ///
 /// Widgets that already had to call `ui.response_for(id)` for their
 /// own theme-picking / interaction logic (Button, Checkbox, …) hand
 /// the already-paid-for state to [`Response::eager`] so callers
 /// inherit the cached result without a second probe.
 ///
-/// For multi-field reads or to detach from the `&Ui` borrow (e.g.
-/// before calling another `&mut Ui` op while still holding the
-/// state), use [`Response::snapshot`] to materialize a
-/// [`ResponseSnapshot`].
+/// To detach from the `&Ui` borrow (e.g. before calling another
+/// `&mut Ui` op while still holding the state), use
+/// [`Response::snapshot`] to materialize a [`ResponseSnapshot`].
 pub struct Response<'a> {
-    pub(crate) id: WidgetId,
+    /// Widget id of the originating widget. Stable across frames as
+    /// long as the call-site / explicit-key inputs don't change.
+    /// Cheap — reading it never probes.
+    pub id: WidgetId,
     pub(crate) ui: &'a Ui,
-    /// `Cell` so accessors can take `&self` and still update on
-    /// first access. The cached `ResponseState` survives later reads
-    /// — a `Tooltip` / `Scroll` body that asks for `hovered`,
-    /// `pressed`, and `drag_delta` in sequence pays for exactly one
+    /// `OnceCell` so `deref` can lend `&ResponseState` out of the
+    /// lazily-filled cache. The state survives later reads — a
+    /// `Tooltip` / `Scroll` body that asks for `hovered`, `pressed()`,
+    /// and `drag_delta()` in sequence pays for exactly one
     /// `response_for` probe.
-    pub(crate) cached: Cell<Option<ResponseState>>,
+    pub(crate) cached: OnceCell<ResponseState>,
 }
 
 impl<'a> Response<'a> {
-    /// Empty-cache constructor — first field access triggers
+    /// Empty-cache constructor — the first deref triggers
     /// `response_for`. Used by widgets that don't otherwise consume
     /// the response state during `.show()` (decorative widgets:
     /// Text, Frame, Panel, Grid).
@@ -270,11 +152,11 @@ impl<'a> Response<'a> {
         Self {
             id,
             ui,
-            cached: Cell::new(None),
+            cached: OnceCell::new(),
         }
     }
 
-    /// Pre-filled-cache constructor — bypasses the first-access
+    /// Pre-filled-cache constructor — bypasses the first-deref
     /// probe by handing in the already-known `ResponseState`. Used
     /// by widgets that called `ui.response_for(id)` themselves (e.g.
     /// for theme picking) so the caller doesn't re-probe.
@@ -283,38 +165,33 @@ impl<'a> Response<'a> {
         Self {
             id,
             ui,
-            cached: Cell::new(Some(state)),
+            cached: OnceCell::from(state),
         }
     }
 
-    #[inline]
-    fn resolved_state(&self) -> ResponseState {
-        match self.cached.get() {
-            Some(s) => s,
-            None => {
-                let s = self.ui.response_for(self.id);
-                self.cached.set(Some(s));
-                s
-            }
-        }
-    }
-
-    /// Materialize the full state into an owned [`ResponseSnapshot`],
+    /// Materialize the state into an owned [`ResponseSnapshot`],
     /// releasing the `&Ui` borrow. Use this before any `&mut Ui` op
     /// that needs to interleave with reads from this response — e.g.
     /// `let r = btn.show(ui).snapshot(); …other_widget.show(ui); if
-    /// r.clicked() {…}`. The cache fills on first read either way,
-    /// so this is purely a borrow-shape conversion, not a speed
-    /// optimization for multi-field reads.
+    /// r.left.clicked() {…}`. The cache fills on first deref either
+    /// way, so this is purely a borrow-shape conversion.
     #[inline]
     pub fn snapshot(&self) -> ResponseSnapshot {
         ResponseSnapshot {
             id: self.id,
-            state: self.resolved_state(),
+            state: **self,
         }
     }
+}
 
-    response_accessors!();
+impl std::ops::Deref for Response<'_> {
+    type Target = ResponseState;
+    /// The lazy probe: first touch resolves `response_for`, later
+    /// touches read the memoized state.
+    #[inline]
+    fn deref(&self) -> &ResponseState {
+        self.cached.get_or_init(|| self.ui.response_for(self.id))
+    }
 }
 
 impl std::fmt::Debug for Response<'_> {
@@ -327,46 +204,36 @@ impl std::fmt::Debug for Response<'_> {
 }
 
 /// Owned snapshot of a widget's response state — what [`Response::snapshot`]
-/// produces. Carries the same accessor surface as [`Response`] but doesn't
-/// borrow `Ui`, so it can be stored across `&mut Ui` operations and passed
-/// to consumers like [`crate::Tooltip::for_`] / [`crate::ContextMenu::attach`]
+/// produces. Same deref surface as [`Response`] but doesn't borrow `Ui`,
+/// so it can be stored across `&mut Ui` operations and passed to
+/// consumers like [`crate::Tooltip::on`] / [`crate::ContextMenu::attach`]
 /// that need a stable trigger anchor.
 #[derive(Debug, Clone, Copy)]
 pub struct ResponseSnapshot {
-    pub(crate) id: WidgetId,
-    pub(crate) state: ResponseState,
+    /// Widget id of the originating widget.
+    pub id: WidgetId,
+    pub state: ResponseState,
 }
 
-impl ResponseSnapshot {
-    /// Owned form of the shared accessor contract — the snapshot's
-    /// `state` is already materialized, so there's no probe to run.
+impl std::ops::Deref for ResponseSnapshot {
+    type Target = ResponseState;
     #[inline]
-    fn resolved_state(&self) -> ResponseState {
-        self.state
+    fn deref(&self) -> &ResponseState {
+        &self.state
     }
-
-    response_accessors!();
 }
 
 /// `Response` plus a value returned by the body closure of widgets
-/// that take one (`Panel`/`Grid`/`Scroll`). `Deref`s to `Response` so
-/// callers ignoring the inner value keep `panel.show(ui, body).clicked()`
-/// working unchanged.
+/// that take one (`Panel`/`Grid`/`Scroll`). `Deref`s to `Response` —
+/// which itself derefs on to [`ResponseState`] — so callers ignoring
+/// the inner value keep `panel.show(ui, body).left.clicked()` working
+/// unchanged.
 ///
-/// Three constraints keep the `Deref` shortcut honest. Breaking any
-/// of them silently changes call-site behavior:
-/// 1. **No inherent methods on `InnerResponse`** — a method named e.g.
-///    `clicked` here would shadow `Response::clicked` via the standard
-///    method-resolution order, and callers would never see a compile
-///    error.
-/// 2. **Field access doesn't auto-deref** — `r.response.id` works,
-///    `r.id` does not. Don't extend `Response` with `pub` fields that
-///    callers might expect to reach through `InnerResponse`.
-/// 3. **`Response` methods stay `&self`-only** — `Deref::deref` yields
-///    `&Response`, so any future `self`-consuming method on `Response`
-///    would be unreachable via this shortcut. Callers would have to
-///    write `r.response.foo()` instead of `r.foo()` — silent surface
-///    drift.
+/// Constraint that keeps the `Deref` chain honest: **no inherent
+/// methods or extra fields on `InnerResponse`** beyond `response` /
+/// `inner` — a member named like anything on `Response` /
+/// `ResponseState` would shadow it via the standard resolution order,
+/// and callers would never see a compile error.
 #[derive(Debug)]
 pub struct InnerResponse<'a, R> {
     pub response: Response<'a>,

@@ -74,7 +74,8 @@ fn frame_with_sense_click_is_clickable() {
                 .size((Sizing::Fixed(100.0), Sizing::Fixed(50.0)))
                 .sense(Sense::CLICK)
                 .show(ui)
-                .left.clicked();
+                .left
+                .clicked();
         });
     });
     assert!(clicked);
