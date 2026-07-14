@@ -10,14 +10,9 @@
 use crate::primitives::color::ColorF16;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{texture_bind_group, texture_sampler_bgl};
-use crate::renderer::gradient_atlas::{ATLAS_ROWS, GradientAtlas, LUT_ROW_TEXELS};
-
-// The shader divides the row index by its hardcoded `ATLAS_ROWS_F` to
-// compute the sample `v` coord — keep it in sync with the CPU atlas.
-const _: () = assert!(
-    ATLAS_ROWS == 256,
-    "shader ATLAS_ROWS_F is hardcoded to 256.0; update quad.wgsl if you change this"
-);
+use crate::renderer::gradient_atlas::ATLAS_ROWS;
+use crate::renderer::gradient_atlas::bake::LUT_ROW_TEXELS;
+use crate::renderer::gradient_atlas::handle::GradientAtlas;
 
 /// Bytes per uploaded LUT row: texture width × `Rgba16Float` texel.
 /// Derived from the CPU-side `ColorF16` row store

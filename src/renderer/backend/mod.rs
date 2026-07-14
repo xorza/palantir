@@ -12,6 +12,7 @@ mod pipeline_utils;
 mod quad_pipeline;
 pub(crate) mod queue;
 mod schedule;
+mod shader_template;
 mod stencil;
 pub mod text;
 pub(crate) mod viewport;
@@ -108,6 +109,21 @@ pub(crate) struct Stencil {
     pub(crate) view: wgpu::TextureView,
     /// Current size, so `ensure_stencil` can skip recreation when unchanged.
     size: wgpu::Extent3d,
+}
+
+#[derive(Debug)]
+pub(crate) struct SubmissionTargets<'a> {
+    pub(crate) surface: &'a wgpu::Texture,
+    pub(crate) backbuffer: Option<&'a Backbuffer>,
+    pub(crate) stencil: Option<&'a wgpu::TextureView>,
+}
+
+#[derive(Debug)]
+pub(crate) struct Submission<'a> {
+    pub(crate) targets: SubmissionTargets<'a>,
+    pub(crate) buffer: &'a RenderBuffer,
+    pub(crate) plan: RenderPlan,
+    pub(crate) debug_overlay: DebugOverlayConfig,
 }
 
 /// wgpu backend: owns the quad pipeline + text renderer and cloned
@@ -403,15 +419,18 @@ impl WgpuBackend {
     /// draw list was built, so `plan` and `buffer` always agree; the caller
     /// (`WindowRenderer`) has also ensured the stencil + backbuffer.
     #[profiling::function]
-    pub(crate) fn submit(
-        &mut self,
-        surface_tex: &wgpu::Texture,
-        via_backbuffer: Option<&Backbuffer>,
-        stencil_view: Option<&wgpu::TextureView>,
-        buffer: &RenderBuffer,
-        plan: RenderPlan,
-        debug_overlay: DebugOverlayConfig,
-    ) {
+    pub(crate) fn submit(&mut self, submission: Submission<'_>) {
+        let Submission {
+            targets:
+                SubmissionTargets {
+                    surface: surface_tex,
+                    backbuffer: via_backbuffer,
+                    stencil: stencil_view,
+                },
+            buffer,
+            plan,
+            debug_overlay,
+        } = submission;
         // The composer may have folded a viewport-covering root
         // background quad into the clear (see
         // `RenderBuffer::clear_override`); it replaces the plan's clear
@@ -941,7 +960,7 @@ impl WgpuBackend {
                     self.quad.draw_mask(pass, mi);
                     pass.pop_debug_group();
                 }
-                RenderStep::Quads { range, .. } => {
+                RenderStep::Quads { range } => {
                     mark(pass, BatchKind::Quads);
                     pass.push_debug_group("quads");
                     rebind!(
@@ -969,7 +988,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Mesh);
                     pass.push_debug_group("meshes");
                     rebind!(Bound::Mesh, self.mesh.bind(pass, &fmt.mesh, use_stencil));
-                    let range = buffer.mesh_batches[batch].meshes;
+                    let range = buffer.mesh_batches[batch].items;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for (offset, draw) in buffer.meshes.draw()[start..end].iter().enumerate() {
@@ -991,7 +1010,7 @@ impl WgpuBackend {
                     mark(pass, BatchKind::Image);
                     pass.push_debug_group("images");
                     rebind!(Bound::Image, self.image.bind(pass, &fmt.image, use_stencil));
-                    let range = buffer.image_batches[batch].images;
+                    let range = buffer.image_batches[batch].items;
                     let start = range.start as usize;
                     let end = start + range.len as usize;
                     for (offset, id) in buffer.images.id()[start..end].iter().enumerate() {
@@ -1007,7 +1026,7 @@ impl WgpuBackend {
                         self.curve
                             .bind(pass, &fmt.curve, use_stencil, &self.gradient.bg)
                     );
-                    let range = buffer.curve_batches[batch].instances;
+                    let range = buffer.curve_batches[batch].items;
                     self.curve.draw(pass, range.start..range.start + range.len);
                     pass.pop_debug_group();
                 }

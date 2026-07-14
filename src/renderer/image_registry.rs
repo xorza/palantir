@@ -1,5 +1,6 @@
 //! Cross-frame registry of user images and their GPU textures — the
-//! image counterpart of [`GradientAtlas`](crate::renderer::gradient_atlas::GradientAtlas),
+//! image counterpart of
+//! [`GradientAtlas`](crate::renderer::gradient_atlas::handle::GradientAtlas),
 //! bundled alongside it in [`RenderCaches`](crate::renderer::caches::RenderCaches).
 //!
 //! [`ImageRegistry::register`] takes an [`Image`], queues it for GPU
@@ -102,7 +103,7 @@ impl std::fmt::Debug for ImageHandle {
 /// `WindowRenderer` constructs one and hands clones to `Ui` (for registration) and
 /// the wgpu backend (for upload + release).
 #[derive(Clone, Debug)]
-pub struct ImageRegistry {
+pub(crate) struct ImageRegistry {
     inner: Rc<RefCell<Inner>>,
     /// Shared id source — also drawn from by each `GpuView` target so the two
     /// never mint colliding ids (see [`TextureIdSource`]).
@@ -136,7 +137,7 @@ impl ImageRegistry {
     /// lives until the returned handle (and every clone of it) is
     /// dropped. Each call uploads independently — share one image across
     /// call sites by cloning the handle, not by re-registering.
-    pub fn register(&self, image: Image) -> ImageHandle {
+    pub(crate) fn register(&self, image: Image) -> ImageHandle {
         let size = u16_size(&image);
         let id = self.ids.reserve();
         self.inner.borrow_mut().pending.push((id, image));

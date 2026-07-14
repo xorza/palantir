@@ -290,13 +290,14 @@ fn cascade_screen_rect_matches_composed_quad_under_transform() {
     // viewport / hstack / canvas chrome emit no quads — the child
     // RoundedRect is the only one.
     let mut frontend = Frontend::for_test();
-    let buffer = frontend.build(
+    frontend.build(
         &ui,
         RenderPlan {
             clear: ui.theme.window_clear,
             kind: RenderKind::Full,
         },
     );
+    let buffer = &frontend.buffer;
     assert_eq!(
         buffer.quads.len(),
         1,

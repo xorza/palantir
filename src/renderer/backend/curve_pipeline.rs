@@ -1,8 +1,8 @@
 //! GPU side of native parametric strokes (cubic beziers + circular
 //! arcs — see `CurveInstance::kind`). One `draw` per scissor
-//! group covers every `CurveInstance` in the group's `CurveBatch` —
+//! group covers every `CurveInstance` in the group's `GroupBatch` —
 //! the vertex shader subdivides each instance into
-//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::SEGMENTS_PER_INSTANCE)
+//! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::curve::SEGMENTS_PER_INSTANCE)
 //! chords (96 vertices per instance, no index buffer) and offsets the
 //! strip perpendicular to the tangent for stroking + AA.
 //!
@@ -13,29 +13,27 @@
 //! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
+use crate::primitives::brush::Spread;
+use crate::primitives::fill_wire::FillKind;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::render_buffer::{CurveInstance, SEGMENTS_PER_INSTANCE};
+use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::gradient_atlas::ATLAS_ROWS;
+use crate::renderer::render_buffer::curve::{
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
+    SEGMENTS_PER_INSTANCE,
+};
 use crate::shape::LineCap;
 
 /// Vertex count per instance — every instance is a 16-segment strip,
 /// 6 vertices per segment (two triangles), no index buffer.
 const VERTICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
 
-// Pin the LineCap discriminants against the `CAP_*` constants in
-// `curve.wgsl`. Reorder a `LineCap` variant without updating the
-// shader and curves silently mis-render (Butt becomes Square, etc.).
-// Build fails here before that ships.
-const _: () = {
-    assert!(LineCap::Butt as u8 == 0);
-    assert!(LineCap::Square as u8 == 1);
-    assert!(LineCap::Round as u8 == 2);
-};
-
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
-    instance_buffer: DynamicBuffer,
+    instance_buffer: DynamicBuffer<CurveInstance>,
     /// Curve shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -46,13 +44,25 @@ impl CurvePipeline {
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
-        // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
-        // source so the shader can't drift out of lockstep with the
-        // composer's sub-instance math. Cheap one-time string op at
-        // pipeline creation; no per-frame cost.
-        let wgsl = include_str!("curve.wgsl").replace(
-            "/*{SEGMENTS_PER_INSTANCE}*/16u",
-            &format!("{SEGMENTS_PER_INSTANCE}u"),
+        let wgsl = specialize(
+            include_str!("curve.wgsl"),
+            &[
+                ShaderConstant::float("ATLAS_ROWS", ATLAS_ROWS as f32),
+                ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+                ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
+                ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+                ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+                ShaderConstant::uint("CAP_SQUARE", LineCap::Square as u32),
+                ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+                ShaderConstant::uint("KIND_CUBIC", CURVE_KIND_CUBIC),
+                ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
+                ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
+                ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
+                ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
+                ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
+                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
+            ],
         );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.curve.shader"),
@@ -60,7 +70,7 @@ impl CurvePipeline {
         });
 
         let instance_buffer =
-            DynamicBuffer::vertex::<CurveInstance>(device, "aperture.curve.instances", 64);
+            DynamicBuffer::<CurveInstance>::vertex(device, "aperture.curve.instances", 64);
 
         Self {
             instance_buffer,
@@ -101,7 +111,7 @@ impl CurvePipeline {
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
-    /// `CurveBatch`. Viewport rides the shared immediate region;
+    /// curve group batch. Viewport rides the shared immediate region;
     /// `gradient_bg` is the group-0 handle owned by `GradientResources`
     /// (one allocation, used by both the quad and curve pipelines).
     pub(crate) fn bind<'a>(
@@ -120,7 +130,7 @@ impl CurvePipeline {
     /// the span (no index buffer — `vertex_index` maps directly to the
     /// 6 corners of each of `SEGMENTS_PER_INSTANCE` quads). This is the
     /// "one draw call per scissor group" terminus — the entire
-    /// `CurveBatch` lands as a single GPU draw call.
+    /// curve group batch lands as a single GPU draw call.
     pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, instances: std::ops::Range<u32>) {
         if instances.start == instances.end {
             return;
@@ -169,21 +179,6 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
     assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
     assert!(CURVE_INSTANCE_ATTRS[11].offset == offset_of!(CurveInstance, kind) as u64);
-};
-
-// Pin the Rust-side basis tags against the `KIND_*` constants in
-// `curve.wgsl` — same guard as the `CAP_*` block above.
-const _: () = {
-    use crate::renderer::render_buffer::{
-        CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT,
-    };
-    assert!(CURVE_KIND_CUBIC == 0);
-    assert!(CURVE_KIND_ARC == 1);
-    assert!(CURVE_KIND_SEGMENT == 2);
-    assert!(CURVE_KIND_JOIN_ROUND == 3);
-    assert!(CURVE_KIND_JOIN_BEVEL == 4);
-    assert!(CURVE_KIND_JOIN_MITER == 5);
 };
 
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {

@@ -14,13 +14,13 @@ use crate::primitives::mesh::MeshVertex;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::render_buffer::MeshInstance;
+use crate::renderer::render_buffer::mesh::MeshInstance;
 
 #[derive(Debug)]
 pub(crate) struct MeshPipeline {
-    vertex_buffer: DynamicBuffer,
-    index_buffer: DynamicBuffer,
-    instance_buffer: DynamicBuffer,
+    vertex_buffer: DynamicBuffer<MeshVertex>,
+    index_buffer: DynamicBuffer<u32>,
+    instance_buffer: DynamicBuffer<MeshInstance>,
     /// Mesh shader module — format-independent; [`Self::build_variants`]
     /// reads it to build each format's pipelines.
     shader: wgpu::ShaderModule,
@@ -37,10 +37,10 @@ impl MeshPipeline {
         });
 
         let vertex_buffer =
-            DynamicBuffer::vertex::<MeshVertex>(device, "aperture.mesh.vertices", 256);
-        let index_buffer = DynamicBuffer::index::<u32>(device, "aperture.mesh.indices", 1024);
+            DynamicBuffer::<MeshVertex>::vertex(device, "aperture.mesh.vertices", 256);
+        let index_buffer = DynamicBuffer::<u32>::index(device, "aperture.mesh.indices", 1024);
         let instance_buffer =
-            DynamicBuffer::vertex::<MeshInstance>(device, "aperture.mesh.instances", 64);
+            DynamicBuffer::<MeshInstance>::vertex(device, "aperture.mesh.instances", 64);
 
         Self {
             vertex_buffer,
@@ -84,10 +84,7 @@ impl MeshPipeline {
         indices: &[u32],
         instances: &[MeshInstance],
     ) {
-        // Joint guard: a frame missing any of the three slices can't
-        // draw a mesh, so skip all uploads rather than land partial
-        // buffers.
-        if vertices.is_empty() || indices.is_empty() || instances.is_empty() {
+        if !mesh_upload_required(vertices.len(), indices.len(), instances.len()) {
             return;
         }
 
@@ -115,7 +112,7 @@ impl MeshPipeline {
         );
     }
 
-    /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::MeshDraw).
+    /// Issue one indexed draw for a single [`MeshDraw`](crate::renderer::render_buffer::mesh::MeshDraw).
     /// `instance` indexes into the per-frame instance buffer for the
     /// matching transform + tint.
     pub(crate) fn draw(
@@ -130,6 +127,15 @@ impl MeshPipeline {
         }
         pass.draw_indexed(index_range, base_vertex, instance..instance + 1);
     }
+}
+
+fn mesh_upload_required(vertices: usize, indices: usize, instances: usize) -> bool {
+    if instances == 0 {
+        return false;
+    }
+    assert!(vertices != 0, "mesh instances require vertices");
+    assert!(indices != 0, "mesh instances require indices");
+    true
 }
 
 const MESH_VERTEX_ATTRS: [wgpu::VertexAttribute; 2] = wgpu::vertex_attr_array![
@@ -179,5 +185,20 @@ fn mesh_instance_layout() -> wgpu::VertexBufferLayout<'static> {
         array_stride: std::mem::size_of::<MeshInstance>() as u64,
         step_mode: wgpu::VertexStepMode::Instance,
         attributes: &MESH_INSTANCE_ATTRS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::mesh_upload_required;
+
+    #[test]
+    fn mesh_upload_requires_geometry_only_when_instances_exist() {
+        assert!(!mesh_upload_required(0, 0, 0));
+        assert!(!mesh_upload_required(3, 3, 0));
+        assert!(mesh_upload_required(3, 3, 1));
+
+        assert!(std::panic::catch_unwind(|| mesh_upload_required(0, 3, 1)).is_err());
+        assert!(std::panic::catch_unwind(|| mesh_upload_required(3, 0, 1)).is_err());
     }
 }

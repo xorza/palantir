@@ -10,9 +10,9 @@
 //! The `Ui` keeps one small per-`WidgetId` map of live views (`Ui::gpu_views`,
 //! values are [`GpuViewEntry`]): the app hands its renderer to the widget every
 //! frame, so [`Ui::gpu_view`] upserts the entry — minting the stable backend
-//! [`TextureId`] once (from the shared `texture_ids`, so the one backend
-//! texture cache can't collide, including across windows since the map is
-//! per-`Ui`) and refreshing the [`GpuPaintRef`]. The shape records only the
+//! [`TextureId`] once from [`RenderCaches`](crate::renderer::caches::RenderCaches)'
+//! shared authority, so it cannot collide with registered images or other
+//! windows, and refreshing the [`GpuPaintRef`]. The shape records only the
 //! redraw `epoch`; the encoder looks the view up by the node's `WidgetId`,
 //! forwards the callback down the command buffer, and the composer lists it in
 //! `RenderBuffer::frame_targets` for the backend. The map is swept by the same
@@ -24,14 +24,6 @@ use glam::UVec2;
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::time::Duration;
-
-/// The off-screen target's texture format. `Rgba8UnormSrgb`, identical to
-/// registered images, so the image pipeline samples a `GpuView` target
-/// exactly like any other texture: the user writes linear in their
-/// fragment shader, the format encodes sRGB on store, and aperture's
-/// sampler decodes back to linear. App code matches this on its color
-/// target (see [`GpuInitCtx::target_format`]).
-pub(crate) const GPU_VIEW_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 
 /// Implemented by app code on its persistent renderer to draw raw `wgpu`
 /// content into a [`GpuView`](crate::widgets::gpu_view::GpuView) widget.
@@ -118,9 +110,9 @@ impl std::fmt::Debug for GpuPaintRef {
 }
 
 /// One live `GpuView` in [`Ui::gpu_views`](crate::ui::Ui), keyed by `WidgetId`:
-/// the view's stable backend `texture_id` (minted once from the shared
-/// `texture_ids`, so it can't collide in the one backend texture cache — across
-/// windows too, since the map is per-`Ui`), the app `paint` callback (refreshed
+/// the view's stable backend `texture_id` (minted once from the shared render
+/// caches, so it cannot collide with images or another window), the app
+/// `paint` callback (refreshed
 /// every frame), and the redraw `epoch`. This is the only place a `GpuView`'s
 /// identity persists across frames; the swept-by-`removed` map is the whole of
 /// the `Ui`'s `GpuView` bookkeeping — no `by_texture` index, no resolve (the

@@ -122,6 +122,7 @@ fn cosmic_align(halign: HAlign) -> Option<CosmicAlign> {
     }
 }
 
+#[derive(Debug)]
 struct CacheEntry {
     /// Shaped buffer. Looked up by [`TextCacheKey`] at render time so the
     /// text backend can build a `TextArea` without reshaping.
@@ -142,6 +143,7 @@ struct CacheEntry {
 /// Per-call font family + weight selection comes from [`FontFamily`] /
 /// [`FontWeight`] on each [`Self::measure`] invocation; the named lookups
 /// in [`attrs_for`] resolve against the bundled set.
+#[derive(Debug)]
 pub struct CosmicMeasure {
     font_system: FontSystem,
     cache: FxHashMap<TextCacheKey, CacheEntry>,

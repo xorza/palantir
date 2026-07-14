@@ -32,7 +32,7 @@ use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
 use crate::renderer::backend::viewport::ViewportPush;
-use crate::renderer::render_buffer::TextRun;
+use crate::renderer::render_buffer::text::TextRun;
 use crate::text::TextShaper;
 use crate::text::cosmic::RenderSplit;
 use cosmic_text::SwashCache;
@@ -96,7 +96,7 @@ impl ContentType {
     }
 }
 
-pub struct TextBackend {
+pub(crate) struct TextBackend {
     shaper: TextShaper,
     swash_cache: SwashCache,
     atlas: GlyphAtlas,
@@ -119,7 +119,7 @@ pub struct TextBackend {
 
     /// Drawable glyph instances accumulated across this frame's batches.
     pub(crate) instances: Vec<GlyphInstance>,
-    vbuf: DynamicBuffer,
+    vbuf: DynamicBuffer<GlyphInstance>,
 
     /// Per-batch slice of `instances`; empty span = nothing to draw.
     ranges: Vec<Span>,
@@ -196,7 +196,7 @@ impl TextBackend {
             &sampler,
         );
 
-        let vbuf = DynamicBuffer::vertex::<GlyphInstance>(device, "aperture text vbuf", 4096);
+        let vbuf = DynamicBuffer::<GlyphInstance>::vertex(device, "aperture text vbuf", 4096);
 
         Self {
             shaper,
@@ -303,16 +303,19 @@ impl TextBackend {
                     lookup,
                 } = split;
 
-                let resolved = misses.iter().filter_map(|m| {
+                let resolved = misses.iter().map(|m| {
                     let r = &runs[m.run_idx as usize];
-                    lookup.get(r.key).map(|buffer| ResolvedRun {
+                    let buffer = lookup
+                        .get(r.key)
+                        .expect("valid text key missing from pinned render lookup");
+                    ResolvedRun {
                         buffer,
                         origin: r.origin,
                         bounds: r.bounds,
                         scale: scale * r.scale,
                         color: r.color,
                         run_key: m.run_key,
-                    })
+                    }
                 });
 
                 let mut ectx = EncodeCtx {
@@ -368,9 +371,10 @@ impl TextBackend {
         use_stencil: bool,
         viewport: &ViewportPush,
     ) {
-        let Some(&span) = self.ranges.get(batch_idx) else {
-            return;
-        };
+        let &span = self
+            .ranges
+            .get(batch_idx)
+            .expect("render schedule referenced an unprepared text batch");
         if span.len == 0 {
             return;
         }
@@ -474,32 +478,20 @@ fn glyph_instance_layout() -> wgpu::VertexBufferLayout<'static> {
 
 #[cfg(any(test, feature = "internals"))]
 pub mod test_support {
-    //! Bench/test reach-in surface. Exposes `TextBackend` end-to-end so
-    //! `benches/text_atlas.rs` can drive prepare → flush → render
-    //! without going through `WindowRenderer`'s full record/measure/cascade/encode
-    //! pipeline.
+    //! Bench/test reach-in surface for driving prepare → flush → render
+    //! without `WindowRenderer`'s full record/measure/cascade/encode pipeline.
 
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
+    use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::pipeline_utils::StencilVariant;
+    use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
+    use crate::renderer::render_buffer::text::TextRun;
 
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
-
-    /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
-    /// one to feed `prepare`/`flush`. The full path
-    /// (`crate::renderer::backend::gpu_ctx::GpuCtx`) is noisy at the
-    /// call site.
-    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
-    /// Re-export the counting `Queue` wrapper so benches can build one
-    /// to feed `GpuCtx::new`.
-    pub use crate::renderer::backend::queue::Queue;
-    pub use crate::renderer::backend::text::TextBackend;
-    /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
-    /// name it in their fixture slice.
-    pub use crate::renderer::render_buffer::TextRun;
 
     /// Standalone bench harness for the text backend: a [`TextBackend`]
     /// (its glyph atlas, shaper, caches) plus the single no-stencil
@@ -634,7 +626,7 @@ mod gpu_regression {
     use crate::primitives::span::Span;
     use crate::primitives::urect::URect;
     use crate::renderer::backend::text::test_support::make_run;
-    use crate::renderer::render_buffer::TextRun;
+    use crate::renderer::render_buffer::text::TextRun;
 
     const PHYSICAL: UVec2 = UVec2::new(640, 480);
 
@@ -753,7 +745,8 @@ mod gpu_regression {
         // The refresh must have gone through the entry's *recorded*
         // slab indices — the exact path the hot loop writes.
         for entry in backend.encoded_cache.map.values() {
-            for &idx in &backend.encoded_cache.slots[entry.span.range()] {
+            for glyph in &backend.encoded_cache.arena[entry.span.range()] {
+                let idx = glyph.atlas_slot;
                 assert_eq!(
                     backend.atlas.slots[idx as usize].last_use, cf,
                     "recorded slab index {idx} not refreshed on hit",
