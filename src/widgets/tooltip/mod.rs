@@ -26,11 +26,15 @@ pub(crate) fn place_bubble(trigger: Rect, bubble: Size, viewport: Rect, gap: f32
     let viewport_right = viewport.min.x + viewport.size.w;
     let fits_below = below_y + bubble.h <= viewport_bottom;
     // Below by default; flip above only when below would clip and above fits.
-    let y = if fits_below || above_y < viewport.min.y {
+    let preferred_y = if fits_below || above_y < viewport.min.y {
         below_y
     } else {
         above_y
     };
+    let y = preferred_y.clamp(
+        viewport.min.y,
+        (viewport_bottom - bubble.h).max(viewport.min.y),
+    );
     let x = trigger.min.x.clamp(
         viewport.min.x,
         (viewport_right - bubble.w).max(viewport.min.x),
@@ -42,17 +46,17 @@ pub(crate) fn place_bubble(trigger: Rect, bubble: Size, viewport: Rect, gap: f32
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
 /// `Ui::dt`'s `MAX_DT` clamp on idle wakes. `last_size` caches the
 /// previous frame's bubble extent for anchor flip/clamp.
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipState {
     pub(crate) hover_started_at: Option<f32>,
     pub(crate) visible: bool,
-    pub(crate) last_size: Size,
+    pub(crate) last_size: Option<Size>,
 }
 
 /// Singleton tracking the most recent moment any tooltip was visible.
 /// Cold-start tooltips within `theme.warmup` of `last_visible_at`
 /// skip their delay (egui-style toolbar warmup).
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipGlobal {
     pub(crate) last_visible_at: Option<f32>,
 }
@@ -77,6 +81,7 @@ static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
 /// Tooltips are pointer-driven only and skip recording on disabled
 /// triggers by default. Pass `.show_when_disabled(true)` to opt in for
 /// "why is this disabled?" hints.
+#[derive(Debug)]
 pub struct Tooltip<'r> {
     snapshot: &'r ResponseSnapshot,
     text: Cow<'static, str>,
@@ -196,7 +201,16 @@ impl<'r> Tooltip<'r> {
         {
             global.last_visible_at = Some(now);
             let viewport = ui.display().logical_rect();
-            let anchor = place_bubble(trigger_rect, state.last_size, viewport, gap);
+            if let Some(rect) = ui.response_for(bubble_id).rect {
+                state.last_size = Some(rect.size);
+            }
+            let first_measure = state.last_size.is_none();
+            let anchor = place_bubble(
+                trigger_rect,
+                state.last_size.unwrap_or_default(),
+                viewport,
+                gap,
+            );
             let text = self.text;
             // Theme fallbacks: ZERO padding / INF max_size / None
             // chrome mean "inherit from theme.tooltip".
@@ -212,16 +226,19 @@ impl<'r> Tooltip<'r> {
             if element.max_size == Size::INF {
                 element.max_size = ui.theme.tooltip.max_size;
             }
-            ui.layer(Layer::Tooltip, anchor, None, |ui| {
+            // Anchor-relative availability would squeeze edge tooltips before
+            // their measured width can feed the placement clamp.
+            ui.layer(Layer::Tooltip, anchor, Some(viewport.size), |ui| {
                 ui.node(bubble_id, element, Some(&chrome), |ui| {
                     Text::new(text)
                         .style(text_style)
-                        .text_wrap(TextWrap::WrapWithOverflow)
+                        .text_wrap(TextWrap::Wrap)
                         .show(ui);
                 });
             });
-            if let Some(r) = ui.response_for(bubble_id).rect {
-                state.last_size = r.size;
+            if first_measure {
+                // Pass B places against the size measured by pass A.
+                ui.request_relayout();
             }
         }
 

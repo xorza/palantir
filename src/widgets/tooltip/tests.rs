@@ -18,6 +18,7 @@ use crate::ui::frame::FrameStamp;
 use crate::widgets::button::Button;
 use crate::widgets::panel::Panel;
 use crate::widgets::tooltip::{Tooltip, TooltipState, place_bubble};
+use crate::widgets::{ResponseSnapshot, ResponseState};
 use glam::{UVec2, Vec2};
 use std::time::Duration;
 
@@ -72,6 +73,81 @@ fn place_bubble_clamps_horizontally() {
     let bubble = Size::new(120.0, 32.0);
     let placed = place_bubble(trigger, bubble, viewport, 6.0);
     assert!((placed.x - (400.0 - 120.0)).abs() < 1e-4);
+}
+
+#[test]
+fn place_bubble_clamps_when_neither_vertical_side_fits() {
+    let viewport = Rect::new(0.0, 0.0, 400.0, 300.0);
+    let trigger = Rect::new(50.0, 140.0, 80.0, 20.0);
+    let bubble = Size::new(120.0, 200.0);
+    let placed = place_bubble(trigger, bubble, viewport, 6.0);
+    assert_eq!(placed.y, 100.0, "bubble clamps to the viewport bottom");
+}
+
+#[test]
+fn tooltip_near_right_edge_keeps_natural_width() {
+    const TEXT: &str = "alpha beta gamma delta epsilon zeta eta theta iota kappa lambda";
+    let reference = visible_tooltip_at(40.0, TEXT);
+    let ui = visible_tooltip_at(350.0, TEXT);
+    let bubble_id = WidgetId::from_hash("edge-trigger").with("tooltip.bubble");
+    let reference_bubble = reference
+        .response_for(bubble_id)
+        .rect
+        .expect("reference tooltip bubble");
+    let bubble = ui
+        .response_for(bubble_id)
+        .rect
+        .expect("edge tooltip bubble");
+
+    assert_eq!(bubble.size.w, reference_bubble.size.w);
+    assert_eq!(bubble.max().x, SURFACE.x as f32);
+}
+
+#[test]
+fn tooltip_breaks_long_tokens_inside_bubble() {
+    let ui = visible_tooltip_at(
+        40.0,
+        "averylongtooltiptokenwithoutanybreakpointsaverylongtooltiptoken",
+    );
+    let bubble_id = WidgetId::from_hash("edge-trigger").with("tooltip.bubble");
+    let bubble = ui.response_for(bubble_id).rect.expect("tooltip bubble");
+    let shaped = ui.layout[Layer::Tooltip]
+        .text_shapes
+        .first()
+        .expect("tooltip text shaped");
+    assert!(
+        shaped.measured.w <= bubble.size.w - ui.theme.tooltip.padding.horiz(),
+        "text width {} must fit inside bubble width {}",
+        shaped.measured.w,
+        bubble.size.w,
+    );
+}
+
+fn visible_tooltip_at(trigger_x: f32, text: &'static str) -> Ui {
+    let mut ui = Ui::for_test();
+    let trigger_id = WidgetId::from_hash("edge-trigger");
+    let snapshot = ResponseSnapshot {
+        id: trigger_id,
+        state: ResponseState {
+            rect: Some(Rect::new(trigger_x, 40.0, 40.0, 24.0)),
+            hovered: true,
+            ..ResponseState::default()
+        },
+    };
+    let mut passes = 0;
+    ui.run_at_acked(SURFACE, |ui| {
+        passes += 1;
+        Tooltip::on(&snapshot).text(text).delay(0.0).show(ui);
+    });
+
+    assert_eq!(passes, 2, "first show measures then places the bubble");
+    passes = 0;
+    ui.run_at_acked(SURFACE, |ui| {
+        passes += 1;
+        Tooltip::on(&snapshot).text(text).delay(0.0).show(ui);
+    });
+    assert_eq!(passes, 1, "a measured tooltip stays single-pass");
+    ui
 }
 
 /// Drive the timer across N frames with a fixed dt-per-frame, hovering
