@@ -184,7 +184,7 @@ mod hot_struct_sizes {
     use crate::primitives::mesh::MeshVertex;
     use crate::primitives::span::Span;
     use crate::renderer::backend::text::GlyphInstance;
-    use crate::renderer::frontend::cmd_buffer::{
+    use crate::renderer::frontend::cmd_buffer::payload::{
         DrawArcPayload, DrawCurvePayload, DrawImagePayload, DrawMeshPayload, DrawPolylinePayload,
         DrawRectPayload, DrawShadowPayload, DrawTextPayload, DrawTrianglePayload, PushClipPayload,
     };

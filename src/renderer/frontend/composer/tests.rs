@@ -5,8 +5,9 @@ use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
     transform::TranslateScale, urect::URect,
 };
-use crate::renderer::frontend::cmd_buffer::{
-    BrushSource, DrawMeshPayload, DrawPolylinePayload, RenderCmdBuffer,
+use crate::renderer::frontend::cmd_buffer::RenderCmdBuffer;
+use crate::renderer::frontend::cmd_buffer::payload::{
+    BrushSource, DrawMeshPayload, DrawPolylinePayload,
 };
 use crate::renderer::frontend::composer::Composer;
 use crate::renderer::render_buffer::RenderBuffer;
@@ -497,7 +498,7 @@ fn compose_scales_radius_and_stroke_under_transform() {
 /// regression that accidentally sets `fill_kind = 1` on solid quads.
 #[test]
 fn compose_solid_brush_emits_kind_zero_quad() {
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let mut buffer = RenderCmdBuffer::default();
     buffer.draw_rect(
         rect(0.0, 0.0, 100.0, 100.0),
@@ -545,7 +546,7 @@ fn compose_solid_brush_emits_kind_zero_quad() {
 #[test]
 fn windowed_rect_is_not_an_opaque_cover() {
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0));
@@ -583,7 +584,7 @@ fn compose_linear_brush_emits_kind_one_with_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::{LinearGradient, Spread};
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g =
         LinearGradient::two_stop(0.0, ColorU8::WHITE, ColorU8::BLACK).with_spread(Spread::Reflect);
@@ -624,7 +625,7 @@ fn compose_repeated_linear_brush_shares_atlas_row() {
     use crate::forest::shapes::record::LoweredGradient;
     use crate::primitives::brush::LinearGradient;
     use crate::primitives::fill_wire::FillKind;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     use crate::renderer::gradient_atlas::handle::GradientAtlas;
     let g = LinearGradient::two_stop(0.5, ColorU8::hex(0x336699), ColorU8::hex(0xddaa44));
     let atlas = GradientAtlas::default();
@@ -1466,7 +1467,7 @@ fn compose_quad_overlap_with_prior_batch_text_splits_batch() {
 
 #[test]
 fn compose_emits_image_batch_for_drawimage() {
-    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload::image(
@@ -1496,7 +1497,7 @@ fn compose_emits_image_batch_for_drawimage() {
 
 #[test]
 fn compose_image_forwards_uv_crop_for_cover_fit() {
-    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
     let buf = run(
         |b, _arena| {
             b.draw_image(DrawImagePayload::image(
@@ -1518,7 +1519,7 @@ fn compose_image_forwards_uv_crop_for_cover_fit() {
 /// (a `GpuView` ships full UV from the encoder — see `gpu_view` tests).
 #[test]
 fn compose_forwards_flags_and_repeat_uv() {
-    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
     use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
     let buf = run(
         |b, _arena| {
@@ -1560,7 +1561,7 @@ fn compose_forwards_flags_and_repeat_uv() {
 
 #[test]
 fn compose_emits_one_curve_batch_per_scissor_group() {
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             // Two curves under one (implicit) scissor group → must
@@ -1599,7 +1600,7 @@ fn compose_emits_one_curve_batch_per_scissor_group() {
 
 #[test]
 fn compose_splits_curve_batches_across_scissor_groups() {
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             b.draw_curve(DrawCurvePayload {
@@ -1645,7 +1646,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
     use crate::primitives::brush::Spread;
     use crate::primitives::fill_wire::FillKind;
     use crate::primitives::fill_wire::LutRow;
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     let buf = run(
         |b, _arena| {
             // Linear gradient curve: fill_kind low byte = 1, lut_row = 7.
@@ -1682,7 +1683,7 @@ fn compose_threads_curve_fill_kind_and_lut_row_into_instances() {
 
 #[test]
 fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
-    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawArcPayload;
     use crate::renderer::render_buffer::CURVE_KIND_ARC;
     use std::f32::consts::PI;
     // 3/4 arc: r = 20 logical, sweep = 1.5π, at DPI scale 2.
@@ -1727,7 +1728,7 @@ fn compose_arc_scales_geometry_and_subdivides_by_exact_length() {
 
 #[test]
 fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
-    use crate::renderer::frontend::cmd_buffer::DrawArcPayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawArcPayload;
     use std::f32::consts::{FRAC_PI_2, PI};
     // Pivot = bbox.center() = (50, 50); center (70, 50) is +20 along x.
     // rotation = π/2 (clockwise on screen, y-down): (+20, 0) → (0, +20),
@@ -1763,7 +1764,7 @@ fn compose_arc_spin_rotates_center_about_bbox_pivot_and_offsets_angles() {
 
 #[test]
 fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     // Same 800 px span: a straight cubic (CPs on the segment thirds —
     // exactly what Shape::Line lowers to) must collapse to one
     // instance; a genuinely curved one must subdivide (800 px polygon
@@ -1809,7 +1810,7 @@ fn compose_flat_cubic_emits_single_instance_curved_emits_many() {
 
 #[test]
 fn compose_curve_spin_rotates_control_points_about_bbox_pivot() {
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     use std::f32::consts::FRAC_PI_2;
     // Pivot = bbox.center() = (50, 50). A π/2 spin (clockwise on
     // screen, y-down) maps an offset (dx, dy) from the pivot to
@@ -1896,7 +1897,7 @@ fn compose_arc_and_curve_share_one_batch_per_group() {
 }
 
 fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
-    use crate::renderer::frontend::cmd_buffer::DrawCurvePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawCurvePayload;
     b.draw_curve(DrawCurvePayload {
         bbox,
         origin: Vec2::ZERO,
@@ -1911,7 +1912,7 @@ fn curve(b: &mut RenderCmdBuffer, bbox: Rect) {
 }
 
 fn image(b: &mut RenderCmdBuffer, r: Rect) {
-    use crate::renderer::frontend::cmd_buffer::DrawImagePayload;
+    use crate::renderer::frontend::cmd_buffer::payload::DrawImagePayload;
     b.draw_image(DrawImagePayload::image(
         r,
         Vec2::ZERO,
@@ -2070,7 +2071,7 @@ fn prune_keeps_quads_in_separate_groups_even_when_covered() {
 #[test]
 fn prune_does_not_drop_stroked_quad_under_solid_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     // A stroked quad's stroke spills outside the rect; pruning a
     // stroked quad on the strict containment test below would lose
     // the stroke fringe. Predicate requires zero-stroke as
@@ -2111,7 +2112,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
     // a sharp opaque quad on top exactly covers a rounded under,
     // the under is dropped (sharp cover == its own bounding rect,
     // which contains the rounded's bounding rect).
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let buf_rounded_on_top = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // solid sharp under
@@ -2152,7 +2153,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
 #[test]
 fn prune_keeps_transparent_solid_as_non_occluder() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     // alpha=0.5 quad on top doesn't occlude anything beneath.
     let buf = run(
         |b, _| {
@@ -2177,7 +2178,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
     // ≈ 2.93 per side → cover = (2.93, 2.93, 94.14, 94.14).
     // An under-quad at (10,10,80,80) is well inside cover and
     // should be dropped.
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 80.0, 80.0)); // sharp opaque under
@@ -2206,7 +2207,7 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
     // Rounded r=20 ⇒ inset ≈ 5.86. An under at (0,0,5,5) lies
     // entirely inside the [0,20]×[0,20] corner-cutout zone and is
     // never covered.
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(0.0, 0.0, 5.0, 5.0)); // sharp under in corner
@@ -2319,7 +2320,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
     // (Translucent strokes shrink the cover — see
     // `prune_occluder_stroke_translucency_gates_cover`.)
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     let buf = run(
         |b, _| {
             draw(b, rect(10.0, 10.0, 50.0, 50.0)); // sharp opaque under
@@ -2359,7 +2360,7 @@ fn prune_stroked_occluder_drops_smaller_sharp_under() {
 #[test]
 fn prune_occluder_stroke_translucency_gates_cover() {
     use crate::primitives::stroke::Stroke;
-    use crate::renderer::frontend::cmd_buffer::BrushSource;
+    use crate::renderer::frontend::cmd_buffer::payload::BrushSource;
     #[derive(Debug)]
     struct Case {
         label: &'static str,
