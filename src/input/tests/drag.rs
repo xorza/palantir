@@ -116,19 +116,28 @@ fn held_is_rect_independent_unlike_pressed() {
     // Idle over the widget: neither pressed nor held.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(!r.left.held() && !r.pressed(), "hover without press is neither");
+    assert!(
+        !r.left.held() && !r.pressed(),
+        "hover without press is neither"
+    );
 
     // Press inside: both live, pointer is over the widget.
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert!(r.left.held() && r.pressed(), "press over the widget sets both");
+    assert!(
+        r.left.held() && r.pressed(),
+        "press over the widget sets both"
+    );
 
     // Drag well outside the 100×100 rect: `pressed` drops (no longer
     // hovered), `held` stays — the capture is still latched.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(300.0, 300.0)));
     let r = resp(&mut ui, s, build_clickable, id());
     assert!(r.left.held(), "held survives the pointer leaving the rect");
-    assert!(!r.pressed(), "pressed dies once the pointer leaves the rect");
+    assert!(
+        !r.pressed(),
+        "pressed dies once the pointer leaves the rect"
+    );
 
     // Release ends the capture: held clears.
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -146,7 +155,9 @@ fn drag_delta_clears_on_release() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 70.0)));
     assert!(
         resp(&mut ui, s, build_clickable, id())
-            .left.drag.delta()
+            .left
+            .drag
+            .delta()
             .is_some()
     );
 
@@ -183,10 +194,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     // (no new start edge), and the real release fires the stop edge.
     ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 40.0)));
     let r = resp(&mut ui, s, build_clickable, id());
-    assert_eq!(
-        r.left.drag.delta(),
-        Some(Vec2::new(60.0, 0.0))
-    );
+    assert_eq!(r.left.drag.delta(), Some(Vec2::new(60.0, 0.0)));
     assert!(!r.drag_started(), "re-entry resumes, not re-latches");
 
     ui.on_input(InputEvent::PointerReleased(PointerButton::Left));
@@ -213,10 +221,7 @@ fn drag_stopped_edge_fires_once_on_release() {
     let r = resp(&mut ui, s, build_draggable, id());
     assert!(!r.dragged(), "release destroys the drag state");
     assert!(r.drag_stopped() && r.middle.drag.stopped());
-    assert!(
-        !r.left.drag.stopped(),
-        "edge is button-filtered",
-    );
+    assert!(!r.left.drag.stopped(), "edge is button-filtered",);
 
     // One-frame edge: gone the next frame.
     let r = resp(&mut ui, s, build_draggable, id());
@@ -272,10 +277,7 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 70.0)));
 
     let r = resp(&mut ui, s, build_draggable, id());
-    assert_eq!(
-        r.middle.drag.delta(),
-        Some(Vec2::new(60.0, 40.0))
-    );
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
     assert!(
         r.middle.drag.started(),
         "drag-start edge must fire on the threshold-crossing move",
@@ -318,7 +320,12 @@ fn drag_started_is_one_frame_edge_then_clears_on_post_record() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(50.0, 50.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Middle));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(80.0, 50.0))); // latches
-    assert!(resp(&mut ui, s, build_draggable, id()).middle.drag.started());
+    assert!(
+        resp(&mut ui, s, build_draggable, id())
+            .middle
+            .drag
+            .started()
+    );
 
     ui.on_input(InputEvent::PointerMoved(Vec2::new(100.0, 50.0)));
     let r = resp(&mut ui, s, build_draggable, id());
@@ -345,10 +352,7 @@ fn right_button_drag_also_latches() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(70.0, 40.0)));
 
     let r = resp(&mut ui, s, build_draggable, id());
-    assert_eq!(
-        r.right.drag.delta(),
-        Some(Vec2::new(30.0, 0.0))
-    );
+    assert_eq!(r.right.drag.delta(), Some(Vec2::new(30.0, 0.0)));
     assert!(r.right.drag.started());
 }
 
@@ -408,10 +412,7 @@ fn releasing_priority_button_promotes_lower_priority() {
     assert!(!r.left.drag.dragging());
     // Middle's anchor is the middle press position (same frame as
     // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
-    assert_eq!(
-        r.middle.drag.delta(),
-        Some(Vec2::new(60.0, 40.0)),
-    );
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)),);
 }
 
 // ── Misses + zero-state ──────────────────────────────────────────────
@@ -456,10 +457,7 @@ fn drag_delta_none_when_press_missed_all_widgets() {
     ui.on_input(InputEvent::PointerMoved(Vec2::new(200.0, 200.0)));
     ui.on_input(InputEvent::PointerPressed(PointerButton::Left));
     ui.on_input(InputEvent::PointerMoved(Vec2::new(250.0, 220.0)));
-    assert_eq!(
-        resp(&mut ui, surface, build, id()).left.drag.delta(),
-        None,
-    );
+    assert_eq!(resp(&mut ui, surface, build, id()).left.drag.delta(), None,);
 }
 
 // Drag-on-canvas composition, driven through the widget-facing
