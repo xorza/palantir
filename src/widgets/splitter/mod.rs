@@ -1,16 +1,15 @@
 use crate::forest::element::{Configure, Element, LayoutMode, Salt};
 use crate::input::sense::Sense;
+use crate::layout::axis::Axis;
 use crate::layout::types::clip_mode::ClipMode;
 use crate::layout::types::sizing::Sizing;
 use crate::layout::types::track::{GridDef, Track};
 use crate::primitives::background::Background;
-use crate::primitives::transform::TranslateScale;
 use crate::primitives::widget_id::WidgetId;
 use crate::ui::Ui;
 use crate::widgets::theme::splitter::SplitterTheme;
 use crate::widgets::{Response, WidgetEntry, enter_widget};
 use crate::window::CursorIcon;
-use glam::Vec2;
 use std::rc::Rc;
 
 /// Two panes split by a draggable divider. [`Splitter::horizontal`] lays
@@ -31,10 +30,11 @@ use std::rc::Rc;
 /// [`Splitter::show`] records both panes through one `FnMut` body called
 /// with [`SplitHalf::First`] then [`SplitHalf::Second`] — one closure, so
 /// a recursive pane tree can capture its state mutably once.
+#[derive(Debug)]
 pub struct Splitter<'a> {
     element: Element,
     ratio: &'a mut f32,
-    horizontal: bool,
+    axis: Axis,
     min_pane: f32,
     style: Option<SplitterTheme>,
 }
@@ -67,23 +67,50 @@ impl Default for SplitterState {
     }
 }
 
+impl SplitterState {
+    fn grid_def(&mut self, axis: Axis, ratio: f32, rule_thickness: f32) -> GridDef {
+        let main_tracks = self
+            .main_tracks
+            .iter_mut()
+            .find(|tracks| Rc::strong_count(tracks) == 1)
+            .expect("one splitter track buffer must be reusable each record");
+        let tracks = Rc::get_mut(main_tracks).unwrap();
+        tracks[0] = Track::fill_weight(ratio);
+        tracks[1] = Track::fixed(rule_thickness);
+        tracks[2] = Track::fill_weight(1.0 - ratio);
+        let main_tracks = Rc::clone(main_tracks);
+        let cross_tracks = Rc::clone(&self.cross_tracks);
+
+        let (rows, cols) = match axis {
+            Axis::X => (cross_tracks, main_tracks),
+            Axis::Y => (main_tracks, cross_tracks),
+        };
+        GridDef {
+            rows,
+            cols,
+            row_gap: 0.0,
+            col_gap: 0.0,
+        }
+    }
+}
+
 impl<'a> Splitter<'a> {
     /// Side-by-side panes with a vertical divider bar; `ratio` is the
     /// left pane's share.
     #[track_caller]
     pub fn horizontal(ratio: &'a mut f32) -> Self {
-        Self::axis(ratio, true)
+        Self::new(ratio, Axis::X)
     }
 
     /// Stacked panes with a horizontal divider bar; `ratio` is the top
     /// pane's share.
     #[track_caller]
     pub fn vertical(ratio: &'a mut f32) -> Self {
-        Self::axis(ratio, false)
+        Self::new(ratio, Axis::Y)
     }
 
     #[track_caller]
-    fn axis(ratio: &'a mut f32, horizontal: bool) -> Self {
+    fn new(ratio: &'a mut f32, axis: Axis) -> Self {
         // The clipped root contains the grab overlay's overhang within the splitter.
         let mut element = Element::new(LayoutMode::Grid);
         element.size = (Sizing::FILL, Sizing::FILL).into();
@@ -91,7 +118,7 @@ impl<'a> Splitter<'a> {
         Self {
             element,
             ratio,
-            horizontal,
+            axis,
             min_pane: 0.0,
             style: None,
         }
@@ -136,13 +163,16 @@ impl<'a> Splitter<'a> {
         let divider = ui.response_for(divider_id);
         let first_id = id.with("first");
         let second_id = id.with("second");
+        let axis = self.axis;
 
         let sync_pending = ui
             .try_state::<SplitterState>(id)
             .is_some_and(|state| state.sync_ratio_next_record);
-        let synced_ratio = sync_pending
-            .then(|| arranged_pane_ratio(ui, first_id, second_id, self.horizontal))
-            .flatten();
+        let synced_ratio = if sync_pending {
+            arranged_pane_ratio(ui, first_id, second_id, axis)
+        } else {
+            None
+        };
         let ratio = synced_ratio.unwrap_or_else(|| sanitize_ratio(*self.ratio));
         let mut layout_ratio = ratio;
         let mut resizing = false;
@@ -152,12 +182,12 @@ impl<'a> Splitter<'a> {
             if divider.left.drag.dragging()
                 && let (Some(local), Some(rect)) = (state.pointer_local, state.rect)
             {
-                let (pos, extent) = if self.horizontal {
-                    (local.x, rect.size.w)
-                } else {
-                    (local.y, rect.size.h)
-                };
-                layout_ratio = pointer_to_ratio(pos, extent, rule_thickness, self.min_pane);
+                layout_ratio = pointer_to_ratio(
+                    axis.main_v(local),
+                    axis.main(rect.size),
+                    rule_thickness,
+                    self.min_pane,
+                );
                 resizing = true;
             }
             if divider.left.double_clicked() {
@@ -167,25 +197,11 @@ impl<'a> Splitter<'a> {
         }
         *self.ratio = ratio;
 
-        let (rows, cols) = {
+        let grid_def = {
             let grid_state = ui.state_mut::<SplitterState>(id);
-            let main_tracks = grid_state
-                .main_tracks
-                .iter_mut()
-                .find(|tracks| Rc::strong_count(tracks) == 1)
-                .expect("one splitter track buffer must be reusable each record");
-            let tracks = Rc::get_mut(main_tracks).unwrap();
-            tracks[0] = Track::fill_weight(layout_ratio);
-            tracks[1] = Track::fixed(rule_thickness);
-            tracks[2] = Track::fill_weight(1.0 - layout_ratio);
-            let main_tracks = Rc::clone(main_tracks);
             grid_state.sync_ratio_next_record =
                 resizing || (sync_pending && synced_ratio.is_none());
-            if self.horizontal {
-                (Rc::clone(&grid_state.cross_tracks), main_tracks)
-            } else {
-                (main_tracks, Rc::clone(&grid_state.cross_tracks))
-            }
+            grid_state.grid_def(axis, layout_ratio, rule_thickness)
         };
 
         let bar_fill = if divider.left.drag.dragging() {
@@ -200,60 +216,40 @@ impl<'a> Splitter<'a> {
         // (`hovered` is also capture-gated), and the cursor must hold
         // until release.
         if bar_fill.is_some() {
-            ui.set_cursor(if self.horizontal {
-                CursorIcon::EwResize
-            } else {
-                CursorIcon::NsResize
+            ui.set_cursor(match axis {
+                Axis::X => CursorIcon::EwResize,
+                Axis::Y => CursorIcon::NsResize,
             });
         }
         let bar_bg = bar_fill.map(Background::fill).unwrap_or_default();
         let rule_bg = Background::fill(rule_color);
 
-        let horizontal = self.horizontal;
         let layer = ui.forest.current_layer();
         let mut element = self.element;
-        element.mode_payload = ui.forest.trees[layer].grid.push_def(GridDef {
-            rows,
-            cols,
-            row_gap: 0.0,
-            col_gap: 0.0,
-        });
+        element.mode_payload = ui.forest.trees[layer].grid.push_def(grid_def);
         ui.node(id, element, None, |ui| {
-            pane(ui, first_id, horizontal, 0, |ui| body(ui, SplitHalf::First));
+            pane(ui, first_id, axis, 0, |ui| body(ui, SplitHalf::First));
 
             let rule_id = id.with("rule");
             let mut rule = Element::new(LayoutMode::Leaf);
             rule.salt = Salt::Verbatim(rule_id);
             rule.size = (Sizing::FILL, Sizing::FILL).into();
-            set_main_cell(&mut rule, horizontal, 1);
+            set_main_cell(&mut rule, axis, 1);
             ui.node(rule_id, rule, Some(&rule_bg), |_| {});
 
-            pane(ui, second_id, horizontal, 2, |ui| {
-                body(ui, SplitHalf::Second)
-            });
+            pane(ui, second_id, axis, 2, |ui| body(ui, SplitHalf::Second));
 
-            let overlay_id = id.with("divider_overlay");
-            let mut overlay = Element::new(LayoutMode::ZStack);
-            overlay.salt = Salt::Verbatim(overlay_id);
-            overlay.size = (Sizing::FILL, Sizing::FILL).into();
-            overlay.transform = TranslateScale::from_translation(if horizontal {
-                Vec2::new((rule_thickness - thickness) * 0.5, 0.0)
-            } else {
-                Vec2::new(0.0, (rule_thickness - thickness) * 0.5)
-            });
-            set_main_cell(&mut overlay, horizontal, 1);
-            ui.node(overlay_id, overlay, None, |ui| {
-                let mut bar = Element::new(LayoutMode::Leaf);
-                bar.salt = Salt::Verbatim(divider_id);
-                bar.flags.set_sense(Sense::DRAG);
-                bar.size = if horizontal {
-                    (Sizing::Fixed(thickness), Sizing::FILL)
-                } else {
-                    (Sizing::FILL, Sizing::Fixed(thickness))
-                }
-                .into();
-                ui.node(divider_id, bar, Some(&bar_bg), |_| {});
-            });
+            let inset = (rule_thickness - thickness) * 0.5;
+            let mut bar = Element::new(LayoutMode::Leaf);
+            bar.salt = Salt::Verbatim(divider_id);
+            bar.flags.set_sense(Sense::DRAG);
+            bar.size = (Sizing::FILL, Sizing::FILL).into();
+            bar.margin = match axis {
+                Axis::X => (inset, 0.0, inset, 0.0).into(),
+                Axis::Y => (0.0, inset, 0.0, inset).into(),
+            };
+            set_main_cell(&mut bar, axis, 1);
+            ui.node(divider_id, bar, Some(&bar_bg), |_| {});
         });
 
         Response::eager(id, ui, raw)
@@ -267,20 +263,19 @@ impl Configure for Splitter<'_> {
 }
 
 /// One pane: a clipped ZStack filling its Grid cell.
-fn pane(ui: &mut Ui, id: WidgetId, horizontal: bool, main_cell: u16, body: impl FnOnce(&mut Ui)) {
+fn pane(ui: &mut Ui, id: WidgetId, axis: Axis, main_cell: u16, body: impl FnOnce(&mut Ui)) {
     let mut el = Element::new(LayoutMode::ZStack);
     el.salt = Salt::Verbatim(id);
     el.size = (Sizing::FILL, Sizing::FILL).into();
     el.flags.set_clip(ClipMode::Rect);
-    set_main_cell(&mut el, horizontal, main_cell);
+    set_main_cell(&mut el, axis, main_cell);
     ui.node(id, el, None, body)
 }
 
-fn set_main_cell(element: &mut Element, horizontal: bool, main_cell: u16) {
-    if horizontal {
-        element.grid.col = main_cell;
-    } else {
-        element.grid.row = main_cell;
+fn set_main_cell(element: &mut Element, axis: Axis, main_cell: u16) {
+    match axis {
+        Axis::X => element.grid.col = main_cell,
+        Axis::Y => element.grid.row = main_cell,
     }
 }
 
@@ -291,20 +286,12 @@ fn arranged_pane_ratio(
     ui: &Ui,
     first_id: WidgetId,
     second_id: WidgetId,
-    horizontal: bool,
+    axis: Axis,
 ) -> Option<f32> {
     let first = ui.response_for(first_id).layout_rect?;
     let second = ui.response_for(second_id).layout_rect?;
-    let first_extent = if horizontal {
-        first.size.w
-    } else {
-        first.size.h
-    };
-    let second_extent = if horizontal {
-        second.size.w
-    } else {
-        second.size.h
-    };
+    let first_extent = axis.main(first.size);
+    let second_extent = axis.main(second.size);
     let span = first_extent + second_extent;
     (span > f32::EPSILON).then(|| sanitize_ratio(first_extent / span))
 }
