@@ -303,9 +303,8 @@ pub(crate) struct MeshInstance {
 /// `TextRun` slices via `bytemuck`.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, bytemuck::Pod, bytemuck::Zeroable)]
-// `pub` (not `pub(crate)`) is load-bearing: the text backend's gated
-// `test_support` re-exports this via `pub use` so external benches can
-// name it; a `pub(crate)` item can't be `pub use`d out of the crate.
+// Public because the feature-gated `text_backend_internals` bench surface
+// exposes shaped runs from `lib.rs`.
 pub struct TextRun {
     pub(crate) key: TextCacheKey,
     /// Top-left of the run's bounding box, physical px.
