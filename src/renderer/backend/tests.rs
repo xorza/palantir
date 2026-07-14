@@ -15,7 +15,8 @@ use crate::renderer::backend::schedule::{
 use crate::renderer::quad::Quad;
 use crate::renderer::render_buffer::batch::{DrawGroup, GroupBatch, TextBatch};
 use crate::renderer::render_buffer::owner::RenderOwnerId;
-use crate::renderer::render_buffer::{RenderBuffer, RoundedClip, TextRun};
+use crate::renderer::render_buffer::text::TextRun;
+use crate::renderer::render_buffer::{RenderBuffer, RoundedClip};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
 

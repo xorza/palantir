@@ -26,7 +26,7 @@
 use crate::primitives::color::ColorU8;
 use crate::primitives::span::Span;
 use crate::primitives::urect::URect;
-use crate::renderer::render_buffer::TextRun;
+use crate::renderer::render_buffer::text::TextRun;
 use crate::text::TextCacheKey;
 use cosmic_text::{Buffer, FontSystem, SubpixelBin, SwashCache, SwashContent};
 use rustc_hash::FxHashMap;

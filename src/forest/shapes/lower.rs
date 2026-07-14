@@ -26,7 +26,7 @@ use crate::primitives::size::Size;
 use crate::primitives::span::Span;
 use crate::primitives::stroke::Stroke;
 use crate::renderer::gradient_atlas::handle::GradientAtlas;
-use crate::renderer::render_buffer::{HALF_FRINGE, MITER_LIMIT};
+use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
 use std::hash::Hasher;

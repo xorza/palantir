@@ -21,7 +21,7 @@ use crate::renderer::frontend::cmd_buffer::payload::{
     DrawPolylinePayload,
 };
 use crate::renderer::gpu_view::GpuViewEntry;
-use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
+use crate::renderer::render_buffer::image::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
 use crate::text::text_in_rect;
 use crate::ui::Ui;
