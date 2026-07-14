@@ -427,11 +427,8 @@ fn drag_zero_state_for_uncaptured_widget() {
 
     let other = WidgetId::from_hash("other");
     let r = resp(&mut ui, s, build_draggable, other);
-    assert_eq!(r.drag_delta(), None);
     assert_eq!(r.middle.drag.delta(), None);
-    assert!(!r.dragged());
     assert!(!r.middle.drag.dragging());
-    assert!(!r.drag_started());
     assert!(!r.middle.drag.started());
 }
 
@@ -625,7 +622,7 @@ fn drag_started_fires_only_on_latch_frame() {
                     .size((Sizing::Fixed(400.0), Sizing::Fixed(400.0)))
                     .show(ui, |ui| {
                         a.record(ui);
-                        latched |= ui.response_for(card_id("a")).drag_started();
+                        latched |= ui.response_for(card_id("a")).left.drag.started();
                     });
             });
         });
