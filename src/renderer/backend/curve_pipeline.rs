@@ -1,6 +1,6 @@
 //! GPU side of native parametric strokes (cubic beziers + circular
 //! arcs — see `CurveInstance::kind`). One `draw` per scissor
-//! group covers every `CurveInstance` in the group's `CurveBatch` —
+//! group covers every `CurveInstance` in the group's `GroupBatch` —
 //! the vertex shader subdivides each instance into
 //! [`SEGMENTS_PER_INSTANCE`](crate::renderer::render_buffer::SEGMENTS_PER_INSTANCE)
 //! chords (96 vertices per instance, no index buffer) and offsets the
@@ -111,7 +111,7 @@ impl CurvePipeline {
     }
 
     /// Bind once per pass, before issuing one [`Self::draw`] per
-    /// `CurveBatch`. Viewport rides the shared immediate region;
+    /// curve group batch. Viewport rides the shared immediate region;
     /// `gradient_bg` is the group-0 handle owned by `GradientResources`
     /// (one allocation, used by both the quad and curve pipelines).
     pub(crate) fn bind<'a>(
@@ -130,7 +130,7 @@ impl CurvePipeline {
     /// the span (no index buffer — `vertex_index` maps directly to the
     /// 6 corners of each of `SEGMENTS_PER_INSTANCE` quads). This is the
     /// "one draw call per scissor group" terminus — the entire
-    /// `CurveBatch` lands as a single GPU draw call.
+    /// curve group batch lands as a single GPU draw call.
     pub(crate) fn draw(&self, pass: &mut wgpu::RenderPass<'_>, instances: std::ops::Range<u32>) {
         if instances.start == instances.end {
             return;

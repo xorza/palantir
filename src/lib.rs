@@ -47,6 +47,13 @@ pub mod gpu_pass_stats {
 pub mod write_stats {
     pub use crate::renderer::backend::write_stats::{Stats, take};
 }
+#[cfg(feature = "internals")]
+pub mod text_backend_internals {
+    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
+    pub use crate::renderer::backend::queue::Queue;
+    pub use crate::renderer::backend::text::test_support::{BenchText, make_run};
+    pub use crate::renderer::render_buffer::TextRun;
+}
 
 pub use forest::frame_arena::FrameArena;
 

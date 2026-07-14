@@ -486,24 +486,15 @@ pub mod test_support {
     use crate::layout::types::align::HAlign;
     use crate::primitives::color::ColorU8;
     use crate::primitives::urect::URect;
+    use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::pipeline_utils::StencilVariant;
+    use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
     use crate::renderer::backend::text::ViewportPush;
+    use crate::renderer::render_buffer::TextRun;
 
     use crate::text::{FontFamily, FontWeight, ShapeParams, TextShaper};
     use glam::{UVec2, Vec2};
-
-    /// Re-export the `pub(crate)` `GpuCtx` so benches can construct
-    /// one to feed `prepare`/`flush`. The full path
-    /// (`crate::renderer::backend::gpu_ctx::GpuCtx`) is noisy at the
-    /// call site.
-    pub use crate::renderer::backend::gpu_ctx::GpuCtx;
-    /// Re-export the counting `Queue` wrapper so benches can build one
-    /// to feed `GpuCtx::new`.
-    pub use crate::renderer::backend::queue::Queue;
-    /// Re-export the otherwise-`pub(crate)` `TextRun` so benches can
-    /// name it in their fixture slice.
-    pub use crate::renderer::render_buffer::TextRun;
 
     /// Standalone bench harness for the text backend: a [`TextBackend`]
     /// (its glyph atlas, shaper, caches) plus the single no-stencil
