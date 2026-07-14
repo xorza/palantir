@@ -325,7 +325,7 @@ pub fn build(ui: &mut Ui, cube: &Rc<RefCell<Cube>>) {
                 .sense(Sense::DRAG)
                 .size((Sizing::FILL, Sizing::FILL))
                 .show(ui);
-            if let Some(delta) = resp.drag_delta() {
+            if let Some(delta) = resp.left.drag.delta() {
                 cube.borrow_mut().orbit(delta.x * 0.05, delta.y * 0.05);
             }
         });

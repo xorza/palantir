@@ -114,7 +114,7 @@ fn from_winit_ime_commit_routing() {
 
 #[test]
 fn keyboard_events_do_not_perturb_scroll_state() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     let before_scroll = state.frame_scroll_pixels;
     state.on_input(
@@ -134,7 +134,7 @@ fn keyboard_events_do_not_perturb_scroll_state() {
 fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
     // Modifiers captured at push time, so a ModifiersChanged between
     // two KeyDowns attributes correctly.
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
 
     state.on_input(
@@ -183,7 +183,7 @@ fn keydown_pushes_onto_frame_keys_with_current_modifiers() {
 #[test]
 fn text_events_arrive_in_order_in_keyboard_buffer() {
     use crate::input::keyboard::KeyboardEvent;
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(InputEvent::Text(TextChunk::new("hé").unwrap()), &cascades);
     state.on_input(InputEvent::Text(TextChunk::new("llo").unwrap()), &cascades);
@@ -359,7 +359,7 @@ fn invisible_or_disabled_focusable_refuses_focus() {
 
 #[test]
 fn post_record_clears_keys_and_text_but_preserves_modifiers() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(
         InputEvent::ModifiersChanged(Modifiers {

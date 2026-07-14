@@ -34,6 +34,7 @@ fn build(ui: &mut Ui, clicked_copy: &mut bool, _unused: &mut bool) {
                 if MenuItem::new("Copy")
                     .shortcut(Shortcut::ctrl('C'))
                     .show(ui, popup)
+                    .left
                     .clicked()
                 {
                     *clicked_copy = true;

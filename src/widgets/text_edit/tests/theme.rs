@@ -385,12 +385,16 @@ fn drag_select_extends_selection() {
 fn click_without_drag_clears_prior_selection() {
     // Programmatic Ctrl+A select-all, then a press elsewhere should
     // collapse the selection (anchor latched on the press, no drag).
-    // Uses press+frame+release so the rising edge actually fires.
+    // Uses press+frame+release so the rising edge actually fires. The
+    // focusing click sits > DOUBLE_CLICK_RADIUS from the later press —
+    // the input layer counts *every* press toward a multi-press run
+    // (frames don't have to observe them), so a same-spot follow-up
+    // would legitimately read as a double-click word-select.
     let mut ui = ui_at_no_cosmic(NARROW);
     let mut buf = String::from("hello");
 
     ui.run_at_acked(NARROW, editor_at(&mut buf, None));
-    ui.click_at(Vec2::new(20.0, 20.0));
+    ui.click_at(Vec2::new(60.0, 20.0));
     ui.on_input(InputEvent::ModifiersChanged(Modifiers {
         ctrl: true,
         ..Modifiers::NONE

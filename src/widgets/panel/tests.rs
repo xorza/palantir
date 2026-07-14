@@ -250,7 +250,7 @@ fn disabled_panel_suppresses_clicks_on_descendants() {
                         .size((Sizing::Fixed(100.0), Sizing::Fixed(40.0)))
                         .show(ui);
                     if let Some(c) = captured {
-                        *c = r.clicked();
+                        *c = r.left.clicked();
                     }
                 });
         });

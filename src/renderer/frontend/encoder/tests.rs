@@ -1,7 +1,6 @@
 use crate::Ui;
 use crate::forest::Layer;
 use crate::forest::element::Configure;
-use crate::forest::shapes::record::text_in_rect;
 use crate::input::InputEvent;
 use crate::input::pointer::PointerButton;
 use crate::input::sense::Sense;
@@ -18,6 +17,7 @@ use crate::primitives::{
 use crate::renderer::frontend::cmd_buffer::{
     CmdKind, DrawRectPayload, DrawTextPayload, PushClipPayload, RenderCmdBuffer,
 };
+use crate::text::text_in_rect;
 use crate::widgets::{frame::Frame, panel::Panel};
 use glam::{UVec2, Vec2};
 
@@ -559,6 +559,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         })
                         .sense(Sense::CLICK)
                         .show(ui)
+                        .left
                         .clicked();
                     capture.1 |= Frame::new()
                         .id(WidgetId::from_hash("D"))
@@ -571,6 +572,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .sense(Sense::CLICK)
                         .disabled(true)
                         .show(ui)
+                        .left
                         .clicked();
                     capture.2 |= Frame::new()
                         .id(WidgetId::from_hash("H"))
@@ -583,6 +585,7 @@ fn cascade_matches_hit_index_for_visible_disabled_and_hidden() {
                         .sense(Sense::CLICK)
                         .hidden()
                         .show(ui)
+                        .left
                         .clicked();
                 });
         });

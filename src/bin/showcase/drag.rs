@@ -79,11 +79,11 @@ fn card(ui: &mut Ui, key: &str, initial: Vec2, accent: Color) {
         .snapshot();
 
     let st: &mut CardState = ui.state_mut(id);
-    if r.drag_started() {
+    if r.left.drag.started() {
         st.anchor = st.pos;
         st.dragging = true;
     }
-    if let Some(delta) = r.drag_delta() {
+    if let Some(delta) = r.left.drag.delta() {
         st.pos = st.anchor + delta;
     } else if st.dragging {
         st.dragging = false;

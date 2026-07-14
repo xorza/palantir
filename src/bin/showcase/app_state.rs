@@ -26,16 +26,29 @@ pub fn build(ui: &mut Ui, app: &mut AppState) {
                 .show(ui);
 
             Panel::hstack().auto_id().gap(8.0).show(ui, |ui| {
-                if Button::new().id_salt("dec").label("-").show(ui).clicked() {
+                if Button::new()
+                    .id_salt("dec")
+                    .label("-")
+                    .show(ui)
+                    .left
+                    .clicked()
+                {
                     app.counter -= 1;
                 }
-                if Button::new().id_salt("inc").label("+").show(ui).clicked() {
+                if Button::new()
+                    .id_salt("inc")
+                    .label("+")
+                    .show(ui)
+                    .left
+                    .clicked()
+                {
                     app.counter += 1;
                 }
                 if Button::new()
                     .id_salt("reset")
                     .label("reset")
                     .show(ui)
+                    .left
                     .clicked()
                 {
                     app.counter = 0;

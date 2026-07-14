@@ -2,7 +2,6 @@ use crate::forest::frame_arena::FrameArenaInner;
 use crate::forest::seen_ids::WidgetIdMap;
 use crate::forest::shapes::record::{
     LoweredGradient, LoweredShadow, ShadowGeom, ShapeBrush, ShapeRecord, shadow_paint_rect_local,
-    text_in_rect,
 };
 use crate::forest::tree::iter::TreeItem;
 use crate::forest::tree::{NodeId, Tree};
@@ -23,6 +22,7 @@ use crate::renderer::frontend::cmd_buffer::{
 use crate::renderer::gpu_view::GpuViewEntry;
 use crate::renderer::render_buffer::{IMG_FLAG_NEAREST, IMG_FLAG_TILED};
 use crate::shape::{ColorModeBits, LineCapBits, LineJoinBits};
+use crate::text::text_in_rect;
 use crate::ui::Ui;
 use crate::ui::cascade::CascadeInputHash;
 use crate::ui::damage::region::DamageRegion;

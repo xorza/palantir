@@ -103,7 +103,7 @@ impl<'a> ComboBox<'a> {
 
         let trigger_rect = state.rect;
         let mut open = ui.state_mut::<ComboState>(id).open;
-        if !state.disabled && raw_state.clicked {
+        if !state.disabled && raw_state.left.clicked() {
             open = !open;
         }
         // Esc closes via the `Dismiss` popup's `resp.closed()` below — no
@@ -122,7 +122,7 @@ impl<'a> ComboBox<'a> {
             let resp = popup.show(ui, |ui, popup| {
                 for (i, opt) in options.iter().enumerate() {
                     let lbl = ui.intern(opt);
-                    if MenuItem::new(lbl).show(ui, popup).clicked() {
+                    if MenuItem::new(lbl).show(ui, popup).left.clicked() {
                         *selected = i;
                     }
                 }

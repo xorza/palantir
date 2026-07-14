@@ -166,6 +166,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                     .id_salt("apply")
                     .label("Apply")
                     .show(ui)
+                    .left
                     .clicked()
                 {
                     s.syncing = true;
@@ -175,6 +176,7 @@ fn form(ui: &mut Ui, s: &mut State) {
                     .style(outlined_style())
                     .label("Reset")
                     .show(ui)
+                    .left
                     .clicked()
                 {
                     *s = State::default();

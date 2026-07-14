@@ -32,7 +32,7 @@ fn from_winit_line_delta_emits_scroll_lines_with_flipped_signs() {
 #[test]
 fn scroll_delta_for_combines_pixels_and_lines_by_line_step() {
     use crate::primitives::widget_id::WidgetId;
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     let id = WidgetId::from_hash("scroll");
     state.scroll_target = Some(id);
@@ -67,7 +67,7 @@ fn from_winit_pixel_delta_divides_by_scale_factor_and_flips_both_axes() {
 
 #[test]
 fn on_input_accumulates_scroll_delta() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(InputEvent::ScrollPixels(Vec2::new(0.0, 40.0)), &cascades);
     state.on_input(InputEvent::ScrollPixels(Vec2::new(5.0, -10.0)), &cascades);
@@ -76,7 +76,7 @@ fn on_input_accumulates_scroll_delta() {
 
 #[test]
 fn pinch_gesture_accumulates_zoom_delta() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(InputEvent::Zoom(1.1), &cascades);
     state.on_input(InputEvent::Zoom(1.05), &cascades);
@@ -85,7 +85,7 @@ fn pinch_gesture_accumulates_zoom_delta() {
 
 #[test]
 fn post_record_resets_zoom_delta_to_identity() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(InputEvent::Zoom(1.2), &cascades);
     assert!((state.frame_zoom_delta - 1.2).abs() < 1e-5);
@@ -95,7 +95,7 @@ fn post_record_resets_zoom_delta_to_identity() {
 
 #[test]
 fn post_record_clears_scroll_delta() {
-    let mut state = InputState::new();
+    let mut state = InputState::default();
     let cascades = Cascades::default();
     state.on_input(InputEvent::ScrollPixels(Vec2::new(7.0, 7.0)), &cascades);
     assert_eq!(state.frame_scroll_pixels, Vec2::new(7.0, 7.0));
