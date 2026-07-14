@@ -19,6 +19,7 @@
 //! cost of resolving them — verifying with the cached buffer's source string
 //! on every hit — outweighs the cost of accepting the negligible risk.
 
+use crate::common::hash::hash_str;
 use crate::layout::types::align::HAlign;
 use crate::primitives::size::Size;
 use crate::text::{FontFamily, FontWeight, LineFit, MeasureResult, ShapeParams, TextCacheKey};
@@ -26,8 +27,7 @@ use cosmic_text::{
     Align as CosmicAlign, Attrs, Buffer, CacheKeyFlags, Family, FontSystem, Metrics, Shaping,
     Weight, fontdb,
 };
-use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
-use std::hash::Hasher;
+use rustc_hash::{FxHashMap, FxHashSet};
 use std::sync::Arc;
 
 /// Bundled fonts shipped with the crate. Inter is the default UI /
@@ -51,7 +51,7 @@ fn quantize(v: f32) -> u32 {
     (v.max(0.0) * 64.0).round() as u32
 }
 
-fn key_for(text: &str, params: ShapeParams, fit: LineFit) -> TextCacheKey {
+fn key_for(text_hash: u64, params: ShapeParams, fit: LineFit) -> TextCacheKey {
     let ShapeParams {
         font_size_px,
         line_height_px,
@@ -60,30 +60,9 @@ fn key_for(text: &str, params: ShapeParams, fit: LineFit) -> TextCacheKey {
         weight,
         halign,
     } = params;
-    // FxHasher beats SipHash here by ~10× for the short ASCII strings
-    // typical of UI labels — the cache-key fingerprint doesn't need
-    // DoS resistance, and the bulk byte-write path stays in registers
-    // for the whole input. Pre-`Hash` the `&str` to a single `write`
-    // so we don't pay the per-call SipHash overhead even for tiny
-    // strings.
-    let mut h = FxHasher::default();
-    h.write(text.as_bytes());
-    // Fold the fit mode into the fingerprint: at the same (text, width)
-    // `Clip` and `Ellipsis` each bake a *different* truncated string, and
-    // both differ from the `Wrap` buffer — their cache slots must not
-    // collide. `Wrap` writes nothing so its key matches the unbounded /
-    // single-line `measure` path.
-    match fit {
-        LineFit::Wrap => {}
-        LineFit::Clip => h.write_u8(1),
-        LineFit::Ellipsis => h.write_u8(2),
-    }
-    let mut text_hash = h.finish();
-    // Avoid colliding with INVALID. Probability astronomically low; flip a
-    // bit if it happens so the renderer never silently drops a real run.
-    if text_hash == 0 {
-        text_hash = 1;
-    }
+    // Avoid colliding with INVALID. Probability astronomically low; map zero
+    // to one so the renderer never silently drops a real run.
+    let text_hash = text_hash.max(1);
     // Halign discriminates the key only when it feeds shaping: a
     // finite wrap width under the `Wrap` fit, where cosmic bakes
     // per-line offsets into the buffer. Unbounded shapes and the
@@ -96,15 +75,16 @@ fn key_for(text: &str, params: ShapeParams, fit: LineFit) -> TextCacheKey {
         (Some(_), LineFit::Wrap) => halign as u8,
         _ => HAlign::Auto as u8,
     };
-    TextCacheKey::new(
+    TextCacheKey {
         text_hash,
-        quantize(font_size_px),
-        max_width_px.map(quantize).unwrap_or(MAX_W_NONE),
-        quantize(line_height_px),
-        family as u8,
-        weight as u8,
+        size_q: quantize(font_size_px),
+        max_w_q: max_width_px.map(quantize).unwrap_or(MAX_W_NONE),
+        lh_q: quantize(line_height_px),
+        family_q: family as u8,
+        weight_q: weight as u8,
         halign_q,
-    )
+        fit_q: fit as u8,
+    }
 }
 
 fn attrs_for(family: FontFamily, weight: FontWeight) -> Attrs<'static> {
@@ -174,13 +154,6 @@ pub struct CosmicMeasure {
     /// during [`Self::end_frame_evict`] — kept across frames so the
     /// (infrequent) eviction pass allocates nothing.
     evict_scratch: Vec<u64>,
-    /// Scratch buffer reused for the [`Self::measure_truncated`] *probe*
-    /// shape. The probe shapes the full (untruncated) string just to find
-    /// the cut point and is thrown away; reusing one buffer lets cosmic
-    /// retain its internal line/shape allocations, so a continuous resize
-    /// drag stops `Buffer::new`-ing and reallocating per truncated run per
-    /// frame. Never handed to the cache — only the final buffer is.
-    probe_buffer: Buffer,
     /// Trailing advance of "…" per `(quantized font size, family, weight)`.
     /// The ellipsis width is constant for a given size + face, so this turns
     /// the per-truncation ellipsis reshape into a map lookup (one shape
@@ -191,7 +164,7 @@ pub struct CosmicMeasure {
     /// optional `…`). Misses are the hot case — a continuous width drag
     /// mints a fresh quantized target per label per frame — so building
     /// into a retained buffer keeps that path free of `String` allocs,
-    /// same rationale as `probe_buffer`.
+    /// while the unbounded probe itself comes from `cache`.
     truncate_scratch: String,
 }
 
@@ -214,9 +187,6 @@ impl CosmicMeasure {
             cache: FxHashMap::default(),
             frame_gen: 0,
             evict_scratch: Vec::new(),
-            // Placeholder metrics; reset via `set_metrics` on every use.
-            // `new_empty` needs no `FontSystem`, only a non-zero line height.
-            probe_buffer: Buffer::new_empty(Metrics::new(16.0, 16.0)),
             ellipsis_cache: FxHashMap::default(),
             truncate_scratch: String::new(),
         }
@@ -272,6 +242,16 @@ impl Default for CosmicMeasure {
 impl CosmicMeasure {
     #[profiling::function]
     pub(crate) fn measure(&mut self, text: &str, params: ShapeParams) -> MeasureResult {
+        self.measure_hashed(text, hash_str(text), params)
+    }
+
+    #[profiling::function]
+    pub(crate) fn measure_hashed(
+        &mut self,
+        text: &str,
+        text_hash: u64,
+        params: ShapeParams,
+    ) -> MeasureResult {
         let ShapeParams {
             font_size_px,
             line_height_px,
@@ -283,7 +263,7 @@ impl CosmicMeasure {
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
         }
-        let key = key_for(text, params, LineFit::Wrap);
+        let key = key_for(text_hash, params, LineFit::Wrap);
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
@@ -327,14 +307,14 @@ impl CosmicMeasure {
     }
 
     /// Shape `text` as a single line truncated to fit `w`. Truncation is
-    /// char-precise: an unbounded probe shape gives per-glyph advances, we
+    /// char-precise: the cached unbounded shape gives per-glyph advances, we
     /// cut at the last glyph whose trailing edge fits, then shape the
     /// (possibly truncated) prefix on one **natural** line — unbounded, no
     /// per-line align. The committed width only decides the cut; the encoder
     /// positions/aligns the single line, so the measured extent is the glyph
     /// width, not `w` (binding to `w` + center align would inflate a
-    /// fits-anyway label to ~half the box). `with_ellipsis` reserves room for
-    /// and appends a trailing `…`; without it the prefix is cut flush to `w`
+    /// fits-anyway label to ~half the box). `LineFit::Ellipsis` reserves room
+    /// for and appends a trailing `…`; `LineFit::Clip` cuts flush to `w`
     /// with no marker. The buffer caches under a fit-discriminated key (so it
     /// can't collide with the wrapped buffer — or the other truncation mode —
     /// at the same width). `intrinsic_min` is 0 — a truncated run can shrink
@@ -343,7 +323,8 @@ impl CosmicMeasure {
         &mut self,
         text: &str,
         params: ShapeParams,
-        with_ellipsis: bool,
+        fit: LineFit,
+        unbounded_key: TextCacheKey,
     ) -> MeasureResult {
         let ShapeParams {
             font_size_px,
@@ -352,53 +333,56 @@ impl CosmicMeasure {
             family,
             weight,
             // A truncated single line is positioned/aligned by the encoder,
-            // not shaped with a per-line align — so `halign` doesn't feed
-            // shaping here (it still discriminates the cache key via `params`).
+            // not shaped with a per-line align.
             halign: _,
         } = params;
         let w = max_width_px.expect("measure_truncated requires a finite width");
+        assert!(
+            matches!(fit, LineFit::Clip | LineFit::Ellipsis),
+            "measure_truncated requires Clip or Ellipsis",
+        );
         if text.is_empty() || font_size_px <= 0.0 {
             return MeasureResult::INVALID;
         }
-        let key = key_for(
-            text,
-            params,
-            if with_ellipsis {
-                LineFit::Ellipsis
-            } else {
-                LineFit::Clip
-            },
-        );
+        let key = TextCacheKey {
+            max_w_q: quantize(w),
+            halign_q: HAlign::Auto as u8,
+            fit_q: fit as u8,
+            ..unbounded_key
+        };
         if let Some(hit) = self.cache_hit(key) {
             return hit;
         }
         let metrics = Metrics::new(font_size_px, line_height_px);
         let attrs = attrs_for(family, weight);
-        // Probe: unbounded single-pass shape to read glyph advances and
-        // decide whether (and where) to cut. Reuses `probe_buffer` (reset
-        // per call) so the throwaway probe doesn't reallocate cosmic's
-        // shape vecs on every miss — the hot path on a continuous drag.
-        self.probe_buffer.set_metrics(metrics);
-        self.probe_buffer.set_size(None, None);
-        self.probe_buffer
-            .set_text(text, &attrs, Shaping::Advanced, None);
-        self.probe_buffer
-            .shape_until_scroll(&mut self.font_system, false);
-        let line_w = first_line_right(&self.probe_buffer);
-        let multiline = self.probe_buffer.layout_runs().count() > 1;
+        let probe = &self
+            .cache
+            .get(&unbounded_key)
+            .expect("truncation requires the cached unbounded shape")
+            .buffer;
+        let line_w = first_line_right(probe);
+        let multiline = probe.layout_runs().nth(1).is_some();
 
         let truncated = if line_w <= w && !multiline {
             false
         } else {
             // Reserve the ellipsis width only when we'll append one; a plain
             // clip cuts flush to the full available width.
-            let avail = if with_ellipsis {
-                (w - self.ellipsis_advance(metrics, family, weight)).max(0.0)
+            let mut append_ellipsis = false;
+            let avail = if matches!(fit, LineFit::Ellipsis) {
+                let ellipsis_w = self.ellipsis_advance(metrics, family, weight);
+                append_ellipsis = ellipsis_w <= w;
+                (w - ellipsis_w).max(0.0)
             } else {
                 w
             };
             let mut cut = 0usize;
-            if let Some(run) = self.probe_buffer.layout_runs().next() {
+            let probe = &self
+                .cache
+                .get(&unbounded_key)
+                .expect("unbounded shape disappeared during truncation")
+                .buffer;
+            if let Some(run) = probe.layout_runs().next() {
                 for g in run.glyphs {
                     if g.x + g.w > avail {
                         break;
@@ -408,7 +392,7 @@ impl CosmicMeasure {
             }
             self.truncate_scratch.clear();
             self.truncate_scratch.push_str(text[..cut].trim_end());
-            if with_ellipsis {
+            if append_ellipsis {
                 self.truncate_scratch.push('…');
             }
             true
@@ -448,9 +432,8 @@ impl CosmicMeasure {
     /// Trailing advance of "…" at `metrics`/`family`/`weight`, memoized per
     /// `(quantized size, family, weight)`. The width is constant for a given
     /// size + face, so this is a map lookup after the first shape. The
-    /// rare miss shapes into a throwaway buffer rather than `probe_buffer`
-    /// so it can't clobber an in-flight truncation probe whose glyphs the
-    /// caller reads next.
+    /// rare miss shapes into a throwaway buffer so the cached unbounded
+    /// probe remains immutable.
     fn ellipsis_advance(
         &mut self,
         metrics: Metrics,

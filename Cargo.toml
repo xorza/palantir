@@ -88,6 +88,11 @@ harness = false
 required-features = ["internals"]
 
 [[bench]]
+name = "text_shape"
+harness = false
+required-features = ["internals"]
+
+[[bench]]
 name = "input_throughput"
 harness = false
 required-features = ["internals"]
