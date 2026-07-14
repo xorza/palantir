@@ -177,6 +177,12 @@ pub(crate) trait WidgetTheme {
 /// theme slot (`theme.button` for Button/ComboBox,
 /// `theme.drag_value.chip` for the DragValue chip, `theme.text_edit`
 /// for TextEdit).
+// This generic crosses the theme/widget codegen-unit boundary. Leaving it to
+// the default inliner kept the resolver plus its tiny trait accessors outlined
+// in release builds; the frame bench measured that path at 3.9% precise
+// self-time. Force the whole lookup chain into each widget so state picking,
+// sentinel checks, and target construction optimize as one block.
+#[inline(always)]
 pub(crate) fn resolve_look<T: WidgetTheme>(
     ui: &mut Ui,
     id: WidgetId,
