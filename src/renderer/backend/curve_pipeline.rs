@@ -13,25 +13,23 @@
 //! [`MeshPipeline`]: crate::renderer::backend::mesh_pipeline::MeshPipeline
 //! [`ImagePipeline`]: crate::renderer::backend::image_pipeline::ImagePipeline
 
+use crate::primitives::brush::Spread;
+use crate::primitives::fill_wire::FillKind;
 use crate::renderer::backend::dynamic_buffer::DynamicBuffer;
 use crate::renderer::backend::gpu_ctx::GpuCtx;
 use crate::renderer::backend::pipeline_utils::{ColorVariantSpec, StencilVariant};
-use crate::renderer::render_buffer::{CurveInstance, SEGMENTS_PER_INSTANCE};
+use crate::renderer::backend::shader_template::{ShaderConstant, specialize};
+use crate::renderer::gradient_atlas::ATLAS_ROWS;
+use crate::renderer::render_buffer::{
+    CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
+    CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT, CurveInstance, HALF_FRINGE, MITER_LIMIT,
+    SEGMENTS_PER_INSTANCE,
+};
 use crate::shape::LineCap;
 
 /// Vertex count per instance — every instance is a 16-segment strip,
 /// 6 vertices per segment (two triangles), no index buffer.
 const VERTICES_PER_INSTANCE: u32 = 6 * SEGMENTS_PER_INSTANCE;
-
-// Pin the LineCap discriminants against the `CAP_*` constants in
-// `curve.wgsl`. Reorder a `LineCap` variant without updating the
-// shader and curves silently mis-render (Butt becomes Square, etc.).
-// Build fails here before that ships.
-const _: () = {
-    assert!(LineCap::Butt as u8 == 0);
-    assert!(LineCap::Square as u8 == 1);
-    assert!(LineCap::Round as u8 == 2);
-};
 
 #[derive(Debug)]
 pub(crate) struct CurvePipeline {
@@ -46,13 +44,25 @@ impl CurvePipeline {
     /// [`FormatPipelines`](crate::renderer::backend::format_pipelines::FormatPipelines)
     /// from [`Self::build_variant`].
     pub(crate) fn new(device: &wgpu::Device) -> Self {
-        // Stamp the Rust-side `SEGMENTS_PER_INSTANCE` into the WGSL
-        // source so the shader can't drift out of lockstep with the
-        // composer's sub-instance math. Cheap one-time string op at
-        // pipeline creation; no per-frame cost.
-        let wgsl = include_str!("curve.wgsl").replace(
-            "/*{SEGMENTS_PER_INSTANCE}*/16u",
-            &format!("{SEGMENTS_PER_INSTANCE}u"),
+        let wgsl = specialize(
+            include_str!("curve.wgsl"),
+            &[
+                ShaderConstant::float("ATLAS_ROWS", ATLAS_ROWS as f32),
+                ShaderConstant::uint("SEGMENTS_PER_INSTANCE", SEGMENTS_PER_INSTANCE),
+                ShaderConstant::float("HALF_FRINGE", HALF_FRINGE),
+                ShaderConstant::float("MITER_LIMIT", MITER_LIMIT),
+                ShaderConstant::uint("CAP_BUTT", LineCap::Butt as u32),
+                ShaderConstant::uint("CAP_SQUARE", LineCap::Square as u32),
+                ShaderConstant::uint("CAP_ROUND", LineCap::Round as u32),
+                ShaderConstant::uint("KIND_CUBIC", CURVE_KIND_CUBIC),
+                ShaderConstant::uint("KIND_ARC", CURVE_KIND_ARC),
+                ShaderConstant::uint("KIND_SEGMENT", CURVE_KIND_SEGMENT),
+                ShaderConstant::uint("KIND_JOIN_ROUND", CURVE_KIND_JOIN_ROUND),
+                ShaderConstant::uint("KIND_JOIN_BEVEL", CURVE_KIND_JOIN_BEVEL),
+                ShaderConstant::uint("KIND_JOIN_MITER", CURVE_KIND_JOIN_MITER),
+                ShaderConstant::uint("BRUSH_KIND_SOLID", FillKind::SOLID.0),
+                ShaderConstant::uint("BRUSH_KIND_LINEAR", FillKind::linear(Spread::Pad).0),
+            ],
         );
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("aperture.curve.shader"),
@@ -169,21 +179,6 @@ const _: () = {
     assert!(CURVE_INSTANCE_ATTRS[9].offset == offset_of!(CurveInstance, fill_kind) as u64);
     assert!(CURVE_INSTANCE_ATTRS[10].offset == offset_of!(CurveInstance, fill_lut_row) as u64);
     assert!(CURVE_INSTANCE_ATTRS[11].offset == offset_of!(CurveInstance, kind) as u64);
-};
-
-// Pin the Rust-side basis tags against the `KIND_*` constants in
-// `curve.wgsl` — same guard as the `CAP_*` block above.
-const _: () = {
-    use crate::renderer::render_buffer::{
-        CURVE_KIND_ARC, CURVE_KIND_CUBIC, CURVE_KIND_JOIN_BEVEL, CURVE_KIND_JOIN_MITER,
-        CURVE_KIND_JOIN_ROUND, CURVE_KIND_SEGMENT,
-    };
-    assert!(CURVE_KIND_CUBIC == 0);
-    assert!(CURVE_KIND_ARC == 1);
-    assert!(CURVE_KIND_SEGMENT == 2);
-    assert!(CURVE_KIND_JOIN_ROUND == 3);
-    assert!(CURVE_KIND_JOIN_BEVEL == 4);
-    assert!(CURVE_KIND_JOIN_MITER == 5);
 };
 
 fn curve_instance_layout() -> wgpu::VertexBufferLayout<'static> {

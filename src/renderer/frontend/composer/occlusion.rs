@@ -41,13 +41,13 @@ pub(crate) struct OcclusionPruner {
     /// Indices (relative to the group's quad cursor) marked for removal
     /// by the prune sweep. Sorted ascending by construction.
     drop_indices: Vec<u32>,
-    /// Prefix-max of `cover.size` over the tail of `opaque_in_group`,
-    /// built once per prune. `prefix_max_cover[i]` = elementwise max
+    /// Suffix-max of `cover.size` over the tail of `opaque_in_group`,
+    /// built once per prune. `suffix_max_cover[i]` = elementwise max
     /// over `opaque_in_group[i..]`. Lets the prune sweep reject an
     /// occludee with one size compare when no later occluder is large
     /// enough to contain it — turns the common "nested panels, child
     /// smaller than parent" case from O(N·K) into O(N + K).
-    prefix_max_cover: Vec<Vec2>,
+    suffix_max_cover: Vec<Vec2>,
 }
 
 impl OcclusionPruner {
@@ -56,7 +56,7 @@ impl OcclusionPruner {
     pub(crate) fn clear(&mut self) {
         self.opaque_in_group.clear();
         self.drop_indices.clear();
-        self.prefix_max_cover.clear();
+        self.suffix_max_cover.clear();
     }
 
     /// Record a solid-opaque quad's cover rect at its group-slice index
@@ -93,17 +93,17 @@ impl OcclusionPruner {
         let slice = &out.quads[start..];
         let occs = self.opaque_in_group.as_slice();
 
-        // Prefix-max of cover dimensions over the tail of occs. After
-        // this loop, `prefix_max_cover[i]` is the elementwise max
+        // Suffix-max of cover dimensions over the tail of occs. After
+        // this loop, `suffix_max_cover[i]` is the elementwise max
         // `(w, h)` over `occs[i..]`. Used below as a one-comparison
         // reject: if the occludee's painted rect is wider or taller
         // than every remaining cover, no `contains_rect` can succeed.
-        self.prefix_max_cover.clear();
-        self.prefix_max_cover.resize(occs.len(), Vec2::ZERO);
+        self.suffix_max_cover.clear();
+        self.suffix_max_cover.resize(occs.len(), Vec2::ZERO);
         let mut acc = Vec2::ZERO;
         for (i, occ) in occs.iter().enumerate().rev() {
             acc = acc.max(Vec2::new(occ.cover.size.w, occ.cover.size.h));
-            self.prefix_max_cover[i] = acc;
+            self.suffix_max_cover[i] = acc;
         }
 
         self.drop_indices.clear();
@@ -113,7 +113,7 @@ impl OcclusionPruner {
         // ascending, the cursor only moves forward across the outer
         // loop — so cursor advancement is O(N + K). The `contains_rect`
         // inner loop below is still O(K) per surviving occludee (O(N·K)
-        // worst case), but the `prefix_max_cover` size reject keeps it
+        // worst case), but the `suffix_max_cover` size reject keeps it
         // off the hot path for the dominant nested-panel case (parent
         // larger than every descendant). Bounded by group size either
         // way.
@@ -145,7 +145,7 @@ impl OcclusionPruner {
             // contain `painted` on at least one axis. This catches
             // the dominant "nested panels, parent larger than every
             // descendant" pattern without touching the inner loop.
-            let max = self.prefix_max_cover[cursor];
+            let max = self.suffix_max_cover[cursor];
             if painted.size.w > max.x || painted.size.h > max.y {
                 continue;
             }
