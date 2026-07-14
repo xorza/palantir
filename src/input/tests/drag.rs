@@ -186,7 +186,7 @@ fn drag_delta_none_when_pointer_left_surface() {
     let r = resp(&mut ui, s, build_clickable, id());
     assert_eq!(r.left.drag.delta(), None);
     assert!(
-        !r.drag_stopped(),
+        !r.left.drag.stopped(),
         "pointer-left is not a release; the stop edge must wait for it",
     );
 
@@ -225,7 +225,7 @@ fn drag_stopped_edge_fires_once_on_release() {
 
     // One-frame edge: gone the next frame.
     let r = resp(&mut ui, s, build_draggable, id());
-    assert!(!r.drag_stopped());
+    assert!(!r.middle.drag.stopped());
 }
 
 #[test]
@@ -283,10 +283,8 @@ fn middle_drag_tracks_pointer_minus_press_after_latch() {
         "drag-start edge must fire on the threshold-crossing move",
     );
     assert!(r.middle.drag.dragging());
-    // And the button-agnostic accessors point at the same drag.
-    assert_eq!(r.drag_delta(), Some(Vec2::new(60.0, 40.0)));
-    assert!(r.dragged());
-    assert!(r.drag_started());
+    assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)));
+    assert!(r.middle.drag.started());
 }
 
 #[test]
@@ -304,7 +302,6 @@ fn middle_drag_does_not_expose_delta_below_threshold() {
     assert_eq!(r.middle.drag.delta(), None);
     assert!(!r.middle.drag.started());
     assert!(!r.middle.drag.dragging());
-    assert!(!r.dragged());
 }
 
 #[test]
