@@ -2,6 +2,7 @@
 //! an `image::RgbaImage`.
 
 use std::sync::OnceLock;
+use std::sync::mpsc;
 
 use aperture::host::offscreen::OffscreenHost;
 use aperture::{Color, DebugOverlayConfig, FixedClock, TextShaper, Ui};
@@ -226,7 +227,7 @@ fn readback(
     queue.submit(std::iter::once(encoder.finish()));
 
     let slice = buffer.slice(..);
-    let (tx, rx) = std::sync::mpsc::channel();
+    let (tx, rx) = mpsc::channel();
     slice.map_async(wgpu::MapMode::Read, move |r| tx.send(r).unwrap());
     device
         .poll(wgpu::PollType::Wait {

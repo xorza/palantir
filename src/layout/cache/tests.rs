@@ -664,7 +664,6 @@ fn cache_handles_widget_reappearance_after_eviction() {
     assert_eq!(warm_live, cold_live, "live count must match cold rebuild",);
 }
 
-// ---------------------------------------------------------------------------
 // Cache-write thrash containment under oscillating subtree size.
 //
 // `MeasureCache::write_subtree`'s in-place fit predicate
@@ -679,7 +678,6 @@ fn cache_handles_widget_reappearance_after_eviction() {
 // `COMPACT_FLOOR` is now `0` (see `src/common/live_arena.rs`); these
 // two probes characterize the resulting bounded behavior for both
 // small and large workloads.
-// ---------------------------------------------------------------------------
 
 /// Small-tree thrash: one Panel whose child count alternates between
 /// 10 and 11 leaves per frame. Live entry count stays at single

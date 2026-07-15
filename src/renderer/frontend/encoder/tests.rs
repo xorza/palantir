@@ -292,10 +292,7 @@ fn shadow_lowers_to_drawshadow_with_inflated_bbox() {
     assert_eq!(dx, 2.0);
     assert_eq!(dy, 4.0);
     assert_eq!(t0, 8.0);
-    assert_eq!(
-        p.color,
-        crate::primitives::color::ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5))
-    );
+    assert_eq!(p.color, ColorF16::from(Color::rgba(0.0, 0.0, 0.0, 0.5)));
 }
 
 #[test]
@@ -754,8 +751,6 @@ fn encoder_text_alignment_respects_leaf_padding() {
         text_rect.min.x
     );
 }
-
-// --- DamageEngine filter ---------------------------------------------
 
 #[test]
 fn damage_filter_partitions_drawrects_by_dirty_region() {

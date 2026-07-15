@@ -16,6 +16,7 @@ use aperture::{
     Stroke,
 };
 use glam::UVec2;
+use std::cell::RefCell;
 use wgpu::TextureFormat;
 
 use crate::diff::{Tolerance, diff};
@@ -159,7 +160,7 @@ thread_local! {
     /// whole test run — exactly what this fixture is asserting survives a
     /// format change.
     static TEST_IMAGE: std::cell::RefCell<Option<aperture::ImageHandle>> =
-        const { std::cell::RefCell::new(None) };
+        const { RefCell::new(None) };
 }
 
 /// Scene drawing the test image stretched to fill. Registers once (held

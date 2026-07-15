@@ -34,10 +34,6 @@ use crate::layout::support::TextCtx;
 use crate::layout::types::layout_mode::ScrollSpec;
 use crate::layout::zstack;
 
-// ---------------------------------------------------------------------------
-// Cross-frame state — what the scroll widget reads at record time
-// ---------------------------------------------------------------------------
-
 /// Cross-frame state row for one scroll widget. Owned by
 /// [`LayoutEngine::scroll_states`] — *not* `StateMap`, because this
 /// is a layout-derived concern (the driver writes layout fields) and
@@ -280,10 +276,6 @@ impl ScrollLayoutState {
 /// writes layout-derived fields, the widget mutates `offset` from
 /// input.
 pub(crate) type ScrollStates = FxHashMap<WidgetId, ScrollLayoutState>;
-
-// ---------------------------------------------------------------------------
-// Measure / arrange dispatch
-// ---------------------------------------------------------------------------
 
 /// Measure dispatch arm for [`crate::LayoutMode::Scroll`]. Single
 /// child-measurement pass with `INF` on the panned axes — no

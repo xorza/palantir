@@ -10,6 +10,7 @@ use std::rc::Rc;
 use aperture::{
     Configure, GpuFrameCtx, GpuInitCtx, GpuPaint, GpuView, Panel, Sense, Sizing, Text, Ui,
 };
+use glam::camera::rh::{proj::directx, view};
 use glam::{Mat4, UVec2, Vec3};
 use wgpu::util::DeviceExt;
 
@@ -220,14 +221,8 @@ impl GpuPaint for Cube {
             // wgpu wants [0,1] clip depth (DirectX/Metal/Vulkan), so use the
             // `directx` RH perspective — the non-deprecated peer of the old
             // `Mat4::perspective_rh`.
-            let proj = glam::camera::rh::proj::directx::perspective(
-                45f32.to_radians(),
-                aspect,
-                0.1,
-                100.0,
-            );
-            let view =
-                glam::camera::rh::view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
+            let proj = directx::perspective(45f32.to_radians(), aspect, 0.1, 100.0);
+            let view = view::look_at_mat4(Vec3::new(0.0, 0.0, 5.0), Vec3::ZERO, Vec3::Y);
             let model =
                 Mat4::from_rotation_y(self.spin + self.yaw) * Mat4::from_rotation_x(self.pitch);
             proj * view * model

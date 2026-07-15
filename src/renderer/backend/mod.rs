@@ -43,6 +43,7 @@ use crate::renderer::render_buffer::RenderBuffer;
 use crate::ui::damage::region::DAMAGE_RECT_CAP;
 use crate::ui::frame_report::{RenderKind, RenderPlan};
 use rustc_hash::FxHashMap;
+use wgpu::util::StagingBelt;
 
 /// Size of the per-pipeline immediate (push-constant) region every
 /// aperture shader's `var<immediate> imm: Immediates` reads. Locked
@@ -144,7 +145,7 @@ pub(crate) struct WgpuBackend {
     /// blit encoder per submit. Chunk size sized to comfortably hold a
     /// resizing-frame's worth of buffer uploads (~512 KB observed in
     /// the frame bench).
-    staging_belt: wgpu::util::StagingBelt,
+    staging_belt: StagingBelt,
     /// Shared gradient LUT atlas resources (texture + sampler + group-0
     /// bind group), lent to the quad and curve pipelines — both render
     /// gradient brushes off this one allocation.
@@ -253,7 +254,7 @@ impl WgpuBackend {
         // per-frame upload peak, so we land in 1-2 chunks during
         // steady state. wgpu allocates a new chunk only when the
         // active one can't fit a write.
-        let staging_belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 20);
+        let staging_belt = StagingBelt::new(device.clone(), 1 << 20);
         Self {
             device,
             queue: Queue::new(queue),

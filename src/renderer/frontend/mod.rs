@@ -99,7 +99,7 @@ pub mod test_support {
         /// crate-private; the side effect (mutating `self.cmds`,
         /// `self.composer`, `self.buffer`) is what bench callers want
         /// timed, so the helper returns nothing.
-        pub fn build_for_test(&mut self, ui: &Ui, plan: crate::renderer::frontend::RenderPlan) {
+        pub fn build_for_test(&mut self, ui: &Ui, plan: RenderPlan) {
             self.build(ui, plan);
         }
     }

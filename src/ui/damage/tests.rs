@@ -1085,8 +1085,6 @@ fn added_widget_contributes_curr_rect_to_damage() {
     assert!(!ui.damage_region().rects.is_empty());
 }
 
-// --- Ui::damage_filter ---------------------------------------------------
-
 /// Pin: a single-leaf fill flip stays in the partial-repaint regime —
 /// `filter(surface)` returns `Partial(rect)`, because the rect is well
 /// below the full-repaint threshold (50×50 = 2500 ≪ 200×200 surface).
@@ -1107,7 +1105,6 @@ fn damage_filter_returns_partial_when_small() {
     assert_eq!(Damage::new(ui.damage_region()), Damage::Partial(r.into()),);
 }
 
-// --- transforms ---------------------------------------------------------
 // DamageEngine rects must be in *screen space*. When an ancestor has a
 // transform, the rendered position of a node differs from its layout
 // rect; the damage rect, the prev_frame snapshot, and the encoder/
@@ -1702,8 +1699,6 @@ fn offscreen_node_scrolling_into_view_is_covered_and_stays_sound() {
         "removing the revealed node must damage its pixels; got {damage:?}",
     );
 }
-
-// --- DamageEngine::filter heuristic ---------------------------------------------
 
 const TEST_SURFACE: Rect = Rect::new(0.0, 0.0, 100.0, 100.0);
 

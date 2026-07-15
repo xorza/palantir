@@ -57,8 +57,6 @@ fn resp(
     out.expect("a record pass ran")
 }
 
-// ── Left-button drag ─────────────────────────────────────────────────
-
 #[test]
 fn drag_delta_none_before_press() {
     let mut ui = Ui::for_test();
@@ -262,8 +260,6 @@ fn drag_delta_only_for_active_widget() {
     );
 }
 
-// ── Non-left buttons ─────────────────────────────────────────────────
-
 #[test]
 fn middle_drag_tracks_pointer_minus_press_after_latch() {
     // Middle-button press anchors at (20, 30); pointer moves to
@@ -353,8 +349,6 @@ fn right_button_drag_also_latches() {
     assert!(r.right.drag.started());
 }
 
-// ── Multi-button: priority-first wins; releasing it promotes the next ─
-
 #[test]
 fn left_wins_over_simultaneously_latched_middle() {
     // Both left and middle are latched on the same widget. Only one
@@ -411,8 +405,6 @@ fn releasing_priority_button_promotes_lower_priority() {
     // left's, so (20, 20)); delta = current (80, 60) - press (20, 20).
     assert_eq!(r.middle.drag.delta(), Some(Vec2::new(60.0, 40.0)),);
 }
-
-// ── Misses + zero-state ──────────────────────────────────────────────
 
 #[test]
 fn drag_zero_state_for_uncaptured_widget() {

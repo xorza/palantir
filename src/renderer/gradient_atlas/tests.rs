@@ -344,7 +344,7 @@ fn register_distinct_gradients_get_distinct_rows() {
 #[test]
 fn register_many_distinct_gradients_all_unique_rows() {
     let mut atlas = GradientCpuAtlas::default();
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for i in 0..(ATLAS_ROWS - 1) {
         let g = distinct_grad(i as f32 * 0.01);
         let row = atlas.register_stops(&g.stops, g.interp);

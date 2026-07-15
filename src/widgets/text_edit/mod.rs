@@ -1,4 +1,4 @@
-use crate::common::clipboard::{get, set};
+use crate::common::clipboard;
 use crate::common::platform::{PLATFORM, Platform};
 use crate::forest::element::{Configure, Element};
 use crate::layout::types::layout_mode::LayoutMode;
@@ -280,7 +280,7 @@ impl<'a> Editor<'a> {
         let Some(r) = self.state.sel_range() else {
             return;
         };
-        set(&self.text[r.clone()]);
+        clipboard::set(&self.text[r.clone()]);
         self.record_edit(EditKind::Other);
         self.text.replace_range(r.clone(), "");
         self.state.caret = r.start;
@@ -291,7 +291,7 @@ impl<'a> Editor<'a> {
     /// Copy the live selection to the clipboard. No-op without one.
     fn copy(&self) {
         if let Some(r) = self.state.sel_range() {
-            set(&self.text[r]);
+            clipboard::set(&self.text[r]);
         }
     }
 
@@ -363,7 +363,7 @@ impl<'a> Editor<'a> {
             return true;
         }
         if PASTE.matches(kp) {
-            self.paste(&get());
+            self.paste(&clipboard::get());
             return true;
         }
         false
@@ -1257,7 +1257,7 @@ fn default_context_menu(
         {
             action = Some(MenuAction::Copy);
         }
-        let cb_has = !get().is_empty();
+        let cb_has = !clipboard::get().is_empty();
         if MenuItem::new("Paste")
             .shortcut(PASTE)
             .enabled(cb_has)
@@ -1289,7 +1289,7 @@ fn default_context_menu(
     match action {
         MenuAction::Cut => ed.cut(),
         MenuAction::Copy => ed.copy(),
-        MenuAction::Paste => ed.paste(&get()),
+        MenuAction::Paste => ed.paste(&clipboard::get()),
         MenuAction::Clear => ed.clear(),
     }
     ed.edited

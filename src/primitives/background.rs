@@ -106,6 +106,8 @@ impl Background {
 
 #[cfg(test)]
 mod tests {
+    use crate::primitives::color::Color;
+
     use super::*;
 
     // `with_stroke`/`with_shadow` chained in a const context. If either
@@ -121,13 +123,9 @@ mod tests {
 
     #[test]
     fn with_stroke_and_with_shadow_set_the_named_field_only() {
-        let base = Background::rounded(crate::primitives::color::Color::WHITE, Corners::all(4.0));
-        let stroke = Stroke::solid(crate::primitives::color::Color::BLACK, 2.0);
-        let shadow = Shadow::drop(
-            crate::primitives::color::Color::BLACK,
-            glam::Vec2::ZERO,
-            4.0,
-        );
+        let base = Background::rounded(Color::WHITE, Corners::all(4.0));
+        let stroke = Stroke::solid(Color::BLACK, 2.0);
+        let shadow = Shadow::drop(Color::BLACK, glam::Vec2::ZERO, 4.0);
 
         let with_stroke = base.clone().with_stroke(stroke.clone());
         assert_eq!(with_stroke.stroke, stroke);

@@ -1,5 +1,7 @@
 use crate::display::Display;
 use crate::frame_arena::FrameArenaInner;
+use crate::primitives::brush::FillAxis;
+use crate::primitives::fill_wire::{FillKind, LutRow};
 use crate::primitives::span::Span;
 use crate::primitives::{
     color::Color, color::ColorU8, corners::Corners, rect::Rect, size::Size, stroke::Stroke,
@@ -16,6 +18,7 @@ use crate::renderer::texture_id::TextureId;
 use crate::shape::{ColorMode, ColorModeBits, LineCap, LineCapBits, LineJoin, LineJoinBits};
 use crate::text::TextCacheKey;
 use glam::{UVec2, Vec2};
+use std::f32::consts::FRAC_PI_2;
 
 fn composer() -> Composer {
     Composer::new(16_384)
@@ -309,10 +312,7 @@ fn push_clip_rounded_lands_radius_on_group_and_inherits_through_rect() {
     // DPR=2 → radius doubles 8→16, rect (10,20,100,80) → (20,40,200,160).
     assert_eq!(outer_r.corners.as_array()[0], 16.0);
     assert_eq!(outer_r.mask_rect.min, glam::Vec2::new(20.0, 40.0));
-    assert_eq!(
-        outer_r.mask_rect.size,
-        crate::primitives::size::Size::new(200.0, 160.0)
-    );
+    assert_eq!(outer_r.mask_rect.size, Size::new(200.0, 160.0));
     assert_eq!(outer.scissor, Some(URect::new(20, 40, 200, 160)));
 
     // Inheritance: inner Rect clip carries the SAME chain as the
@@ -521,19 +521,15 @@ fn compose_solid_brush_emits_kind_zero_quad() {
         q.fill_kind,
         // Sharp + stroke-less + pixel-aligned, so the solid kind also
         // carries the fragment fast-path bit.
-        crate::primitives::fill_wire::FillKind::SOLID.with_fast(),
+        FillKind::SOLID.with_fast(),
         "solid quad must carry kind=solid (+fast)",
     );
     assert_eq!(
         q.fill_lut_row,
-        crate::primitives::fill_wire::LutRow::FALLBACK,
+        LutRow::FALLBACK,
         "solid quad has no LUT row",
     );
-    assert_eq!(
-        q.fill_axis,
-        crate::primitives::brush::FillAxis::ZERO,
-        "solid quad axis is zeroed",
-    );
+    assert_eq!(q.fill_axis, FillAxis::ZERO, "solid quad axis is zeroed",);
 }
 
 /// A windowed rect must never fold into the pass clear, take the
@@ -1396,7 +1392,7 @@ fn compose_spins_polyline_about_bbox_center() {
         (ci.p0.min(ci.p3), ci.p0.max(ci.p3))
     };
     let (lo0, hi0) = aabb(0.0);
-    let (lor, hir) = aabb(std::f32::consts::FRAC_PI_2);
+    let (lor, hir) = aabb(FRAC_PI_2);
     // Unrotated: a wide AABB (horizontal stroke).
     assert!(
         hi0.x - lo0.x > hi0.y - lo0.y,
@@ -2016,7 +2012,6 @@ fn compose_disjoint_mixed_kinds_share_one_group() {
     assert_eq!(buf.image_batches[0].last_group, 0);
 }
 
-// --- Occlusion-pruning tests -------------------------------------
 //
 // Pruning drops a quad iff a later quad in the same group fully
 // covers its painted extent (`q.rect.inflated(stroke/2)`) under
@@ -2119,7 +2114,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                crate::primitives::stroke::Stroke::ZERO.into(),
+                Stroke::ZERO.into(),
             );
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2136,7 +2131,7 @@ fn prune_rounded_on_top_uses_deflated_cover() {
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                crate::primitives::stroke::Stroke::ZERO.into(),
+                Stroke::ZERO.into(),
             );
             draw(b, rect(0.0, 0.0, 100.0, 100.0)); // sharp opaque on top
         },
@@ -2185,7 +2180,7 @@ fn prune_rounded_occluder_drops_smaller_under_inside_inscribed_rect() {
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(10.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                crate::primitives::stroke::Stroke::ZERO.into(),
+                Stroke::ZERO.into(),
             );
         },
         &params(1.0, UVec2::new(200, 200)),
@@ -2214,7 +2209,7 @@ fn prune_rounded_occluder_keeps_under_overlapping_corner_cutout() {
                 rect(0.0, 0.0, 100.0, 100.0),
                 Corners::all(20.0),
                 BrushSource::Solid(Color::rgb(1.0, 1.0, 1.0).into()),
-                crate::primitives::stroke::Stroke::ZERO.into(),
+                Stroke::ZERO.into(),
             );
         },
         &params(1.0, UVec2::new(200, 200)),

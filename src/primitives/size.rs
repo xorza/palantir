@@ -1,4 +1,4 @@
-use crate::primitives::{approx::noop_f32, num::Num};
+use crate::primitives::{approx, num::Num};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug, PartialEq, Default, bytemuck::Pod, bytemuck::Zeroable)]
@@ -74,8 +74,7 @@ impl Size {
     /// For "paints no pixels" use [`Self::is_paint_empty`] —
     /// different (looser) predicate.
     pub const fn approx_zero(self) -> bool {
-        crate::primitives::approx::approx_zero(self.w)
-            && crate::primitives::approx::approx_zero(self.h)
+        approx::approx_zero(self.w) && approx::approx_zero(self.h)
     }
 
     /// True when either axis is at or below `EPS` (including NaN /
@@ -84,7 +83,7 @@ impl Size {
     /// zero-extent geometry before emit / cache work runs.
     #[inline]
     pub const fn is_paint_empty(self) -> bool {
-        noop_f32(self.w) || noop_f32(self.h)
+        approx::noop_f32(self.w) || approx::noop_f32(self.h)
     }
 
     pub const fn min(self, other: Self) -> Self {

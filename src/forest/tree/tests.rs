@@ -191,8 +191,6 @@ fn parent_post_child_shapes_dont_inflate_child_subtree_count() {
     let _cmds = ui.encode_cmds();
 }
 
-// --- Authoring-hash tests ---------------------------------------------
-
 fn record_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut ui = Ui::for_test();
     let mut target = None;
@@ -432,8 +430,6 @@ fn child_hash_does_not_affect_parent_hash() {
     assert_eq!(h1, h2, "parent hash captures only its own fields");
 }
 
-// --- Subtree-hash rollup --------------------------------------------
-
 fn record_subtree_hash<F: FnMut(&mut Ui) -> NodeId>(mut f: F) -> ContentHash {
     let mut ui = Ui::for_test();
     let mut target = None;
@@ -625,8 +621,6 @@ fn grid_per_node_hash_independent_of_arena_slot() {
         ui2.forest.trees[Layer::Main].rollups.node[g2.unwrap().idx()],
     );
 }
-
-// --- subtree_end rollup ---------------------------------------------
 
 #[test]
 fn subtree_end_rolls_up_during_recording() {
@@ -1137,8 +1131,6 @@ fn child_iter_traverses_correctly_after_finalize() {
         .collect();
     assert_eq!(inner_kids, vec![4], "inner's direct child: b");
 }
-
-// --- Per-shape hash column ---------------------------------------
 
 /// `Tree.shapes.hashes` is parallel to `Tree.shapes.records` after
 /// `post_record`: one slot per shape, populated by the existing

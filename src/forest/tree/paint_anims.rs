@@ -32,6 +32,7 @@
 //! See `docs/roadmap/paint-tick.md` for the full design.
 
 use crate::primitives::approx::approx_zero;
+use std::f32::consts::TAU;
 use std::time::Duration;
 
 /// A paint-time animation contract. Encoded as a small enum so the
@@ -119,7 +120,7 @@ impl PaintAnim {
                 // Wrap to `[0, TAU)` so `sin_cos` keeps full precision no
                 // matter how long the spinner has been on screen.
                 let dt = now.saturating_sub(started_at).as_secs_f32();
-                let rotation = (dt * speed).rem_euclid(std::f32::consts::TAU);
+                let rotation = (dt * speed).rem_euclid(TAU);
                 PaintMod {
                     alpha: 1.0,
                     rotation,
@@ -398,9 +399,9 @@ mod tests {
         assert_eq!(m.alpha, 1.0);
         // 2 s in → 8.0 rad, wrapped into [0, TAU): 8 - TAU ≈ 1.7168.
         let wrapped = a.sample(START + Duration::from_secs(2)).rotation;
-        let expect = 8.0_f32.rem_euclid(std::f32::consts::TAU);
+        let expect = 8.0_f32.rem_euclid(TAU);
         assert!((wrapped - expect).abs() < 1e-4, "wrapped {wrapped}");
-        assert!((0.0..std::f32::consts::TAU).contains(&wrapped));
+        assert!((0.0..TAU).contains(&wrapped));
     }
 
     #[test]

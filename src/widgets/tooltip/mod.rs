@@ -13,6 +13,8 @@ use crate::widgets::ResponseSnapshot;
 use crate::widgets::overlay_position::OverlayPosition;
 use crate::widgets::text::Text;
 use std::borrow::Cow;
+use std::sync::LazyLock;
+use std::time::Duration;
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
@@ -33,8 +35,8 @@ pub(crate) struct TooltipGlobal {
     pub(crate) last_visible_at: Option<f32>,
 }
 
-static GLOBAL_STATE_ID: std::sync::LazyLock<WidgetId> =
-    std::sync::LazyLock::new(|| WidgetId::from_hash("aperture.tooltip.global"));
+static GLOBAL_STATE_ID: LazyLock<WidgetId> =
+    LazyLock::new(|| WidgetId::from_hash("aperture.tooltip.global"));
 
 /// Hover-driven text bubble attached to a trigger widget. Records into
 /// [`crate::forest::layer::Layer::Tooltip`] after the pointer has rested
@@ -155,7 +157,7 @@ impl<'r> Tooltip<'r> {
                     // One wake at the threshold is enough — the queue
                     // remembers it. If the user moves off before then
                     // the wake still fires into a no-op frame; cheap.
-                    ui.request_repaint_after(std::time::Duration::from_secs_f32(delay));
+                    ui.request_repaint_after(Duration::from_secs_f32(delay));
                     now
                 }
             };

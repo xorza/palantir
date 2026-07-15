@@ -440,8 +440,6 @@ impl RenderCmdBuffer {
     }
 }
 
-// --- raw POD r/w on the u32 arena ----------------------------------
-
 /// Append a `T` to the arena as `size_of::<T>() / 4` u32 words. `Pod`
 /// guarantees no padding bytes — the reinterpretation as `&[u32]` is
 /// sound because `align_of::<T>() % 4 == 0` for every payload we use

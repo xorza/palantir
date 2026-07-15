@@ -615,6 +615,8 @@ mod tests {
 #[cfg(feature = "internals")]
 #[cfg(test)]
 mod gpu_regression {
+    use wgpu::util::StagingBelt;
+
     use crate::renderer::backend::gpu_ctx::GpuCtx;
     use crate::renderer::backend::queue::Queue;
     use crate::renderer::backend::text::TextBackend;
@@ -673,7 +675,7 @@ mod gpu_regression {
         scale: f32,
         runs: &[TextRun],
     ) {
-        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
@@ -817,7 +819,7 @@ mod gpu_regression {
             color_b,
         );
 
-        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
@@ -995,7 +997,7 @@ mod gpu_regression {
         // it (cutoff 512 - 512 = 0 <= 1); the one at frame 1024 drops
         // it (cutoff 512 > 1). Advance prepared text frames that don't
         // touch the space to there.
-        let mut belt = wgpu::util::StagingBelt::new(device.clone(), 1 << 16);
+        let mut belt = StagingBelt::new(device.clone(), 1 << 16);
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         while backend.atlas.current_frame < 1024 {

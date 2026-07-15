@@ -1,4 +1,5 @@
 use crate::primitives::{approx::noop_f32, half_simd::F16x4};
+use serde::de::Error as _;
 
 #[repr(C)]
 #[derive(
@@ -47,7 +48,7 @@ impl serde::Serialize for Color {
 impl<'de> serde::Deserialize<'de> for Color {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
         let raw = <std::borrow::Cow<'de, str>>::deserialize(d)?;
-        parse_hex(raw.trim()).map_err(serde::de::Error::custom)
+        parse_hex(raw.trim()).map_err(D::Error::custom)
     }
 }
 

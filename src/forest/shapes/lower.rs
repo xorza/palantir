@@ -28,6 +28,7 @@ use crate::renderer::gradient_atlas::handle::GradientAtlas;
 use crate::renderer::render_buffer::curve::{HALF_FRINGE, MITER_LIMIT};
 use crate::shape::{ColorMode, LineCap, LineJoin, PolylineColors};
 use glam::Vec2;
+use std::f32::consts::TAU;
 use std::hash::Hasher;
 
 #[derive(Clone, Copy, Debug)]
@@ -309,7 +310,7 @@ pub(crate) fn arc(
 ) -> ShapeRecord {
     assert_curve_brush(&brush);
     assert!(
-        sweep.abs() <= std::f32::consts::TAU + 1.0e-4,
+        sweep.abs() <= TAU + 1.0e-4,
         "Shape::Arc sweep {sweep} exceeds a full circle (±2π)"
     );
     let lowered = self::brush(arena, &brush, atlas);

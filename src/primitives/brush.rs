@@ -603,6 +603,7 @@ impl Animatable for Brush {
 mod tests {
     use crate::primitives::brush::*;
     use std::collections::hash_map::DefaultHasher;
+    use std::f32::consts::{FRAC_PI_4, PI};
     use std::hash::{Hash, Hasher};
 
     fn h(b: Brush) -> u64 {
@@ -710,7 +711,7 @@ mod tests {
     #[test]
     fn linear_three_stop_authoring() {
         let g = LinearGradient::three_stop(
-            std::f32::consts::PI / 2.0,
+            PI / 2.0,
             Color::hex(0x000000),
             Color::hex(0x808080),
             Color::hex(0xffffff),
@@ -784,7 +785,7 @@ mod tests {
     fn conic_axis_packs_start_angle() {
         let g = ConicGradient::new(
             Vec2::new(0.4, 0.6),
-            std::f32::consts::FRAC_PI_4,
+            FRAC_PI_4,
             [
                 Stop::new(0.0, Color::rgb(1.0, 0.0, 0.0)),
                 Stop::new(1.0, Color::rgb(0.0, 0.0, 1.0)),
@@ -795,7 +796,7 @@ mod tests {
         // assertion is at f16 tolerance (~1/2048).
         assert!((dx - 0.4).abs() < 1e-3);
         assert!((dy - 0.6).abs() < 1e-3);
-        assert!((t0 - std::f32::consts::FRAC_PI_4).abs() < 1e-3);
+        assert!((t0 - FRAC_PI_4).abs() < 1e-3);
     }
 
     #[test]

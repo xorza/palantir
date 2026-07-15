@@ -50,6 +50,7 @@ use crate::window::{CursorIcon, PendingWindow, WindowConfig, WindowGeometry, Win
 use glam::{IVec2, UVec2};
 use std::cell::{RefCell, RefMut};
 use std::collections::hash_map::Entry;
+use std::panic::Location;
 use std::rc::Rc;
 use std::time::Duration;
 
@@ -837,7 +838,7 @@ impl Ui {
     /// awake.
     #[track_caller]
     pub fn request_repaint(&mut self) {
-        let caller = std::panic::Location::caller();
+        let caller = Location::caller();
         tracing::trace!(
             target: "aperture.repaint",
             "request_repaint @ {}:{} (frame={})",
@@ -858,7 +859,7 @@ impl Ui {
     /// briefly, and the queue drains.
     #[track_caller]
     pub fn request_repaint_after(&mut self, after: Duration) {
-        let caller = std::panic::Location::caller();
+        let caller = Location::caller();
         tracing::trace!(
             target: "aperture.repaint",
             "request_repaint_after({:?}) @ {}:{} (frame={})",

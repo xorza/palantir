@@ -1,4 +1,5 @@
 use crate::forest::element::{Configure, Element, Salt};
+use crate::input::response::ButtonPhase;
 use crate::input::sense::Sense;
 use crate::input::shortcut::Shortcut;
 use crate::layout::types::align::{Align, HAlign};
@@ -314,7 +315,7 @@ impl MenuItem {
 
         let mut state = raw_state;
         if shortcut_fired {
-            state.left.phase = crate::input::response::ButtonPhase::Up { click: Some(1) };
+            state.left.phase = ButtonPhase::Up { click: Some(1) };
         }
         // Eager: `state` folds in the synthesized shortcut click, which
         // a lazy re-probe would drop.

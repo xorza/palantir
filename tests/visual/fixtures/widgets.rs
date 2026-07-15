@@ -8,6 +8,7 @@ use aperture::{
 };
 use glam::{UVec2, Vec2};
 use image::Rgba;
+use std::f32::consts::{FRAC_PI_2, FRAC_PI_4};
 
 use crate::diff::Tolerance;
 use crate::fixtures::DARK_BG;
@@ -73,7 +74,7 @@ fn frame_linear_gradient_matches_golden() {
                     .size((Sizing::FILL, Sizing::FILL))
                     .background(Background {
                         fill: Brush::Linear(LinearGradient::two_stop(
-                            std::f32::consts::FRAC_PI_2,
+                            FRAC_PI_2,
                             ColorU8::hex(0x1a1a2e),
                             ColorU8::hex(0x4c5cdb),
                         )),
@@ -198,20 +199,12 @@ fn showcase_gradients_tab_matches_golden() {
                         Frame::new()
                             .id_salt("vertical")
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::two_stop(
-                                std::f32::consts::FRAC_PI_2,
-                                navy,
-                                blue,
-                            )))
+                            .background(cell(LinearGradient::two_stop(FRAC_PI_2, navy, blue)))
                             .show(ui);
                         Frame::new()
                             .id_salt("diag")
                             .size((Sizing::FILL, Sizing::FILL))
-                            .background(cell(LinearGradient::two_stop(
-                                std::f32::consts::FRAC_PI_4,
-                                orange,
-                                yellow,
-                            )))
+                            .background(cell(LinearGradient::two_stop(FRAC_PI_4, orange, yellow)))
                             .show(ui);
                     });
                 Panel::hstack()

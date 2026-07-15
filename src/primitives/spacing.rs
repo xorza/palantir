@@ -1,5 +1,5 @@
 use crate::primitives::half_simd::F16x4;
-use crate::primitives::lane_serde::LaneCodec;
+use crate::primitives::lane_serde::{self, LaneCodec};
 use crate::primitives::num::Num;
 
 /// Per-side spacing (padding / margin), packed as four f16 lanes in
@@ -66,13 +66,13 @@ impl LaneCodec for Spacing {
 
 impl serde::Serialize for Spacing {
     fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        crate::primitives::lane_serde::serialize(self, s)
+        lane_serde::serialize(self, s)
     }
 }
 
 impl<'de> serde::Deserialize<'de> for Spacing {
     fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        crate::primitives::lane_serde::deserialize(d)
+        lane_serde::deserialize(d)
     }
 }
 
