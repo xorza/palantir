@@ -2,7 +2,7 @@ use crate::Ui;
 use crate::forest::element::Configure;
 use crate::forest::layer::Layer;
 use crate::forest::tree::node::NodeId;
-use crate::layout::grid::{AxisScratch, resolve_axis};
+use crate::layout::grid::{AxisScratch, GridDepthStack, resolve_axis};
 use crate::layout::types::{sizing::Sizing, track::Track};
 use crate::primitives::rect::Rect;
 use crate::primitives::widget_id::WidgetId;
@@ -15,6 +15,12 @@ fn child_rects(ui: &Ui, root: NodeId) -> Vec<Rect> {
         .children(root)
         .map(|c| ui.layout[Layer::Main].rect[c.id.idx()])
         .collect()
+}
+
+#[test]
+#[should_panic(expected = "GridDepthStack::exit underflow")]
+fn grid_depth_stack_rejects_exit_without_enter() {
+    GridDepthStack::default().exit();
 }
 
 #[test]

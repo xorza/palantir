@@ -193,7 +193,7 @@ impl GridDepthStack {
     }
 
     fn exit(&mut self) {
-        debug_assert!(self.depth > 0);
+        assert!(self.depth > 0, "GridDepthStack::exit underflow");
         self.depth -= 1;
     }
 
