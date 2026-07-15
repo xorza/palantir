@@ -36,7 +36,7 @@ const DISPLAY: Display = Display {
 /// the rest ignore it.
 fn frame(ui: &mut Ui, f: impl FnMut(&mut Ui)) -> Damage {
     let report = ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), f);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     match report.plan {
         None => Damage::Skip,
         Some(RenderPlan {
@@ -821,13 +821,13 @@ fn click_on_empty_bg_does_not_force_full() {
     };
     // Frame 0 (cold): expect Full. Submit.
     ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), build);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     // Frame 1 (warm): nothing changed → Skip.
     let warm = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), build)
         .plan;
     assert!(warm.is_none(), "warm frame must Skip");
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Click on empty background (far from the 50×50 frame at origin).
     ui.on_input(InputEvent::PointerMoved(Vec2::new(180.0, 180.0)));
@@ -867,7 +867,7 @@ fn skip_frame_does_not_force_next_to_full() {
             ..
         })
     ));
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Identical content → Skip. WindowRenderer::render confirms submitted on
     // the skip path too (copies the backbuffer onto the swapchain);
@@ -878,7 +878,7 @@ fn skip_frame_does_not_force_next_to_full() {
         })
         .plan;
     assert!(skip.is_none(), "identical content must Skip");
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Next frame: still no diff. Pre-fix this could regress to Full if
     // the skip wasn't acked — WindowRenderer::render owns that ack now.
@@ -915,7 +915,7 @@ fn skip_frame_without_explicit_ack_does_not_force_next_to_full() {
             ..
         })
     ));
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Identical content → Skip. WindowRenderer bypasses `render()` entirely and
     // never acks; `Ui::frame` must self-ack the skip.
@@ -1872,13 +1872,13 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} f1"
         );
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
         let f2 = ui
             .frame(FrameStamp::new(DISPLAY, Duration::ZERO), &mut build)
             .plan;
         assert!(f2.is_none(), "case: {label} f2 must Skip");
         assert!(ui.damage_engine.dirty.is_empty(), "case: {label} steady");
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
 
         // Mutate Display; identical authoring; must short-circuit to Full.
         let mutated_plan = ui
@@ -1894,7 +1894,7 @@ fn display_change_forces_full_repaint() {
             ),
             "case: {label} display change"
         );
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
         assert!(
             !ui.damage_engine.dirty.is_empty(),
             "case: {label} display change should mark some nodes dirty (rects shifted)",
@@ -1968,9 +1968,9 @@ fn small_damage_with_surface_change_forces_full_repaint() {
     };
 
     ui.frame(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     ui.frame(FrameStamp::new(big, Duration::ZERO), &mut scene);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     assert!(ui.damage_engine.dirty.is_empty());
 
     // Inject: flip widget "small"'s prev `cascade_input` so the next
@@ -2025,7 +2025,7 @@ fn stable_surface_does_not_short_circuit() {
     ui.frame(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
         build(ui, BLUE)
     });
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     let warm = ui
         .frame(FrameStamp::new(DISPLAY, Duration::ZERO), |ui| {
             build(ui, BLUE)
@@ -2033,7 +2033,7 @@ fn stable_surface_does_not_short_circuit() {
         .plan;
     assert!(warm.is_none(), "warm steady-state must Skip");
     assert!(ui.damage_engine.dirty.is_empty());
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Frame 3: same surface, *one leaf* changes color. Diff must
     // produce a `Partial(small_rect)`, not `Full`/`Skip` — that

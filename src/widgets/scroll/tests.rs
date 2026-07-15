@@ -1584,11 +1584,14 @@ fn shrinking_content_unstrands_offset_without_input() {
 fn cascade_skip_busts_on_scroll_offset_change() {
     let mut ui = Ui::for_test();
     ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
-    assert!(ui.dbg_cascade_ran, "first frame runs the cascade");
+    assert!(
+        ui.frame_runtime.dbg_cascade_ran,
+        "first frame runs the cascade"
+    );
 
     ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert!(
-        !ui.dbg_cascade_ran,
+        !ui.frame_runtime.dbg_cascade_ran,
         "unchanged scroll frame skips the cascade"
     );
 
@@ -1599,7 +1602,7 @@ fn cascade_skip_busts_on_scroll_offset_change() {
     ui.run_at_acked(SURFACE, |ui| build(ui, 200.0, 800.0));
     assert_eq!(read_state(&mut ui).offset.y, 50.0, "offset advanced");
     assert!(
-        ui.dbg_cascade_ran,
+        ui.frame_runtime.dbg_cascade_ran,
         "scroll offset change must re-run the cascade (offset is in the fingerprint)",
     );
 }

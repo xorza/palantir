@@ -725,7 +725,7 @@ fn frame_pass_count_matches_action_trigger() {
         prime(&mut ui);
 
         let count = Cell::new(0u32);
-        let frame_id_before = ui.frame_id;
+        let frame_id_before = ui.frame_runtime.frame_id;
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             count.set(count.get() + 1);
             Panel::vstack()
@@ -742,7 +742,7 @@ fn frame_pass_count_matches_action_trigger() {
         // pass count — pass B's anim ticks must see the same id as
         // pass A's so the integrator doesn't double-advance.
         assert_eq!(
-            ui.frame_id,
+            ui.frame_runtime.frame_id,
             frame_id_before + 1,
             "{label}: frame_id must bump exactly once per frame (passes: {expected})",
         );
@@ -750,7 +750,7 @@ fn frame_pass_count_matches_action_trigger() {
 }
 
 /// `Ui::frame` plumbs `now`, `dt`, and the repaint-requested flag
-/// end-to-end: per-call `now` lands in `Ui::time`, the derived `dt`
+/// end-to-end: per-call `now` lands in the frame runtime, the derived `dt`
 /// clamps to `MAX_DT`, `repaint_requested` resets at the top of every
 /// call, and a flag set during recording surfaces on `FrameOutput`.
 #[test]
@@ -777,11 +777,11 @@ fn frame_plumbs_now_dt_and_repaint_request() {
         !repaint,
         "no animate-not-settled flag set — must stay false"
     );
-    assert_eq!(ui.time, Duration::from_millis(16));
+    assert_eq!(ui.frame_runtime.time, Duration::from_millis(16));
     assert!(
-        (ui.dt - 0.016).abs() < 1e-6,
-        "Ui::dt should be (now - prev) in seconds; got {}",
-        ui.dt,
+        (ui.frame_runtime.dt - 0.016).abs() < 1e-6,
+        "FrameRuntime::dt should be (now - prev) in seconds; got {}",
+        ui.frame_runtime.dt,
     );
 
     // Frame B: simulate an unsettled animation tick by setting the
@@ -791,18 +791,18 @@ fn frame_plumbs_now_dt_and_repaint_request() {
             Panel::vstack()
                 .id(WidgetId::from_hash("root"))
                 .show(ui, |_| {});
-            ui.repaint_requested = true;
+            ui.frame_runtime.repaint_requested = true;
         })
         .repaint_requested;
     assert!(
         repaint,
         "repaint_requested set during recording must surface on FrameOutput",
     );
-    assert_eq!(ui.time, Duration::from_millis(32));
+    assert_eq!(ui.frame_runtime.time, Duration::from_millis(32));
     assert!(
-        (ui.dt - 0.016).abs() < 1e-6,
-        "Ui::dt should be next-frame delta; got {}",
-        ui.dt,
+        (ui.frame_runtime.dt - 0.016).abs() < 1e-6,
+        "FrameRuntime::dt should be next-frame delta; got {}",
+        ui.frame_runtime.dt,
     );
 
     // Frame C: oversized gap (5s) clamps dt to MAX_DT; `time` still
@@ -815,11 +815,11 @@ fn frame_plumbs_now_dt_and_repaint_request() {
                 .show(ui, |_| {});
         },
     );
-    assert_eq!(ui.time, Duration::from_millis(5_032));
+    assert_eq!(ui.frame_runtime.time, Duration::from_millis(5_032));
     assert!(
-        (ui.dt - MAX_DT).abs() < 1e-6,
-        "Ui::dt should clamp at MAX_DT; got {}",
-        ui.dt,
+        (ui.frame_runtime.dt - MAX_DT).abs() < 1e-6,
+        "FrameRuntime::dt should clamp at MAX_DT; got {}",
+        ui.frame_runtime.dt,
     );
 
     // Frame D: prior frame's repaint_requested must NOT leak — resets
@@ -858,8 +858,8 @@ fn frame_stats_overlay_records_partial_damage() {
             .size(50.0)
             .show(ui);
     });
-    ui.frame_submitted = true;
-    assert_eq!(ui.fps_ema, 0.0);
+    ui.frame_runtime.frame_submitted = true;
+    assert_eq!(ui.frame_runtime.fps_ema, 0.0);
     assert!(
         !ui.forest.trees[Layer::Debug].records.is_empty(),
         "Debug layer must carry the frame_stats readout",
@@ -875,7 +875,7 @@ fn frame_stats_overlay_records_partial_damage() {
             .size(50.0)
             .show(ui);
     });
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     assert!(
         matches!(
             report.plan,
@@ -888,9 +888,9 @@ fn frame_stats_overlay_records_partial_damage() {
         report.plan,
     );
     assert!(
-        ui.fps_ema > 0.0,
+        ui.frame_runtime.fps_ema > 0.0,
         "fps_ema must update after the second frame; got {}",
-        ui.fps_ema,
+        ui.frame_runtime.fps_ema,
     );
 
     // Disabling the flag mid-stream evicts the Debug-layer node next
@@ -930,7 +930,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
     );
     // Both entries are still queued (neither has fired).
     assert_eq!(
-        ui.repaint_wakes.len(),
+        ui.frame_runtime.repaint_wakes.len(),
         2,
         "both distinct deadlines stay queued"
     );
@@ -946,7 +946,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         Some(Duration::from_secs_f32(1.5)),
         "second deadline survives the first frame's drain",
     );
-    assert_eq!(ui.repaint_wakes.len(), 1);
+    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 1);
 
     // Run a frame at the second deadline. Queue empties.
     let report = ui.frame(
@@ -954,7 +954,7 @@ fn request_repaint_after_queues_distinct_deadlines() {
         |_| {},
     );
     assert_eq!(report.repaint_after, None);
-    assert!(ui.repaint_wakes.is_empty());
+    assert!(ui.frame_runtime.repaint_wakes.is_empty());
 }
 
 /// Re-requesting an already-queued deadline within the same frame
@@ -976,7 +976,7 @@ fn request_repaint_after_dedups_within_frame() {
         },
     );
     assert_eq!(
-        ui.repaint_wakes.len(),
+        ui.frame_runtime.repaint_wakes.len(),
         1,
         "exact duplicate deadlines collapse to one entry",
     );
@@ -1002,7 +1002,12 @@ fn request_repaint_after_dedups_within_frame() {
             ui.request_repaint_after(Duration::from_secs_f32(0.600));
         },
     );
-    let deadlines: Vec<Duration> = ui.repaint_wakes.iter().map(|w| w.deadline).collect();
+    let deadlines: Vec<Duration> = ui
+        .frame_runtime
+        .repaint_wakes
+        .iter()
+        .map(|w| w.deadline)
+        .collect();
     assert_eq!(
         deadlines,
         vec![
@@ -1030,7 +1035,7 @@ fn coalesce_floor_follows_refresh_rate() {
     let mut ui = Ui::for_test();
     schedule_pair(&mut ui, Display::from_physical(SURFACE, 1.0));
     assert_eq!(
-        ui.repaint_wakes.len(),
+        ui.frame_runtime.repaint_wakes.len(),
         2,
         "120 Hz fallback: 12 ms-apart wakes stay distinct",
     );
@@ -1043,12 +1048,12 @@ fn coalesce_floor_follows_refresh_rate() {
     };
     schedule_pair(&mut ui, display_60);
     assert_eq!(
-        ui.repaint_wakes.len(),
+        ui.frame_runtime.repaint_wakes.len(),
         1,
         "60 Hz floor: 12 ms-apart wakes collapse",
     );
     assert_eq!(
-        ui.repaint_wakes[0].deadline,
+        ui.frame_runtime.repaint_wakes[0].deadline,
         Duration::from_millis(512),
         "the later deadline survives the collapse",
     );
@@ -1068,14 +1073,14 @@ fn request_repaint_after_drains_fired_entries() {
             ui.request_repaint_after(Duration::from_secs_f32(2.0));
         },
     );
-    assert_eq!(ui.repaint_wakes.len(), 3);
+    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 3);
 
     // Frame at t=1.0 drains entries at 0.5 and 1.0; 2.0 survives.
     let report = ui.frame(
         FrameStamp::new(display, Duration::from_secs_f32(1.0)),
         |_| {},
     );
-    assert_eq!(ui.repaint_wakes.len(), 1);
+    assert_eq!(ui.frame_runtime.repaint_wakes.len(), 1);
     assert_eq!(report.repaint_after, Some(Duration::from_secs_f32(2.0)));
 }
 
@@ -1111,7 +1116,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(r0.repaint_after, Some(half));
 
@@ -1137,7 +1142,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
         }
         other => panic!("expected RenderPlan::Partial on PaintOnly, got {other:?}"),
     }
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // Bug regression: PaintOnly skips post_record, but must still
     // re-fold the retained paint_anims so the *next* blink boundary
@@ -1146,7 +1151,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     assert_eq!(r1.repaint_after, Some(half + half));
     let r2 = ui.frame(FrameStamp::new(display, half + half), |ui| body(ui, half));
     assert_eq!(r2.processing, FrameProcessing::PaintOnly);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 
     // A pending OS close request vetoes the fast path: the app can only
     // read `close_requested` (and veto via `keep_open`) during record,
@@ -1155,7 +1160,7 @@ fn paint_only_fast_path_fires_on_anim_quantum_boundary() {
     ui.wants_close = true;
     let r3 = ui.frame(FrameStamp::new(display, half * 3), |ui| body(ui, half));
     assert_eq!(r3.processing, FrameProcessing::SingleLayout);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     ui.wants_close = false;
     let r4 = ui.frame(FrameStamp::new(display, half * 4), |ui| body(ui, half));
     assert_eq!(r4.processing, FrameProcessing::PaintOnly);
@@ -1266,7 +1271,7 @@ fn paint_only_preserves_frame_arena_for_retained_shapes() {
     let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
         body(ui, half)
     });
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     assert_eq!(r0.processing, FrameProcessing::SingleLayout);
     assert_eq!(ui.ctx.frame_arena.inner().fmt_scratch, "retained 7");
 
@@ -1321,7 +1326,7 @@ fn paint_only_skipped_when_widget_requested_repaint() {
         body(ui, half);
         ui.request_repaint();
     });
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
     assert!(r0.repaint_requested);
 
     let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1370,7 +1375,7 @@ fn input_policy_routes_paint_only_gate() {
         let r0 = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
         assert_eq!(r0.processing, FrameProcessing::SingleLayout);
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
@@ -1401,7 +1406,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
 
         ui.on_input(InputEvent::PointerMoved(Vec2::new(40.0, 40.0)));
         let r1 = ui.frame(FrameStamp::new(display, half), |ui| body(ui, half));
@@ -1420,7 +1425,7 @@ fn input_policy_routes_paint_only_gate() {
         let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), |ui| {
             body(ui, half)
         });
-        ui.frame_submitted = true;
+        ui.frame_runtime.frame_submitted = true;
         ui.input.focused = Some(WidgetId::from_hash("editor"));
 
         ui.on_input(InputEvent::KeyDown {
@@ -1459,7 +1464,7 @@ fn cold_ui() -> Ui {
 fn cold_frame(ui: &mut Ui, record: impl FnMut(&mut Ui)) {
     let display = Display::from_physical(COLD, 1.0);
     let _ = ui.frame(FrameStamp::new(display, Duration::ZERO), record);
-    ui.frame_submitted = true;
+    ui.frame_runtime.frame_submitted = true;
 }
 
 /// On a true first frame the user closure runs **twice** — once for the
@@ -1622,20 +1627,32 @@ fn cascade_skip_fires_on_unchanged_reruns_on_change() {
 
     let mut ui = Ui::for_test();
     ui.run_at_acked(SURFACE, |ui| build(ui, 50.0));
-    assert!(ui.dbg_cascade_ran, "first frame runs the cascade");
+    assert!(
+        ui.frame_runtime.dbg_cascade_ran,
+        "first frame runs the cascade"
+    );
 
     ui.run_at_acked(SURFACE, |ui| build(ui, 50.0));
-    assert!(!ui.dbg_cascade_ran, "unchanged frame skips the cascade");
+    assert!(
+        !ui.frame_runtime.dbg_cascade_ran,
+        "unchanged frame skips the cascade"
+    );
 
     ui.run_at_acked(SURFACE, |ui| build(ui, 80.0));
-    assert!(ui.dbg_cascade_ran, "authoring change re-runs the cascade");
+    assert!(
+        ui.frame_runtime.dbg_cascade_ran,
+        "authoring change re-runs the cascade"
+    );
 
     ui.run_at_acked(SURFACE, |ui| build(ui, 80.0));
-    assert!(!ui.dbg_cascade_ran, "settles back to skipping");
+    assert!(
+        !ui.frame_runtime.dbg_cascade_ran,
+        "settles back to skipping"
+    );
 
     ui.run_at_acked(UVec2::new(SURFACE.x + 1, SURFACE.y), |ui| build(ui, 80.0));
     assert!(
-        ui.dbg_cascade_ran,
+        ui.frame_runtime.dbg_cascade_ran,
         "exact-surface change re-runs the cascade"
     );
 }
@@ -1664,15 +1681,18 @@ fn cascade_fingerprint_covers_authoring_input_classes() {
     fn assert_reruns(label: &str, base: impl Fn(&mut Ui), changed: impl Fn(&mut Ui)) {
         let mut ui = Ui::for_test();
         ui.run_at_acked(SURFACE, |ui| base(ui));
-        assert!(ui.dbg_cascade_ran, "{label}: first frame runs the cascade");
+        assert!(
+            ui.frame_runtime.dbg_cascade_ran,
+            "{label}: first frame runs the cascade"
+        );
         ui.run_at_acked(SURFACE, |ui| base(ui));
         assert!(
-            !ui.dbg_cascade_ran,
+            !ui.frame_runtime.dbg_cascade_ran,
             "{label}: unchanged frame skips the cascade"
         );
         ui.run_at_acked(SURFACE, |ui| changed(ui));
         assert!(
-            ui.dbg_cascade_ran,
+            ui.frame_runtime.dbg_cascade_ran,
             "{label}: toggling it must re-run the cascade — the input is \
              missing from subtree_hash / the cascade fingerprint",
         );
@@ -1845,12 +1865,12 @@ fn cascade_fingerprint_covers_layer_and_root_identity() {
         ui.run_at_acked(SURFACE, |ui| base(ui));
         ui.run_at_acked(SURFACE, |ui| base(ui));
         assert!(
-            !ui.dbg_cascade_ran,
+            !ui.frame_runtime.dbg_cascade_ran,
             "{label}: unchanged frame skips the cascade"
         );
         ui.run_at_acked(SURFACE, |ui| changed(ui));
         assert!(
-            ui.dbg_cascade_ran,
+            ui.frame_runtime.dbg_cascade_ran,
             "{label}: identity change must re-run the cascade",
         );
     };
@@ -1919,9 +1939,17 @@ fn fps_ema_reads_unclamped_frame_delta() {
     ui.mark_frame_submitted();
     ui.frame(FrameStamp::new(display, Duration::from_secs(1)), &mut noop);
     ui.mark_frame_submitted();
-    assert!((ui.fps_ema - 1.0).abs() < 1e-6, "got {}", ui.fps_ema);
+    assert!(
+        (ui.frame_runtime.fps_ema - 1.0).abs() < 1e-6,
+        "got {}",
+        ui.frame_runtime.fps_ema
+    );
     ui.frame(FrameStamp::new(display, Duration::from_secs(3)), &mut noop);
-    assert!((ui.fps_ema - 0.95).abs() < 1e-6, "got {}", ui.fps_ema);
+    assert!(
+        (ui.frame_runtime.fps_ema - 0.95).abs() < 1e-6,
+        "got {}",
+        ui.frame_runtime.fps_ema
+    );
 }
 
 /// Record passes replay (cold-start warmup, double-layout pass B), so

@@ -7,7 +7,7 @@
 //! encoder samples it at paint time and folds the resulting [`PaintMod`]
 //! (an alpha multiplier today; transform mod once the renderer can
 //! express it) into the per-shape brush. `post_record` folds each anim's
-//! `next_wake` into `Ui::repaint_wakes`, so widget code never calls
+//! `next_wake` into the `Ui` frame runtime's wake queue, so widget code never calls
 //! `request_repaint_after` for these shapes.
 //!
 //! Unlike the value-interpolation animations in `crate::animation`
@@ -130,9 +130,9 @@ impl PaintAnim {
     }
 
     /// Earliest `Duration` (absolute time, same epoch as
-    /// `Ui::time` / `started_at`) at which `quantum` will next
+    /// frame-runtime time / `started_at`) at which `quantum` will next
     /// change. `post_record` folds the min of every live entry's
-    /// `next_wake` into `Ui::repaint_wakes` so widgets don't have to.
+    /// `next_wake` into the frame runtime's wake queue so widgets don't have to.
     ///
     /// For `BlinkOpacity` this is the next half-period boundary
     /// strictly after `now`.

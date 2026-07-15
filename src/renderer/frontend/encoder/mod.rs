@@ -119,7 +119,7 @@ pub(crate) fn encode(
     };
 
     let viewport = ui.display.logical_rect();
-    let now = ui.time;
+    let now = ui.frame_runtime.time;
     let gradients = arena.gradients.as_slice();
     // Matches the *padded* region the backend actually PreClears — the
     // pad + rounding-slack derivation lives next to the scissor math in

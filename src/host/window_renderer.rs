@@ -305,7 +305,7 @@ impl WindowRenderer {
     fn note_format(&mut self, format: wgpu::TextureFormat) {
         if self.last_format != Some(format) {
             self.last_format = Some(format);
-            self.ui.frame_submitted = false;
+            self.ui.frame_runtime.frame_submitted = false;
             self.configured = None;
         }
     }
@@ -472,8 +472,9 @@ impl WindowRenderer {
             }
             _ => None,
         };
-        // Skip arms leave `ui.frame_submitted` alone — `Ui::frame` acks a
-        // skip itself; the paint arms ack here after a successful submit.
+        // Skip arms leave `ui.frame_runtime.frame_submitted` alone —
+        // `Ui::frame` acks a skip itself; the paint arms ack here after a
+        // successful submit.
         match mode {
             // Nothing changed and the target already holds the last render —
             // leave it untouched.
@@ -502,7 +503,7 @@ impl WindowRenderer {
                     debug_overlay,
                 });
                 self.backbuffer_fresh = false;
-                self.ui.frame_submitted = true;
+                self.ui.frame_runtime.frame_submitted = true;
             }
             // Render into the backbuffer and copy it out; the backbuffer now
             // mirrors the target.
@@ -529,7 +530,7 @@ impl WindowRenderer {
                     debug_overlay,
                 });
                 self.backbuffer_fresh = true;
-                self.ui.frame_submitted = true;
+                self.ui.frame_runtime.frame_submitted = true;
             }
         }
     }

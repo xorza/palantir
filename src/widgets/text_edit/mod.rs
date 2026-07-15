@@ -89,7 +89,7 @@ pub(crate) struct TextEditState {
     /// inside the visible area; subtracted from every shape
     /// (text / selection / caret) at emit time.
     pub(crate) scroll: Vec2,
-    /// `Ui::time` snapshot from the last frame the caret moved, text
+    /// Frame-runtime clock snapshot from the last frame the caret moved, text
     /// changed, or selection shifted. The blink phase is computed
     /// against this so the caret stays solid for the first
     /// [`BLINK_HALF`] seconds after any input.
@@ -967,7 +967,7 @@ impl<'a> TextEdit<'a> {
         // below. `caret_pos` is computed via the shaper (disjoint
         // field) first so the state borrow is contiguous.
         let caret_pos = ui.ctx.shaper.cursor_xy(self.text, caret_byte, ctx.params());
-        let now = ui.time;
+        let now = ui.frame_runtime.time;
         let (scroll, last_caret_change) = {
             let state = ui.state_mut::<TextEditState>(id);
             update_scroll(

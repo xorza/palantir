@@ -18,7 +18,7 @@ use std::time::Duration;
 
 /// Per-trigger tooltip state. `hover_started_at` is Ui-time at first
 /// hovered frame; elapsed = `now - hover_started_at`, immune to
-/// `Ui::dt`'s `MAX_DT` clamp on idle wakes. `last_size` caches the
+/// the frame runtime's `MAX_DT` clamp on idle wakes. `last_size` caches the
 /// previous frame's bubble extent for anchor flip/clamp.
 #[derive(Default, Clone, Copy, Debug)]
 pub(crate) struct TooltipState {
@@ -142,7 +142,7 @@ impl<'r> Tooltip<'r> {
         let trigger_rect = self.snapshot.state.rect;
         let active_trigger = trigger_hovered && (!trigger_disabled || self.show_when_disabled);
 
-        let now = ui.time.as_secs_f32();
+        let now = ui.frame_runtime.time.as_secs_f32();
 
         let mut state: TooltipState = *ui.state_mut::<TooltipState>(state_id);
         let mut global: TooltipGlobal = *ui.state_mut::<TooltipGlobal>(g_id);

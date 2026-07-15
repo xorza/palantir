@@ -18,7 +18,7 @@ split.
   motion; critically-damped spring for retargetable motion. Caller
   picks; primitive dispatches.
 - **Frame-driven, not wallclock.** WindowRenderer hands `now: Duration` to
-  `Ui::run_frame`; `Ui::dt` is derived. No `Instant::now()` in widget
+  `Ui::frame`; the frame runtime's `dt` is derived. No `Instant::now()` in widget
   code — keeps animation deterministic and host-portable.
 - **No new authoring model.** A widget still does
   `Button::new().show(ui)`. Animation is something it reaches for

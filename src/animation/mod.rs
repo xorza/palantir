@@ -128,7 +128,7 @@ pub(crate) struct AnimRow<T: Animatable> {
     /// animation site went away) gets evicted. Without this the
     /// `(WidgetId, AnimSlot)` map only shrinks on full widget removal.
     pub(crate) touched: bool,
-    /// `Ui::frame_id` at the last `tick` that ran the integrator
+    /// `Ui` frame-runtime id at the last `tick` that ran the integrator
     /// step. A second `tick` in the same frame (multi-pass record:
     /// `run_frame` re-runs `build` after an input action drains) sees
     /// this match and short-circuits the dt-driven advance, so the

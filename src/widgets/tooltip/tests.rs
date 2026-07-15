@@ -1,7 +1,7 @@
 //! `Tooltip` behavior tests.
 //!
 //! Multi-frame integration tests drive fake pointer hover at advancing
-//! `Ui::time` to assert visibility, placement, and sizing behavior.
+//! the `Ui` frame-runtime clock to assert visibility, placement, and sizing behavior.
 
 use crate::Ui;
 use crate::display::Display;

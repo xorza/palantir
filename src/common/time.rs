@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-/// Fixed substep used by the spring integrator and the `Ui::dt`
+/// Fixed substep used by the spring integrator and the `Ui` frame runtime's `dt`
 /// accumulator. Stability requires `dt·√k < ~1`; 1/240 s keeps the
 /// product < 0.3 for `k ≤ 5000`. The `Ui` accumulator spends one
 /// step per crossed threshold so each spent step is a single, stable
