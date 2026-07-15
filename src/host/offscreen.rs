@@ -169,3 +169,65 @@ impl OffscreenHost {
         self.gpu.gpu_image_cache_len()
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub mod test_support {
+    use crate::host::clock::Clock;
+    use crate::host::context::HostContext;
+    use crate::host::window_renderer::{PresentStrategy, WindowRenderer};
+    use crate::renderer::backend::{WgpuBackend, WgpuBackendConfig};
+    use crate::text::TextShaper;
+    use crate::ui::Ui;
+
+    /// Two window render streams sharing one backend and host context. This is
+    /// intentionally test-only: production multi-window ownership stays with
+    /// `WinitHost`.
+    #[derive(Debug)]
+    pub struct TwoWindowOffscreenHost {
+        gpu: WgpuBackend,
+        windows: [WindowRenderer; 2],
+    }
+
+    impl TwoWindowOffscreenHost {
+        pub fn new(
+            device: wgpu::Device,
+            queue: wgpu::Queue,
+            shaper: TextShaper,
+            clocks: [Box<dyn Clock>; 2],
+        ) -> Self {
+            let ctx = HostContext::new(shaper);
+            let gpu = WgpuBackend::new(
+                device,
+                queue,
+                &ctx,
+                WgpuBackendConfig {
+                    collect_gpu_stats: false,
+                },
+            );
+            let max_texture_dim = gpu.max_texture_dim();
+            let [clock_a, clock_b] = clocks;
+            let window_a = WindowRenderer::builder(&ctx, max_texture_dim)
+                .strategy(PresentStrategy::BackbufferCopy)
+                .clock(clock_a)
+                .build();
+            let window_b = WindowRenderer::builder(&ctx, max_texture_dim)
+                .strategy(PresentStrategy::BackbufferCopy)
+                .clock(clock_b)
+                .build();
+            Self {
+                gpu,
+                windows: [window_a, window_b],
+            }
+        }
+
+        pub fn frame_offscreen(
+            &mut self,
+            window: usize,
+            target: &wgpu::Texture,
+            scale_factor: f32,
+            record: impl FnMut(&mut Ui),
+        ) {
+            self.windows[window].frame_offscreen(&mut self.gpu, target, scale_factor, record);
+        }
+    }
+}

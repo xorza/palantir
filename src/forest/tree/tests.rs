@@ -940,7 +940,7 @@ fn mid_recording_popup_with_text_renders_through_encoder() {
     });
     let _cmds = ui.encode_cmds();
 
-    let arena = ui.ctx.frame_arena.inner();
+    let arena = ui.frame_arena.inner();
     let bytes = arena.fmt_scratch.as_str();
     let main_tree = &ui.forest.trees[Layer::Main];
     let popup_tree = &ui.forest.trees[Layer::Popup];

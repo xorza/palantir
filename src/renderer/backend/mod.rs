@@ -34,7 +34,7 @@ use self::schedule::{RenderStep, for_each_step};
 use self::stencil::STENCIL_FORMAT;
 use self::viewport::{ViewportPush, build_damage_scissors};
 use crate::debug_overlay::DebugOverlayConfig;
-use crate::frame_arena::FrameArena;
+use crate::frame_arena::FrameArenaInner;
 use crate::host::context::HostContext;
 use crate::primitives::urect::URect;
 use crate::renderer::backend::text::TextBackend;
@@ -122,6 +122,7 @@ pub(crate) struct SubmissionTargets<'a> {
 #[derive(Debug)]
 pub(crate) struct Submission<'a> {
     pub(crate) targets: SubmissionTargets<'a>,
+    pub(crate) arena: &'a FrameArenaInner,
     pub(crate) buffer: &'a RenderBuffer,
     pub(crate) plan: RenderPlan,
     pub(crate) debug_overlay: DebugOverlayConfig,
@@ -164,12 +165,6 @@ pub(crate) struct WgpuBackend {
     /// that carries the color target; there is no single "current format"
     /// — the surface texture handed to `submit` selects the set.
     pipelines: FxHashMap<wgpu::TextureFormat, FormatPipelines>,
-    /// Clone of the shared [`HostContext`] frame arena (the same one in
-    /// every window's `Ui`/`Frontend`); the backend reads mesh
-    /// vertices/indices from it during upload. Safe to share because
-    /// rendering is serialized — one window completes record → submit
-    /// before the next clears the arena (see `WinitHost::draw`).
-    frame_arena: FrameArena,
     /// Shared cross-frame GPU resource caches (image registry +
     /// gradient atlas). Drained / flushed each frame to push newly
     /// registered images and dirty gradient rows to GPU.
@@ -196,8 +191,8 @@ impl WgpuBackend {
     }
 
     /// Build the one shared GPU renderer from the shared [`HostContext`]
-    /// (cloning the frame arena, render caches, shaper, and GPU-stats
-    /// handle it needs). Owns the device/queue and every
+    /// (cloning the render caches, shaper, and GPU-stats handle it needs).
+    /// Owns the device/queue and every
     /// format-independent GPU resource (pipelines' shaders + buffers, the
     /// glyph + gradient atlases, the image texture cache). Format-agnostic
     /// at construction: each swapchain format's pipeline set builds lazily
@@ -209,11 +204,6 @@ impl WgpuBackend {
         config: WgpuBackendConfig,
     ) -> Self {
         let WgpuBackendConfig { collect_gpu_stats } = config;
-        // Frame arena + render caches are shared with every window's
-        // `Ui`/`Frontend` (the backend just holds clones; the canonical
-        // owner is the `HostContext`). Read here during upload — safe
-        // under the serialized-render invariant.
-        let frame_arena = ctx.frame_arena.clone();
         let caches = ctx.caches.clone();
         // GPU pass timing collection is opt-in. When on, adapter features
         // degrade what gets collected: `TIMESTAMP_QUERY` is required at
@@ -267,7 +257,6 @@ impl WgpuBackend {
             text,
             debug,
             pipelines,
-            frame_arena,
             caches,
             gpu_timings,
         }
@@ -428,6 +417,7 @@ impl WgpuBackend {
                     backbuffer: via_backbuffer,
                     stencil: stencil_view,
                 },
+            arena,
             buffer,
             plan,
             debug_overlay,
@@ -504,10 +494,6 @@ impl WgpuBackend {
         // yields the damage-overlay instance count for the post-copy
         // overlay pass.
         let overlay_count = {
-            // The shared frame arena — mesh vertices/indices are read
-            // straight out of it during upload (serialized-render
-            // invariant; see the field doc).
-            let arena = self.frame_arena.inner();
             let mut ctx = GpuCtx::new(
                 &self.device,
                 &self.queue,

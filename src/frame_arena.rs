@@ -1,6 +1,7 @@
-//! Per-frame bulk geometry arena. Owned by `WindowRenderer`, cloned (cheap, Rc)
-//! into every subsystem that touches per-frame mesh / polyline / fmt
-//! bytes (`Ui`, `Frontend`, `WgpuBackend`). Cleared at record-pass start.
+//! Per-window bulk geometry arena. Owned by `WindowRenderer`, with a cheap
+//! `Rc` clone held by its `Ui` for record-time mesh / polyline / formatting
+//! writes. Later CPU and GPU phases borrow that window's arena explicitly.
+//! Cleared at record-pass start and retained across `PaintOnly` frames.
 //!
 //! Replaces the previous three-step copy (user `Mesh` →
 //! `Tree.shapes.payloads` → `RenderCmdBuffer.shape_payloads` →
@@ -36,11 +37,11 @@ pub(crate) struct LoweredGradient {
     pub(crate) kind: FillKind,
 }
 
-/// Shared per-frame arena. `WindowRenderer` constructs one and clones it into
-/// every subsystem (`Ui`, `Frontend`, `WgpuBackend`). Phases run
-/// sequentially (record → encode → compose → upload) so the underlying
-/// borrow is never contested; a double-borrow indicates a wiring bug
-/// and panics.
+/// Per-window record arena. `WindowRenderer` constructs one and clones it into
+/// its `Ui`; frontend and backend phases receive a borrow of the same arena.
+/// Phases run sequentially (record → encode → compose → upload) so the
+/// underlying borrow is never contested; a double-borrow indicates a wiring
+/// bug and panics.
 ///
 /// User-facing operations (`clear`, `intern_str`, `intern_fmt`) take
 /// `&self` and borrow internally — call sites never touch RefCell.
@@ -50,9 +51,9 @@ pub(crate) struct LoweredGradient {
 #[derive(Clone, Default, Debug)]
 pub struct FrameArena(Rc<RefCell<FrameArenaInner>>);
 
-/// One arena per frame. All bulk shape-geometry bytes live here for
-/// the duration of a frame and are read by every later phase via
-/// spans recorded on tree shape records and cmd-buffer payloads.
+/// One arena per window's retained record. All bulk shape-geometry bytes live
+/// here until the next record pass and are read by every later phase via spans
+/// recorded on tree shape records and cmd-buffer payloads.
 #[derive(Default, Debug)]
 pub(crate) struct FrameArenaInner {
     /// Incremented by every [`FrameArena::clear`]. Frame-local text

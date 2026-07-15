@@ -6,12 +6,11 @@
 //!
 //! What every window shares splits two ways: the GPU resources — render
 //! pipelines, glyph + gradient atlases, the image texture cache, the
-//! device/queue — live on the **one** shared `WgpuBackend` the host
-//! passes into every method; the GPU-agnostic resources — frame arena,
-//! render caches, shaper, GPU-stats handle — live on the [`HostContext`]
-//! this window's `Ui`/`Frontend` were cloned from. So N windows render
-//! through one GPU renderer; each `WindowRenderer` carries only this
-//! window's data.
+//! device/queue — live on the **one** shared `WgpuBackend` the host passes
+//! into every method; render caches, shaper, and the GPU-stats handle live on
+//! the [`HostContext`]. The frame arena is per-window and retained alongside
+//! this window's tree. So N windows render through one GPU renderer without
+//! sharing frame-local geometry.
 //!
 //! Two public entries, sharing one CPU + GPU path:
 //! [`WindowRenderer::frame`] (to a swapchain surface — acquires, submits,
@@ -22,6 +21,7 @@
 
 use std::time::Instant;
 
+use crate::frame_arena::FrameArena;
 use crate::host::clock::{Clock, RealtimeClock};
 use crate::host::context::HostContext;
 use crate::renderer::backend::{Backbuffer, Stencil, Submission, SubmissionTargets, WgpuBackend};
@@ -37,8 +37,11 @@ use crate::{Display, FrameReport, FrameStamp};
 #[derive(Debug)]
 pub struct WindowRenderer {
     pub ui: Ui,
-    /// Per-window CPU encode/compose scratch. Shares the backend's frame
-    /// arena (cloned at construction) but keeps its own retained
+    /// Per-window record arena retained in lockstep with `ui.forest`. The `Ui`
+    /// holds an `Rc` clone for record-time writes; frontend and backend phases
+    /// borrow this canonical handle explicitly.
+    frame_arena: FrameArena,
+    /// Per-window CPU encode/compose scratch with its own retained
     /// `RenderBuffer` — this window's draw list.
     frontend: Frontend,
     /// Persistent off-screen color target holding last frame's pixels for
@@ -240,8 +243,10 @@ impl WindowRendererBuilder<'_> {
     }
 
     pub(crate) fn build(self) -> WindowRenderer {
+        let frame_arena = FrameArena::default();
         WindowRenderer {
-            ui: Ui::new(self.ctx),
+            ui: Ui::new(self.ctx, frame_arena.clone()),
+            frame_arena,
             frontend: Frontend::new(self.max_texture_dim),
             backbuffer: None,
             backbuffer_fresh: false,
@@ -257,8 +262,8 @@ impl WindowRendererBuilder<'_> {
 
 impl WindowRenderer {
     /// Start building a per-window renderer from the shared [`HostContext`]:
-    /// its `Ui` + `Frontend` clone the context's shaper / frame arena /
-    /// caches / GPU-stats handle, and the `Ui` shares the context's
+    /// its `Ui` shares the context's shaper / caches / GPU-stats handle and
+    /// receives a fresh per-window frame arena. The `Ui` also shares the context's
     /// app-global host state (live-window set + debug overlay) so all windows
     /// agree. `max_texture_dim` is the device's `max_texture_dimension_2d`
     /// (fixed for its lifetime), handed to the `Frontend` to cap `GpuView`
@@ -415,8 +420,6 @@ impl WindowRenderer {
     /// [`Self::frame`] (surface) and [`Self::frame_offscreen`] (texture).
     #[profiling::function]
     fn cpu_frame(&mut self, display: Display, record: impl FnMut(&mut Ui)) -> CpuFrame {
-        // Ui::frame clears the shared Rc arena at the top of the record
-        // cycle — the same Rc the frontend + shared backend hold.
         let report = self
             .ui
             .frame(FrameStamp::new(display, self.clock.now()), record);
@@ -425,7 +428,8 @@ impl WindowRenderer {
         // compose, and resolve `GpuView` targets, all reading the now-frozen
         // `Ui` immutably. Skip frames build nothing.
         if let PresentMode::Direct(plan) | PresentMode::ViaBackbuffer(plan) = mode {
-            self.frontend.build(&self.ui, plan);
+            let arena = self.frame_arena.inner();
+            self.frontend.build(&self.ui, &arena, plan);
         }
         CpuFrame { report, mode }
     }
@@ -492,12 +496,14 @@ impl WindowRenderer {
             // Full repaint straight into the target — no backbuffer at all, so
             // it goes stale: the next partial must resync it first.
             PresentMode::Direct(plan) => {
+                let arena = self.frame_arena.inner();
                 gpu.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: None,
                         stencil: stencil_view,
                     },
+                    arena: &arena,
                     buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
@@ -519,12 +525,14 @@ impl WindowRenderer {
                     "backbuffer (re)created under a Partial plan whose draw \
                      list was culled for Partial"
                 );
+                let arena = self.frame_arena.inner();
                 gpu.submit(Submission {
                     targets: SubmissionTargets {
                         surface: target,
                         backbuffer: self.backbuffer.as_ref(),
                         stencil: stencil_view,
                     },
+                    arena: &arena,
                     buffer: &self.frontend.buffer,
                     plan,
                     debug_overlay,
@@ -734,5 +742,164 @@ mod present_mode_tests {
             present_mode(partial(64.0, 64.0), DirectAdaptive, true),
             DIRECT_FULL
         );
+    }
+}
+
+#[cfg(test)]
+mod frame_arena_tests {
+    use std::time::Duration;
+
+    use glam::{UVec2, Vec2};
+
+    use crate::host::clock::FixedClock;
+    use crate::host::context::HostContext;
+    use crate::host::window_renderer::WindowRenderer;
+    use crate::primitives::color::{Color, ColorU8};
+    use crate::primitives::mesh::{Mesh, MeshVertex};
+    use crate::primitives::widget_id::WidgetId;
+    use crate::shape::{PolylineColors, Shape};
+    use crate::text::TextShaper;
+    use crate::ui::Ui;
+    use crate::ui::frame_report::FrameProcessing;
+    use crate::widgets::panel::Panel;
+    use crate::widgets::spinner::Spinner;
+    use crate::widgets::text::Text;
+    use crate::{Configure, Display};
+
+    #[derive(Debug, PartialEq)]
+    struct ArenaSnapshot {
+        mesh_vertices: Vec<MeshVertex>,
+        mesh_indices: Vec<u32>,
+        polyline_points: Vec<Vec2>,
+        polyline_colors: Vec<ColorU8>,
+        text: String,
+    }
+
+    fn snapshot(renderer: &WindowRenderer) -> ArenaSnapshot {
+        let arena = renderer.frame_arena.inner();
+        ArenaSnapshot {
+            mesh_vertices: arena.meshes.vertices.clone(),
+            mesh_indices: arena.meshes.indices.clone(),
+            polyline_points: arena.polyline_points.clone(),
+            polyline_colors: arena.polyline_colors.clone(),
+            text: arena.fmt_scratch.clone(),
+        }
+    }
+
+    fn record_scene(
+        ui: &mut Ui,
+        mesh: &Mesh,
+        points: &[Vec2],
+        colors: &[Color],
+        label: &str,
+        id: &'static str,
+    ) {
+        Panel::zstack()
+            .id(WidgetId::from_hash(id))
+            .size(96.0)
+            .show(ui, |ui| {
+                ui.add_shape(Shape::mesh(mesh));
+                ui.add_shape(Shape::polyline(
+                    points,
+                    PolylineColors::PerPoint(colors),
+                    3.0,
+                ));
+                let label = ui.intern(label);
+                Text::new(label)
+                    .id(WidgetId::from_hash((id, "text")))
+                    .show(ui);
+                Spinner::new()
+                    .id(WidgetId::from_hash((id, "spinner")))
+                    .size(92.0)
+                    .show(ui);
+            });
+    }
+
+    /// A record pass in one window must not replace the arena retained by
+    /// another window's animation-only frame.
+    #[test]
+    fn interleaved_window_paint_only_preserves_geometry_arena() {
+        let ctx = HostContext::new(TextShaper::default());
+        let mut window_a = WindowRenderer::builder(&ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
+        let mut window_b = WindowRenderer::builder(&ctx, 8192)
+            .clock(Box::new(FixedClock::new(Duration::ZERO)))
+            .build();
+        let display = Display::from_physical(UVec2::new(112, 112), 1.0);
+
+        let mesh_a = Mesh::filled_triangle(
+            Vec2::new(12.0, 14.0),
+            Vec2::new(72.0, 20.0),
+            Vec2::new(26.0, 74.0),
+            Color::rgb(0.15, 0.65, 0.95),
+        );
+        let points_a = [
+            Vec2::new(8.0, 82.0),
+            Vec2::new(28.0, 10.0),
+            Vec2::new(68.0, 84.0),
+            Vec2::new(88.0, 12.0),
+        ];
+        let colors_a = [
+            Color::rgb(1.0, 0.0, 0.0),
+            Color::WHITE,
+            Color::rgb(0.0, 1.0, 0.0),
+            Color::rgb(0.0, 0.0, 1.0),
+        ];
+
+        let mesh_b = Mesh::filled_polygon(
+            &[
+                Vec2::new(78.0, 8.0),
+                Vec2::new(90.0, 46.0),
+                Vec2::new(58.0, 88.0),
+                Vec2::new(14.0, 70.0),
+                Vec2::new(8.0, 24.0),
+            ],
+            Color::rgb(0.9, 0.2, 0.65),
+        );
+        let points_b = [
+            Vec2::new(90.0, 88.0),
+            Vec2::new(82.0, 18.0),
+            Vec2::new(58.0, 64.0),
+            Vec2::new(38.0, 14.0),
+            Vec2::new(20.0, 76.0),
+            Vec2::new(6.0, 32.0),
+        ];
+        let colors_b = [
+            Color::WHITE,
+            Color::rgb(0.0, 0.0, 1.0),
+            Color::rgb(0.0, 1.0, 0.0),
+            Color::rgb(1.0, 0.0, 0.0),
+            Color::BLACK,
+            Color::WHITE,
+        ];
+
+        let _ = window_a.cpu_frame(display, |ui| {
+            record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
+        });
+        window_a.ui.frame_runtime.frame_submitted = true;
+        let retained = snapshot(&window_a);
+        assert_eq!(retained.mesh_vertices.len(), 3);
+        assert_eq!(retained.polyline_points.len(), 4);
+        assert_eq!(retained.text, "retained A");
+
+        let _ = window_b.cpu_frame(display, |ui| {
+            record_scene(
+                ui,
+                &mesh_b,
+                &points_b,
+                &colors_b,
+                "window B has a much longer label",
+                "window-b",
+            );
+        });
+        window_b.ui.frame_runtime.frame_submitted = true;
+        assert_eq!(snapshot(&window_a), retained);
+
+        let paint_only = window_a.cpu_frame(display, |ui| {
+            record_scene(ui, &mesh_a, &points_a, &colors_a, "retained A", "window-a");
+        });
+        assert_eq!(paint_only.report.processing, FrameProcessing::PaintOnly);
+        assert_eq!(snapshot(&window_a), retained);
     }
 }

@@ -5,6 +5,7 @@ use std::sync::OnceLock;
 use std::sync::mpsc;
 
 use aperture::host::offscreen::OffscreenHost;
+use aperture::host::offscreen::test_support::TwoWindowOffscreenHost;
 use aperture::{Color, DebugOverlayConfig, FixedClock, TextShaper, Ui};
 use glam::UVec2;
 use image::RgbaImage;
@@ -70,6 +71,13 @@ pub(crate) struct Harness {
     pub host: OffscreenHost,
 }
 
+#[derive(Debug)]
+pub(crate) struct TwoWindowHarness {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    host: TwoWindowOffscreenHost,
+}
+
 impl Harness {
     pub(crate) fn new() -> Self {
         let g = gpu();
@@ -115,22 +123,7 @@ impl Harness {
         clear: Color,
         scene: impl FnMut(&mut Ui),
     ) -> RgbaImage {
-        let target = self.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("aperture.visual_test.target"),
-            size: wgpu::Extent3d {
-                width: physical.x,
-                height: physical.y,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                | wgpu::TextureUsages::COPY_DST
-                | wgpu::TextureUsages::COPY_SRC,
-            view_formats: &[],
-        });
+        let target = make_target(&self.device, format, physical);
 
         self.host.ui().theme.window_clear = clear;
         self.host.frame_offscreen(&target, scale, scene);
@@ -183,6 +176,62 @@ impl Harness {
         self.host.set_debug_overlay(DebugOverlayConfig::default());
         img
     }
+}
+
+impl TwoWindowHarness {
+    pub(crate) fn new() -> Self {
+        let g = gpu();
+        let shaper = COSMIC.with(|c| c.clone());
+        let clocks: [Box<dyn aperture::Clock>; 2] = [
+            Box::new(FixedClock::new(Duration::ZERO)),
+            Box::new(FixedClock::new(Duration::ZERO)),
+        ];
+        let host = TwoWindowOffscreenHost::new(g.device.clone(), g.queue.clone(), shaper, clocks);
+        Self {
+            device: g.device.clone(),
+            queue: g.queue.clone(),
+            host,
+        }
+    }
+
+    pub(crate) fn render(
+        &mut self,
+        window: usize,
+        physical: UVec2,
+        scale: f32,
+        clear: Color,
+        mut scene: impl FnMut(&mut Ui),
+    ) -> RgbaImage {
+        let target = make_target(&self.device, FORMAT, physical);
+        self.host.frame_offscreen(window, &target, scale, |ui| {
+            ui.theme.window_clear = clear;
+            scene(ui);
+        });
+        readback(&self.device, &self.queue, &target, physical)
+    }
+}
+
+fn make_target(
+    device: &wgpu::Device,
+    format: wgpu::TextureFormat,
+    physical: UVec2,
+) -> wgpu::Texture {
+    device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("aperture.visual_test.target"),
+        size: wgpu::Extent3d {
+            width: physical.x,
+            height: physical.y,
+            depth_or_array_layers: 1,
+        },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+            | wgpu::TextureUsages::COPY_DST
+            | wgpu::TextureUsages::COPY_SRC,
+        view_formats: &[],
+    })
 }
 
 fn readback(
